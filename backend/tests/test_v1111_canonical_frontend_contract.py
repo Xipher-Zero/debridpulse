@@ -234,12 +234,16 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
         "Copyright &copy; 2026 Chris Moore",
         "GPL-2.0-or-later",
         'data-legal-document="gpl"',
-        'data-legal-document="notice"',
-        'data-legal-document="upstream-mit"',
         'data-legal-document="source-offer"',
         'data-legal-document="third-party"',
     ):
         assert fragment in help_source
+    # 1.0.13: Help no longer offers the Attribution notice or the upstream MIT
+    # license as buttons. Both files still ship in the image and remain served
+    # by /api/legal-documents (test_help_local_legal_documents.py).
+    for removed in ('data-legal-document="notice"', 'data-legal-document="upstream-mit"',
+                    "Attribution notice", "Upstream MIT license"):
+        assert removed not in help_source, removed
     # Upstream provenance lives in the bundled legal documents, not in Help copy.
     for fragment in ("kroeberd", "alldebrid-client", "Upstream attribution", "dp-help-attribution"):
         assert fragment not in help_source

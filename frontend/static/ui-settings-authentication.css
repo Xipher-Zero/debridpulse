@@ -224,13 +224,16 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex-shrink: 0;
 }
 
-/* The Browser Session Lifetime sentence reads as about two balanced lines: its
-   measure is just over half the sentence's own length, in its own `ch`, so it
-   follows the font rather than a pixel guess, and the island stays compact
-   and centred while the card has room. */
+/* The Browser Session Lifetime information column is as wide as its sentence
+   needs in about two lines, and no wider, so the hours control sits right
+   beside it at the field's own gap and the island stays compact and centred.
+   The column takes its width from the sentence (its label is shorter), so the
+   measure is stated on the sentence, in the sentence's own `ch` -- the
+   column's own `ch` belongs to its larger label font. It is just over half the
+   sentence and wraps greedily: balanced lines would end short of the measure
+   and leave the column wider than its text. */
 #view-settings .dp-settings-auth-session-lifetime .form-hint {
-  max-width: 56ch;
-  text-wrap: balance;
+  max-width: 54ch;
 }
 
 /* The logout action lives inside the sessions field, at its trailing edge.

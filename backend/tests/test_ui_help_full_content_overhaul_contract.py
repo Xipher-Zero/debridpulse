@@ -30,8 +30,8 @@ def test_everyday_use_covers_the_pages_controls_and_prompts_an_operator_meets():
     for phrase in (
         "Pause All", "Resume All", "Resume Paused (N)",
         "Custom cap (MB/s)", "Set Custom",
-        "Provider Status (sidebar)", "Network Sources share one row",
-        "Quick Add", "<b>100 unique links</b>", "separated by a Tab",
+        "Provider Status (sidebar, Admin only)", "Network Sources share one row",
+        "Quick Add", "<b>100 different links</b>", "separated by a Tab",
         "<code>.torrent</code>: a torrent file, up to 16 MB.",
         "<code>.nzb</code>: a Usenet download, up to 1 GB.",
         "<code>.meta4</code>: a Metalink file, up to 16 MB.",
@@ -57,7 +57,10 @@ def test_how_it_works_explains_routing_failure_scope_and_controls_without_guaran
         "1. Add", "2. Choose a service", "3. Prepare", "4. Download",
         "5. Check and finish", "6. Extract (optional)",
         "Specialist services come first.",
-        "the ordinary HTTP(S) source is not used for it, not even if that service later fails",
+        # A single link may fall back to HTTP(S) once every specialist that
+        # could take it is exhausted or unavailable (transfers/registry.py:257,
+        # _engine_recovery.py:54); a multi-link submission never reopens it.
+        "A single web link can still be downloaded directly over HTTP(S)",
         "It waits rather than guesses.",
         "No ranking setting.",
         "Enabled is not the same as usable.",
@@ -93,7 +96,7 @@ def test_specialist_authority_is_documented_for_the_whole_submission_not_per_lin
     for phrase in (
         "All the links you add at once in Quick Add, or in one link-list file, become a single download",
         "only magnets each become a download of their own",
-        "If a debrid service supports any link in that download, the whole download is left to debrid services",
+        "If a debrid service supports any link in a download of two or more links, the whole download is left to debrid services",
         "each of its links goes to a debrid service that supports that particular link",
         "a link that none of them supports is not downloaded as an ordinary web file",
         "add them separately from links meant for a debrid service",
@@ -195,7 +198,7 @@ def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_sem
         "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
         "Default Role for New OIDC Users", "Add Local Account", "Change Role",
         "Integration Accounts", "Issue Token", "Authorization: Bearer &lt;token&gt;",
-        "finished downloads are never touched", "Removing keeps the account's history",
+        "finished downloads are never touched", "removing keeps the account's history",
         "Discord Notifications", "Download Added Webhook", "Statistics Reporting",
         "Automatic Report Interval", "/api/metrics",
         "Event Logging", "Backups &amp; Retention", "Run Backup",

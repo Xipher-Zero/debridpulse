@@ -74,6 +74,7 @@
           <ul>
             <li><b>Storage:</b> DebridPulse needs a folder it is allowed to write to. This can be a folder on the computer running DebridPulse or a mounted network share.</li>
             <li><b>Login protection:</b> If people or devices you do not fully trust can reach DebridPulse, open <b>Settings → Authentication</b> first and set up <b>Username &amp; Password</b>. A new installation does not ask anyone to sign in.</li>
+            <li><b>Who can do what:</b> these steps are for an <b>Admin</b>, the role that manages Settings. Other people can have their own accounts with the <b>User</b> or <b>ReadOnly User</b> role; see <b>Everyday Use</b>.</li>
           </ul>`)}
 
         <div class="dp-help-steps">
@@ -104,7 +105,7 @@
           ${step(4, 'Follow it to the finish', `
             <div class="dp-help-prose">
               <p>The download appears in <b>Download Activity</b> on the Dashboard and in <b>Downloads</b>. Click it to open its details: the service delivering it, its files, and its events.</p>
-              <p>If something does not go as expected, read the download's details and the <b>Activity Log</b> before deleting anything. The <b>Troubleshooting</b> tab starts from common symptoms.</p>
+              <p>If something does not go as expected, read the download's details and, as an Admin, the <b>Activity Log</b> before deleting anything. The <b>Troubleshooting</b> tab starts from common symptoms.</p>
             </div>`)}
         </div>
 
@@ -113,7 +114,7 @@
             <li><b>Everyday Use:</b> every page, button and prompt you will meet day to day.</li>
             <li><b>How It Works:</b> how a service is chosen, what happens when something fails, and what pausing, retrying and removing do.</li>
             <li><b>Services</b> and <b>Engines:</b> what each service and engine can and cannot do.</li>
-            <li><b>Settings:</b> every Settings tab, card and important option.</li>
+            <li><b>Settings:</b> every Settings tab, card and important option. In Settings itself, the <b>Help</b> button (?) on each card explains that card.</li>
           </ul>
           <p>Optional features such as automatic archive extraction, Discord notifications, backups and OpenID Connect sign-in can be added whenever you need them.</p>`)}
       </section>`;
@@ -128,39 +129,49 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Monitor</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress or waiting; failed and finished ones are not counted.</p>
+          <p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Monitor</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>
+          <p>What you see depends on your role. Settings, the Activity Log and the controls marked <b>Admin only</b> below appear only for an Admin; a <b>User</b> sees <b>Notifications</b> in place of Settings, and a <b>ReadOnly User</b> can look but not change anything.</p>
         </div>
 
         <div class="dp-help-accordion-list">
+          ${accordion('What your role lets you do', `
+            <ul>
+              <li><b>Admin:</b> everything, including Settings, the Activity Log, Pause All, the speed cap, Provider Status, Recover All and every download.</li>
+              <li><b>User:</b> adds downloads, and pauses, resumes, retries and reorders them. Removing, cancelling or switching the source of a download is allowed only when no other account still needs it; otherwise you can withdraw your own request from the download's details (<b>Requested By</b>). Your own Discord alerts and statistics reports are under <b>Notifications</b>.</li>
+              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, download details and Statistics, and changes nothing.</li>
+              <li><b>Integration</b> accounts are for other applications. They use API tokens and cannot sign in to these pages.</li>
+            </ul>
+            <p>Your name at the bottom of the sidebar opens <b>My Account</b>, where you can change your display name and, if you sign in with one, your password. <b>Log Out</b> is beside it.</p>`, true)}
+
           ${accordion('Header controls', `
             <ul>
-              <li><b>Pause All:</b> pauses every download and stops DebridPulse from starting new work. You can still add downloads while paused; they wait in the queue. The button then reads <b>Resume All</b>, which resumes everything, including downloads you paused one by one.</li>
-              <li><b>Resume Paused (N):</b> appears when processing is running but some downloads are individually paused. It resumes them all.</li>
-              <li><b>Activity badge:</b> shows how many downloads are running out of the maximum allowed, the current combined speed, and the speed cap. Open its menu to pick a cap (Unlimited, or 1 to 100 MB/s), or type your own in <b>Custom cap (MB/s)</b> and press <b>Set Custom</b>. The cap covers every download together, whichever engine runs it, and stays in place after a restart.</li>
+              <li><b>Pause All</b> (Admin only): pauses every download and stops DebridPulse from starting new work. You can still add downloads while paused; they wait in the queue. The button then reads <b>Resume All</b>, which resumes everything, including downloads you paused one by one.</li>
+              <li><b>Resume Paused (N)</b> (Admin only): appears when processing is running but some downloads are individually paused. It resumes them all.</li>
+              <li><b>Activity badge:</b> shows how many downloads are running out of the maximum allowed, the current combined speed, and the speed cap. An Admin can open its menu to pick a cap (Unlimited, 1, 5, 10, 20, 30, 50 or 100 MB/s), or type one in <b>Custom cap (MB/s)</b> and press <b>Set Custom</b>. The cap covers every download together, whichever engine runs it, and stays in place after a restart.</li>
               <li><b>Update badge:</b> appears when a newer DebridPulse version is available and links to its change log.</li>
               <li><b>Theme button:</b> switches between dark and light mode.</li>
             </ul>
             <p>While downloads are running, the browser tab title shows the overall speed and progress.</p>`, true)}
 
-          ${accordion('Provider Status (sidebar)', `
+          ${accordion('Provider Status (sidebar, Admin only)', `
             <p>The sidebar lists your services with a coloured dot. The colour is the whole message:</p>
             <ul>
               <li><b>Green:</b> working. For a premium service this also means its current settings have passed a Test.</li>
               <li><b>Amber:</b> usable but limited. For example: switched on but not set up yet, not tested since its settings changed, or connected to a free or expired account.</li>
               <li><b>Red:</b> not usable. For example: the sign-in was rejected, the service is unavailable, or it is switched off.</li>
-              <li><b>Grey:</b> still checking.</li>
+              <li><b>Pulsing amber:</b> still checking, or not known yet.</li>
             </ul>
-            <p>Network Sources share one row. If a status check briefly fails, DebridPulse keeps showing the last good answer for a few minutes rather than flashing red, as long as that service's settings have not changed. Below the services you can see your premium account's expiry, the <b>aria2</b> engine version (or <b>offline</b>), the database, and the DebridPulse version.</p>`)}
+            <p>Network Sources share one row. If a status check briefly fails, DebridPulse keeps showing the last good answer for up to five minutes rather than flashing red, as long as that service's settings have not changed. A premium account's expiry is shown above the services. The <b>aria2</b> engine and the database appear only when they report a problem (for example <b>aria2: offline</b>), and the DebridPulse version is shown at the bottom of the sidebar.</p>`)}
 
           ${accordion('Dashboard and Quick Add', `
             <p>The summary cards count <b>Total Downloads</b>, <b>Completed</b>, <b>Active Now</b>, <b>Processing</b>, <b>Errors</b> and <b>Total Downloaded</b>. Click <b>Errors</b> to open Downloads filtered to failed downloads.</p>
-            <p><b>Quick Add</b> accepts:</p>
+            <p><b>Quick Add</b> (for Admins and Users) accepts:</p>
             <ul>
-              <li><b>Links:</b> <code>http://</code>, <code>https://</code>, <code>ftp://</code>, <code>sftp://</code>, <code>scp://</code>, <code>ssh://</code>, <code>rsync://</code>, <code>rsync+ssh://</code>, <code>webdav://</code>, <code>webdavs://</code>, <code>dav://</code> and <code>davs://</code>. One download per line; up to <b>100 unique links</b> at once. Exact duplicate lines are ignored.</li>
+              <li><b>Links:</b> <code>http://</code>, <code>https://</code>, <code>ftp://</code>, <code>sftp://</code>, <code>scp://</code>, <code>ssh://</code>, <code>rsync://</code>, <code>rsync+ssh://</code>, <code>webdav://</code>, <code>webdavs://</code>, <code>dav://</code> and <code>davs://</code>. One download per line; up to <b>100 different links</b> at once (magnets are not counted). Exact duplicate lines are ignored.</li>
               <li><b>Magnet links</b> (they start with <code>magnet:?</code>), one per line.</li>
-              <li><b>Alternate sources:</b> put several links for the same file on one line, separated by a Tab. DebridPulse treats them as one download and keeps the extras as standby sources it can use only after confirming they hold the same file.</li>
+              <li><b>Alternate sources:</b> put several links for the same item on one line, separated by a Tab. DebridPulse treats them as one download and tries the next link on that line only if the previous one fails.</li>
             </ul>
-            <p>Press <b>Add</b> (or Ctrl+Enter). If any line is not something DebridPulse accepts, nothing is added and the message names the line. Lines that could not be added stay in the box.</p>
+            <p>Press <b>Add</b> (or Ctrl+Enter). If a line is not a link or magnet DebridPulse recognises, nothing is added and the message names that line. If the server refuses some entries, the others are still added and the message counts how many failed. Lines that could not be added stay in the box.</p>
             <p>To add a file, empty the box and press <b>Add</b>. The file's name decides what it is:</p>
             <ul>
               <li><code>.torrent</code>: a torrent file, up to 16 MB.</li>
@@ -168,15 +179,15 @@
               <li><code>.meta4</code>: a Metalink file, up to 16 MB.</li>
               <li><b>Any other file:</b> read as a list of links, up to 1 MB. Plain text with one link per line works; so do simple JSON, XML or YAML lists. Lines beginning with <code>#</code> are ignored.</li>
             </ul>
-            <p><b>Recover All</b>, in the Quick Add header, asks DebridPulse to check all tracked work and pick up anything that can safely continue. See the <b>How It Works</b> tab.</p>
-            <p><b>Download Activity</b> shows the downloads at the top of the queue with their status, progress, size and date. You can pause or resume them there; click a row to open its details, or <b>View All</b> to open Downloads.</p>`)}
+            <p><b>Recover All</b> (Admin only), in the Quick Add header, asks DebridPulse to check all tracked work and pick up anything that can safely continue. See the <b>How It Works</b> tab.</p>
+            <p><b>Download Activity</b> shows the downloads at the top of the queue with their status, progress, size and date. Admins and Users can pause or resume them there; click a row to open its details, or <b>View All</b> to open Downloads.</p>`)}
 
           ${accordion('Questions DebridPulse may ask while adding', `
             <ul>
-              <li><b>Connect to a local network address?</b> appears when a link points at a device on your private network and <b>Local Network Connections</b> is on. <b>Allow</b> applies to that download only. When Local Network Connections is off, such links are refused.</li>
+              <li><b>Connect to a local network address?</b> appears when a link points at a device on your private network and <b>Local Network Connections</b> is on (unless <b>Skip Local Connection Confirmation</b> is also on). <b>Allow</b> applies to that download only. When Local Network Connections is off, such links are refused.</li>
               <li><b>Download the item or its collection?</b> appears when a link points at one item inside a collection, for example a video that is part of a playlist. Choose the item, the whole collection, or <b>Cancel Transfer</b>.</li>
-              <li><b>Authentication Required</b> appears when a server needs a username and password, or, for SSH-based servers, a key file and its passphrase. <b>Cancel</b> cancels the download.</li>
-              <li><b>Verify Server Identity</b> appears before DebridPulse connects to an SFTP, SCP or SSH server for a download. Compare the fingerprint shown with the one the server's owner gave you, then press <b>Verify &amp; Continue</b>.</li>
+              <li><b>Authentication Required</b> appears when a server needs a username and password, or, for SSH-based servers, a key file and its passphrase. <b>Cancel</b>, when shown, cancels the download.</li>
+              <li><b>Verify Server Identity</b> appears before DebridPulse first connects to an SFTP, SCP or SSH server whose identity has not been confirmed yet. Compare the fingerprint shown with the one the server's owner gave you, then press <b>Verify &amp; Continue</b>.</li>
             </ul>
             <p>These dialogs do not close when you click outside them; choose one of their buttons.</p>`)}
 
@@ -194,25 +205,26 @@
             <ul>
               <li><b>Filters:</b> All, Downloading, Paused, Processing, Ready, Done, Error. <b>Search</b> matches as you type.</li>
               <li><b>Order:</b> <b>Priority</b> (queue order, the default) or <b>Newest</b>.</li>
-              <li><b>Row actions:</b> <b>Pause</b>, <b>Resume</b>, <b>Retry</b> (on a failed download) and <b>Remove</b>. <b>Start Now</b> appears when a download you moved up can only start if lower downloads restart.</li>
-              <li><b>Several at once:</b> tick rows to show <b>Pause</b>, <b>Resume</b>, <b>Reset</b> (retry), <b>Move to Top</b> and <b>Delete</b>.</li>
+              <li><b>Row actions:</b> <b>Pause</b>, <b>Resume</b>, <b>Retry</b> (on a failed download) and <b>Remove</b>. <b>Start Now</b> appears when a download you moved up can only start if lower downloads restart. For a User, <b>Remove</b> appears only on downloads no other account still needs.</li>
+              <li><b>Several at once:</b> tick rows to show <b>Pause</b>, <b>Resume</b>, <b>Reset</b> (retry), <b>Move to Top</b> and <b>Delete</b>. Delete is offered only when you may remove every selected download.</li>
               <li><b>Queue order:</b> in Priority order with no filter or search, drag a download by its name to move it, or use the keyboard (Space or Enter to pick up, arrow keys to move, Space or Enter to drop, Escape to cancel). Right-click offers <b>Move to Top</b>. If a move would interrupt a running download, DebridPulse asks first because that download's progress would be lost.</li>
               <li><b>Provider / Source</b> shows where the download came from, which service is handling it, and how it was submitted. A network icon with a number means several sources are available for its files.</li>
-              <li>The <b>Added</b> column's menu changes the date and time format.</li>
+              <li>The <b>Date</b> column's menu sets the date format and 12- or 24-hour time, for Downloads and the Dashboard.</li>
             </ul>`)}
 
           ${accordion('Download details', `
             <p>Click any download to open its details.</p>
             <ul>
               <li><b>Provider</b> is the service handling the download now. <b>Submitted As</b> is what you gave DebridPulse (for example Direct link, Magnet link, Torrent file, NZB file or Metalink file). <b>Original Resource</b> is the source you submitted.</li>
+              <li><b>Requested By</b> lists the accounts that asked for this download. A User can withdraw their own request there; the download itself continues while another account still needs it.</li>
               <li><b>Route History</b> lists every service DebridPulse tried for this download and how each attempt ended.</li>
               <li><b>Advanced acquisition details</b> separates the engine, the service you started with, the current service, and the service that actually delivered the files.</li>
               <li><b>Files</b> lists each file with its size and status. Depending on the download, its header lets you switch service (<b>Provider</b>), switch the remaining files to another common source, or change the file selection. Each file's <b>Candidates</b> list shows the other sources known for it. If a switch would throw away progress, DebridPulse asks <b>Discard downloaded progress?</b> first.</li>
-              <li><b>Events</b> is this download's own history. <b>Transfer Trace Log</b> saves a detailed record you can attach to a bug report; DebridPulse removes passwords and private link details from it, but read it before sharing.</li>
+              <li><b>Events</b> is this download's own history. <b>Transfer Trace Log</b> (Admin only) saves a detailed record you can attach to a bug report; DebridPulse removes passwords and private link details from it, but read it before sharing.</li>
             </ul>
             <p>Progress marked <b>not yet verified</b> or <b>estimated</b> is DebridPulse's best estimate until the files are checked.</p>`)}
 
-          ${accordion('Activity Log', `
+          ${accordion('Activity Log (Admin only)', `
             <p>The Activity Log is the full event history of DebridPulse: transfers, routing decisions, recovery, storage, extraction, settings changes and more. Filter it by <b>Time Window</b>, <b>Severity</b> (Info, Warning, Error) and <b>Event Type</b>, or search for a name or transfer ID. Expand <b>Details</b> on an event for more information.</p>
             <p>Events are kept until you reset the database. The number shown per page is set in <b>Settings → Data &amp; Maintenance → Event Logging</b>.</p>`)}
 
@@ -221,7 +233,7 @@
               <li>The top cards and the <b>Completions</b> chart follow the <b>Period</b> you choose (1 hour to All Time).</li>
               <li><b>Overall &amp; Rolling Metrics</b> always shows the last 24 hours, the last 7 days and lifetime figures.</li>
               <li>The <b>Completions</b> chart splits each bar into Premium Sources and Network Sources by the service that actually delivered the files.</li>
-              <li><b>Transfer Methods</b> counts finished files by how they were really obtained (for example Debrid, Usenet, HTTP(S), FTP / SFTP, SCP, rsync, WebDAV or Media Downloads), not by what you submitted. A Metalink download is counted under the method that delivered each file. Files whose method was not recorded appear as <b>Unattributed</b>.</li>
+              <li><b>Transfer Methods</b> counts finished downloads by how their files were really obtained (for example Debrid, Usenet, HTTP(S), FTP / SFTP, SCP, rsync, WebDAV or Media Downloads), not by what you submitted. A download whose files came by several methods, such as a Metalink download, is counted once under each. Finished downloads with no recorded method appear as <b>Unattributed</b>.</li>
               <li><b>Transfer Disposition</b>, <b>File Status</b> and <b>Events Severity</b> count downloads, files and log events by state.</li>
             </ul>`)}
         </div>
@@ -241,10 +253,10 @@
         </div>
 
         <div class="dp-help-pipeline">
-          ${pipeline('1. Add', 'DebridPulse records what you submitted before anything else happens, so nothing is lost if processing is paused or the application restarts.')}
+          ${pipeline('1. Add', 'Once DebridPulse accepts what you submitted, it records it before any work starts, so nothing is lost if processing is paused or the application restarts.')}
           ${pipeline('2. Choose a service', 'It finds the enabled services that can handle this input and picks one, as described below.')}
           ${pipeline('3. Prepare', 'The service makes the files available. A debrid service may need time to fetch a torrent first; a plain web link is ready at once. File selection happens here.')}
-          ${pipeline('4. Download', 'The matching engine downloads the files: aria2, rsync, Usenet or Media Downloads.', 'active')}
+          ${pipeline('4. Download', 'The matching engine downloads the files: aria2 (HTTP(S), FTP, SFTP and SCP, WebDAV), rsync, Usenet (SABnzbd) or Media Downloads.', 'active')}
           ${pipeline('5. Check and finish', 'DebridPulse checks the result, for example the file size or checksum when one is known, and marks the download done only when its files are complete.', 'success')}
           ${pipeline('6. Extract (optional)', 'If Automatic Extraction is on, supported archives are unpacked afterwards.')}
         </div>
@@ -252,34 +264,35 @@
         <div class="dp-help-accordion-list">
           ${accordion('How a service is chosen', `
             <ul>
-              <li><b>Specialist services come first.</b> A magnet, <code>.torrent</code> or NZB goes only to services that handle that kind of input. A web link goes to a debrid service only if that service lists the link's host as supported. When a specialist service can take a download, the ordinary HTTP(S) source is not used for it, not even if that service later fails.</li>
-              <li><b>Links added together are one download.</b> All the links you add at once in Quick Add, or in one link-list file, become a single download; only magnets each become a download of their own. If a debrid service supports any link in that download, the whole download is left to debrid services: each of its links goes to a debrid service that supports that particular link, and a link that none of them supports is not downloaded as an ordinary web file. To download ordinary web links directly, add them separately from links meant for a debrid service. Media Downloads links do not have this effect.</li>
-              <li><b>It waits rather than guesses.</b> While a debrid service is still loading its list of supported hosts, DebridPulse waits for it instead of downloading the link as an ordinary web file.</li>
-              <li><b>Ready content is preferred.</b> For torrents, a service that reports the content as already available is tried before one that would need to fetch it.</li>
+              <li><b>Specialist services come first.</b> A magnet, <code>.torrent</code> or NZB goes only to services that handle that kind of input. A web link goes to a debrid service only if that service lists the link's host as supported, and while one can take it, the ordinary HTTP(S) source waits. A single web link can still be downloaded directly over HTTP(S) if every debrid service that could take it runs out of retries for it or becomes unavailable.</li>
+              <li><b>Links added together are one download.</b> All the links you add at once in Quick Add, or in one link-list file, become a single download; only magnets each become a download of their own, and links on one line separated by a Tab are alternatives for the same item. If a debrid service supports any link in a download of two or more links, the whole download is left to debrid services: each of its links goes to a debrid service that supports that particular link, and a link that none of them supports is not downloaded as an ordinary web file, not even later. To download ordinary web links directly, add them separately from links meant for a debrid service. Media Downloads links do not have this effect.</li>
+              <li><b>It waits rather than guesses.</b> While a connected debrid service is still loading its list of supported hosts, or its account's features are not known yet, DebridPulse waits for it instead of downloading the link as an ordinary web file.</li>
+              <li><b>Ready content is preferred.</b> For torrents, a service that reports the content as already available (TorBox and Premiumize can) is tried before one that would need to fetch it. A service you chose yourself keeps its place.</li>
               <li><b>No ranking setting.</b> Settings does not have a general priority order for services; the order of cards in Settings and in the sidebar is only for display. For NZBs, <b>Use TorBox Before Usenet</b> and <b>Use Premiumize Before Usenet</b> let those services try first. For a single torrent, you can switch the service yourself from the download's <b>Provider</b> control.</li>
               <li><b>Enabled is not the same as usable.</b> A service that is switched on but not connected, or whose account does not include a feature (for example a free plan), is skipped for that download.</li>
             </ul>`, true)}
 
           ${accordion('What the status words mean', `
             <ul>
-              <li><b>Pending, Resolving, Processing:</b> a service is preparing the download; no files are arriving yet.</li>
-              <li><b>Queued, Waiting for execution slot:</b> ready, but waiting for a free place under Maximum Concurrent Downloads.</li>
+              <li><b>Pending, Resolving, Processing:</b> DebridPulse is choosing a service, or a service is preparing the download; no files are arriving yet.</li>
+              <li><b>Ready, Queued, Waiting for execution slot:</b> ready, but waiting for a free place under Maximum Concurrent Downloads.</li>
               <li><b>Downloading, Verifying:</b> files are arriving or being checked.</li>
-              <li><b>Waiting for provider, Waiting for storage, Waiting for executor, Waiting for retry:</b> held until a service, enough free disk space, an engine or the next retry time is available.</li>
-              <li><b>Input Required, Awaiting confirmation:</b> DebridPulse needs an answer from you, such as a password or a file selection.</li>
+              <li><b>Waiting for provider, Waiting for storage, Waiting for executor, Waiting for retry:</b> held until a service (or a service still preparing it), enough free disk space, an engine or the next retry time is available.</li>
+              <li><b>Input Required:</b> DebridPulse needs an answer from you, such as a password, a server identity check or a file selection.</li>
+              <li><b>Awaiting confirmation:</b> DebridPulse is confirming the download's real state with the engine or service, for example after a restart.</li>
               <li><b>Paused, Recovering:</b> held on purpose, or being picked up again.</li>
               <li><b>Extracting:</b> archives are being unpacked.</li>
-              <li><b>Done:</b> finished. <b>Consolidated:</b> merged into another download of the same thing.</li>
+              <li><b>Done:</b> finished. <b>Completed with errors</b> or <b>Partial:</b> finished, but some files did not arrive. <b>Consolidated:</b> merged into another download of the same thing.</li>
               <li><b>Failed, Requires attention, Cancelled:</b> stopped. The details explain why.</li>
             </ul>`)}
 
           ${accordion('When something fails', `
             <p>DebridPulse sorts failures by how far they reach, and only does what each one allows:</p>
             <ul>
-              <li><b>A temporary problem</b> (a timeout, a busy server, a rate limit) is retried automatically using <b>Download Error Retries</b> and <b>Retry Delay</b>. The wait grows with each attempt, up to about five minutes unless the server asks for longer.</li>
+              <li><b>A temporary problem</b> (a timeout, a busy server, a rate limit) is retried automatically. A download uses <b>Download Error Retries</b> and <b>Retry Delay</b>; a service still preparing a download uses <b>Upload Failure Retries</b> and <b>Retry Delay (minutes)</b> on the AllDebrid card, which apply to every premium service. The wait grows with each attempt, up to about five minutes unless the server asks for longer.</li>
               <li><b>A problem with one service</b> (for example, its retries are used up, or it refuses this download) makes DebridPulse try the next service that can handle the download, if there is one. A service that only failed temporarily may be tried again later, but it does not replace a service that is working.</li>
               <li><b>A problem with the download itself</b> (the file no longer exists, the source is invalid) stops it, because no other service can fix that.</li>
-              <li><b>Alternate sources</b> are used only when DebridPulse can confirm they hold the same file, for example the same size and checksum. It never assumes two files match because of their names or positions.</li>
+              <li><b>Other sources for a file</b> found by DebridPulse are used only when it can confirm they hold the same file, for example the same size and matching content or checksum. It never assumes two files match because of their names or positions. Alternatives you list yourself on one Quick Add line are tried in order, each as a separate attempt.</li>
               <li><b>Stalled downloads:</b> a download that makes no progress for the <b>Stalled Download Timeout</b> is stopped and retried, and a service that makes no progress preparing a download for that long counts as a failure of that service.</li>
             </ul>
             <p>Switching to another source or service does not always keep the progress already made. Whether a partly finished file can be continued depends on the engine and the source, so a switch may start that file again.</p>`)}
@@ -291,13 +304,14 @@
             <ul>
               <li><b>Pause</b> holds one download; it does not occupy a download slot while paused. <b>Resume</b> lets it continue.</li>
               <li><b>Pause All</b> pauses every download and starts no new work, but still accepts new submissions. <b>Resume All</b> resumes everything.</li>
-              <li><b>Retry</b> (or <b>Reset</b>) starts a failed download again from its original source, without re-adding it.</li>
+              <li><b>Retry</b> (or <b>Reset</b>) starts a failed download again from its original source, without re-adding it. On a finished or removed download it downloads the files again.</li>
               <li><b>Recover All</b> re-checks all tracked work with your services and engines and continues whatever can safely continue. It does not reset retry counts or override your settings.</li>
               <li><b>Remove</b> takes a download off the list. DebridPulse also cleans up the copy it created at the service and any unfinished partial files it was writing. <b>Files that finished downloading stay in your folder.</b></li>
-            </ul>`)}
+            </ul>
+            <p>An Admin can remove, cancel or switch the source of any download. A User can do so only when no other account still needs that download, including downloads merged into it; otherwise the User withdraws their own request in <b>Requested By</b>, and the download continues for the others.</p>`)}
 
           ${accordion('Adding the same thing twice', `
-            <p>If you add something DebridPulse is already working on (including one that failed and has not been removed), it shows <b>Already in queue</b> and keeps the existing download instead of starting a second one. Once a download is finished, cancelled or removed, adding the same source again starts a new download. When two downloads turn out to fetch the same content, DebridPulse may merge them; the merged one shows <b>Consolidated</b>.</p>`)}
+            <p>If you add a magnet, <code>.torrent</code>, NZB or Metalink file that DebridPulse is already working on (including one that failed and has not been removed), it shows <b>Already in queue</b> and keeps the existing download instead of starting a second one. Web links are always added as a new download. Once a download is finished, cancelled or removed, adding the same source again starts a new download. When two downloads turn out to fetch the same content, DebridPulse may merge them; the merged one shows <b>Consolidated</b>. Merging does not change who asked for it: each account's request stays its own.</p>`)}
 
           ${accordion('What survives a restart', `
             <p>Downloads, their history, the queue order, Pause All and the speed cap are saved and survive a restart; DebridPulse reconnects to its engines and continues. Browser sign-ins do not survive a restart, so you sign in again. Passwords typed into a prompt or written into a link are never saved and are forgotten on restart.</p>`)}
@@ -326,8 +340,9 @@
             <li><b>Enable</b> switches the service on or off immediately.</li>
             <li>The status word says whether it is <b>Unconfigured</b> (switched on but not connected), <b>Unverified</b> (connected, but the current settings have not passed a Test) or <b>Verified</b>.</li>
             <li><b>Test</b> checks the saved connection. A passing Test means the account and settings worked at that moment; it does not guarantee that every link or plan feature will work later.</li>
-            <li><b>Additional Settings</b> holds optional tuning. The defaults suit most people.</li>
-            <li>While a service still has downloads in progress, DebridPulse will not let you change its account; finish or remove those downloads first.</li>
+            <li><b>Additional Settings</b> holds optional tuning. The defaults suit most people. Each debrid service's <b>Prepare Backup Torrents</b> is explained under <b>How It Works → Backup torrents</b>.</li>
+            <li>While a service still has downloads in progress, DebridPulse will not let you change its account (or, for Usenet, its news servers); finish or remove those downloads first.</li>
+            <li>The <b>Help</b> button (?) on a card explains that card in Settings itself.</li>
           </ul>`)}
 
         <h3>Premium Services</h3>
@@ -350,8 +365,8 @@
             <p><b>For:</b> magnets, <code>.torrent</code> files, NZBs and links to supported file hosters.</p>
             <p><b>You need:</b> a Premiumize premium account and its API key, pasted into <b>API Key</b>.</p>
             <p><b>What happens:</b> DebridPulse first asks Premiumize for immediate download links. If that is not possible, it adds the item to your Premiumize cloud storage and downloads it from there once ready. Files are downloaded with aria2.</p>
-            <p><b>Good to know:</b> off by default. A free or expired Premiumize account stays connected but cannot start anything. For NZBs, Premiumize is normally tried after your own Usenet servers; switch on <b>Use Premiumize Before Usenet</b> to try it first. Either way, both stay available as a fallback for each other.</p>
-            <p><b>Premiumize as a news server:</b> per Premiumize's documentation, a Premiumize account also includes Usenet access that you can add as an ordinary news server under <b>Usenet</b> with <b>Add Server</b>: host <code>usenet.premiumize.me</code>, port <code>563</code> with <b>SSL</b> on, your Premiumize customer ID as the username and your Premiumize API key as the password. Check Premiumize's own instructions if these details have changed. That server is separate from this card.</p>
+            <p><b>Good to know:</b> off by default. A free or expired Premiumize account stays connected but cannot start anything. For NZBs, Premiumize is normally tried after your own Usenet servers; switch on <b>Use Premiumize Before Usenet</b> to try it first. Either way both stay in the running: if the first cannot take the NZB, the other is tried.</p>
+            <p><b>Premiumize as a news server:</b> per Premiumize's documentation, a Premiumize account also includes Usenet access that you can add as an ordinary news server under <b>Usenet</b> with <b>Add Server</b>. Take the server details from Premiumize's own instructions. That server is separate from this card.</p>
             <p><b>If it fails:</b> an account limit or fair-use message is treated as temporary and DebridPulse may try another service.</p>`)}
 
           ${accordion('Real-Debrid', `
@@ -363,22 +378,22 @@
 
           ${accordion('TorBox', `
             <p><b>For:</b> magnets, <code>.torrent</code> files, links to supported file hosters and, depending on your plan, NZBs.</p>
-            <p><b>You need:</b> a TorBox account. Like Real-Debrid, it uses a code instead of a key: press <b>Connect TorBox</b>, then <b>Open TorBox</b> and approve the code there.</p>
+            <p><b>You need:</b> a TorBox account. Like Real-Debrid, it uses a code instead of a key: press <b>Connect TorBox</b>, then <b>Open TorBox</b> and approve the code there. TorBox is switched on once the connection passes a Test.</p>
             <p><b>What happens:</b> TorBox fetches the content; DebridPulse downloads the files with aria2. TorBox can report whether something is already available on its side, which lets it be tried first.</p>
-            <p><b>Your plan matters:</b> per TorBox's documentation, a free plan cannot use the API at all, the paid plans include torrents and web downloads, and only the Pro plan includes NZB downloads. DebridPulse follows what TorBox reports for your account: if it is known not to include Usenet, switching on <b>Use TorBox Before Usenet</b> is refused with <b>Requires TorBox Pro.</b> That switch only changes the order for NZBs; TorBox still handles NZBs as a fallback when your plan allows it. <b>Maximum Active Torrents</b> left empty follows your plan's limit.</p>
+            <p><b>Your plan matters:</b> a free TorBox plan stays connected, but TorBox refuses the downloads DebridPulse asks for on it, so DebridPulse starts nothing there; per TorBox's documentation, the paid plans include torrents and web downloads, and only the Pro plan includes NZB downloads. DebridPulse follows what TorBox reports for your account: if it is known not to include Usenet, switching on <b>Use TorBox Before Usenet</b> is refused with <b>Requires TorBox Pro.</b> That switch only changes the order for NZBs; TorBox still handles NZBs as a fallback when your plan allows it. <b>Maximum Active Torrents</b> left empty follows your plan's limit.</p>
             <p><b>Good to know:</b> <b>Disconnect</b> only makes DebridPulse forget the token. TorBox offers no way to cancel it remotely, so reset your token on TorBox's website if you want it revoked there.</p>`)}
 
           ${accordion('Usenet', `
             <p><b>For:</b> NZB files. An NZB is a small file that lists the parts of a Usenet posting; Usenet is a network of news servers, usually reached through a paid news server subscription.</p>
-            <p><b>You need:</b> at least one news server account. Press <b>Add Server</b> and fill in <b>Host</b>, <b>Port</b> (563 by default), <b>SSL</b> (on by default), <b>Username</b> and <b>Password</b>. Under <b>Advanced</b> you can set <b>Connections</b>, <b>Priority</b> (lower numbers are used first), <b>Articles per Request</b> and <b>Server Timeout</b>. Press the server's own <b>Test</b> to check it, and the pencil to give it a display name.</p>
+            <p><b>You need:</b> at least one news server account. Press <b>Add Server</b> and fill in <b>Host</b>, <b>Port</b> (563 by default), <b>SSL</b> (on by default), <b>Username</b> and <b>Password</b>. Under <b>Advanced</b> you can set <b>Connections</b>, <b>Priority</b> (lower values have priority; 0 is the highest), <b>Articles per Request</b> and <b>Server Timeout</b>. Press the server's own <b>Test</b> to check it, and the pencil to give it a display name.</p>
             <p><b>What happens:</b> DebridPulse runs its own private SABnzbd download engine for Usenet; there is nothing to install or sign in to. It downloads the posting, checks it and repairs it with the posting's repair files when needed. Extraction is done afterwards by DebridPulse's own <b>Automatic Extraction</b>, using your <b>Archive Passwords</b>.</p>
-            <p><b>Good to know:</b> Usenet is off by default and counts as set up only when at least one enabled server has a host and at least one connection. It shows <b>Verified</b> only when every such server has passed a Test with its current settings. NZB files are added through Quick Add; there is no file selection. Global Usenet settings are under <b>Settings → Downloads → Transfer Method Settings → Usenet</b>.</p>
-            <p><b>If it fails:</b> the header <b>Test</b> reports how many servers passed. Missing parts of a posting are usually a server retention or coverage issue; adding another server can help.</p>`)}
+            <p><b>Good to know:</b> Usenet is off by default and counts as set up only when at least one enabled server has a host and at least one connection. It shows <b>Verified</b> only when every such server has passed a Test with its current settings. NZB files are added through Quick Add; there is no file selection. Global Usenet settings are under <b>Settings → Downloads → Transfer Method Settings → Usenet</b>, and the Usenet card's own <b>Help</b> button explains its settings.</p>
+            <p><b>If it fails:</b> the header <b>Test</b> reports how many servers passed. If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</p>`)}
         </div>
 
         <h3>Network Sources</h3>
         <div class="dp-help-copy dp-help-prose">
-          <p>All network sources are switched on in a new installation. The group's <b>Enable</b> switches them all; each box also has its own. They have no Test button: whether a link works depends on that server. Their tuning is under <b>Settings → Downloads → Transfer Method Settings</b>.</p>
+          <p>All network sources are switched on in a new installation. The group's <b>Enable</b> turns the whole group off or back on; each box also has its own, and a source works only while both are on. Turning the group back on restores each box as it was. They have no Test button: whether a link works depends on that server. Their tuning is under <b>Settings → Downloads → Transfer Method Settings</b>.</p>
         </div>
         <div class="dp-help-accordion-list">
           ${accordion('HTTP(S)', `
@@ -397,8 +412,8 @@
             <p>Over SSH, the server's identity is confirmed first and you sign in with a password or a key file (and its passphrase). An rsync service's shared areas may ask for their own password. Downloaded by DebridPulse's rsync engine. Tuning: <b>Transfer Method Settings → rsync</b>.</p>`)}
 
           ${accordion('WebDAV', `
-            <p><code>webdavs://</code> or <code>davs://</code> links (or <code>webdav://</code> and <code>dav://</code> for a server without HTTPS) to a file or folder on a WebDAV server, a common way to share files from cloud storage and NAS devices. A plain <code>https://</code> link ending in <code>/</code> is tried as WebDAV first and becomes an ordinary download if the server does not offer WebDAV there.</p>
-            <p>A folder opens file selection with the files directly inside it; <b>Directory Depth</b> adds subfolder levels. A folder with more files than <b>Maximum Files</b>, or whose files cannot all be found within <b>Collection Scan Timeout</b> (no limit by default), is not added at all rather than added in part. A protected server asks for its password once per server. Files are downloaded with aria2. Tuning: <b>Transfer Method Settings → WebDAV</b>.</p>`)}
+            <p><code>webdavs://</code> or <code>davs://</code> links (or <code>webdav://</code> and <code>dav://</code> for a server without HTTPS) to a file or folder on a WebDAV server, a common way to share files from cloud storage and NAS devices. A plain <code>http://</code> or <code>https://</code> link ending in <code>/</code> (with no <code>?</code> query) is tried as WebDAV first and becomes an ordinary download if the server does not offer WebDAV there.</p>
+            <p>A folder opens file selection with the files directly inside it; <b>Directory Depth</b> adds subfolder levels. A folder with more files than <b>Maximum Files</b>, or whose files cannot all be found within <b>Collection Scan Timeout</b> (no limit by default), is not added at all rather than added in part. A protected server asks for its password once per server for that download, not once for every file. Files are downloaded with aria2. Tuning: <b>Transfer Method Settings → WebDAV</b>.</p>`)}
 
           ${accordion('Metalink (Multimeta)', `
             <p>Reads Metalink files: an uploaded <code>.meta4</code> file, or a web link ending in <code>.meta4</code>. A Metalink file lists one or more files with several download addresses for each. Each address is downloaded through whichever service handles it, in the order the publisher prefers; if one fails, the next listed address is used. A declared size or checksum is checked when the file completes. A Metalink file describing several files opens file selection. Older Metalink 3 files are not supported, and links to other metadata (such as torrents) inside a Metalink file are not followed.</p>`)}
@@ -431,9 +446,9 @@
         <div class="dp-help-integration-grid">
           ${inset('aria2', `
             <p>Downloads web (HTTP and HTTPS), FTP and SFTP files. It handles files from debrid services, HTTP(S), (S)FTP, SCP, WebDAV and most Metalink addresses. aria2 in DebridPulse cannot share torrents, so it never uploads to anyone.</p>
-            <p>The sidebar shows its version, or <b>offline</b> if it is not responding.</p>`)}
+            <p>For an Admin, the sidebar shows <b>aria2: offline</b> when it is not responding.</p>`)}
           ${inset('rsync', `
-            <p>Downloads rsync links, both from rsync services and over SSH. It can continue a partly downloaded file and only ever reads from the server.</p>`)}
+            <p>Downloads rsync links, both from rsync services and over SSH. With <b>Partial Transfers</b> on (the default) it can continue a partly downloaded file, and it only ever reads from the server.</p>`)}
           ${inset('Usenet (SABnzbd)', `
             <p>A private copy of SABnzbd that DebridPulse runs for NZB downloads from your news servers. It downloads and repairs postings but does not unpack them; Automatic Extraction does that.</p>`)}
           ${inset('Media Downloads (yt-dlp)', `
@@ -443,7 +458,7 @@
         ${inset('Limits that apply to every engine', `
           <ul>
             <li><b>Maximum Concurrent Downloads</b> (<b>Settings → Downloads → Download Behavior &amp; Limits</b>, 3 by default) is one limit for all engines together.</li>
-            <li>The <b>speed cap</b> in the header is shared equally between the engines that are downloading at that moment, and together they never exceed it.</li>
+            <li>The <b>speed cap</b> in the header is shared equally between the engines that are downloading at that moment, and together they never exceed it. An engine's unused share is not passed to the others.</li>
             <li><b>Disk Space &amp; Recovery</b> settings (free space, retries, stalled downloads) apply to every engine.</li>
           </ul>`)}
 
@@ -451,7 +466,7 @@
           ${accordion('Tuning aria2: Transfer Method Settings → Network Sources', `
             <ul>
               <li><b>Connections per Server</b> and <b>Segments per File:</b> how many connections and pieces one file may use at once.</li>
-              <li><b>Minimum Split Size:</b> files smaller than about twice this size are not split.</li>
+              <li><b>Minimum Split Size:</b> the smallest piece a file is split into; larger values mean fewer, bigger pieces.</li>
               <li><b>Continue Partial Downloads:</b> continue a partly downloaded file instead of starting again, when the server allows it.</li>
               <li><b>Lowest Speed Limit:</b> drops a connection that stays slower than this; <code>0</code> turns it off.</li>
               <li><b>Disk Cache:</b> memory used to reduce disk writes.</li>
@@ -467,7 +482,7 @@
             </ul>`)}
 
           ${accordion('Download Engine Activity', `
-            <p><b>Settings → Downloads → Download Engine Activity</b> lists the jobs the engines are running right now, with <b>Pause</b>, <b>Resume</b> and <b>Terminate</b> for each. It is a recovery tool for a job that is truly stuck. For normal work, use the Downloads page, which keeps DebridPulse's own records in step.</p>`)}
+            <p><b>Settings → Downloads → Download Engine Activity</b> lists the engines' jobs (filter by Active, Waiting, Paused or Stopped), with <b>Pause</b>, <b>Resume</b> or <b>Terminate</b> where that engine supports it. Terminate asks first. It is a recovery tool for a job that is truly stuck. For normal work, use the Downloads page, which keeps DebridPulse's own records in step.</p>`)}
         </div>
       </section>`;
   }
@@ -477,13 +492,14 @@
       <section class="dp-help-document" aria-labelledby="dp-help-settings-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-settings-heading">Settings reference</h2>
-          <p>The seven Settings tabs, their cards, and the options most people need.</p>
+          <p>The seven Settings tabs, their cards, and the options most people need. Settings is available to Admins.</p>
         </div>
 
         ${inset('How saving works', `
           <p>There is no Save button. Every setting is saved on its own: a typed value is saved when you leave the field, and a switch or list choice is saved the moment you change it. If a value cannot be saved, a message explains why and the field returns to its saved value.</p>
           <p>Stored secrets such as API keys and passwords are never shown again. When one is stored, the field shows that it is set, and leaving it blank keeps the stored value. To delete a secret, use its <b>Remove</b> or <b>Clear</b> button and confirm.</p>
-          <p><b>Test</b> buttons save any field you are still editing, then check the saved settings.</p>`)}
+          <p><b>Test</b> buttons save any field you are still editing, then check the saved settings.</p>
+          <p>Every card has a <b>Help</b> button (?) in its header that explains that card in more detail. This manual is the complete reference; the card help is a summary where you need it.</p>`)}
 
         <div class="dp-help-accordion-list">
           ${accordion('Services', `
@@ -508,41 +524,45 @@
               <li><b>Delete Archives After Extraction</b> (on by default): removes the archive only after it was unpacked successfully.</li>
               <li><b>Archive Passwords:</b> DebridPulse tries no password first, then each stored password in order. Each row holds one password; it is saved when you leave the row. <b>Show all</b> reveals them; <b>Clear Passwords</b> erases the whole list.</li>
             </ul>
-            <p>Supported formats include ZIP, 7z, RAR (including multi-part RAR), and TAR with gzip, bzip2, xz, zstd or lzma compression. Archives that would write outside the download folder, or that are unreasonably large when unpacked, are refused for your safety.</p>`)}
+            <p>Supported formats include ZIP, 7z, RAR (including multi-part RAR), TAR with gzip, bzip2, xz, zstd or lzma compression, and single gzip, bzip2 or xz files. Archives that would write outside the download folder, contain links, or would be unreasonably large when unpacked are refused for your safety.</p>`)}
 
           ${accordion('Authentication', `
             <ul>
               <li><b>Authentication Status:</b> the current mode, the state of each sign-in method, <b>Active Browser Sessions</b> with <b>Log Out Current Session</b>, and <b>Browser Session Lifetime</b> (12 hours by default).</li>
-              <li><b>Username &amp; Password:</b> a local account for browser sign-in. The same username and password also work for scripts that use HTTP Basic sign-in.</li>
-              <li><b>OpenID Connect</b> (OIDC): sign in through an identity service you already run, such as Authentik or Keycloak. Set <b>Public DebridPulse Base URL</b> to the HTTPS address people use to reach DebridPulse; DebridPulse then shows the exact <b>OIDC Callback URL</b> to register with your identity service. Fill in <b>Issuer URL</b>, <b>Client ID</b> and, if needed, <b>Client Secret</b>, then press <b>Test</b>, which runs a real sign-in in a pop-up window. <b>Access Control</b> limits which identities may sign in, and <b>Default Role for New OIDC Users</b> (User or ReadOnly User) is the role an identity receives the first time it signs in. A new OIDC identity always gets its own account; it is never joined to an existing account just because the email matches. If the base URL is set by the <code>PUBLIC_BASE_URL</code> environment variable, the field is read-only here; change it in your installation instead.</li>
+              <li><b>Username &amp; Password:</b> <b>Enable</b> turns password sign-in on for everyone, and needs an active Admin with a password. The <b>Username</b> and <b>Password</b> fields are your own account's; other people's are managed in <b>Users &amp; Access</b>. The same username and password also work for scripts that use HTTP Basic sign-in.</li>
+              <li><b>OpenID Connect</b> (OIDC): sign in through an identity service you already run, such as Authentik or Keycloak. Set <b>Public DebridPulse Base URL</b> to the HTTPS address people use to reach DebridPulse; DebridPulse then shows the exact <b>OIDC Callback URL</b> to register with your identity service. Fill in <b>Issuer URL</b>, <b>Client ID</b> and, if needed, <b>Client Secret</b>, then press <b>Test</b>, which runs a real sign-in in a pop-up window. <b>Access Control</b> decides who may sign in: with <b>Allow Any Authenticated OIDC Identity</b> on, anyone your identity service signs in is admitted; with it off, a person must match every list that is filled in: <b>Allowed Subjects</b> (written <code>issuer|subject-id</code>), <b>Allowed Emails</b> (the email must be verified, <code>email_verified=true</code>) and <b>Allowed Groups</b> (read from the <b>Group Claim</b>). If every list is empty, no one can sign in through OIDC. <b>Default Role for New OIDC Users</b> (User or ReadOnly User) is the role an identity receives the first time it signs in; OIDC never creates an Admin. A new OIDC identity always gets its own account; it is never joined to an existing account just because the email matches. If the base URL is set by the <code>PUBLIC_BASE_URL</code> environment variable, the field is read-only here; change it in your installation instead.</li>
             </ul>
             <p>Turning off the last sign-in method asks for confirmation, because it leaves DebridPulse open to anyone who can reach it. Failed sign-ins are slowed down rather than locked out.</p>
-            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b>.</p>`)}
+            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b> (an Admin's HTTP Basic credentials also work).</p>`)}
 
           ${accordion('Users &amp; Access', `
-            <p>Every person who signs in has an account with one role:</p>
+            <p>Every account has one of four fixed roles:</p>
             <ul>
               <li><b>Admin:</b> everything, including Settings, the Activity Log and every transfer.</li>
-              <li><b>User:</b> adds and runs downloads, sees every transfer, and can withdraw the requests they made. Settings are not available.</li>
+              <li><b>User:</b> adds downloads and pauses, resumes, retries and reorders them; sees every transfer; can remove, cancel or switch a download only when no other account still needs it, and otherwise withdraws their own request. Has their own <b>Notifications</b> page; Settings are not available.</li>
               <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, Details and Statistics, and changes nothing.</li>
+              <li><b>Integration:</b> an external application, not a person. It cannot sign in to these pages; with its API tokens it can add downloads through the API, submit and follow its own jobs through the external-client and download-client interfaces, and read metrics.</li>
             </ul>
-            <p><b>User Accounts</b> lists each person with their role, how they sign in and whether the account is enabled. <b>Add Local Account</b> creates a username-and-password account. <b>Change Role</b> applies at once: that person's open pages reload with the new role, without signing them out. Click an account's name for its details and its activity, where an outstanding request can be withdrawn on its own. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are withdrawn, a transfer someone else also asked for keeps going, and finished downloads are never touched. Removing keeps the account's history; a removed OIDC sign-in that comes back gets a new account that stays disabled until you enable it. <b>Merge</b> joins two or more accounts into the one you choose to keep; two accounts that share a verified email are pointed out, but only a Merge joins them.</p>
-            <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
-            <p>Anyone signed in can change their own display name and actual name from their name at the bottom of the sidebar, beside <b>Log Out</b>, and their password when they sign in with one.</p>`)}
+            <p>The <b>Help</b> button (?) on the User Accounts card compares the roles in a table, and the same help opens from the <b>Role</b> selector in <b>Add Local Account</b> and <b>Change Role</b>.</p>
+            <p><b>User Accounts</b> lists each person with their role, how they sign in and whether the account is enabled. <b>Add Local Account</b> creates a username-and-password account. <b>Change Role</b> applies at once: that person's open pages reload with the new role, without signing them out. Click an account's name for its details and its activity, where an outstanding request can be withdrawn on its own. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are withdrawn, a transfer someone else also asked for keeps going, and finished downloads are never touched. Disabling also ends the account's sign-ins and stops its tokens; removing keeps the account's history and deletes its own notification settings. A removed OIDC sign-in that comes back gets a new account that stays disabled until you enable it. <b>Merge</b> joins two or more accounts into the one you choose to keep; two accounts that share a verified email are pointed out, but only a Merge joins them. DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account.</p>
+            <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. Each token sees only the jobs submitted with it. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
+            <p><b>Integration Delivery Profiles</b> tell an external application, such as Sonarr or Radarr, which <b>categories</b> it may submit to, which kinds of source it may send, which of its tokens may use the profile, and where it will find the finished files (<b>Local Root</b> in DebridPulse's download folder, and <b>Import Root</b> as the application sees that folder). Files are shared in place: nothing is copied, moved or deleted for the application. The download-client interfaces stay unavailable until a profile has a category, a source kind and a client with an active token.</p>
+            <p>Anyone signed in can change their own display name and actual name (and add an email if none is set) from <b>My Account</b>, opened from their name at the bottom of the sidebar beside <b>Log Out</b>, and use <b>Change Password</b> when they sign in with one.</p>`)}
 
           ${accordion('Notifications', `
             <ul>
               <li><b>Discord Notifications:</b> sends messages to a Discord channel through a <b>webhook</b>, a private address Discord creates for a channel. Fill in <b>Discord Webhook</b>; <b>Download Added Webhook</b> optionally sends new-download messages elsewhere. <b>Display Name</b> and <b>Avatar URL</b> (or <b>Upload Avatar</b>) set how messages appear. Under <b>Notification Events &amp; Delivery Options</b>, choose <b>Download Added</b>, <b>Download Completed</b>, <b>Download Error</b>, <b>Extraction Result</b> and <b>Update Available</b>, and the <b>Update Check Interval</b> (0 turns update checks off). <b>Test</b> sends a test message using the saved settings.</li>
-              <li><b>Statistics Reporting:</b> sends periodic summaries to Discord. <b>Reporting Webhook</b> is optional and falls back to the Discord Webhook. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now.</li>
+              <li><b>Statistics Reporting:</b> sends periodic summaries of this DebridPulse's activity to Discord. They go only to <b>Reporting Webhook</b>, or to the Discord Webhook when that is empty, never to DebridPulse's users. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now, even while automatic reports are off. Reports are separate from the statistics snapshots under Data &amp; Maintenance.</li>
             </ul>
+            <p>A <b>User</b> has their own <b>Notifications</b> page with the same two cards: Discord alerts about downloads they asked for, and reports of their own activity, sent only to the webhooks they enter there. Nothing falls back to the Admin's webhooks. Admins, ReadOnly Users and Integration accounts have no personal notifications.</p>
             <p>An uploaded avatar is served by DebridPulse itself, so Discord must be able to reach it over the internet. If DebridPulse is only reachable on your private network, use an avatar link hosted elsewhere.</p>`)}
 
           ${accordion('Data &amp; Maintenance', `
             <ul>
               <li><b>Event Logging:</b> <b>Activity Log Page Size</b>, and <b>Recorded Events</b>, the number of events stored. Events are kept until the database is reset.</li>
-              <li><b>Backups &amp; Retention:</b> scheduled backups (on by default) to <b>Backup Folder</b>, with interval and retention under <b>Additional Backup &amp; Retention Settings</b>, plus how often statistics snapshots are taken and how long they are kept. <b>Run Backup</b> makes a backup now (only while backups are enabled).</li>
+              <li><b>Backups &amp; Retention:</b> scheduled backups (on by default) to <b>Backup Folder</b>, with <b>Backup Interval</b>, <b>Backup Retention</b> and <b>Maximum Retained Backups</b> under <b>Additional Backup &amp; Retention Settings</b>; a backup is removed once it is too old or no longer among the newest you keep. The same section sets how often <b>statistics snapshots</b> are taken and how long they are kept: a record of the previous 24 hours of activity saved inside DebridPulse's database. Snapshots are not reports, are not sent anywhere and are not currently viewable in the interface. <b>Run Backup</b> makes a backup now (only while backups are enabled).</li>
               <li><b>Backups</b> opens the backup list. Select one backup to <b>Save Backup</b> (download a copy), <b>Restore Backup</b> or <b>Remove</b> it; <b>Add Backup</b> uploads a saved copy after checking it. Restoring pauses processing, makes a safety backup of the current state, checks the chosen backup again, replaces the current database and settings, and restarts DebridPulse's services. If the check fails, nothing changes.</li>
-              <li><b>Database Reset Controls:</b> switch on <b>Allow Database Reset</b>, press <b>Reset Database</b>, type <code>WIPE</code> and press <b>Wipe Database</b>. This erases all downloads, history and events. DebridPulse always makes a safety backup first and stops if that backup fails. It stops running downloads and pauses processing for the reset, then restores the previous pause state afterwards. Finished files already in your download folder are not deleted.</li>
+              <li><b>Database Reset Controls:</b> switch on <b>Allow Database Reset</b>, press <b>Reset Database</b>, type <code>WIPE</code> and press <b>Wipe Database</b>. This erases all downloads, their requests and history, events and statistics snapshots. Accounts, passwords, OIDC links, API tokens, personal notification settings and all settings are kept. DebridPulse always makes a safety backup first and stops if that backup fails. It stops running downloads and pauses processing for the reset, then restores the previous pause state afterwards. Finished files already in your download folder are not deleted.</li>
             </ul>`)}
         </div>
       </section>`;
@@ -558,9 +578,12 @@
 
         ${inset('Before changing anything', `
           <p>Open the download's details and read its <b>Status</b>, <b>Error</b>, <b>Route History</b> and <b>Events</b>. Then check the <b>Activity Log</b> around the same time. Together they usually show whether the problem was the service, the server, the download itself, your storage or extraction.</p>
-          <p>Avoid removing a download just to clear an error: DebridPulse keeps its source and history so it can retry or recover. If you need help, <b>Transfer Trace Log</b> in the details saves a record without passwords or private link details. Read it before sharing, and never share API keys, tokens or links that contain passwords.</p>`)}
+          <p>Avoid removing a download just to clear an error: DebridPulse keeps its source and history so it can retry or recover. If you need help, <b>Transfer Trace Log</b> in the details (Admin only) saves a record without passwords or private link details. Read it before sharing, and never share API keys, tokens or links that contain passwords.</p>`)}
 
         <div class="dp-help-accordion-list">
+          ${accordion('A button, page or setting is missing', `
+            <p>Most likely your role does not include it. Settings, the Activity Log, Pause All, the speed cap menu, Provider Status, Recover All and Transfer Trace Log are for Admins. A User cannot remove or switch a download another account still needs, and a ReadOnly User cannot change anything. See <b>Everyday Use → What your role lets you do</b>; an Admin can change roles in <b>Settings → Users &amp; Access</b>.</p>`, true)}
+
           ${accordion('I added something, but nothing starts', `
             <ul>
               <li>Check for <b>Pause All</b> (the header shows <b>Resume All</b> and the Dashboard shows <b>PROCESSING PAUSED</b>). New downloads are accepted while paused but wait.</li>
@@ -568,12 +591,12 @@
               <li><b>Input Required</b> means DebridPulse is waiting for you: a password, a server identity check or a file selection. Open the download if no dialog is showing.</li>
               <li><b>Waiting for provider</b> means no enabled service can take it right now. Check that the service you expect is switched on, connected and showing green or amber in Provider Status.</li>
               <li><b>Waiting for storage</b> means free space is below <b>Minimum Free Disk Space</b>.</li>
-            </ul>`, true)}
+            </ul>`)}
 
           ${accordion('Quick Add refuses a link or file', `
             <ul>
               <li><b>Line N: enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI</b>: that line is not a supported link. Fix or remove it; nothing else was added.</li>
-              <li>A batch over 100 links is refused; split it.</li>
+              <li>A batch of more than 100 different links (magnets are not counted) is refused; split it.</li>
               <li><b>Local network transfer not added</b>: you cancelled the local network question, or <b>Local Network Connections</b> is off.</li>
               <li>A file over its size limit is refused (16 MB for <code>.torrent</code> and <code>.meta4</code>, 1 GB for <code>.nzb</code>, 1 MB for a link list).</li>
               <li>A link list that points at items inside a collection must be added through Quick Add so you can choose what to download.</li>
@@ -582,15 +605,15 @@
           ${accordion('A service is amber or red, or its Test fails', `
             <ul>
               <li><b>API key services</b> (AllDebrid, Debrid-Link, Premiumize): check the key on the service's website, paste it again and press <b>Test</b>.</li>
-              <li><b>Real-Debrid and TorBox:</b> if the code expired, press <b>Connect</b> again. If the card is connected but the Test fails, <b>Disconnect</b> and connect again.</li>
+              <li><b>Real-Debrid and TorBox:</b> if the code expired, press <b>Connect Real-Debrid</b> or <b>Connect TorBox</b> again. If the card is connected but the Test fails, <b>Disconnect</b> and connect again.</li>
               <li><b>Usenet:</b> test each server separately to find the one that fails, and check its host, port, SSL setting and sign-in.</li>
               <li>Amber after a plan change usually means a free or expired account: some or all features stop working until the plan is renewed.</li>
               <li><b>Finish or remove existing ... resources before changing its connection</b>: that service still has downloads in progress.</li>
             </ul>`)}
 
           ${accordion('A download stays in Processing for a long time', `
-            <p>A torrent may take time while the debrid service fetches it; no files arrive during that time. Read the Events for a message from the service. If the service is healthy but the download seems out of step, use <b>Recover All</b>. If one service keeps failing, switch the download to another with its <b>Provider</b> control (single torrents) or let DebridPulse move on after its retries.</p>
-            <p>How often DebridPulse checks premium services is set by <b>Provider Poll Interval</b> and <b>Full Sync Interval</b> on the AllDebrid card. Very short intervals only add traffic.</p>`)}
+            <p>A torrent may take time while the debrid service fetches it; no files arrive during that time. Read the Events for a message from the service. If the service is healthy but the download seems out of step, an Admin can use <b>Recover All</b>. If one service keeps failing, switch the download to another with its <b>Provider</b> control (single torrents) or let DebridPulse move on after its retries.</p>
+            <p>How often DebridPulse checks premium services is set by <b>Provider Poll Interval</b> and <b>Full Sync Interval</b> in the AllDebrid card's Additional Settings; they apply to every premium service. Very short intervals only add traffic.</p>`)}
 
           ${accordion('A download is slow, stalls or fails', `
             <ul>
@@ -606,8 +629,8 @@
 
           ${accordion('A Usenet download fails', `
             <ul>
-              <li><b>no enabled news server is configured</b>: add a server or switch one on.</li>
-              <li>Missing articles usually mean your server no longer has the whole posting. Another server, or TorBox or Premiumize with NZB support, may help.</li>
+              <li><b>Usenet: no enabled news server is configured</b> (shown when you press the Usenet card's <b>Test</b>): add a server or switch one on.</li>
+              <li>If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</li>
               <li>Passworded archives inside a posting are unpacked with your <b>Archive Passwords</b>; add the password there.</li>
             </ul>`)}
 
@@ -659,12 +682,10 @@
         </div>
 
         <article class="dp-help-inset">
-          <h3>Why there are several legal documents</h3>
+          <h3>The documents you can open here</h3>
           <div class="dp-help-copy dp-help-prose">
             <ul>
               <li><b>GPL-2.0-or-later:</b> the complete license governing the DebridPulse modifications and distribution.</li>
-              <li><b>Attribution notice:</b> identifies the project, upstream origin, copyright notices, and licensing relationship.</li>
-              <li><b>Upstream MIT license:</b> preserves the license text that accompanied the upstream code DebridPulse is derived from.</li>
               <li><b>Source offer:</b> explains how to obtain the corresponding DebridPulse source associated with a distributed build.</li>
               <li><b>Third-party licenses:</b> records the runtime dependencies and other third-party components shipped with the application.</li>
             </ul>
@@ -673,8 +694,6 @@
 
         <div class="dp-help-license-actions">
           <button type="button" class="dp-btn dp-btn--primary dp-help-local-document-button" data-legal-document="gpl">Read GPL-2.0-or-later</button>
-          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="notice">Attribution notice</button>
-          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="upstream-mit">Upstream MIT license</button>
           <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="source-offer">Source offer</button>
           <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="third-party">Third-party licenses</button>
         </div>

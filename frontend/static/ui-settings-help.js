@@ -343,7 +343,7 @@
         {heading: 'What and when', list: [
           'Report Window chooses how much recent activity each report summarizes: 24 hours, 7 days, 30 days, or 1 year.',
           'Automatic Report Interval sends a report that often while Enable is on and a destination exists. 0 sends no automatic reports.',
-          'Send Report sends one now, even while automatic reports are off; it fails if no destination is configured.',
+          'Test sends one report now, even while automatic reports are off; it fails if no destination is configured.',
           'With no destination, nothing is sent and no error is shown for automatic reports.',
         ]},
       ],
@@ -376,7 +376,7 @@
         {heading: 'What and when', list: [
           'Report Window chooses how much recent activity each report covers.',
           'Automatic Report Interval sends a report that often while Enable is on and a destination exists. 0 sends no automatic reports.',
-          'Send Report sends one now.',
+          'Test sends one report now.',
         ]},
       ],
     },
