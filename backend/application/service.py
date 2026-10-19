@@ -335,6 +335,10 @@ class ApplicationService:
     def state_replacement_admission(self):
         return self._storage_checked_admission(maintenance=True)
 
+    def seal_admission(self) -> None:
+        """No further application work in this process (an unresolved restore)."""
+        self._admission.seal()
+
     async def execution_runtime_limits(self) -> dict:
         """Neutral configured/effective global runtime limits, converged by the
         core runtime owner; ``effective`` is what is proven enforced across the

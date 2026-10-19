@@ -70,6 +70,7 @@ _STAGING_PREFIX = ".dp-staging-"
 _PACKAGE_PREFIX = ".dp-package-"
 _RESTORE_PREFIX = ".dp-restore-"
 _JOURNAL_NAME = ".dp-restore-journal.json"
+_DISPLACED_PREFIX = "displaced-"
 # The scheduled-backup record: operational state beside the live database. It
 # matches no restore-point pattern and is no member of any restore point.
 _SCHEDULE_NAME = ".dp-backup-schedule.json"
@@ -199,7 +200,7 @@ def _chmod_private(path: Path, mode: int) -> None:
 
 
 def _sqlite_backup(source: Path, destination: Path) -> None:
-    with closing(sqlite3.connect(str(source), timeout=30)) as src:
+    with closing(_open_live(source)) as src:
         with closing(sqlite3.connect(str(destination), timeout=30)) as dst:
             src.backup(dst)
             # A backup's database is one self-contained file: in rollback
@@ -246,6 +247,12 @@ def _open_frozen(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{quote(str(path))}?immutable=1", uri=True)
 
 
+def _open_live(path: Path) -> sqlite3.Connection:
+    """Open the live database only if it exists: a path it is missing from
+    (displaced by an unresolved restore) is never recreated empty."""
+    return sqlite3.connect(f"file:{quote(str(path))}?mode=rw", uri=True, timeout=30)
+
+
 def _defined_objects(conn: sqlite3.Connection) -> list[tuple]:
     """The schema objects the fingerprint does not name -- every explicitly
     defined index, trigger and view, exactly as SQLite holds them. Tables and
@@ -263,7 +270,7 @@ def _check_defined_objects(staged: Path, action: str) -> None:
     from db.database import DB_PATH
 
     try:
-        with closing(_open_frozen(staged)) as restored, closing(sqlite3.connect(str(DB_PATH), timeout=30)) as live:
+        with closing(_open_frozen(staged)) as restored, closing(_open_live(DB_PATH)) as live:
             live.execute("PRAGMA query_only=1")
             same = _defined_objects(restored) == _defined_objects(live)
     except sqlite3.Error:
@@ -274,7 +281,7 @@ def _check_defined_objects(staged: Path, action: str) -> None:
 
 def schema_version(db_path: Path) -> str:
     """The exact schema identity of a live (possibly WAL) database."""
-    with closing(sqlite3.connect(str(db_path), timeout=30)) as conn:
+    with closing(_open_live(db_path)) as conn:
         conn.execute("PRAGMA query_only=1")
         return _fingerprint(conn)
 
@@ -1007,6 +1014,8 @@ class StagedRestore:
     # A failed swap whose reversal failed too: neither state is whole, and the
     # journal and every displaced file are kept for the reversal at startup.
     unresolved: bool = False
+    # This restore wrote the journal: only then is the journal its own to drop.
+    journaled: bool = False
 
     def validate(self) -> None:
         # Exact, always: an upgraded copy is checked against the running schema
@@ -1027,7 +1036,7 @@ class StagedRestore:
         for live, stage in ((DB_PATH, db_stage), (CONFIG_PATH, config_stage),
                             *((avatar, config_stage) for avatar in live_avatars)):
             if live.exists():
-                displace.append((str(live), str(stage / f"displaced-{live.name}")))
+                displace.append((str(live), str(stage / f"{_DISPLACED_PREFIX}{live.name}")))
         install.append((str(self.database), str(DB_PATH)))
         install.append((str(self.config), str(CONFIG_PATH)))
         if self.avatar is not None:
@@ -1039,10 +1048,17 @@ class StagedRestore:
         from core.secure_files import atomic_write_json
         from db.database import DB_PATH
 
+        journal = DB_PATH.parent / _JOURNAL_NAME
+        if journal.exists():
+            # An earlier restore is unresolved: its journal is the only record
+            # of where the original state is. Nothing is moved, nothing replaced.
+            raise BackupRejected("restore", "An earlier restore has not been reversed yet; restart DebridPulse first.",
+                                 reason="unresolved")
         _retire_wal(DB_PATH)
         self.moves = self._plan()
-        atomic_write_json(DB_PATH.parent / _JOURNAL_NAME, {
+        atomic_write_json(journal, {
             "moves": self.moves, "stage_dirs": [str(path) for path in self.stage_dirs]})
+        self.journaled = True
         done = []
         try:
             for source, target in self.moves:
@@ -1081,8 +1097,9 @@ class StagedRestore:
         from db.database import DB_PATH
 
         # The journal goes first: a journal must never outlive the staged and
-        # displaced files its reversal would move back.
-        (DB_PATH.parent / _JOURNAL_NAME).unlink(missing_ok=True)
+        # displaced files its reversal would move back. Only this restore's own.
+        if self.journaled:
+            (DB_PATH.parent / _JOURNAL_NAME).unlink(missing_ok=True)
         for directory in self.stage_dirs:
             shutil.rmtree(directory, ignore_errors=True)
 
@@ -1091,6 +1108,23 @@ def _reverse(moves) -> None:
     for source, target in reversed(list(moves)):
         if os.path.lexists(target) and not os.path.lexists(source):
             os.replace(target, source)
+
+
+def _reversal_conflicts(moves) -> list[str]:
+    """The live paths ``_reverse`` would find taken when it comes to put a
+    displaced original back, judged without moving anything: the reversal is
+    walked in its own order (a restored file moved back to its staging first
+    frees the live path for the original). A move that never ran keeps both
+    of its paths and is skipped, exactly as the reversal skips it."""
+    present = {path for move in moves for path in move if os.path.lexists(path)}
+    conflicts = []
+    for source, target in reversed(list(moves)):
+        if target in present and source not in present:
+            present.discard(target)
+            present.add(source)
+        elif target in present and Path(target).name.startswith(_DISPLACED_PREFIX):
+            conflicts.append(source)
+    return conflicts
 
 
 async def stage_restore(point_id: str) -> StagedRestore:
@@ -1167,6 +1201,16 @@ def recover_interrupted_restore() -> bool:
             moves = [(str(source), str(target)) for source, target in payload.get("moves") or []]
         except (OSError, ValueError, TypeError) as exc:
             raise RuntimeError("An interrupted restore could not be reversed") from exc
+        # A displaced original still waiting to go back whose place is taken
+        # when its turn in the reversal comes: something created that path
+        # after the swap. Neither file is chosen, moved or deleted -- the
+        # journal and every staged file stay, and nothing starts.
+        occupied = _reversal_conflicts(moves)
+        if occupied:
+            logger.critical("An interrupted restore cannot be reversed: %s exist(s) again while the file(s) to put "
+                            "back are still in the restore's staging. Nothing was moved or deleted; the journal %s "
+                            "lists every move.", ", ".join(occupied), journal)
+            raise RuntimeError("An interrupted restore cannot be reversed: a replaced file exists again")
         _retire_wal(DB_PATH)
         _reverse(moves)
         journal.unlink(missing_ok=True)

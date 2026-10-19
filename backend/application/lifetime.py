@@ -37,6 +37,17 @@ class RestoreFailed(Exception):
         super().__init__(self.message)
 
 
+class RestoreUnresolved(RestoreFailed):
+    """A restore whose swap failed and could not be undone: the state was NOT
+    left unchanged. Storage is sealed until the next start reverses it."""
+
+    def __init__(self):
+        self.status_code = 503
+        self.message = ("Backup could not be restored, and the previous state could not be put back yet. "
+                        "DebridPulse has stopped using its stored state; restart it to put the previous state back.")
+        Exception.__init__(self, self.message)
+
+
 async def prepare_settings_and_migrate():
     """Establish one sanitized settings authority before migration decisions.
 
@@ -137,17 +148,45 @@ async def _start_composed(state):
     return application
 
 
-async def _reopen(application, *, stopped_integrations, paused_by_restore: bool, scheduler_was_running: bool) -> None:
+async def _reopen(application, *, stopped_integrations, intent, scheduler_was_running: bool) -> None:
     """Put back exactly what a refused restore changed on an application whose
-    state was never replaced: the integrations it stopped, the pause it
-    imposed, the scheduler it stopped. Nothing else was touched, so nothing
-    else is started again."""
+    state was never replaced: the integrations it stopped, the operator's and
+    external clients' pause intent its drain overrode, the scheduler it
+    stopped. Nothing else was touched, so nothing else is started again."""
     if stopped_integrations:
         await application.start_integrations(only=stopped_integrations)
-    if paused_by_restore:
-        await application.resume_all()
+    await application.restore_pause_intent(intent)
     if scheduler_was_running:
         await scheduler.start_scheduler(application)
+
+
+def _seal_unresolved(application, why: str) -> None:
+    """The stored state is neither restored nor reversed: until the next start
+    reverses it from the journal, no session may open (and so recreate) the
+    database and no work -- a settings write, another restore -- may act on
+    it. Called while the restore still holds database maintenance."""
+    from db.database import database_maintenance_gate
+
+    database_maintenance_gate.seal()
+    application.seal_admission()
+    logger.critical("%s; DebridPulse has stopped using its stored state. Restart it to put the previous state "
+                    "back.", why)
+
+
+async def _to_completion(step) -> bool:
+    """Run one swap step (activate, rollback) in its thread and wait for it
+    however this task is cancelled: files are never left moving while the
+    restore unwinds. The step's own failure is raised; returns whether a
+    cancellation arrived meanwhile."""
+    task = asyncio.ensure_future(asyncio.to_thread(step))
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    task.result()
+    return cancelled
 
 
 async def _journal_restore(event_type: str, severity: str, message: str, point_id: str, *,
@@ -170,6 +209,12 @@ async def restore_backup(state, point_id: str) -> dict:
 
     if _RESTORE_LOCK.locked():
         raise RestoreFailed(409, "A restore is already in progress.")
+    from db.database import database_maintenance_gate
+
+    if database_maintenance_gate.sealed:
+        # An earlier restore is unresolved: nothing may be validated, staged
+        # or swapped until the next start reverses it.
+        raise RestoreUnresolved()
     # The restore point being restored and the safety backup holding the
     # replaced state outlive every retention pass until the restore ends.
     async with _RESTORE_LOCK, backup.holding() as hold:
@@ -179,11 +224,14 @@ async def restore_backup(state, point_id: str) -> dict:
             await backup.validate_restore_point(point_id)
         except backup.BackupRejected as exc:
             raise RestoreFailed(404 if exc.reason == "not_found" else 400, exc.detail) from None
-        was_paused = await current.repository.globally_paused()
-        scheduler_was_running = scheduler.scheduler_running()
         stopped_integrations = ()
         refused = None
         async with current.state_replacement_admission():
+            # Recorded once admitted work has drained, before the drain pauses
+            # everything: the operator's own pauses and every external
+            # client's hold, which the drain overrides.
+            intent = await current.pause_intent()
+            scheduler_was_running = scheduler.scheduler_running()
             await scheduler.stop_scheduler()
             try:
                 drain = await current.drain_executions()
@@ -202,22 +250,34 @@ async def restore_backup(state, point_id: str) -> dict:
                 staged = None
                 try:
                     async with database_maintenance():
+                        # The drain's pause is the restore's own: the safety
+                        # backup, and a reversal, keep the recorded intent.
+                        await current.record_pause_intent(intent)
                         safety = await backup.create_restore_point()
                         hold(safety.id)
                         staged = await backup.stage_restore(point_id)
                         await asyncio.to_thread(staged.validate)
                         if await current.repository.live_executions():
                             raise RuntimeError("a pre-restore execution is still live")
-                        await asyncio.to_thread(staged.activate)
+                        try:
+                            cancelled = await _to_completion(staged.activate)
+                        except Exception as exc:
+                            if staged.unresolved:
+                                _seal_unresolved(current, "Restore failed and could not be reversed: "
+                                                 + sanitize_exception(exc))
+                            raise
+                        if cancelled:
+                            # Swapped, but this restore will never start or
+                            # commit it: the journal reverses it at the next start.
+                            _seal_unresolved(current, "Restore was interrupted after its swap")
+                            raise asyncio.CancelledError
                 except Exception as exc:
                     if staged is not None and staged.unresolved:
                         # Part of the restored state is in place and the
                         # previous state could not be put back: nothing is
                         # reopened on it or reported as unchanged. The journal
                         # kept beside the database reverses it at the next start.
-                        logger.critical("Restore failed and could not be reversed; restart DebridPulse to put "
-                                        "the previous state back: %s", sanitize_exception(exc))
-                        raise
+                        raise RestoreUnresolved() from None
                     if staged is not None:
                         staged.discard()
                     logger.warning("Restore refused before activation: %s", sanitize_exception(exc))
@@ -227,13 +287,34 @@ async def restore_backup(state, point_id: str) -> dict:
                 # restored state starts, and is never reopened.
                 try:
                     restored = await _start_composed(state)
+                except asyncio.CancelledError:
+                    # Swapped, and the restored state will never finish
+                    # starting: the replaced application must not serve the
+                    # swapped files. The journal reverses them at the next start.
+                    async with database_maintenance():
+                        _seal_unresolved(current, "Restore was interrupted while the restored state started")
+                    raise
                 except Exception as exc:
                     logger.error("Restored state failed to start; reverting: %s", sanitize_exception(exc))
                     async with database_maintenance():
-                        await asyncio.to_thread(staged.rollback)
+                        try:
+                            cancelled = await _to_completion(staged.rollback)
+                        except Exception as rollback_exc:
+                            # The restored state could not start and the
+                            # previous one could not be put back: unresolved,
+                            # exactly as a swap whose reversal failed.
+                            staged.unresolved = True
+                            _seal_unresolved(current, "Restore failed after activation and could not be reversed: "
+                                             + sanitize_exception(rollback_exc))
+                            raise RestoreUnresolved() from None
+                    if cancelled:
+                        # The previous state is whole again (nothing to seal),
+                        # but its application stays stopped until a restart.
+                        logger.critical("Restore was interrupted after its rollback; the previous state is back. "
+                                        "Restart DebridPulse to resume processing.")
+                        raise asyncio.CancelledError
                     previous = await _start_composed(state)
-                    if not was_paused:
-                        await previous.resume_all()
+                    await previous.restore_pause_intent(intent)
                     state.application = previous
                     # The pre-restore database is active again: the failure is
                     # recorded there, the only journal that now exists.
@@ -247,7 +328,7 @@ async def restore_backup(state, point_id: str) -> dict:
             # Nothing was replaced. Reopened only once admission is released,
             # so the restarted scheduler cannot bounce off the maintenance gate.
             await _reopen(current, stopped_integrations=stopped_integrations,
-                          paused_by_restore=not was_paused, scheduler_was_running=scheduler_was_running)
+                          intent=intent, scheduler_was_running=scheduler_was_running)
             await _journal_restore("administration.restore_refused", "warning",
                                    "Restore refused; nothing was replaced", point_id)
             raise refused

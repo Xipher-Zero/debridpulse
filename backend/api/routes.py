@@ -19,7 +19,7 @@ from typing import Annotated, AsyncGenerator, Literal
 from urllib.parse import urlparse, urlsplit
 
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -483,7 +483,13 @@ async def health_check():
     Returns HTTP 200 as long as the process is running. Does not check
     AllDebrid or aria2 — those are external and their absence should not
     restart the container. Use GET /api/stats for full service health.
+    A process whose stored state awaits an unresolved restore's reversal is
+    not healthy: only its next start puts the previous state back.
     """
+    from db.database import database_maintenance_gate
+
+    if database_maintenance_gate.sealed:
+        return JSONResponse(status_code=503, content={"status": "restore_unresolved", "version": read_version()})
     return {"status": "ok", "version": read_version()}
 
 

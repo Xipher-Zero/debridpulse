@@ -39,6 +39,10 @@ class DatabaseMaintenanceActive(RuntimeError):
     """Raised when a non-maintenance task attempts DB access during maintenance."""
 
 
+class DatabaseSealed(DatabaseMaintenanceActive):
+    """Raised for every DB access after an unresolved restore sealed the database."""
+
+
 class DatabaseMaintenanceGate:
     """Exclusive destructive-maintenance gate for SQLite sessions.
 
@@ -54,16 +58,30 @@ class DatabaseMaintenanceGate:
         self._active_sessions = 0
         self._maintenance_active = False
         self._owner: asyncio.Task | None = None
+        self._sealed = False
 
     @property
     def active(self) -> bool:
         return self._maintenance_active
+
+    @property
+    def sealed(self) -> bool:
+        return self._sealed
+
+    def seal(self) -> None:
+        """Close the database for the rest of this process: a restore left
+        the stored state neither restored nor reversed, and only the journal
+        reversal at the next start may touch it. No session -- the
+        maintenance owner's included -- may open (and so recreate) it."""
+        self._sealed = True
 
     @asynccontextmanager
     async def session(self):
         current = asyncio.current_task()
         counted = False
         async with self._condition:
+            if self._sealed:
+                raise DatabaseSealed("Stored state is awaiting restore reversal at the next start")
             if self._maintenance_active and current is not self._owner:
                 raise DatabaseMaintenanceActive("Database maintenance is in progress")
             if current is not self._owner:
@@ -84,6 +102,8 @@ class DatabaseMaintenanceGate:
         claimed = False
         try:
             async with self._condition:
+                if self._sealed:
+                    raise DatabaseSealed("Stored state is awaiting restore reversal at the next start")
                 if self._maintenance_active:
                     raise DatabaseMaintenanceActive("Database maintenance is already in progress")
                 self._maintenance_active = True

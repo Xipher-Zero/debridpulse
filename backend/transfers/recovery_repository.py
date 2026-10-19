@@ -253,7 +253,8 @@ class TransferRepository(_QualifiedRepository):
     # ------------------------------------------------------------------
 
     async def set_pause_and_fence(self, transfer_id: int, paused: bool, *, claimed_only: bool = False,
-                                  holder: str | None = None, release: tuple[str, int] | None = None) -> bool:
+                                  holder: str | None = None, release: tuple[str, int] | None = None,
+                                  reinstate_generation: int | None = None) -> bool:
         """Atomically publish Pause/Resume intent and fence every older recovery owner.
 
         Every write advances the intent's ``generation`` and records its
@@ -280,6 +281,8 @@ class TransferRepository(_QualifiedRepository):
         re-earns admission the ordinary way rather than resurrecting a
         stale hold.
         """
+        if reinstate_generation is not None and not (paused and holder):
+            raise ValueError("only a paused external hold is reinstated with its generation")
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             if release is not None:
@@ -290,13 +293,26 @@ class TransferRepository(_QualifiedRepository):
                         or int(hold["generation"]) != int(release[1]) or (globally and globally["value"] == "1")):
                     await db.rollback()
                     return False
-            await db.execute(
-                """INSERT INTO transfer_pause_intents(torrent_id,paused,holder,generation) VALUES(?,?,?,1)
-                   ON CONFLICT(torrent_id) DO UPDATE
-                   SET paused=excluded.paused,holder=excluded.holder,
-                       generation=transfer_pause_intents.generation+1,updated_at=CURRENT_TIMESTAMP""",
-                (transfer_id, int(paused), holder if paused else None),
-            )
+            if reinstate_generation is None:
+                await db.execute(
+                    """INSERT INTO transfer_pause_intents(torrent_id,paused,holder,generation) VALUES(?,?,?,1)
+                       ON CONFLICT(torrent_id) DO UPDATE
+                       SET paused=excluded.paused,holder=excluded.holder,
+                           generation=transfer_pause_intents.generation+1,updated_at=CURRENT_TIMESTAMP""",
+                    (transfer_id, int(paused), holder if paused else None),
+                )
+            else:
+                # A recorded external hold handed back exactly as it was granted
+                # (``record_pause_intent``): the whole-state operation whose
+                # drain overrode it never owned it, so its own fenced release
+                # must still match.
+                await db.execute(
+                    """INSERT INTO transfer_pause_intents(torrent_id,paused,holder,generation) VALUES(?,1,?,?)
+                       ON CONFLICT(torrent_id) DO UPDATE
+                       SET paused=1,holder=excluded.holder,generation=excluded.generation,
+                           updated_at=CURRENT_TIMESTAMP""",
+                    (transfer_id, holder, int(reinstate_generation)),
+                )
             await db.execute(
                 "UPDATE download_files SET continuation_reservation_expires_at=NULL WHERE torrent_id=?",
                 (transfer_id,),

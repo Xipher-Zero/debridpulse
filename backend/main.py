@@ -39,13 +39,13 @@ from transfers.staged_input import MAX_STAGED_INPUT_BYTES
 from external.arr import UPLOAD_CEILINGS, adapter_of
 from external.arr import available as adapter_available
 from core.version import read_version
-from db.database import DatabaseMaintenanceActive
+from db.database import DatabaseMaintenanceActive, DatabaseSealed
 from application.dependencies import get_application
 from application.lifetime import (
     prepare_settings_and_migrate as _prepare_startup_settings_and_migrate,
     start_application, stop_application,
 )
-from services.maintenance_gate import ApplicationMaintenanceActive
+from services.maintenance_gate import ApplicationMaintenanceActive, ApplicationSealed
 from transfers.errors import TransferError
 from transfers._repository_base import DemandChanged
 from transfers.storage import normalize_sqlite_storage_exception
@@ -308,6 +308,8 @@ async def application_mutation_admission_middleware(request: Request, call_next)
                     content={"detail": exc.error.message, "error": exc.error.as_dict()},
                 )
             raise
+        except ApplicationSealed:
+            return Response(content=_RESTORE_UNRESOLVED, status_code=503)
         except ApplicationMaintenanceActive:
             return Response(
                 content="Application maintenance in progress",
@@ -364,6 +366,17 @@ async def request_validation_error_handler(_request: Request, exc: RequestValida
     )
 
 
+_RESTORE_UNRESOLVED = ("A restore could neither finish nor be undone. DebridPulse has stopped using its stored state; "
+                       "restart it to put the previous state back.")
+
+
+@app.exception_handler(DatabaseSealed)
+@app.exception_handler(ApplicationSealed)
+async def sealed_storage_handler(_request: Request, _exc: Exception):
+    """After an unresolved restore: refused until restart, never retried."""
+    return Response(content=_RESTORE_UNRESOLVED, status_code=503)
+
+
 @app.exception_handler(DatabaseMaintenanceActive)
 async def database_maintenance_handler(_request: Request, _exc: DatabaseMaintenanceActive):
     """Fail closed rather than queue stale request work behind a destructive wipe."""
@@ -401,7 +414,12 @@ if _cors_origins:
 
 @app.middleware("http")
 async def authentication_boundary_middleware(request: Request, call_next):
-    return await enforce_authentication(request, call_next)
+    try:
+        return await enforce_authentication(request, call_next)
+    except (DatabaseSealed, ApplicationSealed):
+        # Authenticating against the sealed database (a token, Basic, a
+        # session's account): this middleware is outside the exception handlers.
+        return Response(content=_RESTORE_UNRESOLVED, status_code=503)
 
 
 # Register the pure-ASGI body limiter after Authentication so Starlette places

@@ -2615,9 +2615,16 @@ class TransferEngine(_QualifiedTransferEngine):
         return tuple(errors)
 
     async def pause_intent(self) -> PauseIntent:
-        """The operator's durable pause intent right now."""
+        """The durable pause intent right now, external clients' holds included."""
+        active = await self.repository.active()
+        holds = {}
+        for transfer in active:
+            if transfer.paused:
+                hold = await self.repository.pause_hold(transfer.id)
+                if hold and hold["paused"] and hold["holder"]:
+                    holds[transfer.id] = (str(hold["holder"]), int(hold["generation"]))
         return PauseIntent(await self.repository.globally_paused(),
-                           {transfer.id: transfer.paused for transfer in await self.repository.active()})
+                           {transfer.id: transfer.paused for transfer in active}, holds)
 
     async def record_pause_intent(self, intent: PauseIntent) -> None:
         """Write a recorded pause intent back as the durable intent, through
@@ -2628,7 +2635,15 @@ class TransferEngine(_QualifiedTransferEngine):
         async with self._dispatch_lock:
             await self.repository.global_pause(intent.globally_paused)
             for transfer in await self.repository.active():
-                if transfer.id in intent.transfers:
+                if transfer.id not in intent.transfers:
+                    continue
+                hold = intent.holds.get(transfer.id)
+                if hold is not None and intent.transfers[transfer.id]:
+                    # An external client's hold goes back exactly as granted,
+                    # so that client's own fenced release still matches it.
+                    await self.repository.set_pause_and_fence(transfer.id, True, holder=hold[0],
+                                                              reinstate_generation=hold[1])
+                else:
                     await self.repository.set_pause_and_fence(transfer.id, intent.transfers[transfer.id])
 
     async def restore_pause_intent(self, intent: PauseIntent):

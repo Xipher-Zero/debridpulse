@@ -9,6 +9,10 @@ class ApplicationMaintenanceActive(RuntimeError):
     """Raised when new application work is attempted during maintenance."""
 
 
+class ApplicationSealed(ApplicationMaintenanceActive):
+    """Raised for all application work after an unresolved restore sealed admission."""
+
+
 class ApplicationMaintenanceGate:
     """Drain admitted work, then reject new mutation/execution operations.
 
@@ -24,10 +28,22 @@ class ApplicationMaintenanceGate:
         self._depths: dict[asyncio.Task, int] = {}
         self._maintenance_active = False
         self._owner: asyncio.Task | None = None
+        self._sealed = False
 
     @property
     def active(self) -> bool:
         return self._maintenance_active
+
+    @property
+    def sealed(self) -> bool:
+        return self._sealed
+
+    def seal(self) -> None:
+        """Refuse every operation and maintenance for the rest of this
+        process: a restore left the stored state neither restored nor
+        reversed, so no settings write, restore or other work may act on it
+        before the next start reverses it."""
+        self._sealed = True
 
     @asynccontextmanager
     async def operation(self):
@@ -37,6 +53,8 @@ class ApplicationMaintenanceGate:
         owner = current is self._owner
         counted = False
         async with self._condition:
+            if self._sealed:
+                raise ApplicationSealed("Stored state is awaiting restore reversal at the next start")
             depth = self._depths.get(current, 0)
             if self._maintenance_active and not owner and depth == 0:
                 raise ApplicationMaintenanceActive("Application maintenance is in progress")
@@ -67,6 +85,8 @@ class ApplicationMaintenanceGate:
         claimed = False
         try:
             async with self._condition:
+                if self._sealed:
+                    raise ApplicationSealed("Stored state is awaiting restore reversal at the next start")
                 if self._maintenance_active:
                     raise ApplicationMaintenanceActive("Application maintenance is already in progress")
                 self._maintenance_active = True

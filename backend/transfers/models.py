@@ -1073,10 +1073,13 @@ class ExecutorRuntimeControlResult:
 
 @dataclass(frozen=True)
 class PauseIntent:
-    """The operator's durable pause intent: the global Pause and each
-    non-terminal transfer's own pause."""
+    """The durable pause intent: the global Pause, each non-terminal
+    transfer's own pause, and -- for a pause that is an external client's
+    advisory hold -- that hold's ``(holder, generation)``, which its fenced
+    release must still match."""
     globally_paused: bool
     transfers: Mapping[int, bool]
+    holds: Mapping[int, tuple[str, int]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
