@@ -37,39 +37,81 @@ async function boot(page, {delay = 0, reducedMotion} = {}) {
 /* Every frame from just before `act` until `ms` after it has completed: the
  * overlay's display, opacity and running opacity transition, the panel's
  * opacity, box, transform and inertness, and what a point beside the panel
- * hits. */
+ * hits. Each frame is timed by its own timestamp (the time its opacity is drawn
+ * for). Every opacity transition the overlay runs is followed to its outcome on
+ * its own clock: finished (at its current time) or cancelled. One recording at a
+ * time: the frame loop of an earlier recording stops when a new one begins. */
 async function record(page, act, ms = 600, overlaySelector = '#overlay', panelSelector = '#modal') {
   await page.evaluate(([o, m]) => {
     window.__frames = [];
-    window.__recording = true;
+    const run = window.__recording = {events: []};
     const t0 = performance.now();
-    const sample = () => {
+    const followed = new WeakSet();
+    const follow = overlay => overlay.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'opacity' && !followed.has(a))
+      .forEach(a => {
+        followed.add(a);
+        a.finished.then(() => run.events.push({type: 'finished', elapsed: a.currentTime}), () => run.events.push({type: 'cancelled'}));
+      });
+    document.addEventListener('transitionrun', event => {
+      if (window.__recording === run && event.target.matches?.(o)) follow(event.target);
+    }, {capture: true});
+    const sample = now => {
       const overlay = document.querySelector(o), panel = overlay && (overlay.matches(m) ? overlay : overlay.querySelector(m));
       if (overlay) {
+        follow(overlay);
         const style = getComputedStyle(overlay), box = panel ? panel.getBoundingClientRect() : null;
         const fading = overlay.getAnimations().filter(a => a instanceof CSSTransition && a.transitionProperty === 'opacity');
-        window.__frames.push({t: performance.now() - t0, shown: style.display !== 'none', overlay: Number(style.opacity),
+        window.__frames.push({t: now - t0, shown: style.display !== 'none', overlay: Number(style.opacity),
           panel: panel ? Number(getComputedStyle(panel).opacity) : 0, transform: panel ? getComputedStyle(panel).transform : 'none',
           box: box ? [box.left, box.top, box.width, box.height].map(Math.round) : null, inert: !!panel?.inert,
-          fade: fading.map(a => a.effect.getTiming().duration)[0] ?? null,
+          fade: fading.map(a => a.effect.getTiming().duration)[0] ?? null, delay: fading.map(a => a.effect.getTiming().delay)[0] ?? null,
           hit: document.elementFromPoint(20, 450)?.closest?.(o) ? 'overlay' : 'page'});
-      } else window.__frames.push({t: performance.now() - t0, shown: false, overlay: 0, panel: 0, box: null, fade: null});
-      if (window.__recording) requestAnimationFrame(sample);
+      } else window.__frames.push({t: now - t0, shown: false, overlay: 0, panel: 0, box: null, fade: null, delay: null});
+      if (window.__recording === run) requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
   }, [overlaySelector, panelSelector]);
   await act();
   await page.waitForTimeout(ms);
-  return page.evaluate(() => { window.__recording = false; return window.__frames; });
+  const {frames, events} = await page.evaluate(() => {
+    const {events} = window.__recording;
+    window.__recording = null;
+    return {frames: window.__frames, events};
+  });
+  return Object.assign(frames, {events});
 }
 const seen = frame => frame.shown && frame.overlay * frame.panel > 0.02;
-// The overlay's fade: its own CSS transition's duration, and the drawn opacities
-// strictly between its ends, which must move one way only.
+// The overlay's fade: its own CSS transition's duration and delay; the drawn opacities
+// strictly between its ends, which must move one way only; whether the transition ran
+// to its end on its own clock (`ended`: its time when it finished) or was cancelled; and how
+// long it visibly took, bracketed by drawn frames whatever their cadence: `outer` from
+// the last frame at its start to the first at its end, `inner` from the first frame past
+// its start to the last before its end (a slow runner widens the bracket, never moves it).
 function fade(frames, direction) {
   const moving = frames.filter(frame => frame.shown && frame.overlay > 0.02 && frame.overlay < 0.98);
   const values = moving.map(frame => frame.overlay);
   const monotonic = values.every((value, index) => index === 0 || (direction > 0 ? value >= values[index - 1] : value <= values[index - 1]));
-  return {duration: frames.map(frame => frame.fade).find(Boolean) ?? null, between: moving.length, monotonic, moving};
+  const atStart = frame => (direction > 0 ? !frame.shown || frame.overlay <= 0.02 : frame.shown && frame.overlay >= 0.98);
+  const atEnd = frame => (direction > 0 ? frame.shown && frame.overlay >= 0.98 : !frame.shown || frame.overlay <= 0.02);
+  const end = frames.findIndex((frame, index) => atEnd(frame) && frames.slice(0, index).some(atStart));
+  const start = end < 0 ? -1 : frames.slice(0, end).findLastIndex(atStart);
+  const events = frames.events || [];
+  return {duration: frames.map(frame => frame.fade).find(Boolean) ?? null, delay: frames.map(frame => frame.delay).find(value => value !== null) ?? null,
+    between: moving.length, monotonic, moving,
+    ended: events.find(event => event.type === 'finished')?.elapsed ?? null, cancelled: events.some(event => event.type === 'cancelled'),
+    outer: end < 0 ? null : frames[end].t - frames[start].t,
+    inner: end < 0 ? null : (end - 1 > start ? frames[end - 1].t - frames[start + 1].t : 0)};
+}
+// A fade of `duration` ms, as the engine ran it and as it was drawn, whatever the frame
+// cadence: its declared timing, run to its end and never cut, drawn one way only, and
+// visibly lasting its duration -- the drawn 2%..98% span of these curves is ~0.88 of it,
+// so the outer bracket is never under 0.6 of it, and the inner never over all of it.
+function expectFade(f, duration) {
+  expect({duration: f.duration, delay: f.delay, monotonic: f.monotonic, cancelled: f.cancelled})
+    .toEqual({duration, delay: 0, monotonic: true, cancelled: false});
+  expect(f.ended).toBe(duration);
+  expect(f.outer).toBeGreaterThan(0.6 * duration);
+  expect(f.inner).toBeLessThanOrEqual(duration);
 }
 
 test('Transfer Details: the backdrop rises at once and the shell fades in, in place, at its final size', async ({page}) => {
@@ -82,10 +124,7 @@ test('Transfer Details: the backdrop rises at once and the shell fades in, in pl
   expect(visible.every(frame => frame.transform === 'none')).toBe(true);             // no translation or scaling
   // The backdrop's own fade starts with the opening: a 200 ms rise from transparent.
   expect(frames.find(frame => frame.shown).overlay).toBeLessThan(0.5);
-  const rising = fade(frames, 1);
-  expect(rising.duration).toBe(200);
-  expect(rising.between).toBeGreaterThanOrEqual(2);
-  expect(rising.monotonic).toBe(true);
+  expectFade(fade(frames, 1), 200);
   expect(frames.at(-1).overlay).toBe(1);
   expect(frames.at(-1).panel).toBe(1);
   await expect(page.locator('#modal-body')).not.toContainText('Loading transfer details');
@@ -119,9 +158,7 @@ test('Closing fades in place, still covering the page and taking no input, then 
   const before = await page.locator('#modal').boundingBox();
   const frames = await record(page, () => page.locator('#modal .modal-close').click(), 500);
   const falling = fade(frames, -1);
-  expect(falling.duration).toBe(160);                                                  // a 160 ms fade
-  expect(falling.between).toBeGreaterThanOrEqual(2);
-  expect(falling.monotonic).toBe(true);
+  expectFade(falling, 160);                                                            // a 160 ms fade
   const leaving = falling.moving;
   expect(leaving.every(frame => frame.hit === 'overlay' && frame.inert)).toBe(true); // blocks the page; the panel takes nothing
   expect(leaving.every(frame => frame.box.join() === [before.x, before.y, before.width, before.height].map(Math.round).join())).toBe(true);
@@ -168,14 +205,12 @@ test('Settings dialogs fade in and out in place; Escape still cancels; a dialog 
   }), 500, '.dp-modal-overlay', '.dp-modal-dialog');
   const shown = opening.filter(frame => frame.shown);
   expect(shown[0].overlay).toBeLessThan(0.5);
-  expect(fade(opening, 1)).toMatchObject({duration: 200, monotonic: true});
-  expect(fade(opening, 1).between).toBeGreaterThanOrEqual(2);
+  expectFade(fade(opening, 1), 200);
   const box = shown.at(-1).box;
   expect(shown.filter(frame => frame.overlay > 0.02).every(frame => frame.box.join() === box.join() && frame.transform === 'none')).toBe(true);
   const closing = await record(page, () => page.keyboard.press('Escape'), 500, '.dp-modal-overlay', '.dp-modal-dialog');
   const leaving = fade(closing, -1);
-  expect(leaving).toMatchObject({duration: 160, monotonic: true});
-  expect(leaving.between).toBeGreaterThanOrEqual(2);
+  expectFade(leaving, 160);
   expect(leaving.moving.every(frame => frame.inert && frame.hit === 'overlay')).toBe(true);
   expect(await page.evaluate(() => window.__answer)).toBe(false);                    // Escape cancels, as before
   await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
@@ -208,10 +243,9 @@ test('The Help legal document dialog fades in and out in place', async ({page}) 
   const opening = await record(page, () => opener.click(), 500, '.dp-backdrop', '.dp-dialog');
   const shown = opening.filter(frame => frame.shown);
   expect(shown[0].overlay).toBeLessThan(0.5);
-  expect(fade(opening, 1)).toMatchObject({duration: 200, monotonic: true});
+  expectFade(fade(opening, 1), 200);
   const closing = await record(page, () => page.locator('.dp-help-legal-close').click(), 500, '.dp-backdrop', '.dp-dialog');
-  expect(fade(closing, -1)).toMatchObject({duration: 160, monotonic: true});
-  expect(fade(closing, -1).between).toBeGreaterThanOrEqual(2);
+  expectFade(fade(closing, -1), 160);
   await expect(page.locator('.dp-backdrop')).toHaveCount(0);
 });
 

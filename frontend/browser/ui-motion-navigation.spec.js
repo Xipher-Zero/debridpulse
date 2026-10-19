@@ -805,6 +805,17 @@ test('Skip Local Connection Confirmation with reduced motion: its appearance and
 });
 
 // ── A page turn moves at once, to a placeholder its answer crossfades into ──
+/* Holds a page's answer (beyond its own delay) until the recorded turn's slide has
+ * its clock set -- or, with `still`, until it has ended and that many frames
+ * have been drawn after it -- so what a case says about the order of slide and
+ * answer holds on a runner of any frame rate. A turn that waits for its answer
+ * (or keeps sliding until it) is answered only at the cap, and the case fails. */
+const afterSlide = (page, still = 0) => () => page.waitForFunction(still => {
+  const frames = window.__turn?.frames || [];
+  if (!still) return frames.some(frame => frame.start !== null);
+  const begun = frames.findIndex(frame => frame.sliding);
+  return begun >= 0 && frames.slice(begun).filter(frame => !frame.sliding).length >= still;
+}, still, {timeout: 3000}).catch(() => {});
 const SURFACES = {
   downloads: {surface: '#view-torrents .dp-downloads-table-wrap', placeholder: '#t-tbody[data-dp-placeholder]',
               real: '#t-tbody tr[data-torrent-id]', content: '#t-tbody', pager: '#torrent-page-btns'},
@@ -816,8 +827,10 @@ const SURFACES = {
  * surface; 0 = in place), whether a slide runs, the placeholder's rows (and
  * the count it stands for), any text, control or tab stop inside it, the real
  * rows on screen (first label), the crossfade's still copy and content
- * opacities, whether the pager is held -- and when the page's request was
- * answered. */
+ * opacities, whether the pager is held, when the slide's travel starts on its
+ * own clock (its arriving image's animation start time plus any delay, once the
+ * browser has set it) and its declared delays -- and when the page's request
+ * was answered. */
 async function turn(page, kind, act, until) {
   const at = SURFACES[kind];
   await page.evaluate(at => {
@@ -833,6 +846,10 @@ async function turn(page, kind, act, until) {
       const still = surface?.querySelector('.dp-motion-still'), real = document.querySelector(at.real), content = document.querySelector(at.content);
       window.__turn.frames.push({t: performance.now() - t0, sliding: !!surface?.classList.contains('dp-motion-surface'),
         x: surface ? x(surface, '::view-transition-new(root)') : 0, oldX: surface ? x(surface, '::view-transition-old(root)') : 0,
+        start: surface ? document.getAnimations().filter(a => a.effect?.target === surface && /new\(root\)$/.test(a.effect?.pseudoElement || '')
+          && a.startTime !== null).map(a => a.startTime + a.effect.getTiming().delay)[0] ?? null : null,
+        delay: surface ? document.getAnimations().filter(a => a.effect?.target === surface && /\(root\)$/.test(a.effect?.pseudoElement || ''))
+          .map(a => a.effect.getTiming().delay) : [],
         placeholder: held ? held.querySelectorAll('.dp-page-placeholder-row').length : 0, stands: held ? held.dataset.dpPlaceholder : null,
         hidden: held ? held.getAttribute('aria-hidden') : null, text: held ? held.textContent.trim() : '',
         stops: held ? held.querySelectorAll('a, button, input, select, textarea, [tabindex]').length : 0,
@@ -859,7 +876,12 @@ async function turn(page, kind, act, until) {
 }
 /* What a recorded turn did: when it first moved, how many slides ran, whether
  * the arriving image travelled one way only, without stalling, to rest; the
- * frames that showed a placeholder; when the real page first showed. */
+ * frames that showed a placeholder; when the real page first showed. How long
+ * its travel took is bracketed by drawn frames whatever their cadence: `inner`
+ * from the first displaced frame to the last not yet at rest, `outer` from the
+ * frame before it to the first at rest (a slow runner widens the bracket, never
+ * moves it). `slideStart`: when the slide's travel starts on its own clock;
+ * `delays`: the slide's declared start delays. */
 function summary(record) {
   const {frames, clickAt} = record;
   // Visible travel begins when the leaving page is first drawn displaced.
@@ -874,7 +896,13 @@ function summary(record) {
   // Rendered frames between the click and the first displaced one: "at once" is
   // a few frames whatever the machine's speed, which wall-clock ms are not.
   const framesBefore = moving.length ? frames.filter(frame => frame.t > clickAt && frame.t < moving[0].t).length : null;
+  const unfinished = moving.filter(frame => Math.abs(frame.x) > 0.001);
+  const rest = begin < 0 ? -1 : frames.findIndex((frame, index) => index > begin && (!frame.sliding || Math.abs(frame.x) <= 0.001));
+  const started = frames.find(frame => frame.start !== null);
   return {framesBefore, firstMove: moving.length ? moving[0].t - clickAt : null, slides: starts, oneWay, stalls,
+          inner: unfinished.length ? unfinished.at(-1).t - unfinished[0].t : null,
+          outer: begin > 0 && rest > 0 ? frames[rest].t - frames[begin - 1].t : null,
+          slideStart: started ? started.start - record.t0 : null, delays: [...new Set(frames.flatMap(frame => frame.delay))],
           span: moving.length ? moving.at(-1).t - moving[0].t : 0, moving: moving.length, held,
           slideEnd: moving.length ? moving.at(-1).t : null,
           // From the first placeholder frame on, a row of the page it left is never shown again.
@@ -898,12 +926,13 @@ function expectCrossfade(record, s) {
 
 async function slowDownloads(page, options) {
   const requests = await tenPagesOfDownloads(page, options);
-  const control = {delay: 0, fail: false};
+  const control = {delay: 0, fail: false, gate: null};
   await page.route('**/api/torrents**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname !== '/api/torrents' || !url.searchParams.has('offset')) return route.fallback();
     const wait = typeof control.delay === 'function' ? control.delay(url) : control.delay;
     if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    if (control.gate) await control.gate();
     if (control.fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
     return route.fallback();
   });
@@ -918,21 +947,25 @@ test('Downloads, 350 ms answer: the turn moves at once and slides without a paus
   await boot(page);
   const {requests, control, pager, current} = await slowDownloads(page);
   control.delay = 350;
+  control.gate = afterSlide(page);
   await clear(page);
   const asked = requests.length;
   const limit = requests.at(-1).limit;
   const record = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  control.gate = null;
   const s = summary(record);
   // Visibly moving within a few frames of the click (the slide's own capture and
   // ease-in), long before its page is answered: the answer's latency plays no part.
   expect(s.framesBefore).toBeLessThanOrEqual(8);                    // moving within a few frames of the click
+  expect(s.delays).toEqual([0]);                                     // its travel is not held back
   expect(record.answered[0] - record.clickAt).toBeGreaterThan(340);
-  expect(record.frames.filter(frame => frame.t >= record.clickAt + s.firstMove && frame.t < record.answered[0]).length)
-    .toBeGreaterThanOrEqual(8);                                      // visibly moving for many frames before the answer
+  expect(s.slideStart).toBeGreaterThan(record.clickAt);
+  expect(s.slideStart).toBeLessThan(record.answered[0]);             // its travel began, on its own clock, before the answer
   expect(s.slides).toBe(1);                                          // one slide, never paused or restarted
   expect(s.oneWay).toBe(true);
   expect(s.stalls).toBe(0);
-  expect(s.span).toBeLessThanOrEqual(280 + 50);                      // its own 280 ms, not waiting for the answer
+  expect(s.inner).toBeLessThanOrEqual(280 + 50);                     // its own 280 ms, not waiting for the answer
+  expect(s.outer).toBeGreaterThan(0.6 * 280);                        // ...and not cut short
   expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'adjacent'});
   // While its page is pending: the placeholder, standing for that page's row count, and no page-1 row.
   expectQuietPlaceholder(s.held);
@@ -948,11 +981,16 @@ test('Downloads, 350 ms answer: the turn moves at once and slides without a paus
 
   // A slower answer: once the slide has ended the placeholder waits still, then resolves.
   control.delay = 900;
+  control.gate = afterSlide(page, 2);
   await clear(page);
   const slow = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('3'));
+  control.gate = null;
   const w = summary(slow);
+  // Every frame drawn from the slide's end until the answer shows the placeholder (two at least), still.
   const waiting = w.held.filter(frame => frame.t > w.slideEnd);
-  expect(waiting.length).toBeGreaterThanOrEqual(10);
+  const untilAnswer = slow.frames.filter(frame => frame.t > w.slideEnd && frame.t < slow.answered[0]);
+  expect(untilAnswer.length).toBeGreaterThanOrEqual(2);
+  expect(untilAnswer.every(frame => frame.placeholder > 0)).toBe(true);
   expect(waiting.every(frame => !frame.sliding && frame.x === 0 && frame.placeholder === waiting[0].placeholder)).toBe(true);
   expectCrossfade(slow, w);
   expect(w.after.filter(frame => frame.reals > 0).every(frame => frame.real === String(2 * limit + 1))).toBe(true);
@@ -1036,11 +1074,12 @@ test('Downloads: rapid clicks build no queue; a live refresh never restarts the 
 
 async function slowJournal(page) {
   const requests = [];
-  const control = {delay: 0, refuseLast: false, fail: false};
+  const control = {delay: 0, refuseLast: false, fail: false, gate: null};
   await page.route('**/api/events?**', async route => {
     const q = Object.fromEntries(new URL(route.request().url()).searchParams);
     requests.push(q);
     if (q.limit !== '1' && control.delay) await new Promise(resolve => setTimeout(resolve, control.delay));
+    if (q.limit !== '1' && control.gate) await control.gate();
     if (q.last && control.refuseLast) return route.fulfill({status: 409, contentType: 'application/json', body: JSON.stringify({detail: {
       code: 'last_page_unavailable', message: 'The last page cannot be found yet.'}})});
     if (control.fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
@@ -1058,15 +1097,19 @@ test('Activity Log, 350 ms answer: the same continuous turn within the frozen sn
   await boot(page);
   const {requests, control, pager, current} = await slowJournal(page);
   control.delay = 350;
+  control.gate = afterSlide(page);
   await clear(page);
   const record = await turn(page, 'activity', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  control.gate = null;
   const s = summary(record);
   expect(s.framesBefore).toBeLessThanOrEqual(8);                    // moving within a few frames of the click
+  expect(s.delays).toEqual([0]);                                     // its travel is not held back
   expect(record.answered.at(-1) - record.clickAt).toBeGreaterThan(340);
-  expect(record.frames.filter(frame => frame.t >= record.clickAt + s.firstMove && frame.t < record.answered.at(-1)).length)
-    .toBeGreaterThanOrEqual(8);                                      // visibly moving for many frames before the answer
+  expect(s.slideStart).toBeGreaterThan(record.clickAt);
+  expect(s.slideStart).toBeLessThan(record.answered.at(-1));         // its travel began, on its own clock, before the answer
   expect([s.slides, s.oneWay, s.stalls], JSON.stringify(record.frames.filter(f => f.sliding))).toEqual([1, true, 0]);
-  expect(s.span).toBeLessThanOrEqual(280 + 50);
+  expect(s.inner).toBeLessThanOrEqual(280 + 50);
+  expect(s.outer).toBeGreaterThan(0.6 * 280);
   expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'adjacent'});
   expectQuietPlaceholder(s.held);
   expect(s.held.every(frame => frame.stands === '50' && frame.reals === 0 && frame.pagerHeld)).toBe(true);   // page 2 of many: a full page

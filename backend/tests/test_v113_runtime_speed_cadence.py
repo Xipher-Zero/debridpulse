@@ -239,3 +239,27 @@ async def test_a_slow_observation_is_timed_when_its_counters_were_read(acquiring
     latency[0] = 1.5
     await getattr(acquiring.engine, path)()
     assert meter.current() == MIB
+
+
+@pytest.mark.parametrize("started, tick_gap", [(2032.545, 0.048), (59.171, 0.038)])
+def test_an_exact_sustained_rate_is_its_peak_however_the_clock_runs(started, tick_gap):
+    """The sustained window is interpolated in floating-point time: an exact
+    8 MiB/s comes out a hair below on some clocks (here, a freshly started
+    machine's monotonic clock after a few real ticks), and the peak is that
+    rate to the nearest byte/second -- never one less."""
+    from transfers.runtime_telemetry import ExecutionThroughputMeter
+
+    real = [started]
+    meter = ExecutionThroughputMeter(clock=lambda: real[0])
+    completed = 0
+    for _ in range(6):                                   # ticks on the real clock first
+        real[0] += tick_gap
+        meter.record({"job": (real[0], completed)})
+    stepped = SteppedClock(real[0] + tick_gap + 1)
+    meter.clock = stepped
+    for _ in range(62):                                  # then 31 s at 8 MiB/s
+        completed += 8 * MIB // 2
+        stepped.now += 0.5
+        meter.record({"job": (stepped.now, completed)})
+    assert meter.sustained() != 8 * MIB, "this clock no longer exercises the floating-point edge"
+    assert meter.raise_sustained_peak() == 8 * MIB

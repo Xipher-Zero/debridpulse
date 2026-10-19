@@ -151,9 +151,12 @@ class ExecutionThroughputMeter:
         """Raise ``sustained_peak`` to the current sustained rate when that is
         higher; the new peak, or ``None`` when it did not rise."""
         rate = self.sustained()
-        if not rate or rate <= (self.sustained_peak or 0):
+        # To the nearest byte/second: the window's interpolated edges carry
+        # floating-point error, and truncating made an exact rate one less.
+        peak = round(rate) if rate else 0
+        if not peak or peak <= (self.sustained_peak or 0):
             return None
-        self.sustained_peak = int(rate)
+        self.sustained_peak = int(peak)
         return self.sustained_peak
 
     def _fresh(self) -> bool:
