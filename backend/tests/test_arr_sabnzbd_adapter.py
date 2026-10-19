@@ -284,7 +284,9 @@ async def test_addfile_admits_one_job_and_one_demand_through_the_staged_nzb_ingr
 @pytest.mark.parametrize("data,expected", [
     (b"", "invalid_source"), (b"<nzb>not a posting", "invalid_source"),
     (b"<html><body>an indexer error page</body></html>", "invalid_source"),
-    (NZB[: len(NZB) // 2], "invalid_source"), (b"x" * (MAX_NZB_BYTES + 1), "source_too_large")])
+    (NZB[: len(NZB) // 2], "invalid_source"), (b"x" * (MAX_NZB_BYTES + 1), "source_too_large")],
+    # Named: an id built from the oversized body would be a single multi-megabyte line in every log.
+    ids=["empty", "not_xml", "indexer_error_page", "truncated", "oversized"])
 async def test_an_invalid_truncated_or_oversized_nzb_is_refused_with_nothing_admitted(sab, data, expected):
     error = arr_error((await addfile(sab, data=data)).json())
     assert expected in error

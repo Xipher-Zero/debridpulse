@@ -1137,8 +1137,9 @@ for (const [label, away, resize] of [['a short stay', 3000, null], ['a long stay
         expect(await lines(left)).toEqual(unseen);
       }
       const first = await returnAndRead(left);
-      // The same heartbeats, born at the same instants: nothing reset, replayed or doubled.
-      expect(await bornSince(left, 'left')).toEqual(await bornSince(stayed, 'stayed'));
+      // The same heartbeats, born at the same instants (within the 1 ms a whole-millisecond timer
+      // and an exact due instant may differ): nothing reset, replayed or doubled.
+      expectSameBirths(await bornSince(left, 'left'), await bornSince(stayed, 'stayed'));
       // The first frame back is the strip at this very instant (the stayed page last drew one
       // frame earlier), so one step on it has moved exactly one step's travel -- never a fresh
       // start or a stale strip -- and both pages draw the same strip from then on.
