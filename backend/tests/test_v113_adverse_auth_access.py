@@ -134,7 +134,12 @@ async def test_transport_acceptance_retires_the_question_while_its_evidence_read
         # transport's authentication verdict exists so far.
         assert await _until(_cleared(engine, incoming.id)), "question still open after the transport accepted"
         assert "auth_accepted" in await _facts(incoming.id)
-        assert (await repository.get(incoming.id)).state != TransferState.INPUT_REQUIRED
+        # Retiring the question and leaving INPUT_REQUIRED are two durable writes
+        # (the store's delete, then its on_retired transition): wait for the
+        # second as for the first -- still while the evidence read is blocked.
+        async def left_input_required():
+            return (await repository.get(incoming.id)).state != TransferState.INPUT_REQUIRED
+        assert await _until(left_input_required), "still INPUT_REQUIRED after the transport accepted"
         assert not decision.done()
     finally:
         vault.release.set()

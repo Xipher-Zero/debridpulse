@@ -298,6 +298,25 @@ def test_the_suite_runs_once_as_two_layers_and_milestone_manifests_are_never_exe
     assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" .*--durations=', _runs(TESTS_WORKFLOW))
 
 
+def test_a_hanging_layer_still_leaves_its_evidence() -> None:
+    """QUAL-001 diagnostics: the full run's own step stops before the job does, so
+    the always() upload of pytest.log still runs, and a test past 300 s dumps every
+    thread's stack into that log first. Neither changes what runs or how it is judged."""
+    job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
+    step = next(s for s in _steps(TESTS_WORKFLOW) if s.get("id") == "full_pytest")
+    assert step["timeout-minutes"] == 22 and step["timeout-minutes"] < job["timeout-minutes"]
+    assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" -o faulthandler_timeout=300 ', step["run"])
+    # Its own deadline ends pytest (stacks dumped on SIGABRT) before the step is cancelled.
+    deadline = re.search(r"timeout --signal=ABRT --kill-after=(\d+) (\d+) python -m pytest tests/ ", step["run"])
+    assert deadline and int(deadline[2]) + int(deadline[1]) < step["timeout-minutes"] * 60
+    # ...and writes no core file: the dumped stacks in the log are the evidence.
+    assert step["run"].index("ulimit -c 0") < step["run"].index("timeout --signal=ABRT")
+    assert 'tee "$RUNNER_TEMP/pytest.log"' in step["run"]
+    upload = next(s for s in _steps(TESTS_WORKFLOW) if str(s.get("uses", "")).startswith("actions/upload-artifact")
+                  and "pytest-qualification" in s["with"]["name"])
+    assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/pytest.log"
+
+
 def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None:
     job = _workflow(BROWSER_WORKFLOW)["jobs"]["browser-runtime"]
     assert job["timeout-minutes"] == 25 and job["strategy"]["fail-fast"] is False

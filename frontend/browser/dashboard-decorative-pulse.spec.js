@@ -1307,8 +1307,11 @@ test('repeated hide and show, with readings and a stats change arriving around e
       await setHidden(pair.hidden, false);
       await pair.run(500);
     }
-    const kept = await pair.bornSince('hidden');
-    expectSameBirths(kept, await pair.bornSince('watched'));
+    // Read at 38 s, the instant a heartbeat falls due: births within the comparison's 1 ms of it are
+    // the same instant's order, not the cadence, so both strips are compared up to there.
+    const within = born => born < INTERVAL + 12 * 3000 - 1;
+    const kept = (await pair.bornSince('hidden')).filter(within);
+    expectSameBirths(kept, (await pair.bornSince('watched')).filter(within));
     expect(new Set(kept).size).toBe(kept.length);
     // Still on the 30 BPM lattice after 12 cycles: no drift accumulates.
     kept.forEach(born => expect(Math.min(born % INTERVAL, INTERVAL - born % INTERVAL)).toBeLessThanOrEqual(1));

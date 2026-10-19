@@ -103,9 +103,15 @@ test('a change while Statistics is shown refreshes every group from one answer, 
   expect(high - low).toBeGreaterThan(3);
   const between = frames.filter(frame => frame.y > low + 0.5 && frame.y < high - 0.5);
   expect(between.length).toBeGreaterThanOrEqual(3);
-  const span = between.at(-1).t - between[0].t;
-  expect(span).toBeGreaterThan(150);
-  expect(span).toBeLessThan(600);
+  // Its duration, bracketed by drawn frames whatever their cadence: no longer than from the last
+  // frame at the old place to the first at the new, no shorter than from the first moved frame
+  // to the last not yet there (~350 ms; a slow runner widens the bracket, never moves it).
+  const firstMoved = frames.findIndex(frame => frame.y !== before[2]);
+  const firstThere = frames.findIndex((frame, i) => i > firstMoved && frame.y === after[2]);
+  expect(firstMoved).toBeGreaterThan(0);
+  expect(firstThere).toBeGreaterThan(firstMoved);
+  expect(frames[firstThere].t - frames[firstMoved - 1].t).toBeGreaterThan(150);
+  expect(frames[firstThere - 1].t - frames[firstMoved].t).toBeLessThan(600);
   frames.forEach(frame => { expect(frame.y).toBeGreaterThan(low - 0.5); expect(frame.y).toBeLessThan(high + 0.5); });
   expect(await figures(page)).toEqual(expected('7d', 2));
   // The family stack and tooltip read the bucket the chart holds now.

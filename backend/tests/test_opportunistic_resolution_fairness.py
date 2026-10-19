@@ -1363,6 +1363,12 @@ async def test_a_held_cohort_decision_never_stops_provider_resolution_and_parks_
             return set((await runtime.request_states(transfer.id)).values()) == {"materializing"}
         await _until(all_durable)
         cycle_ = runtime.engine._resolution_cycle
+        # A durable result is written before its provider unit returns (its
+        # census still runs): count the parked work once every unit that is
+        # not qualification work has ended -- on BASE they never end.
+        async def provider_units_ended():
+            return not (set(cycle_.units) - cycle_.qualifying)
+        await _until(provider_units_ended)
         assert len(cycle_.qualifying) <= 3
         assert len(asyncio.all_tasks()) - baseline <= 1 + 3
         assert not await runtime.repository.artifacts(transfer.id)
