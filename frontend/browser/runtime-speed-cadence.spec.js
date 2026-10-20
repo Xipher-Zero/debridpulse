@@ -25,7 +25,11 @@ async function serve(page, {slowMs}) {
   });
   // One active download, so the tab title legitimately presents the speed.
   await page.route(url => url.pathname === '/api/stats', async route => {
-    const response = await route.fetch();
+    // Playwright reuses one keep-alive connection pool across a worker's tests; the server closes an
+    // idle connection after 5 s, and a test reusing it at that instant gets a connection reset.
+    // Playwright retries only that reset (ECONNRESET), once: any other error or a second reset still
+    // fails, and an HTTP response of any status is never retried. Explicit exception for this read only.
+    const response = await route.fetch({maxRetries: 1});
     const stats = await response.json();
     return route.fulfill({response, json: {...stats, by_status: {...(stats.by_status || {}), downloading: 1},
       operator_active_progress_pct: 40}});
