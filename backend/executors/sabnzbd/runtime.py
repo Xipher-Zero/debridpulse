@@ -112,7 +112,14 @@ def _write_bootstrap_ini(download_root: str) -> None:
         "enable_filejoin": "0",
         "enable_unrar": "0",
         "enable_7zip": "0",
-        "permissions": "0777",
+        # No mode override: everything the service creates (job folders and
+        # the files in them) takes the mode the process umask gives it, i.e.
+        # the operator's UMASK applied by the entrypoint. SABnzbd 5.1.3 treats
+        # an empty value as "apply none" and then never chmods a folder; it
+        # only clears execute bits from the files of a job it completes. A
+        # previously seeded "0777" is replaced here on the next start;
+        # content that already exists keeps the mode it has.
+        "permissions": "",
         "auto_browser": "0",
         "check_new_rel": "0",
     }

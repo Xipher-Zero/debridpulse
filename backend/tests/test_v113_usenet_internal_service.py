@@ -340,3 +340,65 @@ def test_folder_paths_reach_the_service_exactly_whatever_they_contain(tmp_path, 
     misc = configobj.ConfigObj(str(tmp_path / "usenet" / "sabnzbd.ini"), default_encoding="utf-8", encoding="utf-8")["misc"]
     assert misc["download_dir"] == topology.incomplete_root(root)
     assert misc["complete_dir"] == topology.complete_root(root)
+
+
+# --- what the service creates honours the operator's UMASK -------------------
+
+def _seed(runtime, tmp_path, monkeypatch, ini: str | None):
+    config_root = tmp_path / "usenet"
+    config_root.mkdir()
+    if ini is not None:
+        (config_root / "sabnzbd.ini").write_text(ini, encoding="utf-8")
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", config_root)
+    monkeypatch.setattr(runtime, "_api_key", "")
+    return config_root / "sabnzbd.ini"
+
+
+def _misc(path):
+    # Read the way the service reads it (configobj; see _load_ini).
+    import configobj
+    return configobj.ConfigObj(str(path), default_encoding="utf-8", encoding="utf-8")["misc"]
+
+
+def test_the_service_imposes_no_mode_so_the_operator_umask_governs(tmp_path, monkeypatch):
+    """SABnzbd applies ``misc.permissions`` (when set) to every folder it
+    creates and every job it completes, overriding the process umask; empty
+    means it applies none. A "0777" seeded by an earlier release, in a file
+    the service itself has since saved (configobj header and all), is
+    replaced before the next start.
+    """
+    from executors.sabnzbd import runtime
+    path = _seed(runtime, tmp_path, monkeypatch, (
+        "__version__ = 19\n__encoding__ = utf-8\n"
+        "[misc]\npermissions = 0777\ncomplete_dir = /download/.dpwork/complete\n"))
+    runtime._write_bootstrap_ini(str(tmp_path / "download"))
+    assert _misc(path)["permissions"] == ""
+    # A fresh installation is seeded the same way.
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    path = _seed(runtime, fresh, monkeypatch, None)
+    runtime._write_bootstrap_ini(str(fresh / "download"))
+    assert _misc(path)["permissions"] == ""
+
+
+def test_seeding_the_service_changes_no_existing_download_content(tmp_path, monkeypatch):
+    """Existing folders keep the mode they have -- including the 0777 ones an
+    earlier release made -- and nothing is created in the Download Folder."""
+    import stat
+    from executors.sabnzbd import runtime, topology
+    download = tmp_path / "download"
+    incomplete = Path(topology.incomplete_root(str(download)))
+    complete = Path(topology.complete_root(str(download)))
+    job = complete / "Release.Name"
+    for folder in (incomplete, job):
+        folder.mkdir(parents=True)
+    payload = job / "payload.bin"
+    payload.write_bytes(b"x")
+    for folder in (download, Path(topology.working_root(str(download))), incomplete, complete, job):
+        folder.chmod(0o777)
+    payload.chmod(0o666)
+    before = {p: stat.S_IMODE(p.stat().st_mode) for p in [download, *download.rglob("*")]}
+    _seed(runtime, tmp_path, monkeypatch, "[misc]\npermissions = 0777\n")
+    runtime._write_bootstrap_ini(str(download))
+    after = {p: stat.S_IMODE(p.stat().st_mode) for p in [download, *download.rglob("*")]}
+    assert after == before
