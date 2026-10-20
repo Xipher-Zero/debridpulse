@@ -40,7 +40,7 @@ bcrypt==5.0.0
     # via -r requirements.in
 bencode2==0.3.33
     # via -r requirements.in
-certifi==2026.7.22
+certifi==2026.10.19
     # via
     #   apprise
     #   httpcore

@@ -24,7 +24,7 @@ the lock file and `licenses/python-runtime.json`.
 | babelfish | 0.6.1 | BSD-3-Clause |
 | bcrypt | 5.0.0 | Apache-2.0 |
 | bencode2 | 0.3.33 | MIT ([bundled notice](../licenses/bencode2-MIT.txt)) |
-| certifi | 2026.7.22 | MPL-2.0 |
+| certifi | 2026.10.19 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
 | charset-normalizer | 3.5.1 | MIT |
 | cheroot | 11.1.2 | BSD-3-Clause |
