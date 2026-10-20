@@ -474,6 +474,15 @@
   existed before the download started. Execution records no longer store copies of download URLs or
   request headers. Existing databases are upgraded once
   in place (execution handles and the former `transferring` state); nothing else changes for users.
+- **The Usenet service's new files and folders follow your `UMASK`.** The bundled Usenet service used to
+  give every folder it created mode `0777` and every file `0666`, whatever `UMASK` was set. It now applies
+  no mode of its own, so new job folders and downloaded files take the mode `UMASK` gives them, like
+  everything else DebridPulse writes. **With the default `UMASK=002` that is `0775`/`0664`**: still readable
+  by everyone, but changeable only by the account DebridPulse runs as (`PUID`) and its group (`PGID`).
+  Content that already exists, including folders an earlier version created with `0777`, is left exactly
+  as it is; nothing is changed recursively. If another program, such as an *arr running as a user outside
+  `PGID`, must move or delete what the Usenet service downloads, give it the same group or set `UMASK`
+  accordingly.
 
 ### Removed
 
