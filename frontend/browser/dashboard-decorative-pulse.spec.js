@@ -836,6 +836,10 @@ test('hidden or navigated away while it settles, the Dashboard comes back alread
   expect(first.flatline).toBe(true);
   expect(first.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16))).toBe(true);
   expect((await signal(page)).born.every(born => born < pausedAgain.now)).toBe(true);
+  // The return to the Dashboard refreshes its statistics without waiting: let
+  // that GET /stats through the pause route finish before the test ends, so it
+  // is not cut off by teardown and reported against the following case.
+  await page.unrouteAll({behavior: 'wait'});
 });
 
 test('with reduced motion a confirmed Global Pause All shows the still red flat lines at once, and resuming the plain baselines', async ({page}) => {
