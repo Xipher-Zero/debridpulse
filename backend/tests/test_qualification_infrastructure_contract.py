@@ -13,6 +13,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -305,7 +306,10 @@ def test_a_hanging_layer_still_leaves_its_evidence() -> None:
     job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
     step = next(s for s in _steps(TESTS_WORKFLOW) if s.get("id") == "full_pytest")
     assert step["timeout-minutes"] == 22 and step["timeout-minutes"] < job["timeout-minutes"]
-    assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" -o faulthandler_timeout=300 ', step["run"])
+    assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" --stall-dump=300 ', step["run"])
+    # ...by a dump that holds the GIL: faulthandler_timeout walks running threads' frames without
+    # it and can kill the run with SIGSEGV mid-dump (run 39349163860, exit 139).
+    assert "faulthandler_timeout" not in step["run"]
     # Its own deadline ends pytest (stacks dumped on SIGABRT) before the step is cancelled.
     deadline = re.search(r"timeout --signal=ABRT --kill-after=(\d+) (\d+) python -m pytest tests/ ", step["run"])
     assert deadline and int(deadline[2]) + int(deadline[1]) < step["timeout-minutes"] * 60
@@ -315,6 +319,116 @@ def test_a_hanging_layer_still_leaves_its_evidence() -> None:
     upload = next(s for s in _steps(TESTS_WORKFLOW) if str(s.get("uses", "")).startswith("actions/upload-artifact")
                   and "pytest-qualification" in s["with"]["name"])
     assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/pytest.log"
+
+
+STALLED = """
+import asyncio, threading, time
+
+def busy_while(seconds):
+    def busy(loop, until):
+        while time.monotonic() < until:          # running Python, handing results to the loop
+            loop.call_soon_threadsafe(lambda: None)
+
+    async def main():
+        worker = threading.Thread(target=busy, name="busy-worker",
+                                  args=(asyncio.get_running_loop(), time.monotonic() + seconds))
+        worker.start()
+        await asyncio.to_thread(worker.join)
+
+    asyncio.run(main())
+
+def test_stalled():
+    busy_while(1.0)
+
+def test_stalled_and_failing():
+    busy_while(1.0)
+    assert False, "judged as before"
+"""
+
+
+def test_a_stalled_test_dumps_every_thread_and_task_and_goes_on(tmp_path) -> None:
+    """--stall-dump writes every thread's stack and the loop's pending tasks
+    once a test runs past it, holding the GIL, and each test keeps its own
+    verdict -- where faulthandler_timeout crashed the run reading a busy thread."""
+    (tmp_path / "conftest.py").write_text((Path(__file__).parent / "conftest.py").read_text())
+    (tmp_path / "test_stalled.py").write_text(STALLED)
+    # Its own run: the job's shard selection (and any added options) belong to the outer suite.
+    env = {key: value for key, value in os.environ.items() if key not in ("DP_TEST_SHARD", "PYTEST_ADDOPTS")}
+    run = subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "--stall-dump=0.3",
+                          "test_stalled.py"], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    assert run.returncode == 1, run.stdout + run.stderr
+    for test in ("test_stalled", "test_stalled_and_failing"):
+        assert f"test_stalled.py::{test} still running after 0.3 s" in run.stderr
+    assert run.stderr.count("(busy-worker)") == 2 and "(MainThread)" in run.stderr
+    assert "1 failed, 1 passed" in run.stdout and "judged as before" in run.stdout
+
+
+def _suite_conftest():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("stall_conftest", Path(__file__).parent / "conftest.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_stall_dump_is_bounded_and_never_follows_an_abnormal_await_chain() -> None:
+    """Collecting the dump can neither grow without limit nor loop: a cyclic
+    or endless await chain is cut, as are the task list and the report."""
+    import types
+    stall = _suite_conftest()
+    looped = types.SimpleNamespace(cr_frame=None)
+    looped.cr_await = looped
+    assert stall._await_chain(looped) == ["  (await chain revisits an awaitable; stopped)\n"]
+    chain = None
+    for _ in range(100_000):
+        chain = types.SimpleNamespace(cr_frame=None, cr_await=chain)
+    assert stall._await_chain(chain) == [f"  (await chain longer than {stall.STALL_AWAIT_LINKS}; cut)\n"]
+    report = stall._bounded("x" * (stall.STALL_BYTES * 4))
+    assert len(report.encode()) < stall.STALL_BYTES + 100
+    assert report.endswith(f"(stall dump cut at {stall.STALL_BYTES} bytes)\n")
+    assert stall._bounded("short") == "short"
+
+
+def test_the_stall_dump_lists_a_bounded_number_of_tasks_with_their_await_chains() -> None:
+    import asyncio
+    import threading
+    stall = _suite_conftest()
+    stall.STALL_TASKS = 3
+    ready, owned = threading.Event(), {}
+
+    async def innermost_wait(event):
+        await event.wait()
+
+    async def main():
+        owned["loop"], owned["done"] = asyncio.get_running_loop(), asyncio.Event()
+        tasks = [asyncio.create_task(innermost_wait(owned["done"]), name=f"waiter-{i}") for i in range(10)]
+        ready.set()
+        await asyncio.gather(*tasks)
+
+    thread = threading.Thread(target=asyncio.run, args=(main(),), name="loop-owner")
+    thread.start()
+    try:
+        assert ready.wait(10)
+        report = ""
+        for _ in range(200):                   # the loop is found while its thread sits in _run_once
+            report = stall._stall_report("node", 1)
+            if "Task " in report:
+                break
+            threading.Event().wait(0.01)
+        assert "(loop-owner)" in report
+        # 11 tasks (10 waiters and main), shown in the loop's own set order: 3 listed, 8 counted.
+        assert report.count("\nTask ") == 3 and "(8 more tasks not shown)" in report
+        assert "innermost_wait" in report
+        # One unreadable task costs only its own entry, never the stacks.
+        def unreadable(awaitable):
+            raise ValueError("abnormal awaitable")
+        stall._await_chain = unreadable
+        report = stall._stall_report("node", 1)
+        assert "(task unreadable: ValueError('abnormal awaitable'))" in report and "(loop-owner)" in report
+    finally:
+        owned["loop"].call_soon_threadsafe(owned["done"].set)
+        thread.join(10)
+    assert not thread.is_alive()
 
 
 def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None:

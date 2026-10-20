@@ -203,16 +203,23 @@ test('one heartbeat strip crosses the single row right to left at one speed, the
   expect(busy.stops.map(s => s.opacity).slice(0, 7)).toEqual([0.4, 0.4, 1, 1, 0.9, 0.6, 0.4]);
 
   // A stats refresh or Dashboard reselection neither resets nor jolts the heartbeats on the strip.
+  // (The strip is drawn in animation frames, which the page clock runs on its
+  // 16 ms ticks: both reads are taken at a frame instant, whole frames apart,
+  // so each shows the strip drawn for the instant it is read -- a 50 ms step
+  // from an arbitrary instant shows 48 or 64 ms of travel.)
+  const toFrame = await page.evaluate(() => (16 - performance.now() % 16) % 16);
+  if (toFrame) await page.clock.runFor(toFrame);
   const mid = await strip(page);
   await page.evaluate(() => Promise.all([loadStats(), loadStats()]));
   await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
-  await page.clock.runFor(STEP);
+  const FRAMES = 3 * 16;
+  await page.clock.runFor(FRAMES);
   const after = await strip(page);
   for (const [i, card] of mid.entries()) {
     const now = leads(after[i]);
     // (A complex is drawn until its own width has left the card.)
-    for (const {lead: x, points} of complexes(card).filter(({lead, points}) => lead - SPEED * STEP + points[COMPLEX_POINTS - 1][0] > 0)) {
-      expect(now.some(y => Math.abs(y - (x - SPEED * STEP)) < 0.5)).toBe(true);
+    for (const {lead: x, points} of complexes(card).filter(({lead, points}) => lead - SPEED * FRAMES + points[COMPLEX_POINTS - 1][0] > 0)) {
+      expect(now.some(y => Math.abs(y - (x - SPEED * FRAMES)) < 0.5)).toBe(true);
     }
   }
   expect(await page.evaluate(() => [...document.querySelectorAll('.dhs-val')].map(v => v.textContent))).toEqual(before);

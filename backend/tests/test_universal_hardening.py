@@ -274,18 +274,65 @@ async def test_payload_disappearing_after_member_verification_blocks_final_compl
     core.executor.finish(first.execution)
     core.executor.finish(second.execution)
     original = module.stable_payload
+    # Member verifications of one cycle run concurrently (``_verify_pending``),
+    # so "after member verification" is an ordering this test establishes, not
+    # one it may assume: the first member's payload disappears only once its
+    # own verification has proved it, and while the second's is still deciding.
+    # (Disappearing *during* its own stability window is a different contract:
+    # the verifier rejects it, MATERIALIZATION_FAILED.)
+    first_verified = asyncio.Event()
     async def verify(path, *args, **kwargs):
         valid = await original(path, *args, **kwargs)
+        if path == first.target and valid:
+            first_verified.set()
         if path == second.target:
+            await asyncio.wait_for(first_verified.wait(), timeout=30)
             Path(first.target).unlink(missing_ok=True)
         return valid
     monkeypatch.setattr(module, "stable_payload", verify)
     await core.engine.tick()
+    assert first_verified.is_set() and not Path(first.target).exists()
     assert (await core.repository.get(transfer.id)).state != TransferState.COMPLETED
     latest = {item.id: item for item in await core.repository.artifacts(transfer.id)}
     assert latest[first.id].state == "queued"
     assert latest[first.id].target == first.target
     assert latest[second.id].state == "completed"
+
+
+@pytest.mark.asyncio
+async def test_payload_disappearing_during_its_own_verification_is_rejected_never_completed(canonical_core, monkeypatch):
+    # The other disappearance contract, kept separate from the one above: a
+    # payload that vanishes inside its own stability window (after the first
+    # file check proved it, before the second) is rejected by the verifier --
+    # MATERIALIZATION_FAILED -- and nothing completes on it.
+    core = canonical_core                     # the shipped engine and its recovery owner
+    import transfers.filesystem as module
+    result = core.provider.parcel(state=ResourceState.AVAILABLE)
+    resource = result.observation.resource
+    core.provider.members[resource.id] = tuple(SourceEntry(f"{name}.bin", 4, f"{name}.bin", TransferRequest("parcel-member", name)) for name in ("first", "second"))
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.tick()
+    first, second = await core.repository.artifacts(transfer.id)
+    core.executor.finish(first.execution)
+    core.executor.finish(second.execution)
+    original = module.payload_matches
+    checks = []
+    def matches(path, *args, **kwargs):
+        valid = original(path, *args, **kwargs)
+        if path == first.target:
+            checks.append(valid)
+            if len(checks) == 1:
+                Path(first.target).unlink()
+        return valid
+    monkeypatch.setattr(module, "payload_matches", matches)
+    await core.engine.tick()
+    assert checks == [True, False]
+    assert (await core.repository.get(transfer.id)).state != TransferState.COMPLETED
+    latest = {item.id: item for item in await core.repository.artifacts(transfer.id)}
+    assert latest[first.id].state != "completed"
+    assert latest[first.id].error.category == Category.MATERIALIZATION_FAILED
 
 
 @pytest.mark.asyncio

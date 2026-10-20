@@ -372,9 +372,13 @@ remains the input of the separate, non-required `WS3 Adversarial` workflow.)
 **Budget.** The normal blocking path completes within **20 minutes** wall-clock. The workflow's
 job timeout sits slightly above it to stop a severe regression; it is never raised to hide
 slowness. Inside it, the full pytest run ends at its own deadline (SIGABRT, so faulthandler
-dumps every thread's stack, as it also does for any single test past 300 s) before its step
-times out, so a run that hangs still uploads its log; such a run has no result file and is
-INCONCLUSIVE, never a pass. Growth is answered by moving universal behavior to the contract layer, merging tests
+dumps every thread's stack) before its step times out, so a run that hangs still uploads its
+log; such a run has no result file and is INCONCLUSIVE, never a pass. Any single test past 300 s
+has every thread's stack and pending task written to the log by the suite's `--stall-dump` and
+goes on; that dump is bounded (innermost stack frames, tasks, await-chain links and bytes are
+capped, a chain revisiting an awaitable stops, task chains come before thread stacks and an
+unreadable entry costs only itself) and reads each frame holding the GIL, because `faulthandler_timeout` reads running threads' frames
+without it and can kill the run mid-dump (SIGSEGV). Growth is answered by moving universal behavior to the contract layer, merging tests
 that prove one invariant, or adding a contract shard -- never by skipping, retrying or relaxing.
 
 ## 12. Reproducing locally
