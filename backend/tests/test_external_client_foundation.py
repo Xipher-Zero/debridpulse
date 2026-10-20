@@ -1061,3 +1061,135 @@ async def test_profiles_are_replaced_by_the_admin_with_revision_and_root_confine
     assert put.status_code == 200, put.text
     assert config.get_settings().external_delivery.revision == current["revision"] + 1
     assert config.get_settings().external_delivery.by_id("tv").retention_hours == 24
+
+
+# ── a moved Download Folder (POST-AUDIT-DP-ROOT) ─────────────────────────────
+
+async def _move_download_folder(http, folder):
+    document = (await http.client.get("/api/settings", headers=http.admin_headers)).json()
+    document["download_folder"] = folder
+    response = await http.client.put("/api/settings", headers=http.admin_headers, json=document)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def _catalog(http):
+    response = await http.client.get("/api/external/profiles", headers=http.admin_headers)
+    assert response.status_code == 200
+    return response.json()
+
+
+async def _write(http, catalog, profiles):
+    return await http.client.put("/api/external/profiles", headers=http.admin_headers,
+                                 json={"expected_revision": catalog["revision"], "profiles": profiles})
+
+
+async def test_a_moved_download_folder_never_blocks_editing_another_profile(http, world):
+    """Both profiles were saved under the old folder. Moving the folder names
+    them; editing Radarr's profile into the new folder, with an External Import
+    Path outside it, then succeeds while Sonarr's unchanged stored root is kept
+    exactly as it was -- and a new profile can still be created."""
+    old = str(world.payloads)
+    new = str(world.payloads / "mnt" / "AriaNG Downloads")
+    (world.payloads / "mnt" / "AriaNG Downloads").mkdir(parents=True)
+    unchanged = await _move_download_folder(http, old)
+    assert "delivery_profiles_outside_download_folder" not in unchanged      # the folder did not move
+    moved = await _move_download_folder(http, new)
+    assert moved["delivery_profiles_outside_download_folder"] == ["tv", "movies"]
+    assert [p.local_root for p in config.load_settings().external_delivery.profiles] == [old, old]   # nothing rewritten
+
+    catalog = await _catalog(http)
+    tv_before = next(p for p in catalog["profiles"] if p["id"] == "tv")
+    edited = [({**p, "local_root": new, "import_root": "/Volumes/SABnzbdDATA/AriaNG Downloads"}
+               if p["id"] == "movies" else p) for p in catalog["profiles"]]
+    saved = await _write(http, catalog, edited)
+    assert saved.status_code == 200, saved.text
+    after = await _catalog(http)
+    # Carried as it was: equal as a profile (a write keeps lists in their
+    # canonical order), its paths byte for byte.
+    tv_after = next(p for p in after["profiles"] if p["id"] == "tv")
+    assert DeliveryProfile(**tv_after) == DeliveryProfile(**tv_before)
+    assert (tv_after["local_root"], tv_after["import_root"]) == (old, tv_before["import_root"])
+    stored = config.load_settings().external_delivery
+    assert stored.by_id("tv").local_root == old and stored.by_id("movies").local_root == new
+    assert stored.by_id("movies").import_root == "/Volumes/SABnzbdDATA/AriaNG Downloads"
+    assert config.get_settings().external_delivery == stored
+
+    fresh = {**after["profiles"][1], "id": "radarr-4k", "categories": ["movies-4k"], "local_root": new}
+    created = await _write(http, after, [*after["profiles"], fresh])
+    assert created.status_code == 200, created.text
+
+    # Moving the folder back over every root names nobody.
+    assert (await _move_download_folder(http, old))["delivery_profiles_outside_download_folder"] == []
+
+
+async def test_a_root_a_write_sets_outside_the_download_folder_is_refused_naming_it_and_nothing_changes(http, world):
+    old = str(world.payloads)
+    new = str(world.payloads / "moved")
+    (world.payloads / "moved").mkdir()
+    await _move_download_folder(http, new)
+    catalog = await _catalog(http)
+    before_file = config.load_settings().external_delivery
+    before_memory = config.get_settings().external_delivery
+
+    def refused(response, profile):
+        assert response.status_code == 422, response.text
+        assert response.json()["detail"] == {
+            "code": "invalid_profile", "profile": profile, "field": "local_root",
+            "message": f"Delivery profile '{profile}': its DP Download Path (local_root) must be the Download "
+                       f"Folder or beneath it"}
+
+    # Moving the stale profile to another outside path names IT, even though
+    # the same write also makes a valid change to the other profile.
+    refused(await _write(http, catalog, [
+        {**catalog["profiles"][0], "local_root": "/etc"},
+        {**catalog["profiles"][1], "local_root": new}]), "tv")
+    # A new profile outside, and a renamed profile keeping the old root, set new roots.
+    outside = {**catalog["profiles"][1], "id": "radarr-4k", "categories": ["movies-4k"], "local_root": old}
+    refused(await _write(http, catalog, [*catalog["profiles"], outside]), "radarr-4k")
+    renamed = {**catalog["profiles"][0], "id": "sonarr"}
+    refused(await _write(http, catalog, [renamed, catalog["profiles"][1]]), "sonarr")
+    # A profile left outside is carried only exactly as stored: widening it
+    # (another client, another category) or any other edit of it -- even with
+    # its root unchanged -- first needs its root moved inside.
+    tv = catalog["profiles"][0]
+    for edit in ({"clients": [*tv["clients"], http.token["client_id"] + "-other"]},
+                 {"categories": [*tv["categories"], "tv-extra"]}, {"retention_hours": 24}):
+        refused(await _write(http, catalog, [{**tv, **edit}, catalog["profiles"][1]]), "tv")
+    # Atomic: no partial change in the file, in memory or in the revision.
+    assert config.load_settings().external_delivery == before_file
+    assert config.get_settings().external_delivery == before_memory
+    assert (await _catalog(http)) == catalog
+    # A stale write is still refused first, whatever its roots.
+    assert (await _write(http, catalog, catalog["profiles"])).status_code == 200
+    stale = await _write(http, catalog, [{**catalog["profiles"][0], "retention_hours": 5}, catalog["profiles"][1]])
+    assert (stale.status_code, stale.json()["detail"]["code"]) == (409, "stale_revision")
+
+
+async def test_a_profile_left_outside_a_moved_download_folder_is_never_delivered(world):
+    """A stored root kept after the folder moved earns no exemption at delivery:
+    the completed job is refused for the operator with the reason, nothing is
+    advertised, and the same job delivers -- import paths translated -- once
+    the profile's root is inside the Download Folder again."""
+    from transfers.models import ResourceState, TransferRequest
+
+    parcel = world.provider.parcel("season", state=ResourceState.AVAILABLE,
+                                   files=[("one.bin", "Show/one.bin", 4)])
+    world.provider.responses.append(replace(parcel, observation=replace(
+        parcel.observation, request=TransferRequest("magnet", MAGNET))))
+    job, _ = await world.external.submit(world.clients.a, body("k-root"))
+    transfer_id = await transfer_of(job["id"])
+    settled = config.get_settings()
+    (world.payloads / "moved").mkdir()
+    config.apply_settings(settled.model_copy(update={"download_folder": str(world.payloads / "moved")}))
+    await complete(world, transfer_id)
+    blocked = await world.external.job(world.clients.a, job["id"])
+    assert (blocked["phase"], blocked["reason"], blocked["actionability"]) == (
+        "failed", "profile_root_outside_downloads", "operator")
+    delivery = await world.external.delivery(world.clients.a, job["id"])
+    assert delivery["state"] != "available" and delivery.get("files") is None
+    # Negative control: the same job, the folder back over the root.
+    config.apply_settings(settled)
+    done = await world.external.delivery(world.clients.a, job["id"])
+    assert done["state"] == "available" and [item["name"] for item in done["files"]] == ["one.bin"]
+    assert done["files"][0]["import_path"].startswith("/imports/tv/")

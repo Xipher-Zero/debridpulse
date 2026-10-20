@@ -131,7 +131,15 @@ it in Settings → Users & Access → **Integration Delivery Profiles**.
 - **Lost updates.** The PUT takes `{profiles, expected_revision}` and returns
   `409 stale_revision` on a lost update.
 - **Settings document.** The whole-settings `PUT /api/settings` carries the
-  catalog forward unchanged.
+  catalog forward unchanged. When it moves the Download Folder, its response
+  names, in `delivery_profiles_outside_download_folder`, every profile whose
+  `local_root` is now outside the folder; those profiles are not changed.
+- **Root confinement.** A PUT judges containment for every profile it creates
+  or changes in any way. A violation is `422 invalid_profile` naming the
+  `profile` and `field`. A profile carried exactly as stored is kept even if a
+  folder move left it outside, so editing another profile still works. Such a
+  profile cannot be edited (or widened) without moving its root inside, and is
+  never delivered to (`profile_root_outside_downloads`) until then.
 - **Profile in use.** A PUT that would take a profile away from jobs that still
   depend on it is refused with `409 profile_in_use`, giving per profile `id`,
   `change` and `affected_jobs`, plus the total. Nothing is changed. A dependent

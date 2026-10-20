@@ -679,6 +679,14 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
         await journal_configuration_change(previous, clean)
         data = _public_settings(clean, application.definitions)
         _with_option_availability(data["integrations"], application)
+        if clean.download_folder != previous.download_folder:
+            # The Download Folder moved: name every delivery profile whose
+            # local_root is now outside it. Nothing about them is changed --
+            # they stay as saved, and are not delivered to until moved.
+            from external.profiles import confined_to
+            data["delivery_profiles_outside_download_folder"] = [
+                profile.id for profile in clean.external_delivery.profiles
+                if not confined_to(clean.download_folder, profile.local_root)]
         data["ok"] = True
         return data
 

@@ -145,8 +145,9 @@ def _narrowing(before: DeliveryProfile, after: DeliveryProfile | None) -> tuple[
 @router.put("/external/profiles")
 async def put_external_profiles(body: ProfilesUpdate, application: ApplicationService = Depends(get_application)):
     """Replace the delivery profile catalog. A write based on a stale
-    revision is refused (409). A profile's ``local_root`` must be the
-    download folder or beneath it.
+    revision is refused (409). Every profile the write creates or changes
+    must have its ``local_root`` in the download folder or beneath it; a
+    profile carried exactly as stored is not re-judged here, only at delivery.
 
     A write that would take a profile away from jobs that still depend on it
     -- deleting it, moving its roots, or removing a client -- is refused
@@ -169,10 +170,23 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
             if current.external_delivery.revision != body.expected_revision:
                 raise HTTPException(409, {"code": "stale_revision", "revision": current.external_delivery.revision,
                                           "message": "The profile catalog changed; reload it and try again"})
+            # Containment is judged for every profile this write creates or
+            # changes in any way. Only a profile carried exactly as stored is
+            # not re-judged: a Download Folder change must not make every later
+            # catalog write fail on a profile nobody is editing. Such a profile
+            # is kept but never widened (an edit must first move its root) and
+            # stays undeliverable until moved: delivery re-judges containment
+            # every time (ExternalClients, ``profile_root_outside_downloads``).
+            stored = {profile.id: DeliveryProfile.model_validate(profile.model_dump())
+                      for profile in current.external_delivery.profiles}
             for profile in body.profiles:
+                if stored.get(profile.id) == profile:
+                    continue
                 if not confined_to(current.download_folder, profile.local_root):
-                    raise HTTPException(422, {"code": "invalid_profile", "profile": profile.id,
-                                              "message": "local_root must be the download folder or beneath it"})
+                    raise HTTPException(422, {
+                        "code": "invalid_profile", "profile": profile.id, "field": "local_root",
+                        "message": f"Delivery profile '{profile.id}': its DP Download Path (local_root) must be "
+                                   f"the Download Folder or beneath it"})
             try:
                 catalog = ExternalDeliverySettings(profiles=body.profiles,
                                                    revision=current.external_delivery.revision + 1)

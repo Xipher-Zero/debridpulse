@@ -5612,6 +5612,16 @@
     const result = await request('PUT', '/settings',
       {...settingsDocument(canonical), clear_secrets: clears, ...overrides}, 15000);
     syncGlobalSettings(result);
+    // A moved Download Folder leaves these delivery profiles outside it: they
+    // are kept as saved and not delivered to until their DP Download Path moves.
+    const stranded = Array.isArray(result?.delivery_profiles_outside_download_folder)
+      ? result.delivery_profiles_outside_download_folder.map(text).filter(Boolean) : [];
+    if (stranded.length) {
+      const one = stranded.length === 1;
+      notify(`Download Folder saved. Delivery profile${one ? '' : 's'} ${stranded.join(', ')} `
+        + `${one ? 'has its' : 'have their'} DP Download Path outside it and will receive no deliveries `
+        + `until ${one ? 'that path is' : 'those paths are'} moved inside the Download Folder.`, 'warn');
+    }
     return result;
   }
 

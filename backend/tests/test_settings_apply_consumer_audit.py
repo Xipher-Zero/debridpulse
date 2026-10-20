@@ -184,3 +184,15 @@ def test_the_persistence_owner_still_exposes_only_the_two_boundaries():
     assert PERSISTENCE.count("document.addEventListener('focusout'") == 1
     assert PERSISTENCE.count("document.addEventListener('change'") == 1
     assert "DPMaintenancePersistence" not in RUNTIME
+
+
+def test_the_one_settings_writer_warns_when_a_moved_download_folder_leaves_profiles_outside():
+    """The server names the delivery profiles a Download Folder move left
+    outside it (POST-AUDIT-DP-ROOT); the one whole-settings writer shows those
+    names as a warning, from the server's own list, after the save it reports."""
+    writer = block("async function writeSettingsDocument(", "/* Proof of what a successful Test")
+    assert "result?.delivery_profiles_outside_download_folder" in writer
+    assert writer.index("syncGlobalSettings(result);") < writer.index("delivery_profiles_outside_download_folder")
+    warning = writer[writer.index("if (stranded.length) {"):]
+    assert "stranded.join(', ')" in warning and "DP Download Path" in warning
+    assert "'warn');" in warning
