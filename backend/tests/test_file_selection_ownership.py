@@ -42,9 +42,9 @@ async def lab(tmp_path, monkeypatch):
     import main
 
     await account_database(tmp_path, monkeypatch)
-    user_a = await accounts.create_local_account("usera", "pw-a", role=Role.USER)
-    user_b = await accounts.create_local_account("userb", "pw-b", role=Role.USER)
-    reader = await accounts.create_local_account("reader", "pw-r", role=Role.READONLY)
+    user_a = await accounts.create_local_account("usera", "password-a", role=Role.USER)
+    user_b = await accounts.create_local_account("userb", "password-b", role=Role.USER)
+    reader = await accounts.create_local_account("reader", "password-r", role=Role.READONLY)
     repository = TransferRepository()
     registry = IntegrationRegistry()
     provider = ParcelProvider(file_manifest=True)

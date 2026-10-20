@@ -29,6 +29,7 @@ restored state would leave no usable Admin (``restored_state_has_usable_admin``)
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -482,8 +483,25 @@ def _not_self(actor_id: str, account_id: str) -> None:
         raise AccountRefused("An account cannot make this change to itself")
 
 
-async def _set_password_row(db, account_id: str, username: str | None, password: str | None) -> None:
-    """Create or replace an account's one local credential row."""
+# A password set from now on -- created, changed by its account or reset by an
+# Admin -- is at least this long. A stored shorter one still signs in.
+MIN_NEW_PASSWORD_LENGTH = 8
+
+
+async def _new_verifier(password: str | None) -> str | None:
+    """The verifier for a password being set now, or ``None`` when none is:
+    the one place the new-password rule is enforced, hashed off the event
+    loop and before any write transaction opens."""
+    if not password:
+        return None
+    if len(password) < MIN_NEW_PASSWORD_LENGTH:
+        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def _set_password_row(db, account_id: str, username: str | None, verifier: str | None) -> None:
+    """Create or replace an account's one local credential row; ``verifier``
+    is a prepared ``_new_verifier`` (``None`` keeps the stored one)."""
     existing = await db.fetchone(
         "SELECT username, password_hash FROM account_local_credentials WHERE account_id=?", (account_id,),
     )
@@ -493,7 +511,7 @@ async def _set_password_row(db, account_id: str, username: str | None, password:
     owner = await db.fetchone("SELECT account_id FROM account_local_credentials WHERE username=?", (name,))
     if owner is not None and owner["account_id"] != account_id:
         raise AccountRefused("That username belongs to another account")
-    verifier = hash_password(password) if password else (existing["password_hash"] if existing else "")
+    verifier = verifier or (existing["password_hash"] if existing else "")
     await db.execute(
         "INSERT INTO account_local_credentials(account_id,username,password_hash,updated_at) VALUES(?,?,?,?) "
         "ON CONFLICT(account_id) DO UPDATE SET username=excluded.username, "
@@ -650,6 +668,7 @@ async def set_own_local_credential(
     authentication configuration lock (the Authentication settings mutation
     path)."""
     touched = [str(account_id)]
+    verifier = None if clear else await _new_verifier(password)
     async with _mutation(touched, settings, persist) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
@@ -672,7 +691,7 @@ async def set_own_local_credential(
                 raise AccountRefused("A username is required while a password is stored")
             await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
         else:
-            await _set_password_row(db, account.id, username, password)
+            await _set_password_row(db, account.id, username, verifier)
 
 
 async def local_credential_status(account_id: str) -> tuple[str, bool]:
@@ -728,13 +747,14 @@ async def create_local_account(username: str, password: str, *, role, display_na
     if role not in HUMAN_ROLES:
         raise AccountRefused("Local accounts hold a human role")
     account_id = str(uuid.uuid4())
+    verifier = await _new_verifier(password)
     async with _locked_mutation([]) as db:
         now = _now()
         await db.execute(
             "INSERT INTO accounts(id,role,origin,display_name,created_at,updated_at) VALUES(?,?,?,?,?,?)",
             (account_id, role.value, "local", str(display_name or username).strip()[:256], now, now),
         )
-        await _set_password_row(db, account_id, username, password)
+        await _set_password_row(db, account_id, username, verifier)
     return await get_account(account_id)
 
 
@@ -887,13 +907,17 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
 async def reset_password(actor_id: str, account_id: str, password: str, *, username: str | None = None) -> None:
     """An Admin sets or resets another account's local credential."""
     _not_self(actor_id, account_id)
+    known = await get_account(account_id)
+    if known is not None and known.role is Role.INTEGRATION:
+        raise AccountRefused("Integration accounts have no password")
+    if not password:
+        raise AccountRefused("A password is required")
+    verifier = await _new_verifier(password)
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
             raise AccountRefused("Integration accounts have no password")
-        if not password:
-            raise AccountRefused("A password is required")
-        await _set_password_row(db, account.id, username, password)
+        await _set_password_row(db, account.id, username, verifier)
 
 
 async def set_display_name(account_id: str, display_name: str) -> None:
@@ -1025,19 +1049,52 @@ async def requester_identities(account_ids, token_ids) -> tuple[dict[str, dict],
     return people, labels
 
 
-async def change_own_password(account_id: str, current_password: str, new_password: str) -> None:
-    """A signed-in account replaces its own password, proving the current one."""
-    from auth.passwords import verify_password
+async def change_own_password(account_id: str, current_password: str, new_password: str, *,
+                              peer: str = "unknown") -> None:
+    """A signed-in account replaces its own password, proving the current one.
+
+    The proof is a sign-in attempt and takes the sign-in path's own measures:
+    the transport peer's admission and failure throttle (failures attributed
+    to this account's username) and the Argon2 verification off the event
+    loop, outside the authentication lock and any write transaction. Under
+    the lock the stored credential must still be the one just proven."""
+    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
+    from auth.passwords import verify_password_candidate_async
+    from auth.throttle import password_failure_throttle
 
     if not new_password:
         raise AccountRefused("A password is required")
+    if len(new_password) < MIN_NEW_PASSWORD_LENGTH:
+        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+    # Admission covers the proof only: the change itself is re-checked under
+    # the lock, so waiting for the lock never holds a sign-in slot.
+    if not password_attempt_admission.acquire(peer):
+        raise PasswordAuthenticationBusy
+    try:
+        delay = password_failure_throttle.delay_for(peer)
+        if delay:
+            await asyncio.sleep(delay)
+        account = await get_account(account_id)
+        found = await local_credential(account.username) if account is not None and account.username else None
+        proven = found[1] if found is not None and found[0].id == str(account_id) else ""
+        identity = account.username if account is not None else str(account_id)
+        verified = await verify_password_candidate_async(proven, str(current_password or ""),
+                                                         use_configured_hash=bool(proven))
+    finally:
+        password_attempt_admission.release(peer)
+    if not verified:
+        password_failure_throttle.record_failure(peer, identity)
+        raise AccountRefused("The current password is not correct")
+    verifier = await _new_verifier(new_password)
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         row = await db.fetchone(
             "SELECT password_hash FROM account_local_credentials WHERE account_id=?", (account.id,))
-        if row is None or not verify_password(row["password_hash"], current_password):
-            raise AccountRefused("The current password is not correct")
-        await _set_password_row(db, account.id, None, new_password)
+        if row is None or not secrets.compare_digest(password_credential_version(row["password_hash"]),
+                                                     password_credential_version(proven)):
+            raise AccountRefused("The password was changed meanwhile; try again")
+        await _set_password_row(db, account.id, None, verifier)
+    password_failure_throttle.record_success(peer, identity)
 
 
 # ── Integration API tokens ──────────────────────────────────────────────────

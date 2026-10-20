@@ -283,7 +283,7 @@ async def test_legacy_demand_belongs_to_nobody_and_keeps_its_transfer(core):
 async def test_disabling_an_account_withdraws_its_demand_atomically_and_the_next_cycle_settles_it(core, monkeypatch):
     repository, engine, _application = core
     monkeypatch.setattr(config, "_settings", config.AppSettings())
-    user = await accounts.create_local_account("worker", "secret", role=Role.USER)
+    user = await accounts.create_local_account("worker", "secret-pw", role=Role.USER)
     transfer_id, _demand = await _submit(repository, user.id)
     token, _ = session_store.create(Principal.password_session(user), lifetime_seconds=3600)
 

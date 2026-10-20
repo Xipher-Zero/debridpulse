@@ -105,6 +105,21 @@ async def verify_local_credentials(
         return None
 
     peer = peer_key(request)
+    candidate_user = str(provided_user or "")
+    candidate_password = str(provided_password or "")
+    # A Basic client presenting exactly the credential already proven against
+    # this stored verifier needs no Argon2 work, so it takes no admission slot:
+    # peers whose attempts fail cannot crowd it out. The stored verifier is
+    # read for that only while the cache holds a proven credential, and that
+    # read serves the cache hit alone; anything else -- a wrong password
+    # included -- is admitted and throttled first, and reads the credential
+    # afresh there.
+    if allow_basic_success_cache and candidate_user and basic_verification_cache.size:
+        cached = await local_credential(candidate_user)
+        if cached is not None and basic_verification_cache.contains(cached[0].username, candidate_password, cached[1]):
+            password_failure_throttle.record_success(peer, candidate_user)
+            return cached[0]
+
     if not password_attempt_admission.acquire(peer):
         raise PasswordAuthenticationBusy
     try:
@@ -112,31 +127,20 @@ async def verify_local_credentials(
         if delay:
             await asyncio.sleep(delay)
 
-        candidate_user = str(provided_user or "")
-        candidate_password = str(provided_password or "")
         found = await local_credential(candidate_user) if candidate_user else None
         account, password_hash = found if found is not None else (None, "")
 
-        verified = False
-        if account is not None and allow_basic_success_cache:
-            verified = basic_verification_cache.contains(
+        verified = await verify_password_candidate_async(
+            password_hash,
+            candidate_password,
+            use_configured_hash=account is not None,
+        )
+        if verified and allow_basic_success_cache:
+            basic_verification_cache.remember(
                 account.username,
                 candidate_password,
                 password_hash,
             )
-
-        if not verified:
-            verified = await verify_password_candidate_async(
-                password_hash,
-                candidate_password,
-                use_configured_hash=account is not None,
-            )
-            if verified and allow_basic_success_cache:
-                basic_verification_cache.remember(
-                    account.username,
-                    candidate_password,
-                    password_hash,
-                )
 
         if verified:
             password_failure_throttle.record_success(peer, candidate_user)

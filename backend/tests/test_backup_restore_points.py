@@ -992,7 +992,7 @@ async def test_the_pinned_pre_account_backup_restores_its_operator_as_the_defaul
 
     app, client, _composed, _calls = served
     live = backup.schema_version(database.DB_PATH)
-    replaced = await accounts.create_local_account("replaced-admin", "secret", role="admin")
+    replaced = await accounts.create_local_account("replaced-admin", "secret-pw", role="admin")
     token, _ = session_store.create(Principal.password_session(replaced), lifetime_seconds=3600)
     added = await client.post("/api/admin/backups", content=PRE_ACCOUNT_BACKUP.read_bytes(),
                               headers={"Content-Type": "application/zip"})

@@ -209,7 +209,7 @@ async def test_signing_in_as_your_own_account_does_not_reset_the_peers_guesses(t
     from auth.throttle import password_failure_throttle
 
     await account_database(tmp_path, monkeypatch)
-    await accounts.create_local_account("alice", "alicepw", role=Role.USER)
+    await accounts.create_local_account("alice", "alice-password", role=Role.USER)
     cfg = SimpleNamespace(auth_password_enabled=True)
     request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.10"))
     password_failure_throttle.clear()
@@ -218,7 +218,7 @@ async def test_signing_in_as_your_own_account_does_not_reset_the_peers_guesses(t
             assert await verify_local_credentials(request, "admin", "guess", settings=cfg) is None
         held = password_failure_throttle.delay_for("192.0.2.10")
         assert held > 0
-        assert (await verify_local_credentials(request, "alice", "alicepw", settings=cfg)).username == "alice"
+        assert (await verify_local_credentials(request, "alice", "alice-password", settings=cfg)).username == "alice"
         assert password_failure_throttle.delay_for("192.0.2.10") == held
     finally:
         password_failure_throttle.clear()

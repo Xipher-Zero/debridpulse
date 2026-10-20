@@ -189,7 +189,7 @@ async def test_my_account_reads_and_edits_the_sanitized_profile(served, monkeypa
 # ── an account's own, self-entered email (ACL live UX Batch 2) ──────────────
 
 async def test_an_account_without_an_email_records_one_once_unverified_and_self_entered(accounts_db):
-    person = await accounts.create_local_account("selfie", "secret", role=Role.USER)
+    person = await accounts.create_local_account("selfie", "secret-pw", role=Role.USER)
     assert await accounts.set_own_email(person.id, "  Me@Example.COM ") == "Me@example.com"
     stored = await accounts.get_account(person.id)
     assert (stored.email, stored.email_verified, stored.email_verified_known, stored.email_self_entered) == (
@@ -203,7 +203,7 @@ async def test_an_account_without_an_email_records_one_once_unverified_and_self_
         await accounts.set_own_email(person.id, "other@example.com")
     assert (await accounts.get_account(person.id)).email == "Me@example.com"
 
-    blank = await accounts.create_local_account("blank", "secret", role=Role.USER)
+    blank = await accounts.create_local_account("blank", "secret-pw", role=Role.USER)
     for invalid in ("", "   ", "no-at-sign", "a@b", "two@@example.com", "sp ace@example.com", "x@-bad-.com",
                     "<x>@example.com", "x@example.com\nBcc: y@example.com", "a" * 65 + "@example.com",
                     "x@" + "a" * 250 + ".com"):
@@ -216,7 +216,7 @@ async def test_an_account_without_an_email_records_one_once_unverified_and_self_
 
 
 async def test_concurrent_first_emails_record_exactly_one_and_refuse_the_other(accounts_db):
-    person = await accounts.create_local_account("racer", "secret", role=Role.USER)
+    person = await accounts.create_local_account("racer", "secret-pw", role=Role.USER)
     results = await asyncio.gather(accounts.set_own_email(person.id, "first@example.com"),
                                    accounts.set_own_email(person.id, "second@example.com"), return_exceptions=True)
     won = [item for item in results if isinstance(item, str)]
@@ -251,8 +251,8 @@ async def test_a_self_entered_email_is_never_verified_replaced_or_used_as_identi
 
 async def test_my_account_records_its_own_email_once_and_only_its_own(served):
     client, as_ = served
-    alice = await accounts.create_local_account("alice", "secret", role=Role.USER)
-    bob = await accounts.create_local_account("bob", "secret", role=Role.USER)
+    alice = await accounts.create_local_account("alice", "secret-pw", role=Role.USER)
+    bob = await accounts.create_local_account("bob", "secret-pw", role=Role.USER)
     token, _ = session_store.create(Principal.password_session(alice), lifetime_seconds=3600)
     own = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}
 
@@ -278,7 +278,7 @@ async def test_my_account_records_its_own_email_once_and_only_its_own(served):
 # ── correcting a self-entered email (ACL UI follow-up, Contract D) ──────────
 
 async def test_a_self_entered_email_is_corrected_only_from_the_address_the_form_showed(accounts_db):
-    person = await accounts.create_local_account("typo", "secret", role=Role.USER)
+    person = await accounts.create_local_account("typo", "secret-pw", role=Role.USER)
     await accounts.set_own_email(person.id, "typo@exmaple.com")
     assert await accounts.set_own_email(person.id, " Typo@Example.COM ", expected="typo@exmaple.com") == "Typo@example.com"
     stored = await accounts.get_account(person.id)
@@ -303,7 +303,7 @@ async def test_concurrent_corrections_from_one_form_record_exactly_one(accounts_
     # The process-wide lock binds to the loop it is first contended in; give
     # this test's loop its own.
     monkeypatch.setattr(transitions, "authentication_configuration_lock", asyncio.Lock())
-    person = await accounts.create_local_account("twice", "secret", role=Role.USER)
+    person = await accounts.create_local_account("twice", "secret-pw", role=Role.USER)
     await accounts.set_own_email(person.id, "start@example.com")
     results = await asyncio.gather(
         accounts.set_own_email(person.id, "first@example.com", expected="start@example.com"),
@@ -342,8 +342,8 @@ async def test_a_corrected_self_entered_email_identifies_links_and_admits_nothin
 
 async def test_my_account_corrects_only_its_own_self_entered_email(served):
     client, as_ = served
-    carol = await accounts.create_local_account("carol", "secret", role=Role.USER)
-    dave = await accounts.create_local_account("dave", "secret", role=Role.USER)
+    carol = await accounts.create_local_account("carol", "secret-pw", role=Role.USER)
+    dave = await accounts.create_local_account("dave", "secret-pw", role=Role.USER)
     await accounts.set_own_email(dave.id, "dave@example.com")
     token, _ = session_store.create(Principal.password_session(carol), lifetime_seconds=3600)
     own = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}

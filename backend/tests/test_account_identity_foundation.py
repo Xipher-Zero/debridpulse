@@ -137,7 +137,7 @@ async def test_concurrent_demotion_of_the_last_two_usable_admins_keeps_one(insta
 
 @pytest.mark.asyncio
 async def test_disabling_an_account_revokes_its_sessions_and_refuses_its_password(installation):
-    holder = await accounts.create_local_account("holder", "secret", role=Role.ADMIN)
+    holder = await accounts.create_local_account("holder", "secret-pw", role=Role.ADMIN)
     other = await accounts.create_local_account("other", "other-secret", role=Role.ADMIN)
     token, _ = session_store.create(Principal.password_session(other), lifetime_seconds=3600)
     assert await _basic_status("other", "other-secret") == 204
@@ -157,7 +157,7 @@ async def test_disabling_an_account_revokes_its_sessions_and_refuses_its_passwor
 
 @pytest.mark.asyncio
 async def test_a_merge_moves_live_identities_and_redirects_history_without_rewriting_it(installation):
-    target = await accounts.create_local_account("target", "secret", role=Role.ADMIN)
+    target = await accounts.create_local_account("target", "secret-pw", role=Role.ADMIN)
     duplicate = await accounts.resolve_oidc(ISSUER, "user-1", {"email": "t@example.com", "email_verified": True},
                                             default_role="user")
 
@@ -169,7 +169,7 @@ async def test_a_merge_moves_live_identities_and_redirects_history_without_rewri
     assert tombstone is not None and not tombstone.active and tombstone.merged_into == target.id
     assert (await accounts.get_account(target.id)).role is Role.ADMIN
 
-    holder = await accounts.create_local_account("holder", "secret", role=Role.USER)
+    holder = await accounts.create_local_account("holder", "secret-pw", role=Role.USER)
     with pytest.raises(AccountRefused):
         await accounts.merge_accounts(DEFAULT_ADMIN_ID, holder.id, target.id)  # two local credentials
     with pytest.raises(AccountRefused):
@@ -213,7 +213,7 @@ async def test_the_configuration_file_credential_recovers_the_default_admin(inst
     assert config.legacy_credential_input() is None
 
     # A recovery username owned by another account is refused, not reassigned.
-    await accounts.create_local_account("someone", "secret", role=Role.USER)
+    await accounts.create_local_account("someone", "secret-pw", role=Role.USER)
     with pytest.raises(RuntimeError):
         await accounts.import_legacy_credential("someone", hash_password("x"))
 

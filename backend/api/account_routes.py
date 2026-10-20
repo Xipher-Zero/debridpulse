@@ -342,8 +342,14 @@ async def change_own_password(body: OwnPassword, request: Request):
     principal = request.state.principal
     if not principal.authenticated or principal.role == Role.INTEGRATION.value:
         raise HTTPException(status_code=403, detail="Forbidden")
+    from auth.manager import PasswordAuthenticationBusy, peer_key
+
     try:
-        await accounts.change_own_password(principal.account_id, body.current_password, body.new_password)
+        await accounts.change_own_password(principal.account_id, body.current_password, body.new_password,
+                                           peer=peer_key(request))
+    except PasswordAuthenticationBusy:
+        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
+                            "Try again shortly.", headers={"Retry-After": "2"}) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}

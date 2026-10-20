@@ -234,7 +234,7 @@ async def test_wipe_keeps_every_account_credential_and_oidc_binding(db_path):
     from auth import accounts
 
     await _seed_canonical_state()
-    local = await accounts.create_local_account("operator", "secret", role=accounts.Role.ADMIN)
+    local = await accounts.create_local_account("operator", "secret-pw", role=accounts.Role.ADMIN)
     linked = await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="readonly")
     await accounts.create_token(accounts.DEFAULT_INTEGRATION_ID, "scraper")  # kept with its account
     from transfers.models import SubmissionDemand, TransferRequest
