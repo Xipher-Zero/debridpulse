@@ -196,8 +196,10 @@
   // The Details Files rows are rendered here and only here: app.js provides the
   // table shell and asks this owner for the rows (single render, from the same
   // transfer payload it just loaded), and refreshes below re-render through the
-  // same function. Provider names come from the cached canonical settings.
-  function rows(files) {
+  // same function. Provider names come from the cached canonical settings. A
+  // file's root-provider launcher is the root-provider owner's markup, placed
+  // here so every re-render keeps it.
+  function rows(files, detail) {
     try { providerNames = integrationNames(settingsData); } catch (_) { /* names stay as last known */ }
     return files.map(function (file) {
       const key = rowKey(file);
@@ -212,10 +214,14 @@
       const main = '<tr class="dp-detail-file-row" data-dp-row-id="' + html(key) + '"' +
         (artifactId ? ' data-dp-artifact-id="' + html(artifactId) + '"' : '') + '>' +
         '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + html(file.filename) + '</span>' +
-        disclosure(file) + '</div>' + originSubtitle(file) + blockedPresentation(file) + '</td>' +
+        disclosure(file) + rootProvider(detail, file) + '</div>' + originSubtitle(file) + blockedPresentation(file) + '</td>' +
         '<td class="sz">' + fileSize(file.size_bytes) + '</td><td' + reason + '>' + fileStatus(file) + '</td></tr>';
       return open ? main + candidateRow(file) : main;
     }).join('');
+  }
+
+  function rootProvider(detail, file) {
+    return window.DPRootProvider ? window.DPRootProvider.artifactBadgeMarkup(detail, file) : '';
   }
 
   function updateDisclosure(control, file, open) {
@@ -356,7 +362,7 @@
       const file = displayed.find(function (item) { return rowKey(item) === key; });
       if (!valid.has(key) || !file || Number(file.candidate_count || 0) <= 1) expandedRows.delete(key);
     });
-    tbody.innerHTML = rows(displayed);
+    tbody.innerHTML = rows(displayed, detail);
     bindDisclosures(displayed);
     if (focusedRowId) {
       const restored = tbody.querySelector(

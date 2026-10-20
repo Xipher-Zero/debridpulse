@@ -1,6 +1,6 @@
-/* DebridPulse 1.0.13 torrent root provider: the one live badge, picker and
- * switch action for Transfer Details (Files header), Recent Activity and
- * Downloads.
+/* DebridPulse 1.0.13 root provider: the one live badge, picker and switch
+ * action for Transfer Details (Files header and each file), Recent Activity
+ * and Downloads.
  *
  * The provider shown is the backend's committed ROOT route
  * (``route_provider_id``) -- a live route-state indicator, never an origin, a
@@ -13,6 +13,15 @@
  * the provider cannot take the root now, or its capacity is not available.
  * Nothing here is shown as current until the backend committed it; on a
  * refusal the badge stays on the provider it was on.
+ *
+ * Any other transfer switches per ROOT (``route_switch_scope``): its list
+ * badge keeps the normal active-provider label; with one root (``root``) it
+ * opens that root's picker, with several (``artifacts``) it opens Details and
+ * focuses the first file launcher -- it never switches by itself. Each file
+ * whose producing root may move (``route_root``) carries its own launcher,
+ * naming that root's provider; its picker reads the status for that file
+ * (``?artifact_id=``) and its switch names the file and the root the operator
+ * saw (``artifact_id``, ``expected_root_id``).
  *
  * Interaction follows the existing candidate chooser: a non-modal dialog
  * anchored to its launcher, Escape / click-away to close, arrow keys between
@@ -53,6 +62,7 @@
   let menuSurface = null;
   let menuTransferId = null;
   let menuStatus = null;
+  let menuArtifactId = null;
   let menuRefreshing = false;
   let detailTransferId = null;
   // transferId -> target provider label, while that transfer's one switch
@@ -76,7 +86,12 @@
 
   // A torrent root's badge: interactive only when a real alternative exists.
   // It always names the COMMITTED route; a switch in flight is said beside it.
-  function badgeMarkup(item, surface) {
+  // Any other transfer's (``route_switch_scope``) names ``provider``, the
+  // list's ordinary active-provider presentation.
+  function badgeMarkup(item, surface, provider) {
+    if (item && !Object.prototype.hasOwnProperty.call(item, 'route_provider_id') && item.route_switch_scope) {
+      return sourceBadgeMarkup(item, surface, provider || {});
+    }
     const label = providerLabel(item && item.route_provider_name, item && item.route_provider_id);
     const known = Boolean(item && item.route_provider_id);
     const identity = identityOf(known ? item.route_provider_id : '');
@@ -90,6 +105,29 @@
     return launcherMarkup(item.id, item.route_provider_id, label, surface);
   }
 
+  function sourceBadgeMarkup(item, surface, provider) {
+    const state = String(provider.state || 'pending');
+    const providerId = state === 'known' ? String(provider.id || '') : '';
+    const label = String(provider.label || 'Pending');
+    if (!(item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
+      const identity = identityOf(providerId);
+      return '<span class="dp-provider-chip" data-provider-state="' + esc(state) + '"' + identity.attributes + '>' +
+        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id);
+    }
+    return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope});
+  }
+
+  // One file's launcher in Details: the provider of the ROOT that produced
+  // its selected source, offered only where that root may move now.
+  function artifactBadgeMarkup(detail, file) {
+    const route = file && file.route_root;
+    const artifactId = file && (file.artifact_id != null ? file.artifact_id : file.id);
+    if (!route || !route.switch_available || artifactId == null || !detail ||
+        !window.debridPulseAuth?.mayDestroy(detail)) return '';
+    return launcherMarkup(detail.id, route.provider_id, providerLabel(route.provider_name, route.provider_id),
+      'details', {artifactId: artifactId});
+  }
+
   // The committed provider's badge identity, from the one identity owner.
   function identityOf(providerId) {
     return window.DPTransferSourcePresentation.providerBadgeIdentity(providerId);
@@ -101,15 +139,19 @@
       'data-dp-switching-transfer="' + esc(transferId) + '">' + esc('Switching to ' + target + '…') + '</span>';
   }
 
-  function launcherMarkup(transferId, providerId, label, surface) {
+  function launcherMarkup(transferId, providerId, label, surface, subject) {
     const busy = switching.has(Number(transferId));
     const identity = identityOf(providerId);
+    const scope = subject && subject.scope === 'artifacts';
+    const artifact = subject && subject.artifactId != null ? subject.artifactId : null;
     return '<button type="button" class="dp-provider-chip dp-root-provider-launcher" ' + TRIGGER_ATTR + ' ' +
       'data-dp-transfer-id="' + esc(transferId) + '" data-dp-provider-id="' + esc(providerId) + '" ' +
+      (scope ? 'data-dp-scope="artifacts" ' : '') +
+      (artifact != null ? 'data-dp-artifact-id="' + esc(artifact) + '" ' : '') +
       'data-dp-surface="' + esc(surface || '') + '" data-provider-state="known"' + identity.attributes + ' ' +
       'aria-haspopup="dialog" aria-expanded="false"' + (busy ? ' aria-disabled="true"' : '') + ' ' +
-      'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' :
-        '. Choose another provider')) + '">' + identity.glyph +
+      'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' : scope ?
+        '. Choose a provider for each file in Details' : '. Choose another provider')) + '">' + identity.glyph +
       '<span class="dp-root-provider-name">' + esc(label) + '</span>' +
       '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>' + switchingMarkup(transferId);
   }
@@ -133,8 +175,9 @@
     });
   }
 
-  async function readStatus(transferId) {
-    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route');
+  async function readStatus(transferId, artifactId) {
+    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route' +
+      (artifactId != null ? '?artifact_id=' + encodeURIComponent(artifactId) : ''));
     if (!response.ok) throw new Error('Provider status is unavailable.');
     return response.json();
   }
@@ -246,11 +289,12 @@
     closeMenu();
     menuTrigger = trigger || null;
     menuSurface = trigger ? trigger.getAttribute('data-dp-surface') : null;
+    menuArtifactId = trigger ? trigger.getAttribute('data-dp-artifact-id') : null;
     menuTransferId = transferId;
     if (menuTrigger) menuTrigger.setAttribute('aria-expanded', 'true');
     let status;
     try {
-      status = await readStatus(transferId);
+      status = await readStatus(transferId, menuArtifactId);
     } catch (error) {
       closeMenu({focusTrigger: true});
       toast('Provider status is unavailable right now.', 'error');
@@ -275,6 +319,7 @@
     menuTrigger = null;
     menuSurface = null;
     menuTransferId = null;
+    menuArtifactId = null;
     menuStatus = null;
     if (options && options.focusTrigger && trigger && trigger.isConnected) trigger.focus({preventScroll: true});
   }
@@ -294,12 +339,16 @@
     return 'Nothing was switched.';
   }
 
-  // THE one switch action every surface uses.
-  async function switchProvider(transferId, providerId, expectedProviderId) {
+  // THE one switch action every surface uses. ``subject`` names the file and
+  // the root the operator saw, for a root that is not a torrent's one root.
+  async function switchProvider(transferId, providerId, expectedProviderId, subject) {
+    const body = {provider_id: providerId, expected_provider_id: expectedProviderId};
+    if (subject && subject.artifactId != null) body.artifact_id = Number(subject.artifactId);
+    if (subject && subject.rootId) body.expected_root_id = String(subject.rootId);
     const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({provider_id: providerId, expected_provider_id: expectedProviderId}),
+      body: JSON.stringify(body),
     });
     const payload = await response.json().catch(function () { return {}; });
     if (!response.ok) {
@@ -325,6 +374,7 @@
     if (!menuStatus || menuTransferId == null || switching.has(Number(menuTransferId))) return;
     const transferId = Number(menuTransferId);
     const status = menuStatus;
+    const subject = {artifactId: menuArtifactId, rootId: status.root_id};
     const current = status.current_provider_id;
     const currentName = providerLabel(status.current_provider_name, current);
     const target = (status.providers || []).find(function (item) { return item.provider_id === providerId; });
@@ -334,7 +384,7 @@
     closeMenu({focusTrigger: true});
     showSwitching(transferId);
     try {
-      await switchProvider(transferId, providerId, current);
+      await switchProvider(transferId, providerId, current, subject);
       toast('Switched provider to ' + targetName + '.', 'success');
     } catch (error) {
       toast({title: 'Could not switch provider; transfer remains on ' + currentName + '.',
@@ -379,11 +429,27 @@
     event.preventDefault();
     event.stopPropagation();
     const transferId = Number(trigger.getAttribute('data-dp-transfer-id'));
+    if (trigger.getAttribute('data-dp-scope') === 'artifacts') {
+      openFiles(transferId);
+      return;
+    }
     if (menuTrigger === trigger && menuEl && !menuEl.hidden) {
       closeMenu({focusTrigger: true});
       return;
     }
     open(transferId, trigger);
+  }
+
+  // Several roots: the list launcher opens Details, where each file names the
+  // root that produced it, and focuses the first file launcher. It never
+  // switches anything itself.
+  async function openFiles(transferId) {
+    closeMenu();
+    if (typeof window.showDetail !== 'function') return;
+    await window.showDetail(transferId);
+    const first = document.querySelector('#modal-body [' + TRIGGER_ATTR + '][data-dp-artifact-id]' +
+      ':not([aria-disabled="true"])');
+    if (first) first.focus();
   }
 
   function onDocumentPointerDown(event) {
@@ -401,7 +467,8 @@
     refreshOpenMenu();
     if (menuTrigger && menuTrigger.isConnected) return;
     const live = menuTransferId == null ? null : document.querySelector('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' +
-      CSS.escape(String(menuTransferId)) + '"][data-dp-surface="' + CSS.escape(String(menuSurface || '')) + '"]');
+      CSS.escape(String(menuTransferId)) + '"][data-dp-surface="' + CSS.escape(String(menuSurface || '')) + '"]' +
+      (menuArtifactId != null ? '[data-dp-artifact-id="' + CSS.escape(String(menuArtifactId)) + '"]' : ''));
     if (live) {
       menuTrigger = live;
       live.setAttribute('aria-expanded', 'true');
@@ -418,16 +485,17 @@
   async function refreshOpenMenu() {
     if (menuRefreshing || menuTransferId == null || switching.has(Number(menuTransferId))) return;
     const transferId = menuTransferId;
+    const artifactId = menuArtifactId;
     menuRefreshing = true;
     let status;
     try {
-      status = await readStatus(transferId);
+      status = await readStatus(transferId, artifactId);
     } catch (error) {
       return;
     } finally {
       menuRefreshing = false;
     }
-    if (menuTransferId !== transferId || !menuEl || menuEl.hidden) return;
+    if (menuTransferId !== transferId || menuArtifactId !== artifactId || !menuEl || menuEl.hidden) return;
     if (JSON.stringify(status) === JSON.stringify(menuStatus)) return;
     const focused = menuEl.contains(document.activeElement) && document.activeElement.closest('[data-dp-provider-status]');
     const focusedId = focused && focused.querySelector('[data-dp-provider-id]')
@@ -460,7 +528,8 @@
     window.addEventListener('scroll', positionMenu, {passive: true, capture: true});
   }
 
-  window.DPRootProvider = Object.freeze({badgeMarkup: badgeMarkup, open: open, switchProvider: switchProvider});
+  window.DPRootProvider = Object.freeze({badgeMarkup: badgeMarkup, artifactBadgeMarkup: artifactBadgeMarkup, open: open,
+    switchProvider: switchProvider});
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', install, {once: true});

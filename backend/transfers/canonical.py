@@ -1248,6 +1248,138 @@ class CanonicalOwnership:
         await db.execute("DELETE FROM canonical_candidate_origins WHERE binding_id=?", (source_binding_id,))
         await db.execute("DELETE FROM canonical_candidate_bindings WHERE id=?", (source_binding_id,))
 
+    async def replace_root_candidates(self, record: RequestRecord, candidates) -> str:
+        """Land a root request's re-resolution on the canonical artifacts its
+        earlier route supplied -- the end of an operator provider switch of one
+        root of a multi-source transfer -- in ONE transaction, modeled on
+        ``refresh_candidate`` and never on a rebuild of the artifact:
+
+        * every CURRENT binding (``candidate_order`` below the non-current
+          band) whose origins name ``record`` alone, from an attempt other
+          than the one that issued ``candidates``, is that root's replaced
+          contribution. Its artifact's candidate list takes ``candidates`` in
+          that binding's place (after the candidates of other sources that
+          came before it); every other source's candidate, binding, origin and
+          position is kept. The replaced binding keeps its row and every
+          origin as history in the non-current band (``_realign_current_
+          candidates``), each new candidate gets its own binding and origin;
+        * the selection is recomputed by candidate IDENTITY, never by index:
+          an artifact whose selected candidate was this root's selects the
+          root's first replacement and is queued again for the ordinary
+          planner (its writer was retired and detached by the switch; the
+          continuation plan of the next admission decides what material is
+          kept); any other artifact keeps exactly the candidate it selected;
+        * the root's own contributing row (a mirror standby) carries its new
+          candidates, and the request is ``resolved``.
+
+        A binding another source also supplies stays as it is, and a finished,
+        cancelled or duplicate artifact -- or any artifact of another transfer
+        (the switch's ownership boundary) -- is never touched. A replacement whose
+        reported size contradicts an affected artifact's known size
+        (``reported_sizes_compatible``, as a refresh decides) lands nowhere:
+        ``"size_mismatch"``, nothing changed, and the caller fails the root's
+        resolution through the ordinary request failure. ``"none"`` when
+        ``record`` supplies no current binding from an earlier attempt (an
+        ordinary first materialization or rebuild proceeds), ``"stale"`` when
+        the request is no longer the live root deciding, ``"conflict"`` when
+        its new attempt's provenance is not durable, else ``"landed"``."""
+        await self.initialize()
+        candidates = tuple(candidates)
+        if not candidates:
+            return "none"
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            metadata = []
+            for candidate in candidates:
+                meta = await self._origin_attempt(db, record.id, candidate)
+                if meta is None:
+                    await db.rollback()
+                    return "conflict"
+                metadata.append(meta)
+            issued = {attempt_id for attempt_id, _provider, _source in metadata}
+            bindings = await db.fetchall(
+                f"""SELECT b.id,b.canonical_artifact_id,b.candidate_id,b.candidate_order,
+                    (SELECT COUNT(DISTINCT s.request_id) FROM canonical_candidate_origins s
+                     WHERE s.binding_id=b.id) AS sources
+                    FROM canonical_candidate_bindings b
+                    JOIN download_files f ON f.id=b.canonical_artifact_id AND f.torrent_id=?
+                    WHERE b.candidate_order<=?
+                    AND EXISTS(SELECT 1 FROM canonical_candidate_origins o WHERE o.binding_id=b.id AND o.request_id=?
+                        AND o.resolution_attempt_id NOT IN ({",".join("?" * len(issued))}))
+                    ORDER BY b.canonical_artifact_id,b.candidate_order""",
+                (int(record.transfer_id), self._NON_CURRENT_ORDER, record.id, *sorted(issued)))
+            replaced: dict[int, set[str]] = {}
+            for binding in bindings:
+                if int(binding["sources"] or 0) == 1:
+                    replaced.setdefault(int(binding["canonical_artifact_id"]), set()).add(str(binding["candidate_id"]))
+            if not replaced:
+                await db.rollback()
+                return "none"
+            live = await db.fetchone(
+                """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                    WHERE r.id=? AND r.parent_id IS NULL AND r.state='materializing'
+                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled')""", (record.id,))
+            if not live:
+                await db.rollback()
+                return "stale"
+            holder = await db.fetchone("SELECT id,mirror_group_id FROM download_files WHERE request_id=?", (record.id,))
+            request_row = await db.fetchone("SELECT * FROM transfer_requests WHERE id=?", (record.id,))
+            landed, reselected = [], []
+            for artifact_id, old_ids in sorted(replaced.items()):
+                row = await db.fetchone(
+                    """SELECT f.* FROM download_files f WHERE f.id=? AND COALESCE(f.mirror_state,'')!='standby'
+                        AND f.status NOT IN ('completed','cancelled','duplicate')""", (artifact_id,))
+                if not row:
+                    continue
+                size = positive_size(row["size_bytes"])
+                if size and any(positive_size(item.expected_bytes)
+                                and not reported_sizes_compatible(size, item.expected_bytes) for item in candidates):
+                    await db.rollback()
+                    return "size_mismatch"
+                replacements = [replace(item, expected_bytes=size) if size else item for item in candidates]
+                current = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+                selected = int(row["selected_candidate"] or 0)
+                selected_id = str(current[selected].id) if 0 <= selected < len(current) else None
+                first = next((index for index, item in enumerate(current) if str(item.id) in old_ids), len(current))
+                kept = [item for item in current if str(item.id) not in old_ids]
+                known = {str(item.id) for item in kept}
+                fresh = [item for item in replacements if str(item.id) not in known]
+                before = sum(1 for item in current[:first] if str(item.id) not in old_ids)
+                updated = kept[:before] + fresh + kept[before:]
+                chosen = str(replacements[0].id) if selected_id in old_ids else selected_id
+                index = next((index for index, item in enumerate(updated) if str(item.id) == chosen), 0)
+                own = holder is not None and int(holder["id"]) == artifact_id
+                contributor = int(holder["id"]) if holder is not None else artifact_id
+                if holder is not None and not own and int(holder.get("mirror_group_id") or 0) == artifact_id:
+                    await db.execute("UPDATE download_files SET candidates=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                     (codec.dump(tuple(replacements)), holder["id"]))
+                order = await db.fetchone("SELECT COALESCE(MAX(candidate_order),0) AS n FROM canonical_candidate_bindings "
+                                          "WHERE canonical_artifact_id=?", (artifact_id,))
+                for offset, (candidate, (attempt_id, provider_id, source)) in enumerate(zip(replacements, metadata),
+                                                                                         start=1):
+                    await self._ensure_binding(db, artifact_id, int(row["torrent_id"]), candidate, CandidateOrigin(
+                        artifact_id, contributor, int(record.transfer_id), self._record(request_row), attempt_id,
+                        str(candidate.id), provider_id, source), int(order["n"] or 0) + offset)
+                moved = selected_id in old_ids
+                await db.execute(
+                    """UPDATE download_files SET candidates=?,selected_candidate=?,
+                        status=CASE WHEN ? AND execution_attempt_id IS NULL THEN 'queued' ELSE status END,
+                        normalized_error=CASE WHEN ? AND execution_attempt_id IS NULL THEN NULL ELSE normalized_error END,
+                        retry_at=CASE WHEN ? AND execution_attempt_id IS NULL THEN 0 ELSE retry_at END,
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (codec.dump(tuple(updated)), index, moved, moved, moved, artifact_id))
+                await self._realign_current_candidates(db, artifact_id)
+                landed.append(artifact_id)
+                if moved:
+                    reselected.append(artifact_id)
+            await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=? AND state='materializing'",
+                             (record.id,))
+            await journal(db, je.root_candidates_replaced(
+                transfer_id=int(record.transfer_id), request_id=record.id, attempt_id=metadata[0][0],
+                provider_id=metadata[0][1], artifact_ids=landed, reselected_ids=reselected))
+            await db.commit()
+        return "landed"
+
     async def refresh_candidate(self, artifact: Artifact, origin: CandidateOrigin,
                                 old_candidate: TransferCandidate, replacements) -> bool:
         await self.initialize()

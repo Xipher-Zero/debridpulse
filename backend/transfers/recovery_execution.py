@@ -24,6 +24,12 @@ class RecoveryTrigger(StrEnum):
     # collection owner's artifact can become canonical. Claimed under the SAME
     # exclusive fence as every other trigger; it resets nothing.
     COLLECTION_CONVERGENCE = "collection_convergence"
+    # An operator's provider switch of ONE root of a multi-source transfer
+    # (``transfers.manual_route_switch``) holds this exclusive claim on each
+    # artifact whose selected candidate that root alone produced, while it
+    # retires their writers and commits the root's new route. It resets
+    # nothing: the artifact's own recovery history stays as it was.
+    USER_ROUTE_SWITCH = "user_route_switch"
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,7 @@ _AUTHORITY = {
     # always reset the bounded no-progress streaks on a successful switch.
     RecoveryTrigger.USER_CANDIDATE_SWITCH: TriggerAuthority(reset_exhaustion=True, reset_bounded_streaks=True),
     RecoveryTrigger.COLLECTION_CONVERGENCE: TriggerAuthority(),
+    RecoveryTrigger.USER_ROUTE_SWITCH: TriggerAuthority(),
 }
 
 

@@ -27,6 +27,10 @@ class _ExplodingRepository:
             "Downloads collection must not invoke comprehensive presentation per row"
         )
 
+    async def _root_route_facts_by_root(self, _db, _transfer_ids):
+        # The page's one set-oriented route-facts read (no root here routes).
+        return {}
+
 
 class _FakeDb:
     def __init__(self, rows):

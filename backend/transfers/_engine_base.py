@@ -2562,6 +2562,26 @@ class TransferEngine:
     async def _observe_resource(self, record: RequestRecord):
         raise NotImplementedError("_observe_resource is implemented by transfers.engine.TransferEngine")
 
+    async def _land_root_replacement(self, record: RequestRecord, candidates) -> bool:
+        """A ROOT request that resolved again while candidates of its earlier
+        route are still bound on canonical artifacts -- one root of a
+        multi-source transfer whose provider an operator switched -- lands its
+        new candidates in exactly those bindings' place through the canonical
+        owner (``CanonicalOwnership.replace_root_candidates``), never by
+        rebuilding an artifact other sources also supply. Returns whether that
+        decision is made (the caller decides nothing else for ``record``);
+        ``False`` for every ordinary first materialization or rebuild. A
+        replacement whose size contradicts an affected artifact's is the root's
+        own failure (``SIZE_MISMATCH``), handled by the ordinary request
+        failure: nothing of it is bound or selected."""
+        if record.parent_id is not None or not await self.repository.route_replacement_pending(record.id):
+            return False
+        outcome = await self.canonical.replace_root_candidates(record, _normalized_candidates(record, candidates))
+        if outcome == "size_mismatch":
+            raise TransferError(self._error(Category.SIZE_MISMATCH, Stage.CANDIDATE_PREPARATION,
+                                            domain=Domain.INTEGRITY))
+        return outcome != "none"
+
     async def _materialize(self, record: RequestRecord, candidates, *, evidence: EvidenceContext | None = None):
         # Structural validity only: whether some executor can act on a
         # candidate is a claim over its subject, decided at dispatch.
@@ -3202,6 +3222,19 @@ class TransferEngine:
             # HOLD is ordinary waiting state: no mutation, no error; the
             # existing scheduler/reconciliation cadence alone retries once
             # commitment becomes durable.
+            # A source an operator switched that then failed on its new route
+            # leaves nothing to land: the artifact takes that root's error
+            # instead of waiting held, unseen, for a landing that cannot come.
+            # A bound candidate is in error (an operator Retry's new routing
+            # campaign of the root lands in its place, or a candidate switch
+            # recovers it); a sole-source artifact waits ``unresolved`` with
+            # that error, so the root's re-resolution rebuilds it in place.
+            failure = await self.repository.route_replacement_failure(artifact.id)
+            if failure is not None:
+                error, bound = failure
+                await self.repository.artifact_state(artifact.id, "error" if bound else "unresolved", error=error)
+                await self._aggregate(artifact.transfer_id)
+                return
             admission = await self.repository.materialization_authorization(artifact)
             if admission.kind == MaterializationAdmissionKind.HOLD:
                 self._count("held")

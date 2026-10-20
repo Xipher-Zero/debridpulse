@@ -130,6 +130,32 @@ def route_ended(outcome: str, *, transfer_id, request_id, attempt_id, provider_i
                   error=error, occurrence_key=f"route:{attempt_id}:{outcome}")
 
 
+def root_route_switched(*, transfer_id, request_id, attempt_id, provider_id, previous_provider_id,
+                        artifact_ids) -> JournalEvent:
+    """An operator's provider switch of ONE root of a transfer committed: the
+    root, both providers and the files whose selected source that root alone
+    produced (the only writers it affected)."""
+    files = ", ".join(f"#{artifact_id}" for artifact_id in artifact_ids) or "none yet"
+    return _route("routing.root_switched", "info", "Provider switched for one source of this transfer",
+                  transfer_id=transfer_id, request_id=request_id, attempt_id=attempt_id, provider_id=provider_id,
+                  detail=f"Provider {provider_id}; previously {previous_provider_id}; source {request_id}; "
+                         f"files {files}",
+                  occurrence_key=f"route:{attempt_id}:root_switched")
+
+
+def root_candidates_replaced(*, transfer_id, request_id, attempt_id, provider_id, artifact_ids,
+                             reselected_ids) -> JournalEvent:
+    """A switched root resolved on its new provider and its candidates took
+    the place of the replaced route's on every file it supplies; the files
+    whose selected source was that root's now select the new one."""
+    files = ", ".join(f"#{artifact_id}" for artifact_id in artifact_ids) or "none"
+    selected = ", ".join(f"#{artifact_id}" for artifact_id in reselected_ids) or "none"
+    return _route("routing.root_candidates_replaced", "info", "New provider's source took the replaced one's place",
+                  transfer_id=transfer_id, request_id=request_id, attempt_id=attempt_id, provider_id=provider_id,
+                  detail=f"Provider {provider_id}; source {request_id}; files {files}; now selected on {selected}",
+                  occurrence_key=f"route:{attempt_id}:candidates_replaced")
+
+
 def request_failed(*, transfer_id, request_id, error, retrying: bool, source: str | None = None) -> JournalEvent:
     """A source request's failure as its failure owner decided it: retried
     later (warning) or terminal for that request (error). Never the

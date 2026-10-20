@@ -47,7 +47,7 @@ def test_details_files_rows_have_exactly_one_renderer():
     # when the backend projects one, the physical collection otherwise), so the
     # card title and the rows can never disagree about what is on screen.
     assert "const dpDisplayFiles = window.DPDetailCandidates.displayRows(t);" in app
-    assert "<tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles)}</tbody>" in app
+    assert "<tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles, t)}</tbody>" in app
     assert "t.files.map(" not in app
     assert "t.file_presentations.map(" not in app
     assert "window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows});" in owner

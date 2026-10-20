@@ -91,6 +91,7 @@ def test_all_required_triggers_are_canonical():
         "executor_recovery",
         "user_candidate_switch",
         "collection_convergence",
+        "user_route_switch",
     }
 
 

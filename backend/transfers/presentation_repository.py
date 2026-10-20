@@ -548,6 +548,16 @@ class TransferRepository(_CanonicalTransferRepository):
                 facts = (await self._root_route_facts(db, (transfer_id,))).get(int(transfer_id))
                 if facts is not None:
                     route_provider = facts["current"]
+            # Any other transfer's file names the root that alone produced its
+            # selected source, with THAT root's committed route provider --
+            # never the selected candidate's own provider, which may be
+            # another root's alternate -- for its per-file provider switch.
+            route_roots: dict[int, dict] = {}
+            if details and route_provider is _NOT_A_TORRENT_ROOT:
+                for root_id, facts in (await self._root_route_facts_by_root(db, (transfer_id,))).get(
+                        int(transfer_id), {}).items():
+                    for artifact_id in facts["artifacts"]:
+                        route_roots[artifact_id] = {"root_id": root_id, "provider_id": facts["current"]}
 
             # The canonical request kinds of this transfer's ROOT requests.
             # Derived, never stored a second time: the kind already lives in the
@@ -808,6 +818,8 @@ class TransferRepository(_CanonicalTransferRepository):
         if details and result.get("files"):
             for item in result["files"]:
                 artifact_id = int(item["id"])
+                if artifact_id in route_roots:
+                    item["route_root"] = route_roots[artifact_id]
                 projection = file_projection.get(artifact_id, recovery_presentation(item.get("status")))
                 item.update(projection)
                 retained_bytes = int(projection.get("retained_bytes") or 0)

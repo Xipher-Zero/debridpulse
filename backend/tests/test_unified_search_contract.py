@@ -100,7 +100,7 @@ async def search_db(tmp_path, monkeypatch):
 
 
 class _Repository:
-    async def _root_route_facts(self, _db, _ids):
+    async def _root_route_facts_by_root(self, _db, _ids):
         return {}
 
     async def presentation(self, transfer_id):

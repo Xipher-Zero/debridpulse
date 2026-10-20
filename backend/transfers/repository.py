@@ -3322,62 +3322,136 @@ class TransferRepository(_QualifiedTransferRepository):
     # is a choice of route, not a lock against a later readiness yield.
     READINESS_PINNED_OPERATIONS = frozenset({OPERATOR_SWITCH, READINESS_PROMOTION})
 
-    async def _root_route_facts(self, db, transfer_ids) -> dict[int, dict]:
-        """Inside the caller's session, set-oriented: for each transfer of
-        exactly ONE root request, the facts its provider route is decided
-        from -- the root (``root_id``, its submitted ``kind``, its
-        ``resolvable``), its committed route provider (``current``, the one
-        rule of ``_bound_route_providers``), the providers that ``declined``
-        it or were ``exhausted`` for it, whether collection route
-        authority closed ``generic`` competition, and whether the transfer's
-        lifecycle is ``terminal`` (``policy.TERMINAL_TRANSFER_STATES``: no
-        work remains for any route to do). A bounded number of queries for
-        any number of transfers; other transfers are absent."""
+    # A canonical artifact whose selected candidate still decides a root's
+    # relevance to a provider switch: actionable (``canonical_artifact_
+    # membership_sql``) and not finished, given up or a duplicate.
+    _ROUTE_SUBJECT_ARTIFACT = ("f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0 "
+                               "AND COALESCE(f.mirror_state,'')!='standby' "
+                               "AND f.status NOT IN ('completed','cancelled','duplicate')")
+
+    @classmethod
+    async def _artifact_route_roots(cls, db, transfer_ids) -> dict[int, str]:
+        """Inside the caller's session, set-oriented: for each unfinished
+        canonical artifact of ``transfer_ids``, the ONE root request that
+        produced its currently SELECTED candidate -- ``artifact id -> root
+        id`` -- read from durable provenance alone. An artifact with canonical
+        candidate bindings is attributed through the binding at its selected
+        position and that binding's origins; one without any, through its own
+        request. A request maps to its root (a member to the root that
+        decomposed it). An artifact whose selected candidate several roots
+        supply (a shared binding), a root of another transfer supplies
+        (cross-transfer consolidation), or no binding records is not
+        attributable and is absent: no root's provider switch may claim it.
+        One query for any number of transfers."""
         ids = list(dict.fromkeys(int(item) for item in transfer_ids))
-        facts: dict[int, dict] = {}
+        roots: dict[int, str] = {}
         for start in range(0, len(ids), 500):
             chunk = ids[start:start + 500]
             marks = ",".join("?" * len(chunk))
-            roots: dict[int, list] = {}
             for row in await db.fetchall(
-                    f"""SELECT id,transfer_id,payload,interpretation FROM transfer_requests
-                    WHERE parent_id IS NULL AND transfer_id IN ({marks})""", tuple(chunk)):
-                roots.setdefault(int(row["transfer_id"]), []).append(row)
-            single = {transfer_id: rows[0] for transfer_id, rows in roots.items() if len(rows) == 1}
-            if not single:
+                    f"""WITH chosen AS (
+                        SELECT f.id AS artifact_id,f.torrent_id AS transfer_id,f.request_id,
+                            (SELECT b.id FROM canonical_candidate_bindings b WHERE b.canonical_artifact_id=f.id
+                             AND b.candidate_order=COALESCE(f.selected_candidate,0)+1) AS binding_id,
+                            EXISTS(SELECT 1 FROM canonical_candidate_bindings b
+                                   WHERE b.canonical_artifact_id=f.id) AS bound
+                        FROM download_files f WHERE f.torrent_id IN ({marks}) AND {cls._ROUTE_SUBJECT_ARTIFACT}),
+                    producers AS (
+                        SELECT c.artifact_id,c.transfer_id,COALESCE(r.parent_id,r.id) AS root_id,
+                            r.transfer_id AS root_transfer_id
+                        FROM chosen c JOIN canonical_candidate_origins o ON o.binding_id=c.binding_id
+                        JOIN transfer_requests r ON r.id=o.request_id WHERE c.bound
+                        UNION ALL
+                        SELECT c.artifact_id,c.transfer_id,COALESCE(r.parent_id,r.id),r.transfer_id
+                        FROM chosen c JOIN transfer_requests r ON r.id=c.request_id WHERE NOT c.bound)
+                    SELECT artifact_id,MIN(root_id) AS root_id FROM producers GROUP BY artifact_id
+                    HAVING COUNT(DISTINCT root_id)=1 AND MIN(root_transfer_id)=MAX(root_transfer_id)
+                    AND MIN(root_transfer_id)=MIN(transfer_id)""", tuple(chunk)):
+                roots[int(row["artifact_id"])] = str(row["root_id"])
+        return roots
+
+    async def _root_route_facts_by_root(self, db, transfer_ids) -> dict[int, dict[str, dict]]:
+        """Inside the caller's session, set-oriented: for each transfer, the
+        facts every one of its ROOT requests' provider route is decided from,
+        by root id -- the root (``root_id``, its submitted ``kind``, its
+        ``resolvable``), its committed route provider (``current``, the one
+        rule of ``_bound_route_providers``), the providers that ``declined``
+        it or were ``exhausted`` for it, whether collection route authority
+        closed ``generic`` competition, whether the transfer's lifecycle is
+        ``terminal`` (``policy.TERMINAL_TRANSFER_STATES``: no work remains for
+        any route to do), whether the root was ``decomposed`` into members,
+        and the unfinished ``artifacts`` whose selected candidate it alone
+        produced (``_artifact_route_roots``; ``relevant`` when there is one).
+        A bounded number of queries for any number of transfers; a transfer
+        with no root request is absent."""
+        ids = list(dict.fromkeys(int(item) for item in transfer_ids))
+        facts: dict[int, dict[str, dict]] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            roots = await db.fetchall(
+                f"""SELECT id,transfer_id,payload,interpretation FROM transfer_requests
+                WHERE parent_id IS NULL AND transfer_id IN ({marks}) ORDER BY transfer_id,ordinal,id""", tuple(chunk))
+            if not roots:
                 continue
-            root_ids = [str(row["id"]) for row in single.values()]
+            root_ids = [str(row["id"]) for row in roots]
             current = await self._bound_route_providers(db, root_ids)
             competition: dict[str, dict[str, set[str]]] = {}
-            root_marks = ",".join("?" * len(root_ids))
-            for row in await db.fetchall(
-                    f"""SELECT DISTINCT request_id,provider_id,state FROM resolution_attempts
-                    WHERE request_id IN ({root_marks}) AND state IN ('declined','exhausted')""", tuple(root_ids)):
-                competition.setdefault(str(row["request_id"]), {}).setdefault(row["state"], set()).add(
-                    str(row["provider_id"]))
+            decomposed: set[str] = set()
+            produced: dict[str, list[int]] = {}
+            for root_start in range(0, len(root_ids), 500):
+                root_chunk = root_ids[root_start:root_start + 500]
+                root_marks = ",".join("?" * len(root_chunk))
+                for row in await db.fetchall(
+                        f"""SELECT DISTINCT request_id,provider_id,state FROM resolution_attempts
+                        WHERE request_id IN ({root_marks}) AND state IN ('declined','exhausted')""", tuple(root_chunk)):
+                    competition.setdefault(str(row["request_id"]), {}).setdefault(row["state"], set()).add(
+                        str(row["provider_id"]))
+                decomposed.update(str(row["parent_id"]) for row in await db.fetchall(
+                    f"SELECT DISTINCT parent_id FROM transfer_requests WHERE parent_id IN ({root_marks})",
+                    tuple(root_chunk)))
+            for artifact_id, root_id in sorted((await self._artifact_route_roots(db, chunk)).items()):
+                produced.setdefault(root_id, []).append(artifact_id)
+            shared = await self._roots_shared_elsewhere(db, root_ids)
             torrents = {int(row["id"]): row for row in await db.fetchall(
                 f"""SELECT id,status,collection_route_authority,collection_route_provider_id FROM torrents
                 WHERE id IN ({marks})""", tuple(chunk))}
             authority = {transfer_id: bool(row.get("collection_route_authority"))
                          or bool(str(row.get("collection_route_provider_id") or "").strip())
                          for transfer_id, row in torrents.items()}
-            for transfer_id, row in single.items():
+            for row in roots:
+                transfer_id = int(row["transfer_id"])
                 request = codec.request(codec.load(row["payload"]))
                 interpretation = codec.request(codec.load(row["interpretation"])) if row.get("interpretation") else None
                 own = competition.get(str(row["id"]), {})
-                facts[transfer_id] = {
+                artifacts = tuple(produced.get(str(row["id"]), ()))
+                facts.setdefault(transfer_id, {})[str(row["id"])] = {
                     "root_id": str(row["id"]), "kind": str(request.kind or "").strip().lower(),
                     "resolvable": interpretation or request, "current": current.get(str(row["id"])),
                     "declined": frozenset(own.get("declined", ())), "exhausted": frozenset(own.get("exhausted", ())),
                     "generic_closed": authority.get(transfer_id, False),
                     "terminal": transfer_id in torrents and torrents[transfer_id]["status"] in TERMINAL_TRANSFER_STATES,
+                    "decomposed": str(row["id"]) in decomposed, "artifacts": artifacts, "relevant": bool(artifacts),
+                    "shared": str(row["id"]) in shared,
                 }
         return facts
+
+    async def _root_route_facts(self, db, transfer_ids) -> dict[int, dict]:
+        """``_root_route_facts_by_root`` for the transfers of exactly ONE root
+        request, by transfer: that root's facts. Other transfers are absent."""
+        return {transfer_id: next(iter(roots.values()))
+                for transfer_id, roots in (await self._root_route_facts_by_root(db, transfer_ids)).items()
+                if len(roots) == 1}
 
     async def root_route_facts(self, transfer_id: int) -> dict | None:
         """``_root_route_facts`` for one transfer, in its own session."""
         async with get_db() as db:
             return (await self._root_route_facts(db, (int(transfer_id),))).get(int(transfer_id))
+
+    async def root_route_facts_by_root(self, transfer_id: int) -> dict[str, dict]:
+        """``_root_route_facts_by_root`` for one transfer, in its own session."""
+        async with get_db() as db:
+            return (await self._root_route_facts_by_root(db, (int(transfer_id),))).get(int(transfer_id), {})
 
     async def latest_root_route(self, request_id: str) -> dict | None:
         """The latest non-declined route attempt of a root request (the one
@@ -3426,7 +3500,8 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
                                  target_provider_id: str, operation: str = OPERATOR_SWITCH,
-                                 expected_demand=None, retain_replaced: bool = False, now: float = 0.0) -> str:
+                                 expected_demand=None, retain_replaced: bool = False, now: float = 0.0,
+                                 claims=()) -> str:
         """THE operator root-route replacement, decided atomically.
 
         The root's current route -- its latest route attempt, which must still
@@ -3473,7 +3548,16 @@ class TransferRepository(_QualifiedTransferRepository):
         transaction, so a control committed first always wins and one
         committed after it applies to the new route. (An operator switch
         holds its own pause fence here, so the pause re-read is the yield's
-        alone.)"""
+        alone.)
+
+        ``claims`` (a root that is not the one root of a torrent transfer):
+        the switch's recovery claims on the artifacts whose selected candidate
+        this root alone produced -- the only writers its replacement affects;
+        every other artifact of the transfer keeps its writer. They are
+        re-verified current in this commit (``"busy"`` otherwise), each of
+        those artifacts must hold no live writer (``"writer_live"``), and the
+        commit is journaled naming the root, both providers and those
+        artifacts."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             refusal, row, latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
@@ -3501,6 +3585,22 @@ class TransferRepository(_QualifiedTransferRepository):
                     (request_id,)):
                 await db.rollback()
                 return "writer_live"
+            affected = [int(claim.artifact_id) for claim in claims]
+            if claims and await self._roots_shared_elsewhere(db, (request_id,)):
+                # Another transfer's artifact holds a candidate of this root
+                # (a consolidation that landed meanwhile): nothing changes.
+                await db.rollback()
+                return "shared"
+            for claim in claims:
+                if not await self.recovery_claim_current_in_db(db, claim, now=now):
+                    await db.rollback()
+                    return "busy"
+            if affected and await db.fetchone(
+                    f"""SELECT 1 FROM download_files f JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                       WHERE f.id IN ({",".join("?" * len(affected))})
+                       AND e.state IN ('prepared','queued','running','paused','unknown')""", tuple(affected)):
+                await db.rollback()
+                return "writer_live"
             transfer_id = int(row["transfer_id"])
             await db.execute("UPDATE resolution_attempts SET state='released',updated_at=CURRENT_TIMESTAMP WHERE id=?",
                              (latest["id"],))
@@ -3521,6 +3621,10 @@ class TransferRepository(_QualifiedTransferRepository):
                              (pin, request_id, target_provider_id))
             await self._begin_route_provenance(db, pin, transfer_id, request_id, target_provider_id,
                                                operation=operation)
+            if claims:
+                await journal(db, je.root_route_switched(
+                    transfer_id=transfer_id, request_id=request_id, attempt_id=pin, provider_id=target_provider_id,
+                    previous_provider_id=str(expected_provider_id), artifact_ids=sorted(affected)))
             resource = codec.resource(codec.load(row["resource"])) if row["resource"] else None
             if resource is not None and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
                 binding = await db.fetchone(

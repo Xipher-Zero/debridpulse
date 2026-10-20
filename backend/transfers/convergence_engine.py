@@ -2056,6 +2056,28 @@ class TransferEngine(_QualifiedTransferEngine):
                 retirement_reason=result.retirement if result is not None else None,
             )
 
+    async def claim_route_switch(self, artifact_ids) -> tuple[RecoveryClaim, ...] | None:
+        """An operator's provider switch of ONE root of a transfer that is not
+        one torrent root (``transfers.manual_route_switch``) is fenced by the
+        SAME exclusive claim system as every other trigger: a
+        ``USER_ROUTE_SWITCH`` claim on every artifact whose selected candidate
+        that root alone produced -- all of them, or none. When any is held by
+        another trigger, the claims already taken are finished unapplied and
+        ``None`` says so; nothing else changed."""
+        claims: list[RecoveryClaim] = []
+        for artifact_id in artifact_ids:
+            claim = await self.repository.claim_recovery(
+                int(artifact_id), RecoveryTrigger.USER_ROUTE_SWITCH, self.clock(),
+                lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
+            )
+            if claim is None:
+                for taken in claims:
+                    await self._finish_claim(taken, action=RecoveryTrigger.USER_ROUTE_SWITCH.value,
+                                             reason="claim_unavailable", outcome="not_applied")
+                return None
+            claims.append(claim)
+        return tuple(claims)
+
     async def _complete_source_transition(self, artifact: Artifact, observed: ExecutionObservation):
         """Resume is the commit point of a paused source switch
         (``TransferRepository.select_desired_source``), reached only from the

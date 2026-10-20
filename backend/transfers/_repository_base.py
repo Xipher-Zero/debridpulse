@@ -1058,6 +1058,19 @@ def terminal_cleanup_authority(status: str, delete_remote) -> str | None:
         return None
     return CleanupAuthority.OWNED
 
+# An operator switch of the origin's root after the origin's own attempt: the
+# durable fact both the replacement's HOLD and its landing key on (``o`` the
+# origin, ``op`` its route provenance). A release alone never says it -- an
+# operator Retry releases exhausted routes too.
+_SWITCHED_AFTER_ORIGIN = """EXISTS(SELECT 1 FROM route_attempt_provenance sp
+    WHERE sp.request_id=o.request_id AND sp.operation='operator_switch' AND sp.ordinal>op.ordinal)"""
+# The ownership boundary of a root's switch: only an artifact of the switched
+# root's OWN transfer (``r`` the origin request, ``f`` the artifact) is ever
+# held, landed on or failed by it; an artifact of another transfer is never
+# its subject (``_roots_shared_elsewhere`` refuses such a switch up front).
+_OWN_TRANSFER = "r.transfer_id=f.torrent_id"
+
+
 class TransferRepository:
     async def has_integration_references(self, identity=None):
         """Does anything still DEPEND on this integration's connection?
@@ -3902,11 +3915,14 @@ class TransferRepository:
         stamp is no authority by itself after another rebind. A current
         generation not yet committed, or held, is HOLD. A legacy member
         carrying no stamp is judged by its root's current generation, if any;
-        with none it is ungoverned."""
+        with none it is ungoverned.
+
+        Any other artifact is governed by its selected candidate's root route
+        alone (``_route_replacement_admission``)."""
         row = await db.fetchone(
             "SELECT parent_id, materialized_selection_id FROM transfer_requests WHERE id=?", (artifact.request_id,))
         if not row or not row["parent_id"]:
-            return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+            return await cls._route_replacement_admission(db, artifact)
         root_id = row["parent_id"]
         root = await db.fetchone("SELECT resource FROM transfer_requests WHERE id=?", (root_id,))
         root_resource = codec.resource(codec.load(root["resource"])) if root and root["resource"] else None
@@ -3926,6 +3942,118 @@ class TransferRepository:
         if current["manifest_committed_at"] is None or current["continuity"] != "proven":
             return MaterializationAdmission(MaterializationAdmissionKind.HOLD, authority_generation=current["id"])
         return MaterializationAdmission(MaterializationAdmissionKind.PROCEED, authority_generation=current["id"])
+
+    @staticmethod
+    async def _roots_shared_elsewhere(db, root_ids) -> set[str]:
+        """Inside the caller's session: the roots among ``root_ids`` that
+        issued a CURRENT canonical binding (below the non-current band,
+        ``CanonicalOwnership._NON_CURRENT_ORDER``) of an unfinished artifact
+        of ANOTHER transfer -- a cross-transfer consolidation onto their
+        source. Switching such a root would invalidate a candidate another
+        transfer's artifact holds without fencing that artifact's writer, so
+        it is never a switch subject: not offered, and refused before
+        anything changes."""
+        ids = [str(item) for item in root_ids]
+        if not ids:
+            return set()
+        rows = await db.fetchall(
+            f"""SELECT DISTINCT o.request_id FROM canonical_candidate_origins o
+               JOIN canonical_candidate_bindings b ON b.id=o.binding_id AND b.candidate_order<=100000
+               JOIN download_files f ON f.id=b.canonical_artifact_id
+               JOIN transfer_requests r ON r.id=o.request_id
+               WHERE o.request_id IN ({",".join("?" * len(ids))}) AND f.torrent_id!=r.transfer_id
+               AND f.status NOT IN ('completed','cancelled','deleted')""", tuple(ids))
+        return {str(row["request_id"]) for row in rows}
+
+    async def route_replacement_pending(self, request_id: str) -> bool:
+        """Whether root ``request_id`` still owes the landing of an operator
+        switch: some unfinished artifact's selected binding comes from this
+        root alone, from an attempt older than an ``operator_switch`` route
+        attempt of it (exactly what ``_route_replacement_admission`` holds).
+        False once the replacement landed (the selected bindings' origins
+        then follow the switch) and for every root never switched, so its
+        re-resolutions keep their ordinary path."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT f.id, COUNT(*) AS origins, COALESCE(SUM(CASE WHEN o.request_id=? AND r.parent_id IS NULL
+                       AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN} THEN 1 ELSE 0 END),0) AS replaced
+                   FROM download_files f
+                   JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
+                       AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
+                   JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                   JOIN transfer_requests r ON r.id=o.request_id
+                   LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
+                   WHERE f.status NOT IN ('completed','cancelled','deleted')
+                     AND f.id IN (SELECT b2.canonical_artifact_id FROM canonical_candidate_bindings b2
+                                  JOIN canonical_candidate_origins o2 ON o2.binding_id=b2.id WHERE o2.request_id=?)
+                   GROUP BY f.id""", (request_id, request_id))
+        return any(int(row["origins"] or 0) and int(row["replaced"] or 0) == int(row["origins"]) for row in rows)
+
+    async def route_replacement_failure(self, artifact_id: int):
+        """``(error, bound)`` for an artifact whose switched source ended in
+        ``error``, else ``None`` (``bound``: its candidate is canonically
+        bound, so the root's later resolution lands in its place):
+        every root its selected candidate comes from (its selected binding's
+        origins, or -- with no binding -- its own root request) was switched
+        by an operator after issuing it and has since FAILED on its new route.
+        Nothing will then land in its place, so the artifact is no longer
+        held, unseen, for a landing that cannot come."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT r.state, r.error, CASE WHEN r.parent_id IS NULL AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
+                       THEN 1 ELSE 0 END AS switched
+                   FROM download_files f
+                   JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
+                       AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
+                   JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                   JOIN transfer_requests r ON r.id=o.request_id
+                   LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
+                   WHERE f.id=?""", (int(artifact_id),))
+            bound = bool(rows)
+            if not rows:
+                rows = await db.fetchall(
+                    """SELECT r.state, r.error, EXISTS(SELECT 1 FROM route_attempt_provenance sp
+                           WHERE sp.request_id=r.id AND sp.operation='operator_switch') AS switched
+                       FROM download_files f JOIN transfer_requests r ON r.id=f.request_id
+                       WHERE f.id=? AND r.parent_id IS NULL""", (int(artifact_id),))
+        if rows and all(int(row["switched"] or 0) and row["state"] == "failed" and row["error"] for row in rows):
+            return codec.error(rows[0]["error"]), bound
+        return None
+
+    @staticmethod
+    async def _route_replacement_admission(db, artifact) -> MaterializationAdmission:
+        """Inside the caller's session: HOLD an artifact whose selected
+        candidate is bound canonically (``canonical_candidate_bindings`` at its
+        selected position) and EVERY origin of that binding names a root
+        request an operator switched after it issued the candidate -- an
+        ``operator_switch`` route attempt of that root later than the origin's
+        own attempt (``_SWITCHED_AFTER_ORIGIN``: the switch's own durable fact,
+        never a release, which an operator Retry also records).
+        The candidate belongs to a route an operator switch replaced; until the
+        root resolves on its new route and its candidates take the replaced
+        ones' place (``CanonicalOwnership.replace_root_candidates``), the
+        artifact acquires no writer from it. Derived from stored facts alone,
+        so it holds across any restart between the switch's commit and that
+        landing. An artifact whose selected candidate another source still
+        supplies, a member (its decomposition generation governs it) and an
+        artifact without bindings (its own request's released candidate is
+        never prepared: ``_candidate_current``) are unaffected: PROCEED."""
+        artifact_id = getattr(artifact, "id", None)
+        if artifact_id is None:
+            return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+        row = await db.fetchone(
+            f"""SELECT COUNT(*) AS origins, COALESCE(SUM(CASE WHEN r.parent_id IS NULL AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
+               THEN 1 ELSE 0 END),0) AS replaced
+               FROM download_files f
+               JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
+                   AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
+               JOIN canonical_candidate_origins o ON o.binding_id=b.id
+               JOIN transfer_requests r ON r.id=o.request_id
+               LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
+               WHERE f.id=?""", (int(artifact_id),))
+        if row and int(row["origins"] or 0) and int(row["replaced"] or 0) == int(row["origins"]):
+            return MaterializationAdmission(MaterializationAdmissionKind.HOLD)
+        return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
 
     async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False,
                                 target_initially_absent: bool | None = None,

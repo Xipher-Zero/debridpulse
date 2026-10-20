@@ -243,7 +243,7 @@ def test_one_browser_owner_renders_the_projection_for_both_lists():
     # The single-root torrent route badge (and its switch) keeps its own owner.
     assert "route_provider_id" in body
     chip = app.split("function providerChip(t, surface) {", 1)[1].split("\n}\n", 1)[0]
-    assert "window.DPRootProvider.badgeMarkup(t, surface)" in chip and "transferProviderPresentation(t)" in chip
+    assert "window.DPRootProvider.badgeMarkup(t, surface, provider)" in chip and "transferProviderPresentation(t)" in chip
     # Downloads and Recent Activity both render that one chip from the list row.
     downloads = (ROOT / "frontend/static/ui-downloads.js").read_text(encoding="utf-8")
     recent = (ROOT / "frontend/static/ui-dashboard-transfer-presentation.js").read_text(encoding="utf-8")

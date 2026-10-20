@@ -25,7 +25,7 @@ from application import dispatch_admission as live_admission
 from application.dependencies import get_application
 from application.manual_candidate_failover import preview_switch, switch_candidate
 from application.manual_route_switch import root_route_providers, switch_route_provider
-from transfers.manual_route_switch import switch_available, torrent_root
+from transfers.manual_route_switch import route_switch_offer, switch_available, torrent_root
 from application.service import ApplicationService
 from core import search_contract
 from core.presentation_safety import safe_public_host
@@ -479,12 +479,15 @@ async def preview_artifact_candidate(
 
 
 @router.get("/torrents/{transfer_id}/route")
-async def read_root_route(transfer_id: int, application: ApplicationService = Depends(get_application)):
-    """Read-only provider status of one torrent root's route: its committed
-    provider and every provider of its competition with one status
-    (``transfers.manual_route_switch.route_providers``)."""
+async def read_root_route(transfer_id: int, artifact_id: Annotated[Optional[int], Query(ge=1)] = None,
+                          application: ApplicationService = Depends(get_application)):
+    """Read-only provider status of one root's route: its committed provider
+    and every provider of its competition with one status
+    (``transfers.manual_route_switch.route_status``) -- a torrent's one root,
+    the transfer's only root, or (``artifact_id``) the root that produced that
+    file's selected source, named by ``root_id``."""
     try:
-        status = await root_route_providers(application, transfer_id)
+        status = await root_route_providers(application, transfer_id, artifact_id=artifact_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None
     if status is None:
@@ -502,19 +505,25 @@ async def replace_root_route(
     transfer_id: int,
     provider_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
     expected_provider_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+    artifact_id: Annotated[Optional[int], Body(embed=True, ge=1)] = None,
+    expected_root_id: Annotated[Optional[str], Body(embed=True, min_length=1, max_length=128)] = None,
     *,
     request: Request,
     application: ApplicationService = Depends(get_application),
 ):
-    """Operator replacement of one torrent root's provider route with
-    ``provider_id``; ``expected_provider_id`` is the provider the operator saw
-    as current. Refused (nothing changed) with the normalized reason when the
-    route moved since, the provider cannot take the root now, or capacity is
-    not available; the requested provider is never substituted."""
+    """Operator replacement of one root's provider route with ``provider_id``;
+    ``expected_provider_id`` is the provider the operator saw as current. A
+    transfer of several roots names the file (``artifact_id``) whose producing
+    root is switched, and ``expected_root_id`` the root the operator saw; the
+    server re-derives it. Refused (nothing changed) with the normalized reason
+    when the route or root moved since, the provider cannot take the root now,
+    or capacity is not available; the requested provider is never
+    substituted."""
     expected = await require_destruction(request, application.repository, transfer_id)
     try:
         return await switch_route_provider(application, transfer_id, provider_id,
-                                           expected_provider_id=expected_provider_id, expected_demand=expected)
+                                           expected_provider_id=expected_provider_id, expected_demand=expected,
+                                           artifact_id=artifact_id, expected_root_id=expected_root_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None
     except TransferError as exc:
@@ -1684,12 +1693,15 @@ async def list_operational_torrents(
             f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
         )
         total = total_row["cnt"] if total_row else 0
-        # A torrent root's provider and whether it has a real alternative come
+        # Every root's provider and whether it has a real alternative come
         # from the one committed-root-route owner and the one selectability
-        # rule, read for the whole page in this session -- never per row.
-        torrent_rows = [int(row["id"]) for row in rows
-                        if len(kinds := _bounded_request_kinds(row)) == 1 and kinds[0] in BITTORRENT_REQUEST_KINDS]
-        route_facts = await application.repository._root_route_facts(db, torrent_rows) if torrent_rows else {}
+        # rule, read for the whole page in this session -- never per row:
+        # a torrent root's always, any other root's where a registry can
+        # judge its alternatives.
+        registry = getattr(getattr(application, "engine", None), "registry", None)
+        routed = [int(row["id"]) for row in rows if registry is not None or (
+            len(kinds := _bounded_request_kinds(row)) == 1 and kinds[0] in BITTORRENT_REQUEST_KINDS)]
+        route_roots = await application.repository._root_route_facts_by_root(db, routed) if routed else {}
 
     # Section 9: read once for the whole page, never per row. This is a
     # plain passthrough to the execution-admission owner's own positive
@@ -1701,7 +1713,8 @@ async def list_operational_torrents(
     # Likewise the admission owner's record of promoted transfers waiting
     # only on a restart nobody confirmed: the row offers the reaffirmation.
     restart_consent_ids = live_admission.restart_consent_ids(getattr(application, "engine", None))
-    registry = getattr(getattr(application, "engine", None), "registry", None)
+    # Roots routed from the same facts share one routing decision on this page.
+    route_memo: dict = {}
 
     items = []
     for row in rows:
@@ -1775,7 +1788,8 @@ async def list_operational_torrents(
             candidate_action_count = 0
             candidate_action_artifact_id = None
         request_kinds = _bounded_request_kinds(projected)
-        facts = route_facts.get(int(projected["id"]))
+        roots = route_roots.get(int(projected["id"]), {})
+        facts = next(iter(roots.values())) if len(roots) == 1 else None
         if torrent_root(facts):
             projected["route_provider_id"] = facts["current"]
         for field in _SOURCE_PROJECTION_FIELDS:
@@ -1786,6 +1800,13 @@ async def list_operational_torrents(
             # The same selectability the picker shows: a launcher only when a
             # provider other than the current one may legitimately take it.
             item["route_switch_available"] = bool(registry is not None and switch_available(registry, facts))
+        elif registry is not None and (scope := route_switch_offer(registry, roots, route_memo)) is not None:
+            # Any other transfer: a launcher only while one of its roots that
+            # produced a selected source may legitimately move. ``root`` opens
+            # its one root's picker; ``artifacts`` opens Details, where each
+            # file names the root that produced it.
+            item["route_switch_available"] = True
+            item["route_switch_scope"] = scope
         item["request_kinds"] = request_kinds
         # Transfer-level common-source MEMBERSHIP summary. ``common_candidate_count``
         # is the number of canonical hosts common to every current authoritative

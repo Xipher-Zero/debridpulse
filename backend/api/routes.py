@@ -47,6 +47,7 @@ from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.models import SubmissionDemand
 from transfers._repository_base import DemandChanged
 from transfers.manual_queue_move import QueueMoveRefused, RestartConfirmationRequired
+from transfers.manual_route_switch import root_switches
 from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
 from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource, safe_public_host
@@ -1284,6 +1285,19 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     disclosure = _error_disclosure(transfer.error if transfer else None, item.get("error"), application.definitions)
     if disclosure:
         result["error_disclosure"] = disclosure
+    registry = getattr(engine, "registry", None)
+    rooted = [row for key in ("files", "file_presentations") for row in result.get(key) or ()
+              if isinstance(row, dict) and isinstance(row.get("route_root"), dict)]
+    if rooted:
+        # Whether each file's producing root may move now: the one offer rule
+        # the bounded list and the switch's own guard read.
+        switches = (root_switches(registry, await application.repository.root_route_facts_by_root(torrent_id))
+                    if registry is not None else {})
+        for row in rooted:
+            route = row["route_root"]
+            route["provider_name"] = (_provider_display_name(route["provider_id"], application.definitions)
+                                      if route.get("provider_id") else None)
+            route["switch_available"] = bool(switches.get(str(route.get("root_id"))))
     contributors = result.pop("execution_contributors", None)
     if "usenet" in {result.get(f"{role}_provider_id") for role in ("active", "route", "delivering", "current")}:
         result["usenet_servers"] = _usenet_servers(contributors)

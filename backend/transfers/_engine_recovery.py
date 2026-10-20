@@ -121,7 +121,10 @@ class TransferEngine(_QualifiedTransferEngine):
                            for item in await self.repository.requests(record.transfer_id)):
                     return
                 before = await self._candidate_signature(record.transfer_id)
-                if not await coordinate_collection(self, record, candidates, evidence):
+                # A switched root of a multi-source transfer lands in its
+                # replaced candidates' place; nothing else is decided for it.
+                if (not await self._land_root_replacement(record, candidates)
+                        and not await coordinate_collection(self, record, candidates, evidence)):
                     await super()._materialize(record, candidates, evidence=evidence)
                     artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
                                      if item.request_id == record.id), None)

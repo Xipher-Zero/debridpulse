@@ -30,6 +30,10 @@ class _NoComprehensivePresentation:
     async def presentation(self, *_args, **_kwargs):
         raise AssertionError("the bounded list must never call comprehensive presentation")
 
+    async def _root_route_facts_by_root(self, _db, _transfer_ids):
+        # The page's one set-oriented route-facts read (no root here routes).
+        return {}
+
 
 async def _challenged(lab):
     repository, registry, engine, *_rest, now = lab

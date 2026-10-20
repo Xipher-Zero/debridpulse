@@ -462,10 +462,13 @@ function providerChipId(t) {
 }
 
 function providerChip(t, surface) {
-  if (t && Object.prototype.hasOwnProperty.call(t, 'route_provider_id') && window.DPRootProvider) {
-    return window.DPRootProvider.badgeMarkup(t, surface);
-  }
   const provider = transferProviderPresentation(t);
+  // A root provider route -- a torrent's one root, or a transfer one of whose
+  // roots may switch provider (``route_switch_scope``) -- has its one owner.
+  if (t && window.DPRootProvider && (Object.prototype.hasOwnProperty.call(t, 'route_provider_id')
+      || Object.prototype.hasOwnProperty.call(t, 'route_switch_scope'))) {
+    return window.DPRootProvider.badgeMarkup(t, surface, provider);
+  }
   const identity = window.DPTransferSourcePresentation.providerBadgeIdentity(
     provider.state === 'known' ? provider.id : '');
   return `<span class="dp-provider-chip" data-provider-state="${provider.state}"${identity.attributes}>`
@@ -2363,7 +2366,7 @@ async function showDetail(id) {
           <div class="dp-detail-table-wrap">
             <table class="t-table">
               <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
-              <tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles)}</tbody>
+              <tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles, t)}</tbody>
             </table>
           </div>
           `:''}
