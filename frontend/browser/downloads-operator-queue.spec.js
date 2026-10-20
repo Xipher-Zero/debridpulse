@@ -450,7 +450,12 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
     await expect.poll(visibleColumns).toEqual(expected);
     // Both cells measured in ONE read of the row as it stands: a live list
     // refresh between two separate reads could replace the row in between.
-    const {actions, select} = await row(page, 1).evaluate(node => {
+    // The row is looked up inside that same read: a locator resolves its node
+    // in one round trip and evaluates it in the next, and the capacity refresh
+    // a resize schedules replaces every row in between -- a detached row
+    // measures 0 x 0 at x 0, which is no rendering anyone sees.
+    const {actions, select} = await page.evaluate(() => {
+      const node = document.querySelector('#t-tbody tr[data-torrent-id="1"]');
       const box = cell => { const r = cell.getBoundingClientRect(); return {x: r.x, width: r.width}; };
       const cells = node.querySelectorAll(':scope > td');
       return {actions: box(cells[6]), select: box(cells[7])};
@@ -461,7 +466,11 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
 
   await page.setViewportSize({width: 1500, height: 900});
   const remove = row(page, 1).locator('button', {hasText: 'Remove'});
-  const styles = async () => remove.evaluate(n => {
+  // Read the Remove the page shows now (looked up in the same read, as above):
+  // the capacity refresh that follows the resize back replaces the row.
+  const styles = async () => page.evaluate(() => {
+    const n = Array.from(document.querySelectorAll('#t-tbody tr[data-torrent-id="1"] button'))
+      .find(button => button.textContent.includes('Remove'));
     const s = getComputedStyle(n);
     return {color: s.color, background: s.backgroundColor, border: s.borderTopColor, width: n.offsetWidth,
             height: n.offsetHeight, transition: s.transitionProperty};

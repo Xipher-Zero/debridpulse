@@ -877,7 +877,13 @@ test('Global Pause All at high throughput keeps each heartbeat\'s short trail ex
   test.setTimeout(120000);
   const pause = {paused: false};
   await boot(page, {pause, throughput: {bps: 42e6, peak: 42e6}});
-  await page.clock.runFor(14000);                                  // settled near 90 BPM
+  // At 90 BPM a heartbeat falls due every 666 2/3 ms from the strip's start, so
+  // 14,000 ms (21 of them) is itself a due instant, where a 1 ms timer quantum
+  // decides whether that heartbeat is born before the pause or held -- and
+  // with it whether resuming 416 ms later is past the heartbeat that was due
+  // or before its trail's clearance (the next case). Paused 200 ms before it:
+  // past it either way, by a margin no quantum reaches.
+  await page.clock.runFor(14000 - 200);                            // settled near 90 BPM
   let before = await snapshot(page);
   const short = before.beats.filter(beat => beat.envelope[5] - beat.envelope[3] < 150);
   expect(short.length).toBeGreaterThan(0);                         // short trails, laid out for close followers
@@ -888,6 +894,10 @@ test('Global Pause All at high throughput keeps each heartbeat\'s short trail ex
   await page.clock.runFor(16);                                     // the first frame held
   let after = await snapshot(page);
   expect(expectSameTrails({...before, beats: short}, after)).toBe(short.length);   // the short trails, unchanged
+  // Where the held trail leaves the heartbeat then due its clearance: resuming
+  // after it, nothing is left to wait for.
+  const last = after.beats.reduce((a, b) => (a.lead < b.lead ? a : b));
+  const clearance = after.now - last.lead / SPEED + (last.lead - last.end + 16) / SPEED;
   // (Including the newest heartbeat, whatever frame it was born in: none of
   // the trails, read from their gradient stops, lengthens.)
   const shortTrails = snap => snap.beats.forEach(beat => expect(beat.envelope[5] - beat.envelope[3]).toBeLessThan(150));
@@ -906,6 +916,7 @@ test('Global Pause All at high throughput keeps each heartbeat\'s short trail ex
   pause.paused = false;
   await page.evaluate(() => loadStats());
   const resumed = await page.evaluate(() => Date.now());
+  expect(resumed).toBeGreaterThan(clearance + 20);                 // past the heartbeat that was due
   const observations = [];
   for (let t = 0; t < 2000; t += 50) {
     before = after;
