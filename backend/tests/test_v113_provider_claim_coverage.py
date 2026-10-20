@@ -366,7 +366,11 @@ async def test_t1_8_an_unhealthy_alternate_claimant_survives_the_current_provide
     await drive(engine)
 
     roots = await by_payload(repository, transfer.id)
-    assert a.resolved == [HOSTS[1], shared] and b.resolved == [] and generic.resolved == []
+    # A is asked exactly once for each of its two roots. The two roots are
+    # admitted in census order but run as concurrent resolution units, so the
+    # order in which their provider calls begin is not a contract; each
+    # root's own sequence is (A before B on ``shared``, below).
+    assert sorted(a.resolved) == sorted([HOSTS[1], shared]) and b.resolved == [] and generic.resolved == []
     assert await repository.exhausted_route_providers(roots[shared].id) == frozenset({"provider-a"})
     assert roots[shared].state == "pending"
     async with get_db() as db:
@@ -382,6 +386,7 @@ async def test_t1_8_an_unhealthy_alternate_claimant_survives_the_current_provide
 
     roots = await by_payload(repository, transfer.id)
     assert b.resolved == [shared]
+    assert sorted(a.resolved) == sorted([HOSTS[1], shared])   # the exhausted A is never asked again
     assert roots[shared].state == "resolved"
     assert await repository.bound_route_provider(roots[shared].id) == "provider-b"
     assert generic.resolved == []
