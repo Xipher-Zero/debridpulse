@@ -220,6 +220,9 @@ class TransferEngine(_RecoveryTransferEngine):
                             domain=Domain.CLEANUP,
                         ))
 
+            # The basis is read before the route is decided: admission opens
+            # the decision only while it still holds.
+            basis = await self.repository.route_basis(record.id)
             route = await self._route(record)
             await self._record_route_hold(record, route)
             provider = route.require()
@@ -242,6 +245,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 attempt = (await self.repository.begin_pinned_resolution(record.id, provider.descriptor.id)
                            or await self.repository.begin_resolution(
                                record.id, provider.descriptor.id, routing_decision=self._route_evidence(record, route),
+                               expected_request=record.request, expected_basis=basis,
                            ))
                 if attempt is None:
                     return

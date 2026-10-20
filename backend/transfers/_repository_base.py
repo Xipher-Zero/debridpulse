@@ -3095,12 +3095,55 @@ class TransferRepository:
                 await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0 WHERE id=? AND state='pending'",
                                  (request_id,))
 
+    @classmethod
+    async def _route_basis(cls, db, request_id: str) -> tuple:
+        """The routing basis of a request, inside the caller's session: the
+        latest route attempt (id and state) of the request and of its root.
+        Every route change -- a resolution, a failure or exhaustion, an
+        operator switch, a readiness yield, a fan-out's release -- opens a
+        route attempt or ends one, so a decision taken on one basis is
+        current only while the basis is unchanged."""
+        row = await db.fetchone("SELECT parent_id FROM transfer_requests WHERE id=?", (request_id,))
+        basis = []
+        for owner in (request_id, row["parent_id"] if row else None):
+            latest = await db.fetchone(
+                """SELECT a.id,a.state FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE p.request_id=? ORDER BY p.ordinal DESC LIMIT 1""", (owner,)) if owner else None
+            basis.append((str(latest["id"]), str(latest["state"])) if latest else None)
+        return tuple(basis)
+
+    async def route_basis(self, request_id: str) -> tuple:
+        """``_route_basis`` read on its own: taken before a route is decided
+        and handed to ``begin_resolution`` with the decision."""
+        async with get_db() as db:
+            return await self._route_basis(db, request_id)
+
     async def begin_resolution(self, request_id: str, provider_id: str, *,
-                               routing_decision: str | None = None) -> ResolutionAttempt | None:
+                               routing_decision: str | None = None,
+                               expected_request=None, expected_basis=None) -> ResolutionAttempt | None:
         """``routing_decision``: the canonical selector's encoded decision that
         chose ``provider_id`` (``transfers.registry.RoutingDecision``), kept
         with this route attempt as historical causality; it replaces any hold
-        the request recorded while it waited (``record_route_decision``)."""
+        the request recorded while it waited (``record_route_decision``).
+
+        The route was decided outside this transaction, so it opens only while
+        what it was decided on still holds -- otherwise nothing begins and the
+        next pass routes the request from current truth:
+
+        * the routing basis (``_route_basis``) is still ``expected_basis``,
+          the basis read before the route was decided: no route of the request
+          or its root opened or ended since (an operator switch, a readiness
+          yield, an exhaustion), whatever the request now looks like;
+        * no route an operator switch or a readiness yield pinned for another
+          provider is open on the request (that route is adopted by
+          ``begin_pinned_resolution``; a decision made before it committed must
+          not open beside it);
+        * the request is still ``expected_request``, the request the provider
+          will be asked about (a fan-out did not rewrite it meanwhile);
+        * a manifest member's decomposition generation is not superseded
+          (``_decomposition_admission`` STALE: its root was rebound or holds
+          no binding since). A held generation is not refused here."""
         identity = new_identity()
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -3108,6 +3151,21 @@ class TransferRepository:
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE r.id=? AND r.state='pending'
                 AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(p.paused,0)=0""", (request_id,))
             if not row:
+                return None
+            pinned = await db.fetchone(
+                """SELECT a.provider_id FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE a.request_id=? AND a.state='started' AND p.operation IN (?,?)
+                   ORDER BY p.ordinal DESC LIMIT 1""", (request_id, *sorted(self.READINESS_PINNED_OPERATIONS)))
+            superseded = (
+                (expected_basis is not None and await self._route_basis(db, request_id) != tuple(expected_basis))
+                or (pinned is not None and str(pinned["provider_id"]) != str(provider_id))
+                or (expected_request is not None and codec.request(codec.load(row["payload"])) != expected_request)
+                or (row["parent_id"] is not None and (await self._decomposition_admission(
+                    db, SimpleNamespace(request_id=request_id, transfer_id=row["transfer_id"]))).kind
+                    == MaterializationAdmissionKind.STALE))
+            if superseded:
+                await db.rollback()
                 return None
             await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1,routing_decision=NULL WHERE id=?",
                              (request_id,))

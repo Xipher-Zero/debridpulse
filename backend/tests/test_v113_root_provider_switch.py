@@ -1684,6 +1684,167 @@ async def test_a_member_answer_landing_after_a_switch_never_takes_the_route_back
     assert {providers[0] for _i, _p, _s, providers in (await lab.artifacts()).values()} == {"parcel-c"}
 
 
+async def test_a_member_route_decided_before_a_switch_never_opens_after_it(tmp_path, monkeypatch):
+    """A member unit routed to B before the switch to C committed, and asks to
+    begin only after it: resolution admission refuses it (the member's
+    generation is superseded), so B is never handed C's member and the member
+    ends on C."""
+    import asyncio
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b"), MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    cycle, release, _request, _attempt = await held_member_answer(lab, b, "refusal")
+    arrived, go, begun = asyncio.Event(), asyncio.Event(), {}
+    original = lab.repository.begin_resolution
+
+    async def decided_before_admitted_after(request_id, provider_id, **kwargs):
+        member = next((r for r in await lab.repository.requests(lab.transfer.id) if r.id == request_id), None)
+        if provider_id == "parcel-b" and member is not None and member.parent_id and not begun:
+            begun[request_id] = None
+            arrived.set()
+            await go.wait()                                         # the switch commits meanwhile
+            begun[request_id] = await original(request_id, provider_id, **kwargs)
+            return begun[request_id]
+        return await original(request_id, provider_id, **kwargs)
+
+    lab.repository.begin_resolution = decided_before_admitted_after
+    await asyncio.wait_for(arrived.wait(), 10)
+    await lab.switch("parcel-c")
+    go.set()
+    release.set()
+    await cycle
+    assert list(begun.values()) == [None]                           # refused at admission
+    await settle(lab.engine, 4)
+    assert b.foreign("resolve") == [] and b.foreign("refresh") == []
+    assert {providers[0] for _i, _p, _s, providers in (await lab.artifacts()).values()} == {"parcel-c"}
+
+
+async def test_a_member_of_a_superseded_generation_is_never_handed_to_the_new_provider(tmp_path, monkeypatch):
+    """A member unit passed its generation check before the switch and routes
+    only after it committed: the switch left the root with no binding, so the
+    old generation's member is not admitted -- C is asked only about its own
+    members -- while every current member still resolves (C)."""
+    import asyncio
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b"), MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    cycle, release, _request, _attempt = await held_member_answer(lab, b, "refusal")
+    arrived, go, armed = asyncio.Event(), asyncio.Event(), [True]
+    original = lab.engine._route
+
+    async def routed_after_the_switch(record):
+        if armed[0] and record.parent_id is not None:
+            armed[0] = False
+            arrived.set()
+            await go.wait()
+        return await original(record)
+
+    lab.engine._route = routed_after_the_switch
+    await asyncio.wait_for(arrived.wait(), 10)
+    await lab.switch("parcel-c")
+    go.set()
+    release.set()
+    await cycle
+    await settle(lab.engine, 4)
+    assert c.foreign("resolve") == [] and b.foreign("resolve") == []
+    members = [item for item in await lab.repository.requests(lab.transfer.id) if item.parent_id]
+    assert members and all(item.state == "resolved" and item.request.payload.startswith("c:") for item in members)
+
+
+async def test_every_ordinary_resolution_begins_against_the_request_it_was_routed_for(tmp_path, monkeypatch):
+    """The engine hands admission the request it routed (``expected_request``),
+    so the admission can tell a request a fan-out rewrote meanwhile: every
+    ordinary begin carries the exact request of its record, members included."""
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b"), MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    seen = []
+    original = lab.repository.begin_resolution
+
+    async def recorded(request_id, provider_id, **kwargs):
+        stored = next(r for r in await lab.repository.requests(lab.transfer.id) if r.id == request_id)
+        seen.append((stored.parent_id is not None, kwargs.get("expected_request") == stored.request))
+        return await original(request_id, provider_id, **kwargs)
+
+    lab.repository.begin_resolution = recorded
+    await lab.switch("parcel-b")
+    await settle(lab.engine, 4)
+    assert any(member for member, _same in seen)
+    assert all(same for _member, same in seen)
+
+
+async def test_a_stale_member_decision_is_refused_even_when_the_new_route_issues_the_identical_request(tmp_path,
+                                                                                                    monkeypatch):
+    """B and C issue byte-identical member requests. A member decision taken on
+    B's route (its routing basis read before the switch to C) asks to begin
+    right after C's fan-out re-issued the same member: the request and its
+    generation look current, but the basis is not, so nothing begins. A
+    decision taken now, on the current basis, is admitted -- to C."""
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "x"), MemberParcel("parcel-c", "x")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    await settle(lab.engine, 4)
+    stale = next(r for r in await lab.repository.requests(lab.transfer.id) if r.parent_id)
+    stale_basis = await lab.repository.route_basis(stale.id)
+    outcome = {}
+    original = lab.repository.manifest
+
+    async def fan_out_then_begin(record, entries, **kwargs):
+        result = await original(record, entries, **kwargs)
+        if "stale" not in outcome:
+            current = next(r for r in await lab.repository.requests(lab.transfer.id) if r.id == stale.id)
+            assert current.state == "pending" and current.request == stale.request     # identical, current generation
+            outcome["stale"] = await lab.repository.begin_resolution(
+                stale.id, "parcel-b", expected_request=stale.request, expected_basis=stale_basis)
+            basis = await lab.repository.route_basis(stale.id)
+            provider = (await lab.engine._route(current)).require().descriptor.id
+            outcome["current"] = await lab.repository.begin_resolution(
+                stale.id, provider, expected_request=current.request, expected_basis=basis)
+        return result
+
+    lab.repository.manifest = fan_out_then_begin
+    await lab.switch("parcel-c")
+    await settle(lab.engine, 1)
+    assert outcome["stale"] is None
+    assert outcome["current"] is not None and outcome["current"].provider_id == "parcel-c"
+
+
+async def test_a_root_route_decided_before_a_switch_never_opens_beside_the_route_it_pinned(tmp_path, monkeypatch):
+    """The operator switched the root to C, pinning C's route attempt. A route
+    to B decided before that commit asks to begin afterwards: nothing begins.
+    The pinned route is then adopted exactly as before -- one C attempt."""
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b"), MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    await lab.switch("parcel-c")
+    (root,) = await rows("SELECT id FROM transfer_requests WHERE transfer_id=? AND parent_id IS NULL", (lab.transfer.id,))
+    before = await rows("SELECT id,provider_id,state FROM resolution_attempts WHERE request_id=? ORDER BY rowid",
+                        (root["id"],))
+    assert await lab.repository.begin_resolution(root["id"], "parcel-b") is None
+    assert await rows("SELECT id,provider_id,state FROM resolution_attempts WHERE request_id=? ORDER BY rowid",
+                      (root["id"],)) == before
+    await settle(lab.engine, 4)
+    assert await lab.repository.bound_route_provider(root["id"]) == "parcel-c"
+    after = await rows("SELECT provider_id FROM resolution_attempts WHERE request_id=? ORDER BY rowid", (root["id"],))
+    assert [item["provider_id"] for item in after[len(before) - 1:]] == ["parcel-c"]   # the pinned one, adopted
+    assert b.foreign("resolve") == [] and c.foreign("resolve") == []
+
+
+async def test_a_current_request_is_still_admitted_and_a_rewritten_one_is_not(tmp_path, monkeypatch):
+    """Negative control: a pending request whose route basis holds begins as
+    before. One whose stored request no longer is the request routed (a
+    fan-out rewrote it meanwhile) begins nothing."""
+    a = MemberParcel("parcel-a", "a")
+    lab = await members_lab(tmp_path, monkeypatch, a)
+    second = await lab.engine.submit((TransferRequest("magnet", MAGNET.replace("btih:", "btih:f"), name="Other",
+                                                      selection_mode="all"),), name="Other", deduplicate=False)
+    (record,) = [item for item in await lab.repository.requests(second.id) if item.parent_id is None]
+    assert record.state == "pending"
+    rewritten = TransferRequest("magnet", record.request.payload + "&rewritten", name="Other", selection_mode="all")
+    assert await lab.repository.begin_resolution(record.id, "parcel-a", expected_request=rewritten) is None
+    attempt = await lab.repository.begin_resolution(record.id, "parcel-a", expected_request=record.request)
+    assert attempt is not None and attempt.provider_id == "parcel-a"
+
+
 async def test_a_late_answer_naming_a_created_resource_keeps_its_cleanup_and_never_binds(tmp_path, monkeypatch):
     """A7: the late answer of a released member attempt names a resource its
     provider created. The attempt stays released and the member and its
