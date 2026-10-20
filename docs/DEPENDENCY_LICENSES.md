@@ -9,7 +9,7 @@ the lock file and `licenses/python-runtime.json`.
 | Package | Version | License |
 |---|---:|---|
 | aiohappyeyeballs | 2.6.1 | PSF-2.0 |
-| aiohttp | 3.14.3 | Apache-2.0 AND MIT |
+| aiohttp | 3.14.4 | Apache-2.0 AND MIT |
 | aiosignal | 1.4.0 | Apache-2.0 |
 | aiosqlite | 0.22.1 | MIT |
 | annotated-doc | 0.0.4 | MIT |
@@ -84,7 +84,7 @@ the lock file and `licenses/python-runtime.json`.
 | urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.52.4 | BSD-3-Clause |
 | uvloop | 0.22.1 | MIT OR Apache-2.0 |
-| yarl | 1.23.0 | Apache-2.0 |
+| yarl | 1.25.1 | Apache-2.0 |
 | yt-dlp | 2026.8.19 | Unlicense |
 | yt-dlp-ejs | 0.8.0 | Unlicense AND MIT AND ISC |
 | zc-lockfile | 4.0 | ZPL-2.1 |

@@ -9,7 +9,7 @@
     },
     {
       "name": "aiohttp",
-      "version": "3.14.3",
+      "version": "3.14.4",
       "license": "Apache-2.0 AND MIT"
     },
     {
@@ -384,7 +384,7 @@
     },
     {
       "name": "yarl",
-      "version": "1.23.0",
+      "version": "1.25.1",
       "license": "Apache-2.0"
     },
     {
