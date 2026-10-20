@@ -9,7 +9,6 @@ from settings. An operator configures news servers, never this service.
 from __future__ import annotations
 
 import asyncio
-import configparser
 import logging
 import os
 import secrets
@@ -18,6 +17,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
+
+import configobj
 
 from executors.process_ownership import output_lines
 
@@ -56,36 +57,46 @@ def internal_api_key() -> str:
     return _api_key
 
 
+def _load_ini(path: Path) -> configobj.ConfigObj:
+    """The service's configuration file, read the way the service reads it.
+
+    The file belongs to the service: it writes it with configobj (a
+    ``__version__`` line above the first section, nested ``[[name]]`` news
+    server and category sections), so it is opened with the same library and
+    options, never with an INI parser that cannot represent it. A file that
+    cannot be parsed yields an empty configuration, and one that is not UTF-8
+    still raises, both as before.
+    """
+    try:
+        return configobj.ConfigObj(infile=str(path), default_encoding="utf-8", encoding="utf-8")
+    except (OSError, configobj.ConfigObjError):
+        return configobj.ConfigObj(default_encoding="utf-8", encoding="utf-8")
+
+
 def _read_ini() -> dict:
     path = CONFIG_ROOT / "sabnzbd.ini"
     if not path.is_file():
         return {}
-    parser = configparser.RawConfigParser(strict=False)
-    try:
-        parser.read(path, encoding="utf-8")
-    except (OSError, configparser.Error):
-        return {}
-    return {section: dict(parser.items(section)) for section in parser.sections()}
+    config = _load_ini(path)
+    return {section: dict(config[section]) for section in config.sections}
 
 
 def _write_bootstrap_ini(download_root: str) -> None:
     """Seed the service's configuration so its first start is already correct.
 
     Only DebridPulse-owned operational values are written; news servers are
-    applied separately through the canonical configuration path.
+    applied separately through the canonical configuration path. Everything
+    else in the file is the service's own and is kept exactly as it saved it.
     """
     from executors.sabnzbd import topology
 
     CONFIG_ROOT.mkdir(parents=True, exist_ok=True)
     path = CONFIG_ROOT / "sabnzbd.ini"
-    parser = configparser.RawConfigParser(strict=False)
-    if path.is_file():
-        try:
-            parser.read(path, encoding="utf-8")
-        except (OSError, configparser.Error):
-            parser = configparser.RawConfigParser(strict=False)
-    if not parser.has_section("misc"):
-        parser.add_section("misc")
+    config = _load_ini(path)
+    if not isinstance(config.get("misc"), configobj.Section):
+        if "misc" in config:                  # [misc] is not a section: not the service's file
+            config = configobj.ConfigObj(default_encoding="utf-8", encoding="utf-8")
+        config["misc"] = {}
     misc = {
         "api_key": internal_api_key(),
         "host": SERVICE_HOST,
@@ -105,10 +116,9 @@ def _write_bootstrap_ini(download_root: str) -> None:
         "auto_browser": "0",
         "check_new_rel": "0",
     }
-    for key, value in misc.items():
-        parser.set("misc", key, value)
-    with open(path, "w", encoding="utf-8") as handle:
-        parser.write(handle)
+    config["misc"].update(misc)
+    with open(path, "wb") as handle:
+        config.write(handle)
     try:
         os.chmod(path, 0o600)
     except OSError:

@@ -172,3 +172,171 @@ def test_the_service_is_configured_never_to_unpack():
     source = inspect.getsource(runtime._write_bootstrap_ini)
     for disabled in ('"direct_unpack": "0"', '"enable_unrar": "0"', '"enable_7zip": "0"'):
         assert disabled in source, disabled
+
+
+# --- the service's own saved configuration survives a DebridPulse start ---
+
+# What the bundled service writes once it has saved its configuration
+# (characterized against SABnzbd 5.1.3: configobj, a version header above the
+# first section, nested [[name]] news-server and category sections).
+_SERVICE_SAVED_INI = """\
+__encoding__ = utf-8
+__version__ = 19
+[misc]
+api_key = 0123456789abcdef0123456789abcdef
+nzb_key = fedcba9876543210fedcba9876543210
+config_conversion_version = 5
+cache_limit = 500M
+direct_write = 1
+max_art_tries = 3
+host = 0.0.0.0
+port = 8080
+download_dir = /elsewhere/incomplete
+complete_dir = /elsewhere/complete
+direct_unpack = 1
+enable_unrar = 1
+enable_7zip = 1
+enable_filejoin = 1
+[logging]
+log_level = 1
+[servers]
+[[dp-srv1]]
+name = dp-srv1
+displayname = news.example.invalid
+host = news.example.invalid
+port = 563
+username = reader
+password = secret
+connections = 8
+ssl = 1
+ssl_ciphers = ""
+enable = 1
+pipelining_requests = 2
+priority = 0
+quota = 10G
+usage_at_start = 1234
+[categories]
+[[*]]
+name = *
+order = 0
+pp = 3
+dir = ""
+[[movies]]
+name = movies
+order = 1
+dir = movies
+"""
+
+
+def test_a_service_saved_configuration_survives_the_bootstrap(tmp_path, monkeypatch):
+    """The bootstrap rewrites only DebridPulse-owned [misc] values.
+
+    Everything else in the file is the service's own: its version header, news
+    servers and categories, and [misc] keys DebridPulse never seeds. The
+    installation's control-plane key is read back, never regenerated.
+    """
+    import configobj
+    from executors.sabnzbd import runtime, topology
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(runtime, "_api_key", "")  # a fresh DebridPulse process
+    ini = tmp_path / "sabnzbd.ini"
+    ini.write_text(_SERVICE_SAVED_INI, encoding="utf-8")
+    before = configobj.ConfigObj(str(ini), encoding="utf-8")
+    stored_key = before["misc"]["api_key"]
+
+    assert runtime._read_ini()["misc"]["api_key"] == stored_key
+    runtime._write_bootstrap_ini("/download")
+    assert runtime.internal_api_key() == stored_key
+
+    after = configobj.ConfigObj(str(ini), encoding="utf-8")
+    for top in ("__version__", "__encoding__"):
+        assert after.get(top) == before[top], top
+    assert after.sections == before.sections
+    for section in before.sections:
+        if section != "misc":
+            assert after[section].dict() == before[section].dict(), section
+    owned = {"api_key", "host", "port", "username", "password", "download_dir",
+             "complete_dir", "direct_unpack", "enable_filejoin", "enable_unrar",
+             "enable_7zip", "permissions", "auto_browser", "check_new_rel"}
+    for key, value in before["misc"].items():
+        if key not in owned:
+            assert after["misc"][key] == value, key
+    # DebridPulse-owned values are (re)applied over whatever the service saved.
+    assert after["misc"]["api_key"] == stored_key
+    assert after["misc"]["host"] == runtime.SERVICE_HOST
+    assert after["misc"]["port"] == str(runtime.SERVICE_PORT)
+    assert after["misc"]["download_dir"] == topology.incomplete_root("/download")
+    assert after["misc"]["complete_dir"] == topology.complete_root("/download")
+    for disabled in ("direct_unpack", "enable_filejoin", "enable_unrar", "enable_7zip"):
+        assert after["misc"][disabled] == "0", disabled
+    # The control plane reads back the same key the service will use.
+    monkeypatch.setattr(runtime, "_api_key", "")
+    assert runtime.internal_api_key() == stored_key
+
+
+def test_the_first_bootstrap_seeds_a_file_the_service_can_read(tmp_path, monkeypatch):
+    import configobj
+    from executors.sabnzbd import runtime
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(runtime, "_api_key", "")
+    runtime._write_bootstrap_ini("/download")
+    key = runtime.internal_api_key()
+    seeded = configobj.ConfigObj(str(tmp_path / "sabnzbd.ini"), encoding="utf-8")
+    assert seeded["misc"]["api_key"] == key and seeded["misc"]["enable_unrar"] == "0"
+    # A second start keeps the key it seeded.
+    monkeypatch.setattr(runtime, "_api_key", "")
+    runtime._write_bootstrap_ini("/download")
+    assert runtime.internal_api_key() == key
+
+
+def test_service_values_are_kept_verbatim_and_an_unreadable_file_behaves_as_before(tmp_path, monkeypatch):
+    """Values are written back exactly as saved (no %(name)s or $ expansion, no
+    requoting), a file that cannot be parsed still yields a fresh [misc] seed,
+    and one that is not UTF-8 still raises."""
+    import configobj
+    from executors.sabnzbd import runtime
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path)
+    ini = tmp_path / "sabnzbd.ini"
+    ini.write_text('__version__ = 19\n[misc]\napi_key = k\n[servers]\n[[dp-1]]\n'
+                   'password = "p%(x)s$y%%z#q"\nname = "a, b"\n', encoding="utf-8")
+    monkeypatch.setattr(runtime, "_api_key", "")
+    runtime._write_bootstrap_ini("/download")
+    server = configobj.ConfigObj(str(ini), encoding="utf-8", interpolation=False)["servers"]["dp-1"]
+    assert server["password"] == "p%(x)s$y%%z#q" and server["name"] == "a, b"
+
+    ini.write_bytes(b"\x00[[[\n= =\n")
+    monkeypatch.setattr(runtime, "_api_key", "")
+    runtime._write_bootstrap_ini("/download")
+    seeded = configobj.ConfigObj(str(ini), encoding="utf-8")
+    assert seeded.sections == ["misc"] and seeded["misc"]["api_key"] == runtime.internal_api_key()
+
+    ini.write_bytes(b"[misc]\napi_key = \xff\xfe\n")
+    monkeypatch.setattr(runtime, "_api_key", "")
+    with pytest.raises(UnicodeDecodeError):
+        runtime._write_bootstrap_ini("/download")
+
+
+def test_a_misc_value_that_is_not_a_section_is_reseeded_as_before(tmp_path, monkeypatch):
+    import configobj
+    from executors.sabnzbd import runtime
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path)
+    monkeypatch.setattr(runtime, "_api_key", "")
+    ini = tmp_path / "sabnzbd.ini"
+    ini.write_text("misc = 5\n[logging]\nx = 1\n", encoding="utf-8")
+    runtime._write_bootstrap_ini("/download")
+    seeded = configobj.ConfigObj(str(ini), encoding="utf-8")
+    assert seeded.sections == ["misc"] and seeded["misc"]["api_key"] == runtime.internal_api_key()
+
+
+def test_folder_paths_reach_the_service_exactly_whatever_they_contain(tmp_path, monkeypatch):
+    """A Download Folder whose path holds ',' or '#' is written quoted, so the
+    service reads back the one path, never a list or a cut-off comment."""
+    import configobj
+    from executors.sabnzbd import runtime, topology
+    monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path / "usenet")
+    monkeypatch.setattr(runtime, "_api_key", "")
+    root = str(tmp_path / "a, b #c")
+    runtime._write_bootstrap_ini(root)
+    misc = configobj.ConfigObj(str(tmp_path / "usenet" / "sabnzbd.ini"), default_encoding="utf-8", encoding="utf-8")["misc"]
+    assert misc["download_dir"] == topology.incomplete_root(root)
+    assert misc["complete_dir"] == topology.complete_root(root)
