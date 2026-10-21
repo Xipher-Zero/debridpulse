@@ -535,6 +535,12 @@ _SCHEMA_COLUMNS_FILES = [
     ("mirror_group_id", "INTEGER"),
     ("mirror_state", "TEXT DEFAULT ''"),
     ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+    # The operator's withdrawal of this artifact (``TransferEngine.cancel_
+    # artifact``): the execution attempt it was cancelled on ('' for none),
+    # NULL when never withdrawn. It withdraws the artifact from its
+    # transfer's completion obligation only while the artifact is still
+    # cancelled on that same attempt (``aggregate_lifecycle``).
+    ("withdrawn_attempt", "TEXT"),
 ]
 
 RUNTIME_STATE_SCHEMA = (

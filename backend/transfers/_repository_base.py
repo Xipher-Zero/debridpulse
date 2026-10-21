@@ -366,8 +366,10 @@ class AggregateLifecycleOutcome:
     canonical artifact durably satisfies (DP 1.0.12 Root Cause B, Section 5)
     -- the caller must reuse it (never re-read a second, independently timed
     set) for any follow-up step such as completion verification.
-    ``should_complete`` is True only when every VOTING canonical artifact is
-    already "completed" and nothing is still resolving; the caller runs the
+    -- and minus every cancelled row, which is withdrawn from the obligation.
+    ``should_complete`` is True only when every PARTICIPATING (voting, not
+    cancelled) canonical artifact is already "completed", at least one
+    participates, and nothing is still resolving; the caller runs the
     separate, non-transactional, executor-touching completion sequence in
     that case (verifying payloads, cancelling stray writers, queuing
     post-processing) since that work cannot happen inside a single bounded
@@ -1895,7 +1897,16 @@ class TransferRepository:
                     if not await _completion_obligation_satisfied(db, held_record, completed_canonical_keys):
                         completion_blocking_hold = True
                         break
-            total = sum(item.expected_bytes for item in artifacts)
+            # The artifacts the operator withdrew (``withdrawn_attempt``, see
+            # the completion decision below) are no longer this transfer's:
+            # its size and progress count only what it still delivers.
+            withdrawn = {
+                int(row["id"]) for row in artifact_rows
+                if row["status"] == "cancelled" and row["withdrawn_attempt"] is not None
+                and row["withdrawn_attempt"] == (row["execution_attempt_id"] or "")
+            }
+            counted = tuple(item for item in artifacts if item.id not in withdrawn)
+            total = sum(item.expected_bytes for item in counted)
             # DP 1.0.12 canonical transfer-detail materialized-path
             # correction: the durable "current materialized target"
             # (rendered by frontend/static/app.js as "Local Path") must be
@@ -1912,7 +1923,7 @@ class TransferRepository:
             local_path = str(Path(path_source[0].target).parent) if path_source else ""
             # A percentage exists only when every unfinished artifact's size is
             # known; otherwise it is unavailable (NULL), never a fabricated 0%.
-            size_known = verified_material_known(artifacts)
+            size_known = verified_material_known(counted)
             await db.execute(
                 """UPDATE torrents SET size_bytes=?,local_path=?,progress=CASE WHEN ? THEN progress ELSE NULL END
                     WHERE id=? AND status NOT IN ('deleted','consolidated')""",
@@ -1922,10 +1933,24 @@ class TransferRepository:
             # own percentage: a handoff that keeps all material keeps the
             # figure, and a real rollback lowers it by exactly what was lost.
             measure = verified_material_measure(
-                artifacts, await self._valid_material_bytes(db, [item.id for item in artifacts]))
+                counted, await self._valid_material_bytes(db, [item.id for item in counted]))
             progress = None if measure is None else (
                 min(100.0, measure[0] / measure[1] * 100) if measure[1] else 0.0)
 
+            # An artifact the operator cancelled is withdrawn from the
+            # transfer's completion obligation: the transfer completes once
+            # every artifact still participating completed, and only those are
+            # verified and post-processed. Withdrawal is the operator's act
+            # alone (``withdrawn_attempt``, recorded by ``cancel_artifact``
+            # against the attempt it is cancelled on): an executor's own or an
+            # internal cancel never withdraws anything and still blocks
+            # completion. The withdrawn one keeps its own state and
+            # provenance; an explicit Retry/reacquisition restores it to
+            # participation (a new attempt, so the record no longer applies). Every voting artifact cancelled is never a
+            # completion: the CANCELLED branch below keeps that outcome (no
+            # voting artifact at all -- each failed row satisfied elsewhere --
+            # completes as before), and a genuine failure still votes FAILED.
+            participating = tuple(item for item in voting_artifacts if item.id not in withdrawn)
             should_complete = False
             paused = transfer.paused or await self._globally_paused(db)
             if not paused:
@@ -1947,9 +1972,9 @@ class TransferRepository:
                 # equivalence correction exists to forbid. An unsatisfied hold
                 # must first be resolved (recovered/released) or the request
                 # explicitly retried before completion may ever be reached.
-                if artifacts and not pending and not completion_blocking_hold and all(
-                    item.state == "completed" for item in voting_artifacts
-                ):
+                if artifacts and not pending and not completion_blocking_hold and (
+                    participating or not voting_artifacts
+                ) and all(item.state == "completed" for item in participating):
                     should_complete = True
                 elif any(item.state in {"downloading", "verifying"} for item in artifacts):
                     await _transition(TransferState.TRANSFERRING, progress=progress)
@@ -2037,7 +2062,9 @@ class TransferRepository:
         # satisfied-elsewhere failed row to verify -- its own target is not
         # expected to be a valid payload, and the logical obligation it
         # represents was already verified when the OTHER canonical completed.
-        return AggregateLifecycleOutcome(should_complete, voting_artifacts)
+        # Nor a cancelled one: it holds no delivered material, and the sweep
+        # would requeue it -- reviving a file the operator withdrew.
+        return AggregateLifecycleOutcome(should_complete, participating)
 
     @staticmethod
     async def _globally_paused(db) -> bool:
@@ -4997,7 +5024,7 @@ class TransferRepository:
                 and not any(key in context for key in retire))
 
     async def artifact_state(self, artifact_id: int, state: str, *, error=None, retry_at=0, release=False, selected=None,
-                             expected_bytes=None, size_knowledge=None):
+                             expected_bytes=None, size_knowledge=None, withdrawn=False):
         """``size_knowledge`` is the ONE durable writer of the canonical size
         fact, and only a verified completion supplies it: the caller has
         already proven the stable local payload against trusted evidence, so
@@ -5005,7 +5032,12 @@ class TransferRepository:
         a default or a bookkeeping side effect. Every other artifact write
         leaves the column untouched, so a reported/bookkeeping size never
         manufactures size knowledge -- ``SizeKnowledge.durable`` reads such a
-        row back as KNOWN_POSITIVE or UNKNOWN from the byte count alone."""
+        row back as KNOWN_POSITIVE or UNKNOWN from the byte count alone.
+
+        ``withdrawn`` (only with ``cancelled``): the operator withdrew the
+        artifact, recorded against the attempt it is cancelled on
+        (``withdrawn_attempt``). An observed native or internal cancel never
+        passes it."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await db.fetchone("SELECT execution_attempt_id,torrent_id,status,filename FROM download_files WHERE id=?",
@@ -5017,13 +5049,15 @@ class TransferRepository:
             # unconditionally (cancellation, deletion, terminal failure, and
             # plain completion all funnel through here).
             cursor = await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
+                withdrawn_attempt=CASE WHEN ? THEN COALESCE(execution_attempt_id,'') ELSE withdrawn_attempt END,
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
                 selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),
                 size_knowledge=COALESCE(?,size_knowledge),
                 continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents
                     WHERE status NOT IN ('deleted','consolidated') AND (status!='cancelled' OR ?='cancelled'))""",
-                (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes,
+                (state, codec.dump(error) if error else None, retry_at, bool(withdrawn and state == "cancelled"),
+                 release, selected, expected_bytes,
                  str(size_knowledge) if size_knowledge is not None else None, artifact_id, state))
             if cursor.rowcount and release and current and current.get("execution_attempt_id"):
                 await db.execute("""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP

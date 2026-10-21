@@ -846,3 +846,127 @@ async def test_multi_slot_per_file_target_paths_remain_isolated(tmp_path, monkey
     assert files_by_name["a.iso"]["local_path"] == artifacts["a.iso"].target
     assert files_by_name["b.iso"]["local_path"] == artifacts["b.iso"].target
     assert files_by_name["a.iso"]["local_path"] != files_by_name["b.iso"]["local_path"]
+
+
+# ── a cancelled file is withdrawn from the transfer's completion obligation (B5-A) ──
+
+async def _settle(engine, transfer_id, cycles=6):
+    for _ in range(cycles):
+        await engine.tick()
+    return await engine.repository.get(transfer_id)
+
+
+async def _finish(engine, artifact):
+    executor = engine.registry.executors[artifact.execution.executor_id]
+    executor.finish(artifact.execution)
+
+
+async def test_completed_files_beside_a_cancelled_one_complete_the_transfer(tmp_path, monkeypatch):
+    """Cancelling a file withdraws it from the transfer's obligation: once
+    every remaining file completed, the transfer is COMPLETED. The cancelled
+    file keeps its own cancelled state and is never verified, requeued or
+    revived by the completion; only the completed file is delivered."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    kept, withdrawn = artifacts
+    await engine.cancel_artifact(transfer.id, withdrawn.id)
+    cancelled = next(item for item in await repository.artifacts(transfer.id) if item.id == withdrawn.id)
+    await _finish(engine, kept)
+    settled = await _settle(engine, transfer.id)
+    current = {item.id: item for item in await repository.artifacts(transfer.id)}
+    assert settled.state == TransferState.COMPLETED
+    assert current[kept.id].state == "completed"
+    # Untouched by the completion: same state, same (provenance) attempt, no
+    # new writer, nothing delivered for it.
+    assert current[withdrawn.id] == cancelled and cancelled.state == "cancelled"
+    assert not Path(withdrawn.target).exists()
+
+
+async def test_active_work_beside_a_cancelled_file_never_completes_early(tmp_path, monkeypatch):
+    """The negative control: a cancelled file withdraws only itself. While
+    the other file is still downloading the transfer is transferring, never
+    COMPLETED."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    running, withdrawn = artifacts
+    await engine.cancel_artifact(transfer.id, withdrawn.id)
+    settled = await _settle(engine, transfer.id)
+    assert settled.state == TransferState.TRANSFERRING
+    assert next(item for item in await repository.artifacts(transfer.id) if item.id == running.id).state == "downloading"
+
+
+async def test_a_cancelled_file_never_hides_a_genuine_failure(tmp_path, monkeypatch):
+    """A file that genuinely failed is still the transfer's outcome: a
+    cancelled sibling neither completes the transfer nor masks the
+    failure."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    failing, withdrawn = artifacts
+    await engine.cancel_artifact(transfer.id, withdrawn.id)
+    await repository.artifact_state(failing.id, "error", error=NormalizedError(
+        Domain.EXECUTOR, Category.MATERIALIZATION_FAILED, Stage.EXECUTION, Retryability.NEVER))
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert not outcome.should_complete
+    assert (await repository.get(transfer.id)).state == TransferState.FAILED
+
+
+async def test_a_transfer_whose_every_file_was_cancelled_stays_cancelled(tmp_path, monkeypatch):
+    """All-cancelled keeps its established outcome: CANCELLED, never an
+    empty COMPLETED."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    for artifact in artifacts:
+        await engine.cancel_artifact(transfer.id, artifact.id)
+    settled = await _settle(engine, transfer.id)
+    assert settled.state == TransferState.CANCELLED
+    assert {item.state for item in await repository.artifacts(transfer.id)} == {"cancelled"}
+
+
+async def test_retrying_a_completed_transfer_restores_its_cancelled_file_to_participation(tmp_path, monkeypatch):
+    """Explicit revival: an operator Retry of the completed transfer
+    (reacquisition) brings the cancelled file back into the obligation --
+    the transfer is not COMPLETED again until that file completes too."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    kept, withdrawn = artifacts
+    await engine.cancel_artifact(transfer.id, withdrawn.id)
+    await _finish(engine, kept)
+    assert (await _settle(engine, transfer.id)).state == TransferState.COMPLETED
+    assert await engine.retry(transfer.id, reacquire=True)
+    reopened = await _settle(engine, transfer.id)
+    revived = next(item for item in await repository.artifacts(transfer.id) if item.id == withdrawn.id)
+    assert reopened.state != TransferState.COMPLETED and revived.state != "cancelled"
+    assert revived.execution is not None
+    # The withdrawal was of the earlier attempt: should the revived one be
+    # cancelled by its executor, that is no withdrawal -- never completed
+    # without it on the strength of the operator's earlier act.
+    executor = engine.registry.executors[revived.execution.executor_id]
+    running = executor.jobs[revived.execution.attempt_id]
+    executor.jobs[revived.execution.attempt_id] = replace(running, state=ExecutionState.CANCELLED)
+    assert (await _settle(engine, transfer.id, cycles=3)).state != TransferState.COMPLETED
+
+
+async def test_a_cancel_the_executor_reports_never_withdraws_a_file(tmp_path, monkeypatch):
+    """Withdrawal is the operator's act alone. A file whose execution the
+    executor itself reports cancelled (a native removal, an internal stop)
+    is cancelled but not withdrawn: it still blocks completion -- the
+    transfer never completes without it -- however its sibling ends."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    kept, stopped = artifacts
+    executor = engine.registry.executors[stopped.execution.executor_id]
+    executor.jobs[stopped.execution.attempt_id] = replace(
+        executor.jobs[stopped.execution.attempt_id], state=ExecutionState.CANCELLED)
+    await _finish(engine, kept)
+    settled = await _settle(engine, transfer.id)
+    current = {item.id: item for item in await repository.artifacts(transfer.id)}
+    assert current[kept.id].state == "completed" and current[stopped.id].state == "cancelled"
+    assert settled.state != TransferState.COMPLETED
+
+
+async def test_a_completed_transfer_counts_only_what_it_delivered(tmp_path, monkeypatch):
+    """The withdrawn file's size is no longer the transfer's: a completed
+    transfer reports the size of what it delivered, never the withdrawn
+    file's bytes as if delivered."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    kept, withdrawn = artifacts
+    await engine.cancel_artifact(transfer.id, withdrawn.id)
+    await _finish(engine, kept)
+    assert (await _settle(engine, transfer.id)).state == TransferState.COMPLETED
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT size_bytes FROM torrents WHERE id=?", (transfer.id,))
+    assert int(row["size_bytes"]) == kept.expected_bytes

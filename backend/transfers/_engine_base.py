@@ -4182,7 +4182,8 @@ class TransferEngine:
                 raise TransferError(stopped.error or self._error(
                     Category.RECONCILIATION_FAILED, Stage.CLEANUP, domain=Domain.RECONCILIATION,
                     retryability=Retryability.BACKOFF))
-        await self.repository.artifact_state(artifact_id, "cancelled")
+        # The operator's withdrawal of the artifact (``aggregate_lifecycle``).
+        await self.repository.artifact_state(artifact_id, "cancelled", withdrawn=True)
         await self._aggregate(transfer_id)
 
     async def submit_input(self, transfer_id: int, challenge_id: str, method: str, values):
