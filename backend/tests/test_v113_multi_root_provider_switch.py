@@ -745,3 +745,130 @@ async def test_a_root_whose_source_another_transfer_consolidated_onto_is_never_s
     held = await file_of(repository, transfer.id, "part01.rar")
     assert (await repository.materialization_authorization(held)).kind == MaterializationAdmissionKind.HOLD
     assert executor.jobs[foreign.execution.attempt_id].state == ExecutionState.RUNNING
+
+
+# -- candidate refresh never re-points a selection by position (B5-C2, probe 13) ---------------------------------
+
+FICHIER01 = "https://1fichier.com/x/part01.rar"
+
+
+async def _three_mirrors_selecting_the_middle(tmp_path, monkeypatch):
+    """part01 offered by three mirrors [rapidgator (ad), pixeldrain (dl),
+    1fichier (ad)], the operator having selected the middle one: its writer
+    runs."""
+    lab_ = await lab(tmp_path, monkeypatch, links=(RG1, PD1, FICHIER01))
+    part01 = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    middle = next(i for i, item in enumerate(part01.candidates) if item.provider_id == "prov-dl")
+    assert middle == 1
+    assert (await lab_.engine.activate_candidate_command(lab_.transfer.id, part01.id, middle)).committed
+    await settle(lab_.engine)
+    return lab_, await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+
+
+async def _refresh(lab_, artifact, old, replacement):
+    """The origin request's own provider records the refreshed route, then the
+    canonical owner applies it (``CanonicalOwnership.refresh_candidate``)."""
+    origin = await lab_.engine.canonical.origin_for(artifact, old)
+    attempt = await lab_.repository.begin_refresh(origin.request, origin.provider_id)
+    await lab_.repository.resolution(attempt, ResolutionResult(ResourceState.AVAILABLE, (replacement,)))
+    return await lab_.engine.canonical.refresh_candidate(artifact, origin, old, [replacement])
+
+
+async def _selection(lab_, artifact_id):
+    current = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    binding = await rows("SELECT candidate_id FROM canonical_candidate_bindings WHERE canonical_artifact_id=? "
+                         "AND candidate_order=?", (artifact_id, current.selected + 1))
+    return current, str(current.candidates[current.selected].id), [str(row["candidate_id"]) for row in binding]
+
+
+async def test_a_refresh_that_drops_a_candidate_before_the_selection_never_repoints_a_running_writer(
+        tmp_path, monkeypatch):
+    """Probe 13: a refreshed route coalesces into another existing binding and
+    is dropped from a position BEFORE the selected candidate, while that
+    candidate's writer runs. The selection is an identity: it still names
+    the writer's candidate (and so does the selected binding), never the
+    candidate that slid into its old position."""
+    lab_, part01 = await _three_mirrors_selecting_the_middle(tmp_path, monkeypatch)
+    writing = str(part01.candidates[part01.selected].id)
+    writer = part01.execution.attempt_id
+    first, last = part01.candidates[0], part01.candidates[2]
+    assert await _refresh(lab_, part01, first, replace(last))          # coalesces into the 1fichier binding
+    current, selected, binding = await _selection(lab_, part01.id)
+    assert len(current.candidates) == 2
+    assert selected == writing and binding == [writing]
+    assert current.execution.attempt_id == writer and lab_.executor.jobs[writer].state == ExecutionState.RUNNING
+
+
+async def test_a_refresh_that_coalesces_the_selected_candidate_selects_what_it_coalesced_into(tmp_path, monkeypatch):
+    """The refreshed route is the selected candidate's own (the first,
+    rapidgator) and coalesces into an existing binding further on (1fichier):
+    the selection follows it there, never to the candidate that slid into the
+    selected position (pixeldrain)."""
+    lab_ = await lab(tmp_path, monkeypatch, links=(RG1, PD1, FICHIER01))
+    part01 = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    assert part01.selected == 0
+    first, last = part01.candidates[0], part01.candidates[2]
+    assert await _refresh(lab_, part01, first, replace(last))
+    current, selected, binding = await _selection(lab_, part01.id)
+    assert [str(item.id) for item in current.candidates] == [str(part01.candidates[1].id), str(last.id)]
+    assert selected == str(last.id) and binding == [str(last.id)]
+
+
+async def test_a_selected_binding_whose_candidate_id_drifted_still_keeps_the_selection(tmp_path, monkeypatch):
+    """The selected candidate's binding still carries an earlier candidate id
+    (a re-resolution reused it by source): the rewrite resolves it by source,
+    as every reader does, so the refresh neither drops the running writer's
+    candidate nor strands itself on the missing id."""
+    lab_, part01 = await _three_mirrors_selecting_the_middle(tmp_path, monkeypatch)
+    writing = str(part01.candidates[part01.selected].id)
+    writer = part01.execution.attempt_id
+    binding_id, scope = (await rows(
+        "SELECT id,source_scope FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
+        (part01.id, writing)))[0].values()
+    assert scope                                                            # resolvable by its source
+    async with database.get_db() as db:
+        await db.execute("UPDATE canonical_candidate_bindings SET candidate_id='drifted' WHERE id=?", (binding_id,))
+        await db.commit()
+    first = part01.candidates[0]
+    assert await _refresh(lab_, part01, first, replace(first, id="fresh-" + str(first.id)))
+    current = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    assert len(current.candidates) == 3 and str(current.candidates[current.selected].id) == writing
+    assert current.execution.attempt_id == writer and lab_.executor.jobs[writer].state == ExecutionState.RUNNING
+
+
+async def test_an_in_place_refresh_keeps_the_selection(tmp_path, monkeypatch):
+    """Negative control: a refreshed route that is new (a fresh candidate)
+    takes the refreshed one's place; the selected candidate and its writer
+    are untouched."""
+    lab_, part01 = await _three_mirrors_selecting_the_middle(tmp_path, monkeypatch)
+    writing = str(part01.candidates[part01.selected].id)
+    first = part01.candidates[0]
+    fresh = replace(first, id="fresh-" + str(first.id))
+    assert await _refresh(lab_, part01, first, fresh)
+    current, selected, binding = await _selection(lab_, part01.id)
+    assert [str(item.id) for item in current.candidates][0] == str(fresh.id) and len(current.candidates) == 3
+    assert selected == writing and binding == [writing]
+
+
+async def test_the_engines_refresh_keeps_the_selection_its_canonical_owner_settled(tmp_path, monkeypatch):
+    """The engine's own refresh of a ``refresh_pending`` selected candidate
+    (``TransferEngine._refresh``): the provider's refreshed route coalesces
+    into another existing binding, so the canonical owner selects that one
+    -- and the engine then queues the artifact without writing back the
+    selection's old position, which now names a different candidate."""
+    lab_ = await lab(tmp_path, monkeypatch, links=(RG1, PD1, FICHIER01))
+    part01 = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    assert part01.selected == 0 and part01.candidates[0].provider_id == "prov-ad"
+    coalesced = part01.candidates[2]                                        # 1fichier, also prov-ad
+
+    async def refresh(self, candidate):
+        return ResolutionResult(ResourceState.AVAILABLE, (replace(coalesced),))
+
+    monkeypatch.setattr(HostProvider, "refresh", refresh, raising=False)
+    await lab_.repository.artifact_state(part01.id, "refresh_pending", release=True,
+                                         expected_bytes=part01.candidates[0].expected_bytes)
+    pending = await file_of(lab_.repository, lab_.transfer.id, "part01.rar")
+    await lab_.engine._refresh(pending)
+    current, selected, binding = await _selection(lab_, part01.id)
+    assert current.state == "queued" and [item.provider_id for item in current.candidates] == ["prov-dl", "prov-ad"]
+    assert selected == str(coalesced.id) and binding == [str(coalesced.id)]

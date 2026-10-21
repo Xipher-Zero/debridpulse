@@ -1408,6 +1408,13 @@ class CanonicalOwnership:
                 return False
             old_id = str(old_candidate.id)
             canonical_candidates = [codec.candidate(item) for item in codec.load(current["candidates"], [])]
+            # The selection is an identity, never a position: the reorder below
+            # may drop the refreshed candidate (coalesced into an existing
+            # binding) before the selected one, and a running writer's
+            # selection must not silently come to name another candidate.
+            position = int(current["selected_candidate"] or 0)
+            selected_id = (str(canonical_candidates[position].id)
+                           if 0 <= position < len(canonical_candidates) else None)
             holder_candidates = [codec.candidate(item) for item in codec.load(holder["candidates"], [])]
             try:
                 canonical_index = next(i for i, item in enumerate(canonical_candidates) if str(item.id) == old_id)
@@ -1473,8 +1480,13 @@ class CanonicalOwnership:
 
             if not accepted:
                 canonical_candidates.pop(canonical_index)
+                # Coalesced: the refreshed route IS the existing binding's
+                # source; its successor is the current candidate that binding
+                # resolves for (read below, as every reader resolves it).
+                successor_id = None
             else:
                 canonical_candidates[canonical_index:canonical_index + 1] = accepted
+                successor_id = str(accepted[0].id)
             holder_candidates[holder_index:holder_index + 1] = list(replacements)
             if not canonical_candidates:
                 await db.rollback()
@@ -1485,21 +1497,37 @@ class CanonicalOwnership:
                 (artifact.id,),
             )
             ordered = []
+            placed: set[int] = set()
             for candidate in canonical_candidates:
-                binding = await db.fetchone(
-                    "SELECT id FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
-                    (artifact.id, str(candidate.id)),
-                )
-                if not binding:
+                # Each candidate's binding is the one ``_binding_for`` resolves
+                # for it (source first, then id), exactly as realignment and
+                # every reader resolve it: a binding whose stored candidate id
+                # drifted still places its current candidate.
+                found = await self._p1_origin_for_candidate(db, artifact.id, candidate)
+                binding = await self._binding_for(db, artifact.id, candidate, found.source if found else None)
+                if not binding or int(binding["id"]) in placed:
                     continue
+                placed.add(int(binding["id"]))
                 await db.execute(
                     "UPDATE canonical_candidate_bindings SET candidate_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                     (len(ordered) + 1, binding["id"]),
                 )
+                if successor_id is None and int(binding["id"]) == primary_binding_id:
+                    successor_id = str(candidate.id)
                 ordered.append(candidate)
+            if selected_id is None:
+                # An out-of-range position names no candidate to keep: the
+                # first candidate, rather than stranding the refresh.
+                selected = 0 if ordered else None
+            else:
+                wanted = successor_id if selected_id == old_id else selected_id
+                selected = next((index for index, item in enumerate(ordered) if str(item.id) == wanted), None)
+            if selected is None:
+                await db.rollback()
+                return False
             await db.execute(
-                "UPDATE download_files SET candidates=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (codec.dump(tuple(ordered)), artifact.id),
+                "UPDATE download_files SET candidates=?,selected_candidate=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (codec.dump(tuple(ordered)), selected, artifact.id),
             )
             if int(holder["id"]) != int(artifact.id):
                 await db.execute(

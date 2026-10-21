@@ -725,12 +725,8 @@ class TransferEngine(_QualifiedTransferEngine):
             if not await self.canonical.refresh_candidate(current, origin, candidate, candidates):
                 return False, "refresh_replay_conflict", None
             size = current.expected_bytes if current.expected_bytes > 0 else replacement_size
-            await self.repository.artifact_state(
-                current.id,
-                "queued",
-                selected=current.selected,
-                expected_bytes=max(0, size),
-            )
+            # The selection is the one refresh_candidate settled (by identity).
+            await self.repository.artifact_state(current.id, "queued", expected_bytes=max(0, size))
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
             await self.repository.clear_recovery_quiescence(claim)
             return True, "refresh_replayed", None
@@ -788,12 +784,8 @@ class TransferEngine(_QualifiedTransferEngine):
         if not await self.canonical.refresh_candidate(current, origin, candidate, result.candidates):
             return False, "refresh_candidate_conflict", None
         size = current.expected_bytes if current.expected_bytes > 0 else replacement_size
-        await self.repository.artifact_state(
-            current.id,
-            "queued",
-            selected=current.selected,
-            expected_bytes=max(0, size),
-        )
+        # The selection is the one refresh_candidate settled (by identity).
+        await self.repository.artifact_state(current.id, "queued", expected_bytes=max(0, size))
         await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
         await self.repository.clear_recovery_quiescence(claim)
         return True, "refresh_applied", None
