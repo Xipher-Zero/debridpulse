@@ -77,6 +77,53 @@ async def available(adapter: str) -> bool:
     return bool(clients) and await any_active_client(clients)
 
 
+# Why a failed job may be no fault of what was submitted -- the obstructions
+# an operator clears, after which the same job continues: the provider's or
+# executor's credentials, configuration, availability or account limits, and
+# DebridPulse's own storage. Every other acquisition failure -- a source that
+# is gone or refused, content that failed (a download client's own failure,
+# integrity), a security refusal, retries exhausted on any of them, or no
+# recorded reason at all -- is the submission's, as it always was.
+_OBSTRUCTION_CATEGORIES = frozenset({
+    "authentication_failed", "authorization_failed", "credential_missing", "credential_expired",
+    "credential_invalid", "invalid_configuration", "provider_unavailable", "provider_degraded",
+    "provider_maintenance", "executor_unavailable", "rate_limited", "quota_exceeded", "account_limited",
+    "concurrency_limited", "disk_full", "permission_denied", "path_unavailable", "local_io_failure",
+    "local_resource_exhausted", "application_storage_full", "application_storage_read_only",
+    "application_storage_unavailable", "download_storage_full", "download_storage_read_only",
+    "download_storage_unavailable",
+})
+# The delivery reasons (``ExternalClients._deliverable``) that say nothing
+# about the release: it was acquired, and what blocks it is the profile's
+# configuration or what happened to the material afterwards.
+_DELIVERY_OBSTRUCTIONS = frozenset({
+    "profile_unavailable", "profile_root_outside_downloads", "outside_export_root", "material_missing",
+    "extraction_outputs_unrecorded", "extraction_outputs_unattributable", "nothing_delivered",
+})
+
+
+def release_failed(job: dict) -> bool:
+    """Whether a client may treat a failed job as final for what it
+    submitted -- a download client's "failed", on which *arr blocklists the
+    release and searches for another. Every failed job is, as it always
+    was, except a positive obstruction an operator clears with the release
+    never at fault: an acquisition failure of an obstruction category
+    (``_OBSTRUCTION_CATEGORIES``), or a delivery-side reason
+    (``_DELIVERY_OBSTRUCTIONS``). Unknown, missing or ambiguous reasons
+    (a finalization that failed, a shared transfer that failed, a demand
+    that is gone) stay final: a release must never wait forever on a
+    failure only a new search can end."""
+    if job.get("phase") != "failed":
+        return False
+    reason = job.get("reason")
+    if reason in _DELIVERY_OBSTRUCTIONS:
+        return False
+    if reason == "acquisition_failed":
+        category = str((job.get("error") or {}).get("category") or "")
+        return category not in _OBSTRUCTION_CATEGORIES
+    return True
+
+
 def output_location(delivery: dict) -> tuple[str, int] | None:
     """Where a client imports a completed job from, and its total size: the
     single delivered file, or the one folder that holds every delivered file.

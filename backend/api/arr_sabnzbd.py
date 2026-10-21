@@ -214,8 +214,13 @@ async def _history(external: ExternalClients, principal, params) -> dict:
     for job in listing["jobs"]:
         slot = {"nzo_id": job["id"], "name": _name(job), "category": job["category"], "bytes": 0,
                 "fail_message": "", "storage": ""}
-        if job["phase"] == "failed":
+        if arr.release_failed(job):
             slot.update(status="Failed", fail_message=f"DebridPulse: {job['reason']}")
+        elif job["phase"] == "failed":
+            # Stopped until an operator clears it (``arr.release_failed``):
+            # never Failed, which would blocklist a release that was never at
+            # fault; *arr keeps waiting, and the job continues after the fix.
+            slot["status"] = "Paused"
         else:
             location = arr.output_location(job["delivery"])
             if location is None:

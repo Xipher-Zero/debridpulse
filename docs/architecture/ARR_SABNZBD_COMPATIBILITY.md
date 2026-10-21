@@ -237,7 +237,8 @@ never exposed.
 | paused (by DebridPulse) | `Paused` |
 | completed, with a delivery available now | history `Completed`, `storage` = its location |
 | completed, not importable now | history `Verifying` (not a failure) |
-| failed | history `Failed`, `fail_message` = `DebridPulse: <reason>` |
+| failed | history `Failed`, `fail_message` = `DebridPulse: <reason>`; *arr's Failed Download Handling may blocklist the release and search again. This is every failure, as before, except the obstructions in the next row |
+| failed, positively an obstruction an operator clears with the release never at fault: an acquisition failure of the provider's or executor's credentials, configuration, availability or account limits, or of DebridPulse's own storage; or a delivery-side reason (an undeliverable profile, material removed after acquisition, extraction outputs not recorded or attributable, nothing selected) | history `Paused` (not a failure): *arr keeps waiting and blocklists nothing; the same `nzo_id` continues after the operator's Retry or fix. A failure of the source or content (including the Usenet service's own failure once its retries are spent), a security refusal, a failed finalization or shared transfer, or one without a recorded reason stays `Failed` |
 | withdrawn, acknowledged, expired | absent |
 
 Further rules:

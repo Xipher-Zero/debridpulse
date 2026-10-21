@@ -196,7 +196,7 @@ States come from the native job, not from an executor.
 | paused by DebridPulse | `stoppedDL` | Paused |
 | completed, with a delivery available now | **`stoppedUP`**: `progress` 1, `content_path` = its location, `save_path` = the import root, `ratio` 0, `ratio_limit` 0 | Completed, importable |
 | completed, not importable now | `checkingUP` | Queued, never Completed |
-| failed | `error` | Warning |
+| failed (any failure) | `error` | Warning: *arr never blocklists it automatically, so an operator-clearable failure is safe; the qBittorrent protocol has no state *arr reads as a final failure, so a release-invalidating one is a Warning too |
 
 When an operator retries or reacquires a torrent's completed, not yet removed,
 download, the same hash returns to the unfinished states above and is

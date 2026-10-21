@@ -162,10 +162,14 @@ async def jobs():
         return await db.fetchall("SELECT * FROM external_jobs ORDER BY created_at")
 
 
-async def fail(world, transfer_id):
-    """Fail one transfer through the core: a resolution refusal that never retries."""
+async def fail(world, transfer_id, *, terminal=False):
+    """Fail one transfer through the core: a resolution refusal it does not
+    retry by itself -- an obstruction an operator can clear (the provider's
+    credentials were refused), or, ``terminal``, a source that does not
+    exist, which invalidates the submission."""
     world.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=failure(
-        Category.DESTINATION_BLOCKED, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY))]
+        Category.SOURCE_NOT_FOUND, retryability=Retryability.NEVER) if terminal else failure(
+        Category.AUTHENTICATION_FAILED, retryability=Retryability.AFTER_REAUTH, recovery=Recovery.REAUTHENTICATE))]
     for _ in range(3):
         await world.engine.tick()
         world.now[0] += 1000
@@ -372,7 +376,7 @@ async def test_a_job_that_left_the_view_is_never_reused(sab, world, ended):
     first = await submitted(sab)
     transfer_id = await transfer_of(first)
     if ended == "failed":
-        await fail(world, transfer_id)
+        await fail(world, transfer_id, terminal=True)
         assert arr_history_accepts((await call(sab, "history")).json())[0]["status"] == "Failed"
     else:
         if ended == "acknowledged":
@@ -503,14 +507,70 @@ async def test_an_operator_pause_reads_paused_and_a_global_pause_flags_the_queue
     assert body["queue"]["paused"] is True
 
 
-async def test_a_failure_reaches_history_only_when_the_core_says_failed(sab, world):
+@pytest.mark.parametrize("terminal", [True, False], ids=["release-invalidating", "operator-correctable"])
+async def test_a_failure_reaches_history_only_when_the_core_says_failed(sab, world, terminal):
+    """A core failure reaches history, but it is Failed -- on which *arr
+    blocklists the release -- unless it is positively an obstruction an
+    operator clears (here: the provider refused its credentials), which is
+    Paused: *arr keeps waiting, nothing is blocklisted, and the same job
+    continues once the operator fixes it (D-X2 / FUNC-A10). A source that
+    does not exist stays Failed. The native job is unchanged by either."""
     nzo_id = await submitted(sab)
     transfer_id = await transfer_of(nzo_id)
-    await fail(world, transfer_id)
+    await fail(world, transfer_id, terminal=terminal)
     assert await queue(sab) == []
     [slot] = await history(sab)
-    assert (slot["nzo_id"], slot["status"], slot["storage"]) == (nzo_id, "Failed", "")
-    assert slot["fail_message"] == "DebridPulse: acquisition_failed"
+    job = await world.external.job(sab_principal(world, sab), nzo_id)
+    assert (job["phase"], job["reason"], job["actionability"]) == ("failed", "acquisition_failed", "operator")
+    if terminal:
+        assert (slot["nzo_id"], slot["status"], slot["storage"]) == (nzo_id, "Failed", "")
+        assert slot["fail_message"] == "DebridPulse: acquisition_failed"
+    else:
+        assert (slot["nzo_id"], slot["status"], slot["storage"], slot["fail_message"]) == (nzo_id, "Paused", "", "")
+
+
+async def test_a_download_clients_own_failure_with_its_retries_spent_stays_failed(sab, world):
+    """The Usenet service's own failure (missing articles, a repair that
+    failed: ``TRANSFER_FAILED``, which the core retries with backoff) ends
+    the job once its retries are spent, and stays Failed -- *arr must
+    blocklist that release and search again; it never waits forever."""
+    from transfers.errors import Domain, NormalizedError, Stage
+
+    nzo_id = await submitted(sab)
+    transfer_id = await transfer_of(nzo_id)
+    native = NormalizedError(Domain.EXECUTOR, Category.TRANSFER_FAILED, Stage.EXECUTION, Retryability.BACKOFF)
+    assert await world.repository.state(transfer_id, TransferState.FAILED, error=native)
+    [slot] = await history(sab)
+    assert (slot["nzo_id"], slot["status"]) == (nzo_id, "Failed")
+
+
+async def test_only_a_positive_operator_obstruction_is_kept_from_failed():
+    """The one rule both dialects share (``arr.release_failed``): every
+    failed job is final -- what *arr may blocklist -- except a positive
+    obstruction an operator clears with the release never at fault: an
+    acquisition failure of an obstruction category, or a delivery-side
+    reason. Anything unknown, missing or ambiguous stays final."""
+    def job(reason, category=None, phase="failed"):
+        return {"phase": phase, "reason": reason, "actionability": "operator",
+                **({"error": {"category": category}} if category else {})}
+
+    final = [job("acquisition_failed", category) for category in (
+        "source_not_found", "source_unavailable", "resource_not_found", "transfer_failed", "content_invalid",
+        "checksum_mismatch", "size_mismatch", "destination_blocked", "no_transfer_candidate", "")]
+    final += [job("acquisition_failed"), job("finalization_failed"), job("shared_transfer_failed"),
+              job("demand_missing"), {"phase": "failed", "reason": "cancelled", "actionability": "resubmit"},
+              {"phase": "failed", "reason": "deleted", "actionability": "resubmit"}]
+    clearable = [job("acquisition_failed", category) for category in (
+        "authentication_failed", "credential_missing", "invalid_configuration", "provider_unavailable",
+        "provider_maintenance", "executor_unavailable", "quota_exceeded", "disk_full",
+        "download_storage_unavailable")]
+    clearable += [job(reason) for reason in (
+        "profile_unavailable", "profile_root_outside_downloads", "outside_export_root", "material_missing",
+        "extraction_outputs_unrecorded", "extraction_outputs_unattributable", "nothing_delivered")]
+    other = [job("delivered", phase="completed"), job("downloading", phase="processing"),
+             job("withdrawn_by_client", phase="withdrawn")]
+    assert [arr.release_failed(item) for item in final] == [True] * len(final)
+    assert [arr.release_failed(item) for item in clearable + other] == [False] * len(clearable + other)
 
 
 async def test_each_client_and_category_sees_only_its_own_items_and_ids_survive_restart(sab, world):
@@ -558,11 +618,12 @@ async def test_completion_is_advertised_only_as_one_complete_location(sab, world
     [slot] = await history(sab)
     assert (slot["nzo_id"], slot["status"], slot["storage"]) == (nzo_id, "Verifying", "")
     # Material lost before any delivery was ever committed is the native
-    # verdict -- failed, operator action -- carried as it is.
+    # verdict -- failed, operator action -- which never invalidates the
+    # release: Paused, never Failed (*arr would blocklist it; D-X2).
     lost = await submitted(sab, data=OTHER_NZB, filename="Lost.nzb")
     await complete(world, await transfer_of(lost))
     (world.payloads / "Lost.nzb").unlink()
-    assert {slot["nzo_id"]: slot["status"] for slot in await history(sab)}[lost] == "Failed"
+    assert {slot["nzo_id"]: slot["status"] for slot in await history(sab)}[lost] == "Paused"
 
 
 # ── 4. removal, post-import and del_files ───────────────────────────────────
