@@ -446,6 +446,49 @@ async def test_the_queue_is_truthful_and_parseable_through_every_phase(sab, worl
     assert slot["storage"] == "/imports/tv/Show.S01E01.nzb" and slot["bytes"] == 4
 
 
+async def test_a_torrent_the_same_client_submitted_in_the_same_category_is_never_a_sabnzbd_item(sab, world):
+    """The dialect lists only what it accepts (FUNC-A02): a magnet this same
+    client submitted in the same category -- the qBittorrent dialect's item --
+    is in neither the queue nor the history, while the NZB is."""
+    from auth.models import Principal
+
+    nzo_id = await submitted(sab)
+    principal = Principal.integration_token(world.accounts.sonarr, sab.http.token["id"],
+                                            sab.http.token["client_id"])
+    torrent, _ = await world.external.submit(principal, {
+        "idempotency_key": "magnet-1", "category": "tv",
+        "source": {"kind": "magnet", "magnet": "magnet:?xt=urn:btih:" + "e" * 40 + "&dn=episode.mkv"}})
+    assert [slot["nzo_id"] for slot in await queue(sab)] == [nzo_id]
+    await complete(world, await transfer_of(nzo_id))
+    await complete(world, await transfer_of(torrent["id"]))
+    assert [(slot["nzo_id"], slot["status"]) for slot in await history(sab)] == [(nzo_id, "Completed")]
+    assert await queue(sab) == []
+
+
+async def test_a_retried_completed_item_returns_to_the_queue_and_is_completed_again_once_re_verified(sab, world):
+    """A reopened delivery is never offered (FUNC-A01, D-X1): an operator
+    Retry of the completed, not yet removed item moves it from history back
+    to the queue under the same ``nzo_id`` -- never ``Completed`` with a
+    storage path while its material is acquired again -- and it is Completed
+    again once the work completes and is re-verified."""
+    nzo_id = await submitted(sab)
+    transfer_id = await transfer_of(nzo_id)
+    await complete(world, transfer_id)
+    [done] = await history(sab)
+    assert (done["nzo_id"], done["status"]) == (nzo_id, "Completed") and done["storage"]
+    await world.application.retry(transfer_id)
+    # The queue is polled first, right after the Retry: the reopen is seen at
+    # once (never missed for up to the re-verification interval), and the item
+    # is never in both listings or in neither.
+    [slot] = await queue(sab)
+    assert slot["nzo_id"] == nzo_id and slot["status"] in {"Grabbing", "Queued", "Downloading"}
+    assert await history(sab) == []
+    await complete(world, transfer_id)
+    assert await queue(sab) == []
+    [again] = await history(sab)
+    assert (again["nzo_id"], again["status"], again["storage"]) == (nzo_id, "Completed", done["storage"])
+
+
 async def test_an_operator_pause_reads_paused_and_a_global_pause_flags_the_queue(sab, world):
     nzo_id = await submitted(sab)
     transfer_id = await transfer_of(nzo_id)

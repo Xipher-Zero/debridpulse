@@ -1246,3 +1246,156 @@ async def test_a_profile_left_outside_a_moved_download_folder_is_never_delivered
     done = await world.external.delivery(world.clients.a, job["id"])
     assert done["state"] == "available" and [item["name"] for item in done["files"]] == ["one.bin"]
     assert done["files"][0]["import_path"].startswith("/imports/tv/")
+
+
+# ── reopened work, stranded profiles (WS X) ─────────────────────────────────
+
+async def _qbittorrent_states(world):
+    from api.arr_qbittorrent import _items, _torrent
+
+    return [_torrent(item)["state"] for item in await _items(world.external, world.clients.a, None, None)]
+
+
+async def test_a_reopened_completed_delivery_is_claimed_again_only_once_re_verified(world):
+    """FUNC-A01 (D-X1): an operator Retry of the completed transfer reopens
+    its work. The unacknowledged delivery keeps its generation but is
+    ``unavailable / not_ready``, with no paths, and the phase follows the
+    core, so no dialect offers it (never ``stoppedUP``) until the work
+    completes and is re-verified."""
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    transfer_id = await transfer_of(job["id"])
+    await complete(world, transfer_id)
+    assert (await world.external.delivery(world.clients.a, job["id"]))["state"] == "available"
+    assert await _qbittorrent_states(world) == ["stoppedUP"]
+
+    await world.application.retry(transfer_id)
+    reopened = await world.external.job(world.clients.a, job["id"])
+    assert reopened["phase"] in {"accepted", "queued", "processing"} and reopened["reason"] != "delivered"
+    assert (reopened["delivery"]["state"], reopened["delivery"]["reason"], reopened["delivery"]["generation"]) == (
+        "unavailable", "not_ready", 1)
+    assert (await world.external.delivery(world.clients.a, job["id"])).get("files") is None
+    assert await _qbittorrent_states(world) not in (["stoppedUP"], ["checkingUP"], [])
+
+    await complete(world, transfer_id)
+    again = await world.external.delivery(world.clients.a, job["id"])
+    assert again["state"] == "available" and again["files"]
+    assert (await world.external.job(world.clients.a, job["id"]))["phase"] == "completed"
+    assert await _qbittorrent_states(world) == ["stoppedUP"]
+
+
+async def test_an_acknowledged_delivery_stays_settled_through_a_reopen(world):
+    """The negative control: a delivery the client acknowledged is never
+    resurrected or withdrawn by a reopen; it stays acknowledged and settled,
+    out of the client's view."""
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    transfer_id = await transfer_of(job["id"])
+    await complete(world, transfer_id)
+    delivery = await world.external.delivery(world.clients.a, job["id"])
+    await world.external.acknowledge(world.clients.a, job["id"], {"delivery_id": delivery["delivery_id"],
+                                                                  "generation": 1})
+    await world.application.retry(transfer_id)
+    reopened = await world.external.job(world.clients.a, job["id"])
+    assert (reopened["phase"], reopened["delivery"]["state"], reopened["delivery"]["generation"]) == (
+        "completed", "acknowledged", 1)
+    assert await _qbittorrent_states(world) == []
+
+
+async def test_a_loss_recorded_before_a_reopen_survives_it(world):
+    """``material_missing`` is an observation the reopen never erases: the
+    delivery stays ``unavailable / material_missing`` (stored and shown)
+    while the work runs again -- never ``available`` -- and is available
+    once the reacquired material is re-verified."""
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    transfer_id = await transfer_of(job["id"])
+    await complete(world, transfer_id)
+    delivered = await world.external.delivery(world.clients.a, job["id"])
+    (world.payloads / delivered["files"][0]["relative_path"]).unlink()
+    assert (await world.external.delivery(world.clients.a, job["id"]))["reason"] == "material_missing"
+
+    await world.application.retry(transfer_id)
+    reopened = await world.external.delivery(world.clients.a, job["id"])
+    assert (reopened["state"], reopened["reason"], reopened.get("files")) == (
+        "unavailable", "material_missing", None)
+    async with database.get_db() as db:
+        stored = await db.fetchone("SELECT unavailable_reason FROM external_deliveries WHERE job_id=?",
+                                   (job["id"],))
+    assert stored["unavailable_reason"] == "material_missing"
+
+    await complete(world, transfer_id)
+    assert (await world.external.delivery(world.clients.a, job["id"]))["state"] == "available"
+
+
+async def test_a_completed_delivery_a_folder_move_strands_says_why_and_is_never_offered(world):
+    """X1: the acquisition completed and was delivered; a later Download
+    Folder move leaves the profile outside it. The phase stays ``completed``
+    (the protocol's post-commit loss), but the job no longer says
+    ``delivered``: its reason and actionability are the delivery's, and no
+    dialect offers it. The negative control: the folder back over the root,
+    the same generation is delivered again."""
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    await complete(world, await transfer_of(job["id"]))
+    assert (await world.external.delivery(world.clients.a, job["id"]))["state"] == "available"   # committed
+    settled = config.get_settings()
+    (world.payloads / "moved").mkdir()
+    config.apply_settings(settled.model_copy(update={"download_folder": str(world.payloads / "moved")}))
+    stranded = await world.external.job(world.clients.a, job["id"])
+    assert (stranded["phase"], stranded["reason"], stranded["actionability"], stranded["delivery"]["state"],
+            stranded["delivery"]["reason"]) == ("completed", "profile_root_outside_downloads", "operator",
+                                                 "unavailable", "profile_root_outside_downloads")
+    assert await _qbittorrent_states(world) == ["checkingUP"]
+    config.apply_settings(settled)
+    back = await world.external.job(world.clients.a, job["id"])
+    assert (back["phase"], back["reason"], back["actionability"], back["delivery"]["state"],
+            back["delivery"]["generation"]) == ("completed", "delivered", "none", "available", 1)
+
+
+async def test_a_profile_a_folder_move_left_outside_admits_nothing_new_and_replays_what_it_accepted(world):
+    """X2: a new submission through a profile whose root a folder move left
+    outside the Download Folder is refused (``profile_root_outside_downloads``)
+    with no job or demand -- it could only ever fail delivery -- while a
+    replay of a job accepted before the move still answers that job. The
+    negative control: the folder back, the same submission is admitted."""
+    accepted, _ = await world.external.submit(world.clients.a, body("k-1"))
+    before = len(await demands())
+    settled = config.get_settings()
+    (world.payloads / "moved").mkdir()
+    config.apply_settings(settled.model_copy(update={"download_folder": str(world.payloads / "moved")}))
+    with pytest.raises(ExternalRefused) as refused:
+        await world.external.submit(world.clients.a, body("k-2", source={"kind": "magnet", "magnet": OTHER_MAGNET}))
+    assert (refused.value.code, refused.value.status) == ("profile_root_outside_downloads", 422)
+    assert "profile_root_outside_downloads" in (await world.external.capabilities(world.clients.a))["refusal_codes"]
+    async with database.get_db() as db:
+        assert await db.fetchone("SELECT 1 FROM external_jobs WHERE idempotency_key='k-2'") is None
+    assert len(await demands()) == before
+    replay, created = await world.external.submit(world.clients.a, body("k-1"))
+    assert (replay["id"], created) == (accepted["id"], False)
+    config.apply_settings(settled)
+    admitted, created = await world.external.submit(
+        world.clients.a, body("k-2", source={"kind": "magnet", "magnet": OTHER_MAGNET}))
+    assert created and admitted["phase"] == "accepted" and len(await demands()) == before + 1
+
+
+async def test_a_clients_removal_of_a_reopened_item_acknowledges_it_and_never_cancels_the_retry(world):
+    """A client that imported the delivered item removes it after an
+    operator retried the transfer: the removal acknowledges the committed
+    generation -- the client's interest is satisfied -- and never withdraws
+    the demand, so the operator's reopened work is not cancelled. The
+    negative control: removing an item with no committed delivery still
+    withdraws it."""
+    from external import arr
+
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    transfer_id = await transfer_of(job["id"])
+    await complete(world, transfer_id)
+    assert (await world.external.delivery(world.clients.a, job["id"]))["state"] == "available"
+    await world.application.retry(transfer_id)
+    assert await arr.remove(world.external, world.clients.a, job["id"]) == "acknowledged"
+    removed = await world.external.job(world.clients.a, job["id"])
+    assert (removed["phase"], removed["delivery"]["state"]) == ("completed", "acknowledged")
+    [demand] = await demands(transfer_id)
+    assert demand["withdrawn_at"] is None
+    assert (await world.repository.get(transfer_id)).state not in {TransferState.CANCELLED, TransferState.DELETED}
+
+    pending, _ = await world.external.submit(world.clients.a, body("k-2", source={"kind": "magnet",
+                                                                                     "magnet": OTHER_MAGNET}))
+    assert await arr.remove(world.external, world.clients.a, pending["id"]) == "withdrawn"

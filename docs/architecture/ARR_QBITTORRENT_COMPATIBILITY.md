@@ -198,6 +198,11 @@ States come from the native job, not from an executor.
 | completed, not importable now | `checkingUP` | Queued, never Completed |
 | failed | `error` | Warning |
 
+When an operator retries or reacquires a torrent's completed, not yet removed,
+download, the same hash returns to the unfinished states above and is
+`stoppedUP` again only once the work completes and is re-verified. A torrent
+*arr already removed stays removed.
+
 Notes on the values:
 
 - **`stoppedUP` is a presentation.** It means "downloaded, and not transferring".
@@ -259,7 +264,7 @@ delete anything.
 |---|---|
 | Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed. At a provider, every resource DebridPulse created or adopted for the transfer -- its route's and each prepared backup's -- is removed by a durable, retryable cleanup; a resource it only observed, or one another transfer still holds, is kept. A provider inventory that still lists a removed resource never brings the work back. |
 | Unfinished, others need the work | Only this client's demand is withdrawn. |
-| Completed | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
+| Completed, or completed and since retried by an operator | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
 | Failed | Withdrawn; the core's failure policy applies. |
 | Unknown, or another client's | Skipped silently: the answer is the same either way. |
 

@@ -103,8 +103,11 @@ async def remove(external: ExternalClients, principal, job_id: str) -> str:
     """A client's "remove this item", decided by the job's own condition
     (never by a dialect flag):
 
-    * completed with a committed delivery -> acknowledge that generation: the
-      client's interest is satisfied; DebridPulse's transfer and history stay;
+    * with a committed delivery -> acknowledge that generation (idempotent):
+      the client's interest is satisfied; DebridPulse's transfer and history
+      stay. This holds while an operator Retry has reopened the work, too: a
+      client's removal never withdraws, and so never cancels, work the
+      operator reopened;
     * anything else -> withdraw the job's own demand: the core cancels the
       work only if no other demand still needs it (atomically, at its own
       commit), and leaves shared work running; work so cancelled, needed by
@@ -116,7 +119,7 @@ async def remove(external: ExternalClients, principal, job_id: str) -> str:
     if view["phase"] == "withdrawn":
         return "already_withdrawn"
     delivery = view["delivery"]
-    if view["phase"] == "completed" and delivery.get("generation") is not None:
+    if delivery.get("generation") is not None:
         try:
             await external.acknowledge(principal, job_id, {"delivery_id": delivery["delivery_id"],
                                                            "generation": delivery["generation"]})

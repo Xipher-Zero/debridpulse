@@ -112,9 +112,22 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
 
     # ── String sanity ─────────────────────────────────────────────────────────
 
-    if getattr(cfg, "download_folder", "") == "/app/data/downloads":
+    folder = getattr(cfg, "download_folder", "")
+    if folder == "/app/data/downloads":
         warn("download_folder", "legacy Docker default migrated to documented /download mount",
              cfg.download_folder, "/download")
+        folder = "/download"
+
+    # Delivery profiles the (effective) Download Folder leaves outside it --
+    # after the migration above or any other folder move -- are named, never
+    # changed: nothing is admitted or delivered through them until an Admin
+    # moves their root inside (``external.service``).
+    from external.profiles import confined_to
+    stranded = [profile.id for profile in getattr(getattr(cfg, "external_delivery", None), "profiles", None) or ()
+                if not confined_to(folder, profile.local_root)]
+    if stranded:
+        warn("external_delivery", "delivery profiles whose local_root is outside the Download Folder "
+             "admit and deliver nothing until moved inside it", stranded)
 
     # ── List fields ───────────────────────────────────────────────────────────
     for field in (

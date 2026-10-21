@@ -43,6 +43,10 @@ _MIB = 1024 * 1024
 # The most items one history or delete request names.
 MAX_HISTORY_PAGE = 500
 MAX_DELETE_IDS = 100
+# The source kinds this dialect lists: only what it accepts (an uploaded NZB).
+# A job of another kind the same client submitted in the same category -- a
+# torrent through the qBittorrent dialect -- is never this dialect's item.
+NZB_KINDS = tuple(sorted(arr.ADAPTER_SOURCE_KINDS[arr.SABNZBD]))
 # SABnzbd fields a submission may not carry: DebridPulse owns post-processing,
 # scripts, naming and archive passwords for its own work.
 _UNSUPPORTED_SUBMIT_FIELDS = ("pp", "script", "nzbname", "password")
@@ -171,7 +175,7 @@ def _name(job: dict) -> str:
 async def _queue(external: ExternalClients, principal, params) -> dict:
     start, limit = _int(params, "start", 0), _int(params, "limit", 0)
     listing = await external.visible(principal, settled=False, category=_category(params), start=start,
-                                     **({"limit": limit} if limit else {}))
+                                     kinds=NZB_KINDS, **({"limit": limit} if limit else {}))
     slots = []
     for index, job in enumerate(listing["jobs"], start=start):
         progress = job.get("progress") or {}
@@ -204,7 +208,8 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
 async def _history(external: ExternalClients, principal, params) -> dict:
     start = _int(params, "start", 0)
     limit = min(_int(params, "limit", 60) or MAX_HISTORY_PAGE, MAX_HISTORY_PAGE)
-    listing = await external.visible(principal, settled=True, category=_category(params), start=start, limit=limit)
+    listing = await external.visible(principal, settled=True, category=_category(params), start=start, limit=limit,
+                                     kinds=NZB_KINDS)
     slots = []
     for job in listing["jobs"]:
         slot = {"nzo_id": job["id"], "name": _name(job), "category": job["category"], "bytes": 0,

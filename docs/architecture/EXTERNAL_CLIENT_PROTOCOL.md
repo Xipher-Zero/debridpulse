@@ -139,7 +139,11 @@ it in Settings → Users & Access → **Integration Delivery Profiles**.
   `profile` and `field`. A profile carried exactly as stored is kept even if a
   folder move left it outside, so editing another profile still works. Such a
   profile cannot be edited (or widened) without moving its root inside, and is
-  never delivered to (`profile_root_outside_downloads`) until then.
+  never delivered to (`profile_root_outside_downloads`) until then. Nothing new
+  is admitted through it either: a submission that would reserve a new job
+  under it is refused `422 profile_root_outside_downloads`; a replay of a job
+  already accepted still answers that job. At startup, and on every settings
+  save, the log names every such profile.
 - **Profile in use.** A PUT that would take a profile away from jobs that still
   depend on it is refused with `409 profile_in_use`, giving per profile `id`,
   `change` and `affected_jobs`, plus the total. Nothing is changed. A dependent
@@ -270,7 +274,8 @@ re-extraction over the same paths is a new generation.
 - `shared_transfer_failed`.
 
 While executors are still starting after a restart, the job reads
-`processing / verifying_material`, never "missing".
+`processing / verifying_material`, never "missing" (a job with a committed
+delivery stays `completed`, its delivery `unavailable / verifying_material`).
 
 ## 6. Delivery
 
@@ -301,7 +306,17 @@ superseded and never mutated. Each inspection re-verifies. A list poll
 re-verifies an available delivery at most every 60 seconds.
 
 - **Material loss:** `unavailable / material_missing`, with no paths. The phase
-  stays `completed`; the delivery shows the loss.
+  stays `completed`; the delivery shows the loss. Any later loss is the same:
+  the phase stays `completed`, and the job's `reason` and `actionability` are
+  the delivery's (for example `profile_root_outside_downloads` / `operator`
+  after a Download Folder move), never `delivered`.
+- **Reopened work:** when the job's transfer is reopened (an operator Retry or
+  reacquisition of completed work), its material is being acquired again. An
+  unacknowledged delivery is `unavailable` until the work completes and is
+  re-verified: with the loss it recorded, else `not_ready`. The phase follows
+  the core (`processing`, …); the generation and its ID are kept and advertised
+  again, or a new one committed, once re-verified. An acknowledged or expired
+  delivery stays settled.
 - **Retention:** after `retention_hours` the delivery is `expired` and its paths
   are no longer advertised. Nothing is deleted. Storage is reclaimed only by
   DebridPulse's existing lifecycle, and Delete never removes completed material.
@@ -430,7 +445,7 @@ invitation to resubmit silently.
 | `403` | not an external client credential (`client_credential_required`), or a route outside `external.client` |
 | `404` | `job_not_found`: unknown or another client's job, indistinguishable |
 | `409` | `idempotency_conflict`, `control_conflict`, `delivery_mismatch`, `unknown_generation`, `stale_generation`, `stale_revision`, `duplicate_torrent` (live submission only) |
-| `413` / `422` | an invalid, unsupported or refused submission |
+| `413` / `422` | an invalid, unsupported or refused submission, including `profile_root_outside_downloads` |
 | `429` | `rate_limited`, `client_job_limit`, `control_limit` |
 | `503` | `source_unavailable` or `submission_outcome_unknown` (retry with the same key) |
 
@@ -490,7 +505,8 @@ dialect's `torrents/add`.
 `ExternalClients.visible` lists the client's jobs still in its view: unfinished
 oldest first, finished newest first, with completed deliveries re-verified,
 optionally limited to some source kinds. An adapter needs it to show a whole
-queue, history or torrent list.
+queue, history or torrent list, and lists only the kinds it accepts (the
+SABnzbd dialect `nzb`, the qBittorrent dialect `magnet` and `torrent`).
 
 ## 12. Adapter boundary and the next phase
 

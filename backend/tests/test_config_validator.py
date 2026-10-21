@@ -41,6 +41,26 @@ class TestValidateAndSanitise:
         result = validate_and_sanitise(cfg)
         assert result.download_folder == "/download"
 
+    def test_profiles_the_migrated_download_folder_leaves_outside_are_named_and_kept(self):
+        """X4: the legacy folder migration strands a delivery profile rooted
+        beneath the old folder. It is named (logged), never changed; a profile
+        inside the new folder is not named."""
+        from external.profiles import DeliveryProfile, ExternalDeliverySettings
+
+        profiles = ExternalDeliverySettings(profiles=[
+            DeliveryProfile(id="tv", categories=["tv"], local_root="/app/data/downloads/tv"),
+            DeliveryProfile(id="movies", categories=["movies"], local_root="/download/movies")])
+        cfg = make_cfg(download_folder="/app/data/downloads", external_delivery=profiles)
+        named = [issue for issue in _validate(cfg) if issue[0] == "external_delivery"]
+        assert [(issue[2], issue[3]) for issue in named] == [(["tv"], None)]
+        result = validate_and_sanitise(cfg)
+        assert result.download_folder == "/download"
+        assert [profile.local_root for profile in result.external_delivery.profiles] == [
+            "/app/data/downloads/tv", "/download/movies"]
+        inside = make_cfg(download_folder="/download", external_delivery=ExternalDeliverySettings(profiles=[
+            DeliveryProfile(id="movies", categories=["movies"], local_root="/download/movies")]))
+        assert not [issue for issue in _validate(inside) if issue[0] == "external_delivery"]
+
     @pytest.mark.parametrize(
         "legacy_name",
         [

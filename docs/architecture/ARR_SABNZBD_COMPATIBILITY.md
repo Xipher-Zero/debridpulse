@@ -172,8 +172,8 @@ These are what Sonarr and Radarr call (Sonarr `57816c14`, Radarr `df2faa64`,
 | `version` | `{"version": "<DebridPulse version>"}` |
 | `get_config` | Categories this client may submit an NZB under. Each category's `dir` is its profile's `import_root`, and `complete_dir` is their common root. No sorters, no `pre_check`. History retention is `days-delete` with the shortest profile retention, in days. |
 | `addfile` (POST, multipart part `name`) | `{"status": true, "nzo_ids": ["job_…"]}`, given only once the job and its one demand are durable |
-| `queue` | The client's unfinished items |
-| `history` | The client's completed and failed items |
+| `queue` | The client's unfinished NZB items |
+| `history` | The client's completed and failed NZB items (never a torrent the same client submitted through the qBittorrent dialect) |
 | `queue&name=delete`, `history&name=delete` | See §5 |
 
 Refusals are SABnzbd's own `{"status": false, "error": "…"}` with HTTP 200.
@@ -269,6 +269,11 @@ Further rules:
   (`size`, `progress`).
 - **Completed means verified.** A job is Completed only when its whole delivery
   is committed and re-verified at that poll.
+- **Retry of completed work.** When an operator retries or reacquires a job's
+  completed, not yet removed, download, the item returns to the queue (its
+  status follows the work, for example `Grabbing` or `Downloading`) under the
+  same `nzo_id`, and is Completed again only once the work completes and is
+  re-verified. An item *arr already removed stays removed.
 - **`storage`** is the single delivered file, or the one folder holding every
   delivered file beneath the import root. Extraction outputs are the recorded
   final set.
@@ -284,7 +289,7 @@ never authorize DebridPulse to delete anything.
 |---|---|
 | Unfinished, only this client needs the work | The job's demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed. At a provider, every resource DebridPulse created or adopted for the transfer -- its route's and each prepared backup's -- is removed by a durable, retryable cleanup; a resource it only observed, or one another transfer still holds, is kept. A provider inventory that still lists a removed resource never brings the work back. |
 | Unfinished, others need the work | Only this client's demand is withdrawn; the work continues. |
-| Completed | The delivery is acknowledged. DebridPulse keeps the transfer and its history; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed (see "After the import"). |
+| Completed, or completed and since retried by an operator | The delivery is acknowledged. DebridPulse keeps the transfer and its history; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed (see "After the import"). |
 | Failed | The demand is withdrawn. The core's failure policy applies. |
 | Another client's or an unknown ID | Skipped silently: the answer is the same either way. |
 

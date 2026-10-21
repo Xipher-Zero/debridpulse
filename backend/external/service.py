@@ -89,6 +89,7 @@ REFUSAL_CODES = (
     "source_too_large", "source_refused", "source_unavailable", "local_network_confirmation_required",
     "acquisition_scope_required", "submission_outcome_unknown", "job_not_found", "control_limit",
     "control_conflict", "delivery_mismatch", "unknown_generation", "stale_generation", "duplicate_torrent",
+    "profile_root_outside_downloads",
 )
 
 
@@ -192,6 +193,19 @@ def _settings():
     from core.config import get_settings
 
     return get_settings()
+
+
+def _admissible(profile: DeliveryProfile) -> None:
+    """Refuse a NEW admission through a profile that can deliver nothing: one
+    whose ``local_root`` a Download Folder move left outside the folder. A job
+    so admitted would only ever fail delivery
+    (``profile_root_outside_downloads``) once acquired; until the Admin moves
+    the root inside, nothing new is admitted through it. Asked only where a
+    job is reserved (``_reserve``), so a replay of a job already accepted
+    still answers that job."""
+    if not confined_to(_settings().download_folder, profile.local_root):
+        raise ExternalRefused("profile_root_outside_downloads",
+                              "This category's delivery profile lies outside the Download Folder")
 
 
 def _key(value) -> str:
@@ -412,6 +426,11 @@ class ExternalClients:
             if current is None or current.id != profile.id or source.kind not in current.source_kinds:
                 await db.rollback()
                 raise ExternalRefused("unknown_category", "This category selects no delivery profile for this client")
+            try:
+                _admissible(current)
+            except ExternalRefused:
+                await db.rollback()
+                raise
             profile = current
             await db.execute(
                 """INSERT INTO external_jobs(id,client_id,account_id,credential_id,idempotency_key,intent_digest,
@@ -1169,9 +1188,11 @@ class ExternalClients:
                     "SELECT * FROM external_deliveries WHERE job_id=? AND generation=?", (job_id, generation))
             elif current is not None:
                 reason = plan.unavailable_reason if plan.material_key is None else None
-                # Not yet verifiable (executors starting) is no observation:
-                # the committed generation keeps its last observed state.
-                if reason != "verifying_material" and (current["unavailable_reason"] or None) != reason:
+                # Not yet verifiable (executors starting), and material being
+                # acquired again (a reopen), are no observation: the committed
+                # generation keeps its last observed state.
+                if (reason != "verifying_material" and not plan.projection.get("_acquiring")
+                        and (current["unavailable_reason"] or None) != reason):
                     await db.execute(
                         "UPDATE external_deliveries SET unavailable_reason=? WHERE job_id=? AND generation=?",
                         (reason, job_id, current["generation"]))
@@ -1205,6 +1226,7 @@ class ExternalClients:
         """Fold the delivery generation into the phase."""
         projection = dict(projection)
         unverifiable = projection.get("_delivery_reason") == "verifying_material"
+        acquiring = projection.pop("_acquiring", False)
         delivery = {"state": "unavailable", "reason": projection.pop("_delivery_reason", "not_ready"),
                     "generation": None}
         if projection.pop("_partial", None) is not None and projection["phase"] in {"processing", "queued"}:
@@ -1222,11 +1244,24 @@ class ExternalClients:
             if unverifiable and state in {"available", "acknowledged"}:
                 # Executors are starting: nothing is claimed until re-verified.
                 state, reason = "unavailable", "verifying_material"
+            reopened = acquiring and state in {"available", "unavailable"}
+            if reopened:
+                # The transfer was reopened and its material is being acquired
+                # again: nothing is claimed until it completes and is
+                # re-verified. The generation, and a loss it recorded, are
+                # kept; the phase follows the core. An acknowledged or expired
+                # delivery stays settled.
+                state, reason = "unavailable", reason or "not_ready"
             delivery = {"state": state, "reason": reason, "generation": generation,
                         "committed_at": _iso(current["committed_at"]), "expires_at": _iso(current["expires_at"]),
                         "acknowledged_at": _iso(current["acknowledged_at"])}
-            if projection["phase"] not in {"withdrawn"}:
-                projection["phase"], projection["reason"], projection["actionability"] = "completed", "delivered", "none"
+            if projection["phase"] not in {"withdrawn"} and not reopened:
+                projection["phase"] = "completed"
+                if state != "unavailable":
+                    projection["reason"], projection["actionability"] = "delivered", "none"
+                # An unavailable delivery keeps the reason and actionability
+                # its refresh observed (``_deliverable``): the acquisition
+                # completed, but nothing is delivered now.
         projection["delivery"] = delivery
         settled = projection["phase"] == "withdrawn" or delivery["state"] in {"acknowledged", "expired"} or (
             projection["phase"] == "failed" and projection["reason"] in {"cancelled", "deleted"})
@@ -1269,6 +1304,11 @@ class ExternalClients:
             return plan
         if members["completed"] and members["completed"] < members["total"]:
             projection["_partial"] = True
+        if status not in _TERMINAL:
+            # The transfer's work is open. For a job with a committed
+            # generation that is a reopen (Retry, reacquisition): its material
+            # is being acquired again (``_finish``).
+            projection["_acquiring"] = True
         mapping = {
             "pending": ("accepted", "awaiting_resolution", "wait"), "queued": ("queued", "queued", "wait"),
             "ready": ("queued", "queued", "wait"), "processing": ("processing", "resolving", "wait"),
@@ -1466,16 +1506,22 @@ class ExternalClients:
     async def _refresh_unsettled(self, *, client_id: str | None = None, budget: int = REFRESH_BUDGET) -> int:
         """Refresh a bounded set of unsettled jobs, least recently refreshed
         first; an available delivery is re-verified at most every
-        ``DELIVERY_RECHECK_SECONDS``."""
+        ``DELIVERY_RECHECK_SECONDS`` -- unless its transfer's work was
+        reopened since (an operator Retry), which is refreshed now, so every
+        listing sees the reopen at once and none offers the delivery."""
         now = _now()
         async with get_db() as db:
             rows = await db.fetchall(
                 f"""SELECT id FROM external_jobs WHERE demand_id IS NOT NULL
                     AND COALESCE(json_extract(projection,'$.settled'),0)=0
                     {'AND client_id=?' if client_id else ''}
-                    AND (COALESCE(json_extract(projection,'$.phase'),'')<>'completed' OR refreshed_at<?)
+                    AND (COALESCE(json_extract(projection,'$.phase'),'')<>'completed' OR refreshed_at<?
+                         OR EXISTS (SELECT 1 FROM transfer_demands d JOIN torrents t ON t.id=d.transfer_id
+                                    WHERE d.id=external_jobs.demand_id
+                                    AND t.status NOT IN ({','.join('?' * len(_TERMINAL))})))
                     ORDER BY refreshed_at LIMIT ?""",
-                ((client_id,) if client_id else ()) + (now - DELIVERY_RECHECK_SECONDS, int(budget)))
+                ((client_id,) if client_id else ()) + (now - DELIVERY_RECHECK_SECONDS, *sorted(_TERMINAL),
+                                                       int(budget)))
         for row in rows:
             try:
                 await self._refresh(row["id"])
