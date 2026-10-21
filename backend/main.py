@@ -45,7 +45,7 @@ from application.lifetime import (
     prepare_settings_and_migrate as _prepare_startup_settings_and_migrate,
     start_application, stop_application,
 )
-from services.maintenance_gate import ApplicationMaintenanceActive, ApplicationSealed
+from services.maintenance_gate import ApplicationMaintenanceActive, ApplicationMaintenanceBusy, ApplicationSealed
 from transfers.errors import TransferError
 from transfers._repository_base import DemandChanged
 from transfers.storage import normalize_sqlite_storage_exception
@@ -387,6 +387,18 @@ async def database_maintenance_handler(_request: Request, _exc: DatabaseMaintena
     )
 
 
+@app.exception_handler(ApplicationMaintenanceBusy)
+async def application_maintenance_busy_handler(_request: Request, exc: ApplicationMaintenanceBusy):
+    """Maintenance was asked for but not entered: earlier work is still running.
+    Nothing was changed; the same request can be repeated once it finishes."""
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Other work is still running, so nothing was changed. Try again when it has finished.",
+                 "waiting_operations": exc.waiting},
+        headers={"Retry-After": "5"},
+    )
+
+
 @app.exception_handler(ApplicationMaintenanceActive)
 async def application_maintenance_handler(_request: Request, _exc: ApplicationMaintenanceActive):
     """Reject new mutation/execution work while destructive maintenance owns admission."""
@@ -397,7 +409,24 @@ async def application_maintenance_handler(_request: Request, _exc: ApplicationMa
     )
 
 
-_cors_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+def configured_cors_origins(raw: str) -> list[str]:
+    """The explicit browser origins ``CORS_ORIGINS`` names (comma-separated).
+
+    CORS here always allows credentials, so an origin listed is trusted with
+    the signed-in session. ``*`` would make every web page such an origin
+    (Starlette reflects the requesting origin when credentials are allowed), so
+    it is refused, and DebridPulse does not start with it: name each origin
+    that may call the API instead."""
+    origins = [origin.strip() for origin in str(raw or "").split(",") if origin.strip()]
+    if "*" in origins:
+        raise RuntimeError(
+            "CORS_ORIGINS=* is refused: DebridPulse's CORS allows credentials, so a wildcard would let "
+            "every website use a signed-in session. List the exact origins (scheme://host[:port]) "
+            "that may call the API, or leave CORS_ORIGINS unset.")
+    return origins
+
+
+_cors_origins = configured_cors_origins(os.getenv("CORS_ORIGINS", ""))
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,

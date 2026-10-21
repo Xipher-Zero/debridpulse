@@ -120,7 +120,7 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         "How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.",
         "How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.",
         "How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.",
-        "How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.",
+        "How long DebridPulse waits before resolving a failed upload again. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.",
     )
     # The provider cards' top body row is reserved and blank: no descriptions.
     assert "Connect DebridPulse to AllDebrid" not in runtime

@@ -892,6 +892,17 @@ def _demand(request: Request) -> SubmissionDemand:
     return SubmissionDemand(principal.account_id or None, principal.credential_id or None)
 
 
+def _local_network_answer(request: Request, answered) -> bool:
+    """Whether this request carries a valid answer to its own private-LAN
+    confirmation. The answer is an operator's decision about THIS submission
+    (``ApplicationService._local_network_consent``), so it counts only from a
+    caller who may operate transfers -- a person, never an Integration token,
+    which must not widen its own network reach. An Integration's private-LAN
+    hosts are admitted only where the operator pre-authorized them (Local
+    Network Connections with Skip Local Connection Confirmation on)."""
+    return answered is True and permits(request.state.principal, Capability.TRANSFERS_OPERATE)
+
+
 def _submitted(request: Request, result: dict, demands) -> dict:
     """A submission's response. A caller that may read transfers gets the
     transfer it submitted to; an Integration gets only its own request(s) and
@@ -1040,7 +1051,8 @@ async def add_usenet_link(body: dict, request: Request, application: Application
         demand = _demand(request)
         return _submitted(request, await application.submit_nzb_link(
             url, demand=demand,
-            **({"allow_local_network": True} if body.get("allow_local_network") is True else {})), [demand])
+            **({"allow_local_network": True}
+               if _local_network_answer(request, body.get("allow_local_network")) else {})), [demand])
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
 
@@ -1117,7 +1129,8 @@ async def add_debrid_links(body: dict, request: Request, application: Applicatio
         demand = _demand(request)
         return _submitted(request, await application.submit_links(
             links, selection_mode=body.get("selection_mode"), demand=demand,
-            **({"allow_local_network": True} if body.get("allow_local_network") is True else {}),
+            **({"allow_local_network": True}
+               if _local_network_answer(request, body.get("allow_local_network")) else {}),
             **({"acquisition_scopes": scopes} if scopes else {})), [demand])
     except AcquisitionScopeRequired as exc:
         raise _acquisition_scope_required(exc) from None
@@ -1188,7 +1201,8 @@ async def add_link_file(
         if direct:
             demands.append(_demand(request))
             items.extend((await application.submit_links(
-                direct, selection_mode=selection_mode, allow_local_network=allow_local_network,
+                direct, selection_mode=selection_mode,
+                allow_local_network=_local_network_answer(request, allow_local_network),
                 demand=demands[-1]))["items"])
         for magnet in magnets:
             demands.append(_demand(request))

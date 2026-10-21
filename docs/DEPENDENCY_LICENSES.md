@@ -153,14 +153,22 @@ extension links a shared copy of the library: the symbols are present, and
 
 None of these components' notices ships inside its wheel: uvloop's
 `dist-info/licenses` holds only uvloop's own `LICENSE-MIT` and `LICENSE-APACHE`,
-and google-re2's holds only RE2's `LICENSE`. This document is copied into the
-image (`/app/docs/DEPENDENCY_LICENSES.md`) and records the attributions and
-licences above. The full licence texts of these embedded components are **not**
-separately bundled in `licenses/`. Whether this record satisfies their binary
-redistribution conditions (MIT, BSD-2-Clause, BSD-3-Clause and ISC ask for the
-notice and licence text to accompany binaries; Apache-2.0 asks for a copy of the
-licence) has not been independently reviewed, and is part of the project/licence
-review below.
+and google-re2's holds only RE2's `LICENSE`. Their notices and licence texts
+therefore ship in the image under `/app/licenses/`, reproduced verbatim from the
+upstream sources named above:
+
+- `libuv-MIT.txt`: libuv's `LICENSE` and `LICENSE-extra`, plus the BSD-2-Clause
+  notice of `include/uv/tree.h` and the ISC notice of `src/inet.c`, all from the
+  hash-pinned uvloop 0.22.1 sdist's `vendor/libuv/`;
+- `abseil-cpp-Apache-2.0.txt`: the Apache License 2.0 text from abseil-cpp at
+  tag `20250512.1`;
+- `pybind11-BSD-3-Clause.txt`: pybind11's `LICENSE`. The embedded release
+  cannot be identified from the binary, but that file is byte-identical in every
+  release checked from v2.10.4 to v2.13.6 (sha256 `83965b84…`).
+
+These texts supply the notices the components' licences ask to accompany a
+binary distribution. They are not a general legal review of the image; the
+project/licence review below remains separately required.
 
 ## Copyleft review — the facts, and what still needs project/licence review
 

@@ -151,7 +151,7 @@
           'New downloads start again only once free space is back above the minimum plus the Resume Free Space Buffer, so they do not stop and start repeatedly near the limit.',
         ]},
         {heading: 'Recovery', list: [
-          'Download Error Retries and Retry Delay set how often, and how soon, a download is retried after an error. 0 retries turns automatic retries off.',
+          'Download Error Retries and Retry Delay set how often, and how soon, a download is retried after an error. A plain retry waits Retry Delay, doubling after each failure but never more than 5 minutes; checking or re-resolving a download, and trying a provider again after a temporary failure, wait the full Retry Delay. A provider that asks for a longer wait is always given it. 0 retries turns automatic retries off.',
           'Stalled Download Timeout is how long a download may make no progress before DebridPulse stops it and treats it as failed, so its normal retry rules apply. 0 turns this off.',
         ]},
       ],

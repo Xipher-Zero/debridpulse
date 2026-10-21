@@ -808,7 +808,10 @@ class ApplicationService:
         Skip Local Connection Confirmation on: the explicitly entered LAN hosts
         are consented. On without it: nothing is admitted until the operator
         allows THIS submission; that answer is recorded on its requests only
-        and never changes a setting."""
+        and never changes a setting. ``allow_local_network`` is that answer,
+        and the HTTP boundary passes it only from a caller who may operate
+        transfers (``api.routes._local_network_answer``): an Integration token
+        cannot consent for itself."""
         policy = self.engine.policy
         if not policy.private_lan_connections:
             return frozenset()

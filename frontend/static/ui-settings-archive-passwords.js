@@ -170,16 +170,21 @@ function line(e,s,row,index){const input=document.createElement('input');input.c
  * focus -- a full render here would destroy it mid-word and drop the keystrokes
  * that land before focus could be handed back. */
 function appendTail(e,s){const host=e.querySelector('.dp-settings-password-rows');if(!host){render(e,s);return;}for(let i=host.childElementCount;i<rows.length;i+=1)host.appendChild(line(e,s,rows[i],i));syncClearAction(e);layout();}
-function syncClearAction(e){const clearAction=e.querySelector('.dp-settings-password-clear');if(clearAction)clearAction.disabled=serialized().length===0;}
+/* Clear erases the STORED list, so it is offered while anything is stored -- the
+ * server's fact the page carries on the editor (`data-archive-stored`) -- or typed.
+ * Emptying the rows never clears anything: a blank list commits as "keep". */
+function syncClearAction(e){if(!e)return;const clearAction=e.querySelector('.dp-settings-password-clear');if(clearAction)clearAction.disabled=serialized().length===0&&e.dataset.archiveStored!=='1';}
 function render(e,s,focus=null){if(!e||!s||!rows)return;refocusing=!!focus;normalize(rows);let host=e.querySelector('.dp-settings-password-rows');if(!host){host=document.createElement('div');host.className='dp-settings-password-rows';(canvasOf(e)||e).prepend(host);}host.replaceChildren(...rows.map((row,index)=>line(e,s,row,index)));const eye=e.querySelector('.dp-settings-password-eye');if(eye&&eye.dataset.dpArchiveOwner!=='1'){eye.dataset.dpArchiveOwner='1';eye.addEventListener('click',()=>{revealAll=!revealAll;if(!revealAll)activeKey=null;setEye(eye);refreshPresentation(e);});}setEye(eye);syncClearAction(e);if(e.dataset.dpArchiveOwner!=='1'){e.addEventListener('focusout',event=>{if(!event.relatedTarget||!e.contains(event.relatedTarget))commitSource();});}e.dataset.dpArchiveOwner='1';syncSource(s);observeRegion(e);layout();if(focus)focusKey(e,focus);}
 function hydrate(s,e){if(!s||!e||typeof api!=='function')return null;if(hydratedSource===s&&hydratedEditor===e)return hydrationPromise;hydratedSource=s;hydratedEditor=e;hydrated=false;const generation=++hydrationGeneration,localAtStart=serialized(),dirtyAtStart=dirty;hydrationPromise=(async()=>{try{const payload=await api('GET','/settings/extraction-passwords');if(generation!==hydrationGeneration||source()!==s||editor()!==e)return;hydrated=true;const remote=canonical(payload?.passwords||'');acceptSource(remote);if(dirtyAtStart){if(dirty&&serialized()===localAtStart&&remote===localAtStart)dirty=false;return;}if(dirty)return;reset(s,e,remote);dirty=false;render(e,s);}catch(_){/* Existing source state remains the fallback if the narrow editor read is unavailable. */}finally{if(generation===hydrationGeneration)hydrationPromise=null;}})();return hydrationPromise;}
 function apply(){const s=source();if(!s)return;const e=editor();if(!e)return;const changed=e!==editorNode||s!==sourceNode||!rows;if(changed){const carried=rows?serialized():null,carriedDirty=dirty;reset(s,e,carried!==null?carried:String(s?.value||''));dirty=carriedDirty;render(e,s);}if(e.dataset.dpArchiveOwner!=='1')render(e,s);void hydrate(s,e);}
 function scheduleApply(){if(scheduled)return;scheduled=true;queueMicrotask(()=>{scheduled=false;apply();});}
-function init(){document.addEventListener('debridpulse:settings-rendered',scheduleApply);scheduleApply();}
+function init(){document.addEventListener('debridpulse:settings-rendered',scheduleApply);document.addEventListener('dp-settings-settled',event=>{const s=source();if(s&&event.target===s)syncClearAction(editor());});scheduleApply();}
 /* Converge on the accepted canonical state after the page's destructive clear.
  * The removal itself is the page's explicit action; this owner only makes the editor
  * show what the server now holds, and records it as the accepted baseline so the empty
  * list is not mistaken for an unsaved edit. */
 function clear(){const s=source(),e=editor();if(!s||!e)return;reset(s,e,'');dirty=false;render(e,s);acceptSource('');}
-window.DPArchivePasswords=Object.freeze({apply,clear,get hydrated(){return hydrated;}});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+/* The page's accepted settings document changed what is stored: re-decide Clear. */
+function syncStored(){syncClearAction(editor());}
+window.DPArchivePasswords=Object.freeze({apply,clear,syncStored,get hydrated(){return hydrated;}});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();

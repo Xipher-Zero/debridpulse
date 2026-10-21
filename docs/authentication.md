@@ -36,7 +36,7 @@ The equivalent persisted setting is available under **Settings → Authenticatio
 
 Use only an HTTPS origin in `scheme://host[:port]` form, with no path, query, fragment, or credentials. Configuring an external base does not disable direct LAN access: a direct LAN request continues to be evaluated against its own Host/scheme, while a request whose Host matches the configured external authority can be recognized as the canonical HTTPS origin across an internal HTTP reverse-proxy hop.
 
-`CORS_ORIGINS` is not a substitute for the canonical origin. CORS controls intentionally permitted cross-origin API callers; the External Base URL describes DebridPulse's own externally reachable browser origin.
+`CORS_ORIGINS` is not a substitute for the canonical origin. CORS controls intentionally permitted cross-origin API callers; the External Base URL describes DebridPulse's own externally reachable browser origin. DebridPulse's CORS always allows credentials, so every origin listed is trusted with a signed-in session: list each one exactly (comma-separated `scheme://host[:port]`). `CORS_ORIGINS=*` is refused and DebridPulse does not start with it, because a wildcard with credentials would trust every website.
 
 ## Accounts
 

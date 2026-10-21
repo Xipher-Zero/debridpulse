@@ -593,3 +593,57 @@ async def test_stale_whole_settings_put_does_not_clobber_a_newer_runtime_limit_p
         )
 
     assert store["cfg"].execution_runtime_limits.max_download_bytes_per_second == 10_000_000
+
+
+
+# --------------------------------------------------------------------------- #
+# The retry-delay contract the Settings text describes (FUNC-A04 / CONTRACT-A01)
+# --------------------------------------------------------------------------- #
+
+async def _patch_policy(current, **fields):
+    application = _application(current)
+    saved = {}
+    with patch("api.routes.get_settings", return_value=current), \
+         patch("api.routes.load_settings", return_value=current), \
+         patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
+         patch("api.routes.apply_settings"):
+        result = await routes.patch_transfer_policy(routes.TransferPolicyUpdate(**fields), application=application)
+    return result, saved
+
+
+@pytest.mark.asyncio
+async def test_a_retry_delay_above_five_minutes_stays_accepted_because_it_still_takes_effect():
+    """The plain backoff is capped at 5 minutes, but reconciliation,
+    re-resolution and a provider's re-entry wait the full configured delay,
+    so a longer delay is meaningful and the Settings ranges keep it."""
+    result, saved = await _patch_policy(
+        _settings_with_full_integrations(), execution_retry_delay_seconds=3600, resolution_retry_delay_minutes=1440)
+    assert result["execution_retry_delay_seconds"] == 3600
+    assert saved["cfg"].transfer_policy.resolution_retry_delay_minutes == 1440
+
+
+def test_the_plain_backoff_is_capped_while_reconcile_and_reresolve_wait_the_full_delay():
+    from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
+    from transfers.policy import Recovery, TransferPolicy
+
+    policy = TransferPolicy(retry_delay=600, max_attempts=10)
+    backoff = NormalizedError(Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION, Retryability.BACKOFF)
+    assert policy.retry(backoff, 1, 0.0).retry_at == 300                     # capped plain retry
+    reconcile = NormalizedError(Domain.EXECUTOR, Category.EXECUTOR_UNAVAILABLE, Stage.EXECUTION, Retryability.BACKOFF)
+    decision = policy.retry(reconcile, 1, 0.0)
+    assert decision.action == Recovery.RECONCILE and decision.retry_at == 600  # the full delay
+    reresolve = NormalizedError(Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
+                                Retryability.AFTER_RERESOLUTION)
+    decision = policy.retry(reresolve, 1, 0.0, can_refresh=True)
+    assert decision.action == Recovery.RERESOLVE and decision.retry_at == 600
+
+
+def test_the_settings_text_states_that_contract():
+    from pathlib import Path
+
+    static = Path(__file__).resolve().parents[2] / "frontend" / "static"
+    page = (static / "ui-settings-page.js").read_text(encoding="utf-8")
+    help_text = (static / "ui-settings-help.js").read_text(encoding="utf-8")
+    for text in (page, help_text):
+        assert "never more than 5 minutes" in text or "never waits more than 5 minutes" in text
+    assert "max: 3600" in page and "max: 1440" in page

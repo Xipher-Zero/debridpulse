@@ -396,6 +396,77 @@ test('Clear Passwords is the canonical destructive action, and declining mutates
     }
   });
 
+/* Clear acts on what the SERVER stores, not on what the editor shows. Emptying
+ * every row commits a blank list, which the secret contract keeps -- so the
+ * stored list is still there, and Clear must still be offered for it. Nothing
+ * is cleared without the explicit, confirmed action; a refused clear is shown
+ * as refused and leaves both the list and the action as they were. */
+test('Clear Passwords stays available while a list is stored, even with every row emptied',
+  async ({page}) => {
+    await page.goto('/');
+    const before = await canonical(page);
+    const clears = [];
+    page.on('request', request => {
+      if (request.method() !== 'PUT' || !request.url().endsWith('/api/settings')) return;
+      const body = request.postDataJSON() || {};
+      if ((body.clear_secrets || []).includes('extraction_password')) clears.push(1);
+    });
+    try {
+      await openSettings(page, 'extraction');
+      await expect.poll(() => page.evaluate(() =>
+        !!(window.DPArchivePasswords && window.DPArchivePasswords.hydrated))).toBe(true);
+
+      await passwordLines(page).last().click();
+      await page.keyboard.type('kept-secret', {delay: 30});
+      await concurrency(page).click();
+      await expect.poll(() => storedPasswords(page)).toBe('kept-secret');
+
+      // Empty the only row and leave the editor. Whatever the editor writes for
+      // an empty list (blank keeps what is stored), nothing is deleted and no
+      // clear is ever sent for it.
+      await passwordLines(page).first().click();
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.press('Backspace');
+      await concurrency(page).click();
+      expect(await page.evaluate(() => Array.from(
+        document.querySelectorAll('.dp-settings-password-line')).map(n => n.value).join('')))
+        .toBe('');
+      await expect(clearPasswords(page)).toBeEnabled();
+      await expect.poll(() => storedPasswords(page)).toBe('kept-secret');
+
+      // A refused clear is not success: the list stays stored and Clear stays offered.
+      const settingsUrl = url => url.pathname === '/api/settings';
+      await page.route(settingsUrl, route => {
+        const body = route.request().method() === 'PUT' ? (route.request().postDataJSON() || {}) : {};
+        if ((body.clear_secrets || []).includes('extraction_password')) {
+          return route.fulfill({status: 500, contentType: 'application/json',
+            body: JSON.stringify({detail: 'refused for the test'})});
+        }
+        return route.continue();
+      });
+      await clearPasswords(page).click();
+      await page.locator('.dp-modal-overlay [data-modal-accept]').click();
+      await expect(page.locator('.toast.error').first()).toBeVisible();
+      await expect(page.locator('.toast').filter({hasText: 'Archive passwords cleared'})).toHaveCount(0);
+      expect(await storedPasswords(page)).toBe('kept-secret');
+      await expect(clearPasswords(page)).toBeEnabled();
+      await page.unroute(settingsUrl);
+
+      // The explicit, confirmed action clears it; then there is nothing left to clear.
+      await clearPasswords(page).click();
+      await page.locator('.dp-modal-overlay [data-modal-accept]').click();
+      await expect.poll(() => storedPasswords(page)).toBe('');
+      await expect(clearPasswords(page)).toBeDisabled();
+      expect((await canonical(page)).extraction_password_configured).toBe(false);
+      // Exactly the two explicit clears were ever requested -- the refused one and
+      // the confirmed one; emptying the rows requested none.
+      expect(clears.length, 'a clear was sent that no Clear action asked for').toBe(2);
+    } finally {
+      await page.unrouteAll({behavior: 'ignoreErrors'});
+      await restoreExtraction(page, before);
+    }
+  });
+
 /* The suite's designated NEUTRAL whole-settings probe.
  *
  * Every spec file shares one backend and files run concurrently, so a case may

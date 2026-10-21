@@ -167,3 +167,61 @@ def test_aria2_honors_a_grant_only_while_the_guard_policy_is_on():
     assert executor._private_lan(granted) is False
     executor.egress = SimpleNamespace(private_lan_enabled=True)
     assert executor._private_lan(TransferCandidate("f.bin", (Endpoint("http", "http://192.168.1.20/f.bin"),))) is False
+
+
+# --- who may answer the confirmation (SEC-A03) ----------------------------------------
+
+def _lan_route(role, *, skip):
+    """The real ``/links/add`` route over the real admission decision; only the
+    transfer creation behind it is a double."""
+    import application.service as service
+    from auth.models import Principal
+    from transfers.policy import TransferPolicy
+
+    application = SimpleNamespace(engine=SimpleNamespace(
+        policy=TransferPolicy(private_lan_connections=True, skip_private_lan_confirmation=skip)))
+
+    async def submit_links(links, *, allow_local_network=False, **_kwargs):
+        consented = await service.ApplicationService._local_network_consent(
+            application, links, allow_local_network=allow_local_network)
+        return {"ok": True, "id": 1, "status": "queued", "items": [{"id": 1, "status": "queued"}],
+                "consented": sorted(consented)}
+
+    application.submit_links = submit_links
+    request = SimpleNamespace(state=SimpleNamespace(principal=Principal(account_id="acct", role=role)))
+    return application, request
+
+
+@pytest.mark.asyncio
+async def test_an_integration_token_cannot_answer_its_own_local_network_confirmation():
+    from fastapi import HTTPException
+    from api import routes
+
+    application, request = _lan_route("integration", skip=False)
+    with pytest.raises(HTTPException) as asked:
+        await routes.add_debrid_links({"links": ["http://192.168.1.20/a.bin"], "allow_local_network": True},
+                                      request, application=application)
+    assert asked.value.status_code == 409
+    assert asked.value.detail["confirmation"] == "local_network"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["user", "admin"])
+async def test_a_person_who_may_operate_transfers_still_answers_it(role):
+    from api import routes
+
+    application, request = _lan_route(role, skip=False)
+    result = await routes.add_debrid_links(
+        {"links": ["http://192.168.1.20/a.bin"], "allow_local_network": True}, request, application=application)
+    assert result["consented"] == ["192.168.1.20"]
+
+
+@pytest.mark.asyncio
+async def test_an_operator_preauthorization_still_admits_an_integrations_lan_link():
+    """Skip Local Connection Confirmation is the operator's standing consent: an
+    Integration's private-LAN link is admitted under it without any answer."""
+    from api import routes
+
+    application, request = _lan_route("integration", skip=True)
+    result = await routes.add_debrid_links({"links": ["http://192.168.1.20/a.bin"]}, request, application=application)
+    assert result["ok"] is True

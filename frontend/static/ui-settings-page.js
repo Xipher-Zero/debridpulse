@@ -498,6 +498,21 @@
   function syncGlobalSettings(data) {
     state.settings = data;
     try { settingsData = data; } catch (_) {}
+    paintArchivePasswordsStored(data);
+  }
+
+  /* Whether the server holds a stored archive-password list is the server's
+   * fact (`extraction_password_configured`), not what the editor's rows show:
+   * a blank list commits as "keep what is stored". The field this page
+   * rendered carries that fact, refreshed from every accepted settings
+   * document, so the editor's owner can offer Clear for a list it cannot see. */
+  function paintArchivePasswordsStored(data) {
+    if (!data || !('extraction_password_configured' in data)) return;
+    const editorNode = document.querySelector(
+      '#view-settings [data-panel="extraction"] .dp-settings-extraction-password-editor');
+    if (!editorNode) return;
+    editorNode.dataset.archiveStored = data.extraction_password_configured ? '1' : '0';
+    window.DPArchivePasswords?.syncStored?.();
   }
 
   function syncAuthIntoSettings(authData) {
@@ -611,7 +626,7 @@
       <div class="dp-settings-field dp-settings-extraction-password-field">
         <label class="form-label" for="${id}">Archive Passwords</label>
         <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true">Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords" data-archive-stored="${configured ? '1' : '0'}"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true">Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
       </div>`;
   }
 
@@ -1881,7 +1896,7 @@
               }),
               input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
                 type: 'number', min: 0, max: 1440,
-                hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
+                hint: 'How long DebridPulse waits before resolving a failed upload again. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
               }),
             ),
           )}
@@ -2583,7 +2598,7 @@
         }),
         input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
           type: 'number', min: 0, max: 3600,
-          hint: 'How long DebridPulse waits before retrying a download after an error. Set to 0 to retry immediately.'
+          hint: 'How long DebridPulse waits before checking or re-resolving a download after an error, and before trying a provider again after a temporary failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
         }),
       ),
       input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {

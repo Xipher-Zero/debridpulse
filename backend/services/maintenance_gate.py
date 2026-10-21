@@ -13,6 +13,24 @@ class ApplicationSealed(ApplicationMaintenanceActive):
     """Raised for all application work after an unresolved restore sealed admission."""
 
 
+class ApplicationMaintenanceBusy(ApplicationMaintenanceActive):
+    """Maintenance was NOT entered: work admitted before it (an upload still
+    streaming its body, a long request) did not finish within the drain bound.
+    Admission reopened as it was; nothing of the maintenance ran, and nothing
+    in flight was interrupted. The operator may try again once it finishes."""
+
+    def __init__(self, waiting: int, seconds: float) -> None:
+        super().__init__(f"{waiting} running operation(s) did not finish within {seconds:g} s")
+        self.waiting = waiting
+        self.seconds = seconds
+
+
+# How long maintenance waits for already-admitted work to finish. While it
+# waits, admission is closed -- new work and the engine's own passes are held --
+# so the wait has an end: past it, maintenance gives up and admission reopens.
+MAINTENANCE_DRAIN_SECONDS = 60.0
+
+
 class ApplicationMaintenanceGate:
     """Drain admitted work, then reject new mutation/execution operations.
 
@@ -22,7 +40,8 @@ class ApplicationMaintenanceGate:
     maintenance owner itself may call gated operations needed to quiesce state.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, drain_seconds: float = MAINTENANCE_DRAIN_SECONDS) -> None:
+        self._drain_seconds = drain_seconds
         self._condition = asyncio.Condition()
         self._active_operations = 0
         self._depths: dict[asyncio.Task, int] = {}
@@ -95,8 +114,15 @@ class ApplicationMaintenanceGate:
                 # A settings operation can upgrade its own admission while
                 # draining other operations; it must not wait for itself.
                 own_operation = 1 if self._depths.get(current, 0) else 0
-                while self._active_operations > own_operation:
-                    await self._condition.wait()
+                try:
+                    await asyncio.wait_for(
+                        self._condition.wait_for(lambda: self._active_operations <= own_operation),
+                        self._drain_seconds)
+                except TimeoutError:
+                    # Not entered: the claim is released below (``finally``)
+                    # before anything of the maintenance has run.
+                    raise ApplicationMaintenanceBusy(
+                        max(1, self._active_operations - own_operation), self._drain_seconds) from None
             yield
         finally:
             if claimed:

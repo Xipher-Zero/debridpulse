@@ -610,6 +610,16 @@
 
 ### Changed
 
+- **Retry Delay now says what it controls.** A plain retry waits Retry Delay, doubling after each
+  failure but never more than 5 minutes; checking or re-resolving a download, and trying a provider
+  again after a temporary failure, wait the full Retry Delay (the upload Retry Delay likewise before
+  an upload is resolved again). The Settings hints and help now say so instead of implying that
+  every wait follows Retry Delay. The accepted ranges (up to 3,600 seconds and 1,440 minutes) and
+  all retry timing are unchanged, because a longer delay does take effect on those paths.
+- **The licence notices of libuv, Abseil and pybind11 ship in the image.** uvloop and google-re2
+  compile these libraries into their native modules without carrying their notices, so the notices
+  and licence texts are now included under `/app/licenses/`, and the dependency licence list
+  records where each comes from.
 - **A torrent's file selection and identity survive every provider change.** Once you settle a
   multi-file choice (Confirm, Close/X or the decision timeout), that set of files is the transfer's
   intent: every later provider -- by your switch, failover or a backup -- carries it, never reopens
@@ -916,6 +926,19 @@
 
 ### Fixed
 
+- **Clear Passwords stays available while archive passwords are stored.** Emptying the editor's
+  rows saves a blank list, which keeps the stored passwords, yet Clear used to switch off as if
+  nothing were stored. It now follows what the server holds, so stored passwords you cannot see can
+  still be cleared, only ever by the confirmed Clear action. A refused clear is reported as an error
+  and leaves the passwords and the button as they were.
+- **Maintenance no longer waits forever behind a request that does not finish.** Restore, the
+  database reset, saving Settings and replacing a provider connection first wait for the requests
+  already being handled, and meanwhile hold new work and the download engine. That wait now ends
+  after 60 seconds: if an earlier request (for example a large upload still arriving) has not
+  finished, nothing is changed, everything resumes, and the request answers that other work is still
+  running so it can be tried again once it has finished (a Settings change made meanwhile is shown
+  as not saved). Restore and the database reset then also wait for open database reads to end; that
+  second, short wait is not bounded.
 - **Restarting DebridPulse no longer wipes the Usenet service's own settings.** DebridPulse could
   not read the first lines of the settings file the bundled Usenet service saves, so from the second
   start on it replaced it with a bare one: news servers, categories, tuning and the service's key
@@ -1006,6 +1029,17 @@
 
 ### Security
 
+- **An Integration token cannot approve its own connections to your local network.** With Local
+  Network Connections on and Skip Local Connection Confirmation off, a link to a private-network
+  address waits for a person to confirm that submission. A request carrying that confirmation now
+  counts only from an account that may operate downloads (Admin or User); from an Integration token
+  it is ignored, so the submission is asked about instead of admitted. With Skip Local Connection
+  Confirmation on, the operator has approved such links in advance and Integration submissions are
+  admitted as before.
+- **`CORS_ORIGINS=*` is refused.** DebridPulse's CORS always allows credentials, so a wildcard
+  would let every website use a signed-in session. DebridPulse now refuses to start with it and
+  says why; list each permitted origin exactly instead. **Upgrade note:** an installation that set
+  `CORS_ORIGINS=*` must change it before upgrading, or it will not start.
 - **Open mode can no longer be read by other web pages through DNS rebinding.** With no login
   configured, the standalone Admin now answers only at the installation's own address -- its IP
   addresses, `localhost`, a configured HTTPS Public Base URL and names under `.local`, `.home.arpa`,
@@ -1191,9 +1225,31 @@ silently changed, and DebridPulse tells you why an action is not available.
 - **Very large downloads are bounded.** A file manifest can list at most 20,000 entries (paths up to
   1,024 characters), a Metalink description at most 10,000 files and 20,000 sources (16 MiB), a
   WebDAV scan at most 10,000 files by default, and an rsync listing 16 MiB. A source beyond these
-  limits is refused rather than downloaded in part. A browser that falls more than 100 live updates
-  behind is disconnected and reconnects to catch up. Switching the provider of a torrent with
+  limits is refused rather than downloaded in part. Switching the provider of a torrent with
   hundreds of files takes noticeably longer than an ordinary switch.
+- **Work grows with the number of files in one transfer.** DebridPulse opens a fresh database
+  connection for each step it takes, and many steps are taken file by file, so the engine's work in
+  each cycle grows with how many files a transfer has. In one measured case, a transfer of 133
+  files took about 3,000 database connections per engine cycle. That is an observation of that
+  transfer, not a rate DebridPulse guarantees or bounds.
+- **Two mirror links of one file can each use the provider.** When a file is submitted through two
+  mirror links (two separate links, not one item with alternative sources), each link can create its
+  own resource at a debrid provider before DebridPulse recognises them as the same file. This can
+  use more of the account's quota and leave a duplicate at the provider; only one copy is
+  downloaded and kept locally.
+- **Some provider refusals end the download instead of trying another provider.** Real-Debrid's
+  "file not allowed" (code 28) and Debrid-Link's `infringingFile` are treated as a permanent
+  failure of the content, so the download fails instead of being handed to another provider.
+  (Real-Debrid's code 35, by contrast, does hand over to the next provider.)
+- **Live updates after a lost connection.** If the browser's live connection fails after it has
+  worked once, the page marks itself as not live and tries to reconnect every 10 seconds, re-reading
+  what it shows when it reconnects; it does not switch to periodic refreshing in the meantime. Only a
+  page whose very first connection fails refreshes on a timer instead. Reloading the page restores
+  live updates as soon as the server is reachable.
+- **A browser that stops reading live updates.** When a browser stops reading its live updates (for
+  example a suspended tab), DebridPulse stops sending to it once it is 100 updates behind and keeps
+  at most two pending messages for it, so it never holds up other browsers or grows memory. Its
+  network connection itself can stay open until the browser or the network closes it.
 - **aria2 downloads write each file at its final location.** aria2, and rsync with Partial
   Transfers on, write the file at its final path while it downloads; the Usenet service, Media
   Downloads and rsync with Partial Transfers off (or rebuilding from other material) already
