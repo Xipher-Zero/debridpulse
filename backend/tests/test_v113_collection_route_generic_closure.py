@@ -376,3 +376,68 @@ async def test_resume_keeps_generic_closed_for_an_owned_collection(tmp_path, mon
     assert generic.resolved == []
     if not specialized_alternate:
         assert (await by_payload(repository, transfer.id))[b].state == "failed"
+
+
+# -- the routing basis carries the collection's authority ---------------------------------
+
+async def test_a_route_decided_before_authority_closed_competition_never_opens(tmp_path, monkeypatch):
+    """Authority established between a root's route decision and its admission
+    makes that decision stale: the generic route it chose never opens, and the
+    next passes route the roots with competition closed: nothing claims them,
+    so they are unsupported."""
+    owner = Route("special-x", hosts=("special.test",))
+    generic = Route("generic-route", generic=True)
+    repository, _registry, _executor, engine = await lab(tmp_path, monkeypatch, owner, generic)
+    transfer = await submit(engine, url("one.test", "one.bin"), url("two.test", "two.bin"))
+    decide = engine._route
+    raced = []
+
+    async def decided_then_authority_established(record):
+        route = await decide(record)
+        if not raced:
+            raced.append(record.id)
+            assert await repository.establish_collection_route_authority(transfer.id) is True
+        return route
+
+    monkeypatch.setattr(engine, "_route", decided_then_authority_established)
+    await drive(engine)
+
+    assert raced
+    assert await repository.collection_route_authority(transfer.id) is True
+    assert generic.resolved == []
+    # Competition closed and no specialized claimant takes either root: no
+    # route opened at all, and each root is unsupported (failed), as every
+    # root no specialized provider claims is once authority owns the collection.
+    assert await routes(repository, transfer.id) == []
+    assert {item.state for item in (await by_payload(repository, transfer.id)).values()} == {"failed"}
+
+
+async def test_admission_refuses_a_basis_read_before_authority_was_established(tmp_path, monkeypatch):
+    repository, _registry, _executor, engine = await lab(
+        tmp_path, monkeypatch, Route("special-x", hosts=("special.test",)), Route("generic-route", generic=True))
+    transfer = await submit(engine, url("one.test", "one.bin"), url("two.test", "two.bin"))
+    root = next(iter((await by_payload(repository, transfer.id)).values()))
+    stale = await repository.route_basis(root.id)
+
+    assert await repository.establish_collection_route_authority(transfer.id) is True
+    assert await repository.route_basis(root.id) != stale
+    assert await repository.begin_resolution(root.id, "generic-route", expected_request=root.request,
+                                             expected_basis=stale) is None
+    current = await repository.route_basis(root.id)
+    assert await repository.begin_resolution(root.id, "special-x", expected_request=root.request,
+                                             expected_basis=current) is not None
+
+
+async def test_an_unchanged_collection_keeps_its_basis_and_admits_the_decision(tmp_path, monkeypatch):
+    """Negative control: with no authority change the basis is stable across
+    reads and the decision taken on it opens."""
+    owner = Route("special-x", hosts=("special.test",))
+    generic = Route("generic-route", generic=True)
+    repository, _registry, _executor, engine = await lab(tmp_path, monkeypatch, owner, generic)
+    transfer = await submit(engine, url("one.test", "one.bin"), url("two.test", "two.bin"))
+    root = next(iter((await by_payload(repository, transfer.id)).values()))
+    basis = await repository.route_basis(root.id)
+
+    assert await repository.route_basis(root.id) == basis
+    assert await repository.begin_resolution(root.id, "generic-route", expected_request=root.request,
+                                             expected_basis=basis) is not None

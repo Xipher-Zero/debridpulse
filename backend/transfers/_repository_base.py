@@ -3170,8 +3170,13 @@ class TransferRepository:
         Every route change -- a resolution, a failure or exhaustion, an
         operator switch, a readiness yield, a fan-out's release -- opens a
         route attempt or ends one, so a decision taken on one basis is
-        current only while the basis is unchanged."""
-        row = await db.fetchone("SELECT parent_id FROM transfer_requests WHERE id=?", (request_id,))
+        current only while the basis is unchanged. The collection's routing
+        authority (``collection_route_authority``) is part of the basis too:
+        it is established only while no route attempt of the collection
+        exists (so no attempt records it), once and for good, and it closes
+        generic competition, so a decision taken while competition was open
+        is not current once it closed."""
+        row = await db.fetchone("SELECT parent_id,transfer_id FROM transfer_requests WHERE id=?", (request_id,))
         basis = []
         for owner in (request_id, row["parent_id"] if row else None):
             latest = await db.fetchone(
@@ -3179,6 +3184,12 @@ class TransferRepository:
                    JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
                    WHERE p.request_id=? ORDER BY p.ordinal DESC LIMIT 1""", (owner,)) if owner else None
             basis.append((str(latest["id"]), str(latest["state"])) if latest else None)
+        collection = await db.fetchone(
+            "SELECT collection_route_authority,collection_route_provider_id FROM torrents WHERE id=?",
+            (row["transfer_id"],)) if row else None
+        basis.append((bool(collection.get("collection_route_authority")),
+                      str(collection.get("collection_route_provider_id") or "").strip())
+                     if collection else None)
         return tuple(basis)
 
     async def route_basis(self, request_id: str) -> tuple:
@@ -3202,7 +3213,8 @@ class TransferRepository:
         * the routing basis (``_route_basis``) is still ``expected_basis``,
           the basis read before the route was decided: no route of the request
           or its root opened or ended since (an operator switch, a readiness
-          yield, an exhaustion), whatever the request now looks like;
+          yield, an exhaustion), and the collection's routing authority did not
+          close generic competition since, whatever the request now looks like;
         * no route an operator switch or a readiness yield pinned for another
           provider is open on the request (that route is adopted by
           ``begin_pinned_resolution``; a decision made before it committed must
