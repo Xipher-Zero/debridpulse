@@ -2573,13 +2573,28 @@ class TransferEngine:
         ``False`` for every ordinary first materialization or rebuild. A
         replacement whose size contradicts an affected artifact's is the root's
         own failure (``SIZE_MISMATCH``), handled by the ordinary request
-        failure: nothing of it is bound or selected."""
+        failure: nothing of it is bound or selected.
+
+        So is a ``"conflict"`` -- the replacement's issuing attempt has no
+        durable provenance, so the canonical owner can bind none of it. It is
+        not "decided": answering ``True`` would leave the root
+        ``materializing`` with nothing landed, and every later cycle would
+        meet the same refusal -- a silent livelock. It fails the root through
+        the same ordinary request failure (``RECOVERY_FAILED``, BACKOFF), whose
+        retry re-resolves it under a fresh attempt. ``"stale"`` is decided:
+        the caller confirmed the root ``materializing`` under the cohort lock,
+        so the owner's refusal means the transfer itself is settled
+        (completed, consolidated, deleted or cancelled) -- there is nothing
+        left for this resolution to decide or fail."""
         if record.parent_id is not None or not await self.repository.route_replacement_pending(record.id):
             return False
         outcome = await self.canonical.replace_root_candidates(record, _normalized_candidates(record, candidates))
         if outcome == "size_mismatch":
             raise TransferError(self._error(Category.SIZE_MISMATCH, Stage.CANDIDATE_PREPARATION,
                                             domain=Domain.INTEGRITY))
+        if outcome == "conflict":
+            raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.CANDIDATE_PREPARATION,
+                                            domain=Domain.RECONCILIATION, retryability=Retryability.BACKOFF))
         return outcome != "none"
 
     async def _materialize(self, record: RequestRecord, candidates, *, evidence: EvidenceContext | None = None):
@@ -4134,9 +4149,22 @@ class TransferEngine:
         transfer = await self.repository.get(transfer_id)
         if not transfer or transfer.state in {TransferState.DELETED, TransferState.CONSOLIDATED}:
             raise KeyError(transfer_id)
-        await self.repository.select_artifact(transfer_id, artifact_id, selected, expected_demand=expected_demand)
-        if selected and transfer.state == TransferState.COMPLETED:
-            await self.repository.state(transfer_id, TransferState.QUEUED, operator=True, expected_epoch=transfer.epoch)
+        changed = await self.repository.select_artifact(transfer_id, artifact_id, selected,
+                                                        expected_demand=expected_demand)
+        if changed and selected and transfer.state == TransferState.COMPLETED:
+            # A file NEWLY selected on a completed transfer (selecting one that
+            # already is selected changes nothing and reopens nothing) is a
+            # new delivery: its
+            # post-processing must run again over the whole delivered set, so
+            # the reset commits with the reopening transition. Only live
+            # post-processing refuses it while the transfer stays COMPLETED;
+            # one that already left COMPLETED (another owner reopened,
+            # deleted or consolidated it) is governed by that owner.
+            if not await self.repository.state(transfer_id, TransferState.QUEUED, operator=True,
+                                               expected_epoch=transfer.epoch, reset_postprocessing=True):
+                current = await self.repository.get(transfer_id)
+                if current is not None and current.state == TransferState.COMPLETED:
+                    raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE))
 
     async def cancel_artifact(self, transfer_id: int, artifact_id: int):
         artifact = next((item for item in await self.repository.artifacts(transfer_id) if item.id == artifact_id), None)

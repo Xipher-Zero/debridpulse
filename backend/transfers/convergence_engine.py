@@ -1612,18 +1612,21 @@ class TransferEngine(_QualifiedTransferEngine):
                 in await self.repository.resources(transfer_id)
             ):
                 return False
-            if not await self.repository.reset_postprocessing(transfer_id):
-                return False
-
             artifacts = await self.repository.artifacts(transfer_id)
             if artifacts and not await self._retry_actionable(artifacts):
-                return True
+                # Nothing to reacquire: Retry re-runs post-processing alone,
+                # without a lifecycle transition to bind the reset to.
+                return await self.repository.reset_postprocessing(transfer_id)
 
+            # The post-processing reset is part of this transition (one
+            # transaction): a lost epoch or live post-processing changes
+            # nothing, never leaving the transfer stripped of its attempts.
             if not await self.repository.state(
                 transfer_id,
                 TransferState.QUEUED,
                 operator=True,
                 expected_epoch=transfer.epoch,
+                reset_postprocessing=True,
             ):
                 return False
 
@@ -1785,12 +1788,14 @@ class TransferEngine(_QualifiedTransferEngine):
                 return False
             if any(pending for _resource, _state, pending in await self.repository.resources(transfer_id)):
                 return False
-            if not await self.repository.reset_postprocessing(transfer_id):
-                return False
             artifact_ids = [artifact.id for artifact in await self.repository.artifacts(transfer_id)]
             async with self._execution_cycle_lock:
+                # Reopening delivered work re-runs its post-processing: the
+                # reset (attempts, extraction status and error) commits with
+                # this transition or not at all.
                 if not await self.repository.state(transfer_id, TransferState.ACCEPTED,
-                                                   operator=True, expected_epoch=transfer.epoch):
+                                                   operator=True, expected_epoch=transfer.epoch,
+                                                   reset_postprocessing=True):
                     return False
                 # The semantic point that knows terminal work was reopened for
                 # reacquisition; its generation owner records that durably.
@@ -1846,6 +1851,18 @@ class TransferEngine(_QualifiedTransferEngine):
                             record = next(item for item in await self.repository.requests(transfer_id) if item.id == artifact.request_id)
                         if not record.parent_id or not await self._renew_source_parent(record, operator=True):
                             await self.repository.artifact_state(artifact.id, "queued", release=True)
+                # A revived file whose selected source an operator switch
+                # replaced (one cancelled before the switch landed, which the
+                # landing left as it was) is held for that landing; its root
+                # already resolved, so nothing else would land it. Reopening
+                # that root resolves it again on its current route and the
+                # landing takes the replaced candidate's place -- never the
+                # superseded provider, never an indefinite hold. A root owing
+                # no landing is not touched.
+                for record in await self.repository.requests(transfer_id):
+                    if (record.parent_id is None and record.state == "resolved"
+                            and await self.repository.route_replacement_pending(record.id)):
+                        await self.repository.retry_requests(transfer_id, request_id=record.id, reset_budget=True)
                 await self.repository.retry_requests(transfer_id, reset_budget=True)
                 return True
 

@@ -744,6 +744,59 @@ async def test_a_real_extraction_delivers_exactly_its_recorded_final_file_set(wo
     assert (lost["state"], lost["reason"]) == ("unavailable", "material_missing")
 
 
+async def test_a_reacquired_extraction_redelivers_its_final_file_set_without_rewriting_it(world, monkeypatch):
+    """FUNC-A07 at the delivery boundary: the operator's Retry of a completed,
+    extracted transfer whose archive was kept re-runs extraction over its own
+    earlier outputs. Those byte-identical files are satisfied, never rewritten
+    and never refused, so the re-finalization succeeds and the recorded final
+    file set is the whole tree again: the same files, the same material, the
+    same delivery generation."""
+    import zipfile
+
+    from postprocessors.archive.processor import ArchivePostProcessor
+    from transfers.models import ExecutionState, ResolutionResult, ResourceState, TransferProgress
+
+    source = world.payloads.parent / "fixture.zip"
+    with zipfile.ZipFile(source, "w") as handle:
+        handle.writestr("Show/episode.mkv", b"episode payload")
+        handle.writestr("Show/episode.nfo", b"info")
+    payload = source.read_bytes()
+    candidate = replace(world.provider.candidate("fixture.zip"), expected_bytes=len(payload))
+    world.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (candidate,))]
+    world.engine.postprocessors = (ArchivePostProcessor(),)
+    monkeypatch.setattr("postprocessors.archive.processor.get_settings", lambda: SimpleNamespace(
+        extract_max_concurrent=1, extract_delete_archive=False))
+    job, _ = await world.external.submit(world.clients.a, body("k-1"))
+    transfer_id = await transfer_of(job["id"])
+    await world.engine.tick()
+    artifact = (await world.repository.artifacts(transfer_id))[0]
+    Path(artifact.target).parent.mkdir(parents=True, exist_ok=True)
+    Path(artifact.target).write_bytes(payload)
+    running = world.executor.jobs[artifact.execution.attempt_id]
+    world.executor.jobs[artifact.execution.attempt_id] = replace(
+        running, state=ExecutionState.SUCCEEDED, progress=TransferProgress(len(payload), len(payload)))
+    await world.engine.tick()
+    first = await world.external.delivery(world.clients.a, job["id"])
+    assert first["state"] == "available"
+    episode = world.payloads / "Show" / "episode.mkv"
+    kept = episode.stat()
+
+    assert await world.engine.retry(transfer_id, reacquire=True)
+    for _ in range(4):
+        await world.engine.tick()
+
+    async with database.get_db() as db:
+        status = await db.fetchone("SELECT status, extraction_status, extraction_error FROM torrents WHERE id=?",
+                                   (transfer_id,))
+    assert (status["status"], status["extraction_status"], status["extraction_error"]) == (
+        "completed", "completed", None)
+    again = await world.external.delivery(world.clients.a, job["id"])
+    assert again["state"] == "available" and again["generation"] == first["generation"]
+    assert sorted(item["relative_path"] for item in again["files"]) == [
+        "Show/episode.mkv", "Show/episode.nfo", "fixture.zip"]
+    assert (episode.stat().st_ino, episode.stat().st_mtime_ns) == (kept.st_ino, kept.st_mtime_ns)
+
+
 async def test_two_profiles_over_one_canonical_result_keep_independent_paths_and_acknowledgments(world):
     tv, _ = await world.external.submit(world.clients.a, body("k-1"))
     movies, _ = await world.external.submit(world.clients.r, body("k-1", category="movies"))

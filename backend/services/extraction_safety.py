@@ -416,8 +416,56 @@ def _ensure_safe_destination(root: Path, target: Path) -> None:
             raise ValueError(f"Extraction target traverses symlink: {current!s}")
 
 
+_COMPARE_CHUNK = 1024 * 1024
+
+
+def _already_satisfied(source: Path, target: Path) -> bool:
+    """Whether an existing ``target`` already IS the staged ``source``: a
+    regular file (never a symlink or special file, observed without following
+    links) of the same size whose every byte is identical.
+
+    That is the one existing target a commit may accept without writing:
+    re-extracting delivered archives over their own earlier outputs (an
+    operator Retry of a completed transfer, a later file selection) finds
+    exactly the bytes it would have written, so the material is already in
+    place and nothing about it changes -- it is neither relinked nor
+    rewritten. Anything else (different bytes, a truncated or partial file, a
+    link, a device, a FIFO) is never accepted as this extraction's output.
+    Hard-linked targets (``st_nlink > 1``, e.g. an *arr import) are compared
+    like any other regular file: their bytes, not their link count, decide."""
+    try:
+        expected = source.lstat()
+        # Never open a link or special file; the descriptor is re-checked
+        # below, so a target swapped after this observation still fails.
+        if not stat.S_ISREG(target.lstat().st_mode):
+            return False
+        fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return False
+    with os.fdopen(fd, "rb") as existing:
+        observed = os.fstat(existing.fileno())
+        if not stat.S_ISREG(observed.st_mode) or observed.st_size != expected.st_size:
+            return False
+        with source.open("rb") as staged:
+            while True:
+                left = staged.read(_COMPARE_CHUNK)
+                right = existing.read(_COMPARE_CHUNK)
+                if left != right:
+                    return False
+                if not left:
+                    return True
+
+
 def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
-    """Commit one validated staged tree without overwriting existing files."""
+    """Commit one validated staged tree without overwriting existing files.
+
+    Returns the tree's outputs in ``dest``: every file this operation
+    committed, then every existing target it found already satisfied
+    (``_already_satisfied``: byte-identical regular file). Satisfied files are
+    outputs -- a consumer of the result (the recorded final file set, an *arr
+    import) must see the whole tree, not only what happened to be missing --
+    but never this operation's writes: a rollback removes only what it
+    committed, and a satisfied file is never touched."""
     dest.mkdir(parents=True, exist_ok=True)
     root = dest.resolve()
     entries = sorted(
@@ -426,10 +474,12 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
     )
     directory_targets: list[Path] = []
     file_moves: list[tuple[Path, Path]] = []
+    satisfied: list[Path] = []
 
     # Preflight the entire commit before moving a single file. Existing
     # directories may be shared, but any existing file target is outside this
-    # extraction operation's ownership and therefore makes the commit fail.
+    # extraction operation's ownership and therefore makes the commit fail --
+    # unless it already holds exactly the staged bytes, which needs no write.
     for source in entries:
         relative = source.relative_to(stage)
         target = root.joinpath(*relative.parts)
@@ -440,6 +490,9 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
             directory_targets.append(target)
             continue
         if target.exists() or target.is_symlink():
+            if _already_satisfied(source, target):
+                satisfied.append(target)
+                continue
             raise ValueError(f"Extraction would overwrite existing file: {target!s}")
         file_moves.append((source, target))
 
@@ -470,6 +523,7 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
             os.link(source, target, follow_symlinks=False)
             committed.append(target)
     except Exception:
+        # Only this operation's own links; a satisfied file was never written.
         for target in reversed(committed):
             target.unlink(missing_ok=True)
         for directory in sorted(created_dirs, key=lambda p: len(p.parts), reverse=True):
@@ -478,7 +532,7 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
             except OSError:
                 pass
         raise
-    return committed
+    return [*committed, *satisfied]
 
 
 def staged_external_extract(

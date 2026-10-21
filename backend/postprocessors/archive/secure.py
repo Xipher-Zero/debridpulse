@@ -147,7 +147,10 @@ class SecureExtractor(Extractor):
                         ),
                     )
                     if created is not None:
-                        # Provenance: exactly what this operation wrote.
+                        # Outputs: every file this operation committed plus every
+                        # existing byte-identical file it found already in place
+                        # (``_merge_staged_tree``) -- the job's whole tree, never
+                        # authority to remove anything.
                         created.extend(Path(item) for item in created_files)
 
                     # Extraction success and source cleanup are separate truths.

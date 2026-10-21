@@ -110,6 +110,23 @@ async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
     await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
 
 
+async def _reset_postprocessing_in_db(db, transfer_id: int) -> bool:
+    """Transaction-local: THE reset of a transfer's post-processing, so the
+    next delivery queues every processor afresh (``queue_postprocessing``
+    inserts each attempt only once). ``False`` -- nothing changed -- while an
+    attempt is still pending or processing: that work is live and is never
+    discarded under it. Otherwise every attempt is removed AND the transfer's
+    extraction status and error are cleared with them: they describe the
+    removed attempts, so keeping them would present a finished (or failed)
+    extraction for material that has not been post-processed in this
+    lifecycle -- and, with no processor configured any more, forever."""
+    if await db.fetchone("SELECT transfer_id FROM postprocess_attempts WHERE transfer_id=? AND state IN ('pending','processing')", (transfer_id,)):
+        return False
+    await db.execute("DELETE FROM postprocess_attempts WHERE transfer_id=?", (transfer_id,))
+    await db.execute("UPDATE torrents SET extraction_status='',extraction_error=NULL WHERE id=?", (transfer_id,))
+    return True
+
+
 def origin_provider(requests, route_attempts) -> str | None:
     """THE origin provider of one transfer: the provider owning the route of
     every root request, when that is one provider, else ``None``.
@@ -2614,13 +2631,26 @@ class TransferRepository:
             await journal(db, je.lifecycle(transfer_id, current_status, target, error))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
 
-    async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None, verified=False) -> bool:
+    async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None, verified=False,
+                    reset_postprocessing=False) -> bool:
+        """One lifecycle transition, ``False`` when it is not allowed or the
+        epoch moved. ``reset_postprocessing`` makes the transition also the
+        post-processing reset (``_reset_postprocessing_in_db``) in the SAME
+        transaction: a transfer that leaves delivery to deliver again (an
+        operator Retry or reacquisition, a file selected on a completed
+        transfer) never keeps its finished attempts -- which would stop the
+        new delivery's processors from ever running -- and a transition that
+        loses (epoch moved, live post-processing) changes nothing at all,
+        never leaving a settled transfer stripped of its attempts and
+        extraction status."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("SELECT status,progress,lifecycle_epoch,normalized_error FROM torrents WHERE id=?", (transfer_id,))
             if not row or not transition_allowed(TransferState(row["status"]), target, operator=operator, verified=verified):
                 return False
             if expected_epoch is not None and row["lifecycle_epoch"] != expected_epoch:
+                return False
+            if reset_postprocessing and not await _reset_postprocessing_in_db(db, transfer_id):
                 return False
             await self._write_lifecycle_transition(
                 db, transfer_id, row["status"], row["progress"], row["normalized_error"], target, progress=progress, error=error,
@@ -3972,7 +4002,16 @@ class TransferRepository:
         attempt of it (exactly what ``_route_replacement_admission`` holds).
         False once the replacement landed (the selected bindings' origins
         then follow the switch) and for every root never switched, so its
-        re-resolutions keep their ordinary path."""
+        re-resolutions keep their ordinary path.
+
+        A CANCELLED artifact still owes it. Cancelling a held file ends the
+        file, not the switch: its root's later resolution must still take the
+        landing path, where the canonical owner leaves every cancelled
+        artifact exactly as it is (``replace_root_candidates``) and marks the
+        root resolved. Were it excluded, that resolution would take the
+        ordinary path, which rebuilds the root's own artifact in place --
+        replacing a cancelled file's candidates and pushing a binding another
+        source still supplies out of the current band."""
         async with get_db() as db:
             rows = await db.fetchall(
                 f"""SELECT f.id, COUNT(*) AS origins, COALESCE(SUM(CASE WHEN o.request_id=? AND r.parent_id IS NULL
@@ -3983,7 +4022,7 @@ class TransferRepository:
                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
                    JOIN transfer_requests r ON r.id=o.request_id
                    LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
-                   WHERE f.status NOT IN ('completed','cancelled','deleted')
+                   WHERE f.status NOT IN ('completed','deleted')
                      AND f.id IN (SELECT b2.canonical_artifact_id FROM canonical_candidate_bindings b2
                                   JOIN canonical_candidate_origins o2 ON o2.binding_id=b2.id WHERE o2.request_id=?)
                    GROUP BY f.id""", (request_id, request_id))
@@ -5325,10 +5364,12 @@ class TransferRepository:
         return int(row["recovery_failures"] or 0), int(row["recovery_refreshes"] or 0)
 
     async def reset_postprocessing(self, transfer_id):
+        """The post-processing reset on its own, for a caller that changes no
+        lifecycle state; one that does passes ``state(reset_postprocessing=True)``."""
         async with get_db() as db:
-            if await db.fetchone("SELECT transfer_id FROM postprocess_attempts WHERE transfer_id=? AND state IN ('pending','processing')", (transfer_id,)):
+            await db.execute("BEGIN IMMEDIATE")
+            if not await _reset_postprocessing_in_db(db, transfer_id):
                 return False
-            await db.execute("DELETE FROM postprocess_attempts WHERE transfer_id=?", (transfer_id,))
             await db.commit()
         return True
 
@@ -5624,7 +5665,10 @@ class TransferRepository:
             await db.commit()
         return True
 
-    async def select_artifact(self, transfer_id: int, artifact_id: int, selected: bool, *, expected_demand=None):
+    async def select_artifact(self, transfer_id: int, artifact_id: int, selected: bool, *, expected_demand=None) -> bool:
+        """Select or block one artifact. Returns whether its selection CHANGED:
+        ``False`` when it already was what the operator asked for, which
+        changes nothing at all (its owner must not reopen anything for it)."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             if not await self.hold_demand(db, transfer_id, expected_demand):
@@ -5637,7 +5681,8 @@ class TransferRepository:
             if not transfer or transfer["status"] == "consolidated":
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE))
             if bool(row["blocked"]) == (not selected):
-                return
+                await db.rollback()
+                return False
             if row["execution_attempt_id"] or row["status"] not in {"queued", "unresolved", "paused", "blocked", "pending"}:
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE))
             member = await db.fetchone(
@@ -5656,3 +5701,4 @@ class TransferRepository:
             await db.execute("UPDATE transfer_requests SET state=? WHERE id=?",
                              (("resolved" if ready else "pending") if selected else "skipped", row["request_id"]))
             await db.commit()
+        return True

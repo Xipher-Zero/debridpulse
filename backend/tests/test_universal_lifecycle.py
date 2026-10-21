@@ -14,7 +14,7 @@ from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
     CleanupAuthority, ExecutionObservation, ExecutionRequest, ExecutionState,
-    OutcomeKind, Ownership, ProviderObservation, ProviderResource, ResolutionResult, ResourceState,
+    OutcomeKind, Ownership, PostProcessOutcome, ProviderObservation, ProviderResource, ResolutionResult, ResourceState,
     TransferOutcome, TransferRequest, TransferState,
     SourceIdentity, ArtifactFingerprint,
 )
@@ -843,6 +843,115 @@ async def test_postprocessing_failure_is_recorded_separately_from_delivery(core)
     assert len([item for item in core.provider.calls if item[0] == "resolve"]) == 1
 
 
+class StagedExtractor:
+    """A post-processor that extracts each delivered file through the real
+    staged commit (``services.extraction_safety.staged_external_extract``),
+    keeping its archives, into ``<name>.out`` beside it -- so a second
+    delivery of the same material re-extracts over its own earlier outputs.
+    ``fail_after_extracting`` reports a failure after the commit (as a source
+    cleanup failure does), leaving the outputs in place."""
+    descriptor = SimpleNamespace(id="unpacker")
+
+    def __init__(self, *, fail_after_extracting=False):
+        self.calls = []
+        self.fail_after_extracting = fail_after_extracting
+
+    async def process(self, transfer_id, paths):
+        from services.extraction_safety import staged_external_extract
+        self.calls.append(tuple(paths))
+        outputs = []
+        for path in map(Path, paths):
+            outputs.extend(staged_external_extract(
+                path, path.parent,
+                lambda stage, path=path: (stage / f"{path.name}.out").write_bytes(path.read_bytes())))
+        if self.fail_after_extracting:
+            return TransferOutcome(OutcomeKind.FAILURE, NormalizedError(
+                Domain.POST_PROCESSING, Category.POST_PROCESSING_FAILED, Stage.POST_PROCESSING,
+                Retryability.UNKNOWN))
+        return PostProcessOutcome(OutcomeKind.SUCCESS, detail="extracted",
+                                  outputs=tuple(str(item) for item in outputs))
+
+
+async def extraction_facts(transfer_id):
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT status,extraction_status,extraction_error FROM torrents WHERE id=?",
+                                (transfer_id,))
+        attempts = await db.fetchall("SELECT processor_id,state FROM postprocess_attempts WHERE transfer_id=?",
+                                     (transfer_id,))
+    return (row["status"], row["extraction_status"], row["extraction_error"],
+            [(item["processor_id"], item["state"]) for item in attempts])
+
+
+@pytest.mark.asyncio
+async def test_reacquire_after_extraction_error_clears_it_and_reextraction_over_kept_outputs_completes(canonical_core):
+    """FUNC-A07: an operator Retry of a COMPLETED transfer whose extraction
+    failed. The reopening transition clears the extraction status and error
+    with the attempts (nothing stale is presented, even with no processor
+    configured any more), and the re-delivery's extraction over its own
+    earlier, kept outputs is satisfied by those byte-identical files instead
+    of refusing to overwrite them: one extraction, completed, no error."""
+    core = canonical_core
+    core.engine.postprocessors = (StagedExtractor(fail_after_extracting=True),)
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    for _ in range(3):
+        core.now[0] += 30
+        await core.engine.tick()
+    status, extraction, error, _attempts = await extraction_facts(transfer.id)
+    assert (status, extraction) == ("completed", "error") and error
+    output = Path(artifact.execution.correlation["destination"]).parent / "payload.bin.out"
+    kept = output.stat().st_ino
+
+    processor = StagedExtractor()
+    core.engine.postprocessors = (processor,)
+    assert await operator_reacquire(core, transfer.id)
+    assert await extraction_facts(transfer.id) == (TransferState.ACCEPTED, "", None, [])
+    for _ in range(4):
+        core.now[0] += 30
+        await core.engine.tick()
+
+    assert len(processor.calls) == 1
+    assert await extraction_facts(transfer.id) == ("completed", "completed", None, [("unpacker", "finished")])
+    assert output.stat().st_ino == kept and output.read_bytes() == b"done"
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_reset_commits_with_its_reopening_transition_or_not_at_all(core):
+    """The reset is part of the transition (``state(reset_postprocessing=
+    True)``, one transaction): a lost epoch or live post-processing refuses
+    both, so a COMPLETED transfer is never left without its attempts and
+    extraction status by a reopening that did not happen."""
+    core.engine.postprocessors = (StagedExtractor(fail_after_extracting=True),)
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    for _ in range(3):
+        core.now[0] += 30
+        await core.engine.tick()
+    settled = await extraction_facts(transfer.id)
+    assert settled[:2] == ("completed", "error") and settled[3] == [("unpacker", "finished")]
+    epoch = (await core.repository.get(transfer.id)).epoch
+
+    assert not await core.repository.state(transfer.id, TransferState.QUEUED, operator=True,
+                                           expected_epoch=epoch + 1, reset_postprocessing=True)
+    assert await extraction_facts(transfer.id) == settled
+    async with database.get_db() as db:
+        await db.execute("UPDATE postprocess_attempts SET state='pending' WHERE transfer_id=?", (transfer.id,))
+        await db.commit()
+    assert not await core.repository.state(transfer.id, TransferState.QUEUED, operator=True,
+                                           expected_epoch=epoch, reset_postprocessing=True)
+    assert await extraction_facts(transfer.id) == (*settled[:3], [("unpacker", "pending")])
+    async with database.get_db() as db:
+        await db.execute("UPDATE postprocess_attempts SET state='finished' WHERE transfer_id=?", (transfer.id,))
+        await db.commit()
+    assert await core.repository.state(transfer.id, TransferState.QUEUED, operator=True,
+                                       expected_epoch=epoch, reset_postprocessing=True)
+    assert await extraction_facts(transfer.id) == ("queued", "", None, [])
+
+
 @pytest.mark.asyncio
 async def test_provider_retry_stays_bound_to_original_route(core):
     # A transient failure of the source retries on the bound route; health
@@ -1062,6 +1171,57 @@ async def test_file_selection_before_dispatch_excludes_blocked_artifact(core):
     await core.engine.select_artifact(transfer.id, artifact.id, selected=True)
     await core.engine.tick()
     assert (await core.repository.artifacts(transfer.id))[0].execution
+
+
+@pytest.mark.asyncio
+async def test_file_selected_after_completion_reruns_postprocessing_over_the_whole_delivery(core):
+    """FUNC-A08: a file selected on a COMPLETED transfer reopens it with its
+    post-processing reset in the same transition, so the new delivery's
+    processors run again (``queue_postprocessing`` inserts each attempt only
+    once: without the reset the transfer stayed in post-processing forever).
+    The re-extraction of the first file's archives is satisfied by its own
+    byte-identical outputs; the second file's are committed."""
+    processor = StagedExtractor()
+    core.engine.postprocessors = (processor,)
+    transfer = await core.engine.submit((TransferRequest("parcel", "box", name="one.bin"),
+                                         TransferRequest("parcel", "crate", name="two.bin")))
+    await core.engine.resolve_pending()
+    first, second = sorted(await core.repository.artifacts(transfer.id), key=lambda item: item.name)
+    await core.engine.select_artifact(transfer.id, second.id, selected=False)
+    await core.engine.tick()
+    first = next(item for item in await core.repository.artifacts(transfer.id) if item.id == first.id)
+    core.executor.finish(first.execution)
+    for _ in range(4):
+        core.now[0] += 30
+        await core.engine.tick()
+    assert len(processor.calls) == 1
+    assert (await extraction_facts(transfer.id))[:3] == ("completed", "completed", None)
+    folder = Path(first.execution.correlation["destination"]).parent
+    kept = (folder / "one.bin.out").stat().st_ino
+
+    # Selecting a file that already is selected changes nothing: the completed
+    # transfer is not reopened and its post-processing is not run again.
+    settled = await extraction_facts(transfer.id)
+    await core.engine.select_artifact(transfer.id, first.id, selected=True)
+    for _ in range(2):
+        core.now[0] += 30
+        await core.engine.tick()
+    assert await extraction_facts(transfer.id) == settled and len(processor.calls) == 1
+
+    await core.engine.select_artifact(transfer.id, second.id, selected=True)
+    assert await extraction_facts(transfer.id) == ("queued", "", None, [])
+    await core.engine.tick()
+    second = next(item for item in await core.repository.artifacts(transfer.id) if item.id == second.id)
+    core.executor.finish(second.execution)
+    for _ in range(6):
+        core.now[0] += 30
+        await core.engine.tick()
+
+    assert len(processor.calls) == 2
+    assert sorted(Path(item).name for item in processor.calls[1]) == ["one.bin", "two.bin"]
+    assert await extraction_facts(transfer.id) == ("completed", "completed", None, [("unpacker", "finished")])
+    assert (folder / "one.bin.out").stat().st_ino == kept
+    assert (Path(second.execution.correlation["destination"]).parent / "two.bin.out").read_bytes() == b"done"
 
 
 @pytest.mark.asyncio

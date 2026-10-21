@@ -653,7 +653,10 @@ class Extractor:
                         ),
                     )
                     if created is not None:
-                        # Provenance: exactly what this operation wrote.
+                        # Outputs: every file this operation committed plus every
+                        # existing byte-identical file it found already in place
+                        # (``_merge_staged_tree``) -- the job's whole tree, never
+                        # authority to remove anything.
                         created.extend(Path(item) for item in created_files)
                     if delete_after and archive.exists():
                         archive.unlink()
@@ -710,7 +713,8 @@ class Extractor:
         created: Optional[List[Path]] = None,
     ) -> List[Tuple[Path, bool, str]]:
         """Extract a known archive list without walking the filesystem.
-        ``created``, when given, collects every file each extraction wrote."""
+        ``created``, when given, collects every output of each extraction:
+        what it committed and what it found already in place, byte-identical."""
         unique_archives = archive_paths_from_downloads(archives)
         if not unique_archives:
             return []

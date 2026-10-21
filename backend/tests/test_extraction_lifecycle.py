@@ -196,6 +196,108 @@ def test_external_extraction_stages_inside_destination(tmp_path, monkeypatch):
     assert (dest / "payload.txt").read_text() == "ok"
 
 
+def _merge_case(tmp_path, existing: dict[str, bytes], staged: dict[str, bytes]):
+    """A destination holding ``existing`` and a staging tree under it (same
+    filesystem, as ``staged_external_extract`` creates it) holding ``staged``."""
+    dest = tmp_path / "download"
+    stage = dest / ".debridpulse-extract-test"
+    for root, files in ((dest, existing), (stage, staged)):
+        for name, data in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+    return stage, dest
+
+
+def test_merge_accepts_byte_identical_existing_output_without_rewriting_it(tmp_path):
+    """Re-extracting over this tree's own earlier outputs (a Retry of a
+    completed transfer, a later file selection): an existing regular file
+    holding exactly the staged bytes is satisfied -- neither relinked nor
+    rewritten -- and IS one of the outputs, so the recorded file set (and an
+    *arr import) sees the whole tree; what was missing is committed. A
+    hard-linked target (an *arr import) is compared by its bytes alike."""
+    from services.extraction_safety import _merge_staged_tree
+
+    stage, dest = _merge_case(
+        tmp_path,
+        {"movie.mkv": b"same bytes", "sub/extra.nfo": b"nfo"},
+        {"movie.mkv": b"same bytes", "sub/extra.nfo": b"nfo", "sub/new.srt": b"srt"},
+    )
+    imported = tmp_path / "library.mkv"
+    import os
+    os.link(dest / "movie.mkv", imported)
+    before = {name: (dest / name).stat().st_ino for name in ("movie.mkv", "sub/extra.nfo")}
+
+    outputs = _merge_staged_tree(stage, dest)
+
+    root = dest.resolve()
+    assert sorted(outputs) == sorted(root / name for name in ("movie.mkv", "sub/extra.nfo", "sub/new.srt"))
+    assert {name: (dest / name).stat().st_ino for name in before} == before
+    assert (dest / "movie.mkv").stat().st_nlink == 2
+    assert (dest / "sub/new.srt").read_bytes() == b"srt"
+
+
+@pytest.mark.parametrize("existing", ["different", "truncated", "longer", "symlink"])
+def test_merge_never_accepts_existing_material_that_is_not_the_staged_file(tmp_path, existing):
+    """Only identical bytes in a regular file are satisfied. Same size but
+    different bytes, a truncated or longer file, or a symlink (even to the
+    identical bytes) is still an overwrite refusal, and nothing of the tree
+    is committed."""
+    from services.extraction_safety import _merge_staged_tree
+
+    data = {
+        "different": b"SAME BYTES",
+        "truncated": b"same by",
+        "longer": b"same bytes and more",
+        "symlink": None,
+    }[existing]
+    stage, dest = _merge_case(tmp_path, {}, {"movie.mkv": b"same bytes", "zz-new.srt": b"srt"})
+    target = dest / "movie.mkv"
+    if data is None:
+        twin = dest / "twin.mkv"
+        twin.write_bytes(b"same bytes")
+        target.symlink_to(twin)
+    else:
+        target.write_bytes(data)
+
+    with pytest.raises(ValueError, match="overwrite"):
+        _merge_staged_tree(stage, dest)
+
+    assert not (dest / "zz-new.srt").exists()
+    if data is None:
+        assert target.is_symlink() and twin.read_bytes() == b"same bytes"
+    else:
+        assert target.read_bytes() == data
+
+
+def test_merge_rollback_removes_only_its_own_commits_never_a_satisfied_file(tmp_path, monkeypatch):
+    """A commit that fails part-way unlinks exactly what it linked; the
+    satisfied file was never this operation's write and stays untouched."""
+    import os
+    import services.extraction_safety as safety
+
+    stage, dest = _merge_case(
+        tmp_path,
+        {"a-kept.mkv": b"same"},
+        {"a-kept.mkv": b"same", "b-new.srt": b"srt", "c-fails.nfo": b"nfo"},
+    )
+    kept_inode = (dest / "a-kept.mkv").stat().st_ino
+    real_link = os.link
+
+    def link(source, target, **kwargs):
+        if Path(target).name == "c-fails.nfo":
+            raise OSError("disk full")
+        return real_link(source, target, **kwargs)
+
+    monkeypatch.setattr(safety.os, "link", link)
+    with pytest.raises(OSError, match="disk full"):
+        safety._merge_staged_tree(stage, dest)
+
+    assert not (dest / "b-new.srt").exists()
+    assert (dest / "a-kept.mkv").read_bytes() == b"same"
+    assert (dest / "a-kept.mkv").stat().st_ino == kept_inode
+
+
 def test_frontend_surfaces_extraction_failure_toast():
     root = Path(__file__).resolve().parents[2]
     app_source = (root / "frontend/static/app.js").read_text()

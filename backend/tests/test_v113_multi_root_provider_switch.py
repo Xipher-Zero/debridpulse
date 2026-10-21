@@ -366,6 +366,160 @@ async def test_a_size_mismatch_at_landing_never_selects_the_mismatched_candidate
     assert sorted(row["candidate_id"] for row in current) == sorted(str(item) for item in before)
 
 
+async def test_a_landing_the_canonical_owner_refuses_as_a_conflict_fails_the_root_and_retry_recovers(
+        tmp_path, monkeypatch):
+    """``replace_root_candidates`` answers ``"conflict"`` when the
+    replacement's issuing attempt has no durable provenance: nothing can be
+    bound. That is the root's own failure through the ordinary request
+    failure, as a size mismatch is -- never a "decided" landing that leaves the
+    root ``materializing`` with nothing landed, which every later cycle would
+    meet again (a silent livelock). The refusal is injected at the canonical
+    owner's boundary; once it stops, an operator Retry lands the switch."""
+    lab_ = await lab(tmp_path, monkeypatch)
+    repository, engine, transfer = lab_.repository, lab_.engine, lab_.transfer
+    roots = await roots_by_link(repository, transfer.id)
+    part01 = await file_of(repository, transfer.id, "part01.rar")
+    before = [item.id for item in part01.candidates]
+    refused = []
+
+    async def conflict(record, candidates):
+        refused.append(record.id)
+        return "conflict"
+
+    engine.canonical.replace_root_candidates = conflict
+    await switch_root_provider(engine, transfer.id, "prov-dl", expected_provider_id="prov-ad",
+                               artifact_id=part01.id, expected_root_id=roots[RG1])
+    await settle(engine, 12)
+    assert refused and set(refused) == {roots[RG1]}
+    root = next(item for item in await repository.requests(transfer.id) if item.id == roots[RG1])
+    assert root.state != "materializing"
+    assert root.error is not None and root.error.category == Category.RECOVERY_FAILED
+    held = await file_of(repository, transfer.id, "part01.rar")
+    assert [item.id for item in held.candidates] == before and held.execution is None
+    assert held.error is not None                    # the root's failure is visible on the file it supplied
+
+    del engine.canonical.replace_root_candidates
+    assert await engine.retry(transfer.id)
+    await settle(engine, 10)
+    landed = await file_of(repository, transfer.id, "part01.rar")
+    selected = landed.candidates[landed.selected]
+    assert selected.provider_id == "prov-dl" and selected.id not in before
+    assert landed.error is None and landed.execution is not None
+
+
+async def test_a_held_file_cancelled_before_its_switch_lands_is_never_touched_by_the_landing(tmp_path, monkeypatch):
+    """A cancelled artifact is never touched. Cancelling the file a switch
+    holds ends the file, not the switch: the root's later resolution still
+    takes the landing path (``route_replacement_pending``), where the
+    canonical owner leaves the cancelled file exactly as it is and marks the
+    root resolved -- never the ordinary rebuild of the root's own artifact,
+    which replaced the cancelled file's candidates and pushed the pixeldrain
+    mirror's binding (a source still supplied) out of the current band."""
+    lab_ = await lab(tmp_path, monkeypatch)
+    repository, engine, transfer = lab_.repository, lab_.engine, lab_.transfer
+    roots = await roots_by_link(repository, transfer.id)
+    part01 = await file_of(repository, transfer.id, "part01.rar")
+    lab_.providers["prov-dl"].failing.add(RG1)                       # the new route cannot resolve yet
+    await switch_root_provider(engine, transfer.id, "prov-dl", expected_provider_id="prov-ad",
+                               artifact_id=part01.id, expected_root_id=roots[RG1])
+    await settle(engine, 2)
+    await engine.cancel_artifact(transfer.id, part01.id)
+
+    async def facts():
+        current = await file_of(repository, transfer.id, "part01.rar")
+        return (current.state, current.selected, [str(item.id) for item in current.candidates],
+                current.execution, [(row["id"], row["candidate_id"], row["provider_id"], row["candidate_order"])
+                                    for row in await rows(
+                    """SELECT b.id,b.candidate_id,b.provider_id,b.candidate_order FROM canonical_candidate_bindings b
+                       WHERE b.canonical_artifact_id=? ORDER BY b.id""", (part01.id,))])
+
+    cancelled = await facts()
+    assert cancelled[0] == "cancelled" and cancelled[3] is None
+    mirror = next(str(item.id) for item in part01.candidates if item.provider_id == "prov-dl")
+    assert (mirror, "prov-dl", 2) in [row[1:] for row in cancelled[4]]   # PD1 supplies it, current
+
+    lab_.providers["prov-dl"].failing.clear()
+    await repository.retry_requests(transfer.id, request_id=roots[RG1])
+    await settle(engine)
+
+    assert lab_.providers["prov-dl"].resolved.count(RG1) >= 1          # the root did resolve again
+    assert await facts() == cancelled
+    root = next(item for item in await repository.requests(transfer.id) if item.id == roots[RG1])
+    assert root.state == "resolved" and root.error is None
+
+
+async def test_reacquiring_a_held_file_cancelled_before_its_switch_landed_acquires_through_the_switched_route(
+        tmp_path, monkeypatch):
+    """Cancellation is terminal until an explicit revival. The operator's
+    Retry of the deleted transfer (reacquisition) revives the cancelled file
+    with its pre-switch selection, which the switch holds; its root already
+    resolved when the landing left the cancelled file as it was, so
+    reacquisition reopens that root: it resolves again on its current route
+    (the operator's provider, never the superseded one) and the landing takes
+    the replaced candidate's place. The mirror keeps its binding, the finished
+    siblings keep their selections and are not acquired again, and no other
+    root resolves."""
+    lab_ = await lab(tmp_path, monkeypatch)
+    repository, engine, executor, transfer = lab_.repository, lab_.engine, lab_.executor, lab_.transfer
+    roots = await roots_by_link(repository, transfer.id)
+    part01 = await file_of(repository, transfer.id, "part01.rar")
+    old = part01.candidates[part01.selected]
+    mirror = next(str(item.id) for item in part01.candidates if item.provider_id == "prov-dl")
+    lab_.providers["prov-dl"].failing.add(RG1)
+    await switch_root_provider(engine, transfer.id, "prov-dl", expected_provider_id="prov-ad",
+                               artifact_id=part01.id, expected_root_id=roots[RG1])
+    await settle(engine, 2)
+    await engine.cancel_artifact(transfer.id, part01.id)
+    lab_.providers["prov-dl"].failing.clear()
+    await repository.retry_requests(transfer.id, request_id=roots[RG1])
+    await settle(engine)
+    for item in await repository.artifacts(transfer.id):
+        if item.execution is not None and item.state != "cancelled":
+            executor.finish(item.execution)
+    await settle(engine)
+    siblings = {item.name: (item.state, item.execution.attempt_id, str(item.candidates[item.selected].id))
+                for item in await repository.artifacts(transfer.id) if item.name != "part01.rar"}
+    assert {state for state, _, _ in siblings.values()} == {"completed"}
+    assert (await file_of(repository, transfer.id, "part01.rar")).state == "cancelled"   # terminal until revived
+    await engine.delete(transfer.id, remote=False)
+    resolved = {identity: len(provider.resolved) for identity, provider in lab_.providers.items()}
+
+    async def route_history(request_id):
+        return [(row["provider_id"], row["state"], row["operation"]) for row in await rows(
+            """SELECT a.provider_id,a.state,p.operation FROM route_attempt_provenance p
+               JOIN resolution_attempts a ON a.id=p.resolution_attempt_id WHERE a.request_id=? ORDER BY p.ordinal""",
+            (request_id,))]
+
+    history = await route_history(roots[RG1])
+    assert history[-1][:2] == ("prov-dl", "succeeded")
+
+    assert await engine.retry(transfer.id, reacquire=True)
+    await settle(engine)
+
+    revived = await file_of(repository, transfer.id, "part01.rar")
+    selected = revived.candidates[revived.selected]
+    assert selected.provider_id == "prov-dl" and str(selected.id) not in {str(old.id), mirror}
+    assert [str(item.id) for item in revived.candidates] == [str(selected.id), mirror]
+    assert revived.execution is not None and executor.jobs[revived.execution.attempt_id].state == ExecutionState.RUNNING
+    assert (await repository.materialization_authorization(revived)).kind == MaterializationAdmissionKind.PROCEED
+    # Only the switched root resolved again, and only on its current route.
+    assert {identity: provider.resolved[resolved[identity]:] for identity, provider in lab_.providers.items()} == {
+        "prov-ad": [], "prov-dl": [RG1], "prov-tb": []}
+    # Its bound route (``bound_route_provider``: the latest attempt) is the
+    # operator's; reacquisition opened exactly one more attempt on it.
+    assert (await route_history(roots[RG1]))[len(history):] == [("prov-dl", "succeeded", "resolve")]
+    bindings = {row["candidate_id"]: row["candidate_order"] for row in await rows(
+        "SELECT candidate_id,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id=?",
+        (part01.id,))}
+    assert bindings[str(old.id)] > 100000 and (bindings[str(selected.id)], bindings[mirror]) == (1, 2)
+    assert {item.name: (item.state, item.execution.attempt_id, str(item.candidates[item.selected].id))
+            for item in await repository.artifacts(transfer.id) if item.name != "part01.rar"} == siblings
+
+    executor.finish(revived.execution)
+    await settle(engine)
+    assert (await repository.get(transfer.id)).state == TransferState.COMPLETED
+
+
 # -- one link that is not a torrent: the picker opens directly --------------------------------------------------
 
 async def test_a_single_link_root_switches_through_its_picker(tmp_path, monkeypatch):

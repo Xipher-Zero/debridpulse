@@ -11,7 +11,7 @@ from transfers.models import IntegrationDescriptor, OutcomeKind, PostProcessOutc
 
 
 def _final_files(paths) -> tuple[str, ...]:
-    """Of the delivered inputs and the files extraction wrote, every one that
+    """Of the delivered inputs and the extraction outputs, every one that
     is a regular file now (never a link): the transfer's final file set."""
     kept = set()
     for path in paths:
