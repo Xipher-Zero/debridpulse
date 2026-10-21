@@ -353,6 +353,45 @@ async def test_extraction_notification_flag_is_independent_of_download_notificat
 
 
 @pytest.mark.asyncio
+async def test_only_the_claimed_lifecycle_event_is_published_as_that_event(core, monkeypatch):
+    """FUNC-A13: an extraction failure is announced to the browser exactly
+    as to Discord -- once, with the claimed lifecycle event, whose one
+    ``torrent_updated`` names it (``lifecycle_event``); a claimed event is
+    never published again. Every other ``torrent_updated`` of the transfer
+    (a control action's refresh, ``ApplicationService._publish``) is the
+    presentation alone, which the browser never announces
+    (``test_the_extraction_failure_toast_is_shown_only_for_its_announcement``)."""
+    from application.observability import Observability
+    from postprocessors.archive.processor import ArchivePostProcessor
+    core.engine.postprocessors = (ArchivePostProcessor(),)
+    transfer = await submit(core, name="invalid.zip")
+    await core.engine.tick()
+    core.executor.finish((await core.repository.artifacts(transfer.id))[0].execution)
+    await core.engine.tick()
+    published = []
+
+    async def capture(event_type, data):
+        if event_type == "torrent_updated":
+            published.append(dict(data))
+
+    monkeypatch.setattr("application.observability.publish", capture)
+    monkeypatch.setattr("application.observability.NotificationService",
+                        lambda: SimpleNamespace(client=lambda: SimpleNamespace(send_extract_failed=AsyncMock())))
+    monkeypatch.setattr("application.observability.get_settings", lambda: SimpleNamespace(
+        discord_notify_added=False, discord_notify_finished=False, discord_notify_error=False,
+        discord_notify_extract=False))
+    observability = Observability(core.repository)
+    await observability.deliver()
+    await observability.deliver()                       # claimed: never announced twice
+    # Every claimed event is published once, named; the transfer's earlier
+    # events (accepted, downloading, ...) carry today's presentation too, so
+    # only the ``completed`` one is the extraction's announcement.
+    kinds = [item["lifecycle_event"] for item in published]
+    assert len(kinds) == len(set(kinds)) and kinds[-1] == "completed"
+    assert [item["extraction_status"] for item in published if item["lifecycle_event"] == "completed"] == ["error"]
+
+
+@pytest.mark.asyncio
 async def test_error_notifications_never_carry_diagnostic_evidence(core, monkeypatch):
     import json
     from application.observability import Observability

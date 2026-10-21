@@ -298,6 +298,35 @@ def test_merge_rollback_removes_only_its_own_commits_never_a_satisfied_file(tmp_
     assert (dest / "a-kept.mkv").stat().st_ino == kept_inode
 
 
+def test_the_extraction_failure_toast_is_shown_only_for_its_announcement():
+    """FUNC-A13: ``notifyExtractionFailure``, exactly as ``app.js`` ships it,
+    run under node: the claimed ``completed`` event of a failed extraction
+    toasts once; every other ``torrent_updated`` of the same failed transfer
+    (a control action, a refresh), and a completion that did not fail, toast
+    nothing."""
+    import json
+    import re
+    import subprocess
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/static/app.js").read_text()
+    function = re.search(r"function notifyExtractionFailure\(data\) \{.*?\n\}\n", source, re.S).group(0)
+    harness = """
+const toasts = [];
+global.toast = (message, kind) => toasts.push([message, kind]);
+global.sanitizeErrorMsg = (value) => value;
+FUNCTION
+const failed = {extraction_status: 'error', extraction_error: 'CRC failed'};
+notifyExtractionFailure({...failed, lifecycle_event: 'completed'});
+notifyExtractionFailure(failed);
+notifyExtractionFailure({...failed, status_changed: true});
+notifyExtractionFailure({extraction_status: 'completed', lifecycle_event: 'completed'});
+console.log(JSON.stringify(toasts));
+""".replace("FUNCTION", function)
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [["Extraction failed: CRC failed", "error"]]
+
+
 def test_frontend_surfaces_extraction_failure_toast():
     root = Path(__file__).resolve().parents[2]
     app_source = (root / "frontend/static/app.js").read_text()

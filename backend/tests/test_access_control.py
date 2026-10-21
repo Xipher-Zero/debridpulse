@@ -781,3 +781,226 @@ async def test_humans_get_the_display_timezone_and_integration_sees_only_its_own
     listed = (await client.get("/api/requests", headers=as_(Role.INTEGRATION))).json()["requests"]
     assert all(row["account_id"] == DEFAULT_INTEGRATION_ID for row in listed)
     assert (await client.get("/api/torrents", headers=as_(Role.INTEGRATION))).status_code == 403
+
+
+# ── SSE: a consumer that cannot keep up (XR-F01) ───────────────────────────
+
+async def _stream_queue(routes, principal):
+    stream = routes._sse_generator(_Connection(principal))
+    assert (await stream.__anext__()).startswith("event: connected")
+    queue = next(q for q, s in reversed(routes._sse_subscribers.items()) if s.principal == principal)
+    return stream, queue
+
+
+async def _rest(stream, limit=150):
+    frames = []
+    try:
+        for _ in range(limit):
+            frames.append(await asyncio.wait_for(stream.__anext__(), 2))
+    except StopAsyncIteration:
+        frames.append(None)                               # the stream ended
+    return frames
+
+
+async def test_a_consumer_a_whole_queue_behind_is_ended_while_a_healthy_one_keeps_every_event(monkeypatch):
+    """XR-F01 (S1, S2, S3). One connection stops consuming. When a
+    publication finds its queue full, it is no longer published to, its
+    backlog is released at once, and its stream ends the moment it can send
+    again -- no stale frame, no heartbeat -- so the browser reconnects and
+    re-reads (``app.js``). It never stays registered or keeps pinging while
+    receiving nothing. The negative control: a healthy connection beside it
+    receives every event in order, and publication never waited."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setattr(routes, "_SSE_HEARTBEAT_SECONDS", 0.05, raising=False)
+    stalled, stalled_queue = await _stream_queue(routes, Principal.standalone())
+    healthy, healthy_queue = await _stream_queue(routes, Principal(account_id="healthy", role=Role.ADMIN.value))
+    received = []
+    try:
+        for number in range(101):
+            await asyncio.wait_for(routes._sse_broadcast("torrent_updated", {"id": number}), 1)
+            received.append(await asyncio.wait_for(healthy.__anext__(), 2))   # the healthy one keeps up
+        assert stalled_queue not in routes._sse_subscribers and healthy_queue in routes._sse_subscribers
+        assert stalled_queue.qsize() == 1                      # its backlog was released at once
+        assert await _rest(stalled) == [None]                  # ends on resuming: nothing stale, no heartbeat
+        assert [json.loads(frame.split("data: ", 1)[1])["id"] for frame in received] == list(range(101))
+        await routes._sse_broadcast("torrent_updated", {"id": 101})
+        frame = await asyncio.wait_for(healthy.__anext__(), 2)
+        while frame.startswith("event: ping"):                 # an idle healthy stream keeps its heartbeat
+            frame = await asyncio.wait_for(healthy.__anext__(), 2)
+        assert '"id": 101' in frame and healthy_queue in routes._sse_subscribers
+    finally:
+        await stalled.aclose()
+        await healthy.aclose()
+    assert stalled_queue not in routes._sse_subscribers and healthy_queue not in routes._sse_subscribers
+
+
+async def test_an_idle_healthy_consumer_is_never_evicted_by_its_heartbeats(monkeypatch):
+    """S3: heartbeats are never queued, so a healthy connection with nothing
+    to receive stays registered however long it idles."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setattr(routes, "_SSE_HEARTBEAT_SECONDS", 0.01, raising=False)
+    stream, queue = await _stream_queue(routes, Principal.standalone())
+    try:
+        frames = [await asyncio.wait_for(stream.__anext__(), 2) for _ in range(150)]
+        assert all(frame.startswith("event: ping") for frame in frames)
+        assert queue in routes._sse_subscribers and queue.qsize() == 0
+    finally:
+        await stream.aclose()
+    assert queue not in routes._sse_subscribers
+
+
+@pytest.mark.parametrize("ended", [True, False], ids=["session_ended", "account_changed"])
+async def test_a_consumer_too_far_behind_to_be_told_its_session_changed_is_still_told_then_ended(monkeypatch, ended):
+    """A full queue never swallows the reason a connection must stop: the
+    session's end, or the role change it must reload for, is still the next
+    thing it receives, and then its stream ends."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    viewer = Principal(account_id="viewer", role=Role.USER.value)
+    stream, queue = await _stream_queue(routes, viewer)
+    try:
+        for number in range(100):
+            queue.put_nowait(f"event: torrent_updated\ndata: {number}\n\n")
+        routes._sse_sessions_ended(frozenset(), "viewer", ended)
+        assert queue not in routes._sse_subscribers
+        frames = await _rest(stream)
+    finally:
+        await stream.aclose()
+    expected = "event: session_ended" if ended else "event: account_changed"
+    assert frames[0].startswith(expected) and frames[1:] == [None]
+
+
+async def test_a_reason_already_queued_survives_the_eviction_of_its_connection(monkeypatch):
+    """A connection told its session ended while it still had room, then
+    evicted by later publications, still receives that reason before its
+    stream ends: the eviction releases the backlog, never the reason."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    viewer = Principal(account_id="queued-reason", role=Role.USER.value)
+    stream, queue = await _stream_queue(routes, viewer)
+    try:
+        routes._sse_sessions_ended(frozenset(), "queued-reason", False)       # a role change, queued
+        for number in range(100):
+            await routes._sse_broadcast("torrent_updated", {"id": number})
+        assert queue not in routes._sse_subscribers
+        frames = await _rest(stream)
+    finally:
+        await stream.aclose()
+    assert frames[0].startswith("event: account_changed") and frames[1:] == [None]
+
+
+@pytest.mark.parametrize("queued, expected", [
+    (["account_changed"] * 100, "event: account_changed"),
+    (["session_ended"] * 100, "event: session_ended"),
+    (["account_changed", "session_ended"] * 50, "event: session_ended"),
+], ids=["all-role-changes", "all-session-ends", "mixed"])
+async def test_a_queue_saturated_with_reasons_is_evicted_within_its_capacity(monkeypatch, queued, expected):
+    """A queue full of nothing but reasons (repeated role changes or session
+    ends) is still evicted without overflowing it: the reasons collapse to
+    the one that governs -- a session's end over a role change -- then the
+    stream ends. Publication never fails or waits, and a healthy connection
+    beside it receives the event that evicted it."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    stream, queue = await _stream_queue(routes, Principal(account_id="saturated", role=Role.USER.value))
+    healthy, healthy_queue = await _stream_queue(routes, Principal(account_id="beside", role=Role.ADMIN.value))
+    frames = {"account_changed": routes._SSE_ACCOUNT_CHANGED, "session_ended": routes._SSE_SESSION_ENDED}
+    try:
+        for name in queued:
+            queue.put_nowait(frames[name])
+        assert queue.full()
+        await asyncio.wait_for(routes._sse_broadcast("torrent_updated", {"id": 7}), 1)   # never QueueFull
+        assert queue not in routes._sse_subscribers and queue.qsize() == 2
+        ended = await _rest(stream)
+        assert '"id": 7' in await asyncio.wait_for(healthy.__anext__(), 2)
+        assert healthy_queue in routes._sse_subscribers
+    finally:
+        await stream.aclose()
+        await healthy.aclose()
+    assert ended[0].startswith(expected) and ended[1:] == [None]
+
+
+async def test_a_reason_supplied_at_the_capacity_boundary_is_evicted_within_it(monkeypatch):
+    """The supplied-reason boundary: 99 queued role changes and one event
+    fill the queue, then the session ends. Its reason is supplied to the
+    eviction (``_sse_sessions_ended``'s full-queue branch); together with
+    the queued reasons and the sentinel that would exceed the capacity, so
+    they collapse -- the session's end governs -- and the stream ends. A
+    healthy connection of another account is told nothing and keeps
+    streaming."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    stream, queue = await _stream_queue(routes, Principal(account_id="boundary", role=Role.USER.value))
+    healthy, healthy_queue = await _stream_queue(routes, Principal(account_id="elsewhere", role=Role.ADMIN.value))
+    try:
+        for _ in range(99):
+            queue.put_nowait(routes._SSE_ACCOUNT_CHANGED)
+        queue.put_nowait("event: torrent_updated\ndata: {}\n\n")
+        assert queue.full()
+        routes._sse_sessions_ended(frozenset(), "boundary", True)              # never QueueFull
+        assert queue not in routes._sse_subscribers and queue.qsize() == 2
+        ended = await _rest(stream)
+        await routes._sse_broadcast("torrent_updated", {"id": 8})
+        assert '"id": 8' in await asyncio.wait_for(healthy.__anext__(), 2)
+        assert healthy_queue in routes._sse_subscribers and healthy_queue.qsize() == 0
+    finally:
+        await stream.aclose()
+        await healthy.aclose()
+    assert ended[0].startswith("event: session_ended") and ended[1:] == [None]
+
+
+def _sse_client_source() -> str:
+    """``app.js``'s one EventSource owner (``initSSE``), exactly as shipped."""
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[2] / "frontend/static/app.js").read_text(encoding="utf-8")
+    start = source.index("(function initSSE() {")
+    depth = 0
+    for index in range(start, len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if source[index] == "}" and depth == 0:
+            return source[start:source.index(")();", index) + 4]
+    raise AssertionError("initSSE not found")
+
+
+def test_a_reconnected_stream_re_reads_the_live_views_and_a_first_connection_does_not():
+    """S4: events sent while the stream was down never arrive (there is no
+    replay), so the connection that follows a lost one re-reads the views
+    this owner keeps live -- stats, and the Dashboard and Downloads lists --
+    while the first connection of a page (which loaded them itself) does
+    not. ``app.js``'s own EventSource owner, run under node."""
+    import subprocess
+    harness = """
+const calls = {stats: 0, recent: 0, torrents: 0}, sources = [], timers = [];
+global.loadStats = () => { calls.stats++; return Promise.resolve(); };
+global.loadRecent = () => { calls.recent++; return Promise.resolve(); };
+global.loadTorrents = () => { calls.torrents++; return Promise.resolve(); };
+global.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+global.setInterval = () => 1; global.clearInterval = () => {};
+global.CustomEvent = class { constructor(type) { this.type = type; } };
+global.document = {documentElement: {dataset: {}}, dispatchEvent() {},
+  getElementById: () => ({classList: {contains: () => true}})};
+global.window = {debridPulseAuth: {refreshSession: () => Promise.resolve()}};
+global.EventSource = class { constructor() { this.listeners = {}; sources.push(this); }
+  addEventListener(type, fn) { this.listeners[type] = fn; } close() {} };
+SOURCE
+const fire = (type) => sources[sources.length - 1].listeners[type]({data: '{}'});
+fire('connected');
+const first = {...calls};
+sources[sources.length - 1].onerror();
+timers.shift()();                                   // the scheduled reconnect
+fire('connected');
+console.log(JSON.stringify({first, after: calls}));
+""".replace("SOURCE", _sse_client_source())
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    assert observed["first"] == {"stats": 0, "recent": 0, "torrents": 0}
+    assert observed["after"] == {"stats": 1, "recent": 1, "torrents": 1}

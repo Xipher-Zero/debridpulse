@@ -73,7 +73,10 @@ class Observability:
             # Claim before external delivery. An interrupted webhook response
             # cannot establish whether the recipient accepted it; never repeat
             # that ambiguous delivery automatically.
-            await publish("torrent_updated", item)
+            # The one publication of this claimed lifecycle event names it, so
+            # the browser announces it once (an extraction failure's toast),
+            # never on every later refresh of the same transfer.
+            await publish("torrent_updated", {**item, "lifecycle_event": event["kind"]})
             await publish("stats_changed", {})
             kind = event["kind"]
             if kind == "duplicate_consolidated":

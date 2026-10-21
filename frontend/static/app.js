@@ -789,10 +789,15 @@ function progress(pct, status, activePct, basis) {
          lane + '<span class="prog-pct">' + label + '</span>' + activityLabel;
 }
 
-// An extraction failure is announced once per event; it paints nothing. The
-// status badge of every row comes from the backend's effective presentation on
-// the authoritative refresh that every torrent_updated event triggers.
+// An extraction failure is announced once per event; it paints nothing. Only
+// the publication of the transfer's claimed lifecycle event (lifecycle_event
+// "completed": the server's one announcement, as for its Discord notice) says
+// it; every other torrent_updated of the same failed transfer -- a control
+// action, a later refresh -- only re-renders it. The status badge of every row
+// comes from the backend's effective presentation on the authoritative refresh
+// that every torrent_updated event triggers.
 function notifyExtractionFailure(data) {
+  if (data?.lifecycle_event !== 'completed') return;
   if (String(data?.extraction_status || '').trim() !== 'error') return;
   const reason = sanitizeErrorMsg(
     data?.extraction_error || 'Archive extraction failed'
@@ -2742,6 +2747,20 @@ document.addEventListener('DOMContentLoaded', () => {
     var es;
     var sseOk = false;
     var fallbackTimer = null;
+    // Set when a connected stream is lost (it ended or failed): events sent
+    // meanwhile never arrive, so the next connection re-reads this module's
+    // live views rather than showing them as they were.
+    var streamLost = false;
+
+    function rereadLiveViews() {
+      loadStats().catch(()=>{});
+      if (document.getElementById('view-dashboard')?.classList.contains('active')) {
+        loadRecent().catch(()=>{});
+      }
+      if (document.getElementById('view-torrents')?.classList.contains('active')) {
+        loadTorrents().catch(()=>{});
+      }
+    }
 
     function connect() {
       try {
@@ -2761,6 +2780,11 @@ document.addEventListener('DOMContentLoaded', () => {
               );
 
               fallbackTimer = null;
+            }
+
+            if (streamLost) {
+              streamLost = false;
+              rereadLiveViews();
             }
 
             // Cold-load / reconnect recovery hook for bounded owners that must
@@ -2943,6 +2967,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         es.onerror = function() {
+          if (sseOk) streamLost = true;
           // Owners that present live state stop claiming it until the next
           // debridpulse:pulse-connected.
           document.documentElement.dataset.dpPulse = 'lost';

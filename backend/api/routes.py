@@ -2614,6 +2614,11 @@ _sse_lock = asyncio.Lock()
 # Put on a connection's own queue when the session or account that opened it
 # ends: the stream says so and closes.
 _SSE_SESSION_ENDED = object()
+# What is left on the queue of a connection evicted for falling a whole queue
+# behind (``_sse_evict``): the stream ends the next time it can send, so the
+# browser's EventSource reconnects and re-reads, never streaming heartbeats
+# while it receives nothing.
+_SSE_EVICTED = object()
 
 
 @dataclass(frozen=True)
@@ -2671,7 +2676,35 @@ async def _sse_broadcast(event_type: str, data: dict) -> None:
             except asyncio.QueueFull:
                 dead.append(q)
         for q in dead:
-            _sse_subscribers.pop(q, None)
+            _sse_evict(q)
+
+
+def _sse_evict(queue: asyncio.Queue, *last) -> None:
+    """End a connection that cannot keep up -- a whole queue of frames it has
+    not consumed -- without waiting on it: it is no longer published to, its
+    backlog is released at once, and its queue then holds at most two
+    frames, which always fit: the one reason it must still be told, if any,
+    and ``_SSE_EVICTED``, on which its stream ends. No publication ever waits
+    for it, and no other connection is touched.
+
+    The reason is chosen from what was queued and ``last``: a session's end
+    wins over a role change (the session is gone, so the browser signs out
+    and a reload under the new role is moot), and repeats of one reason are
+    one instruction."""
+    _sse_subscribers.pop(queue, None)
+    reasons = list(last)
+    while True:
+        try:
+            frame = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        if frame is _SSE_SESSION_ENDED or frame == _SSE_ACCOUNT_CHANGED:
+            reasons.append(frame)
+    reason = (_SSE_SESSION_ENDED if any(frame is _SSE_SESSION_ENDED for frame in reasons)
+              else _SSE_ACCOUNT_CHANGED if reasons else None)
+    if reason is not None:
+        queue.put_nowait(reason)
+    queue.put_nowait(_SSE_EVICTED)
 
 
 _SSE_ACCOUNT_CHANGED = "event: account_changed\ndata: {}\n\n"
@@ -2687,10 +2720,11 @@ def _sse_sessions_ended(fingerprints: frozenset[bytes], account_id: str | None, 
     for queue, subscriber in list(_sse_subscribers.items()):
         if (subscriber.session and subscriber.session in fingerprints) or (
                 account_id and subscriber.principal.account_id == account_id):
+            frame = _SSE_SESSION_ENDED if ended else _SSE_ACCOUNT_CHANGED
             try:
-                queue.put_nowait(_SSE_SESSION_ENDED if ended else _SSE_ACCOUNT_CHANGED)
+                queue.put_nowait(frame)
             except asyncio.QueueFull:
-                _sse_subscribers.pop(queue, None)
+                _sse_evict(queue, frame)            # it still learns why, then ends
 
 
 bind_publisher(_sse_broadcast)
@@ -2733,6 +2767,8 @@ async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
                     frame = await asyncio.wait_for(queue.get(), timeout=next_ping - loop.time())
                 except asyncio.TimeoutError:
                     pass
+            if frame is _SSE_EVICTED:
+                break                            # evicted: end, so the browser reconnects and re-reads
             if frame is _SSE_PING:
                 next_ping = loop.time() + _SSE_HEARTBEAT_SECONDS
             if frame is _SSE_SESSION_ENDED or not _sse_still_authorized(subscriber):
