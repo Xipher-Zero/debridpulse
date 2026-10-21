@@ -33,7 +33,7 @@ def test_core_docs_record_cancellation_and_migration_ownership() -> None:
 
 def test_frontend_docs_describe_live_bounded_owners() -> None:
     doc = read("docs/UI_FRONTEND_ARCHITECTURE.md")
-    assert doc.startswith("# DebridPulse v1.0.12 Frontend Architecture")
+    assert doc.startswith("# DebridPulse Frontend Architecture")
     assert "six reachable navigation surfaces" in doc
     assert "`ui-presentation-loader.js` is physically absent" in doc
     assert "bounded presentation owners" in doc

@@ -42,10 +42,11 @@ fixed native queue width). Materialization verify/cleanup: `transfers/filesystem
 application via `integrations/definition.py` `ManagedIntegration`/`AdministeredIntegration`
 — `application/composition.py` names no executor. Non-aria2 proofs: `tests/executor_fakes.py`.
 
-`VERSION` = `1.0.13` (development: `CHANGELOG.md` `[1.0.13] — Development`). The newest release is
-`v1.0.12`; README, `docker-compose.yml` and `index.html` keep naming that image until the
-release-identity commit (pinned by the documentation contract tests; see
-`docs/RELEASE_PROCESS.md` → Release identity).
+`VERSION` = `1.0.13`. Its release-identity commit retitled `CHANGELOG.md` `[1.0.13]` (no longer
+`Development`) and moved README, `docker-compose.yml` and `index.html` to `v1.0.13`; while a top entry
+is titled `Development`, those install references must keep naming the newest released image (pinned
+by the documentation contract tests; see `docs/RELEASE_PROCESS.md` → Release identity). Tagging,
+GitHub Release, `latest` and `main` stay operator actions.
 
 ---
 
@@ -249,8 +250,8 @@ storage-health checks can diagnose bad mounts — chmods `700` config/data, `600
 `config.json`, then `exec gosu $RUN_USER "$@"` (or `exec "$@"` as root).
 
 `.dockerignore` excludes `.git`, caches, venvs, `data/`, `config/`, `docs/LOGO.md`.
-`docker-compose.yml` is an Unraid-style example pinned to
-`ghcr.io/xipher-zero/debridpulse:v1.0.11.1` (not auto-bumped per release).
+`docker-compose.yml` is an Unraid-style example naming the current release image
+(`ghcr.io/xipher-zero/debridpulse:v1.0.13`); it moves only in a release-identity commit.
 
 ### Local image testing
 

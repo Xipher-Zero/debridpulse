@@ -1,8 +1,52 @@
 # Changelog
 
-## [1.0.13] — Development
+## [1.0.13] — Premium services, Usenet, network sources and external clients
 
-1.0.13 is the active development line following the locked 1.0.12 Universal Transfer Core release.
+1.0.13 builds on the 1.0.12 Universal Transfer Core. It adds Debrid-Link, Premiumize, Real-Debrid and
+TorBox beside AllDebrid; a bundled Usenet service; FTP & SFTP, SCP, rsync, WebDAV, Metalink and Media
+Downloads sources; provider switching and backup torrents; Sonarr and Radarr download-client
+compatibility through Integration Delivery Profiles; user accounts with four roles; and in-application
+backup and restore. Read the upgrade notes below before upgrading, and the known limitations further
+down.
+
+### Upgrade notes
+
+- **Backups beyond the newest seven are deleted at the first start, without asking.** Maximum Retained
+  Backups (default 7) applies about a minute after 1.0.13 first starts, even to backups within the age
+  limit. Keep a
+  copy elsewhere of any older backup you want before upgrading (see "Backup Interval counts from the
+  last successful scheduled backup" under Changed).
+- **`CORS_ORIGINS=*` now prevents startup.** DebridPulse's CORS always allows credentials, so a wildcard
+  is refused and DebridPulse does not start until `CORS_ORIGINS` lists explicit origins or is removed
+  (see Security).
+- **Accounts replace the global API token.** Local sign-in credentials move from `config.json` into the
+  database (a `config.json` username and password stay the offline recovery for the default Admin), and
+  API tokens now belong to Integration accounts under Settings → Users & Access; the former global token
+  and API Access card are gone, and an invalid bearer credential is refused in every mode -- including
+  open mode -- so a script still sending the old global token must be given an Integration token (see
+  Added and Removed).
+- **Open mode answers only at the installation's own address.** With no login configured, a request
+  naming another host name (a bare hostname, `.lan` or another DNS alias) is refused with "Forbidden
+  authority". Reach it by its IP address, `localhost`, a configured HTTPS Public Base URL, or a name
+  under `.local`, `.home.arpa`, `.internal` or `.localhost`, or configure a login (see Security).
+- **Private-network links from Integration tokens wait for a person.** With Local Network Connections
+  on, an Integration token (Sonarr, Radarr or a script) can no longer approve its own private-network
+  link; such links are admitted only when Skip Local Connection Confirmation is on (see Security).
+- **TorBox Pro installations left at the default use TorBox as an NZB fallback behind native Usenet**
+  (see "TorBox's NZB setting is now Use TorBox Before Usenet" under Changed).
+- **Maintenance gives up after 60 seconds behind a request that is still running.** Restore, the
+  database reset, saving Settings and replacing a provider connection are refused with "Other work is
+  still running" (nothing changed) instead of waiting forever; the second, short wait for open database
+  reads in restore and the reset is not bounded (see Fixed).
+- **The image changes ownership and packages.** Only DebridPulse's data, settings and download folders
+  belong to `PUID`/`PGID`; DebridPulse's own FFmpeg package replaces Debian's ffmpeg and MKVToolNix; the
+  bundled Usenet service's new files follow `UMASK` (see Security, Changed and Removed).
+- **Removed settings and endpoints.** External aria2, the aria2 upload limit and BitTorrent options,
+  and event-log retention no longer exist; stored values for them (including aria2 lifecycle values
+  saved under the former `builtin_*` names) are ignored and the defaults apply. `POST
+  /api/settings/validate-aria2`, `POST /api/admin/database/backup` and `GET /api/admin/database/backups`
+  are gone, and a `/api/aria2/global-options` request naming only `max_upload_speed` is refused (see
+  Removed).
 
 ### Added
 

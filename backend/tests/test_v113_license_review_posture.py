@@ -80,5 +80,5 @@ def test_the_inventory_records_why_hachoir_is_required():
 # --- the accepted rev-4 correction stays ---------------------------------
 
 def test_the_inventory_is_still_the_current_1_0_13_closure():
-    assert "inventory for the current `1.0.13` development tree" in text()
+    assert "inventory for the `1.0.13` release tree" in text()
     assert "inventory for **final v1.0.12**" not in text()

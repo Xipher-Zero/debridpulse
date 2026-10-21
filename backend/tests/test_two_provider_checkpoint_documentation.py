@@ -101,7 +101,7 @@ def test_authoritative_development_version_surfaces_agree_with_the_version_file(
     assert lock["version"] == version
     assert lock["packages"][""]["version"] == version
     ui_arch = _text("docs/UI_FRONTEND_ARCHITECTURE.md")
-    assert f"reports `{version}` for the current development tree" in ui_arch
+    assert f"reports `{version}` for the current release" in ui_arch
     assert "remains `1.0.11.1` for this corrective release" not in ui_arch
 
 
@@ -131,7 +131,7 @@ def test_dependency_license_inventory_states_its_closure_and_requires_reaudit_on
     v1.0.12 closure and must not claim to be -- a stale scope line is exactly
     how an un-reviewed dependency ships unnoticed."""
     licenses = _text("docs/DEPENDENCY_LICENSES.md")
-    assert "inventory for the current `1.0.13` development tree" in licenses
+    assert "inventory for the `1.0.13` release tree" in licenses
     assert "inventory for **final v1.0.12**" not in licenses
     assert "not the final eventual v1.0.12 dependency/license closure" not in licenses
     assert "`1.0.13` expansion work" in licenses

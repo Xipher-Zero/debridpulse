@@ -76,6 +76,6 @@ The permanent proof fixtures use arbitrary telemetry/calibration and counter obs
 
 ## Current production consumer
 
-The neutral store remains provider-agnostic, but the current v1.0.12 development tree now has a production consumer: AllDebrid's dynamic supported-host state. `backend/providers/alldebrid/host_runtime.py` fetches and validates AllDebrid-native host data, serializes provider-owned bytes into this store, restores last-known-good state after restart, owns freshness/refresh policy, and translates usable provider state into neutral applicability facts. The store never parses AllDebrid host records or makes routing decisions.
+The neutral store remains provider-agnostic, but the current tree has a production consumer: AllDebrid's dynamic supported-host state. `backend/providers/alldebrid/host_runtime.py` fetches and validates AllDebrid-native host data, serializes provider-owned bytes into this store, restores last-known-good state after restart, owns freshness/refresh policy, and translates usable provider state into neutral applicability facts. The store never parses AllDebrid host records or makes routing decisions.
 
 General HTTP & HTTPS does not need provider runtime-state persistence for its current generic `http`/`https` applicability. Future providers introduced after the two-provider checkpoint may reuse this boundary without adding provider-native payload knowledge to the core or store.

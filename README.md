@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/logo.svg" width="96" alt="DebridPulse Logo"/>
   <h1>DebridPulse</h1>
-  <p><strong>Self-hosted transfer orchestration for direct links, magnets, and torrent files.</strong><br/>Universal lifecycle · AllDebrid + General HTTP(S) providers · aria2 execution · recovery · observability</p>
+  <p><strong>Self-hosted transfer orchestration for direct links, magnets, torrents, NZBs and media pages.</strong><br/>Universal lifecycle · debrid, Usenet and network-source providers · aria2, rsync, SABnzbd and yt-dlp execution · recovery · observability</p>
 
   [![License](https://img.shields.io/github/license/Xipher-Zero/debridpulse?style=flat-square)](LICENSE)
   [![Tests](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/tests.yml?style=flat-square&label=tests)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/tests.yml)
@@ -12,23 +12,23 @@
 
 ## What is DebridPulse?
 
-**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. `1.0.12` is the **Universal Transfer Core** release: it has two production providers — **AllDebrid** for magnets, `.torrent` files, and dynamically supported HTTP(S) hosts, and **HTTP & HTTPS** for ordinary direct HTTP(S) acquisition — and one production executor, aria2, which performs physical HTTP(S) delivery. Identity, lifecycle, retry, ownership, recovery, canonicalization, provenance, authentication continuation, and post-processing belong to the Universal Transfer Core rather than to either provider or executor.
+**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. `1.0.13` builds on the 1.0.12 **Universal Transfer Core**: identity, lifecycle, retry, ownership, recovery, canonicalization, provenance, authentication continuation and post-processing belong to that core rather than to any provider or download engine, and 1.0.13 adds premium debrid services, Usenet, network sources, media downloads, Sonarr/Radarr download-client compatibility, user accounts and in-application backup and restore on top of it.
 
-The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record for the two-provider slice. Further transports and providers (FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executors) are `1.0.13` expansion work, not unfinished `1.0.12` work.
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record of the original 1.0.12 two-provider slice (AllDebrid + General HTTP(S) providers) that this release generalizes.
 
-The current release is `v1.0.12`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the currently published image tags.
+The current release is `v1.0.13`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the published image tags, and [`CHANGELOG.md`](CHANGELOG.md) for what changed, the **upgrade notes** and the **known limitations** of this release.
 
-The current workflow is intentionally deterministic:
+The workflow is deterministic:
 
-1. Submit an HTTP/HTTPS link, magnet link, or `.torrent` file.
-2. DebridPulse creates one durable logical transfer before provider or executor work.
-3. For HTTP(S), enabled provider applicability is classified neutrally: a matching `SPECIALIZED` claim (currently AllDebrid host support) suppresses `GENERIC` handlers; otherwise the enabled **HTTP & HTTPS** provider can produce a direct candidate. Magnets and torrent files remain AllDebrid request types.
-4. The selected provider resolves the source into canonical candidates. AllDebrid may produce unlocked HTTP(S) URLs; General HTTP(S) preserves the validated direct resource as the candidate.
-5. DebridPulse selects aria2 through the executor boundary and performs the physical transfer.
-6. Provider route, candidate, executor, and final-delivery provenance remain durable so the UI can report what actually happened without inferring history from the URL.
-7. Failed or expired work can be retried or recovered according to universal policy without rebuilding the logical download manually.
+1. Submit a link, magnet, `.torrent` file, NZB (file or link), Metalink description or a file of links.
+2. DebridPulse creates one durable logical transfer before any provider or download-engine work.
+3. Enabled provider applicability is classified neutrally: a matching `SPECIALIZED` claim (a debrid service's supported host, or a media page an installed yt-dlp extractor recognizes) takes precedence over `GENERIC` handlers such as **HTTP & HTTPS**; magnets, torrents and NZBs go to the providers that accept them.
+4. The selected provider resolves the source into canonical candidates (for example unlocked links, a validated direct resource, or a Usenet job).
+5. DebridPulse selects a download engine through the executor boundary -- aria2, rsync, the bundled SABnzbd for Usenet, or yt-dlp for Media Downloads -- and performs the physical transfer.
+6. Provider route, candidate, engine and final-delivery provenance remain durable, so the interface reports what actually happened without inferring it from a URL.
+7. Failed or expired work is retried, recovered or moved to another provider according to universal policy, without rebuilding the logical download manually.
 
-DebridPulse runs and manages its own aria2 daemon; there is no separate download engine to install or connect.
+DebridPulse runs and manages its own download engines (aria2, rsync, the bundled SABnzbd and yt-dlp); there is no separate download engine to install or connect.
 
 ---
 
@@ -36,18 +36,26 @@ DebridPulse runs and manages its own aria2 daemon; there is no separate download
 
 | Feature | Description |
 |---|---|
-| **Unified Dashboard submission** | Paste HTTP/HTTPS direct links and magnet URIs into one mixed-input control, or use the same Add action with an empty field to choose a `.torrent` file |
+| **Unified Dashboard submission** | Paste links (HTTP(S), FTP, SFTP, SCP, rsync, WebDAV, media pages) and magnet URIs into one mixed-input control, or use the same Add action with an empty field to choose a `.torrent`, NZB, Metalink or link file |
 | **Batch link submission** | Submit up to 100 unique direct links in one tracked transaction |
-| **Two-provider HTTP(S) routing** | AllDebrid dynamically claims supported hosts as `SPECIALIZED`; General HTTP(S) supplies the `GENERIC` direct-download path when no specialized claim wins |
+| **Provider routing** | Premium debrid services and Media Downloads claim what they support as `SPECIALIZED`; General HTTP(S) supplies the `GENERIC` direct-download path when no specialized claim wins; a provider that gives up hands over to another that can take the request |
+| **Premium services** | AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox for hoster links, magnets and `.torrent` files (and NZBs where the service offers them), with backup torrents prepared on a second provider |
+| **Usenet** | A bundled, private SABnzbd downloads NZBs from your own news servers |
+| **Network sources** | FTP & SFTP, SCP, rsync, WebDAV and Metalink sources, with sign-in prompts when a server asks |
+| **Media Downloads** | yt-dlp downloads from media pages it explicitly recognizes, without re-encoding |
+| **Provider switching** | Switch the provider of a torrent or of one link while it downloads |
+| **Sonarr and Radarr** | DebridPulse acts as a qBittorrent or SABnzbd download client through Integration Delivery Profiles |
+| **User accounts and roles** | Admin, User, ReadOnly User and Integration accounts enforced by the server |
+| **Backups and restore** | Scheduled backups and in-application restore |
 | **Durable provider provenance** | Recent Activity, Downloads, and Details show current/final provider and ordered route history from persisted facts rather than URL inference |
-| **Magnet links** | Submit one or more magnets through AllDebrid |
-| **Torrent files** | Upload `.torrent` files directly to AllDebrid |
+| **Magnet links** | Submit one or more magnets to the premium services that accept them |
+| **Torrent files** | Upload `.torrent` files to the premium services that accept them |
 | **Pause-safe intake** | Pause All stops processing, not intake: new links, magnets, and `.torrent` files are recorded locally and begin provider work after Resume All |
 | **Delayed link generation** | Automatically handles AllDebrid links that require asynchronous generation |
 | **Managed aria2** | DebridPulse starts, configures, and supervises its bundled aria2 daemon for a self-contained deployment |
 | **Unified Downloads view** | Direct links, magnets, torrent files, and imported transfers share one lifecycle and history |
 | **Recent Activity** | Dashboard view of active and recently processed downloads |
-| **Retry and recovery** | Retry failed transfers and regenerate expired AllDebrid download URLs from the original source |
+| **Retry and recovery** | Retry failed transfers and regenerate expired provider download links from the original source |
 | **Import existing magnets** | Import AllDebrid magnets not yet represented in the local database |
 | **Live status updates** | Server-Sent Events carry the application's pulse without requiring full-page polling |
 | **Event log** | Searchable transfer and application event history |
@@ -68,12 +76,12 @@ Paste one or more HTTP/HTTPS links into the unified Dashboard submission field (
 
 1. validates and durably records the original resource;
 2. evaluates enabled provider applicability without contacting a provider;
-3. routes a current AllDebrid-supported host to AllDebrid as `SPECIALIZED`, otherwise routes an eligible ordinary HTTP(S) resource to the `GENERIC` **HTTP & HTTPS** provider;
+3. routes a host a premium service supports to that service as `SPECIALIZED`, otherwise routes an eligible ordinary HTTP(S) resource to the `GENERIC` **HTTP & HTTPS** provider;
 4. records the selected provider route and canonical candidate;
-5. dispatches the candidate to aria2;
+5. dispatches the candidate to a download engine (aria2 for HTTP(S));
 6. tracks progress and durable provider/executor provenance with the rest of the download queue.
 
-When AllDebrid is the selected provider, delayed generation and later candidate refresh remain provider-owned behavior. When General HTTP(S) is selected, aria2 receives the validated direct resource; conventional HTTP authentication is requested only after a genuine supported authentication challenge. The same logical transfer continues after corrected credentials.
+When a premium service is the selected provider, delayed generation and later candidate refresh remain provider-owned behavior. When General HTTP(S) is selected, aria2 receives the validated direct resource; conventional HTTP authentication is requested only after a genuine supported authentication challenge. The same logical transfer continues after corrected credentials.
 
 A single submission can contain up to **100 unique links**.
 
@@ -85,53 +93,31 @@ DebridPulse supports both magnet links and `.torrent` files.
 
 For a torrent submission:
 
-1. the magnet or torrent metadata is sent to AllDebrid;
-2. DebridPulse monitors the AllDebrid torrent state;
+1. the magnet or torrent metadata is sent to a premium service that accepts it (AllDebrid, Debrid-Link, Premiumize, Real-Debrid or TorBox);
+2. DebridPulse monitors that service's torrent state, and may prepare a backup on a second service;
 3. once files are available, their unlocked HTTP(S) links are retrieved;
 4. those files are dispatched to aria2;
 5. DebridPulse tracks the complete transfer lifecycle locally.
 
-The local aria2 daemon does **not** need to participate in BitTorrent swarms. AllDebrid performs the torrent-side work and aria2 downloads the resulting files.
+DebridPulse's aria2 is built without BitTorrent and never joins a swarm. The premium service performs the torrent-side work and aria2 downloads the resulting files.
 
 ---
 
-## v1.0.12 provider and executor support matrix
+## v1.0.13 provider and executor support matrix
 
-This matrix is the **implemented and qualified v1.0.12 provider/executor set**. Anything not listed here is not supported in 1.0.12 (see the 1.0.13 section below).
-
-| Integration / source | Support in 1.0.12 | Notes |
-|---|---|---|
-| **AllDebrid** | Magnets, `.torrent` files, and HTTP(S) resources currently claimed by AllDebrid's validated dynamic supported-host state | Provider owns native host inventory, aliases/regex interpretation, availability and LKG/freshness semantics |
-| **HTTP & HTTPS** | Generic direct `http` and `https` resources | Produces direct candidates for aria2; conventional HTTP resource username/password authentication is supported after a genuine challenge |
-| **aria2** | HTTP(S) executor | Executes/observes native work; does not own universal provider routing, logical lifecycle, or universal retry policy |
-| **1.0.13 expansion** | FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations, and the executor/settings UI expansion that several real executor shapes would justify | Not implemented in 1.0.12, and not an unmet 1.0.12 requirement. Built on the `1.0.13` branch, which is not yet released; see the 1.0.13 section below |
-
-The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists in 1.0.12**; 1.0.13 adds SFTP, SCP and rsync over SSH (see below).
-
-`STAGED-MATERIALIZATION-001` was likewise deferred from 1.0.12: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion. It is not implemented in 1.0.13 either; the `CHANGELOG.md` `[1.0.13]` entry records it under Known limitations.
-
-### 1.0.13 (on the `1.0.13` branch, not yet released)
-
-The `1.0.13` branch carries the next release. It is **not published as a release image yet**; the
-install examples below still name `v1.0.12`. Its integrations are:
+This matrix is the **implemented and qualified v1.0.13 provider/executor set**. Anything not listed here is not supported.
 
 | Integration | Kind | Enabled on a new installation |
 |---|---|---|
-| AllDebrid | Provider | Yes (needs an API key to resolve anything) |
-| HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV | Direct-source providers | Yes |
+| AllDebrid | Premium provider | Yes (needs an API key to resolve anything) |
+| Debrid-Link, Premiumize, Real-Debrid, TorBox | Premium providers | No — enable under **Settings → Services** |
+| Usenet (bundled SABnzbd) | Provider with its own download engine | No — enable under **Settings → Services** |
+| HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV | Network-source providers | Yes |
 | Multimeta (Metalink) | Provider | Yes |
-| Media Downloads (yt-dlp) | Provider with its own executor | Yes |
-| aria2, rsync | Executors | Yes |
-| Debrid-Link, Premiumize, Real-Debrid, TorBox | Providers | No — enable in Settings |
-| Usenet (bundled SABnzbd) | Provider with its own executor | No — enable in Settings |
+| Media Downloads (yt-dlp) | Provider with its own download engine | Yes |
+| aria2, rsync | Download engines | Yes |
 
-1.0.13 also lets Sonarr and Radarr use DebridPulse as a qBittorrent or SABnzbd download client
-through Integration Delivery Profiles, lets you switch the provider of a torrent or of a single link,
-and adds in-application backup and restore. The [`CHANGELOG.md`](CHANGELOG.md) `[1.0.13]` entry
-describes every change and lists the **known limitations** of 1.0.13 (what cannot be switched,
-when a backup is promoted automatically, how a question waiting for input holds up the rest of a
-download, what cancelling one volume of a split archive does to extraction, and what Sonarr and
-Radarr see).
+The [`CHANGELOG.md`](CHANGELOG.md) `[1.0.13]` entry lists the **known limitations** of this release (what cannot be switched, when a backup is promoted automatically, how a question waiting for input holds up the rest of a download, what cancelling one volume of a split archive does to extraction, what Sonarr and Radarr see, and how large sources are bounded). `STAGED-MATERIALIZATION-001` (staged, engine-owned downloading with atomic promotion) is not implemented; it is recorded there as a known limitation.
 
 ---
 
@@ -172,16 +158,16 @@ Open:
 http://your-server:8080
 ```
 
-Go to **Settings → Sources & Providers**. Enable the sources you intend to use and configure the AllDebrid API key when AllDebrid is enabled. **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
+Go to **Settings → Services**. Enable the premium services and network sources you intend to use and connect each premium service's account (an API key, or the service's own device sign-in). **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
 
 ### Docker image
 
 Images are published to GHCR. Every image is built once immutably and tagged by its full source SHA, then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
 
-Versioned V1 images use the release tag:
+Versioned images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.12
+ghcr.io/xipher-zero/debridpulse:v1.0.13
 ```
 
 Example:
@@ -199,10 +185,10 @@ docker run -d \
   -v /path/to/debridpulse/config:/app/config \
   -v /path/to/debridpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.12
+  ghcr.io/xipher-zero/debridpulse:v1.0.13
 ```
 
-Adjust the paths and UID/GID for your system.
+Adjust the paths and UID/GID for your system. Before upgrading an existing installation, read the **Upgrade notes** of the `[1.0.13]` entry in [`CHANGELOG.md`](CHANGELOG.md): among them, the first start deletes backups beyond the newest seven without asking, and `CORS_ORIGINS=*` now prevents startup.
 
 ---
 
@@ -210,12 +196,9 @@ Adjust the paths and UID/GID for your system.
 
 The primary supported configuration is available through **Settings**.
 
-### Sources & Providers
+### Services
 
-Sources & Providers exposes:
-
-- **AllDebrid** — enablement, API key, API request rate limit, provider poll and full-sync intervals, and upload-failure retry and delay controls;
-- **Direct Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
+**Settings → Services** lists the Premium Services (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox and Usenet) and the Network Sources (HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV, Multimeta and Media Downloads), each with its own enable control, account connection and Additional Settings.
 
 Provider enablement is backend-owned configuration. `enabled`, `configured`, provider health, and current host availability are distinct facts.
 
@@ -230,7 +213,7 @@ DebridPulse supports four effective interactive states:
 - **OIDC** — provider-neutral OpenID Connect Authorization Code + PKCE browser sign-in;
 - **Username & Password + OIDC** — OIDC-preferred browser UX with the known-working local password path retained.
 
-An independent `dp_...` bearer token can be generated for automation, Prometheus, scripts, and other machine clients. The raw token is shown only once and is never persisted.
+Accounts and roles (Admin, User, ReadOnly User and Integration) are managed under **Settings → Users & Access**. Integration accounts carry the `dp_...` bearer tokens used by automation, Prometheus, Sonarr and Radarr; a token is shown only once and only its verifier is stored.
 
 DebridPulse includes lockout protections: Password cannot be disabled in favor of OIDC until a real OIDC login succeeds, and critical OIDC changes in OIDC-only mode stay pending until the proposed configuration itself completes a successful sign-in. Deliberately disabling all interactive authentication requires explicit confirmation.
 
@@ -256,7 +239,7 @@ Configure optional Discord lifecycle notifications.
 
 DebridPulse uses a single authoritative SQLite/WAL database. Configure its persistent path through `DB_PATH` or the container data mount.
 
-The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, and retention), statistics snapshot and event-log retention, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; it always creates a safety backup first and is aborted if that backup fails.
+The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, retention and the number kept), lists and restores backups in the application, holds the statistics snapshot settings and Event Logging, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; it always creates a safety backup first and is aborted if that backup fails.
 
 ---
 
@@ -266,8 +249,8 @@ The Dashboard is intended for current activity and common download submission.
 
 It provides:
 
-- one unified direct-link/magnet submission field;
-- `.torrent` file selection from the same Add control when the field is empty;
+- one unified submission field for links (HTTP(S), FTP/SFTP, SCP, rsync, WebDAV, media pages, NZB links) and magnets;
+- `.torrent`, NZB, Metalink and link-file selection from the same Add control when the field is empty;
 - import and recovery controls;
 - current queue state;
 - completion and error counts;
@@ -275,7 +258,7 @@ It provides:
 
 The Dashboard intentionally shows only a small Recent Activity window. Use **Downloads** for full transfer history and management.
 
-**Pause All stops processing, not intake.** Submissions made while globally paused are durably recorded with a paused state; no new AllDebrid or aria2 work is started until Resume All (or an explicit per-transfer resume) releases them.
+**Pause All stops processing, not intake.** Submissions made while globally paused are durably recorded with a paused state; no new provider or download-engine work is started until Resume All (or an explicit per-transfer resume) releases them.
 
 ---
 
@@ -288,8 +271,9 @@ It includes transfers originating from:
 - direct debrid links;
 - magnets;
 - `.torrent` files;
+- NZBs, network sources and media pages;
 - imported AllDebrid entries;
-- supported API submissions.
+- supported API submissions, including Sonarr and Radarr through their download-client connections.
 
 Transfers can be searched and filtered by state, with retry, reset, pause, resume, and delete controls available where applicable.
 
@@ -305,7 +289,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/links/add` | Submit one or more direct HTTP/HTTPS links |
+| `POST` | `/api/links/add` | Submit one or more links (HTTP(S), network sources, media pages) |
 | `POST` | `/api/torrents/add-magnet` | Submit a magnet link |
 | `POST` | `/api/torrents/add-file` | Upload a `.torrent` file |
 | `GET` | `/api/torrents` | List tracked downloads |
@@ -322,7 +306,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 |---|---|---|
 | `GET` | `/api/stats` | Application and transfer statistics |
 | `GET` | `/api/settings` | Current redacted application settings |
-| `PUT` | `/api/settings` | Update application settings; legacy auth-compatible path remains subject to the same lockout policy |
+| `PUT` | `/api/settings` | Update application settings (account credentials are managed under Users & Access) |
 | `GET` | `/api/events/stream` | Server-Sent Events status stream |
 | `GET` | `/api/metrics` | Prometheus-compatible metrics |
 | `GET` | `/api/version` | DebridPulse version |
@@ -343,17 +327,15 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 ---
 
-## V1 scope boundary
+## Scope
 
-V1 deliberately excludes the media-automation and indexer surface, including:
+DebridPulse acquires what it is given; it does not look for it. Sonarr and Radarr can use DebridPulse as a download client (through its qBittorrent- and SABnzbd-compatible connections), but DebridPulse itself deliberately excludes:
 
-- qBittorrent API emulation;
-- Sonarr/Radarr integration;
-- Jackett/Prowlarr search;
-- FlexGet;
-- saved-search and automation systems.
+- Jackett/Prowlarr search and indexer management;
+- FlexGet and RSS automation;
+- saved-search and media-library automation.
 
-Their routes, services, scheduler jobs, configuration, UI, database tables, and dependencies are not part of the V1 application. DebridPulse is a **debrid download manager**, not an all-in-one media automation suite.
+DebridPulse is a **download and transfer manager**, not an all-in-one media automation suite.
 
 ---
 
@@ -380,8 +362,9 @@ The primary implementation areas are:
 | `backend/transfers/` | Universal contracts, lifecycle, policy and persistence |
 | `backend/application/` | Commands, composition and observability |
 | `backend/integrations/` | Modular definitions and configuration |
-| `backend/providers/alldebrid/` | AllDebrid protocol and native translation |
-| `backend/executors/aria2/` | aria2 execution, ownership and administration |
+| `backend/providers/` | One package per provider (premium services, Usenet, network sources, Multimeta, Media Downloads) |
+| `backend/executors/` | aria2, rsync, SABnzbd and yt-dlp execution, ownership and administration |
+| `backend/external/` | External clients: Delivery Profiles and the Sonarr/Radarr connections |
 | `backend/postprocessors/archive/` | Secure archive extraction |
 | `backend/api/`, `backend/auth/` | HTTP boundaries and authentication |
 | `backend/db/migrations/` | Transactional database upgrades |
@@ -400,7 +383,7 @@ DebridPulse favors a focused responsibility:
 
 > **Resolve sources, transfer files reliably, and make delivery observable and recoverable.**
 
-Features that improve that workflow belong naturally in DebridPulse. Providers and executors are independent implementations of canonical contracts. AllDebrid and General HTTP(S) are the providers included today, and aria2 is the executor; further providers and executors are `1.0.13` expansion work.
+Features that improve that workflow belong naturally in DebridPulse. Providers and download engines are independent implementations of canonical contracts; the ones included in 1.0.13 are listed in the support matrix above.
 
 Recreating an entire media-management or indexer ecosystem inside the download client does not.
 

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DebridPulse</title>
-<meta name="description" content="DebridPulse is a self-hosted debrid download manager for direct links, magnets, and torrent files.">
+<meta name="description" content="DebridPulse is a self-hosted transfer manager for debrid services, Usenet, network sources and media pages: direct links, magnets, torrents and NZBs.">
 <link rel="icon" type="image/svg+xml" href="./docs/logo.svg">
 <link rel="apple-touch-icon" href="./docs/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -234,7 +234,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
       <div class="feat-card reveal"><div class="feat-icon">⬇️</div><div class="feat-title">aria2 integration</div><div class="feat-text">Slot-based queue with configurable concurrency. Existing downloads detected on restart — no duplicates, no orphans.</div></div>
       <div class="feat-card reveal"><div class="feat-icon">🔔</div><div class="feat-title">Discord webhooks</div><div class="feat-text">Rich embeds for every event. Separate channel support for added vs completed. Custom avatar and username.</div></div>
       <div class="feat-card reveal"><div class="feat-icon">⚡</div><div class="feat-title">Live application pulse</div><div class="feat-text">Server-Sent Events keep transfer state, progress, and recent activity current without full-page polling.</div></div>
-      <div class="feat-card reveal"><div class="feat-icon">🚫</div><div class="feat-title">File filters</div><div class="feat-text">Block by extension, keyword or minimum size. All-blocked torrents auto-removed from AllDebrid. Partial downloads continue normally.</div></div>
+      <div class="feat-card reveal"><div class="feat-icon">🚫</div><div class="feat-title">File selection</div><div class="feat-text">Choose which files of a multi-file torrent or folder to download. The choice is kept when the download moves to another provider, and a file you cancel no longer holds up the rest.</div></div>
       <div class="feat-card reveal"><div class="feat-icon">🗄️</div><div class="feat-title">SQLite / WAL</div><div class="feat-text">A single SQLite/WAL database is the authoritative runtime store — persistent, self-contained, and zero-config.</div></div>
       <div class="feat-card reveal"><div class="feat-icon">📊</div><div class="feat-title">Statistics</div><div class="feat-text">Rolling snapshots with configurable retention. Periodic summary reports via webhook.</div></div>
       <div class="feat-card reveal"><div class="feat-icon">💾</div><div class="feat-title">Automatic backups</div><div class="feat-text">SQLite backups on a configurable schedule. Retained by number of days, stored in the data folder.</div></div>
@@ -263,14 +263,14 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <div class="step-num">2</div>
           <div class="step-body">
             <strong>Open the Web UI</strong>
-            <p><a href="http://your-server:8080">http://your-server:8080</a> → Settings → enter your AllDebrid API key → Apply Settings.</p>
+            <p><a href="http://your-server:8080">http://your-server:8080</a> → Settings → Services → connect a premium service or enable the network sources you use (each change saves as you make it).</p>
           </div>
         </div>
         <div class="install-step reveal">
           <div class="step-num">3</div>
           <div class="step-body">
-            <strong>Add your first magnet</strong>
-            <p>Paste one or more direct links or magnets, or upload a .torrent file from the Dashboard.</p>
+            <strong>Add your first download</strong>
+            <p>Paste links or magnets, or upload a .torrent, NZB, Metalink or link file from the Dashboard.</p>
           </div>
         </div>
         <div class="install-step reveal">
@@ -290,7 +290,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
         </div>
         <pre id="cc1"><span class="kw">services</span>:
   <span class="kw">debridpulse</span>:
-    <span class="cm">image</span>: <span class="str">ghcr.io/xipher-zero/debridpulse:v1.0.12</span>
+    <span class="cm">image</span>: <span class="str">ghcr.io/xipher-zero/debridpulse:v1.0.13</span>
     <span class="cm">container_name</span>: <span class="str">debridpulse</span>
     <span class="cm">restart</span>: <span class="str">unless-stopped</span>
     <span class="cm">ports</span>: <span class="str">["8080:8080"]</span>
@@ -317,7 +317,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
   -v /mnt/appdata/debridpulse/config:/app/config \
   -v /mnt/appdata/debridpulse/data:/app/data \
   -v /mnt/downloads/debridpulse:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.12</span></pre>
+  ghcr.io/xipher-zero/debridpulse:v1.0.13</span></pre>
       </div>
     </div>
   </div>
@@ -360,7 +360,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
         <li>Stuck download detection and cleanup</li>
         <li>aria2 GID tracking — no orphaned jobs on restart</li>
         <li>AllDebrid magnet auto-deleted after completion</li>
-        <li>All-filtered torrents → complete, not error</li>
+        <li>Cancelled files never hold up the rest of a download</li>
         <li>Config auto-corrected at startup</li>
         <li>Rate-limit aware AllDebrid API calls</li>
         <li>Expired debrid links regenerated during recovery</li>

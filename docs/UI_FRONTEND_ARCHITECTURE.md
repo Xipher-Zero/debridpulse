@@ -1,8 +1,8 @@
-# DebridPulse v1.0.12 Frontend Architecture
+# DebridPulse Frontend Architecture
 
 This document describes the live post-audit frontend ownership model. It records current owners and boot relationships; it does not describe historical correction layers as though they were still canonical.
 
-The application reports `1.0.13` for the current development tree.
+The application reports `1.0.13` for the current release.
 
 ## Core rule
 

@@ -1,6 +1,6 @@
 # Runtime dependency license inventory
 
-> **Scope:** This is the dependency/license inventory for the current `1.0.13` development tree — the Universal Transfer Core with the AllDebrid, Real-Debrid, TorBox, Debrid-Link and Premiumize providers, the General HTTP(S), FTP/SFTP, SCP, rsync and WebDAV sources, Metalink, Usenet and Media Downloads, executed by aria2, rsync, the bundled Usenet acquisition service and the Media Downloads executor. Further `1.0.13` expansion work must trigger a fresh third-party/license review if it adds libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
+> **Scope:** This is the dependency/license inventory for the `1.0.13` release tree — the Universal Transfer Core with the AllDebrid, Real-Debrid, TorBox, Debrid-Link and Premiumize providers, the General HTTP(S), FTP/SFTP, SCP, rsync and WebDAV sources, Metalink, Usenet and Media Downloads, executed by aria2, rsync, the bundled Usenet acquisition service and the Media Downloads executor. Further `1.0.13` expansion work must trigger a fresh third-party/license review if it adds libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
 This inventory covers every Python package pinned in
 `backend/requirements.txt`. Package names and versions are enforced by
 `backend/tests/test_license_policy.py`; a dependency change must update both
