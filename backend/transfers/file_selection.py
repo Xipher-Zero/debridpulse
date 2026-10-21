@@ -45,7 +45,7 @@ from pathlib import PurePosixPath
 from uuid import NAMESPACE_URL, uuid5
 
 from transfers.filesystem import safe_name
-from transfers.models import FileManifest, SourceEntry
+from transfers.models import BITTORRENT_REQUEST_KINDS, FileManifest, SourceEntry
 
 
 # Three independent, non-overlapping timing dimensions (specification sections
@@ -512,20 +512,36 @@ def auto_offer_active(state: SelectionWindowState, now: float) -> bool:
     return state.hold_until is not None and now < state.hold_until
 
 
+def awaits_manifest(request_kind: str | None) -> bool:
+    """Whether a selection generation of a root of this submitted kind is
+    waiting for a file list that its resolution always reports: a BitTorrent
+    root (a magnet or a ``.torrent``) always has one, so until it arrives
+    there is a choice coming. Any other root -- a link, a collection, a
+    remote folder -- offers a choice only once a manifest has actually been
+    reported; a generation it opened without one promises nothing (a single
+    file behind a link, or a provider still preparing it, is not a choice)."""
+    return str(request_kind or "").strip().lower() in BITTORRENT_REQUEST_KINDS
+
+
 def file_selection_affordance(
     manifest_id: str | None, decision: str | None, committed_at, file_count: int, *,
-    explicit_only: bool = False,
+    awaiting_manifest: bool, explicit_only: bool = False,
 ) -> str:
     """Canonical ``none``/``pending_manifest``/``choose``/``change`` classification.
 
     Derived only from durable ``transfer_file_selections`` facts (specification
     section 10): whether a selection generation exists at all, whether it is
     still mutable (``committed_at is None``), whether a manifest is bound, its
-    file count, and its decision. This is the single semantic owner shared by
-    the bounded list projection (``api.operational_downloads``) and the
-    fresh-click read model (``TransferRepository.file_selection_presentation``);
-    the browser only renders the field this returns and never reconstructs it
-    from ``eligible``/``mutable``/``manifest_id``/``file_count``/``decision``.
+    file count, and its decision -- and, for a generation with no manifest yet,
+    whether its root is one that always reports a file list
+    (``awaiting_manifest``, from ``awaits_manifest`` on the generation's own
+    root request). This is the single semantic owner shared by the bounded
+    list projection (``api.operational_downloads``) and the fresh-click read
+    model (``TransferRepository.file_selection_presentation``); the browser
+    only renders the field this returns and never reconstructs it from
+    ``eligible``/``mutable``/``manifest_id``/``file_count``/``decision``.
+    Mirrors and alternate candidates are never files to choose: only a bound
+    manifest's entries are.
     """
     if manifest_id is None and decision is None:
         # No selection generation exists for this transfer at all.
@@ -539,9 +555,10 @@ def file_selection_affordance(
         # choose, and nothing pending to wait for.
         return "none"
     if manifest_id is None:
-        # A generation exists (torrent/magnet resolution in progress) but no
-        # usable manifest has arrived yet.
-        return "pending_manifest"
+        # A generation exists but no usable manifest has arrived yet: worth
+        # waiting for only where one always comes (a torrent/magnet root).
+        # Any other root's pending generation is not yet a choice at all.
+        return "pending_manifest" if awaiting_manifest else "none"
     if unambiguous_selection(file_count, explicit_only=explicit_only):
         # Single-file torrent/magnet: no picker action (Section 6.9). A
         # one-member collection is still the operator's to choose.

@@ -117,7 +117,7 @@ def _ineligible_view() -> dict:
     """The one canonical affordance owner also classifies the no-generation
     case, so the browser never has to reconstruct 'no generation means no
     affordance' from `eligible` -- it only ever consumes the field."""
-    return {"eligible": False, "file_selection_affordance": fs.file_selection_affordance(None, None, None, 0)}
+    return {"eligible": False, "file_selection_affordance": fs.file_selection_affordance(None, None, None, 0, awaiting_manifest=False)}
 
 
 @router.post("/torrents/{transfer_id}/file-selection/confirm")

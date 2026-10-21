@@ -3782,6 +3782,11 @@ class TransferRepository(_QualifiedTransferRepository):
                     "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (row["id"],))
             ]
             collection = await self._manifest_collection(db, row["manifest_id"])
+            # The generation's own root request kind, read exactly as the bounded
+            # list reads it (``fs.awaits_manifest``).
+            root = await db.fetchone("SELECT json_extract(payload, '$.kind') AS kind FROM transfer_requests WHERE id=?",
+                                     (row["request_id"],))
+        root_kind = root["kind"] if root else None
         state = self._selection_state(row, file_count, explicit_only=collection["independent_members"])
         return {
             "eligible": True,
@@ -3793,7 +3798,7 @@ class TransferRepository(_QualifiedTransferRepository):
             "decision": str(row["decision"]),
             "file_selection_affordance": fs.file_selection_affordance(
                 row["manifest_id"], str(row["decision"]), row["manifest_committed_at"], file_count,
-                explicit_only=collection["independent_members"],
+                awaiting_manifest=fs.awaits_manifest(root_kind), explicit_only=collection["independent_members"],
             ),
             "decision_reason": row["decision_reason"],
             # A collection of independent members: chosen only explicitly, from

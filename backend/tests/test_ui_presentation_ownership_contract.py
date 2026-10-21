@@ -39,7 +39,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
         "/ui-toast-contract.js?v=2",
         "/ui-processing-presentation.js?v=4",
         "/ui-transfer-source-presentation.js?v=1",
-        "/ui-file-selection.js?v=1",
+        "/ui-file-selection.js?v=2",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=4",
@@ -247,7 +247,7 @@ def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:
     assert "@import url('/ui-file-selection.css?v=2');" in style
 
     index = read("index.html")
-    assert index.count("/ui-file-selection.js?v=1") == 1
+    assert index.count("/ui-file-selection.js?v=2") == 1
     assert "ui-file-selection.js" not in read("ui-provider-status.js")
 
     runtime = read("ui-file-selection.js")
@@ -281,7 +281,7 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
     ordered = (
         "/ui-toast-contract.js?v=2",
         "/ui-processing-presentation.js?v=4",
-        "/ui-file-selection.js?v=1",
+        "/ui-file-selection.js?v=2",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=4",

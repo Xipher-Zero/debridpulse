@@ -590,7 +590,7 @@
     const body = bodyEl();
     if (body) {
       body.innerHTML = '<div class="dp-fs-pending-manifest">' +
-        '<p>DebridPulse is still waiting for the file list for this torrent. ' +
+        '<p>DebridPulse is still waiting for the file list for this download. ' +
         'The transfer will continue preparing in the background. Try again shortly.</p>' +
         '</div>';
     }

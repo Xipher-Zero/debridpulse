@@ -176,7 +176,7 @@ def test_backend_ineligible_fresh_read_also_reports_the_canonical_affordance() -
     # than hardcoding "none" a second time.
     routes = (ROOT / "backend" / "api" / "file_selection_routes.py").read_text(encoding="utf-8")
     assert "def _ineligible_view()" in routes
-    assert "fs.file_selection_affordance(None, None, None, 0)" in routes
+    assert "fs.file_selection_affordance(None, None, None, 0, awaiting_manifest=False)" in routes
     assert routes.count("return _ineligible_view()") == 2
 
 

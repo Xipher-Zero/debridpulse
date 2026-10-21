@@ -440,20 +440,23 @@ def test_file_selection_affordance_pure_classifier_covers_all_five_states():
     # reimplemented) by both api.operational_downloads and
     # transfers.repository.TransferRepository.file_selection_presentation.
     from transfers.file_selection import file_selection_affordance as classify
+    torrent = {"awaiting_manifest": True}
     # 5. genuinely not applicable: no selection generation row at all.
-    assert classify(None, None, None, 0) == "none"
-    # 1. applicable but manifest not ready yet.
-    assert classify(None, "pending", None, 0) == "pending_manifest"
+    assert classify(None, None, None, 0, **torrent) == "none"
+    # 1. applicable but manifest not ready yet -- for a root whose file list
+    # always comes (a torrent/magnet); any other root's is not a choice yet.
+    assert classify(None, "pending", None, 0, **torrent) == "pending_manifest"
+    assert classify(None, "pending", None, 0, awaiting_manifest=False) == "none"
     # 5. single-file torrent/magnet: never actionable even if unlocked.
-    assert classify("manifest-1", "all", None, 1) == "none"
+    assert classify("manifest-1", "all", None, 1, **torrent) == "none"
     # 2. usable manifest, mutable, no explicit subset yet.
-    assert classify("manifest-1", "pending", None, 3) == "choose"
-    assert classify("manifest-1", "all", None, 3) == "choose"
+    assert classify("manifest-1", "pending", None, 3, **torrent) == "choose"
+    assert classify("manifest-1", "all", None, 3, **torrent) == "choose"
     # 3. usable manifest, mutable, explicit subset already exists.
-    assert classify("manifest-1", "explicit", None, 3) == "change"
+    assert classify("manifest-1", "explicit", None, 3, **torrent) == "change"
     # 4. locked/materialized -- no mutation action regardless of decision.
-    assert classify("manifest-1", "explicit", 123.0, 3) == "none"
-    assert classify("manifest-1", "all", 123.0, 3) == "none"
+    assert classify("manifest-1", "explicit", 123.0, 3, **torrent) == "none"
+    assert classify("manifest-1", "all", 123.0, 3, **torrent) == "none"
 
 
 def _row_with_file_selection(transfer_id, *, manifest_id, decision, committed_at, file_count):
@@ -485,8 +488,18 @@ def test_bounded_list_exposes_pending_manifest_affordance_before_manifest_arrive
     row = _row_with_file_selection(
         1, manifest_id=None, decision="pending", committed_at=None, file_count=0,
     )
+    row["_file_selection_request_kind"] = "magnet"
     _db, result = _run_list(monkeypatch, 1, rows=[row])
     assert result["items"][0]["file_selection_affordance"] == "pending_manifest"
+
+
+def test_bounded_list_offers_nothing_for_a_link_roots_pending_generation(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id=None, decision="pending", committed_at=None, file_count=0,
+    )
+    row["_file_selection_request_kind"] = "https"
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "none"
 
 
 def test_bounded_list_exposes_none_affordance_when_locked(monkeypatch):

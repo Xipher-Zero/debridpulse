@@ -238,7 +238,7 @@ test('Case C: pending-manifest click shows the approved informational copy, no t
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
   await expect(page.locator('#modal-title')).toHaveText('File list not available yet');
   await expect(page.locator('#modal-body')).toContainText(
-    'DebridPulse is still waiting for the file list for this torrent. ' +
+    'DebridPulse is still waiting for the file list for this download. ' +
     'The transfer will continue preparing in the background. Try again shortly.');
   await expect(page.locator('.dp-fs-tree')).toHaveCount(0);
   await expect(page.locator('#modal-footer')).toBeHidden();

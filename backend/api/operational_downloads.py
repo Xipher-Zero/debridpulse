@@ -1293,13 +1293,17 @@ async def list_operational_torrents(
         -- three durable facts the Section 10 classifier needs are projected;
         -- no manifest/entry list crosses into this bounded read.
         page_current_file_selection AS (
-            SELECT transfer_id, manifest_id, decision, manifest_committed_at
+            SELECT transfer_id, manifest_id, decision, manifest_committed_at, request_kind
             FROM (
                 SELECT
                     s.transfer_id,
                     s.manifest_id,
                     s.decision,
                     s.manifest_committed_at,
+                    -- The generation's own root request kind: whether a file
+                    -- list always comes (transfers.file_selection.awaits_manifest).
+                    (SELECT LOWER(COALESCE(json_extract(r.payload, '$.kind'), ''))
+                     FROM transfer_requests r WHERE r.id = s.request_id) AS request_kind,
                     ROW_NUMBER() OVER (
                         PARTITION BY s.transfer_id ORDER BY s.created_at DESC, s.id DESC
                     ) AS row_number
@@ -1679,6 +1683,7 @@ async def list_operational_torrents(
             COALESCE(group_actionable_common_source_counts.actionable_count, 0) AS _actionable_common_target_count,
             page_current_file_selection.manifest_id AS _file_selection_manifest_id,
             page_current_file_selection.decision AS _file_selection_decision,
+            page_current_file_selection.request_kind AS _file_selection_request_kind,
             page_current_file_selection.manifest_committed_at AS _file_selection_committed_at,
             COALESCE(page_file_selection_manifest_counts.manifest_entry_count, 0) AS _file_selection_entry_count,
             COALESCE(page_file_selection_manifest_counts.independent_members, 0) AS _file_selection_explicit_only,
@@ -1823,6 +1828,7 @@ async def list_operational_torrents(
         )
         file_selection_manifest_id = projected.pop("_file_selection_manifest_id", None)
         file_selection_decision = projected.pop("_file_selection_decision", None)
+        file_selection_request_kind = projected.pop("_file_selection_request_kind", None)
         file_selection_committed_at = projected.pop("_file_selection_committed_at", None)
         file_selection_entry_count = int(projected.pop("_file_selection_entry_count", 0) or 0)
         file_selection_explicit_only = bool(projected.pop("_file_selection_explicit_only", 0))
@@ -1896,6 +1902,7 @@ async def list_operational_torrents(
             file_selection_decision,
             file_selection_committed_at,
             file_selection_entry_count,
+            awaiting_manifest=fs.awaits_manifest(file_selection_request_kind),
             explicit_only=file_selection_explicit_only,
         )
         # Effective processing presentation via the ONE shared owner
