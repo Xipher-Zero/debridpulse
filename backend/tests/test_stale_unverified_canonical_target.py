@@ -179,6 +179,32 @@ async def test_case_a_dead_first_canonical_viable_siblings_replace_and_parent_co
     assert a_row["equivalence_target_artifact_id"] is None and a_row["equivalence_disposition"] != "unverified"
 
 
+async def test_a_withdrawn_target_is_as_stale_as_a_failed_one(tmp_path, monkeypatch):
+    """B5-C1: the operator withdraws the canonical writer that UNVERIFIED
+    siblings are held against (``cancel_artifact``). Like a failed target, a
+    withdrawn one will never deliver, so the held associations are stale:
+    the siblings are reconsidered, exactly one replacement writer is
+    admitted, and the parent completes -- never an endless hold. The
+    withdrawn writer keeps its own cancelled state and history."""
+    repository, engine, executor, transfer, (a, b, c), anchor, _state, _now = await _same_transfer_mirrors(
+        tmp_path, monkeypatch, db_name="withdrawn-target")
+    for _ in range(2):
+        await engine.tick()
+    assert [item["id"] for item in await _writers([a.id, b.id, c.id])] == [anchor.id]
+    await engine.cancel_artifact(transfer.id, anchor.id)
+    for _ in range(3):
+        await engine.tick()
+    writers = await _writers([b.id, c.id])
+    assert len(writers) == 1, writers
+    await engine.reconcile_executions()
+    current = next(item for item in await repository.artifacts(transfer.id) if item.id == writers[0]["id"])
+    executor.finish(current.execution)
+    for _ in range(2):
+        await engine.tick()
+    assert await _parent_status(transfer.id) == "completed"
+    assert (await _artifact_row(anchor.id))["status"] == "cancelled"
+
+
 async def _durable_canonical_targets_for_request_db(request_id):
     async with database.get_db() as db:
         return await _durable_canonical_targets_for_request(db, request_id)

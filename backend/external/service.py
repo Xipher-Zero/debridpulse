@@ -1357,13 +1357,15 @@ class ExternalClients:
                 f"SELECT f.id, f.torrent_id, f.status FROM download_files f WHERE f.torrent_id=? "
                 f"AND {canonical_artifact_membership_sql('f')}", (transfer_id,))
             foreign = await db.fetchall(
-                """SELECT DISTINCT f.id, f.torrent_id, f.status, t.status AS owner_status FROM (
-                       SELECT canonical_artifact_id AS id FROM artifact_consolidations WHERE source_transfer_id=:t
-                       UNION SELECT r.equivalence_target_artifact_id FROM transfer_requests r
+                """SELECT f.id, f.torrent_id, f.status, f.withdrawn_attempt, f.execution_attempt_id,
+                       t.status AS owner_status, MAX(m.consolidated) AS consolidated FROM (
+                       SELECT canonical_artifact_id AS id, 1 AS consolidated FROM artifact_consolidations
+                           WHERE source_transfer_id=:t
+                       UNION SELECT r.equivalence_target_artifact_id, 0 FROM transfer_requests r
                            WHERE r.transfer_id=:t AND r.equivalence_disposition='unverified'
                            AND r.equivalence_target_artifact_id IS NOT NULL) m
                    JOIN download_files f ON f.id=m.id JOIN torrents t ON t.id=f.torrent_id
-                   WHERE f.torrent_id<>:t""", {"t": int(transfer_id)})
+                   WHERE f.torrent_id<>:t GROUP BY f.id""", {"t": int(transfer_id)})
         if status == "completed":
             own = [row for row in own if row["status"] == "completed"]
         rows = [*own, *foreign]
@@ -1371,6 +1373,8 @@ class ExternalClients:
                 "foreign": foreign}
 
     async def _deliverable(self, job: dict, transfer_id: int, status: str, members: dict, plan: _Plan) -> None:
+        from transfers.cohorts import artifact_withdrawn
+
         projection = plan.projection
 
         def blocked(reason: str, *, phase="failed", actionability="operator"):
@@ -1381,7 +1385,16 @@ class ExternalClients:
             return blocked("nothing_delivered")
         if any(row["status"] != "completed" or row["owner_status"] not in {"completed"}
                for row in members["foreign"]):
-            failed = any(row["owner_status"] in {"error", "cancelled", "deleted"} for row in members["foreign"])
+            # The shared source can no longer serve this job: its owning
+            # transfer failed or ended, or the owner's operator withdrew the
+            # very artifact this job was consolidated onto
+            # (``artifact_withdrawn``), which no work of that owner will ever
+            # deliver until an explicit Retry of it. An UNVERIFIED association
+            # to a withdrawn target is not such a failure: it is stale, and
+            # the core reconsiders and reopens the job's own work
+            # (``target_gone_sql``), exactly as for a failed target.
+            failed = any(row["owner_status"] in {"error", "cancelled", "deleted"}
+                         or (row["consolidated"] and artifact_withdrawn(row)) for row in members["foreign"])
             return blocked("shared_transfer_failed" if failed else "served_by_shared_transfer",
                            phase="failed" if failed else "processing",
                            actionability="operator" if failed else "wait")

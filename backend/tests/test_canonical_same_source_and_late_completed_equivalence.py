@@ -331,3 +331,162 @@ async def test_a_late_sibling_whose_identity_cannot_be_proven_is_held_never_gues
     assert late not in await _origin_requests(engine, first["id"])
     assert (await _request_state(late))["state"] == "materializing"
     assert (await repository.get(transfer.id)).state != TransferState.COMPLETED
+
+
+# ── a consolidated dependant whose shared source is withdrawn (B5-C1) ────────
+
+def _delivery_projection(world, tmp_path, monkeypatch):
+    """The external delivery projection (``ExternalClients._plan``) of one
+    transfer's own demand."""
+    from types import SimpleNamespace
+
+    import core.config as config
+    from external.profiles import DeliveryProfile, ExternalDeliverySettings
+    from external.service import ExternalClients
+
+    repository, engine, _executor, _now = world
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    config.apply_settings(config.AppSettings(download_folder=str(tmp_path / "payloads"),
+        external_delivery=ExternalDeliverySettings(profiles=[DeliveryProfile(
+            id="p", categories=["x"], clients=["c"], local_root=str(tmp_path / "payloads"))])))
+    external = ExternalClients(SimpleNamespace(engine=engine, repository=repository,
+                                               integrations_starting=lambda: False))
+
+    async def projection(transfer_id):
+        async with database.get_db() as db:
+            demand = await db.fetchone("SELECT id FROM transfer_demands WHERE transfer_id=?", (transfer_id,))
+        plan = await external._plan({"id": "job", "demand_id": demand["id"], "client_id": "c", "profile_id": "p"})
+        return tuple(plan.projection[key] for key in ("phase", "reason", "actionability"))
+
+    return projection
+
+
+async def _shared(world, tmp_path, monkeypatch):
+    """An owner (a directory) and a dependant (one of its files, submitted
+    exactly) consolidated onto the owner's one writer, with the dependant's
+    external delivery projection read for its own demand."""
+    from types import SimpleNamespace
+
+    repository, engine, executor, now = world
+    delivery = _delivery_projection(world, tmp_path, monkeypatch)
+    executor.objects |= {"files.example/pub/dir/a.bin": BYTES, "files.example/pub/dir/b.bin": b"bee!"}
+    owner = await _submit(engine, "ftp://files.example/pub/dir/")
+    await _ticks(engine, now)
+    dependant = await _submit(engine, "ftp://files.example/pub/dir/a.bin")
+    await _ticks(engine, now)
+    shared = next(row for row in await _material(repository, [owner.id, dependant.id]) if row["filename"] == "a.bin")
+
+    async def projection():
+        return await delivery(dependant.id)
+
+    async def provenance():
+        async with database.get_db() as db:
+            return [tuple(row) for row in await db.fetchall(
+                "SELECT canonical_artifact_id,contributing_artifact_id,source_transfer_id,source_request_id "
+                "FROM artifact_consolidations ORDER BY rowid")], [tuple(row) for row in await db.fetchall(
+                "SELECT id,status,execution_attempt_id FROM download_files WHERE torrent_id=?", (dependant.id,))]
+
+    return SimpleNamespace(owner=owner, dependant=dependant, shared=shared, projection=projection,
+                           provenance=provenance)
+
+
+async def test_a_withdrawn_shared_source_fails_its_dependant_explicitly_and_keeps_its_provenance(
+        world, tmp_path, monkeypatch):
+    """The owner's operator withdraws the very artifact a consolidated
+    dependant relies on: nothing will deliver it, so the dependant's
+    delivery is an explicit shared-source failure -- at once, and after the
+    owner completes its other work (B5-A) -- never an endless wait. The
+    dependant keeps its identity, its consolidation record and its own
+    artifact; nothing of it is cancelled or withdrawn."""
+    repository, engine, executor, now = world
+    shared = await _shared(world, tmp_path, monkeypatch)
+    assert await shared.projection() == ("processing", "served_by_shared_transfer", "wait")
+    before = await shared.provenance()
+    await engine.cancel_artifact(int(shared.shared["torrent_id"]), int(shared.shared["id"]))
+    assert await shared.projection() == ("failed", "shared_transfer_failed", "operator")
+    executor.finish_all()
+    await _ticks(engine, now, count=10)
+    assert await _states(repository, [shared.owner.id, shared.dependant.id]) == [
+        TransferState.COMPLETED, TransferState.CONSOLIDATED]
+    assert await shared.projection() == ("failed", "shared_transfer_failed", "operator")
+    assert await shared.provenance() == before
+
+
+async def test_retrying_the_owner_restores_a_withdrawn_shared_source_to_its_dependant(world, tmp_path, monkeypatch):
+    """Recovery is the explicit, authorized one: an operator Retry of the
+    owner revives the withdrawn artifact (a new attempt, so the withdrawal no
+    longer applies), and the dependant's delivery waits on it again --
+    nothing revived it before."""
+    repository, engine, executor, now = world
+    shared = await _shared(world, tmp_path, monkeypatch)
+    await engine.cancel_artifact(int(shared.shared["torrent_id"]), int(shared.shared["id"]))
+    executor.finish_all()
+    await _ticks(engine, now, count=10)
+    assert await shared.projection() == ("failed", "shared_transfer_failed", "operator")
+    assert await engine.retry(shared.owner.id, reacquire=True)
+    await _ticks(engine, now, count=4)
+    assert await shared.projection() == ("processing", "served_by_shared_transfer", "wait")
+
+
+async def test_a_valid_shared_source_delivers_its_dependant_normally(world, tmp_path, monkeypatch):
+    """Negative control: a shared source that stays valid serves the
+    dependant -- it waits while the owner works, and is delivered once the
+    owner completes; never failed."""
+    repository, engine, executor, now = world
+    shared = await _shared(world, tmp_path, monkeypatch)
+    assert await shared.projection() == ("processing", "served_by_shared_transfer", "wait")
+    executor.finish_all()
+    await _ticks(engine, now, count=10)
+    assert await _states(repository, [shared.owner.id, shared.dependant.id]) == [
+        TransferState.COMPLETED, TransferState.CONSOLIDATED]
+    assert await shared.projection() == ("completed", "delivered", "none")
+
+
+async def test_a_natively_stopped_shared_source_never_fails_its_dependant(world, tmp_path, monkeypatch):
+    """Negative control: a cancel the executor reports (not the operator's
+    withdrawal) is still recoverable, so the dependant still waits."""
+    from dataclasses import replace
+
+    repository, engine, executor, now = world
+    shared = await _shared(world, tmp_path, monkeypatch)
+    assert await shared.projection() == ("processing", "served_by_shared_transfer", "wait")
+    attempt = next(item for item in await repository.artifacts(int(shared.shared["torrent_id"]))
+                   if item.id == int(shared.shared["id"])).execution.attempt_id
+    executor.jobs[attempt] = replace(executor.jobs[attempt], state=ExecutionState.CANCELLED)
+    await engine.reconcile_executions()
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT status,withdrawn_attempt FROM download_files WHERE id=?",
+                                (int(shared.shared["id"]),))
+    assert (row["status"], row["withdrawn_attempt"]) == ("cancelled", None)   # cancelled, never withdrawn
+    assert await shared.projection() == ("processing", "served_by_shared_transfer", "wait")
+
+
+async def test_an_unverified_dependant_of_a_withdrawn_target_is_reconsidered_never_failed(world, tmp_path, monkeypatch):
+    """A dependant held only by an UNVERIFIED association (its identity
+    could not be proven) against a writer the owner's operator withdraws:
+    that association is stale, as for a failed target -- the core reopens
+    the dependant's own work. Its delivery is never reported as a shared
+    source's failure (which would make *arr blocklist it), not even before
+    the reconsideration runs."""
+    repository, engine, executor, now = world
+    delivery = _delivery_projection(world, tmp_path, monkeypatch)
+    executor.objects |= {"mirror-a.example/file.bin": BYTES, "mirror-a.example/other.bin": b"else",
+                         "mirror-b.example/file.bin": BYTES}
+    executor.unsampleable.add("mirror-b.example")
+    # The owner keeps other work, so it is alive: only the withdrawn target
+    # is gone (an owner that failed or ended is its own, existing case).
+    owner = await _submit(engine, "https://mirror-a.example/file.bin", "https://mirror-a.example/other.bin")
+    assert await _until(engine, now, lambda: _started(executor))
+    dependant = await _submit(engine, "ftp://mirror-b.example/file.bin")
+    await _ticks(engine, now, 12)
+    assert await _states(repository, [owner.id, dependant.id]) == [
+        TransferState.TRANSFERRING, TransferState.CONSOLIDATED]
+    async with database.get_db() as db:
+        assert await db.fetchone("SELECT 1 FROM artifact_consolidations") is None      # the UNVERIFIED leg only
+    writer = next(row for row in await _material(repository, [owner.id]) if row["filename"] == "file.bin")
+    await engine.cancel_artifact(owner.id, int(writer["id"]))
+    assert (await repository.get(owner.id)).state not in {TransferState.CANCELLED, TransferState.FAILED}
+    assert (await delivery(dependant.id))[0] != "failed"
+    await _ticks(engine, now, 6)
+    assert (await repository.get(dependant.id)).state != TransferState.CONSOLIDATED
+    assert (await delivery(dependant.id))[0] != "failed"

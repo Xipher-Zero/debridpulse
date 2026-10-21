@@ -25,6 +25,7 @@ from transfers import journal_events as je
 from transfers import material as mat
 from transfers.cohorts import (
     _FAILED_CONTRIBUTION_DISPOSITION, _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
+    artifact_withdrawn, target_gone_sql,
 )
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.filesystem import safe_name
@@ -685,12 +686,13 @@ async def failed_unverified_target(db, request_id) -> int | None:
     I/O, no inference from URL/host/protocol. The single definition shared by
     ``terminal_unverified_association`` below, parent lifecycle aggregation and
     the equivalence owner's exact-target invalidation
-    (``transfers.cohorts``, through ``TransferRepository``). Only the proven
-    failed-target case: a completed target remains valid provenance."""
+    (``transfers.cohorts``, through ``TransferRepository``). Only a target
+    that will never deliver -- failed, or withdrawn by its operator
+    (``target_gone_sql``): a completed target remains valid provenance."""
     row = await db.fetchone(
-        """SELECT r.equivalence_target_artifact_id AS target FROM transfer_requests r
+        f"""SELECT r.equivalence_target_artifact_id AS target FROM transfer_requests r
             JOIN download_files c ON c.id=r.equivalence_target_artifact_id
-            WHERE r.id=? AND r.state='materializing' AND r.equivalence_disposition=? AND c.status='error'""",
+            WHERE r.id=? AND r.state='materializing' AND r.equivalence_disposition=? AND {target_gone_sql("c")}""",
         (request_id, _UNVERIFIED_DISPOSITION),
     )
     return int(row["target"]) if row else None
@@ -1900,11 +1902,7 @@ class TransferRepository:
             # The artifacts the operator withdrew (``withdrawn_attempt``, see
             # the completion decision below) are no longer this transfer's:
             # its size and progress count only what it still delivers.
-            withdrawn = {
-                int(row["id"]) for row in artifact_rows
-                if row["status"] == "cancelled" and row["withdrawn_attempt"] is not None
-                and row["withdrawn_attempt"] == (row["execution_attempt_id"] or "")
-            }
+            withdrawn = {int(row["id"]) for row in artifact_rows if artifact_withdrawn(row)}
             counted = tuple(item for item in artifacts if item.id not in withdrawn)
             total = sum(item.expected_bytes for item in counted)
             # DP 1.0.12 canonical transfer-detail materialized-path

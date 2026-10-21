@@ -68,6 +68,27 @@ _PROVEN_DISTINCT_DISPOSITIONS = frozenset({"independent", "contradictory"})
 # "exhausted" -- a target is never guessed.
 _UNVERIFIED_DISPOSITION = "unverified"
 _HELD_DISPOSITIONS = frozenset({"exhausted", _UNVERIFIED_DISPOSITION})
+
+
+def artifact_withdrawn(row) -> bool:
+    """Whether an operator withdrew this artifact (a ``download_files`` row):
+    cancelled, by ``TransferEngine.cancel_artifact``, on the attempt it is
+    still cancelled on (``withdrawn_attempt``). A native or internal cancel is
+    never a withdrawal, and a revived artifact's new attempt voids one. The
+    one definition every reader uses -- the owning transfer's completion
+    obligation (``aggregate_lifecycle``), a consolidated dependant's delivery
+    (``external.service``) and, as ``target_gone_sql``, a held association."""
+    return (row["status"] == "cancelled" and row["withdrawn_attempt"] is not None
+            and row["withdrawn_attempt"] == (row["execution_attempt_id"] or ""))
+
+
+def target_gone_sql(alias: str) -> str:
+    """SQL: the artifact ``alias`` will never deliver -- it terminally failed
+    (``error``) or its operator withdrew it (``artifact_withdrawn``, the same
+    predicate). An UNVERIFIED association held against such a target is
+    stale: its premise ("the object already has its writer there") is gone."""
+    return (f"({alias}.status='error' OR ({alias}.status='cancelled' AND {alias}.withdrawn_attempt IS NOT NULL "
+            f"AND {alias}.withdrawn_attempt=COALESCE({alias}.execution_attempt_id,'')))")
 # "failed_contribution" is the association of a DEAD source -- a request whose
 # resolution permanently failed (``policy.dead_source``) -- with the one
 # canonical artifact its own submission cohort was proven to be
@@ -442,7 +463,8 @@ async def reopen_unverified_associations(transfer_id: int) -> int:
 
 async def _invalidate_stale_target(request_id: str, target_artifact_id: int) -> bool:
     """Clear ONE stale UNVERIFIED association: ``request_id`` held against
-    exactly ``target_artifact_id``, which has terminally failed. True only when
+    exactly ``target_artifact_id``, which will never deliver -- it terminally
+    failed or its operator withdrew it (``target_gone_sql``). True only when
     this call cleared it.
 
     Compare-and-set on the exact old pair: a request that has left
@@ -454,11 +476,11 @@ async def _invalidate_stale_target(request_id: str, target_artifact_id: int) -> 
     evaluates -- never independent/released, never a membership mutation."""
     async with get_db() as db:
         cursor = await db.execute(
-            """UPDATE transfer_requests SET equivalence_disposition='',equivalence_reason=NULL,
+            f"""UPDATE transfer_requests SET equivalence_disposition='',equivalence_reason=NULL,
                 equivalence_target_artifact_id=NULL,equivalence_retry_count=0,retry_at=0
                 WHERE id=? AND state='materializing' AND equivalence_disposition=?
                 AND equivalence_target_artifact_id=?
-                AND EXISTS(SELECT 1 FROM download_files WHERE id=? AND status='error')""",
+                AND EXISTS(SELECT 1 FROM download_files c WHERE c.id=? AND {target_gone_sql("c")})""",
             (request_id, _UNVERIFIED_DISPOSITION, int(target_artifact_id), int(target_artifact_id)),
         )
         await db.commit()

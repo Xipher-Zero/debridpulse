@@ -21,7 +21,7 @@ from transfers._repository_base import (
     _retire_transfer_auxiliary_state_in_db, terminal_unverified_association,
 )
 from transfers.cohorts import (
-    _FAILED_CONTRIBUTION_DISPOSITION, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
+    _FAILED_CONTRIBUTION_DISPOSITION, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION, target_gone_sql,
 )
 from transfers.models import Artifact, ArtifactFingerprint, FingerprintKind, RequestRecord, SizeKnowledge, TransferCandidate
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, dead_source
@@ -376,15 +376,15 @@ class CanonicalOwnership:
     async def reconsidering(self) -> frozenset[int]:
         """Settled (CONSOLIDATED) contributor transfers whose unverified
         association still owes the equivalence owner work: a scheduled
-        reconsideration, or an associated target that terminally failed (its
-        premise is gone). Only the one resolution scheduler reads this, to
+        reconsideration, or an associated target that will never deliver --
+        failed or withdrawn (``target_gone_sql``; its premise is gone). Only the one resolution scheduler reads this, to
         reach that proof work without reopening the contributor for it."""
         async with get_db() as db:
             rows = await db.fetchall(
-                """SELECT DISTINCT r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                f"""SELECT DISTINCT r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                     JOIN download_files c ON c.id=r.equivalence_target_artifact_id
                     WHERE t.status='consolidated' AND r.state='materializing' AND r.equivalence_disposition=?
-                    AND (COALESCE(r.retry_at,0)>0 OR c.status='error')""",
+                    AND (COALESCE(r.retry_at,0)>0 OR {target_gone_sql("c")})""",
                 (_UNVERIFIED_DISPOSITION,))
         return frozenset(int(row["transfer_id"]) for row in rows)
 
