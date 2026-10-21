@@ -388,6 +388,10 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required, capacity_
     owner's own positive record (``transfers.convergence_engine
     .TransferEngine.capacity_only_blocked_ids``) -- so this can never derive a
     capacity-wait classification the real dispatch path didn't itself assert.
+    Each fact's ``awaiting_switched_provider`` is the projection's own
+    ``replacement_held`` fact (``TransferRepository._replacement_held_artifacts``,
+    derived in the same one query): a file held for an operator switch's
+    landing waits for that switch's provider.
     """
     try:
         facts = json.loads(raw_facts) if raw_facts else []
@@ -404,6 +408,7 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required, capacity_
         presentations.append(recovery_presentation(
             fact.get("status"), context, paused=paused, input_required=input_required,
             capacity_only_blocked=artifact_id in capacity_only_blocked_ids,
+            awaiting_switched_provider=bool(fact.get("awaiting_switched_provider")),
         ))
     return presentations
 
@@ -974,8 +979,42 @@ async def list_operational_torrents(
             FROM live_route
             GROUP BY transfer_id
         ),
+        -- Each root an operator switched: its latest switch, and the provider
+        -- of its committed route now (its latest route attempt not declined)
+        -- -- transfers._repository_base._switched_route_providers.
+        latest_root_switch AS (
+            SELECT p.request_id, MAX(p.ordinal) AS switch_ordinal
+            FROM route_attempt_provenance p
+            JOIN page ON page.id = p.transfer_id
+            WHERE p.operation = 'operator_switch'
+            GROUP BY p.request_id
+        ),
+        switched_root_route AS (
+            SELECT sw.request_id, sw.switch_ordinal, cr.provider_id
+            FROM latest_root_switch sw
+            JOIN (
+                SELECT request_id, provider_id
+                FROM (
+                    SELECT
+                        p.request_id,
+                        a.provider_id,
+                        ROW_NUMBER() OVER (PARTITION BY p.request_id ORDER BY p.ordinal DESC) AS route_rank
+                    FROM route_attempt_provenance p
+                    JOIN resolution_attempts a ON a.id = p.resolution_attempt_id
+                    JOIN page ON page.id = p.transfer_id
+                    LEFT JOIN declined_attempt
+                      ON declined_attempt.request_id = p.request_id
+                     AND declined_attempt.provider_id = a.provider_id
+                    WHERE a.provider_id IS NOT NULL AND a.provider_id != ''
+                      AND a.state != 'declined' AND declined_attempt.request_id IS NULL
+                )
+                WHERE route_rank = 1
+            ) cr ON cr.request_id = sw.request_id
+        ),
         -- The active provider: execution authority, the same derivation as
-        -- transfers._repository_base.active_provider. Each artifact's own
+        -- transfers._repository_base.active_provider. A finished execution
+        -- that delivered nothing and whose route an operator switch of its
+        -- root replaced names that root's committed route provider now. Each artifact's own
         -- execution is its latest attempt by the durable per-artifact
         -- provenance ordinal (a replaced attempt never counts); live writers
         -- outrank finished ones; among live writers the latest started, among
@@ -991,7 +1030,13 @@ async def list_operational_torrents(
             FROM (
                 SELECT
                     p.transfer_id,
-                    p.provider_id,
+                    CASE
+                        WHEN NOT (e.authorized = 1 AND e.state IN ({_MUTATING_EXECUTION_STATES_SQL}))
+                         AND COALESCE(p.delivered, 0) = 0
+                         AND switched_root_route.switch_ordinal > rp.ordinal
+                        THEN switched_root_route.provider_id
+                        ELSE p.provider_id
+                    END AS provider_id,
                     p.created_at AS started_at,
                     p.updated_at AS active_at,
                     CASE
@@ -1007,6 +1052,12 @@ async def list_operational_torrents(
                   ON page.id = p.transfer_id
                 LEFT JOIN execution_attempts e
                   ON e.id = p.execution_attempt_id
+                LEFT JOIN route_attempt_provenance rp
+                  ON rp.resolution_attempt_id = p.route_attempt_id
+                LEFT JOIN transfer_requests rq
+                  ON rq.id = rp.request_id
+                LEFT JOIN switched_root_route
+                  ON switched_root_route.request_id = COALESCE(rq.parent_id, rq.id)
             )
             WHERE artifact_rank = 1
         ),
@@ -1247,6 +1298,34 @@ async def list_operational_torrents(
         -- artifact; current state is now a single row, so there is nothing
         -- left to rank/partition). Still page-bounded via page_artifacts —
         -- no work proportional to rows outside the requested page.
+        -- Files an operator switch HOLDS for its landing: the selected
+        -- candidate's every origin is a root (or a member of a root that is
+        -- not a BitTorrent root) switched after that origin's attempt -- the
+        -- same predicate as transfers._repository_base
+        -- ._route_replacement_admission, as joins.
+        replacement_held AS (
+            SELECT f.id AS artifact_id
+            FROM download_files f
+            JOIN page ON page.id = f.torrent_id
+            JOIN transfer_requests fr ON fr.id = f.request_id AND fr.parent_id IS NULL
+            JOIN canonical_candidate_bindings b
+              ON b.canonical_artifact_id = f.id
+             AND b.candidate_order = COALESCE(f.selected_candidate, 0) + 1
+            JOIN canonical_candidate_origins o ON o.binding_id = b.id
+            JOIN transfer_requests r ON r.id = o.request_id
+            LEFT JOIN transfer_requests rp ON rp.id = r.parent_id
+            LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id = o.resolution_attempt_id
+            LEFT JOIN latest_root_switch sw ON sw.request_id = COALESCE(r.parent_id, r.id)
+            WHERE f.status NOT IN ('completed', 'deleted')
+            GROUP BY f.id
+            HAVING COUNT(*) = SUM(CASE
+                WHEN (rp.id IS NULL
+                      OR LOWER(TRIM(COALESCE(json_extract(rp.payload, '$.kind'), '')))
+                         NOT IN ('magnet', 'torrent', 'torrent_file', 'file'))
+                 AND r.transfer_id = f.torrent_id
+                 AND sw.switch_ordinal > op.ordinal
+                THEN 1 ELSE 0 END)
+        ),
         artifact_presentation_facts AS (
             SELECT
                 pa.transfer_id AS transfer_id,
@@ -1259,11 +1338,14 @@ async def list_operational_torrents(
                     'decision_reason', ars.decision_reason,
                     'last_applied_reason', ars.last_applied_reason,
                     'wake_condition', ars.wake_condition,
-                    'recovery_claim_token', ars.recovery_claim_token
+                    'recovery_claim_token', ars.recovery_claim_token,
+                    'awaiting_switched_provider', CASE WHEN replacement_held.artifact_id IS NULL THEN 0 ELSE 1 END
                 )) AS artifacts
             FROM page_artifacts pa
             LEFT JOIN artifact_recovery_state ars
               ON ars.artifact_id = pa.artifact_id
+            LEFT JOIN replacement_held
+              ON replacement_held.artifact_id = pa.artifact_id
             GROUP BY pa.transfer_id
         ),
         -- The transfer's one current challenge row (unique per transfer), for
@@ -1302,13 +1384,14 @@ async def list_operational_torrents(
                     s.manifest_committed_at,
                     -- The generation's own root request kind: whether a file
                     -- list always comes (transfers.file_selection.awaits_manifest).
-                    (SELECT LOWER(COALESCE(json_extract(r.payload, '$.kind'), ''))
-                     FROM transfer_requests r WHERE r.id = s.request_id) AS request_kind,
+                    -- A primary-key join, never a per-row correlated subquery.
+                    LOWER(COALESCE(json_extract(r.payload, '$.kind'), '')) AS request_kind,
                     ROW_NUMBER() OVER (
                         PARTITION BY s.transfer_id ORDER BY s.created_at DESC, s.id DESC
                     ) AS row_number
                 FROM transfer_file_selections s
                 JOIN page ON page.id = s.transfer_id
+                LEFT JOIN transfer_requests r ON r.id = s.request_id
             )
             WHERE row_number = 1
         ),
@@ -1422,6 +1505,7 @@ async def list_operational_torrents(
             FROM group_member_artifacts a
             JOIN canonical_candidate_bindings b
               ON b.canonical_artifact_id = a.artifact_id
+             AND b.candidate_order <= 100000
              AND lower(COALESCE(b.source_scope, '')) = 'host'
              AND length(trim(COALESCE(b.source_key, ''))) > 0
         ),
@@ -1540,6 +1624,10 @@ async def list_operational_torrents(
             FROM canonical_candidate_bindings b
             JOIN group_member_artifacts gma
               ON gma.artifact_id = b.canonical_artifact_id
+            -- Current bindings only: the non-current band
+            -- (CanonicalOwnership._NON_CURRENT_ORDER) is replaced history,
+            -- never a choice.
+            WHERE b.candidate_order <= 100000
             GROUP BY b.canonical_artifact_id
         ),
         -- MOVABLE artifacts: an operation-CLASSIFICATION SUBSET of

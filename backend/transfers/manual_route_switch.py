@@ -209,18 +209,35 @@ def root_actionable(facts: dict) -> bool:
     return not facts["terminal"]
 
 
+def expanded(facts: dict) -> bool:
+    """Whether a root expanded into files of its own: its CURRENT generation
+    has more than one member, or a member owns a canonical artifact (a file
+    of a directory, a media member, ... -- governed by its decomposition
+    generation; whatever generation is opening), or it is a BitTorrent root. A link a provider
+    resolved through a copy of its own that it describes as ONE member whose
+    candidate serves the root's file (a cloud transfer) is still one link of
+    one file -- however many earlier providers' copies were made of it before
+    (their members are history, ``_current_member_ids``): its switch holds and
+    lands that file through the member (``_SWITCH_SUBJECT_ORIGIN``,
+    ``CanonicalOwnership.replace_root_candidates``)."""
+    if not facts["decomposed"]:
+        return False
+    return (facts["kind"] in BITTORRENT_REQUEST_KINDS or int(facts.get("members") or 0) > 1
+            or bool(facts.get("member_owned")))
+
+
 def manual_root(facts: dict, *, single: bool) -> bool:
     """Whether an operator may switch this root's provider at all: the one
-    root of a torrent transfer (``single``), or any other root that is not
-    decomposed into members and that produced the selected candidate of at
-    least one unfinished artifact (``relevant``). A root supplying only
-    alternates, a decomposed root of anything but a single torrent, and a
-    root whose candidate another transfer's artifact holds (``shared``: the
-    switch fences only its own transfer's artifacts), is never a switch
-    subject -- for the offer and the switch alike."""
+    root of a torrent transfer (``single``), or any other root that did not
+    expand into several files (``expanded``) and that produced the selected
+    candidate of at least one unfinished artifact (``relevant``). A root
+    supplying only alternates, an expanded root of anything but a single
+    torrent, and a root whose candidate another transfer's artifact holds
+    (``shared``: the switch fences only its own transfer's artifacts), is never
+    a switch subject -- for the offer and the switch alike."""
     if single and torrent_root(facts):
         return True
-    return not facts["decomposed"] and facts["relevant"] and not facts.get("shared")
+    return not expanded(facts) and facts["relevant"] and not facts.get("shared")
 
 
 def root_switch_available(registry, facts: dict | None, memo: dict | None = None) -> bool:
@@ -279,7 +296,7 @@ def _root_exclusion(facts: dict) -> str | None:
     any provider (``manual_root`` and ``root_actionable``), or ``None``."""
     if facts["terminal"]:
         return ROOT_INACTIVE
-    if facts["decomposed"]:
+    if expanded(facts):
         return ROOT_DECOMPOSED
     if facts.get("shared"):
         return ROOT_SHARED
@@ -667,8 +684,10 @@ async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, p
     try:
         # Under the claims: the root still alone produced exactly these
         # artifacts' selections (a selection that moved meanwhile refuses).
-        again = (await repository.root_route_facts_by_root(transfer_id)).get(root_id)
-        if again is None or again["artifacts"] != facts["artifacts"]:
+        current_roots = await repository.root_route_facts_by_root(transfer_id)
+        again = current_roots.get(root_id)
+        if (again is None or again["artifacts"] != facts["artifacts"]
+                or not manual_root(again, single=len(current_roots) == 1)):
             raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
         if again.get("shared"):
             raise _refusal(Category.UNSUPPORTED_REQUEST, domain=Domain.REQUEST)

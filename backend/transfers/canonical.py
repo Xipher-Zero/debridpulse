@@ -1272,6 +1272,16 @@ class CanonicalOwnership:
         * the root's own contributing row (a mirror standby) carries its new
           candidates, and the request is ``resolved``.
 
+        ``record`` may also be ONE MEMBER of that root -- the new provider
+        resolved the link through a copy of its own that it describes as a
+        member (``_land_root_replacement``). Its candidates then take the
+        place of the root's replaced contribution exactly as the root's own
+        would, but only where that contribution is ONE artifact: a member is
+        one file, and it never lands on a file it may not be. The root's
+        replaced contribution is every current binding whose origins name the
+        root or one of its members (``_SWITCH_SUBJECT_ORIGIN``'s scope), from
+        an attempt other than the one that issued ``candidates``.
+
         A binding another source also supplies stays as it is, and a finished,
         cancelled or duplicate artifact -- or any artifact of another transfer
         (the switch's ownership boundary) -- is never touched. A replacement whose
@@ -1287,6 +1297,7 @@ class CanonicalOwnership:
         candidates = tuple(candidates)
         if not candidates:
             return "none"
+        root_id = str(record.parent_id or record.id)
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             metadata = []
@@ -1304,21 +1315,28 @@ class CanonicalOwnership:
                     FROM canonical_candidate_bindings b
                     JOIN download_files f ON f.id=b.canonical_artifact_id AND f.torrent_id=?
                     WHERE b.candidate_order<=?
-                    AND EXISTS(SELECT 1 FROM canonical_candidate_origins o WHERE o.binding_id=b.id AND o.request_id=?
+                    AND EXISTS(SELECT 1 FROM canonical_candidate_origins o
+                        WHERE o.binding_id=b.id
+                        AND o.request_id IN (SELECT id FROM transfer_requests WHERE id=? OR (parent_id=?
+                            AND LOWER(TRIM(COALESCE((SELECT json_extract(payload,'$.kind') FROM transfer_requests
+                                                     WHERE id=?),''))) NOT IN ('magnet','torrent','torrent_file','file')))
                         AND o.resolution_attempt_id NOT IN ({",".join("?" * len(issued))}))
                     ORDER BY b.canonical_artifact_id,b.candidate_order""",
-                (int(record.transfer_id), self._NON_CURRENT_ORDER, record.id, *sorted(issued)))
+                (int(record.transfer_id), self._NON_CURRENT_ORDER, root_id, root_id, root_id, *sorted(issued)))
             replaced: dict[int, set[str]] = {}
             for binding in bindings:
                 if int(binding["sources"] or 0) == 1:
                     replaced.setdefault(int(binding["canonical_artifact_id"]), set()).add(str(binding["candidate_id"]))
-            if not replaced:
+            if not replaced or (record.parent_id and len(replaced) != 1):
+                # A member is one file: it lands only where its root's
+                # replaced contribution is one artifact.
                 await db.rollback()
                 return "none"
             live = await db.fetchone(
                 """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
-                    WHERE r.id=? AND r.parent_id IS NULL AND r.state='materializing'
-                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled')""", (record.id,))
+                    WHERE r.id=? AND COALESCE(r.parent_id,'')=COALESCE(?,'') AND r.state='materializing'
+                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled')""",
+                (record.id, record.parent_id))
             if not live:
                 await db.rollback()
                 return "stale"

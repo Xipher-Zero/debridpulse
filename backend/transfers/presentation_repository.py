@@ -154,7 +154,7 @@ def _decode_source(value):
 
 
 def recovery_presentation(status, context=None, *, paused=False, input_required=False,
-                           capacity_only_blocked=False):
+                           capacity_only_blocked=False, awaiting_switched_provider=False):
     """Map persisted lifecycle/recovery truth to one thin presentation contract.
 
     ``capacity_only_blocked`` is a single fact supplied by the caller, sourced
@@ -171,6 +171,13 @@ def recovery_presentation(status, context=None, *, paused=False, input_required=
     caller that queries a stale/no-longer-true fact simply sees plain
     ``queued`` for at most one scheduler tick -- understating, never
     overstating, capacity as the cause.
+
+    ``awaiting_switched_provider`` is the durable fact that the artifact is
+    HELD for an operator switch's landing
+    (``TransferRepository._replacement_held_artifacts``, the same predicate
+    execution admission holds it by): its source's new provider has not
+    delivered a candidate yet, so a plain ``queued`` row is waiting for that
+    provider -- ``Waiting for provider`` -- never for an executor.
     """
     raw = str(status or "").strip().lower()
     context = context if isinstance(context, dict) else {}
@@ -199,6 +206,8 @@ def recovery_presentation(status, context=None, *, paused=False, input_required=
             state, label, badge = "recovering", "Recovering", "processing"
         elif action == "fail_permanently" and raw in {"error", "failed", "lost"}:
             state, label, badge = "failed", "Failed", "error"
+        elif raw == "queued" and not quiescence and awaiting_switched_provider:
+            state, label, badge = _WAITING_FOR_PROVIDER
         elif raw == "queued" and not quiescence and capacity_only_blocked:
             state, label, badge = _CAPACITY_WAIT_PRESENTATION
         else:
@@ -602,6 +611,9 @@ class TransferRepository(_CanonicalTransferRepository):
             )
             if resource_row:
                 current_resource_state = resource_row.get("resource_state")
+            # Files held for an operator switch's landing wait for that
+            # switch's provider (``recovery_presentation``).
+            replacement_held = await self._replacement_held_artifacts(db, (transfer_id,))
             file_rows = await db.fetchall(
                 """SELECT id,torrent_id,request_id,status,size_bytes,blocked,mirror_state,
                           recovery_failures,recovery_refreshes
@@ -775,6 +787,7 @@ class TransferRepository(_CanonicalTransferRepository):
             projection = recovery_presentation(
                 row.get("status"), contexts.get(artifact_id), paused=paused, input_required=challenge,
                 capacity_only_blocked=artifact_id in capacity_only_blocked_ids,
+                awaiting_switched_provider=artifact_id in replacement_held,
             )
             retained_bytes = max(0, retained.get(artifact_id, 0))
             expected_bytes = max(0, int(row.get("size_bytes") or 0))

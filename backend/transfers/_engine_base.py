@@ -2568,7 +2568,12 @@ class TransferEngine:
         multi-source transfer whose provider an operator switched -- lands its
         new candidates in exactly those bindings' place through the canonical
         owner (``CanonicalOwnership.replace_root_candidates``), never by
-        rebuilding an artifact other sources also supply. Returns whether that
+        rebuilding an artifact other sources also supply. So does the one
+        MEMBER of such a root when its new provider resolved the link through
+        a copy of its own that it describes as a member (a cloud transfer):
+        the member's resolution is the switched root's, and without its
+        landing the file would stay held on the replaced candidate with
+        nothing left to land it. Returns whether that
         decision is made (the caller decides nothing else for ``record``);
         ``False`` for every ordinary first materialization or rebuild. A
         replacement whose size contradicts an affected artifact's is the root's
@@ -2586,7 +2591,9 @@ class TransferEngine:
         so the owner's refusal means the transfer itself is settled
         (completed, consolidated, deleted or cancelled) -- there is nothing
         left for this resolution to decide or fail."""
-        if record.parent_id is not None or not await self.repository.route_replacement_pending(record.id):
+        if record.parent_id is not None and not await self.repository.member_landing_possible(str(record.parent_id)):
+            return False
+        if not await self.repository.route_replacement_pending(str(record.parent_id or record.id)):
             return False
         outcome = await self.canonical.replace_root_candidates(record, _normalized_candidates(record, candidates))
         if outcome == "size_mismatch":

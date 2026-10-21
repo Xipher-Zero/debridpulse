@@ -185,7 +185,39 @@ def _live_routes(route_attempts) -> list:
     return [row for row in latest.values() if row.get("resolution_state") not in _ENDED_ROUTE_STATES]
 
 
-def active_provider(execution_history, route_attempts) -> tuple[str | None, str]:
+def _switched_route_providers(execution_history, route_attempts, request_roots) -> dict[str, str]:
+    """For each execution attempt that delivered nothing and whose route its
+    root later replaced by an operator switch -- the provider an operator
+    moved that work away from -- the provider of that root's committed route
+    now (its latest route attempt not declined), by execution attempt id.
+    ``request_roots`` maps a member request to its root (a provider may
+    resolve a link through one member)."""
+    by_id = {str(row["id"]): row for row in route_attempts}
+    latest_switch: dict[str, int] = {}
+    committed: dict[str, tuple[int, str]] = {}
+    declined = {(row["request_id"], row["provider_id"]) for row in route_attempts
+                if row.get("resolution_state") == "declined"}
+    for row in route_attempts:
+        request = str(row["request_id"])
+        ordinal = int(row.get("ordinal") or 0)
+        if row.get("operation") == "operator_switch":
+            latest_switch[request] = max(latest_switch.get(request, 0), ordinal)
+        if (row.get("provider_id") and row.get("resolution_state") != "declined"
+                and (row["request_id"], row["provider_id"]) not in declined
+                and ordinal >= committed.get(request, (-1, ""))[0]):
+            committed[request] = (ordinal, str(row["provider_id"]))
+    moved = {}
+    for row in execution_history:
+        route = by_id.get(str(row.get("route_attempt_id") or ""))
+        if row.get("delivered") or route is None or route.get("ordinal") is None:
+            continue
+        root = str(request_roots.get(str(route["request_id"]), route["request_id"]))
+        if latest_switch.get(root, 0) > int(route.get("ordinal") or 0) and root in committed:
+            moved[str(row["id"])] = committed[root][1]
+    return moved
+
+
+def active_provider(execution_history, route_attempts, request_roots=None) -> tuple[str | None, str]:
     """THE active provider of one transfer -- the provider currently executing
     its work, or, once no writer is live, the provider of its last execution
     activity -- as ``(provider_id, basis)``.
@@ -196,7 +228,12 @@ def active_provider(execution_history, route_attempts) -> tuple[str | None, str]
     counts. When any of those is a live writer (``authorized`` and in
     ``_MUTATING_EXECUTION_STATES``), the latest-started live writer is the
     active one; otherwise the one whose recorded activity ended last
-    (provenance ``updated_at``). No durable sequence orders executions of
+    (provenance ``updated_at``) -- except that a finished execution whose
+    route an operator switch of its root has since replaced names the
+    provider of that root's committed route now (``_switched_route_providers``):
+    once a switch commits, its provider is the one working on the file, even
+    while it is still preparing and before any of its writers starts. No
+    durable sequence orders executions of
     different artifacts finer than those timestamps, so different providers
     at the same instant -- or a winner whose provider was never recorded --
     are ``(None, "ambiguous")``, never a tie-break. Only a transfer with no
@@ -218,6 +255,9 @@ def active_provider(execution_history, route_attempts) -> tuple[str | None, str]
 
         any_live = any(live(row) for row in final.values())
         rows = [row for row in final.values() if live(row) == any_live]
+        if not any_live:
+            moved = _switched_route_providers(execution_history, route_attempts, request_roots or {})
+            rows = [dict(row, provider_id=moved.get(str(row.get("id")), row.get("provider_id"))) for row in rows]
         moment = "provenance_created_at" if any_live else "provenance_updated_at"
         latest = max(str(row.get(moment) or "") for row in rows)
         providers = {row.get("provider_id") or None for row in rows if str(row.get(moment) or "") == latest}
@@ -1081,10 +1121,21 @@ def terminal_cleanup_authority(status: str, delete_remote) -> str | None:
 
 # An operator switch of the origin's root after the origin's own attempt: the
 # durable fact both the replacement's HOLD and its landing key on (``o`` the
-# origin, ``op`` its route provenance). A release alone never says it -- an
-# operator Retry releases exhausted routes too.
+# origin, ``r`` its request, ``op`` its route provenance). The origin's root is
+# the origin request itself, or the root that decomposed it into a member: a
+# provider may resolve a link through a copy of its own (a cloud transfer) that
+# it then describes as one member. A release alone never says it -- an operator
+# Retry releases exhausted routes too.
 _SWITCHED_AFTER_ORIGIN = """EXISTS(SELECT 1 FROM route_attempt_provenance sp
-    WHERE sp.request_id=o.request_id AND sp.operation='operator_switch' AND sp.ordinal>op.ordinal)"""
+    WHERE sp.request_id=COALESCE(r.parent_id,o.request_id) AND sp.operation='operator_switch'
+    AND sp.ordinal>op.ordinal)"""
+# Which origins a root's switch replaces: the root's own, and a member's of a
+# root that is not a BitTorrent root. A torrent root's members belong to its
+# decomposition generation, which the torrent switch fences and rebuilds
+# (``_decomposition_admission``), never to this hold and landing.
+_SWITCH_SUBJECT_ORIGIN = """(r.parent_id IS NULL OR NOT EXISTS(SELECT 1 FROM transfer_requests sr
+    WHERE sr.id=r.parent_id AND LOWER(TRIM(COALESCE(json_extract(sr.payload,'$.kind'),'')))
+    IN ('magnet','torrent','torrent_file','file')))"""
 # The ownership boundary of a root's switch: only an artifact of the switched
 # root's OWN transfer (``r`` the origin request, ``f`` the artifact) is ever
 # held, landed on or failed by it; an artifact of another transfer is never
@@ -1485,7 +1536,9 @@ class TransferRepository:
         historical_providers = sorted({item["provider_id"] for item in (*resources, *providers) if item.get("provider_id")})
         delivering_providers = sorted({item["provider_id"] for item in execution_history if item.get("delivered") and item.get("provider_id")})
         current_provider_id = current_route_provider(route_attempts)
-        result["active_provider_id"], result["active_provider_basis"] = active_provider(execution_history, route_attempts)
+        result["active_provider_id"], result["active_provider_basis"] = active_provider(
+            execution_history, route_attempts,
+            {str(item["id"]): str(item["parent_id"]) for item in requests if item.get("parent_id")})
         result["historical_providers"] = historical_providers
         result["current_provider_id"] = current_provider_id
         result["origin_provider_id"] = origin_provider(requests, route_attempts)
@@ -4011,6 +4064,35 @@ class TransferRepository:
         return MaterializationAdmission(MaterializationAdmissionKind.PROCEED, authority_generation=current["id"])
 
     @staticmethod
+    async def _current_member_ids(db, root_ids) -> dict[str, list[str]]:
+        """Inside the caller's session, set-oriented: each root's CURRENT
+        members, by root id -- exactly the members ``_decomposition_admission``
+        would not call STALE: stamped with the generation of the root's
+        CURRENT provider-resource binding, or carrying no stamp (judged by that
+        generation, or ungoverned without one). A member of an earlier
+        generation -- the copy an earlier provider made before a switch -- is
+        history: it stays recorded, and is never counted as one of the root's
+        files now. A root holding no binding (a switch's new route still
+        resolving) has no current stamped member."""
+        ids = [str(item) for item in root_ids]
+        if not ids:
+            return {}
+        rows = await db.fetchall(
+            f"""SELECT c.id AS member_id, c.parent_id AS root_id
+               FROM transfer_requests c
+               JOIN transfer_requests r ON r.id=c.parent_id
+               LEFT JOIN provider_resources pr ON r.resource IS NOT NULL AND pr.transfer_id=r.transfer_id
+                   AND (pr.resource_key=json_extract(r.resource,'$.id')
+                        OR (pr.resource_key IS NULL AND pr.id=json_extract(r.resource,'$.id')))
+               LEFT JOIN transfer_file_selections s ON s.request_id=r.id AND s.provider_resource_id=pr.id
+               WHERE c.parent_id IN ({",".join("?" * len(ids))})
+               AND (c.materialized_selection_id IS NULL OR c.materialized_selection_id=s.id)""", tuple(ids))
+        members: dict[str, list[str]] = {}
+        for row in rows:
+            members.setdefault(str(row["root_id"]), []).append(str(row["member_id"]))
+        return members
+
+    @staticmethod
     async def _roots_shared_elsewhere(db, root_ids) -> set[str]:
         """Inside the caller's session: the roots among ``root_ids`` that
         issued a CURRENT canonical binding (below the non-current band,
@@ -4019,18 +4101,61 @@ class TransferRepository:
         source. Switching such a root would invalidate a candidate another
         transfer's artifact holds without fencing that artifact's writer, so
         it is never a switch subject: not offered, and refused before
-        anything changes."""
+        anything changes. A candidate one of the root's members issued is the
+        root's (a link resolved through one member is switched as one)."""
         ids = [str(item) for item in root_ids]
         if not ids:
             return set()
         rows = await db.fetchall(
-            f"""SELECT DISTINCT o.request_id FROM canonical_candidate_origins o
+            f"""SELECT DISTINCT COALESCE(r.parent_id,r.id) AS root_id FROM canonical_candidate_origins o
                JOIN canonical_candidate_bindings b ON b.id=o.binding_id AND b.candidate_order<=100000
                JOIN download_files f ON f.id=b.canonical_artifact_id
                JOIN transfer_requests r ON r.id=o.request_id
-               WHERE o.request_id IN ({",".join("?" * len(ids))}) AND f.torrent_id!=r.transfer_id
-               AND f.status NOT IN ('completed','cancelled','deleted')""", tuple(ids))
-        return {str(row["request_id"]) for row in rows}
+               WHERE o.request_id IN (SELECT id FROM transfer_requests WHERE id IN ({",".join("?" * len(ids))})
+                                      OR parent_id IN ({",".join("?" * len(ids))}))
+               AND f.torrent_id!=r.transfer_id
+               AND f.status NOT IN ('completed','cancelled','deleted')""", (*ids, *ids))
+        return {str(row["root_id"]) for row in rows}
+
+    @staticmethod
+    async def _replacement_held_artifacts(db, transfer_ids) -> frozenset[int]:
+        """Inside the caller's session, set-oriented: the unfinished artifacts
+        of ``transfer_ids`` that ``_route_replacement_admission`` HOLDS -- an
+        artifact of a root request (a member's own artifact is governed by its
+        decomposition generation instead, ``_decomposition_admission``) whose
+        selected candidate's every origin is a root an operator switched since
+        -- so they wait for that root's new provider, not for an executor.
+        One query for any number of transfers."""
+        ids = [int(item) for item in transfer_ids]
+        if not ids:
+            return frozenset()
+        rows = await db.fetchall(
+            f"""SELECT f.id FROM download_files f
+               JOIN transfer_requests fr ON fr.id=f.request_id AND fr.parent_id IS NULL
+               JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
+                   AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
+               JOIN canonical_candidate_origins o ON o.binding_id=b.id
+               JOIN transfer_requests r ON r.id=o.request_id
+               LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
+               WHERE f.torrent_id IN ({",".join("?" * len(ids))}) AND f.status NOT IN ('completed','deleted')
+               GROUP BY f.id
+               HAVING COUNT(*)=SUM(CASE WHEN {_SWITCH_SUBJECT_ORIGIN} AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
+                   THEN 1 ELSE 0 END)""", tuple(ids))
+        return frozenset(int(row["id"]) for row in rows)
+
+    async def member_landing_possible(self, root_id: str) -> bool:
+        """Whether a member of root ``root_id`` could ever land a switch: the
+        root is not a BitTorrent root (its members belong to its decomposition
+        generation) and an operator switched it at least once. Indexed and
+        cheap, so ordinary member resolutions never run the landing query."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT 1 FROM transfer_requests r WHERE r.id=?
+                   AND LOWER(TRIM(COALESCE(json_extract(r.payload,'$.kind'),'')))
+                       NOT IN ('magnet','torrent','torrent_file','file')
+                   AND EXISTS(SELECT 1 FROM route_attempt_provenance sp
+                              WHERE sp.request_id=r.id AND sp.operation='operator_switch')""", (str(root_id),))
+        return row is not None
 
     async def route_replacement_pending(self, request_id: str) -> bool:
         """Whether root ``request_id`` still owes the landing of an operator
@@ -4051,8 +4176,9 @@ class TransferRepository:
         source still supplies out of the current band."""
         async with get_db() as db:
             rows = await db.fetchall(
-                f"""SELECT f.id, COUNT(*) AS origins, COALESCE(SUM(CASE WHEN o.request_id=? AND r.parent_id IS NULL
-                       AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN} THEN 1 ELSE 0 END),0) AS replaced
+                f"""SELECT f.id, COUNT(*) AS origins, COALESCE(SUM(CASE WHEN COALESCE(r.parent_id,r.id)=?
+                       AND {_SWITCH_SUBJECT_ORIGIN} AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
+                       THEN 1 ELSE 0 END),0) AS replaced
                    FROM download_files f
                    JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
                        AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
@@ -4061,8 +4187,9 @@ class TransferRepository:
                    LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
                    WHERE f.status NOT IN ('completed','deleted')
                      AND f.id IN (SELECT b2.canonical_artifact_id FROM canonical_candidate_bindings b2
-                                  JOIN canonical_candidate_origins o2 ON o2.binding_id=b2.id WHERE o2.request_id=?)
-                   GROUP BY f.id""", (request_id, request_id))
+                                  JOIN canonical_candidate_origins o2 ON o2.binding_id=b2.id
+                                  WHERE o2.request_id IN (SELECT id FROM transfer_requests WHERE id=? OR parent_id=?))
+                   GROUP BY f.id""", (request_id, request_id, request_id))
         return any(int(row["origins"] or 0) and int(row["replaced"] or 0) == int(row["origins"]) for row in rows)
 
     async def route_replacement_failure(self, artifact_id: int):
@@ -4076,13 +4203,16 @@ class TransferRepository:
         held, unseen, for a landing that cannot come."""
         async with get_db() as db:
             rows = await db.fetchall(
-                f"""SELECT r.state, r.error, CASE WHEN r.parent_id IS NULL AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
+                f"""SELECT COALESCE(rr.state,r.state) AS state, COALESCE(rr.error,r.error) AS error,
+                       COALESCE(r.parent_id,r.id) AS root_id,
+                       CASE WHEN {_SWITCH_SUBJECT_ORIGIN} AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
                        THEN 1 ELSE 0 END AS switched
                    FROM download_files f
                    JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
                        AND b.candidate_order=COALESCE(f.selected_candidate,0)+1
                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
                    JOIN transfer_requests r ON r.id=o.request_id
+                   LEFT JOIN transfer_requests rr ON rr.id=r.parent_id
                    LEFT JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
                    WHERE f.id=?""", (int(artifact_id),))
             bound = bool(rows)
@@ -4094,6 +4224,17 @@ class TransferRepository:
                        WHERE f.id=? AND r.parent_id IS NULL""", (int(artifact_id),))
         if rows and all(int(row["switched"] or 0) and row["state"] == "failed" and row["error"] for row in rows):
             return codec.error(rows[0]["error"]), bound
+        if bound and rows and all(int(row["switched"] or 0) for row in rows):
+            # The switched roots resolved on their new provider through
+            # members (a cloud copy), and every one of those members failed
+            # for good: nothing will land either.
+            roots = sorted({str(row["root_id"]) for row in rows})
+            async with get_db() as db:
+                members = await db.fetchall(
+                    f"""SELECT state,error FROM transfer_requests WHERE parent_id IN ({",".join("?" * len(roots))})""",
+                    tuple(roots))
+            if members and all(item["state"] == "failed" and item["error"] for item in members):
+                return codec.error(members[0]["error"]), bound
         return None
 
     @staticmethod
@@ -4118,8 +4259,8 @@ class TransferRepository:
         if artifact_id is None:
             return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
         row = await db.fetchone(
-            f"""SELECT COUNT(*) AS origins, COALESCE(SUM(CASE WHEN r.parent_id IS NULL AND {_OWN_TRANSFER} AND {_SWITCHED_AFTER_ORIGIN}
-               THEN 1 ELSE 0 END),0) AS replaced
+            f"""SELECT COUNT(*) AS origins, COALESCE(SUM(CASE WHEN {_SWITCH_SUBJECT_ORIGIN} AND {_OWN_TRANSFER}
+               AND {_SWITCHED_AFTER_ORIGIN} THEN 1 ELSE 0 END),0) AS replaced
                FROM download_files f
                JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id
                    AND b.candidate_order=COALESCE(f.selected_candidate,0)+1

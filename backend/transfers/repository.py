@@ -1600,7 +1600,10 @@ class TransferRepository(_QualifiedTransferRepository):
             if not artifact_ids:
                 return {}
             placeholders = ",".join("?" for _ in artifact_ids)
-            bindings = await db.fetchall(f"""SELECT canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id IN ({placeholders}) ORDER BY canonical_artifact_id,candidate_order,id""", tuple(artifact_ids))
+            # Current bindings only: the non-current band (above
+            # ``CanonicalOwnership._NON_CURRENT_ORDER``) is the history a
+            # replacement or refresh kept -- never a source to choose.
+            bindings = await db.fetchall(f"""SELECT canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id IN ({placeholders}) AND candidate_order<=100000 ORDER BY canonical_artifact_id,candidate_order,id""", tuple(artifact_ids))
             attempts = await db.fetchall(f"""SELECT p.artifact_id,p.candidate_id,p.outcome,p.delivered,p.ordinal,p.execution_attempt_id,e.state,e.authorized FROM execution_attempt_provenance p LEFT JOIN execution_attempts e ON e.id=p.execution_attempt_id WHERE p.artifact_id IN ({placeholders}) ORDER BY p.artifact_id,p.ordinal,p.execution_attempt_id""", tuple(artifact_ids))
         selected_ids = {}; current_attempt_ids = {}; has_durable_candidate = {}; artifact_states = {}
         for row in files:
@@ -3379,8 +3382,10 @@ class TransferRepository(_QualifiedTransferRepository):
         it or were ``exhausted`` for it, whether collection route authority
         closed ``generic`` competition, whether the transfer's lifecycle is
         ``terminal`` (``policy.TERMINAL_TRANSFER_STATES``: no work remains for
-        any route to do), whether the root was ``decomposed`` into members,
-        and the unfinished ``artifacts`` whose selected candidate it alone
+        any route to do), whether the root was ever ``decomposed`` into
+        members, how many of them are CURRENT (``members``: its current
+        generation's, ``_current_member_ids``) and whether any member owns a
+        canonical artifact of its own (``member_owned``), and the unfinished ``artifacts`` whose selected candidate it alone
         produced (``_artifact_route_roots``; ``relevant`` when there is one).
         A bounded number of queries for any number of transfers; a transfer
         with no root request is absent."""
@@ -3398,6 +3403,8 @@ class TransferRepository(_QualifiedTransferRepository):
             current = await self._bound_route_providers(db, root_ids)
             competition: dict[str, dict[str, set[str]]] = {}
             decomposed: set[str] = set()
+            members: dict[str, int] = {}
+            member_owned: set[str] = set()
             produced: dict[str, list[int]] = {}
             for root_start in range(0, len(root_ids), 500):
                 root_chunk = root_ids[root_start:root_start + 500]
@@ -3410,6 +3417,22 @@ class TransferRepository(_QualifiedTransferRepository):
                 decomposed.update(str(row["parent_id"]) for row in await db.fetchall(
                     f"SELECT DISTINCT parent_id FROM transfer_requests WHERE parent_id IN ({root_marks})",
                     tuple(root_chunk)))
+                # Only the CURRENT generation's members are the root's files
+                # now (``_current_member_ids``, the decomposition admission's
+                # own rule); an earlier provider's copy is history.
+                current_members = await self._current_member_ids(db, root_chunk)
+                members.update((root, len(items)) for root, items in current_members.items())
+                # A member -- of ANY generation -- owning a canonical artifact of
+                # its own (a file of a directory, a media member, ...): the root
+                # expanded into files. Not limited to the current generation: a
+                # folder being rebound (a pending or held new generation) still
+                # owns its files. Superseded history is blocked
+                # (``_retire_superseded_children``), and a cloud copy's member
+                # owns no file -- its candidate serves the root's own.
+                member_owned.update(str(row["parent_id"]) for row in await db.fetchall(
+                    f"""SELECT DISTINCT r.parent_id FROM transfer_requests r JOIN download_files f ON f.request_id=r.id
+                    WHERE r.parent_id IN ({root_marks}) AND COALESCE(f.blocked,0)=0
+                    AND COALESCE(f.mirror_state,'')!='standby' AND f.status!='duplicate'""", tuple(root_chunk)))
             for artifact_id, root_id in sorted((await self._artifact_route_roots(db, chunk)).items()):
                 produced.setdefault(root_id, []).append(artifact_id)
             shared = await self._roots_shared_elsewhere(db, root_ids)
@@ -3431,7 +3454,9 @@ class TransferRepository(_QualifiedTransferRepository):
                     "declined": frozenset(own.get("declined", ())), "exhausted": frozenset(own.get("exhausted", ())),
                     "generic_closed": authority.get(transfer_id, False),
                     "terminal": transfer_id in torrents and torrents[transfer_id]["status"] in TERMINAL_TRANSFER_STATES,
-                    "decomposed": str(row["id"]) in decomposed, "artifacts": artifacts, "relevant": bool(artifacts),
+                    "decomposed": str(row["id"]) in decomposed, "members": members.get(str(row["id"]), 0),
+                    "member_owned": str(row["id"]) in member_owned,
+                    "artifacts": artifacts, "relevant": bool(artifacts),
                     "shared": str(row["id"]) in shared,
                 }
         return facts
