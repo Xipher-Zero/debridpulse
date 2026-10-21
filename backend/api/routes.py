@@ -1160,8 +1160,12 @@ async def add_link_file(
     The file is only a submission channel: once read, each link goes to the
     owner that would take it from Quick Add -- the direct links to one
     ``submit_links`` batch (with its private-LAN confirmation), each magnet to
-    ``submit_magnet``. Every value is validated by its owner before anything
-    is admitted, so a file with one unusable link admits nothing.
+    ``submit_magnet``. Every value is first checked by its owner's syntax
+    check, so a file listing one malformed or unsupported link admits nothing.
+    Admission itself is not atomic across owners: the direct-link batch is
+    admitted first and then each magnet in turn, so a magnet refused while
+    it is being admitted leaves the direct links and every earlier magnet
+    already admitted, and the request answers with that refusal.
     ``selection_mode`` and ``allow_local_network`` mean what they mean for
     ``/links/add``."""
     try:

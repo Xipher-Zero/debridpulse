@@ -108,7 +108,7 @@ This matrix is the **implemented and qualified v1.0.12 provider/executor set**. 
 
 The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists in 1.0.12**; 1.0.13 adds SFTP, SCP and rsync over SSH (see below).
 
-`STAGED-MATERIALIZATION-001` was likewise deferred from 1.0.12: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion. It is not implemented on the `1.0.13` branch either; the `CHANGELOG.md` `[1.0.13]` entry lists it as planned.
+`STAGED-MATERIALIZATION-001` was likewise deferred from 1.0.12: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion. It is not implemented in 1.0.13 either; the `CHANGELOG.md` `[1.0.13]` entry records it under Known limitations.
 
 ### 1.0.13 (on the `1.0.13` branch, not yet released)
 

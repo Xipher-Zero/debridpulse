@@ -1194,6 +1194,14 @@ silently changed, and DebridPulse tells you why an action is not available.
   limits is refused rather than downloaded in part. A browser that falls more than 100 live updates
   behind is disconnected and reconnects to catch up. Switching the provider of a torrent with
   hundreds of files takes noticeably longer than an ordinary switch.
+- **aria2 downloads write each file at its final location.** aria2, and rsync with Partial
+  Transfers on, write the file at its final path while it downloads; the Usenet service, Media
+  Downloads and rsync with Partial Transfers off (or rebuilding from other material) already
+  download privately and move the finished file into place. A general staged, engine-owned download with an atomic move into place on verified
+  completion (`STAGED-MATERIALIZATION-001`) is not implemented in 1.0.13. As in 1.0.12, a file
+  whose download cannot be proven to have produced its content (for example an unproven empty
+  file) is rejected and removed rather than reported complete, so where a file is written in
+  place it can exist briefly at its final path before DebridPulse retires it.
 
 ### Qualification and CI
 
@@ -1216,12 +1224,6 @@ silently changed, and DebridPulse tells you why an action is not available.
 - **The runtime test layer installs the pinned FFmpeg package** and checks Media Downloads
   finalization against committed fixtures across nine container shapes; browser specs know the Media
   Downloads member, and each shared settings key has one owning browser spec.
-
-### Planned / in progress
-
-- STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion. Not implemented on
-  this branch yet.
-- Provider/executor expansion and associated UI work will be developed on this branch.
 
 ## [1.0.12] — Universal Transfer Core and canonical transfer architecture
 

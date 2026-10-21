@@ -29,7 +29,7 @@ def test_dockerfile_uses_current_v1_oci_identity():
     assert f'expected_title="{expected_title}"' in workflow
     assert "DebridPulse \u2014 AllDebrid + aria2 Download Manager" not in dockerfile
     assert "DebridPulse \u2014 AllDebrid + aria2 Download Manager" not in workflow
-    assert 'org.opencontainers.image.description="Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution"' in dockerfile
+    assert 'org.opencontainers.image.description="Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"' in dockerfile
     assert "Multi-provider Debrid Download Manager" not in dockerfile
     assert "Multi-provider debrid download manager" not in dockerfile
 

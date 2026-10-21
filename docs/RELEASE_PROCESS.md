@@ -146,6 +146,8 @@ For a public release image:
 
 The OCI revision is the authoritative check when moving a deployment from a candidate SHA image to the published release tag.
 
+The image also contains the backend test tree at `/app/tests`: the Dockerfile copies `backend/` whole, and `.dockerignore` does not exclude it. This is deliberate. The production application never imports it, and the container's default command (`uvicorn main:app`) does not use it. Its one runtime purpose is release qualification: the Browser Runtime workflow starts the exact candidate image in an additional container as `uvicorn browser_contract_app:app --app-dir /app/tests`. That test-only composition (`backend/tests/browser_contract_app.py`) serves the real application with an in-memory transport, so that browser checks can raise real `INPUT_REQUIRED` challenges and remote collections against the image that is being qualified rather than a rebuilt one.
+
 ## Local deployment / acceptance rule
 
 The deployment host is for **runtime testing**, not repository administration.

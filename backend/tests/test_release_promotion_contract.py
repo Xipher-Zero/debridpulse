@@ -48,7 +48,7 @@ def test_fork_image_publishes_and_verifies_canonical_index_annotations() -> None
 
     expected = (
         "index:org.opencontainers.image.title=DebridPulse: Universal Transfer Manager",
-        "index:org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution",
+        "index:org.opencontainers.image.description=Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines",
         "index:org.opencontainers.image.version=${{ steps.version.outputs.version }}",
         "index:org.opencontainers.image.source=https://github.com/${{ github.repository }}",
         "index:org.opencontainers.image.revision=${{ github.sha }}",

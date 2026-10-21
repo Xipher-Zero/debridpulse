@@ -522,7 +522,7 @@
             <ul>
               <li><b>Concurrent Extractions:</b> how many archives are unpacked at once.</li>
               <li><b>Delete Archives After Extraction</b> (on by default): removes the archive only after it was unpacked successfully.</li>
-              <li><b>Archive Passwords:</b> DebridPulse tries no password first, then each stored password in order. Each row holds one password; it is saved when you leave the row. <b>Show all</b> reveals them; <b>Clear Passwords</b> erases the whole list.</li>
+              <li><b>Archive Passwords:</b> for a 7z or RAR archive, DebridPulse tries no password first, then each stored password in order. A ZIP archive is extracted without a password only; these passwords are not tried for ZIP. Each row holds one password; it is saved when you leave the row. <b>Show all</b> reveals them; <b>Clear Passwords</b> erases the whole list.</li>
             </ul>
             <p>Supported formats include ZIP, 7z, RAR (including multi-part RAR), TAR with gzip, bzip2, xz, zstd or lzma compression, and single gzip, bzip2 or xz files. Archives that would write outside the download folder, contain links, or would be unreasonably large when unpacked are refused for your safety.</p>`)}
 
@@ -546,7 +546,7 @@
             <p>The <b>Help</b> button (?) on the User Accounts card compares the roles in a table, and the same help opens from the <b>Role</b> selector in <b>Add Local Account</b> and <b>Change Role</b>.</p>
             <p><b>User Accounts</b> lists each person with their role, how they sign in and whether the account is enabled. <b>Add Local Account</b> creates a username-and-password account. <b>Change Role</b> applies at once: that person's open pages reload with the new role, without signing them out. Click an account's name for its details and its activity, where an outstanding request can be withdrawn on its own. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are withdrawn, a transfer someone else also asked for keeps going, and finished downloads are never touched. Disabling also ends the account's sign-ins and stops its tokens; removing keeps the account's history and deletes its own notification settings. A removed OIDC sign-in that comes back gets a new account that stays disabled until you enable it. <b>Merge</b> joins two or more accounts into the one you choose to keep; two accounts that share a verified email are pointed out, but only a Merge joins them. DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account.</p>
             <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. Each token sees only the jobs submitted with it. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
-            <p><b>Integration Delivery Profiles</b> tell an external application, such as Sonarr or Radarr, which <b>categories</b> it may submit to, which kinds of source it may send, which of its tokens may use the profile, and where it will find the finished files (<b>Local Root</b> in DebridPulse's download folder, and <b>Import Root</b> as the application sees that folder). Files are shared in place: nothing is copied, moved or deleted for the application. The download-client interfaces stay unavailable until a profile has a category, a source kind and a client with an active token.</p>
+            <p><b>Integration Delivery Profiles</b> tell an external application, such as Sonarr or Radarr, which <b>categories</b> it may submit to, which kinds of source it may send (<b>Source Types</b>), which of its tokens may use the profile (<b>Authorized API Tokens</b>), and where it will find the finished files (<b>DP Download Path</b> in DebridPulse's download folder, and <b>External Import Path</b> as the application sees that folder). Files are shared in place: nothing is copied, moved or deleted for the application. The download-client interfaces stay unavailable until a profile has a category, a Source Type and an authorized API token that is active.</p>
             <p>Anyone signed in can change their own display name and actual name (and add an email if none is set) from <b>My Account</b>, opened from their name at the bottom of the sidebar beside <b>Log Out</b>, and use <b>Change Password</b> when they sign in with one.</p>`)}
 
           ${accordion('Notifications', `
@@ -631,7 +631,7 @@
             <ul>
               <li><b>Usenet: no enabled news server is configured</b> (shown when you press the Usenet card's <b>Test</b>): add a server or switch one on.</li>
               <li>If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</li>
-              <li>Passworded archives inside a posting are unpacked with your <b>Archive Passwords</b>; add the password there.</li>
+              <li>Passworded 7z or RAR archives inside a posting are unpacked with your <b>Archive Passwords</b>; add the password there. A password-protected ZIP is not unlocked this way.</li>
             </ul>`)}
 
           ${accordion('A media download fails', `

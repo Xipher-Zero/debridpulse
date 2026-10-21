@@ -136,6 +136,32 @@ notices, and the redistribution obligations they carry have not been
 independently established**; this document therefore does not record the
 executable as MIT-covered as a whole, and supplies no notices on its behalf.
 
+### uvloop and google-re2: libraries compiled into their extension modules
+
+Two wheels in the table compile third-party C/C++ libraries statically into their
+native extension module, so those libraries ship in the image although they
+appear in no package list of their own. This was verified in the hash-pinned
+`linux/amd64` and `linux/arm64` wheels of `backend/requirements.txt`. Neither
+extension links a shared copy of the library: the symbols are present, and
+`ldd` shows only the C/C++ runtime.
+
+| Wheel (licence of the wheel) | Embedded component | Version evidence | Upstream attribution | Licence |
+|---|---|---|---|---|
+| `uvloop` 0.22.1 (MIT OR Apache-2.0) | libuv | 1.48.0: the version string in `uvloop/loop*.so`, and `vendor/libuv/include/uv/version.h` in the pinned uvloop 0.22.1 sdist | "Copyright (c) 2015-present libuv project contributors." Parts originating from joyent/libuv: "Copyright Joyent, Inc. and other Node contributors." | MIT (both notices), per `vendor/libuv/LICENSE` and `LICENSE-extra`. `LICENSE-extra` also names two externally maintained parts: `tree.h` from FreeBSD (copyright Niels Provos, BSD-2-Clause) and the `inet_pton`/`inet_ntop` implementations in `src/inet.c` (copyright Internet Systems Consortium, Inc., ISC). |
+| `google-re2` 1.1.20251105 (BSD-3-Clause, RE2's own licence) | Abseil (abseil-cpp) | LTS `20250512`: the `absl::lts_20250512` namespace in `re2/_re2*.so` | The Abseil Authors (<https://github.com/abseil/abseil-cpp>) | Apache-2.0; abseil-cpp has no NOTICE file at tag `20250512.1` (checked: `NOTICE` and `NOTICE.txt` are absent) |
+| `google-re2` 1.1.20251105 | pybind11 | The release is not identifiable from the binary. Its internals ABI identifier is `__pybind11_internals_v5` | "Copyright (c) 2016 Wenzel Jakob, All rights reserved." (<https://github.com/pybind/pybind11>) | BSD-3-Clause (pybind11's `LICENSE`; the text was checked at v2.13.6) |
+
+None of these components' notices ships inside its wheel: uvloop's
+`dist-info/licenses` holds only uvloop's own `LICENSE-MIT` and `LICENSE-APACHE`,
+and google-re2's holds only RE2's `LICENSE`. This document is copied into the
+image (`/app/docs/DEPENDENCY_LICENSES.md`) and records the attributions and
+licences above. The full licence texts of these embedded components are **not**
+separately bundled in `licenses/`. Whether this record satisfies their binary
+redistribution conditions (MIT, BSD-2-Clause, BSD-3-Clause and ISC ask for the
+notice and licence text to accompany binaries; Apache-2.0 asks for a copy of the
+licence) has not been independently reviewed, and is part of the project/licence
+review below.
+
 ## Copyleft review — the facts, and what still needs project/licence review
 
 DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,

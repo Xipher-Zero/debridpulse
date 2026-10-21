@@ -180,7 +180,7 @@
         {heading: 'Principal controls', list: [
           'Concurrent Extractions limits how many archives are unpacked at the same time.',
           'Delete Archives After Extraction removes an archive’s files only after it was extracted successfully; a failed extraction keeps them.',
-          'Archive Passwords: each archive is tried first without a password, then with each stored password in order. Passwords are stored on the server and hidden unless you choose to show them.',
+          'Archive Passwords: each 7z or RAR archive is tried first without a password, then with each stored password in order. ZIP archives are extracted without a password only; a password-protected ZIP is not unlocked with these passwords. Passwords are stored on the server and hidden unless you choose to show them.',
         ]},
         {heading: 'Safety', text: [
           'Archives are checked before anything is written: entries with absolute paths or paths that climb out of the extraction folder, links, and archives that would expand beyond safe size or file-count limits are refused.',
@@ -298,15 +298,15 @@
         ]},
         {heading: 'What a profile sets', list: [
           'Categories: the names an application chooses when it submits a job. Each category belongs to one profile only.',
-          'Clients: the Integration tokens allowed to use the profile. A profile with no clients admits no one.',
-          'Source kinds: which kinds of submission are accepted, such as links, magnets, torrents, or NZBs.',
-          'Local Root is the folder in DebridPulse, inside the download folder; Import Root is the same folder as the application sees it, if its path differs.',
+          'Authorized API Tokens: the Integration tokens allowed to use the profile. A profile with no authorized token admits no one.',
+          'Source Types: which kinds of submission are accepted, such as links, magnets, torrents, or NZBs.',
+          'DP Download Path is the folder in DebridPulse, inside the download folder; External Import Path is the same folder as the application sees it, if its path differs.',
           'Retention is how long a completed delivery is offered to the application.',
         ]},
         {heading: 'Jobs and files', list: [
           'Submitting a job makes a download request that belongs to that application. Removing the job in the application withdraws that request, or acknowledges the delivery once it is complete; the transfer itself stops only if no one else needs it.',
           'Completed files are shared in place: nothing is copied, linked, or moved for the application, and acknowledging or expiring a delivery deletes no file.',
-          'The download-client interfaces that these applications connect to stay unavailable until a profile has a category, accepts a source kind that interface uses, and lists a client with an active token.',
+          'The download-client interfaces that these applications connect to stay unavailable until a profile has a category, accepts a Source Type that interface uses, and authorizes an API token that is active.',
         ]},
       ],
     },

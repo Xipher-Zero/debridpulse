@@ -105,12 +105,17 @@ def test_authoritative_development_version_surfaces_agree_with_the_version_file(
     assert "remains `1.0.11.1` for this corrective release" not in ui_arch
 
 
-def test_oci_metadata_describes_current_two_provider_architecture_and_retains_license_identity():
+def test_oci_metadata_describes_current_architecture_and_retains_license_identity():
     dockerfile = _text("Dockerfile")
     workflow = _text(".github/workflows/fork-image.yml")
-    description = "Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution"
+    description = "Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"
+    # The two-provider description of 1.0.12 no longer describes the image.
+    retired = "Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution"
+    # Labels and annotations are passed as line lists; a comma must never split one.
+    assert "," not in description
     for value in (dockerfile, workflow):
         assert description in value
+        assert retired not in value
         assert "DebridPulse: Universal Transfer Manager" in value
         assert "GPL-2.0-or-later" in value
     assert "Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution" not in dockerfile

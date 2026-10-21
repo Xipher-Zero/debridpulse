@@ -1,8 +1,8 @@
 # DebridPulse — Project Notes for Claude Code
 
 Reference notes for future sessions. Verify against the live tree before relying on
-specifics — line numbers and counts drift. Branch of record for active work: **`1.0.12`**
-(`main` lags behind it). Last substantive update: 2026-09-19.
+specifics — line numbers and counts drift. Branch of record for active work: **`1.0.13`**
+(`main` is the released `v1.0.12`). Last substantive update: 2026-10-20.
 
 ---
 
@@ -12,9 +12,12 @@ GPL-2.0-or-later fork of [`kroeberd/alldebrid-client`](https://github.com/kroebe
 (originally MIT). Self-hosted transfer manager. Flow:
 
 ```
-direct link / magnet / .torrent
-  → provider (AllDebrid  or  General HTTP(S))
-  → executor (aria2)
+direct link / magnet / .torrent / NZB / Metalink / link file
+  → provider (debrid: AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox;
+              Usenet (bundled SABnzbd);
+              network sources: HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV, Multimeta,
+              Media Downloads)
+  → executor (aria2, rsync, SABnzbd for Usenet, yt-dlp for Media Downloads)
   → optional post-processor (archive extraction)
 ```
 
@@ -39,8 +42,10 @@ fixed native queue width). Materialization verify/cleanup: `transfers/filesystem
 application via `integrations/definition.py` `ManagedIntegration`/`AdministeredIntegration`
 — `application/composition.py` names no executor. Non-aria2 proofs: `tests/executor_fakes.py`.
 
-`VERSION` = `1.0.12` (development; not a released baseline — published images still tag
-`v1.0.11.1` in `docker-compose.yml`).
+`VERSION` = `1.0.13` (development: `CHANGELOG.md` `[1.0.13] — Development`). The newest release is
+`v1.0.12`; README, `docker-compose.yml` and `index.html` keep naming that image until the
+release-identity commit (pinned by the documentation contract tests; see
+`docs/RELEASE_PROCESS.md` → Release identity).
 
 ---
 
@@ -48,15 +53,15 @@ application via `integrations/definition.py` `ManagedIntegration`/`AdministeredI
 
 | Path | Contents |
 |---|---|
-| `backend/` | Python FastAPI/ASGI app. ~40k LOC, **237** `test_*.py` files. Flat package imports; `main.py` is the ASGI entry (`uvicorn main:app`). |
+| `backend/` | Python FastAPI/ASGI app with its `tests/` tree. Flat package imports; `main.py` is the ASGI entry (`uvicorn main:app`). |
 | `frontend/static/` | The served app: `index.html` shell + `app.js` (~3.6k LOC) + ~30 `*.js` + ~52 `*.css`. **No bundler, no `npm install` for the app itself.** |
-| `frontend/browser/` | Separate Playwright contract-test suite (**27** `*.spec.js`), own `package.json` (`@playwright/test@1.62.1` only). |
+| `frontend/browser/` | Separate Playwright contract-test suite (`*.spec.js`), own `package.json` (`@playwright/test` only). |
 | `frontend/host-icons.parts/` | 44 base64 chunks of a zipped host-logo archive, reassembled + SHA-256-verified at image build time. |
 | `index.html` (repo root) | **Standalone marketing/landing page. NOT the app.** Not copied into the image. The real shell is `frontend/static/index.html`. |
 | `docs/` | Architecture (`docs/architecture/*.md`, e.g. `UNIVERSAL_TRANSFER_CORE.md`, `MULTI_PROVIDER_HTTP_SLICE.md`) and UI docs (`docs/UI_FRONTEND_ARCHITECTURE.md`, `UI_DESIGN_TOKENS.md`, `UI_ICON_SYSTEM.md`). |
 | `Dockerfile`, `entrypoint.sh`, `docker-compose.yml` | Packaging (see §5). |
 | `release.py`, `CHANGELOG.md` (~257 KB), `licenses/` + `LICENSES/` + `NOTICE` | Release + dependency-license bookkeeping (enforced in CI). |
-| `.github/workflows/` | 8 workflows (see §7). |
+| `.github/workflows/` | 10 workflows (see §7). |
 | `.github/qualification/` | The one failure classifier (`failure_classifier.py`) and the one known-flake registry (`known_flakes.json`). Policy: `docs/QUALIFICATION_DETERMINISM.md` (see §6a). |
 
 ### Backend packages (`backend/`)
@@ -67,13 +72,13 @@ application via `integrations/definition.py` `ManagedIntegration`/`AdministeredI
 | `api/` | ~4.3k | FastAPI routers: `routes.py` (main), `auth_routes.py`, `auth_config_routes.py`, `operational_downloads.py`, `settings_validation_routes.py`, `storage_health_routes.py`; `serializers.py`. |
 | `auth/` | ~3k | No-auth mode, username/password (argon2) + HTTP Basic, provider-neutral OIDC (`authlib`/`joserfc`), bearer API tokens, CSRF, sessions, lockout/throttle, transition state machine. |
 | `services/` | ~3k | `backup`, `db_maintenance`, `downloader_egress_guard`, `duplicates`, `event_bus`, `extraction_safety`, `maintenance_gate`, `network_safety`, `notification_service`/`notifications` (Discord), `page_cache`, `stats`. |
-| `providers/` | ~1.6k | `alldebrid/` and `general_http/`. Each: `client`, `definition`, `provider`, `migration`, `runtime_state`, `translation`. |
-| `executors/` | ~1.6k | `aria2/`: `client`, `executor`, `admin`, `runtime`, `migration`, `presentation`, `translation`. |
+| `providers/` | — | `alldebrid/`, `debridlink/`, `premiumize/`, `realdebrid/`, `torbox/`, `usenet/`, `general_http/`, `general_ftp/`, `general_scp/`, `general_rsync/`, `general_webdav/`, `multimeta/`, `media/`. Each holds its `provider.py`, plus whatever else it needs (client, definition, host runtime, translation). The Usenet and Media Downloads integration definitions live in `integrations/usenet/` and `integrations/media/`. |
+| `executors/` | — | `aria2/`, `rsync/`, `sabnzbd/` (Usenet), `media/` (yt-dlp), and the shared `process_ownership.py`. |
 | `application/` | ~0.9k | **`composition.py` — the one place concrete plugins are wired** (`compose()` → `configure()`). Also `service.py`, `dependencies.py`, `observability.py`, `consolidation_events.py`, `manual_candidate_failover.py`. |
 | `postprocessors/` | ~1k | `archive/`: optional auto-extraction (7zip + rar, zstd), security-hardened `extractor.py`. |
 | `core/` | ~1.2k | `config.py` + `config_validator.py`, `logging_utils.py`, `scheduler.py`, `branding.py`, `version.py` (`read_version()`), `secure_files.py`, `performance.py`, `presentation_safety.py`. |
 | `db/` | ~0.9k | SQLite via `aiosqlite` (WAL). `database.py` + `migrations/` (`v112.py`). |
-| `integrations/` | ~0.5k | `catalog.py`, `configuration.py` (`normalize_settings()`), `definition.py`, `runtime_state.py`. |
+| `integrations/` | ~0.5k | `catalog.py`, `configuration.py` (`normalize_settings()`), `configuration_mutation.py`, `definition.py`, `account_entitlement.py`, `runtime_state.py`, and the `usenet/` and `media/` integration definitions. |
 
 ### Runtime dependencies
 
@@ -135,22 +140,20 @@ before the session-issuing one) — ordered registration, not route-list surgery
   `test_ui_runtime_architecture_contract.py`) and the Browser Runtime workflow.
 - `frontend/static/index.html` owns the shell + six nav surfaces: Dashboard, Downloads,
   Activity Log, Statistics, Settings, Help & License.
-- CSS: `style.css` is the baseline; `style-v11.css` is the canonical `@import` graph;
-  per-surface `ui-*.css`; `design-tokens.css`. Assets cache-busted with `?v=N`.
-- **Bounded presentation owners are lazy-loaded by `ui-provider-status.js`'s
-  `bootPresentationOwners()`**, not by `<script>` tags in `index.html`. The
-  `PRESENTATION_OWNERS` list (as of 2026-09-09):
-  `ui-toast-contract.js` (`DPToastContract`), `ui-processing-presentation.js`
-  (`DPProcessingPresentation`), `ui-dashboard-transfer-presentation.js`
-  (`DPDashboardTransferPresentation`), `ui-downloads-presentation.js`
-  (`DPDownloadsPresentation`), `ui-activity-log-runtime.js` (`DPActivityLog`),
-  `ui-settings-archive-passwords.js` (`DPArchivePasswords`).
+- CSS: `style.css` is the one canonical `@import` graph (the former `style-v11.css` was
+  folded into it and retired); per-surface `ui-*.css`; `design-tokens.css`. Assets
+  cache-busted with `?v=N`.
+- **`index.html` parser-loads the application and every bounded presentation owner as
+  direct `<script defer>` tags**, in dependency order; nothing is lazy-injected, and
+  `ui-provider-status.js` owns Provider Status only. The current owner map is in
+  `docs/UI_FRONTEND_ARCHITECTURE.md` ("Boot graph", "Runtime ownership map") — read it
+  rather than a list here.
 - `ui-settings-page.js` is the **sole** Settings markup owner (every tab/panel/card/icon/ARIA
   attribute, rendered once; also persistence). No satellite script may rewrite it after render
   — the former `ui-settings-downloads-completion.js`, `-notifications.js`, `-maintenance-wipe.js`,
   `-card-icons.js`, `ui-provider-cards.js` were folded in and deleted. Bounded feature owners
-  that remain: `ui-settings-directory-picker.js` (folder-browse modal), `ui-settings-aria2-live.js`
-  (aria2 engine queue; behavior only), `ui-settings-archive-passwords.js`.
+  that remain include `ui-settings-directory-picker.js` (folder-browse modal) and
+  `ui-settings-archive-passwords.js`.
 - Global processing pause is **operational state**: the durable application state
   (`TransferRepository.globally_paused()`) is the only authority. `AppSettings` has no `paused`;
   a pre-1.0.12 `config.json` value is a one-shot migration input (`legacy_paused_input()` →
@@ -160,28 +163,22 @@ before the session-issuing one) — ordered registration, not route-list surgery
   `policy.compatibility_error` from `policy.recovery_action(error)` (a pure function of canonical
   facts). Nothing reads them back; emitters must not pass `recovery=`.
   Proof: `backend/tests/test_recovery_projection_boundary.py`.
-- **Multi-source candidate chip** (2026-09-09): `/api/torrents` list rows carry
-  `candidate_source_max` — the largest per-artifact distinct canonical candidate count
-  across a transfer's eligible artifacts, computed inside the one bounded projection SQL
-  in `api/operational_downloads.py` (a `canonical_candidate_bindings` CTE; never a
-  per-row query, never `repository.presentation(..., details=True)`). It is a **max**,
-  not a sum, because artifacts of one transfer may carry different candidate-set sizes;
-  tooltip wording is "up to N". Chip renders only when `> 1`. Shared visual contract:
-  `.dp-candidate-chip` material lives in `ui-transfer-contract.css`; the passive
-  Dashboard/Downloads chip (`role="img"`, non-interactive) is built by
-  `DPDashboardTransferPresentation.candidateChipMarkup()` and reused by
-  `ui-downloads-presentation.js`; the Details disclosure keeps its interactive
-  `<button>` (`ui-detail-candidates.js`) but shares that family and drops the old
-  circular count badge. The Lucide `network` glyph has one geometry owner — the
+- **Candidate chip.** The passive Dashboard/Downloads multi-source chip and its
+  `candidate_source_max` list field (2026-09-09) have since been retired; tests assert both
+  are absent (`test_operational_downloads_projection.py`,
+  `test_ui_presentation_ownership_contract.py`). The `.dp-candidate-chip` family
+  (`ui-transfer-contract.css`) remains for the interactive per-file candidate disclosure in
+  Details (`ui-detail-candidates.js`, a `<button>`) and for group-candidate switching
+  (`ui-group-candidates.js`). The Lucide `network` glyph has one geometry owner — the
   `LUCIDE` set in `operator-title.js` — rendered via `window.DPIcons.svg('network')`.
-  `ui-detail-candidates.css` is now loaded through the `style-v11.css` `@import` graph
-  (it was previously runtime-injected by `ui-detail-candidates.js`).
+  `ui-detail-candidates.css` is loaded through the `style.css` `@import` graph.
 
 ---
 
 ## 4. Host-icon mapping (single source of truth)
 
-`frontend/static/ui-dashboard-transfer-presentation.js`:
+`frontend/static/ui-transfer-source-presentation.js` (`window.DPTransferSourcePresentation`;
+named in `docs/UI_FRONTEND_ARCHITECTURE.md` as the one mapping owner):
 
 - `HOST_ASSETS` — frozen array of `['<registrable-domain>', '<asset-file>']` pairs.
 - `hostAsset(host)` → `/icons/hosts/<file>` or `''`. Match is **exact registrable
@@ -192,9 +189,10 @@ before the session-issuing one) — ordered registration, not route-list surgery
   regression assertion in `frontend/browser/ui-regression-restoration.spec.js`).
 - `sourceIconMarkup(identity)` / `sourceSlot(identity)` — `identity.kind` is
   `'host' | 'magnet' | 'torrent_file' | 'link'`; only `'host'` uses `hostAsset`.
-- The Downloads page reuses this via
-  `window.DPDashboardTransferPresentation.sourceIconMarkup()` — **do not duplicate icon
-  logic anywhere else.**
+- Dashboard (`ui-dashboard-transfer-presentation.js`), Downloads (`ui-downloads.js`) and the
+  provider badges (`app.js`, `ui-root-provider.js`) call `window.DPTransferSourcePresentation`
+  (`sourceSlot`, `sourceIconMarkup`, `providerBadgeIdentity`) — **do not duplicate icon logic
+  anywhere else.**
 - `identity` comes from the backend as `current_source_identity`
   (`transfers/presentation_repository.py` `public_source_identity()` / `_candidate_source()`,
   which validate the host via `core/presentation_safety.py` `safe_public_host()`;
@@ -209,16 +207,25 @@ before the session-issuing one) — ordered registration, not route-list surgery
 
 ## 5. Dockerfile
 
-**Single-stage** (not multistage) — `FROM python:3.12.14-slim-trixie` — organized as
-ordered layers for cache efficiency and supply-chain rigor:
+One runtime stage — `FROM python:3.12.14-slim-trixie@sha256:…` — preceded by two
+package-only stages that are consumed by digest, never compiled here:
+`ghcr.io/xipher-zero/debridpulse-aria2@sha256:…` (aria2 1.37.0+debian-3+dp2, BitTorrent
+compiled out; built by `aria2-package.yml`) and `ghcr.io/xipher-zero/debridpulse-ffmpeg@sha256:…`
+(stream-copy-only FFmpeg; built by `ffmpeg-package.yml`); see `docs/SUPPLY_CHAIN_POLICY.md`
+§4a/§4b. Ordered layers:
 
-1. **OS packages** — `apt-get update && apt-get upgrade -y` *first* (deliberate: the
-   runtime CVE gate must see patched Trixie packages, not the base snapshot), enable the
-   `non-free` component, install `aria2 curl gosu zstd 7zip 7zip-rar`. `dpkg`
-   `path-include` rules (`zz-` prefixed) re-add the `7zip-rar` license/notice files that
-   the slim base strips.
-2. **Python deps** — `COPY backend/requirements.txt` then `pip install` (own cached layer).
-3. **App code** — `COPY backend/ /app/` + `COPY frontend/ /app/frontend/`, then an inline
+1. **OS packages** — enable the `non-free` component, a *named* `--only-upgrade` list for
+   base-image CVE fixes, then install the DebridPulse aria2 and ffmpeg `.deb`s plus
+   `rsync curl gosu zstd par2 unrar 7zip 7zip-rar`, and run each package's feature
+   verifier. `dpkg` `path-include` rules (`zz-` prefixed) re-add the license/notice files
+   (e.g. `7zip-rar`, `unrar`) that the slim base strips.
+2. **Python deps** — `COPY backend/requirements.txt` then `pip install --require-hashes`
+   (own cached layer), followed by its own layer that fetches, checksums and unpacks the
+   bundled Usenet service (SABnzbd 5.1.3).
+3. **App code** — `COPY backend/ /app/` (this includes `backend/tests` at `/app/tests`, which
+   Browser Runtime uses to serve its test-only `browser_contract_app` composition from the
+   candidate image; see `docs/RELEASE_PROCESS.md` → Release-image contract) +
+   `COPY frontend/ /app/frontend/`, then an inline
    `python` heredoc reassembles `frontend/host-icons.parts/*` → base64 → ZIP, verifies
    `expected_sha256` (`2bfb7cadf647f6d4093ce4ad7d13159e137a190925a1b840f8a50a7f579be90f`)
    and an exact expected file-name set, extracts to `frontend/static/icons/hosts/`,
@@ -226,7 +233,9 @@ ordered layers for cache efficiency and supply-chain rigor:
 4. **License/metadata files** — `CHANGELOG.md`, `VERSION`, `LICENSE`, `NOTICE`,
    `SOURCE_OFFER.md`, `LICENSES/`, `licenses/`, `docs/DEPENDENCY_LICENSES.md`.
 5. **Entrypoint** — `COPY entrypoint.sh /entrypoint.sh` + `chmod +x`.
-6. **Runtime dirs** — `mkdir -p /app/data /app/config /download` + `chown -R 99:100`.
+6. **Runtime dirs** — `mkdir -p /app/data /app/data/usenet /app/config /download` +
+   `chown -R 99:100` on those only: the application, frontend, Usenet service and license
+   files stay root-owned, so the runtime account cannot change its own program files.
 
 `ARG APP_VERSION` / `VCS_REF` feed the OCI labels. `EXPOSE 8080`. `HEALTHCHECK` curls
 `/api/health`. `ENTRYPOINT ["/entrypoint.sh"]`; `CMD ["uvicorn", "main:app", "--host",
@@ -245,7 +254,7 @@ storage-health checks can diagnose bad mounts — chmods `700` config/data, `600
 
 ### Local image testing
 
-A push to `1.0.12` triggers **Fork Image** which publishes a write-once
+A push to `1.0.13` triggers **Fork Image** which publishes a write-once
 `ghcr.io/xipher-zero/debridpulse:sha-<full 40-char sha>` multi-arch image (amd64 + arm64,
 provenance + SBOM). Pull that tag into a local compose file to verify a change before it
 gets a release tag. The image is pullable once Fork Image's "Publish immutable image"
@@ -320,19 +329,22 @@ require the adversarial preflight in that document *before* production edits.
 
 ## 7. GitHub Actions workflows (`.github/workflows/`)
 
-All gate on: `main`, `1.0.11`, `1.0.12`, `staging/**`, some `audit/**`, plus `v*` /
-`internal-v*` tags. All `uses:` are SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
+The qualification workflows gate on `main`, `1.0.11`, `1.0.12`, `1.0.13`, mostly
+`staging/**` (CodeQL's push trigger omits it), some `audit/**`, plus `v*` / `internal-v*` tags (Release Promotion: `main` and tags only;
+the two package workflows: `main`, `1.0.13`, `staging/**`, path-filtered). All `uses:` are
+SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
 
 | Workflow | What it does |
 |---|---|
 | **tests.yml** (`Tests`) | One matrix job `test` (contract 1/6–6/6 + runtime 1/3–3/3, partitioned by test node id), each entry: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; runs its layer of `pytest tests/` exactly once (junit XML + `--durations`), then the classifier decides the entry (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv), then an accounting step (counts, timings, slowest cases; any skip fails). Runtime entries install `aria2`+`openssl` and build pinned rsync 3.4.1. Contract shard 1 also runs `ruff check … --select F821,F822,F823`, `python -m compileall -q .` and `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
 | **browser-runtime.yml** (`Browser Runtime`) | Matrix of 6 runners (one Playwright worker each) (`--shard=k/n` by whole spec file, `PW_SHARD`); each builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`). Uploads traces, classification evidence + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
-| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.12` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
+| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.13` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
 | **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
 | **candidate-runtime-qualification.yml** (`Candidate Runtime Qualification`) | Pulls the published amd64 + arm64 children by digest (arm64 via QEMU), verifies OCI labels, non-root runtime (uid/gid 99/100), writable `/app/data` `/app/config` `/download`, `/api/health` version, AllDebrid integration status, a live `GeneralHttpProvider.resolve()` call, and a 7z+RAR round-trip; signs a `candidate-runtime/v1` attestation. |
-| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.12` pushes. |
-| **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12` branch only. Runs `ws3p1_adversarial_qualification.txt`. |
+| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.13` pushes. |
+| **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12` and `1.0.13` branches. Runs `ws3p1_adversarial_qualification.txt`. Not a Release Promotion requirement. |
+| **aria2-package.yml** / **ffmpeg-package.yml** | Build DebridPulse's own aria2 and FFmpeg Debian packages per architecture from `packaging/aria2/` and `packaging/ffmpeg/`, publish them write-once as `ghcr.io/xipher-zero/debridpulse-aria2` / `-ffmpeg`, which the Dockerfile consumes by digest. Path-filtered; not release gates. |
 
 Supporting config: `.github/dependabot.yml` (weekly pip updates for `/backend`, grouped
 minor/patch; weekly Actions updates), issue templates (incl. `source_request.yml` for
@@ -410,7 +422,7 @@ passwords lost before the fix are **unrecoverable in-app** — restore from a pr
 
 Before trusting a "this component was refactored / consolidated" claim: **grep for the
 old owner's symbols and confirm it was actually deleted, not just superseded.** The
-`7f652197` failure mode — new owner added via `PRESENTATION_OWNERS`, old owner left
+`7f652197` failure mode — new owner added via the since-retired `PRESENTATION_OWNERS` loader, old owner left
 mutating the same DOM — could recur in other settings panels. Check
 `ui-settings-page.js` and `app.js` for stragglers if similar
 "state resets on navigate-away" bugs surface elsewhere.
@@ -420,7 +432,7 @@ mutating the same DOM — could recur in other settings panels. Check
 ## 10. Working notes for sessions
 
 - The maintainer historically worked directly on GitHub (no local clone); now clones
-  locally. Active branch: **`1.0.12`**. Direct pushes to `1.0.12` are the established
+  locally. Active branch: **`1.0.13`**. Direct pushes to `1.0.13` are the established
   pattern for this dev branch (no PR, no merge to `main`, no force-push).
 - Honor **"explore and report, don't change anything yet"** literally when given.
 - For local verification, prefer building/pulling a Docker image (or running
