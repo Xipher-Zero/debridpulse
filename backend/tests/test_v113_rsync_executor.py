@@ -94,6 +94,14 @@ def _executor(tmp_path, guard, **options) -> RsyncExecutor:
     return RsyncExecutor(configuration, authorize, egress=guard)
 
 
+def _restarted(tmp_path, guard, **options) -> RsyncExecutor:
+    """The executor after DebridPulse restarted: a new process, whose memory
+    holds no run (``executor._LIVE``). An in-process rebuild -- every
+    reconfiguration -- keeps its binding's runs instead (ARCH-A01)."""
+    executor_module._LIVE.clear()
+    return _executor(tmp_path, guard, **options)
+
+
 def _candidate(url: str, *, size: int = 0, methods=(InputMethod.USERNAME_PASSWORD,)) -> TransferCandidate:
     scheme = url.split("://", 1)[0]
     return TransferCandidate("payload.bin", (Endpoint(scheme, url),), expected_bytes=size,
@@ -273,6 +281,125 @@ async def test_a_daemon_file_completes_with_direct_argv_and_no_destructive_optio
     assert env["RSYNC_PROXY"].endswith(f"@127.0.0.1:{guard.bound_port}")
 
 
+def test_every_reconfiguration_builds_a_new_executor_on_the_same_runs(tmp_path, monkeypatch):
+    """ARCH-A01: ``application.composition.configure`` registers a freshly
+    built rsync executor on every reconfiguration; it shares its binding's
+    runs with the one it replaces. The negative control: another binding
+    (another download root) shares nothing."""
+    from types import SimpleNamespace
+    from db import database
+    from executors.rsync.definition import RsyncOptions, build
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    environment = SimpleNamespace(download_root=str(tmp_path / "downloads"),
+                                  repository=SimpleNamespace(authorize_execution=None))
+    first, second = build(RsyncOptions(), environment), build(RsyncOptions(compression=True), environment)
+    assert first is not second and first.binding == second.binding
+    assert first._runs is second._runs and first._finished is second._finished
+    other = build(RsyncOptions(), SimpleNamespace(download_root=str(tmp_path / "elsewhere"),
+                                                  repository=SimpleNamespace(authorize_execution=None)))
+    assert other.binding != first.binding and other._runs is not first._runs
+
+
+@pytest.mark.real_runtime
+@pytest.mark.parametrize("partial_transfers", [True, False], ids=["append", "fresh"])
+async def test_a_run_crossing_a_reconfiguration_completes_once_through_the_rebuilt_executor(
+        tmp_path, daemon, partial_transfers):
+    """ARCH-A01 (E1, E2, E3): a reconfiguration rebuilds the executor while a
+    throttled run is in flight. The rebuilt one observes that run as its own
+    -- with progress, never as an orphan (running without progress, then
+    ABSENT, which core recovers and runs again) -- and its end revokes the
+    run's egress lease and leaves no staging. A further rebuild keeps the
+    finished run's truth. The negative control: an executor of another
+    binding never claims the run."""
+    origin, guard = daemon
+    first = _executor(tmp_path, guard, partial_transfers=partial_transfers)
+    await first.set_bandwidth_ceiling(768 * 1024)
+    candidate = _candidate(origin.url("/pub/payload.bin"), size=len(PAYLOAD))
+    target = tmp_path / "downloads" / "payload.bin"
+    request = file_request(candidate, target, "attempt-rebuilt", root=tmp_path / "downloads")
+    handle = first.prepare(request)
+    assert (await first.start(request, handle)).state == ExecutionState.RUNNING
+    rebuilt = _executor(tmp_path, guard, partial_transfers=partial_transfers)
+    observed, staged = [], False
+    while True:
+        observation = await rebuilt.observe(handle)
+        observed.append(observation)
+        if observation.state != ExecutionState.RUNNING:
+            break
+        staged = staged or first._staging(target).exists()
+        await asyncio.sleep(0.05)
+    assert staged == (not partial_transfers)          # a fresh write stages privately; an append never does
+    await rebuilt.set_bandwidth_ceiling(0)
+    assert [item.state for item in observed[:-1]] == [ExecutionState.RUNNING] * (len(observed) - 1)
+    assert any(item.progress.completed_bytes for item in observed[:-1])      # its progress, not an orphan's
+    done = observed[-1]
+    # Partial Transfers off withdraws material export: nothing partial is
+    # ever material, so the completed run reports no ranges.
+    assert done.state == ExecutionState.SUCCEEDED
+    assert done.material == (((0, len(PAYLOAD)),) if partial_transfers else None)
+    assert target.read_bytes() == PAYLOAD
+    assert guard._leases == set() and not first._staging(target).exists()
+    again = _executor(tmp_path, guard)
+    assert (await again.observe(handle)).state == ExecutionState.SUCCEEDED   # a finished run's truth is kept
+    (tmp_path / "elsewhere").mkdir()
+    foreign = RsyncExecutor(RsyncConfiguration(str(tmp_path / "elsewhere"), str(tmp_path / "runtime")),
+                            first.authorize, egress=guard)
+    assert (await foreign.observe(handle)).state == ExecutionState.UNKNOWN
+
+
+@pytest.mark.real_runtime
+async def test_the_replaced_and_the_rebuilt_executor_report_one_terminal_truth(tmp_path, daemon):
+    """E3: the executor a reconfiguration replaced and the one that adopted
+    its runs observe the same just-ended run at once. Its terminal truth is
+    computed once and both report it -- here a daemon's login refusal, read
+    from the run's own status records -- never a second computation from
+    records the first already consumed, overwriting the first's answer."""
+    origin, guard = daemon
+    first = _executor(tmp_path, guard)
+    candidate = _candidate(origin.url("/priv/p.bin"), size=4096)
+    target = tmp_path / "downloads" / "refused.bin"
+    request = file_request(candidate, target, "attempt-one-truth", root=tmp_path / "downloads")
+    handle = first.prepare(request)
+    assert (await first.start(request, handle)).state == ExecutionState.RUNNING
+    run = first._runs[handle.attempt_id]
+    await asyncio.wait_for(run.owned.process.wait(), timeout=30)
+    # A follower still draining the ended process (a descendant holding its
+    # output open) keeps the terminal computation waiting: both executors'
+    # observations arrive while it waits.
+    draining = asyncio.get_running_loop().create_future()
+    run.tasks.append(draining)
+    rebuilt = _executor(tmp_path, guard)
+    observing = [asyncio.ensure_future(first.observe(handle)), asyncio.ensure_future(rebuilt.observe(handle))]
+    await asyncio.sleep(0.2)
+    draining.set_result(None)
+    replaced, adopted = await asyncio.gather(*observing)
+    assert replaced is adopted is run.terminal                          # one computation answered both
+    assert first.input_requirement(candidate, adopted) is not None     # the login question, not a bare failure
+    assert run.redactions == () and guard._leases == set()
+
+
+@pytest.mark.real_runtime
+async def test_a_run_cancelled_through_the_rebuilt_executor_stops_and_ends_its_lease(tmp_path, daemon):
+    """E4: the rebuilt executor's cancel stops the run its predecessor
+    started -- its own owned process, the observed truth CANCELLED -- and
+    ends that run's egress lease, which nothing else would."""
+    origin, guard = daemon
+    first = _executor(tmp_path, guard)
+    await first.set_bandwidth_ceiling(64 * 1024)
+    candidate = _candidate(origin.url("/pub/payload.bin"), size=len(PAYLOAD))
+    target = tmp_path / "downloads" / "payload.bin"
+    request = file_request(candidate, target, "attempt-rebuilt-cancel", root=tmp_path / "downloads")
+    handle = first.prepare(request)
+    assert (await first.start(request, handle)).state == ExecutionState.RUNNING
+    rebuilt = _executor(tmp_path, guard)
+    stopped = await rebuilt.cancel(handle)
+    await rebuilt.set_bandwidth_ceiling(0)
+    assert stopped.state == ExecutionState.CANCELLED
+    assert guard._leases == set() and first.processes.alive(handle.attempt_id) is not True
+    assert (await rebuilt.observe(handle)).state == ExecutionState.CANCELLED
+    assert not target.exists() or target.stat().st_size < len(PAYLOAD)
+
+
 def _core_authority(executor, *, paused=False, started=()):
     """Core's own rule (``authorize_execution``): ``start`` only for an attempt
     still ``prepared`` -- core records it started once its first observation
@@ -333,7 +460,7 @@ async def test_input_continues_a_challenged_attempt_after_a_restart(tmp_path, da
     await _settle(first, handle)
     # DebridPulse restarted: a new executor holds no memory of the attempt,
     # which core already recorded as started.
-    restarted = _executor(tmp_path, guard)
+    restarted = _restarted(tmp_path, guard)
     asked = _core_authority(restarted, started={handle.attempt_id})
     await restarted.start_with_input(request, handle, _password())
     done = await _settle(restarted, handle)
@@ -794,7 +921,7 @@ async def test_one_attempt_owns_one_group_across_restart_and_cancel_is_observed_
         assert again.state == ExecutionState.RUNNING and executor._runs["attempt-owned"].owned.group == group
         # A new executor (DebridPulse restarted) sees the still-alive group as owned
         # and running, refuses a second start, and stops it only by observed truth.
-        restarted = _executor(tmp_path, guard)
+        restarted = _restarted(tmp_path, guard)
         assert (await restarted.observe(handle)).state == ExecutionState.RUNNING
         assert (await restarted.start(request, handle)).state == ExecutionState.RUNNING
         assert "attempt-owned" not in restarted._runs

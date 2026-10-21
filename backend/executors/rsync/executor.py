@@ -242,7 +242,21 @@ class _Run:
     tasks: list = field(default_factory=list)
     sample: tuple[float, int] = (0.0, 0)
     terminal: ExecutionObservation | None = None
+    # The one computation of ``terminal`` (``RsyncExecutor._terminal``).
+    finishing: asyncio.Future | None = None
     lease: str | None = None
+
+
+# This process's runs, per executor binding: ``(runs, finished)``. The
+# application rebuilds its integrations on every reconfiguration (a live
+# bandwidth change, any settings write) while the native processes an executor
+# started -- and the readers following them -- run on, so a rebuilt executor of
+# the same binding adopts them rather than observing its predecessor's live
+# run as an orphan (running without progress, then ABSENT, then recovered and
+# run again) and leaving its egress lease and private staging behind. Finished
+# runs are adopted too: an rsync run's terminal truth is kept only here, never
+# in a durable record. A real restart starts with none, exactly as before.
+_LIVE: dict[str, tuple[dict, OrderedDict]] = {}
 
 
 class _Refused(Exception):
@@ -272,10 +286,11 @@ class RsyncExecutor:
         self.egress = egress or downloader_egress_guard
         self.processes = ProcessOwnership(configuration.runtime_dir)
         self.evidence_dir = Path(configuration.runtime_dir) / "evidence"
-        self._runs: dict[str, _Run] = {}
-        self._finished: OrderedDict[str, None] = OrderedDict()
         self._health: tuple[float, ExecutorHealth] | None = None
         self.binding = f"{Path(configuration.local_root).resolve()}|{Path(configuration.runtime_dir).resolve()}"
+        self._runs: dict[str, _Run]
+        self._finished: OrderedDict[str, None]
+        self._runs, self._finished = _LIVE.setdefault(self.binding, ({}, OrderedDict()))
         if not configuration.partial_transfers:
             # Partial Transfers off: nothing partial ever reaches the target, so
             # nothing can be continued -- core plans restarts for rsync.
@@ -1104,8 +1119,24 @@ class RsyncExecutor:
             material=((0, size),) if run.mode == "append" and size > 0 else None)
 
     async def _terminal(self, handle: ExecutionHandle, run: _Run) -> ExecutionObservation:
+        """The run's terminal truth, computed once: concurrent callers -- an
+        observe and a cancel, or the executor a reconfiguration replaced and
+        the one that adopted its runs -- await that one computation, so a
+        late caller never recomputes from consumed records and overwrites
+        what another already reported."""
         if run.terminal is not None:
             return run.terminal
+        if run.finishing is None:
+            run.finishing = asyncio.ensure_future(self._settle_terminal(handle, run))
+        finishing = run.finishing
+        try:
+            return await asyncio.shield(finishing)
+        except Exception:
+            if finishing.done() and run.finishing is finishing:
+                run.finishing = None            # a failed computation is asked again, as before
+            raise
+
+    async def _settle_terminal(self, handle: ExecutionHandle, run: _Run) -> ExecutionObservation:
         self._end_route(run)                    # its process has ended
         try:
             # A descendant still holding rsync's output open never delays truth.
@@ -1139,6 +1170,9 @@ class RsyncExecutor:
                                                self._native_error(code, run, records),
                                                material=((0, size),) if run.mode == "append" and size > 0 else None)
         run.terminal = observation
+        # The secret values were needed only to redact this outcome; a
+        # finished run kept in memory (``_retain``, ``_LIVE``) holds none.
+        run.redactions = ()
         self.processes.forget(handle.attempt_id)
         self._retain(handle.attempt_id)
         return observation
