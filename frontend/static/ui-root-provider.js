@@ -16,20 +16,28 @@
  *
  * Any other transfer switches per ROOT (``route_switch_scope``): its list
  * badge keeps the normal active-provider label; with one root (``root``) it
- * opens that root's picker, with several (``artifacts``) it opens Details and
- * focuses the first file launcher -- it never switches by itself. Each file
- * whose producing root may move (``route_root``) carries its own launcher,
- * naming that root's provider; its picker reads the status for that file
- * (``?artifact_id=``) and its switch names the file and the root the operator
- * saw (``artifact_id``, ``expected_root_id``).
+ * opens that root's picker, with several (``transfer``) it opens the
+ * transfer's best-effort provider picker (GET /api/torrents/{id}/route/transfer):
+ * each provider with how many of the transfer's links it may take now and why
+ * the others take no part. Choosing one asks the backend to switch every link
+ * that provider may take, each through the one-root switch (POST
+ * .../route/transfer, naming the provider the operator saw on each link); the
+ * result says link by link what switched, what already was on it, what could
+ * not take part and what was refused -- never a clean whole-transfer switch it
+ * did not make. Each file whose producing root may move (``route_root``)
+ * carries its own launcher in Details, naming that root's provider; its picker
+ * reads the status for that file (``?artifact_id=``) and its switch names the
+ * file and the root the operator saw (``artifact_id``, ``expected_root_id``).
  *
  * Interaction follows the existing candidate chooser: a non-modal dialog
  * anchored to its launcher, Escape / click-away to close, arrow keys between
  * actions, focus returned to the launcher. Choosing a provider closes the
  * picker at once: while the one switch request is outstanding every surface
- * keeps the committed provider and says "Switching to <provider>…" beside it
- * (re-rendered by the surfaces' ordinary refreshes), and that transfer takes
- * no second switch until the request settles.
+ * keeps the committed provider and says "Switching to <provider>…" beside the
+ * launchers it concerns -- the transfer's badge for a transfer-wide switch,
+ * and in Details only the files of the links being switched -- (re-rendered
+ * by the surfaces' ordinary refreshes), and that transfer takes no second
+ * switch until the request settles.
  */
 (function () {
   'use strict';
@@ -56,6 +64,29 @@
     applicability_unknown: 'Support not confirmed yet',
     held: 'Held by another provider',
   };
+  // Why a link takes no part in a transfer-wide choice of one provider
+  // (``transfer_route_status``), and why a link was refused when switched.
+  const PARTICIPATION_LABELS = {
+    already_selected: 'already on it',
+    unsupported: 'cannot use this link',
+    unavailable: 'unavailable for this link',
+    preparing: 'still preparing',
+    inactive: 'finished',
+    decomposed: 'expanded into several files',
+    shared: 'shared with another download',
+    no_route: 'not routed yet',
+  };
+  const REFUSAL_LABELS = {
+    concurrency_limited: 'no free capacity',
+    account_limited: 'account limit',
+    provider_unavailable: 'provider unavailable',
+    resource_state_conflict: 'changed or busy meanwhile; try again',
+    unsupported_request: 'not switchable',
+    changed: 'changed since the list was read',
+    gone: 'download no longer available',
+    error: 'stopped by an error',
+    not_attempted: 'not attempted after an error',
+  };
 
   let menuEl = null;
   let menuTrigger = null;
@@ -63,10 +94,13 @@
   let menuTransferId = null;
   let menuStatus = null;
   let menuArtifactId = null;
+  let menuScope = null;
   let menuRefreshing = false;
   let detailTransferId = null;
-  // transferId -> target provider label, while that transfer's one switch
-  // request is outstanding.
+  // transferId -> {target, transfer, roots}, while that transfer's one switch
+  // request is outstanding: ``target`` the provider label, ``transfer`` true
+  // for a switch of the whole transfer (its badge says it), ``roots`` the
+  // root ids it moves (null: every root of the transfer).
   const switching = new Map();
 
   function esc(value) {
@@ -125,7 +159,7 @@
     if (!route || !route.switch_available || artifactId == null || !detail ||
         !window.debridPulseAuth?.mayDestroy(detail)) return '';
     return launcherMarkup(detail.id, route.provider_id, providerLabel(route.provider_name, route.provider_id),
-      'details', {artifactId: artifactId});
+      'details', {artifactId: artifactId, rootId: route.root_id});
   }
 
   // The committed provider's badge identity, from the one identity owner.
@@ -133,27 +167,43 @@
     return window.DPTransferSourcePresentation.providerBadgeIdentity(providerId);
   }
 
-  function switchingMarkup(transferId) {
-    const target = transferId == null ? null : switching.get(Number(transferId));
+  // The provider a launcher's surface says it is switching to, or null: a
+  // file's launcher (``rootId``) only while its own root moves, any other
+  // launcher only while the whole transfer is switched.
+  function switchingTarget(transferId, rootId) {
+    const entry = transferId == null ? null : switching.get(Number(transferId));
+    if (!entry) return null;
+    if (rootId == null || rootId === '') return entry.transfer ? entry.target : null;
+    return entry.roots === null || entry.roots.has(String(rootId)) ? entry.target : null;
+  }
+
+  function switchingMarkup(transferId, rootId) {
+    const target = switchingTarget(transferId, rootId);
     return target == null ? '' : '<span class="dp-root-provider-switching" role="status" ' +
       'data-dp-switching-transfer="' + esc(transferId) + '">' + esc('Switching to ' + target + '…') + '</span>';
+  }
+
+  function launcherAction(scope) {
+    return scope === 'transfer' ? '. Choose a provider for this transfer\'s links' : '. Choose another provider';
   }
 
   function launcherMarkup(transferId, providerId, label, surface, subject) {
     const busy = switching.has(Number(transferId));
     const identity = identityOf(providerId);
-    const scope = subject && subject.scope === 'artifacts';
+    const scope = subject && subject.scope === 'transfer' ? 'transfer' : '';
     const artifact = subject && subject.artifactId != null ? subject.artifactId : null;
+    const rootId = subject && subject.rootId != null ? String(subject.rootId) : null;
     return '<button type="button" class="dp-provider-chip dp-root-provider-launcher" ' + TRIGGER_ATTR + ' ' +
       'data-dp-transfer-id="' + esc(transferId) + '" data-dp-provider-id="' + esc(providerId) + '" ' +
-      (scope ? 'data-dp-scope="artifacts" ' : '') +
+      (scope ? 'data-dp-scope="transfer" ' : '') +
       (artifact != null ? 'data-dp-artifact-id="' + esc(artifact) + '" ' : '') +
+      (rootId != null ? 'data-dp-root-id="' + esc(rootId) + '" ' : '') +
       'data-dp-surface="' + esc(surface || '') + '" data-provider-state="known"' + identity.attributes + ' ' +
       'aria-haspopup="dialog" aria-expanded="false"' + (busy ? ' aria-disabled="true"' : '') + ' ' +
-      'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' : scope ?
-        '. Choose a provider for each file in Details' : '. Choose another provider')) + '">' + identity.glyph +
+      'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' : launcherAction(scope))) +
+      '">' + identity.glyph +
       '<span class="dp-root-provider-name">' + esc(label) + '</span>' +
-      '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>' + switchingMarkup(transferId);
+      '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>' + switchingMarkup(transferId, rootId);
   }
 
   // Say the switch on every surface already rendered, without a reload: each
@@ -164,20 +214,21 @@
     if (!switching.has(Number(transferId))) {
       document.querySelectorAll('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' + id + '"]').forEach(function (node) {
         node.removeAttribute('aria-disabled');
-        node.setAttribute('aria-label', 'Provider: ' + node.textContent + '. Choose another provider');
+        node.setAttribute('aria-label', 'Provider: ' + node.textContent +
+          launcherAction(node.getAttribute('data-dp-scope')));
       });
       return;
     }
     document.querySelectorAll('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' + id + '"]').forEach(function (node) {
       node.setAttribute('aria-disabled', 'true');
       node.setAttribute('aria-label', 'Provider: ' + node.textContent + '. A provider switch is in progress');
-      node.insertAdjacentHTML('afterend', switchingMarkup(transferId));
+      node.insertAdjacentHTML('afterend', switchingMarkup(transferId, node.getAttribute('data-dp-root-id')));
     });
   }
 
-  async function readStatus(transferId, artifactId) {
+  async function readStatus(transferId, artifactId, scope) {
     const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route' +
-      (artifactId != null ? '?artifact_id=' + encodeURIComponent(artifactId) : ''));
+      (scope === 'transfer' ? '/transfer' : artifactId != null ? '?artifact_id=' + encodeURIComponent(artifactId) : ''));
     if (!response.ok) throw new Error('Provider status is unavailable.');
     return response.json();
   }
@@ -254,12 +305,56 @@
       action + '</div>';
   }
 
+  // What keeps a transfer's other links out of one provider's choice:
+  // "2 already on it · 1 cannot use this link", from each link's status.
+  function participationSummary(item) {
+    const counts = {};
+    (item.roots || []).forEach(function (root) {
+      if (root.status === 'eligible') return;
+      const label = root.status === 'unavailable' && root.reason && REASON_LABELS[root.reason]
+        ? REASON_LABELS[root.reason] : (PARTICIPATION_LABELS[root.status] || 'not switchable');
+      counts[label] = (counts[label] || 0) + 1;
+    });
+    return Object.keys(counts).map(function (label) { return counts[label] + ' ' + label; }).join(' · ');
+  }
+
+  // One provider of a transfer-wide choice: how many of the transfer's links
+  // it may take now, and why the others take no part. Best effort: each link
+  // is switched, or refused, on its own.
+  function transferRowMarkup(item) {
+    const label = providerLabel(item.provider_name, item.provider_id);
+    const total = Number(item.participants) || 0;
+    const eligible = Number(item.eligible) || 0;
+    const already = Number(item.already_selected) || 0;
+    const status = already === total && total > 0 ? 'On all ' + total + ' links'
+      : eligible ? 'Can take ' + eligible + ' of ' + total + ' link' + (total === 1 ? '' : 's')
+        : 'No link can switch';
+    const reason = participationSummary(item);
+    const action = already === total && total > 0
+      ? '<span class="dp-root-provider-current">CURRENT</span>'
+      : item.selectable
+        ? '<button type="button" class="dp-root-provider-switch" data-dp-provider-id="' + esc(item.provider_id) +
+          '">Switch</button>'
+        : '<button type="button" class="dp-root-provider-switch" disabled aria-disabled="true">Switch</button>';
+    return '<div class="dp-root-provider-row" role="group" aria-label="' + esc(label + ': ' + status) + '" ' +
+      'data-dp-provider-status="' + esc(item.selectable ? 'eligible' : 'ineligible') + '" ' +
+      'data-dp-eligible="' + esc(eligible) + '" data-dp-participants="' + esc(total) + '">' +
+      '<span class="dp-root-provider-row-name">' + esc(label) + '</span>' +
+      '<span class="dp-root-provider-status">' + esc(status) +
+      (reason ? '<span class="dp-root-provider-reason"> — ' + esc(reason) + '</span>' : '') + '</span>' +
+      action + '</div>';
+  }
+
   function renderMenu(status) {
     const menu = ensureMenu();
     const heading = 'dp-root-provider-heading';
+    const transfer = status && status.scope === 'transfer';
     menu.setAttribute('aria-labelledby', heading);
-    menu.innerHTML = '<div class="dp-root-provider-title" id="' + heading + '">Provider</div>' +
-      (status.providers || []).map(rowMarkup).join('');
+    menu.innerHTML = '<div class="dp-root-provider-title" id="' + heading + '">' +
+      (transfer ? 'Provider for this transfer' : 'Provider') + '</div>' +
+      (transfer ? '<div class="dp-root-provider-note">Best effort: each link switches on its own; ' +
+        'links a provider cannot take stay where they are.</div>' : '') +
+      (status.providers || []).map(transfer ? transferRowMarkup : rowMarkup).join('');
   }
 
   function positionMenu() {
@@ -290,11 +385,12 @@
     menuTrigger = trigger || null;
     menuSurface = trigger ? trigger.getAttribute('data-dp-surface') : null;
     menuArtifactId = trigger ? trigger.getAttribute('data-dp-artifact-id') : null;
+    menuScope = trigger ? trigger.getAttribute('data-dp-scope') : null;
     menuTransferId = transferId;
     if (menuTrigger) menuTrigger.setAttribute('aria-expanded', 'true');
     let status;
     try {
-      status = await readStatus(transferId, menuArtifactId);
+      status = await readStatus(transferId, menuArtifactId, menuScope);
     } catch (error) {
       closeMenu({focusTrigger: true});
       toast('Provider status is unavailable right now.', 'error');
@@ -320,6 +416,7 @@
     menuSurface = null;
     menuTransferId = null;
     menuArtifactId = null;
+    menuScope = null;
     menuStatus = null;
     if (options && options.focusTrigger && trigger && trigger.isConnected) trigger.focus({preventScroll: true});
   }
@@ -359,6 +456,83 @@
     return payload;
   }
 
+  // THE transfer-wide action: one request; the backend switches each link
+  // through the one-root switch and reports every link's outcome.
+  async function switchTransferProvider(transferId, providerId, expectedRoutes) {
+    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route/transfer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({provider_id: providerId, expected_routes: expectedRoutes}),
+    });
+    const payload = await response.json().catch(function () { return {}; });
+    if (!response.ok) {
+      const error = new Error(failureMessage(payload));
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
+  function links(count) {
+    return count + ' link' + (count === 1 ? '' : 's');
+  }
+
+  // Every link's outcome, counted by what happened and why: never a clean
+  // whole-transfer switch the backend did not report.
+  function outcomeToast(result, targetName) {
+    const switched = Number(result.switched) || 0;
+    const parts = [];
+    if (result.already_selected) parts.push(links(result.already_selected) + ' already on ' + targetName);
+    const reasons = {};
+    (result.roots || []).forEach(function (root) {
+      if (root.outcome === 'ineligible') {
+        const label = REASON_LABELS[root.reason] || PARTICIPATION_LABELS[root.reason] || 'not switchable';
+        reasons['not switched (' + label + ')'] = (reasons['not switched (' + label + ')'] || 0) + 1;
+      } else if (root.outcome === 'refused') {
+        const label = REFUSAL_LABELS[root.reason] || 'refused';
+        reasons['refused (' + label + ')'] = (reasons['refused (' + label + ')'] || 0) + 1;
+      }
+    });
+    Object.keys(reasons).forEach(function (label) { parts.push(links(reasons[label]) + ' ' + label); });
+    const body = parts.join('; ') + (parts.length ? '.' : '');
+    if (result.result === 'complete') {
+      toast({title: 'Switched ' + links(switched) + ' to ' + targetName + '.', body: body}, 'success');
+    } else if (result.result === 'partial') {
+      toast({title: 'Switched ' + switched + ' of ' + links(Number(result.participants) || 0) + ' to ' +
+        targetName + '.', body: body}, 'warning');
+    } else {
+      toast({title: 'No link was switched to ' + targetName + '.', body: body || 'Nothing was switched.'}, 'error');
+    }
+  }
+
+  async function chooseForTransfer(providerId) {
+    const transferId = Number(menuTransferId);
+    const status = menuStatus;
+    const target = (status.providers || []).find(function (item) { return item.provider_id === providerId; });
+    if (!target) return;
+    const targetName = providerLabel(target.provider_name, providerId);
+    // Exactly what the operator saw: each link this provider may take, with
+    // the provider it was on. The backend refuses any link that moved since.
+    const expected = {};
+    (target.roots || []).forEach(function (root) {
+      if (root.status === 'eligible') expected[root.root_id] = root.current_provider_id;
+    });
+    switching.set(transferId, {target: targetName, transfer: true, roots: new Set(Object.keys(expected))});
+    closeMenu({focusTrigger: true});
+    showSwitching(transferId);
+    try {
+      outcomeToast(await switchTransferProvider(transferId, providerId, expected), targetName);
+    } catch (error) {
+      toast({title: 'Could not switch this transfer to ' + targetName + '.',
+        body: String((error && error.message) || 'Nothing was switched.') +
+          ' The list is refreshed to show each link\'s provider.'}, 'error');
+    } finally {
+      switching.delete(transferId);
+      showSwitching(transferId);
+    }
+    await refreshSurfaces(transferId);
+  }
+
   async function refreshSurfaces(transferId) {
     const jobs = [];
     if (typeof window.loadTorrents === 'function') jobs.push(Promise.resolve(window.loadTorrents()));
@@ -372,6 +546,10 @@
 
   async function choose(providerId) {
     if (!menuStatus || menuTransferId == null || switching.has(Number(menuTransferId))) return;
+    if (menuStatus.scope === 'transfer') {
+      await chooseForTransfer(providerId);
+      return;
+    }
     const transferId = Number(menuTransferId);
     const status = menuStatus;
     const subject = {artifactId: menuArtifactId, rootId: status.root_id};
@@ -380,7 +558,15 @@
     const target = (status.providers || []).find(function (item) { return item.provider_id === providerId; });
     const targetName = providerLabel(target && target.provider_name, providerId);
     // One request per transfer; the picker never holds the page meanwhile.
-    switching.set(transferId, targetName);
+    // A file's root switch is said beside that root's files only -- unless
+    // that root is the transfer's only one, which is the whole transfer.
+    const roots = new Set(Array.from(document.querySelectorAll('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' +
+      CSS.escape(String(transferId)) + '"][data-dp-root-id]')).map(function (node) {
+      return node.getAttribute('data-dp-root-id');
+    }));
+    const fileRoot = menuArtifactId != null && status.root_id != null && roots.size > 1;
+    switching.set(transferId, {target: targetName, transfer: !fileRoot,
+      roots: fileRoot ? new Set([String(status.root_id)]) : null});
     closeMenu({focusTrigger: true});
     showSwitching(transferId);
     try {
@@ -429,27 +615,11 @@
     event.preventDefault();
     event.stopPropagation();
     const transferId = Number(trigger.getAttribute('data-dp-transfer-id'));
-    if (trigger.getAttribute('data-dp-scope') === 'artifacts') {
-      openFiles(transferId);
-      return;
-    }
     if (menuTrigger === trigger && menuEl && !menuEl.hidden) {
       closeMenu({focusTrigger: true});
       return;
     }
     open(transferId, trigger);
-  }
-
-  // Several roots: the list launcher opens Details, where each file names the
-  // root that produced it, and focuses the first file launcher. It never
-  // switches anything itself.
-  async function openFiles(transferId) {
-    closeMenu();
-    if (typeof window.showDetail !== 'function') return;
-    await window.showDetail(transferId);
-    const first = document.querySelector('#modal-body [' + TRIGGER_ATTR + '][data-dp-artifact-id]' +
-      ':not([aria-disabled="true"])');
-    if (first) first.focus();
   }
 
   function onDocumentPointerDown(event) {
@@ -486,10 +656,11 @@
     if (menuRefreshing || menuTransferId == null || switching.has(Number(menuTransferId))) return;
     const transferId = menuTransferId;
     const artifactId = menuArtifactId;
+    const scope = menuScope;
     menuRefreshing = true;
     let status;
     try {
-      status = await readStatus(transferId, artifactId);
+      status = await readStatus(transferId, artifactId, scope);
     } catch (error) {
       return;
     } finally {
@@ -529,7 +700,7 @@
   }
 
   window.DPRootProvider = Object.freeze({badgeMarkup: badgeMarkup, artifactBadgeMarkup: artifactBadgeMarkup, open: open,
-    switchProvider: switchProvider});
+    switchProvider: switchProvider, switchTransferProvider: switchTransferProvider});
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', install, {once: true});

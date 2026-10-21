@@ -168,9 +168,9 @@ upstream sources named above:
 
 These texts supply the notices the components' licences ask to accompany a
 binary distribution. They are not a general legal review of the image; the
-project/licence review below remains separately required.
+copyleft review below records its own disposition.
 
-## Copyleft review — the facts, and what still needs project/licence review
+## Copyleft review — the facts and the recorded disposition
 
 DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,
 GPL-2.0-or-later) inside the image, so that service's Python runtime closure is
@@ -184,7 +184,7 @@ service over a private loopback HTTP API.**
 | hachoir | GPL-2.0-only | **Required.** A hard, unguarded top-level import in the service's `sabnzbd/misc.py`; with it removed the service does not start (`ModuleNotFoundError` before `sabnzbd/__init__.py` finishes loading). It is therefore required by the supported acquisition + PAR2-repair path, not merely present in upstream's broad requirements file. | Corresponding source offer applies. GPL-2.0-**only**, so it does not permit relicensing to GPL-3.0. |
 | guessit | LGPL-3.0-or-later | The service's release-name parser, imported by its sorting/post-processing modules. | Corresponding source offer applies. LGPL-3.0 is incompatible with GPL-2.0-**only**. |
 
-### What this project has established, and what it has not
+### What engineering characterization established
 
 Established by engineering characterization:
 
@@ -196,13 +196,57 @@ Established by engineering characterization:
 - that the same closure is what upstream SABnzbd already distributes, so
   bundling it does not assemble a combination that did not previously exist.
 
-**Not established here:** whether the combined work may be distributed on these
-terms. The relevant question — DebridPulse is GPL-2.0-**or-later**, so a
-distribution under GPL-3.0-or-later terms would accommodate guessit's LGPL-3.0,
-while hachoir is GPL-2.0-**only** — is a licensing judgment about the combined
-work, not an engineering fact, and **requires project/licence review before
-release**. Nothing in this repository should be read as that review having
-happened, and no statement here is legal advice.
+### Separate programs: SABnzbd and rsync
+
+The image bundles two programs that DebridPulse runs but does not combine with
+its own code.
+
+- **SABnzbd 5.1.3** (GPL-2.0-or-later, (c) The SABnzbd-Team).
+  - It ships as its complete upstream source release,
+    `SABnzbd-5.1.3-src.tar.gz` (sha256
+    `12a01e30ce166297a375ffc3a761f98bf7d93260e040391497f643f8a3525fed`),
+    unpacked unchanged to `/app/usenet` with its own `LICENSE.txt`,
+    `COPYRIGHT.txt`, `GPL2.txt`, `GPL3.txt` and `licenses/`.
+  - DebridPulse starts it as a separate process and talks to it only through
+    its HTTP API on the loopback interface. DebridPulse's application code
+    imports no SABnzbd code.
+    - One test-evidence generator, `backend/tests/fixtures/sab_server_report/gen.py`,
+      imports SABnzbd modules when someone runs it by hand inside the image. It
+      is not part of the running application.
+  - Its Python dependencies are the packages its own `requirements.txt` names,
+    at the versions DebridPulse's lock pins, installed with their licence
+    files.
+  - `hachoir` (GNU GPL v2) and `guessit` (LGPL-3.0-or-later) are used by
+    SABnzbd itself (`sabnzbd/misc.py`, `sabnzbd/sorting.py`,
+    `sabnzbd/interface.py`), exactly as in upstream's own releases, and by no
+    DebridPulse code.
+- **rsync** (GPL-3.0-or-later, Debian package `rsync`; see Container
+  components below). It runs as a separate program over its command line.
+  DebridPulse links none of its code.
+
+Shipping these programs in the same container image as DebridPulse places them
+side by side; it does not make them, or DebridPulse, a derivative of one
+another.
+
+### Recorded disposition (1.0.13)
+
+The project's licensing review of the 1.0.13 release candidate (2026-10-21)
+characterized this architecture from the source and the qualified image. It
+found no demonstrated DebridPulse-level copyleft incompatibility arising from
+bundling these separate programs: DebridPulse's application code
+(GPL-2.0-or-later) imports none of SABnzbd, `hachoir`, `guessit` or
+`sabctools`, and links nothing of rsync.
+The operator has accepted that finding and closed the DebridPulse-level
+copyleft-combination question on this separate-program evidence.
+
+The remaining question belongs to upstream SABnzbd, not to DebridPulse: how
+GPL-2.0-**only** `hachoir` and LGPL-3.0-or-later `guessit` combine within
+SABnzbd's own program. DebridPulse ships that program as upstream distributes
+it, keeps upstream's notices and the dependencies' own licence files, and does
+not rewrite or replace its dependencies.
+
+This is a recorded project disposition, not a legal certification of the
+distribution as a whole, and no statement here is legal advice.
 
 Two further packages carry weak/file-level copyleft that imposes no obligation
 on the combined work: `orjson` (MPL-2.0 AND (Apache-2.0 OR MIT)) and `certifi`
@@ -249,9 +293,9 @@ client. DebridPulse runs it only as a separate program, over argv, and links
 none of its code; its rsync-over-SSH transport is DebridPulse's own SSH
 channel on the already-shipped `asyncssh`, so no OpenSSH client is added. That
 a GPL-3.0-or-later program now ships beside this GPL-2.0-or-later project is
-recorded here as a fact; what it means for the combined image is part of the
-same project/licence review the copyleft section above requires before
-release.
+recorded here as a fact. It is a separate program, covered by the disposition
+recorded in the copyleft section above. Its corresponding source is located in
+`SOURCE_OFFER.md`.
 
 `ffmpeg` (`ffmpeg` and `ffprobe`, package `7:7.1.5-0+deb13u1+dp1`) is the
 Media Downloads executor's one local finalizer: DebridPulse runs it only as a
@@ -326,10 +370,35 @@ A dependency update is incomplete until all of the following agree:
 | Lucide Icons UI subset | Source geometry pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`; only the shell/navigation glyphs required by DebridPulse are embedded locally in `frontend/static/operator-title.js` | ISC; Feather-derived icons retain MIT terms ([bundled notice](../licenses/Lucide-ISC-MIT.txt)) |
 
 The Lucide subset is intentionally local: DebridPulse does not load Lucide from
-a runtime CDN. The bundled subset currently covers the application shell and
-may be extended with additional upstream glyph geometry as later v1.0.11 pages
+a runtime CDN. The bundled subset covers the application shell, the individual
+icon files under `frontend/static/icons/lucide/`, and the login page's
+ShieldUser mark, which is drawn from one of those files (its own header names
+the upstream commit above). It may be extended with additional upstream glyph geometry as later v1.0.11 pages
 are migrated. Any added Lucide glyph remains subject to the same bundled
 upstream notices.
+
+## Third-party artwork
+
+The provider marks and host icons in the web interface are third-party
+artwork. They are not covered by DebridPulse's GPL grant and are not licensed
+by DebridPulse to anyone; see the `NOTICE` section "Third-party trademarks and
+artwork". Their rights, provenance and modification questions are recorded per
+file in the repository's `docs/THIRD_PARTY_ARTWORK.md`, and remain deferred to
+1.0.14 as an accepted risk for 1.0.13.
+
+Two of those files are copies from openly licensed icon collections. Their
+collections' licences require the following attribution:
+
+| File in the image | Copied unchanged from | Licence |
+|---|---|---|
+| `frontend/static/icons/hosts/mega.svg` | `svg/mega.svg` of selfh.st icons, <https://github.com/selfhst/icons> | CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/> ([licence text](../licenses/selfhst-icons-CC-BY-4.0.txt)) |
+| `frontend/static/icons/providers/real-debrid.svg` | `svg/real-debrid.svg` of homarr-labs/dashboard-icons, <https://github.com/homarr-labs/dashboard-icons>, Copyright (c) 2024 Bjorn Lammers, Meier Lukas, Thomas Camlong and Homarr Labs | Apache-2.0 ([licence text](../licenses/dashboard-icons-Apache-2.0.txt)) |
+
+Neither file was modified. Neither collection has a NOTICE file, and selfh.st
+asks for no particular form of attribution, so the collections are credited by
+name and link; neither collection names the individual creator of these two
+icons. These licences cover only the collections' own contribution: the MEGA and Real-Debrid marks belong to their owners and are
+not licensed by them.
 
 ## Browser-loaded resources
 

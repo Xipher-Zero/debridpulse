@@ -24,7 +24,12 @@ from api.routes import _provider_display_name, _public_transfer_presentation
 from application import dispatch_admission as live_admission
 from application.dependencies import get_application
 from application.manual_candidate_failover import preview_switch, switch_candidate
-from application.manual_route_switch import root_route_providers, switch_route_provider
+from application.manual_route_switch import (
+    root_route_providers,
+    switch_route_provider,
+    switch_transfer_provider,
+    transfer_route_providers,
+)
 from transfers.manual_route_switch import route_switch_offer, switch_available, torrent_root
 from application.service import ApplicationService
 from core import search_contract
@@ -524,6 +529,54 @@ async def replace_root_route(
         return await switch_route_provider(application, transfer_id, provider_id,
                                            expected_provider_id=expected_provider_id, expected_demand=expected,
                                            artifact_id=artifact_id, expected_root_id=expected_root_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Transfer not found") from None
+    except TransferError as exc:
+        raise HTTPException(status_code=409, detail=exc.error.as_dict()) from None
+
+
+@router.get("/torrents/{transfer_id}/route/transfer")
+async def read_transfer_route(transfer_id: int, application: ApplicationService = Depends(get_application)):
+    """Read-only provider status of a transfer of several roots, for one
+    best-effort transfer-level choice (``transfers.manual_route_switch.
+    transfer_route_status``): for each provider, every participating root's
+    status and how many roots it may take now. Nothing is reserved; the
+    switch re-checks each root."""
+    try:
+        status = await transfer_route_providers(application, transfer_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Transfer not found") from None
+    if status is None:
+        raise HTTPException(status_code=404, detail="Transfer has no transfer-level provider choice")
+    definitions = application.definitions
+    for item in status["providers"]:
+        item["provider_name"] = _provider_display_name(item["provider_id"], definitions)
+        for root in item["roots"]:
+            current = root.get("current_provider_id")
+            root["current_provider_name"] = _provider_display_name(current, definitions) if current else None
+    return status
+
+
+@router.post("/torrents/{transfer_id}/route/transfer")
+async def switch_transfer_route(
+    transfer_id: int,
+    provider_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+    expected_routes: Annotated[dict[Annotated[str, Field(min_length=1, max_length=128)],
+                                    Annotated[str, Field(min_length=1, max_length=128)]],
+                               Body(embed=True, max_length=2048)],
+    *,
+    request: Request,
+    application: ApplicationService = Depends(get_application),
+):
+    """Best-effort operator choice of ``provider_id`` for a transfer of
+    several roots: every root the provider may take is switched by the
+    one-root switch, naming the provider the operator saw on it
+    (``expected_routes``: root id -> provider). Not atomic: each root's
+    outcome is reported, and a refused root never undoes a switched one."""
+    expected = await require_destruction(request, application.repository, transfer_id)
+    try:
+        return await switch_transfer_provider(application, transfer_id, provider_id,
+                                              expected_routes=dict(expected_routes), expected_demand=expected)
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None
     except TransferError as exc:
@@ -1803,8 +1856,8 @@ async def list_operational_torrents(
         elif registry is not None and (scope := route_switch_offer(registry, roots, route_memo)) is not None:
             # Any other transfer: a launcher only while one of its roots that
             # produced a selected source may legitimately move. ``root`` opens
-            # its one root's picker; ``artifacts`` opens Details, where each
-            # file names the root that produced it.
+            # its one root's picker; ``transfer`` opens the transfer's
+            # best-effort provider picker (``/route/transfer``).
             item["route_switch_available"] = True
             item["route_switch_scope"] = scope
         item["request_kinds"] = request_kinds

@@ -175,10 +175,11 @@ async def test_each_root_offers_only_the_providers_that_claim_its_own_link(tmp_p
                   for link in roots}
     assert switchable == {RG1: True, PD1: False, PD2: True, RG2: False, FICHIER: False}
 
-    # The list hint opens Details (several roots); Details names each file's
-    # producing root and its provider -- never the selected candidate's.
+    # The list hint opens the transfer's provider picker (several roots, B1);
+    # Details names each file's producing root and its provider -- never the
+    # selected candidate's.
     row = await listed(lab_)
-    assert (row["route_switch_available"], row["route_switch_scope"]) == (True, "artifacts")
+    assert (row["route_switch_available"], row["route_switch_scope"]) == (True, "transfer")
     assert "route_provider_id" not in row
     files = await details(lab_)
     assert {name: (route["root_id"], route["provider_id"], route["switch_available"])
@@ -611,9 +612,13 @@ def test_every_root_provider_launcher_has_one_renderer_and_one_route_caller():
     assert "window.DPRootProvider.artifactBadgeMarkup(detail, file)" in rows
     assert "/route" not in rows and "route_root" not in rows
     assert "artifactBadgeMarkup: artifactBadgeMarkup" in owner
-    # The several-roots launcher opens Details and never switches by itself.
-    files = owner.split("async function openFiles(transferId) {", 1)[1].split("\n  }\n", 1)[0]
-    assert "window.showDetail(transferId)" in files and "switchProvider" not in files and "open(" not in files
+    # The several-roots launcher opens the transfer's provider picker itself
+    # (B1 supersedes D-T2a): it never navigates to Details, and its one
+    # transfer-wide action is the backend's per-root composite.
+    assert "openFiles" not in owner and "showDetail(transferId)" not in owner.split("async function refreshSurfaces", 1)[0]
+    assert "(scope === 'transfer' ? '/transfer'" in owner
+    assert "'/api/torrents/' + transferId + '/route/transfer'" in owner
+    assert "body: JSON.stringify({provider_id: providerId, expected_routes: expectedRoutes})" in owner
     # The picker and the switch name the file and the root the operator saw.
     assert "'?artifact_id=' + encodeURIComponent(artifactId)" in owner
     assert "body.artifact_id = Number(subject.artifactId)" in owner

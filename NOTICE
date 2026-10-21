@@ -30,3 +30,25 @@ licenses are also inventoried in docs/DEPENDENCY_LICENSES.md.
 The bencode2 0.3.33 wheel omits its declared MIT license file. Its upstream
 copyright and permission notice is therefore bundled explicitly at
 licenses/bencode2-MIT.txt.
+
+Third-party trademarks and artwork
+----------------------------------
+
+DebridPulse identifies the services it works with by name and, in its web
+interface, by small service artwork: provider marks and host icons. Those
+names, logos and icons remain the property of their respective rights holders
+and are used only to identify the service concerned. They are not DebridPulse's own work and are
+not covered by the GNU General Public License grant in LICENSE merely because
+they appear in this repository or in a DebridPulse container image; that grant
+covers DebridPulse's own code and artwork only. Their presence does not imply
+any affiliation with, sponsorship by or endorsement from any service owner.
+This notice does not license that artwork to anyone and does not itself
+establish permission to redistribute it.
+
+docs/THIRD_PARTY_ARTWORK.md (in the source repository) records, for each such
+file, its rights holder where known, its origin and the open rights questions,
+which remain deferred to DebridPulse 1.0.14 as an accepted risk for 1.0.13.
+Two files are copies from openly licensed icon collections; their attribution
+is given in docs/DEPENDENCY_LICENSES.md, with the licence texts at
+licenses/selfhst-icons-CC-BY-4.0.txt and
+licenses/dashboard-icons-Apache-2.0.txt.

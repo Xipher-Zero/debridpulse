@@ -250,12 +250,60 @@ def root_switches(registry, roots: dict[str, dict], memo: dict | None = None) ->
 def route_switch_offer(registry, roots: dict[str, dict], memo: dict | None = None) -> str | None:
     """The bounded list's launcher for a transfer that is not one torrent
     root: ``"root"`` when its one root is switchable now (the launcher opens
-    that root's picker), ``"artifacts"`` when at least one of its several
-    roots is (the launcher opens Details, where each file names the root that
-    produced it; it never switches every root of a provider), else ``None``."""
+    that root's picker), ``"transfer"`` when at least one of its several
+    roots is (the launcher opens the transfer's provider picker,
+    ``transfer_route_status``: a best-effort choice that each root's own
+    switch then admits or refuses), else ``None``."""
     if not any(root_switches(registry, roots, memo).values()):
         return None
-    return "root" if len(roots) == 1 else "artifacts"
+    return "root" if len(roots) == 1 else "transfer"
+
+
+# One root's part in a transfer-level provider choice (``transfer_route_status``).
+# ``eligible``: the provider may take the root now (the root's own picker would
+# offer it). ``already_selected``: the root's committed route is that
+# provider. ``unsupported``: the provider does not claim the root's link.
+# ``unavailable`` (with ``provider_choices``' reason) and ``preparing``: it
+# claims the link but cannot take it now. ``inactive`` (the transfer is
+# finished), ``decomposed`` (the root expanded into several files of a
+# transfer of several roots), ``shared`` (another transfer's file uses a
+# source this root produced) and ``no_route`` (nothing committed yet): the
+# root is not a switch subject at all (``manual_root``).
+ROOT_ELIGIBLE, ROOT_ALREADY_SELECTED, ROOT_UNSUPPORTED, ROOT_UNAVAILABLE, ROOT_PREPARING = (
+    "eligible", "already_selected", "unsupported", "unavailable", "preparing")
+ROOT_INACTIVE, ROOT_DECOMPOSED, ROOT_SHARED, ROOT_NO_ROUTE = "inactive", "decomposed", "shared", "no_route"
+
+
+def _root_exclusion(facts: dict) -> str | None:
+    """Why a root of a transfer of several roots is not a switch subject for
+    any provider (``manual_root`` and ``root_actionable``), or ``None``."""
+    if facts["terminal"]:
+        return ROOT_INACTIVE
+    if facts["decomposed"]:
+        return ROOT_DECOMPOSED
+    if facts.get("shared"):
+        return ROOT_SHARED
+    if not facts["current"]:
+        return ROOT_NO_ROUTE
+    return None
+
+
+def root_participation(facts: dict, entry: dict | None, provider_id: str) -> tuple[str, str | None]:
+    """``(status, reason)`` of one root for ``provider_id``, from its route
+    facts and that provider's entry in the root's own read model
+    (``_providers``; ``None`` when the provider does not claim the root)."""
+    excluded = _root_exclusion(facts)
+    if excluded:
+        return excluded, None
+    if facts["current"] == provider_id:
+        return ROOT_ALREADY_SELECTED, None
+    if entry is None:
+        return ROOT_UNSUPPORTED, None
+    if entry["selectable"]:
+        return ROOT_ELIGIBLE, None
+    if entry["status"] == PREPARING:
+        return ROOT_PREPARING, None
+    return ROOT_UNAVAILABLE, entry.get("reason")
 
 
 def standby_choice(standby: dict, *, upstream_selection: bool = False,
@@ -367,6 +415,57 @@ async def root_providers(engine, transfer_id: int, root_id: str) -> dict | None:
             "providers": providers,
             "switchable": manual_root(facts, single=len(roots) == 1) and root_actionable(facts)
             and any(entry["selectable"] for entry in providers)}
+
+
+async def transfer_route_status(engine, transfer_id: int) -> dict | None:
+    """The provider status of a transfer of SEVERAL roots, for one
+    best-effort transfer-level choice. Its participants are the roots that
+    produced the selected candidate of at least one unfinished file
+    (``relevant``); a root supplying only alternates takes no part. For every
+    provider claiming at least one participant, each participant's
+    ``root_participation`` and the counts of roots it may take now
+    (``eligible``) or already has (``already_selected``). Each root's status
+    is exactly what that root's own picker (``root_providers``) reports; a
+    choice made from it is admitted or refused root by root by the one-root
+    switch, which re-reads everything. Nothing here promises that a switch
+    will commit, or reserves anything. ``None`` for a transfer of one root:
+    a torrent root and a single link keep their own picker."""
+    roots = await engine.repository.root_route_facts_by_root(int(transfer_id))
+    if len(roots) < 2:
+        return None
+    participants = [facts for facts in roots.values() if facts["relevant"]]
+    choices: dict[str, dict[str, dict]] = {}
+    order: list[str] = []
+    for facts in participants:
+        if facts["current"] and facts["current"] not in order:
+            order.append(facts["current"])
+        if _root_exclusion(facts) is None:
+            entries = await _providers(engine, transfer_id, facts)
+            choices[facts["root_id"]] = {entry["provider_id"]: entry for entry in entries}
+            order.extend(entry["provider_id"] for entry in entries if entry["provider_id"] not in order)
+    providers = []
+    for provider_id in order:
+        rows = []
+        for facts in participants:
+            status, reason = root_participation(facts, choices.get(facts["root_id"], {}).get(provider_id),
+                                                provider_id)
+            rows.append({"root_id": facts["root_id"], "status": status, "reason": reason,
+                         "current_provider_id": facts["current"], "artifact_ids": list(facts["artifacts"])})
+        eligible = sum(row["status"] == ROOT_ELIGIBLE for row in rows)
+        providers.append({"provider_id": provider_id, "eligible": eligible,
+                          "already_selected": sum(row["status"] == ROOT_ALREADY_SELECTED for row in rows),
+                          "participants": len(rows), "selectable": eligible > 0, "roots": rows})
+    return {"transfer_id": int(transfer_id), "scope": "transfer", "participants": len(participants),
+            "providers": providers, "switchable": any(item["selectable"] for item in providers)}
+
+
+def transfer_choice_refusal(provider_id: str | None) -> TransferError:
+    """Why a transfer-level choice cannot be made at all: the transfer is not
+    one of several roots (``None``), or ``provider_id`` claims none of its
+    participating roots."""
+    if provider_id is None:
+        return _refusal(Category.UNSUPPORTED_REQUEST, domain=Domain.REQUEST)
+    return _unselectable(None, provider_id)
 
 
 def subject_root(roots: dict[str, dict], artifact_id: int | None) -> str | None:

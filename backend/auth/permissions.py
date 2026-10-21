@@ -164,6 +164,7 @@ ACTIONS: dict[str, Capability] = {
     # Transfers: read.
     "api.operational_downloads.list_operational_torrents": _R,
     "api.operational_downloads.read_root_route": _R,
+    "api.operational_downloads.read_transfer_route": _R,
     "api.operational_downloads.preview_artifact_candidate": _R,
     "api.routes.get_torrent": _R,
     "api.routes.torrent_files_preview": _R,
@@ -209,6 +210,7 @@ ACTIONS: dict[str, Capability] = {
     "api.file_selection_routes.confirm_file_selection": _DES,
     "api.operational_downloads.activate_artifact_candidate": _DES,
     "api.operational_downloads.replace_root_route": _DES,
+    "api.operational_downloads.switch_transfer_route": _DES,
     # Everything below is Admin: configuration, services and engines,
     # diagnostics, the Activity Log, global and executor-level controls,
     # backups and maintenance.

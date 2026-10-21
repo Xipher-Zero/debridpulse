@@ -90,6 +90,9 @@ async def test_oidc_only_uses_local_landing_page_without_password_or_auto_redire
     body = response.body.decode()
     assert response.status_code == 200
     assert "Sign in with Authentik" in body
+    # The button's mark is the inline Lucide ShieldUser, not an image asset.
+    assert '<svg class="oidc-mark" ' in body and '<circle cx="12" cy="11" r="4"/>' in body
+    assert '<img class="oidc-mark"' not in body
     assert 'name="username"' not in body
     assert 'name="password"' not in body
     assert "location" not in response.headers

@@ -43,7 +43,7 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 | **Usenet** | A bundled, private SABnzbd downloads NZBs from your own news servers |
 | **Network sources** | FTP & SFTP, SCP, rsync, WebDAV and Metalink sources, with sign-in prompts when a server asks |
 | **Media Downloads** | yt-dlp downloads from media pages it explicitly recognizes, without re-encoding |
-| **Provider switching** | Switch the provider of a torrent or of one link while it downloads |
+| **Provider switching** | Switch the provider of a torrent, of one link, or of every link of a download at once (best effort, link by link) while it downloads |
 | **Sonarr and Radarr** | DebridPulse acts as a qBittorrent or SABnzbd download client through Integration Delivery Profiles |
 | **User accounts and roles** | Admin, User, ReadOnly User and Integration accounts enforced by the server |
 | **Backups and restore** | Scheduled backups and in-application restore |

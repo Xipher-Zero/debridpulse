@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from api import auth_routes
@@ -10,7 +9,7 @@ from api import auth_routes
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROUTES = ROOT / "backend" / "api" / "auth_routes.py"
-OIDC_MARK = ROOT / "frontend" / "static" / "authentik-oidc.svg"
+SHIELD_USER = ROOT / "frontend" / "static" / "icons" / "lucide" / "shield-user.svg"
 
 
 def read(path: Path) -> str:
@@ -36,7 +35,7 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'data-password-reveal' in source
     assert 'or continue with user name and password' in source
     assert 'Sign in with {provider_name}' in source
-    assert 'authentik-oidc.svg' in source
+    assert '_lucide_inline_html("shield-user", "oidc-mark")' in source
     assert 'Password-only LAN deployments may operate over HTTP.' in source
     assert 'OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.' in source
 
@@ -140,11 +139,23 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
         assert forbidden not in script
 
 
-def test_login_uses_exact_reviewed_oidc_artwork() -> None:
+def test_login_oidc_mark_is_the_white_lucide_shield_user() -> None:
+    """The OpenID Connect button's mark is Lucide ShieldUser from the shipped
+    canonical icon file, drawn in white on the gradient button. The former
+    third-party artwork file no longer ships and nothing reads it."""
     source = read(AUTH_ROUTES)
-    assert OIDC_MARK.is_file()
-    assert hashlib.sha256(OIDC_MARK.read_bytes()).hexdigest() == (
-        "1adfd82439678a210b8011b18b3451bf032d2f39bdb00a54029e8c021757ff59"
-    )
+    assert not (ROOT / "frontend" / "static" / "authentik-oidc.svg").exists()
+    assert "authentik-oidc" not in source
+    mark = auth_routes._AUTH_OIDC_MARK_HTML
+    assert mark.startswith('<svg class="oidc-mark" ') and 'stroke="currentColor"' in mark
+    assert 'stroke-width="2"' in mark and 'aria-hidden="true"' in mark and "<img" not in mark
+    canonical = SHIELD_USER.read_text()
+    assert "Lucide shield-user @ 23f9abc4ed0146cffededd3d7f94c1018bfdf693" in canonical
+    for geometry in ('<circle cx="12" cy="11" r="4"/>', '<path d="M6.376 18.91a6 6 0 0 1 11.249.003"/>'):
+        assert geometry in canonical and geometry in mark
+    assert ".oidc-mark { position:absolute;left:18px;width:28px;height:28px;color:#fff;opacity:1; }" in source
+    assert ".oidc.secondary .oidc-mark { color:var(--text); }" in source
+    css = source.split(".oidc-mark {", 1)[1].split("}", 1)[0]
+    assert "filter" not in css and "opacity:1" in css
     assert '_static_asset("logo-128.png")' in source
     assert '_static_asset("favicon.svg")' in source

@@ -2,8 +2,9 @@
 
 The inventory must keep stating what ships and what each package's licence is.
 It must NOT encode an engineering assertion that the combined-work analysis has
-been approved -- that conclusion belongs to a project/licence review, and
-writing it down as settled is how an unreviewed obligation ships.
+been legally approved. The 1.0.13 licensing review's separate-program
+disposition is recorded as a project disposition, never as a legal
+certification.
 
 `hachoir` is characterized, not assumed: it is a hard, unguarded top-level
 import in the service's own `sabnzbd/misc.py`, so the service cannot start
@@ -43,12 +44,22 @@ def test_the_inventory_does_not_claim_an_approved_or_proven_conclusion():
     assert not found, f"the inventory asserts a legal verdict it cannot: {found}"
 
 
-def test_the_copyleft_section_defers_to_project_license_review():
-    lowered = text().lower()
-    assert "project/licence review" in lowered or "project/license review" in lowered, (
-        "the copyleft conclusion must be marked as requiring project/licence review"
-    )
-    assert "requires" in lowered or "pending" in lowered
+def test_the_copyleft_section_records_the_disposition_without_certifying_it():
+    """The 1.0.13 licensing review closed the DebridPulse-level question on
+    separate-program evidence. The inventory records that disposition, keeps
+    the SABnzbd-internal question as upstream's, and does not present either
+    as a legal certification."""
+    body = text()
+    section = body.split("## Copyleft review", 1)[1].split("\n## ", 1)[0]
+    lowered = section.lower()
+    assert "### Recorded disposition (1.0.13)" in section
+    flat = " ".join(lowered.split())
+    assert "separate program" in flat and "application code imports no sabnzbd code" in flat
+    assert "belongs to upstream sabnzbd" in flat
+    assert "not a legal certification" in flat
+    for overstatement in ("requires project/licence review before release", "legally cleared",
+                          "certified compliant", "certifies compliance"):
+        assert overstatement not in flat, overstatement
 
 
 def test_the_copyleft_section_still_records_the_facts():

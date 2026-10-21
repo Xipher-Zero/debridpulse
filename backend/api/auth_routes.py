@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -209,7 +210,8 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 :root[data-theme="light"] .secondary { background:rgba(255,255,255,.40); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .secondary { background:rgba(255,255,255,.40); } }
 .action-arrow { position:absolute;right:20px;width:21px;height:21px;color:var(--icon-accent-strong);opacity:.96; }
-.oidc-mark { position:absolute;left:18px;width:38px;height:38px;object-fit:contain;filter:drop-shadow(0 0 10px rgba(var(--accent-rgb),.23)); }
+.oidc-mark { position:absolute;left:18px;width:28px;height:28px;color:#fff;opacity:1; }
+.oidc.secondary .oidc-mark { color:var(--text); }
 .oidc.secondary .oidc-separator { position:absolute;left:66px;top:10px;bottom:10px;width:1px;background:var(--border); }
 .divider { display:flex;align-items:center;gap:18px;color:var(--text3);font-size:13px;margin:27px 0 0;white-space:nowrap; }.divider:before,.divider:after { content:"";height:1px;background:var(--border);flex:1; }
 .muted { color:var(--text3);font-size:13px;line-height:1.55; }
@@ -219,7 +221,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 @media (max-width:700px) {
   body { padding:48px 14px 24px;align-items:start; }.version { right:14px;bottom:12px;font-size:11px; }
   .card { width:100%;padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
-  .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:34px;height:34px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
+  .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:26px;height:26px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
 @media (max-width:460px) {
   .card { padding-left:17px;padding-right:17px; }.brand { font-size:32px; }.divider { gap:10px;font-size:11px; }.auth-action { font-size:14px;padding-left:52px;padding-right:48px; }
@@ -319,14 +321,6 @@ def _static_asset(name: str) -> Path:
     return asset
 
 
-def _data_image_html(name: str, mime: str, class_name: str) -> str:
-    encoded = base64.b64encode(_static_asset(name).read_bytes()).decode("ascii")
-    return (
-        f'<img class="{class_name}" alt="" aria-hidden="true" '
-        f'src="data:{mime};base64,{encoded}"/>'
-    )
-
-
 def _auth_mark_html() -> str:
     """Build the self-contained login mark from the reviewed large-format asset."""
     encoded = base64.b64encode(_static_asset("logo-128.png").read_bytes()).decode("ascii")
@@ -336,9 +330,21 @@ def _auth_mark_html() -> str:
     )
 
 
+def _lucide_inline_html(name: str, class_name: str) -> str:
+    """Inline one shipped Lucide icon (``icons/lucide/<name>.svg``, the canonical
+    pinned geometry) so it takes its colour from CSS: the file's own stroke
+    colour gives way to ``currentColor``, and nothing else is changed."""
+    source = _static_asset(f"icons/lucide/{name}.svg").read_text(encoding="utf-8")
+    body = re.sub(r"<!--.*?-->", "", source.split(">", 1)[1].rsplit("</svg>", 1)[0], flags=re.S).strip()
+    return (
+        f'<svg class="{class_name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>'
+    )
+
+
 def _auth_oidc_mark_html() -> str:
-    """Embed the reviewed Authentik/OIDC artwork without opening public image access."""
-    return _data_image_html("authentik-oidc.svg", "image/svg+xml", "oidc-mark")
+    """The OpenID Connect button's mark: Lucide ShieldUser, white on the button."""
+    return _lucide_inline_html("shield-user", "oidc-mark")
 
 
 def _auth_favicon_html() -> str:
