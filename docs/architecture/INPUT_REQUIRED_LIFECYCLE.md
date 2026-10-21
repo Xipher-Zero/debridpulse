@@ -204,6 +204,14 @@ sibling execution handles continue to be observed and reconciled. A safely
 suspended pre-execution auth wait therefore releases ordinary capacity while
 preserving durable ownership and path reservations.
 
+The block is per transfer, not per root: while one root's challenge is current,
+no other request of the same transfer is admitted to resolution either. An
+operator provider switch of another root of that transfer still commits (its
+pinned route opens and the root's earlier download is stopped), but that root
+resolves and downloads on the chosen provider only after the challenge is
+answered; until then it waits with nothing running. A switch of the challenged root itself is refused as busy. Other
+transfers are unaffected. This serialization is deliberate in 1.0.13.
+
 Submitting input resolves only the missing-input condition. It does not override:
 
 - global pause;

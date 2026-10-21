@@ -97,18 +97,41 @@ The local aria2 daemon does **not** need to participate in BitTorrent swarms. Al
 
 ## v1.0.12 provider and executor support matrix
 
-This matrix is the **implemented and qualified v1.0.12 provider/executor set**. Anything not listed here is not supported today.
+This matrix is the **implemented and qualified v1.0.12 provider/executor set**. Anything not listed here is not supported in 1.0.12 (see the 1.0.13 section below).
 
 | Integration / source | Support in 1.0.12 | Notes |
 |---|---|---|
 | **AllDebrid** | Magnets, `.torrent` files, and HTTP(S) resources currently claimed by AllDebrid's validated dynamic supported-host state | Provider owns native host inventory, aliases/regex interpretation, availability and LKG/freshness semantics |
 | **HTTP & HTTPS** | Generic direct `http` and `https` resources | Produces direct candidates for aria2; conventional HTTP resource username/password authentication is supported after a genuine challenge |
 | **aria2** | HTTP(S) executor | Executes/observes native work; does not own universal provider routing, logical lifecycle, or universal retry policy |
-| **1.0.13 expansion** | FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations, and the executor/settings UI expansion that several real executor shapes would justify | Future work. Not implemented in 1.0.12, and not an unmet 1.0.12 requirement. No implementation order is promised |
+| **1.0.13 expansion** | FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations, and the executor/settings UI expansion that several real executor shapes would justify | Not implemented in 1.0.12, and not an unmet 1.0.12 requirement. Built on the `1.0.13` branch, which is not yet released; see the 1.0.13 section below |
 
-The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists today**.
+The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists in 1.0.12**; 1.0.13 adds SFTP, SCP and rsync over SSH (see below).
 
-`STAGED-MATERIALIZATION-001` is likewise deferred to 1.0.13: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion.
+`STAGED-MATERIALIZATION-001` was likewise deferred from 1.0.12: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion. It is not implemented on the `1.0.13` branch either; the `CHANGELOG.md` `[1.0.13]` entry lists it as planned.
+
+### 1.0.13 (on the `1.0.13` branch, not yet released)
+
+The `1.0.13` branch carries the next release. It is **not published as a release image yet**; the
+install examples below still name `v1.0.12`. Its integrations are:
+
+| Integration | Kind | Enabled on a new installation |
+|---|---|---|
+| AllDebrid | Provider | Yes (needs an API key to resolve anything) |
+| HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV | Direct-source providers | Yes |
+| Multimeta (Metalink) | Provider | Yes |
+| Media Downloads (yt-dlp) | Provider with its own executor | Yes |
+| aria2, rsync | Executors | Yes |
+| Debrid-Link, Premiumize, Real-Debrid, TorBox | Providers | No — enable in Settings |
+| Usenet (bundled SABnzbd) | Provider with its own executor | No — enable in Settings |
+
+1.0.13 also lets Sonarr and Radarr use DebridPulse as a qBittorrent or SABnzbd download client
+through Integration Delivery Profiles, lets you switch the provider of a torrent or of a single link,
+and adds in-application backup and restore. The [`CHANGELOG.md`](CHANGELOG.md) `[1.0.13]` entry
+describes every change and lists the **known limitations** of 1.0.13 (what cannot be switched,
+when a backup is promoted automatically, how a question waiting for input holds up the rest of a
+download, what cancelling one volume of a split archive does to extraction, and what Sonarr and
+Radarr see).
 
 ---
 

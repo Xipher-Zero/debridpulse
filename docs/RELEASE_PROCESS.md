@@ -68,6 +68,15 @@ Before publication, verify all release surfaces agree:
 - PR title/body and release notes
 - OCI image `version` and `revision` labels
 
+While the top `CHANGELOG.md` entry is titled `Development`, the README and Compose install
+examples must keep naming the newest *released* entry's image (for example `v1.0.12` while
+`[1.0.13] — Development` is open); the documentation contract tests refuse an image reference to
+the development `VERSION` in the README or Compose example. Releasing therefore changes these
+surfaces together in one release-identity commit: the top entry's title no longer says
+`Development` (it takes the release's title), and the README, Compose and landing-page image
+references move to the new version. That commit is the release candidate, and it is the one whose
+exact SHA must pass every required workflow.
+
 Do not reuse an existing historical Git tag. If inherited/upstream tags occupy the next apparent version numbers, advance to the next available release identity rather than deleting or rewriting historical tags.
 
 ## Preferred GitHub operations

@@ -76,6 +76,8 @@ Browser users authenticate through the DebridPulse login page. REST clients may 
 curl -u operator:'your-password' https://debridpulse.example/api/stats
 ```
 
+Every new local password (set in Settings, chosen by an Admin when creating or resetting an account, or changed by the account itself) must be at least eight characters; an existing shorter password keeps working. Failed sign-ins slow further attempts from the same network address and are counted per username, so one account's successful sign-in never clears the failures recorded against another; there is no account lockout. Proving the current password when changing your own goes through the same throttle, and the change applies only if the password is still the one just proved.
+
 Changing or clearing an account's password ends that account's browser sessions and clears the HTTP Basic verification cache. Disabling Username & Password immediately disables HTTP Basic and invalidates password-derived browser sessions. Disabling the mechanism does not erase the stored hash unless **Clear stored password** is explicitly selected.
 
 ## OpenID Connect
@@ -162,6 +164,8 @@ A valid browser application session therefore remains authoritative even if an i
 ## Intentional open mode
 
 Both Username & Password and OIDC may be deliberately disabled. Moving from an authenticated deployment into no-auth mode requires explicit confirmation because the application and REST API become unrestricted.
+
+In open mode the standalone Admin answers only at the installation's own address: its IP addresses, `localhost`, a configured HTTPS Public Base URL, and names under `.local`, `.home.arpa`, `.internal` and `.localhost`. A request naming any other host, or a missing or malformed one, is refused with `Forbidden authority`, so a web page cannot use DNS rebinding to read archive passwords, accounts, settings, backups or transfers. The same decision governs saving. A bare hostname, `.lan` or another DNS alias is not trusted, and forwarded host headers are never consulted. Sign-in, API tokens, the Sonarr/Radarr connections and health checks are unaffected.
 
 DebridPulse distinguishes intentional open mode from a broken configured authentication mechanism. A configured authentication failure must not cause the application to fail open. Likewise, an existing `config.json` that cannot be read or parsed is a startup error rather than permission to invent default/open authentication state.
 

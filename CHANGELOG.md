@@ -6,6 +6,283 @@
 
 ### Added
 
+- **Media Downloads Network Source** (integration `media`, executor `yt_dlp`; transfers carry a
+  "Media Download" badge). An `http://` or `https://` address is claimed only when an installed
+  yt-dlp extractor explicitly recognizes it -- never yt-dlp's generic extractor -- and a claimed
+  address never falls back to a plain HTTP download; plain links pasted beside a media link keep
+  their own providers. The image ships hash-locked yt-dlp 2026.8.19, yt-dlp-ejs 0.8.0 and deno
+  2.9.5. DebridPulse chooses only among the formats the site offers and never re-encodes: the final
+  file is a lossless stream copy, kept in its native container when that carries every stream and
+  otherwise MKV with the chosen subtitle marked default; a subtitle no container can carry unchanged
+  fails the download rather than being dropped. The Media Downloads card holds Target Resolution,
+  Video Quality (High/Normal/Low), Preferred Video Codec (Auto/AV1/HEVC/H.264), Preferred Subtitle
+  Language (one searchable picker by language name or code, default `en`: the authored track, then a
+  generated one in the same language, never another language) and Concurrent Fragment Downloads
+  (1-8, default 1); Auto + High is yt-dlp's own selection. A link naming one video inside a playlist
+  asks, link by link, whether to fetch the **Current Video** or the **Playlist**; a playlist offers
+  its first 100 entries (saying when there are more), all checked as a draft that commits only on
+  Confirm, while X, Close or the red **Cancel Transfer** cancel it -- closing, a timeout or a
+  headless submission never selects everything. Progress shows a labelled whole-plan estimate ("~X%
+  estimated") until the file is committed. Each download runs in a sandboxed worker that reaches the
+  network only through the egress guard on public web ports (never the local network), and its
+  helper programs have no network at all. An origin's 403 on a planned stream or subtitle is retried
+  with a fresh extraction. `/integration-status/media` reports whether the packaged tools are
+  present.
+- **Premiumize premium provider** (under Premium Services). Hoster links, magnets, `.torrent`
+  uploads and NZBs resolve through a Premiumize account connected by its API key. DebridPulse asks
+  for an immediate download first and uses a Premiumize cloud transfer only as the fallback; cleanup
+  deletes only a cloud transfer DebridPulse created. Supported hosts come from Premiumize's own
+  service list (exact hosts, never subdomains). The account counts as premium until its premium end
+  date and as degraded otherwise. Additional Settings hold Prepare Backup Torrents and **Use
+  Premiumize Before Usenet** (requires an active Premiumize premium account), which tries Premiumize
+  ahead of your own news servers for NZBs. An NZB fetched through Premiumize's cloud is named the
+  way native Usenet would name it, not by Premiumize's internal hash name. Premiumize's cache
+  answers count when routing torrents, without outranking a preferred provider. Help documents the
+  Premiumize news-server settings.
+- **Sonarr and Radarr can use DebridPulse as a SABnzbd or qBittorrent download client.** The API key
+  is an Integration token: SABnzbd takes it as its `apikey` (accepted on that path only),
+  qBittorrent only as a Bearer token with no login or cookie (Sonarr v4.0.18.2971+, Radarr
+  v6.2.1.10461+). Set URL Base to `/api/sabnzbd` or `/api/qbittorrent`, or leave it blank (`/api`
+  and `/api/v2/...` reach the same adapters). Each dialect answers Not Found on every path until a
+  Delivery Profile exists with a category, a source kind that dialect accepts (an uploaded NZB; a
+  magnet or `.torrent`) and a client holding an active Integration token; token, account and profile
+  changes apply on the next request. An uploaded NZB (up to 8 MiB) is validated before it becomes
+  exactly one job, and an identical resubmission gets the same `nzo_id` while that job is live; a
+  `.torrent` is accepted up to 16 MiB, one item per client and v1 info-hash. Queue and history show
+  only verified truth with DebridPulse's own progress (SABnzbd `mb`/`mbleft`; qBittorrent size and
+  progress from the engine's byte counters or verified material), and a completed torrent is
+  importable without DebridPulse seeding anything. Removing an item acknowledges a completed
+  delivery or withdraws that job's own request, cancelling only work nobody else needs; `del_files`
+  and `deleteFiles` never delete DebridPulse's files. Once a delivery is acknowledged, DebridPulse
+  removes the empty folders it created for it (never a file or a non-empty folder). Retrying a
+  completed download not yet imported puts it back in the client's queue under the same item, and a
+  delivery whose files became unreachable says why. Through SABnzbd, a failure only you can fix
+  (credentials, configuration, provider availability or account limits, storage, an undeliverable
+  profile, files removed after download) now shows as Paused instead of Failed, so the release is
+  not blocklisted; source and content failures stay Failed. The SABnzbd connection lists only NZB
+  downloads. The *arr path setup and Remote Path Mapping fallback are documented.
+- **Integration Delivery Profiles** (Settings → Users & Access, beneath Integration Accounts). An
+  Admin defines where external clients' downloads are delivered: categories, permitted source kinds,
+  clients, retention and a DP Download Path inside the Download Folder; the profile dialog can
+  create an API token in place and shows it once. Deleting a profile, moving its folders or removing
+  a client while jobs still depend on it needs an explicit, counted confirmation (**Delete Profile &
+  Retire Jobs**); those jobs are then retired exactly as if each client had removed them (work
+  nobody else needs is cancelled; shared work and completed files stay), and `GET
+  /api/external/profiles/{id}/dependents` gives the count. A failed save changes neither the
+  profiles nor the jobs. Saving a new Download Folder reports, and Settings warns about, every
+  profile left outside it; such a profile accepts no new downloads and cannot be edited until its
+  path is moved inside, while profiles you do not touch no longer block saving the others. A refused
+  save names the profile and the field.
+- **Native external-client API** (`/api/external/v1`, described in
+  docs/architecture/EXTERNAL_CLIENT_PROTOCOL.md). An Integration token is its own client: it submits
+  under a required idempotency key as exactly one request, polls its own jobs by revision and
+  cursor, withdraws only its own request, acknowledges each delivery of verified material under an
+  Admin's profile, and may ask for pause or resume, which DebridPulse decides and never applies
+  while globally paused. Rotating the token keeps its jobs. Admins manage profiles through
+  `GET`/`PUT /api/external/profiles`.
+- **User accounts with four roles, enforced by the server.** Every sign-in -- local password or OIDC
+  -- resolves to one durable account with one role: **Admin** (everything), **User** (reads every
+  transfer, submits, operates any transfer, and may remove work only when every outstanding request
+  it serves is their own), **ReadOnly User** (reads) or **Integration** (submits, sees and withdraws
+  its own requests, scrapes metrics and reads the aggregate `/api/stats`, for example for Homepage).
+  An action the policy does not classify is refused, and the interface builds only the controls the
+  role allows. A default Admin and a default Integration account always exist; with no login
+  configured you are the default Admin. Local credentials move from `config.json` into the database
+  (a `config.json` username and password stay the offline recovery for the default Admin). A first
+  OIDC sign-in creates an account with the Default Role set under Authentication → OIDC Access
+  Control and fills in its Display Name, Actual Name and Email; an email never links or authorizes
+  anything. **Users & Access** (Admin) adds local accounts, changes roles, resets passwords,
+  disables, enables, removes, merges two or more accounts in one step, and issues labelled
+  Integration tokens shown once (revoked tokens leave the list). A role change reaches open browsers
+  without signing them out; disabling, removing or resetting an account ends its sessions; the last
+  usable Admin is protected. The live event stream carries only public data and ends with its
+  session. Backups carry account password verifiers, a restore that would leave no usable Admin is
+  refused, and the database reset keeps accounts.
+- **Transfer Details shows who requested each download, and you can withdraw your own request.**
+  Every accepted submission records whose request it is, including a repeat that joins an existing
+  transfer. **Requested By**, in Details' metadata grid, lists every request the transfer serves,
+  merged ones included and withdrawn ones kept in place as history (the earliest shown, the rest
+  behind a disclosure), with **Withdraw My Request** beside it. A transfer stops only when no
+  outstanding request still needs it; disabling or removing an account withdraws its requests.
+  Transfers from before 1.0.13 carry one request credited to nobody.
+- **My Account and personal notifications.** The sidebar's session row shows your Display Name over
+  your role and opens **My Account**: Display Name, Actual Name (editable) and Email. An account
+  without an email may enter one, which stays marked unverified and self-entered and can be
+  corrected with the pencil; an email supplied by the sign-in provider is read-only. **Change
+  Password** appears only for an account with a local password. A standard User gets their own
+  Notifications page (**The Grapevine**) in the Settings slot, with private Discord and Statistics
+  Reporting cards delivered only for their own requests, beside the unchanged global Notifications.
+  New endpoints: `GET /api/account`, `PUT /api/account/actual-name`, `PUT /api/account/email` and
+  `/api/account/notifications`.
+- **You can switch the provider of a torrent, or of a link, while it downloads.** Downloads,
+  Dashboard Download Activity and Details show the provider of a transfer's current route; its
+  chevron opens a picker listing each competing provider as Ready, Preparing…, Waiting for
+  selection, Deferred, Retrying… (with the failure and the next attempt time), Failed earlier
+  (explicitly retryable), available, or unavailable with a reason, and appears only when another
+  provider can legitimately take over. Choosing one moves the route at once ("Switching to
+  <provider>..." meanwhile), keeps the material already downloaded, takes over that provider's
+  prepared backup when there is one, and hands the old provider's torrent to cleanup or keeps it as
+  a backup (see Prepare Backup Torrents). For a transfer of several links, each file in Details
+  offers the switch for the link it is downloading from (a single link opens the choice directly):
+  only providers that handle that exact link are offered, only the files using it move, a new result
+  whose size does not match is never used, and a new provider that fails for good shows its error,
+  which Retry recovers. A link shared with another transfer, or one that expanded into several files
+  of a multi-link transfer, cannot be switched. A finished, cancelled or deleted transfer shows its
+  provider as a static badge, a switch never clears a Pause or Pause All, and Route History names
+  operator switches and readiness promotions.
+- **Prepare Backup Torrents and Maximum Active Torrents.** Each premium provider's Additional
+  Settings gain **Prepare Backup Torrents**: once a magnet or torrent has started on its primary
+  provider, another provider that allows it prepares the same torrent as a backup, which never
+  touches the primary route and is never prepared for web links. It is on by default for AllDebrid,
+  Debrid-Link, Premiumize and Real-Debrid and off for TorBox, whose torrent limits are tighter;
+  every saved choice is kept, and turning it off gives that provider's backups back. If the primary
+  provider is still preparing when a backup becomes ready, the transfer moves to the ready backup at
+  once (unless the transfer is paused or already executing; a route you switched to that is still
+  waiting for usable material is moved the same way), and a switch
+  keeps the previous provider's torrent as its backup instead of deleting it. Backups never crowd
+  out primary work: **Maximum Active Torrents** (AllDebrid, Real-Debrid and TorBox; empty follows
+  the account, a value only lowers it) bounds each provider's active torrents -- AllDebrid's
+  documented 30, Real-Debrid's own active count and limit, TorBox's plan slots (Free 1, Essential 3,
+  Standard 5, Pro 10) -- and DebridPulse gives back its own unpromoted backups to free a slot before
+  creating primary work. A backup's "not now" refusal (rate, slots, quota) only defers it.
+- **A magnet or torrent goes first to a competing provider that can deliver it now.** Before
+  routing, providers that can answer without creating anything are asked, in one batched read of up
+  to 100 torrents, whether each is ready; a ready provider whose account entitlement is known is
+  preferred, otherwise the usual order stands. TorBox answers from its cache checks; AllDebrid,
+  Real-Debrid and Debrid-Link have no such read and stay unknown. A failed or slow answer is simply
+  unknown, never a failure, and web links are not asked.
+- **A durable event journal replaces the inherited activity log.** Every part of DebridPulse records
+  what happened in the same transaction that commits it -- transfer lifecycle, routes and failover,
+  provider resources and backups, file selection, consolidation, downloads, recovery, extraction,
+  sign-in questions, account status, configuration, backups, restore and reset, and each source
+  switch (who started it, from which provider and host to which, and what happened to the partial
+  data), failed source and joined alternate. Events are kept indefinitely and searchable across the
+  whole history. The Activity Log pages through them with an Event Type filter and the shared
+  five-position pager with First and Last (`GET /events` gains `after`, `last`, `more_after_next`
+  and `window_start`). Settings → Data & Maintenance → **Event Logging** holds Activity Log Page
+  Size (50/100/250) and a read-only **Recorded Events** count (`GET /api/events/count`), in place of
+  event-log retention.
+- **Activity Log Auto Refresh.** A switch beside Refresh keeps the newest page following new events
+  as they are recorded, through the live connection. It is on for every new browser tab, and your
+  choice lasts for that tab (session storage only; nothing is saved on the server). An older page or
+  one scrolled below its top is never replaced -- **Show newest events** offers the update instead
+  -- and a lost connection is shown, not claimed live, and caught up on reconnect. Only Admin
+  sessions receive these updates.
+- **Downloads is an operator-controlled queue.** Unfinished transfers are listed in their queue
+  order ahead of finished history (newest first); Newest stays one choice away, and the API default
+  stays chronological (`/torrents?order=queue` selects the queue). Drag a transfer by its Name
+  cell's grip -- across pages, or with the keyboard (Space/Enter, arrows, Escape) -- to reorder it
+  (`PATCH /torrents/{id}/priority` with `before_id`/`after_id`); a new submission joins the tail.
+  **Move to Top**, from a right-click row menu (or Shift+F10 / the Menu key) or the bulk toolbar
+  between Reset and Delete (`POST /torrents/move-to-top`), puts one or several unfinished transfers
+  first. A transfer moved above others gets an execution slot ahead of them: the fewest lower-ranked
+  downloads are stopped at a checkpoint and requeued, a download that would lose its progress is
+  interrupted only after you confirm it in the restart dialog (**Start Now** reaffirms the place
+  later), Pause and Pause All always win, and a promoted transfer waiting out a retry keeps its
+  slot. Dashboard **Download Activity** (formerly Recent Activity) shows the top of the same queue.
+- **One search language for Downloads and the Activity Log.** Text is matched literally and
+  case-insensitively (wildcard and quote characters are just characters); `#580` finds exactly
+  transfer 580, a bare `580` finds transfer 580 or the text, and a number under three digits finds
+  the ID only (and says so). Queries are 3-200 characters; anything else is refused identically by
+  both lists (`400 invalid_query`) and the last accepted results stay. Downloads searches the
+  displayed and stored names, file names, label, hash, current error, safe source hosts and the
+  names of transfers merged into it -- never request URLs. A newer search cancels a slower older
+  one, and notices arrive once as a toast instead of in a status line under the search box.
+- **Statistics Completions shows which source family delivered.** On every period, each purple
+  completion bar carries an inset stack of the completions delivered through Premium Sources
+  (magenta) and Network Sources (cyan), each family fading from 55% at its top to 20% at its bottom;
+  anything unattributed is the purple above the stack. A completion counts for a family only when
+  every current file's latest delivered download came through a provider of that family (Premium
+  Services include native Usenet and TorBox; Network Sources include Media Downloads). The stack
+  grows with its bar in the entrance animation, and the legend and tooltip give the total, each
+  family and any unattributed count.
+- **Statistics stays current while it is open.** Every KPI, breakdown and the Completions chart are
+  re-read when the journal changes (a `statistics_changed` hint on the live connection to every role
+  that may read Statistics, never Integration) and on a 30-second clock, one read at a time and at
+  least 2 s apart; live changes move the chart's bars over about 350 ms, and a failed background
+  read keeps the page as it was.
+- **The Dashboard KPI cards carry a live ECG heartbeat that follows download throughput.** The six
+  cards share one strip: each heartbeat crosses it at a fixed speed, deforming each card's flat
+  baseline, glowing beneath in the card's own accent and fading before the next one, and every
+  heartbeat has its own slightly different shape. The cadence follows current throughput against the
+  installation's highest sustained speed -- about 3.5 BPM when nothing is downloading, up to 90 BPM
+  at that peak -- and eases smoothly, never resetting or bunching. The peak is measured over a
+  trailing 30 seconds, only rises, survives restarts and is reported as
+  `sustained_peak_bytes_per_second` by `GET /api/execution/throughput`. A confirmed **Global Pause
+  All** eases the waveform flat in about 700 ms, then all six lines breathe in red until you resume.
+  The strip keeps its clock across in-app navigation and hidden tabs and comes back exactly as it
+  would have looked had it been watched; reduced motion shows the still baseline. Each card's hover
+  text now says what its number counts.
+- **Help is a complete field manual.** Eight tabs -- Quick Start, Everyday Use, How It Works,
+  Services, Engines, Settings, Troubleshooting and License -- cover every premium service and
+  network source, all four download engines, every Settings tab, what each role may do and which
+  controls are Admin-only, Requested By and withdrawing a request, and symptom-first
+  troubleshooting, all checked against how the server actually behaves; Quick Start no longer
+  assumes AllDebrid. Help sections roll open and closed. The License tab describes DebridPulse's own
+  GPL-2.0-or-later licensing and offers the GPL, Source offer and Third-party licenses documents.
+  Help now says to restart DebridPulse yourself once storage is writable again, because Docker does
+  not restart a container whose health check fails.
+- **Every Settings card explains itself.** Each of the 18 Settings cards ends its header with a help
+  chip (after its status, before its own controls) that opens the card's read-only help: what it
+  governs, what its controls mean and what they change -- including a comparison of what each role
+  can do, how Integration tokens and Delivery Profiles work, and that a statistics report goes only
+  to the Reporting Webhook (or the Discord Webhook when none is set). The Usenet card has its own
+  help. Add Local Account and Change Role describe the chosen role and open the same comparison. The
+  OIDC hints now explain scopes, the group claim and each allowlist (subjects are written
+  `issuer|subject-id`, and a user must match every list that is filled in).
+- **DebridPulse's own tooltips replace the browser's.** Hints that appeared as plain browser title
+  popups now appear in DebridPulse's own floating material in both themes, beside what they describe
+  and inside the window, after a short hover (450 ms, at once between neighbours) or at once on
+  keyboard focus, and leave on pointer or focus loss, Escape, a click, scroll, resize or navigation.
+  Nothing appears on touch, and reduced motion drops the fade.
+- **Navigation, disclosures and dialogs move.** Turning a Downloads or Activity Log page slides at
+  once (280 ms to the next page, 380 ms for two or three, 450 ms for four or more) through a blurred
+  placeholder shaped like the destination, then crossfades to the real page when it arrives; a
+  failed turn slides back. Settings and Help tabs slide, a sidebar choice slides the main view up or
+  down, Settings and Help disclosures roll open and closed, and fullscreen dialogs fade in (200 ms)
+  and out (160 ms) in place, keeping focus and the page lock until they have gone. Only the content
+  being replaced moves: headers, pagers and the sidebar keep taking clicks, nothing moves on
+  refreshes or live updates, and with reduced motion everything changes at once.
+- **Details shows an Original Resource's complete safe URL** on hover or keyboard focus, in a
+  bounded, scrollable tooltip, and offers **Copy URL** in a context menu only for an HTTP(S) link
+  that DebridPulse recorded at admission as exactly what you submitted (no credentials split out).
+  Earlier transfers and other admission paths offer no copy.
+- **Details' ERROR opens to the facts behind it.** The unchanged message is now a collapsed
+  disclosure that opens inline to who reported the error (by integration name), its origin and
+  domain, the reported diagnostic and native code verbatim, and its stage, permanence and
+  retryability; unknown facts are left out and nothing else is exposed.
+- **Details names the Usenet servers that actually delivered a transfer's articles,** beneath
+  Provider, read from the bundled Usenet service's own per-job report when the job ends and
+  attributed to a configured server only when exactly one has that name. The record is kept after
+  the service forgets the job and is exported in the Transfer Trace (format 7).
+- **Provider rejections keep the facts behind them for diagnosis.** When DebridPulse rejects a
+  provider's own answer (for example Real-Debrid files and links that do not reconcile), bounded,
+  sanitized evidence -- counts, file ids, paths, sizes and link shapes, never a link or credential
+  -- is kept with the error and exported by the Transfer Trace (format 6). It never appears in
+  notifications and never changes an error's message.
+- **Debrid-Link premium provider** (under Premium Services). Supported-hoster links, magnets and
+  `.torrent` uploads resolve through a Debrid-Link account connected by its API key. Only links a
+  Debrid-Link hoster validator accepts are claimed; a folder link offers its files as separate files
+  of the transfer (never as mirrors of one file); a torrent is a seedbox resource whose files are
+  offered only once all of them are stored; and every download link Debrid-Link generates is issued
+  fresh for each use and never stored. A free account starts only hosters Debrid-Link marks as free,
+  and an undated paid account is premium for hoster links only, with no expiry and no torrents. No
+  rate limit is applied, because Debrid-Link documents none. Settings → Services now lists Usenet
+  first and then the named premium providers alphabetically; Provider Status keeps its order.
+- **Several sources for one item in Quick Add, and cache-first TorBox web downloads.** A Quick Add
+  line of TAB-separated links is one item whose sources DebridPulse tries one at a time, in the order
+  given: the next source is admitted only when the current one fails for good, the others wait
+  untouched, and a source TorBox already holds is preferred without acquiring anything. New lines stay
+  separate items, nothing is grouped by guesswork, and link files keep their own format. TorBox web
+  downloads now check TorBox's cache first, add a cached link only from the cache, and never fall
+  through to a fresh acquisition when that cache answer has gone stale; a link not yet admitted leaves
+  nothing on the account.
+- **The Transfer Trace records why each provider did or did not take a request.** When DebridPulse
+  routes a request, it records one disposition per provider it considered (for example selected, not
+  entitled, disabled, exhausted, or held by a specialised provider's authority) on that route attempt,
+  and on a request it held or that no provider could take. The record is made at the moment of the
+  decision and never changes routing; it is exported in Transfer Trace format 5.
+
 - **FTP & SFTP Direct Sources provider** (`general_ftp`). `ftp://` and `sftp://` links resolve into
   ordinary neutral candidates that route to aria2 through the existing provider applicability and
   executor selection. The provider has its own Enable control, independent of HTTP & HTTPS; disabling
@@ -102,11 +379,14 @@
   on, and Test checks the saved connection. Provider Status and the card show your plan and how long it
   runs, in the same words as AllDebrid and Real-Debrid. TorBox handles magnets and torrent files, links
   from the hosts TorBox currently lists as usable (any other link, including one for a host TorBox
-  reports as unavailable, is left to the other providers; a web download shows the hoster it came from), and — with
-  **Usenet via TorBox** switched on in its Additional Settings — NZBs, whether uploaded or added by link.
+  reports as unavailable, is left to the other providers; a web download shows the hoster it came from), and
+  NZBs, whether uploaded or added by link, when your plan includes Usenet; **Use TorBox Before Usenet** in
+  its Additional Settings (requires TorBox Pro) decides whether TorBox is tried before or after your own
+  news servers. A TorBox Free plan (or a lapsed paid plan) stays connected but takes no new work.
   TorBox always downloads a whole torrent; DebridPulse's own file selection still decides which files you
   get. When TorBox fails for good on an NZB and your own Usenet servers are set up, the same transfer
-  continues there; turning Usenet via TorBox on never turns your Usenet servers off. Additional Settings
+  continues there; turning Use TorBox Before Usenet on never turns your Usenet servers off. Additional
+  Settings
   also hold API Calls per Minute (240, at most 300), the request and upload timeouts, and the supported-
   host refresh interval.
 - **Real-Debrid premium provider** (`realdebrid`, under Premium Services beside AllDebrid). Supported hoster
@@ -330,11 +610,153 @@
 
 ### Changed
 
+- **A torrent's file selection and identity survive every provider change.** Once you settle a
+  multi-file choice (Confirm, Close/X or the decision timeout), that set of files is the transfer's
+  intent: every later provider -- by your switch, failover or a backup -- carries it, never reopens
+  the selection and never adds a file, and a later deselect or reselect revises it. Files are
+  matched across providers by exact path, by unique name and exact size when a provider reports them
+  without folders (as Debrid-Link can), or by a complete file-list correspondence that allows one
+  extra top folder -- and only once the replacement is proven to be the same torrent (its info-hash,
+  or a chain of providers attesting it); otherwise the replacement holds instead of moving or
+  deleting anything. The collection folder is fixed at the first download, so a provider's later
+  name never moves files. An uploaded `.torrent` is named by its own `info.name`, and a v2-only
+  torrent is refused with an actionable error. Delete ends the intent, and adding the same source
+  again is a new transfer that chooses afresh.
+- **Real-Debrid is told exactly the files you selected, by its own file ids.** A torrent is created
+  with nothing selected and waits for DebridPulse's decision; the chosen files (or every id for all
+  of them) are sent once, while Real-Debrid still waits, and read back at once, so a torrent that is
+  then ready continues in the same pass. Each downloadable link is identified by Real-Debrid's own
+  answer for it, never by count or position; a torrent whose links cannot be matched exactly, or
+  that offers an archive in place of the selected files, is refused as this provider's rejection and
+  fails over, and a torrent already selected for another set is never reselected. Real-Debrid
+  backups receive the transfer's established selection as soon as they are bound, so they can be
+  promoted like any other prepared backup. Real-Debrid's code 35 (infringing file) now exhausts only Real-Debrid,
+  so the next provider takes over.
+- **A provider's own failure moves the transfer on instead of stranding it.** A provider that fails
+  after listing its files, cannot produce downloadable links from a ready torrent, or holds a remote
+  preparation without useful progress for the Stalled Timeout ends only its own route: another
+  legitimate provider (a prepared backup included) continues at once, and Route History records a
+  provider change with the exact error. A transient provider failure parks that provider until its
+  retry time (never earlier than its Retry-After) while others proceed; each provider spends only
+  its own resolution budget, and a new attempt you start resets them.
+- **Links added together route link by link among the specialised providers.** When a specialised
+  provider (such as a debrid service) claims any link of a submission, generic HTTP(S) download
+  stays closed for the whole submission as before, but each link now competes only among the
+  providers that actually claim it: no provider has to claim every link, one provider's inability on
+  one link says nothing about another, a link nobody claims is unsupported, and a link whose only
+  claimants are unhealthy waits for them. Media Downloads speaks only for its own link.
+  A link the owning specialised provider reports unsupported or exhausts is offered again only to other
+  specialised providers that claim it, never to the generic HTTP(S) route, so unsupported sibling links
+  no longer download as junk files beside the real payload; with no specialised claimant left the link
+  fails and the collection still settles (completed when its real payload completed). A TorBox NZB
+  still hands over to native Usenet as before.
+- **A slow provider no longer holds back another provider's ready links.** Freed resolution slots go
+  to the provider group holding the fewest, then the least recently served, without preempting
+  anything; a waiting equivalence decision no longer stops new provider resolution; and a newly
+  committed source is published at once, so an open Details and its Common Sources follow it.
+- **One truthful progress and speed presentation for every engine.** Speed is the byte growth over a
+  trailing four-second window, per download and summed for the total, so a gap between chunks no
+  longer reads as zero and a pause, failover or finish leaves no stale rate. While nothing is
+  verified, the engine's own progress -- bytes, else completed parts -- leads the bar, labelled not
+  yet verified; verified progress takes over once known, and repair, unpack, remux or finalization
+  shows as processing.
+  A running download whose work is not yet DebridPulse material (such as a Usenet job) shows its own
+  progress as "in progress" beside the verified figure, so SABnzbd job progress is visible again; a
+  full in-progress lane never means the download is complete.
+- **TorBox's NZB setting is now Use TorBox Before Usenet.** TorBox always offers NZBs; the option
+  only decides whether TorBox is tried before or after your own news servers, and it requires TorBox
+  Pro ("Requires TorBox Pro."). A saved choice under the former Usenet via TorBox option is carried
+  over; a plan that loses Usenet turns the option off, and a renewal does not turn it back on; a
+  refused change is rolled back with a message. **Upgrade note:** a TorBox Pro installation left at
+  the default now has TorBox as an NZB fallback behind native Usenet. Each debrid provider card's
+  Additional Settings now lead with Prepare Backup Torrents, then Maximum Active Torrents where the
+  provider has it (AllDebrid, Real-Debrid and TorBox), then any Use … Before Usenet preference, then
+  the other tunables.
+- **Backup Interval counts from the last successful scheduled backup, and Maximum Retained Backups
+  limits the count.** DebridPulse no longer takes a backup at every start: whether one is due is
+  recorded beside the database (`.dp-backup-schedule.json`), only a successful scheduled backup
+  moves it, and a failed one is retried after an hour. Retention removes a backup that is too old
+  **or** outside the newest **Maximum Retained Backups** (1-365, default 7), checked about a minute
+  after start and every five minutes. **Upgrade warning:** at the first start, existing backups
+  beyond the newest 7 are permanently deleted without confirmation, even within the age limit.
+- **Every Settings value is written exactly or refused in plain words.** A number field refuses text
+  such as `18EGGS`, exponent forms, fractions in whole-number fields, an empty value without its own
+  meaning and out-of-range values before anything is sent (they used to save 0, silently turning
+  features such as stalled-download recovery off), and every server write path now refuses
+  out-of-range, non-finite, mistyped and unknown values instead of clamping or clearing them, never
+  echoing the value back. Refusals name the field by its label ("Request Timeout (seconds) must be 5
+  or more."). Values stored by earlier versions still load. New values for Concurrent Extractions
+  are 1-8 and for Update Check Interval 0-168 hours, and the AllDebrid API calls, Backup Retention
+  and Provider Poll Interval ranges in the interface now match the server's. Local Network
+  Connections and a provider's Enable respond from the click and turn back if refused.
+- **Settings layout and wording.** Tunable cards sit at most five to a row, a related group moves
+  whole, rows are centred, and every numeric, sized or selected value is centred; group outlines are
+  lighter, and tuning cards have a visible edge in the light theme. On desktop the Services tab
+  scrolls Premium Services and Network Sources as two independent lists. Card headers read status,
+  then help, then their own controls, and wrap beside the title on narrow screens. Skip Local
+  Connection Confirmation fades with Local Network Connections. The Authentication session island is
+  more compact, with its session count in a square tile. Premium expiry dates follow your date
+  preference, the Multimeta box reads Metalink / (Multimeta), the Graceful Stop Timeout and Archive
+  Passwords texts were rewritten, and lists of three or more take the serial comma.
+- **One visual identity.** Every integration has one locked colour and Lucide glyph, used by
+  Settings and transfer badges alike: network-source badges carry their glyph, premium providers
+  stay text, and identity text keeps at least 4.5:1 contrast in both themes (Usenet #C547FF,
+  AllDebrid #FFA34E, Media Downloads #FF56AE). Debrid-Link's card shows its own logo, and every
+  Settings subsection header wears its glyph in one glowing chip. Success reads vivid emerald
+  (#00E676, deepened in the light theme for contrast), and status badges are 6 px rounded rectangles
+  everywhere.
+- **Provider Status updates at once and stays calm.** An accepted enable or disable shows
+  immediately; each provider's health appears as its own check answers, so a slow provider delays
+  only itself, and a provider shows Checking rather than healthy until it answers. Its last answer
+  is kept for up to five minutes while a check goes unanswered. Named premium providers within a
+  tier are sorted alphabetically and Usenet stays last. AllDebrid's card shows its account through
+  the shared account line, and replacing a provider's key forgets the old account.
+- **Downloads list.** The provider badge names the provider executing a transfer's work, or the one
+  that last did, so a finished multi-provider transfer keeps its provider instead of Unknown. The
+  table shows only the columns that fit whole at each width, with Actions always visible; the
+  selection checkbox moves to the last column; a selection keeps its page while you select or
+  resize, and a completed bulk action (Pause, Resume, Reset, Delete, Move to Top) ends it. The
+  unfiltered footer counts Retained Items, the sidebar Downloads badge counts unfinished transfers,
+  and a statistics refresh no longer reloads the list and an open Details.
+- **Transfers are named and dated the same everywhere.** Transfer Details, the restart confirmation
+  and Discord notifications use the same display name as Downloads (for example a media download's
+  real title instead of `watch`); nothing stored is renamed. Details' Added, Completed and Events
+  times, Dashboard Download Activity and Statistics labels follow the Downloads date format, clock,
+  time zone and year, with the exact time on hover.
+- **Statistics counts how material was actually acquired.** **Transfer Methods** replaces Most Used
+  Sources: each transfer counts once under every method that delivered its files (Debrid, Usenet,
+  HTTP(S), FTP / SFTP, SCP, rsync, WebDAV, Media Downloads), never by how it was submitted, and a
+  completion with no attributable delivery is Unattributed (API key `transfer_methods`). Monitor
+  Levels becomes **Events Severity** (always Errors, Warnings, Informational). Transfer Disposition
+  counts only settled transfers; uploads are named NZB File, Torrent File or Metalink File; counts
+  are whole numbers; an Overall & Rolling Metrics separator divides the KPI rows; and the
+  Completions chart no longer loses its x-axis at shorter heights.
+- **Sidebar and pager.** MONITOR is now **REVIEW**, and the section headings sit centred over the
+  icons. Choosing Downloads opens page 1 (search, filter and order kept), Settings opens Services
+  and Help opens Quick Start. The Log Out row carries your account and opens My Account. Downloads
+  and the Activity Log share one five-position pager with First and Last.
+- **A new NZB lands in a folder named after its own file** -- an upload's filename, or the `.nzb`
+  name a link was served under -- never after a file posted inside it; an uploaded NZB names its
+  transfer, Files row and Usenet job the same way.
+- **The image uses DebridPulse's own FFmpeg package and is about half the size.** Debian's ffmpeg
+  source is rebuilt for local stream copy only (no network protocols, no encoders, LGPL, libc only)
+  as `ffmpeg 7:7.1.5-0+deb13u1+dp1`, published write-once as
+  `ghcr.io/xipher-zero/debridpulse-ffmpeg` and consumed by digest (docs/SUPPLY_CHAIN_POLICY.md 4b).
+  FFmpeg's Matroska muxer is the one MKV finalizer. The image shrinks from 1,001.3 MB to 507.2 MB
+  uncompressed (382.3 MB to 191.1 MB compressed).
+- **Quick Add and other wording.** Quick Add reads "Submit links, files, or other supported
+  resources for download." with the hint "Paste a link, magnet, or other supported resource… / Add
+  multiple entries, one per line.", and its field grows to show the hint whole on a phone and with
+  typed lines on narrow screens. The On the Books subtitle says "It behaved." / "Most of them
+  behaved.", and the Activity Log search placeholder reads "Search events, names, or transfer ID…".
+
 - **aria2 is a separately built, digest-pinned package, compiled without BitTorrent.** The image now
   installs DebridPulse's aria2 `1.37.0+debian-3+dp2` from its own package image
   (`ghcr.io/xipher-zero/debridpulse-aria2`, consumed by multi-arch manifest digest) instead of compiling
   aria2 in every image build, which removes the hour-long emulated arm64 compile from each push. It is
-  still Debian's aria2 source with the CONNECT exact-read fix, now also configured `--disable-bittorrent`:
+  still Debian's aria2 source with the CONNECT exact-read fix (aria2 used to discard whatever followed the
+  egress guard's CONNECT reply, so an FTP server's greeting or an SSH server's banner arriving in the same
+  packet was lost and the download stalled), now also configured `--disable-bittorrent`:
   magnets and `.torrent` files keep resolving through providers exactly as before, while aria2 itself can
   no longer act as a BitTorrent client. HTTP, HTTPS, FTP, SFTP, Metalink and continuation are unchanged.
   The package is built natively per architecture, published write-once with provenance, SBOM and its
@@ -355,10 +777,14 @@
   now take only the work your current account can actually do: a free or expired account is not sent
   magnets or torrents it cannot add (AllDebrid and Real-Debrid), a TorBox account takes torrents, web
   downloads and Usenet according to its plan (web downloads still only from hosters TorBox lists as usable,
-  NZBs only with Usenet via TorBox switched on), and an AllDebrid free account only links from AllDebrid's
+  NZBs only when its plan includes Usenet; a Free or lapsed plan takes no new work), and an AllDebrid free
+  account only links from AllDebrid's
   free hosts -- so that work goes to your other providers instead of failing. When a premium plan ends,
   that takes effect at its end time even if the provider cannot be reached, and a renewal is picked up at
-  the next account check. When the provider refuses a feature because the plan does not include it, it is
+  the next account check. The account is checked at once when a Test of the saved account succeeds or the
+  provider is enabled again (a disabled provider's Test refreshes it without enabling it, and testing an
+  unsaved draft changes nothing), and otherwise every five minutes instead of hourly. When the provider
+  refuses a feature because the plan does not include it, it is
   not offered that kind of work again until the account changes; rate limits, cooldowns and full queues
   never count as that. Until DebridPulse has seen the account once, work it might take waits for it rather
   than going elsewhere early. Each connection's account information is kept separately, so connecting a
@@ -366,8 +792,12 @@
 - **Provider Status shows the account you have now.** A premium account appears under Premium Services
   with its crown entry; a free or expired one moves to Standard Services and leaves the crown, and comes
   back when premium returns -- without a restart. A provider that is connected but has lost what its
-  account should be able to do (an expired plan, a refused feature, Usenet via TorBox switched on for a
-  plan without Usenet) shows yellow rather than green; connection and sign-in problems stay red. The
+  account should be able to do (an expired plan, a refused feature), or whose account has no usable
+  source for anything it may take (a TorBox Free plan, a free Debrid-Link or AllDebrid account with no
+  free host), shows yellow rather than green; while that is not yet known (no account information yet,
+  a failing connection, malformed host flags) it shows as unresolved, never green, and any one usable
+  kind of work keeps it usable. Routing never reads this status. Connection and sign-in problems stay
+  red. The
   Real-Debrid and TorBox cards say "Free account" for any non-premium account, from the same account
   information.
 - **A transfer continues through another provider once its provider is exhausted.** When the provider
@@ -484,7 +914,194 @@
   `PGID`, must move or delete what the Usenet service downloads, give it the same group or set `UMASK`
   accordingly.
 
+### Fixed
+
+- **Restarting DebridPulse no longer wipes the Usenet service's own settings.** DebridPulse could
+  not read the first lines of the settings file the bundled Usenet service saves, so from the second
+  start on it replaced it with a bare one: news servers, categories, tuning and the service's key
+  were lost, and a Usenet integration switched off but still finishing downloads was started with no
+  servers. DebridPulse now reads and writes that file as the service does, changes only the few
+  values it owns (address, folders, never unpacking) and keeps everything else, including the
+  existing key. A Download Folder path containing a comma or `#` now reaches the service intact.
+- **Backup and restore can no longer lose your data.** A backup copies the settings file and the
+  database together while settings changes wait, so both come from the same moment. When a restore
+  fails and putting the previous state back fails too (or DebridPulse stops mid-swap), DebridPulse
+  stops using its stored data for the rest of that run -- no empty database or default settings file
+  is created in place of the originals, no other restore can start, and every request and the health
+  check say a restart is needed -- and the next start puts the original database and settings back,
+  refusing to start if anything has replaced them. A refused or rolled-back restore keeps every
+  pause you set and every hold an *arr client placed, instead of resuming everything. A backup whose
+  database has indexes, triggers or views other than the running database's is refused; every
+  earlier DebridPulse backup still restores.
+- **A download with a file you cancelled finishes once everything else has.** Cancelling a file
+  takes it out of what the transfer must deliver, so the transfer completes when the remaining files
+  have, and its size and progress no longer count the cancelled file; Retry brings it back. A file
+  the downloader itself stopped still has to finish, and a genuine failure still fails the transfer.
+  A download served by another download's copy of the same file no longer waits forever when you
+  cancel that file there: if the match was proven it reports that its shared source failed (a Retry
+  of the other download recovers it); if it was only probable, it downloads on its own.
+- **Retry and file changes on an extracted download work again.** Retrying a completed download
+  whose archives were extracted no longer fails on its own extracted files (an identical existing
+  file counts as done; anything different is still refused), and the old extraction status clears
+  with the retry. Selecting another file of a completed download extracts again instead of sticking
+  in "extracting". A file cancelled while its link's provider switch was pending stays as it was,
+  and Retry brings it back through the provider you switched to.
+- **A browser that falls behind on live updates reconnects and catches up** instead of looking
+  connected while the Dashboard and Downloads never update again; after any reconnect the page
+  re-reads the statistics and the list it shows, and a role change made while the connection opens
+  still reaches the page. "Extraction failed" is shown once, when the download finishes with the
+  failure, not again on every later update.
+- **Changing a setting no longer loses track of running rsync or Media Downloads.** Every settings
+  write (including a live speed-limit change) rebuilds the download engines; the rebuilt rsync and
+  Media Downloads engines now take over the downloads already running, so a finished rsync download
+  is no longer treated as lost, fetched again and counted as a failure, and a media download keeps
+  its progress and speed. rsync's per-download connection pass is withdrawn when its download ends,
+  and a finished download no longer keeps its passwords in memory. A live speed-limit change also
+  re-times connections already waiting on the download budget, and Unlimited clears any outstanding
+  wait.
+- **Startup is much faster on a large history.** Startup reconciliation looks stored records up by
+  index instead of scanning them; on one production database it fell from 156 s (during which Docker
+  reported the container unhealthy) to 8 s.
+- **A lost engine job no longer delays Resume or fails its transfer.** Resume of a paused download
+  whose engine job disappeared (for example after an engine restart) continues at once from
+  DebridPulse's saved progress instead of waiting out a backoff. An aria2 job the daemon no longer
+  knows is logged once, naming which aria2 session accepted it and which answered, and is held for
+  recovery instead of letting a failed sibling mark the whole transfer failed.
+- **An aria2 setting aria2 refuses can no longer stop the download engine.** aria2 options accept
+  exactly what aria2 does (sizes as whole numbers with an optional K or M, Minimum Split Size
+  1M-1024M, Connections per Server 1-16, the four file allocation modes); a stored value it refuses
+  is reset to its default with a warning, a save aria2 refuses keeps the previous configuration,
+  Disk Cache is reported as waiting for the next start, a failed start reports what aria2 said, and
+  maintenance restarts a daemon that should be running (never one you stopped).
+- **A provider decision or answer can no longer outlive a provider switch.** A routing decision made
+  before a switch, or a provider answer arriving after it, is now discarded instead of taking a file
+  back for the replaced provider, opening a second attempt or handing the new provider a file of the
+  superseded list (which caused wrongful "hostNotValid" and unsupported-capability failures); any
+  resource such an answer named is cleaned up. Likewise, a link routed a moment before its
+  multi-link download was handed to specialised providers is routed again under the new rule.
+- **Refreshing a download's link no longer changes which source it downloads from.** The chosen
+  source is remembered by what it is rather than by its position, so a provider refresh that merges
+  two sources keeps the choice, and a refresh that cannot keep it changes nothing.
+- **A torrent DebridPulse may have created at a provider is never lost.** When Real-Debrid, TorBox
+  or Debrid-Link names a created torrent, it is recorded even if the next step fails, so it is
+  observed again and cleaned up. A creation whose answer was lost or unreadable is settled from the
+  provider's own inventory before anything is created again (exactly one match is adopted; proven
+  absence fails the attempt), and that provider's connection cannot be replaced until it settles.
+  TorBox, Debrid-Link and Real-Debrid answers are read whole instead of as a partial first chunk; an
+  unexpected answer reports its safe HTTP facts instead of "returned invalid JSON"; TorBox answers
+  with control characters inside strings are read, and a submission TorBox only queued is never
+  taken as absent; Debrid-Link adds magnets as its API documents and treats a torrent whose every
+  file is stored as available whatever its seeding status.
+- **Smaller fixes.** Typing into the empty Archive Passwords row no longer drops keystrokes
+  ("hunter2" was stored as "hnter2"). A dropdown inside a dialog (Change Role, Add Local Account)
+  opens above it instead of behind it. After removing downloads, focus returns to the download's
+  Remove button when the removal failed, otherwise to the Downloads search box. A provider answer
+  with no candidate, observation or error fails as no transfer candidate instead of being accepted.
+  The sidebar Log Out keeps its label while pending and says when it is refused.
+- **One link still preparing at its provider no longer stops the other links of the same transfer
+  from downloading.** Each link's file selection is now judged only against that link's own newer
+  selections, so a usable link starts writing at once and keeps writing instead of being cancelled and
+  re-resolved on every pass while a sibling link resolves or prepares. A link that really does move to
+  a new provider resource still retires the work of its earlier selection, as before.
+
+### Security
+
+- **Open mode can no longer be read by other web pages through DNS rebinding.** With no login
+  configured, the standalone Admin now answers only at the installation's own address -- its IP
+  addresses, `localhost`, a configured HTTPS Public Base URL and names under `.local`, `.home.arpa`,
+  `.internal` and `.localhost`; any other, missing or malformed host is refused with "Forbidden
+  authority" before it can read archive passwords, accounts, settings, backups or transfers. The
+  same decision governs saving, so the interface opened at a `.local` name can now save. A bare
+  hostname, `.lan` or another DNS alias is not trusted and forwarded host headers are never
+  consulted; logins, API tokens, the *arr connections and health checks are unchanged.
+- **Archive extraction and NZB reading stay within their limits.** TAR members, including long-name
+  records, are checked as they are read; a 7z or RAR listing is checked line by line and 7-Zip is
+  stopped at the first entry past a limit; folders, listed or implied, count against Maximum Files
+  separately from files; over-long names are refused; and archives inside an archive are unpacked
+  before anything is committed, sharing what the whole extraction has left, so an over-limit
+  extraction fails and commits nothing (a damaged inner archive is still only skipped). Reading an
+  NZB releases each segment as soon as it is counted, so a million-segment file takes about 28 MiB
+  instead of 109 MiB.
+- **AllDebrid redirects are refused and its answers bounded.** Every AllDebrid request, the
+  `.torrent` upload included, refuses redirects instead of following them, so a magnet or torrent is
+  never re-sent elsewhere, and an answer is read only up to 16 MiB once decompressed, as every other
+  debrid provider already does (a 1 GiB-decoded gzip answer used to take the app past 3 GiB). Such
+  answers are reported as the existing provider protocol failure, and error text no longer quotes
+  the provider's response.
+- **An SCP or SSH wildcard can no longer freeze DebridPulse.** A final-component pattern such as
+  `scp://host/dir/*a*a*a*a*ab` is matched against each listed name without backtracking, so a
+  hostile pattern or long file names cannot stall the process (five stars over one 255-character
+  name took over twenty seconds; it now takes microseconds). The pattern grammar is unchanged.
+- **Magnets no longer reveal tracker passkeys, and sign-in throttling and file selection respect
+  accounts.** A magnet is shown everywhere, Details included, only as the start of its info-hash, so
+  a private tracker's passkey is never shown to a ReadOnly user or written to a log. Failed sign-ins
+  still slow further attempts from the same address but are counted per username, so one account's
+  successful sign-in never clears guesses against another (there is no lockout). Confirming a file
+  selection, which can leave out files another account asked for, is allowed only to an Admin or a
+  User whose request is the only one; dismissing the selection, which keeps every file, stays open
+  to every User.
+- **Changing your password is throttled like sign-in, and new passwords are at least eight
+  characters.** Proving your current password waits its turn and slows after repeated wrong guesses
+  exactly as sign-in does (counted per username, never locking the account), the slow password check
+  no longer runs on DebridPulse's main thread, and the change applies only if your password is still
+  the one you proved. Every new password -- in Settings, set by an Admin, or your own change -- must
+  be at least eight characters; an existing shorter password keeps working. A program signing in
+  with HTTP Basic using a password DebridPulse has just checked is no longer held up behind other
+  addresses' failing attempts.
+- **Only DebridPulse can control its aria2 downloader, and download passwords do not linger.**
+  aria2's control secret is now a new random value at every start instead of a fixed value readable
+  in the source, so no other program on the machine can add, change or read its downloads. aria2's
+  saved session, which can hold download and proxy passwords and signed links, is emptied as soon as
+  aria2 stops, and the folders DebridPulse creates for it are private to its account. An rsync
+  download's pass through the connection guard is unique to that download or listing, reaches only
+  its own server and port, and stops working as soon as that download ends.
+- **Programs DebridPulse starts for downloads are always accounted for and cannot stall it.** Every
+  native program started for a transfer (rsync, Media Downloads) waits until its process group is
+  durably recorded before it runs, so none is ever left running unidentified (if recording fails, as
+  on a full disk, it exits having done nothing), and its one-time inputs are written without
+  waiting, so a too-small pipe refuses the start instead of freezing the application. rsync listing
+  and check runs stop their rsync when cancelled or failing. Output from aria2, the Usenet service,
+  rsync and Media Downloads is read in bounded pieces, so a line over 64 KiB is set aside instead of
+  blocking the program, and cleaning up a failed aria2 start has a time limit. A Media Downloads
+  finalizer keeps only the closing part of its error output and is ended if its output file stops
+  changing for 15 minutes.
+- **DebridPulse's own program files are no longer writable by the account it runs as.** In the image
+  only its data (including the Usenet service's state), settings and download folders belong to
+  `PUID`/`PGID`; the program, web pages, bundled Usenet service and licence files stay owned by the
+  system, and everything DebridPulse and the Usenet service save works for any `PUID`/`PGID`. The
+  dependency licence list now records par2 (GPL-2.0-or-later) and unrar (non-free, present only
+  because the Usenet service requires it, never used by DebridPulse), and states that Deno embeds V8
+  and TypeScript and that the full list of its embedded components and notices has not been
+  independently established.
+- **Dependency security updates.** aiohttp 3.14.4 (with yarl 1.25.1) fixes unbounded memory and CPU
+  use on crafted input (GHSA-2g87-pp6c-29x5), an ignored cookie Secure setting (CVE-2026-111063) and
+  a server waiting forever on unfinished headers (CVE-2026-111064); multidict moves to 6.9.1
+  (CVE-2026-104874); and certifi 2026.10.19 stops trusting the "emSign ECC Root CA - G3" root, whose
+  intermediate keys were compromised (GHSA-6q48-6c7w-9gw2). Licences are unchanged.
+- **Provider links that carry your account credential are never stored.** A TorBox download link
+  that embeds the API token is no longer refused; it is issued fresh by TorBox, in memory, immediately
+  before each download, and only the fact that it is short-lived is saved -- never its address or
+  headers in the database, Transfer Trace, Route History, errors, status or logs. Copies of one file
+  behind such links can still be proven identical: a link is issued in memory just for that comparison,
+  only the sampled bytes decide, and a refresh that fails proves nothing and is retried.
+
 ### Removed
+
+- **The global API token, the API Access card and Link OIDC.** API tokens now belong to Integration
+  accounts (labelled, shown once, revocable in Users & Access), and an invalid bearer credential is
+  refused in every mode. Linking an OIDC identity by hand is replaced by automatic provisioning plus
+  Merge; Verify Sign-In is unchanged.
+- **Debian's ffmpeg and MKVToolNix** are no longer installed in the image; DebridPulse's own FFmpeg
+  package replaces them, and no mkvmerge fallback remains.
+- **Event-log retention and the inherited activity log,** replaced by the event journal and Settings
+  → Data & Maintenance → Event Logging; the Activity Log's Previous/Next text buttons give way to
+  the shared pager.
+- **The Dashboard sparkline history.** The KPI sparklines are no longer drawn from sampled values
+  and the browser no longer stores their samples (`debridpulse.dashboard.metric-history.v2`); the
+  ECG heartbeat takes their place.
+- **The upstream attribution card and the Attribution notice and Upstream MIT license buttons in
+  Help → License.** Both files still ship in the image and remain available from the legal-document
+  API.
 
 - **The aria2 upload limit and every BitTorrent option.** With BitTorrent compiled out, aria2 never
   uploads, so the aria2 `max_upload_limit` option and the legacy `max_upload_speed` field of
@@ -509,9 +1126,101 @@
   `POST /api/admin/database/backup` and `GET /api/admin/database/backups` endpoints are gone. Existing
   files in that folder are left untouched.
 
+### Known limitations
+
+These are deliberate boundaries of 1.0.13, not defects. Each one fails safe: nothing is lost or
+silently changed, and DebridPulse tells you why an action is not available.
+
+- **A source that was split into several files cannot have its provider switched.** When one
+  submitted source resolves to several files that DebridPulse downloads as separate members (for
+  example a folder on a server, a Metalink description, or a provider's folder link), Switch
+  provider is not offered for that source, and a switch requested through the API is refused as
+  *Unsupported Request*. A single torrent, including one with many files, and a single link
+  (including one link of a download made of several links) can still be switched. Switching an
+  individual file to another of its own sources is unaffected.
+- **A link shared with another unfinished download cannot be switched.** When DebridPulse has
+  recognised that a link of one download is the same source as another unfinished download's and
+  serves both from one, that link's provider cannot be switched; the request is refused as
+  *Unsupported Request*, also when the sharing is recognised while the switch is being made. A
+  download that is a single torrent is switched as a whole and is not affected by this rule.
+- **Automatic promotion of a prepared backup is narrow.** DebridPulse moves a torrent to a backup
+  another provider has already prepared only for a download made of a single torrent, only to the
+  first backup that is ready, and never while the download is paused, after you have chosen its
+  files, after it has been split into files, after its download has started, or when it was routed
+  by the provider you prefer anyway. Backups are prepared only by providers that support it for
+  torrents: AllDebrid, Debrid-Link, Real-Debrid and Premiumize by default; TorBox only when you turn
+  it on, because TorBox's limits on new and active torrents are restrictive. Usenet, the direct
+  sources (HTTP(S), FTP/SFTP, SCP, rsync, WebDAV), Metalink and Media Downloads never prepare
+  backups.
+- **A question waiting for your answer holds up the rest of that download.** While one part of a
+  download is asking for input (a password, a sign-in or another answer), no other part of the same
+  download starts anything new until you answer. This includes switching another part's provider:
+  the switch is accepted and that part's earlier download stops, but it starts again on the
+  provider you chose only after the question is answered. Other work of that download that was
+  already running keeps running. Other downloads are not affected.
+- **Cancelling one volume of a multi-part archive can make its extraction fail.** If you cancel one
+  file of a download and that file is a volume of a split archive (for example `part02.rar`), the
+  download still finishes once its remaining files are complete, but extraction of that archive
+  fails because a volume is missing. The download is shown as completed with *Extraction failed*,
+  the delivered volumes are kept, and nothing is overwritten or deleted. Retry downloads it again
+  and extracts again.
+- **Not every switch can keep what was already downloaded.** Only aria2 and rsync can continue a
+  partly downloaded file from data another source delivered. Switching a file to a source that Media
+  Downloads or the Usenet service (SABnzbd) would download starts it again from the beginning, and
+  DebridPulse asks you to confirm before it discards progress; if the progress changes after you
+  confirmed, nothing is switched and you are asked again. After a provider has given up, automatic
+  failover to another provider happens only before the source's files have been created.
+- **Sonarr and Radarr see DebridPulse as a qBittorrent or SABnzbd client, with these limits:**
+  - Through the qBittorrent connection, a failed download is shown as *error*, which Sonarr and
+    Radarr treat as a warning and never blocklist. Only API-token sign-in is supported (not the
+    qBittorrent login/cookie sign-in), a torrent is added as one magnet link or one `.torrent` file
+    (an http(s) link to a torrent is refused),
+    torrents that are BitTorrent v2-only are refused, and options DebridPulse does not support (such
+    as changing a category, share limits, priority or forced start) are refused rather than ignored.
+  - Through the SABnzbd connection, a failed download is reported as *Failed* (so the release is
+    blocklisted and another is searched for) unless the cause is one you can fix without a new
+    release: a provider's or download engine's credentials, configuration, availability or account
+    limits, DebridPulse's own storage, or a Delivery Profile problem. Those are reported as *Paused*.
+    A completed download that cannot be imported yet is reported as *Verifying*.
+  - A submitted `.torrent` can be at most 16 MiB and an NZB at most 8 MiB. Each submission is one
+    item; the SABnzbd connection accepts uploaded NZBs only (adding by URL is refused). The native
+    external-client API (`/api/external/v1`) takes at most 100 links per submission.
+  - A Delivery Profile whose DP Download Path is outside the Download Folder keeps offering its
+    categories, but new downloads to it are refused (`profile_root_outside_downloads`) until its path
+    is moved back inside.
+- **Very large downloads are bounded.** A file manifest can list at most 20,000 entries (paths up to
+  1,024 characters), a Metalink description at most 10,000 files and 20,000 sources (16 MiB), a
+  WebDAV scan at most 10,000 files by default, and an rsync listing 16 MiB. A source beyond these
+  limits is refused rather than downloaded in part. A browser that falls more than 100 live updates
+  behind is disconnected and reconnects to catch up. Switching the provider of a torrent with
+  hundreds of files takes noticeably longer than an ordinary switch.
+
+### Qualification and CI
+
+- **Docker Hub pulls in Fork Image and Browser Runtime are authenticated,** so the anonymous runner
+  rate limit no longer refuses the base image; a run without the secret (a fork's pull request)
+  still pulls anonymously.
+- **Backend checks are spread by individual test across six runners,** and browser checks run one
+  worker per runner on six runners, every check still running exactly once. A hanging backend run
+  stops itself at 21.5 minutes and writes every thread's stack, and the task each waits on, to its
+  log, safely and with bounded size; any single check past 5 minutes does the same, and a hung run
+  is reported inconclusive, never passed.
+- **Timing-dependent checks now test the real invariant.** Page-turn, dialog-fade and Statistics
+  animation checks measure each animation on the browser's own clock; Dashboard heartbeat checks
+  compare drawn frames and allow the 1 ms a timer may differ; checks no longer depend on which of
+  two concurrent downloads reaches a provider first, on a request left over from the previous check,
+  on a key another spec stored, or on the event stream having opened; the tab-title speed check
+  retries once, only for a reused connection reset by the server; the NZB refusal cases have short
+  names instead of an 8 MB one; and a new check proves that a file disappearing during its own
+  verification is never reported complete.
+- **The runtime test layer installs the pinned FFmpeg package** and checks Media Downloads
+  finalization against committed fixtures across nine container shapes; browser specs know the Media
+  Downloads member, and each shared settings key has one owning browser spec.
+
 ### Planned / in progress
 
-- STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion.
+- STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion. Not implemented on
+  this branch yet.
 - Provider/executor expansion and associated UI work will be developed on this branch.
 
 ## [1.0.12] — Universal Transfer Core and canonical transfer architecture

@@ -1,4 +1,4 @@
-# DebridPulse: AllDebrid download manager
+# DebridPulse: self-hosted transfer manager
 # Generic bridge-network example. Adapt host paths, UID/GID and timezone.
 
 services:
