@@ -124,7 +124,7 @@ from transfers.canonical import CanonicalOwnership
 from transfers.contracts import (
     CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation, UpstreamSelection,
 )
-from transfers import codec
+from transfers import codec, provider_choice
 from transfers.errors import (
     Category, Domain, MutationOutcome, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
@@ -683,7 +683,10 @@ class TransferEngine:
                 await self._drain_resolution_units(cycle)
             if cycle.failure is not None:
                 raise cycle.failure
-            return frozenset(cycle.changed)
+        # Pending provider choices are decided by the cycle that lands their
+        # provider's copies: committed, superseded or failed from durable truth.
+        decided = await provider_choice.reconcile(self)
+        return frozenset(set(cycle.changed) | decided)
 
     async def _next_resolution_boundary(self, cycle: _ResolutionCycle) -> None:
         """Wait for the cycle's next admission boundary: an opportunity, or the
@@ -3430,16 +3433,25 @@ class TransferEngine:
         durable artifact, its candidates and the prepared execution row keep
         the durable form. Any other candidate is returned unchanged.
 
+        The request the provider is handed is the one that ISSUED the
+        candidate: its canonical origin when the candidate is bound to the
+        artifact (``CanonicalOwnership.bound_origin`` -- e.g. a sibling root's
+        member contributing a source of this file), else the artifact's own
+        request. A provider's refresh contract regenerates material only for
+        a request it issued.
+
         ``None`` when the candidate is no longer the artifact's current one
-        for its current request (``TransferRepository.candidate_current``,
-        checked against exactly the request its provider would be handed):
-        a provider is never asked to issue material for a member another
+        for that request (``TransferRepository.candidate_current``, checked
+        against exactly the request its provider would be handed): a
+        provider is never asked to issue material for a member another
         provider's candidate replaced it with."""
         transient = any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints)
         record = None
         if transient:
-            record = next((item for item in await self.repository.requests(artifact.transfer_id)
-                           if item.id == artifact.request_id), None)
+            origin = await self.canonical.bound_origin(artifact, candidate)
+            record = origin.request if origin is not None else next(
+                (item for item in await self.repository.requests(artifact.transfer_id)
+                 if item.id == artifact.request_id), None)
             if record is None:
                 raise TransferError(self._candidate_expired())
         if not await self.repository.candidate_current(artifact, candidate, record.resolvable if record else None):

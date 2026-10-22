@@ -18,7 +18,7 @@ from transfers import codec
 from transfers import journal_events as je
 from transfers._repository_base import (
     _durable_canonical_targets_for_request, _logical_slot_key_for_artifact, _logical_slot_key_for_request,
-    _retire_transfer_auxiliary_state_in_db, terminal_unverified_association,
+    _retire_transfer_auxiliary_state_in_db, bound_candidate_origin, terminal_unverified_association,
 )
 from transfers.cohorts import (
     _FAILED_CONTRIBUTION_DISPOSITION, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION, target_gone_sql,
@@ -1068,21 +1068,12 @@ class CanonicalOwnership:
             await self.on_attached(record.transfer_id)
         return True
 
-    async def _bound_origin(self, db, canonical_artifact_id: int, candidate: TransferCandidate):
-        binding = await db.fetchone(
-            "SELECT * FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
-            (canonical_artifact_id, str(candidate.id)),
-        )
-        if not binding:
+    async def _bound_origin(self, db, canonical_artifact_id: int, candidate: TransferCandidate, *,
+                            exact: bool = True):
+        bound = await bound_candidate_origin(db, canonical_artifact_id, str(candidate.id), exact=exact)
+        if bound is None:
             return None
-        origin = await db.fetchone(
-            """SELECT o.*,r.* FROM canonical_candidate_origins o
-                JOIN transfer_requests r ON r.id=o.request_id WHERE o.binding_id=?
-                ORDER BY CASE WHEN o.discovered_candidate_id=? THEN 0 ELSE 1 END,o.id LIMIT 1""",
-            (binding["id"], binding["candidate_id"]),
-        )
-        if not origin:
-            return None
+        binding, origin = bound
         source = None
         if binding.get("source_scope") and binding.get("source_key"):
             source = {"scope": binding["source_scope"], "key": binding["source_key"]}
@@ -1091,6 +1082,15 @@ class CanonicalOwnership:
             self._record(origin), str(origin["resolution_attempt_id"]), str(binding["candidate_id"]),
             str(binding["provider_id"]), source,
         )
+
+    async def bound_origin(self, artifact: Artifact, candidate: TransferCandidate) -> CandidateOrigin | None:
+        """The candidate's recorded canonical origin on ``artifact`` -- the
+        request that issued it -- read only: ``None`` when it is not bound
+        (never binds one, unlike ``origin_for``); for a candidate recorded only
+        as another binding's origin's discovery, that origin
+        (``bound_candidate_origin(exact=False)``)."""
+        async with get_db() as db:
+            return await self._bound_origin(db, artifact.id, candidate, exact=False)
 
     async def origin_for(self, artifact: Artifact, candidate: TransferCandidate) -> CandidateOrigin | None:
         await self.initialize()

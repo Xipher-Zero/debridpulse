@@ -1014,7 +1014,9 @@ async def list_operational_torrents(
         -- The active provider: execution authority, the same derivation as
         -- transfers._repository_base.active_provider. A finished execution
         -- that delivered nothing and whose route an operator switch of its
-        -- root replaced names that root's committed route provider now. Each artifact's own
+        -- root replaced names that root's committed route provider now -- unless
+        -- a candidate switch since replaced its candidate: then the provider of
+        -- the candidate its artifact selects now (_reselected, decided first). Each artifact's own
         -- execution is its latest attempt by the durable per-artifact
         -- provenance ordinal (a replaced attempt never counts); live writers
         -- outrank finished ones; among live writers the latest started, among
@@ -1031,6 +1033,13 @@ async def list_operational_torrents(
                 SELECT
                     p.transfer_id,
                     CASE
+                        WHEN NOT (e.authorized = 1 AND e.state IN ({_MUTATING_EXECUTION_STATES_SQL}))
+                         AND COALESCE(p.delivered, 0) = 0
+                         AND json_extract(sf.candidates, '$[' || COALESCE(sf.selected_candidate, 0) || '].id')
+                             IS NOT NULL
+                         AND CAST(json_extract(sf.candidates, '$[' || COALESCE(sf.selected_candidate, 0) || '].id')
+                             AS TEXT) != COALESCE(p.candidate_id, '')
+                        THEN json_extract(sf.candidates, '$[' || COALESCE(sf.selected_candidate, 0) || '].provider_id')
                         WHEN NOT (e.authorized = 1 AND e.state IN ({_MUTATING_EXECUTION_STATES_SQL}))
                          AND COALESCE(p.delivered, 0) = 0
                          AND switched_root_route.switch_ordinal > rp.ordinal
@@ -1058,6 +1067,8 @@ async def list_operational_torrents(
                   ON rq.id = rp.request_id
                 LEFT JOIN switched_root_route
                   ON switched_root_route.request_id = COALESCE(rq.parent_id, rq.id)
+                LEFT JOIN download_files sf
+                  ON sf.id = p.artifact_id
             )
             WHERE artifact_rank = 1
         ),
@@ -1954,6 +1965,15 @@ async def list_operational_torrents(
             # best-effort provider picker (``/route/transfer``).
             item["route_switch_available"] = True
             item["route_switch_scope"] = scope
+        # An operator's pending provider choice is a preference awaiting that
+        # provider's copy (transfers.provider_choice), never the committed
+        # provider: presented apart from ``active_provider_id``.
+        pending_providers = sorted({choice["provider_id"] for facts in roots.values()
+                                    for choice in facts.get("pending_choices", ())})
+        if pending_providers:
+            item["pending_provider_ids"] = pending_providers
+            item["pending_provider_names"] = [_provider_display_name(provider_id, application.definitions)
+                                              for provider_id in pending_providers]
         item["request_kinds"] = request_kinds
         # Transfer-level common-source MEMBERSHIP summary. ``common_candidate_count``
         # is the number of canonical hosts common to every current authoritative

@@ -589,7 +589,15 @@ async def test_candidate_activation_provenance_write_is_atomic_with_the_commit(t
 
     unchanged = (await repository.artifacts(canonical.id))[0]
     assert unchanged.selected == 0, "the candidate switch must roll back with its provenance write"
-    assert unchanged.execution is not None  # the original writer is untouched
+    # The switch had stopped the original writer before its commit was
+    # refused: that stopped attempt is released (never left authorized, which
+    # reconciliation would read as the transfer's cancellation) and the file
+    # is queued again on its own, unchanged selection.
+    assert unchanged.execution is None and unchanged.state == "queued"
+    async with get_db() as db:
+        assert await db.fetchone(
+            "SELECT 1 FROM execution_attempts WHERE artifact_id=? AND authorized=1 "
+            "AND state IN ('cancelled','failed','absent')", (artifact.id,)) is None
     assert await repository.continuation_reservation(artifact.id) is None
 
     # No half-written "activated" record exists -- the INSERT rolled back

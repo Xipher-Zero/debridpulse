@@ -2017,7 +2017,7 @@ class TransferEngine(_QualifiedTransferEngine):
 
     async def activate_candidate_command(
         self, transfer_id: int, artifact_id: int, target_index: int, *, permit_discard: bool = True,
-        expected_demand=None,
+        expected_demand=None, fulfils_choice: str | None = None, target_candidate_id: str | None = None,
     ) -> ActivationResult | None:
         """Operator-requested candidate activation entry point: the manual
         counterpart to ``recover_artifact``, fenced by the SAME exclusive
@@ -2037,8 +2037,12 @@ class TransferEngine(_QualifiedTransferEngine):
         claim acquisition and completion, not a second implementation of the
         switch itself.
         """
+        # The landing of an operator's pending provider choice is that
+        # operator's route switch reaching the file (transfers.provider_choice).
+        trigger = (RecoveryTrigger.USER_ROUTE_SWITCH if fulfils_choice is not None
+                   else RecoveryTrigger.USER_CANDIDATE_SWITCH)
         claim = await self.repository.claim_recovery(
-            artifact_id, RecoveryTrigger.USER_CANDIDATE_SWITCH, self.clock(),
+            artifact_id, trigger, self.clock(),
             lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
             expected_demand=expected_demand,
         )
@@ -2050,14 +2054,23 @@ class TransferEngine(_QualifiedTransferEngine):
             if artifact is None:
                 result = ActivationResult(False, "not_found", transfer_id=transfer_id, artifact_id=artifact_id)
                 return result
+            if target_candidate_id is not None:
+                # The target is named by IDENTITY: re-found on the artifact read
+                # under this claim, never trusted to still sit at an index the
+                # caller computed before the claim.
+                target_index = next((index for index, item in enumerate(artifact.candidates)
+                                     if str(item.id) == str(target_candidate_id)), None)
+                if target_index is None:
+                    result = ActivationResult(False, "target_moved", transfer_id=transfer_id, artifact_id=artifact_id)
+                    return result
             result = await activate_candidate(self, artifact, target_index, retry_at=0, claim=claim,
-                                              permit_discard=permit_discard)
+                                              permit_discard=permit_discard, fulfils_choice=fulfils_choice)
             return result
         finally:
             outcome = result.reason if result is not None else "application_error"
             await self._finish_claim(
                 claim,
-                action="user_candidate_switch",
+                action=trigger.value,
                 reason=outcome,
                 outcome="activated" if (result is not None and result.committed) else "not_applied",
                 artifact=await self._current_artifact(transfer_id, artifact_id),

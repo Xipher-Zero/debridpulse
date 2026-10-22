@@ -130,7 +130,7 @@ _TABLES = (
     "canonical_candidate_origins", "artifact_consolidations", "execution_attempts", "execution_attempt_provenance",
     "artifact_recovery_state", "artifact_material_state", "transfer_outcomes", "postprocess_attempts", "transfer_pause_intents",
     "transfer_input_challenges", "deferred_provider_submissions", "events", "event_journal", "application_events",
-    "transfer_controls",
+    "transfer_controls", "pending_provider_choices",
 )
 # Durable tables deliberately outside a transfer trace, with the reason.
 _OMITTED = {
@@ -346,7 +346,7 @@ async def _transfer_rows(collector: _Collector, transfer_id: int, scope: str) ->
                   "transfer_file_manifests",
                   "transfer_file_selections", "execution_attempts", "execution_attempt_provenance",
                   "artifact_recovery_state", "transfer_outcomes", "postprocess_attempts",
-                  "transfer_input_challenges", "application_events"):
+                  "transfer_input_challenges", "application_events", "pending_provider_choices"):
         await select(table, "transfer_id=?", (transfer_id,), scope=scope)
     # Its journal: events correlated to it, as subject or as related transfer.
     await select("event_journal", "transfer_id=? OR related_transfer_id=?", (transfer_id, transfer_id), scope=scope)

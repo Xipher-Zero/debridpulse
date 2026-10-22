@@ -50,6 +50,7 @@ TABLES = [
     "transfer_file_selections",
     "transfer_file_selection_entries",
     "transfer_file_selection_intents",
+    "pending_provider_choices",
     "transfer_file_selection_intent_entries",
     "resolution_attempts",
     "route_attempt_provenance",
@@ -94,6 +95,7 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # orphan can outlive an explicit whole-database wipe: an intent's
         # entries, then the intent (which names its originating generation),
         # then the generations' own records.
+        await db.execute("DELETE FROM pending_provider_choices")
         await db.execute("DELETE FROM transfer_file_selection_intent_entries")
         await db.execute("DELETE FROM transfer_file_selection_intents")
         await db.execute("DELETE FROM transfer_file_selection_entries")

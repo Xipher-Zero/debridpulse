@@ -109,6 +109,10 @@ async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
     stored); never a second, independent cleanup path."""
     await db.execute("DELETE FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,))
     await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
+    # A settled transfer has no file left to move: its pending provider choices
+    # end (kept as provenance).
+    await db.execute("""UPDATE pending_provider_choices SET state='superseded',reason='transfer_settled',updated_at=?
+        WHERE transfer_id=? AND state='pending'""", (time.time(), transfer_id))
 
 
 async def _reset_postprocessing_in_db(db, transfer_id: int) -> bool:
@@ -217,6 +221,17 @@ def _switched_route_providers(execution_history, route_attempts, request_roots) 
     return moved
 
 
+def _reselected(row) -> bool:
+    """Whether a finished execution that delivered nothing ran a candidate its
+    artifact no longer selects: a candidate switch (the operator's, or
+    recovery's) replaced it before the newly selected source started. Its
+    work is the selected candidate's now (``selected_candidate_id`` /
+    ``selected_provider_id``: the artifact's current selection)."""
+    selected = row.get("selected_candidate_id")
+    return (not row.get("delivered") and selected is not None
+            and str(selected) != str(row.get("candidate_id") or ""))
+
+
 def active_provider(execution_history, route_attempts, request_roots=None) -> tuple[str | None, str]:
     """THE active provider of one transfer -- the provider currently executing
     its work, or, once no writer is live, the provider of its last execution
@@ -232,7 +247,10 @@ def active_provider(execution_history, route_attempts, request_roots=None) -> tu
     route an operator switch of its root has since replaced names the
     provider of that root's committed route now (``_switched_route_providers``):
     once a switch commits, its provider is the one working on the file, even
-    while it is still preparing and before any of its writers starts. No
+    while it is still preparing and before any of its writers starts --
+    unless a candidate switch since replaced its candidate: then it names the
+    provider of the candidate the artifact selects now (``_reselected``,
+    which decides first). No
     durable sequence orders executions of
     different artifacts finer than those timestamps, so different providers
     at the same instant -- or a winner whose provider was never recorded --
@@ -257,7 +275,9 @@ def active_provider(execution_history, route_attempts, request_roots=None) -> tu
         rows = [row for row in final.values() if live(row) == any_live]
         if not any_live:
             moved = _switched_route_providers(execution_history, route_attempts, request_roots or {})
-            rows = [dict(row, provider_id=moved.get(str(row.get("id")), row.get("provider_id"))) for row in rows]
+            rows = [dict(row, provider_id=row.get("selected_provider_id") if _reselected(row)
+                         else moved.get(str(row.get("id")), row.get("provider_id")))
+                    for row in rows]
         moment = "provenance_created_at" if any_live else "provenance_updated_at"
         latest = max(str(row.get(moment) or "") for row in rows)
         providers = {row.get("provider_id") or None for row in rows if str(row.get(moment) or "") == latest}
@@ -619,6 +639,47 @@ def is_canonical_artifact_row(row) -> bool:
         and not bool(row["blocked"])
         and str(row["mirror_state"] or "") != "standby"
     )
+
+
+async def bound_candidate_origin(db, canonical_artifact_id: int, candidate_id: str, *, exact: bool = True):
+    """Inside the caller's session: the binding of ``candidate_id`` on the
+    canonical artifact and its origin -- the request that issued the
+    candidate (``canonical_candidate_origins``, the one discovering it
+    first) joined to that request's row -- or ``None`` when the candidate is
+    not bound there. THE canonical answer to "which request issued this
+    candidate of this file"; ``CanonicalOwnership`` and the transient
+    material boundary (``_candidate_current``) both read it here.
+    ``exact=False`` (the transient material boundary) also answers for a
+    candidate recorded only as the discovery of another binding's origin
+    (one binding per source): the binding and THAT origin."""
+    binding = await db.fetchone(
+        "SELECT * FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
+        (canonical_artifact_id, str(candidate_id)),
+    )
+    if not binding:
+        # A candidate whose source another candidate of the same provider
+        # and source already binds (one binding per source) is recorded as
+        # an origin of that binding, by the candidate it discovered: that
+        # origin issued exactly this candidate.
+        discovered = await db.fetchone(
+            """SELECT o.*,r.*,o.binding_id AS origin_binding_id FROM canonical_candidate_origins o
+                JOIN canonical_candidate_bindings b ON b.id=o.binding_id
+                JOIN transfer_requests r ON r.id=o.request_id
+                WHERE b.canonical_artifact_id=? AND o.discovered_candidate_id=? ORDER BY o.id LIMIT 1""",
+            (canonical_artifact_id, str(candidate_id)),
+        )
+        if not discovered or exact:
+            return None
+        binding = await db.fetchone("SELECT * FROM canonical_candidate_bindings WHERE id=?",
+                                    (discovered["origin_binding_id"],))
+        return None if not binding else (binding, discovered)
+    origin = await db.fetchone(
+        """SELECT o.*,r.* FROM canonical_candidate_origins o
+            JOIN transfer_requests r ON r.id=o.request_id WHERE o.binding_id=?
+            ORDER BY CASE WHEN o.discovered_candidate_id=? THEN 0 ELSE 1 END,o.id LIMIT 1""",
+        (binding["id"], binding["candidate_id"]),
+    )
+    return None if not origin else (binding, origin)
 
 
 async def _durable_canonical_targets_for_request(db, request_id) -> set[int]:
@@ -1502,8 +1563,11 @@ class TransferRepository:
                 ORDER BY p.ordinal,p.resolution_attempt_id""", (transfer_id,))
             execution_history = await db.fetchall("""SELECT e.id,e.artifact_id,e.executor_id,e.state AS execution_state,e.created_at,e.updated_at,
                 e.authorized,p.created_at AS provenance_created_at,p.updated_at AS provenance_updated_at,
-                p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality
+                p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality,
+                json_extract(f.candidates,'$['||COALESCE(f.selected_candidate,0)||'].id') AS selected_candidate_id,
+                json_extract(f.candidates,'$['||COALESCE(f.selected_candidate,0)||'].provider_id') AS selected_provider_id
                 FROM execution_attempt_provenance p JOIN execution_attempts e ON e.id=p.execution_attempt_id
+                LEFT JOIN download_files f ON f.id=p.artifact_id
                 WHERE p.transfer_id=? ORDER BY p.created_at,p.artifact_id,p.ordinal,p.execution_attempt_id""", (transfer_id,))
             consolidations = await db.fetchall("""SELECT a.contributing_artifact_id,a.source_request_id,a.canonical_artifact_id,
                 c.torrent_id AS canonical_transfer_id FROM artifact_consolidations a
@@ -1523,6 +1587,11 @@ class TransferRepository:
             )
             events = await journal_transfer_events(db, transfer_id) if details else []
             input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
+            # Full Details only: the operator's pending provider choices and the
+            # outcomes of recent ones (transfers.provider_choice), read on this
+            # same session.
+            pending_choices = await self._pending_provider_choices_in(db, transfer_id) if details else []
+            choice_outcomes = await self._provider_choice_outcomes_in(db, transfer_id) if details else []
         def normalized(item, field="normalized_error"):
             error = codec.error(item.pop(field, None))
             item["error"] = error.as_dict() if error else None
@@ -1540,6 +1609,15 @@ class TransferRepository:
             execution_history, route_attempts,
             {str(item["id"]): str(item["parent_id"]) for item in requests if item.get("parent_id")})
         result["historical_providers"] = historical_providers
+        if details:
+            # Operator preferences awaiting their provider's copy
+            # (transfers.provider_choice): never the active provider above.
+            result["pending_provider_choices"] = [
+                {key: choice[key] for key in ("id", "artifact_id", "provider_id", "source_root_id", "created_at")}
+                for choice in pending_choices]
+            # The outcome of each recent choice -- committed, failed, superseded --
+            # with its reason, kept apart from the file's own recovery outcome.
+            result["provider_choices"] = choice_outcomes
         result["current_provider_id"] = current_provider_id
         result["origin_provider_id"] = origin_provider(requests, route_attempts)
         result["delivering_provider_ids"] = delivering_providers
@@ -4157,7 +4235,44 @@ class TransferRepository:
                               WHERE sp.request_id=r.id AND sp.operation='operator_switch')""", (str(root_id),))
         return row is not None
 
+    async def pending_provider_choices(self, transfer_id: int | None = None) -> list[dict]:
+        """The pending provider choices (``transfers.provider_choice``) of one
+        transfer, or of all, oldest first (``_pending_provider_choices_in``)."""
+        async with get_db() as db:
+            return await self._pending_provider_choices_in(db, transfer_id)
+
+    @staticmethod
+    async def _pending_provider_choices_in(db, transfer_id: int | None = None) -> list[dict]:
+        """``pending_provider_choices`` inside the caller's session."""
+        if transfer_id is None:
+            rows = await db.fetchall("SELECT * FROM pending_provider_choices WHERE state='pending' "
+                                     "ORDER BY created_at,id")
+        else:
+            rows = await db.fetchall("SELECT * FROM pending_provider_choices WHERE transfer_id=? AND state='pending' "
+                                     "ORDER BY created_at,id", (int(transfer_id),))
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    async def _provider_choice_outcomes_in(db, transfer_id: int) -> list[dict]:
+        """Inside the caller's session: the transfer's 20 most recently changed
+        provider choices with their state and reason, newest first."""
+        return [dict(row) for row in await db.fetchall(
+            """SELECT id,artifact_id,provider_id,source_root_id,state,reason,created_at,updated_at
+               FROM pending_provider_choices WHERE transfer_id=? ORDER BY updated_at DESC,id LIMIT 20""",
+            (int(transfer_id),))]
+
     async def route_replacement_pending(self, request_id: str) -> bool:
+        """``_route_replacement_owed`` -- or a pending provider choice waits on
+        this root's re-resolution (``transfers.provider_choice``): its new
+        provider's candidates land in its replaced bindings' place, so the
+        choice can then select one of them for its file."""
+        if await self._route_replacement_owed(request_id):
+            return True
+        async with get_db() as db:
+            return await db.fetchone("SELECT 1 FROM pending_provider_choices WHERE source_root_id=? AND state='pending'",
+                                     (str(request_id),)) is not None
+
+    async def _route_replacement_owed(self, request_id: str) -> bool:
         """Whether root ``request_id`` still owes the landing of an operator
         switch: some unfinished artifact's selected binding comes from this
         root alone, from an attempt older than an ``operator_switch`` route
@@ -4339,10 +4454,13 @@ class TransferRepository:
         released by a route replacement, so a candidate the replaced route left
         behind is never prepared, or asked to issue material, for the
         successor's member. ``paired``: the request the caller is about to
-        hand the candidate's provider, which must be the artifact's own
-        current request. A candidate no route attempt of the artifact's own
-        request recorded (a sibling's alternative, a canonically bound
-        candidate, a legacy row) is judged by its selection alone, as before."""
+        hand the candidate's provider, which must be exactly the request that
+        issued the candidate -- its canonical origin when it is bound to the
+        artifact (``bound_candidate_origin``: e.g. a sibling root's member
+        contributing a source of this file), else the artifact's own request.
+        A candidate no route attempt of the artifact's own request recorded
+        (a sibling's alternative, a canonically bound candidate, a legacy
+        row) is judged by its selection alone, as before."""
         row = await db.fetchone("""SELECT f.candidates,f.selected_candidate,f.request_id,r.payload,r.interpretation
             FROM download_files f LEFT JOIN transfer_requests r ON r.id=f.request_id WHERE f.id=?""", (artifact.id,))
         if not row:
@@ -4354,11 +4472,13 @@ class TransferRepository:
         current = durable[selected]
         if (str(current.id), current.provider_id) != (str(candidate.id), candidate.provider_id):
             return False
+        bound = await bound_candidate_origin(db, artifact.id, str(candidate.id), exact=False)
+        issuer = dict(bound[1]) if bound else row
         if paired is not None:
-            if row["payload"] is None:
+            if issuer["payload"] is None:
                 return False
-            request = (codec.optional_request(codec.load(row["interpretation"]))
-                       or codec.request(codec.load(row["payload"])))
+            request = (codec.optional_request(codec.load(issuer["interpretation"]))
+                       or codec.request(codec.load(issuer["payload"])))
             if (paired.kind, paired.payload) != (request.kind, request.payload):
                 return False
         for issued in await db.fetchall(
@@ -4679,21 +4799,41 @@ class TransferRepository:
             row = await db.fetchone("SELECT state FROM execution_attempts WHERE id=?", (attempt_id,))
         return bool(row) and row["state"] == "prepared"
 
-    async def detach_retired_writer(self, artifact_id: int, attempt_id: str, *, state: str) -> bool:
+    async def detach_retired_writer(self, artifact_id: int, attempt_id: str, *, state: str,
+                                    stopped_states: tuple[str, ...] = ("failed", "absent", "cancelled")) -> bool:
         """Release a writer that was positively observed stopped: the artifact
         keeps no writer and its old attempt loses every authority, so neither
         a late callback nor a stale plan of it can act again. Only the exact
-        still-current attempt, and only once it is terminal, is detached."""
+        still-current attempt, and only once it is terminal, is detached --
+        a newer writer or selection of the artifact is never overwritten.
+
+        A file that is settled -- completed, a duplicate, withdrawn by the
+        operator ON THIS attempt (``cohorts.artifact_withdrawn``: cancelled
+        with ``withdrawn_attempt`` equal to its current attempt; a revived
+        file's new attempt voids an older withdrawal), or of a transfer that is
+        completed, consolidated, cancelled or deleted -- keeps its state (it is
+        never resurrected): the stopped attempt only loses its authority. (A
+        file the retirement itself marked ``cancelled`` -- the observed stop of
+        its own writer -- is not settled.) ``stopped_states``: the terminal
+        attempt states that count as stopped (a caller unsure whether it
+        stopped the writer itself narrows it to ``cancelled``)."""
+        stopped = ",".join("?" * len(stopped_states))
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            cursor = await db.execute("""UPDATE download_files SET status=?,execution_attempt_id=NULL,
+            cursor = await db.execute(f"""UPDATE download_files SET status=?,execution_attempt_id=NULL,
                 continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND execution_attempt_id=? AND EXISTS(SELECT 1 FROM execution_attempts e
-                    WHERE e.id=? AND e.state IN ('failed','absent','cancelled'))""",
-                                      (state, int(artifact_id), attempt_id, attempt_id))
-            if cursor.rowcount:
-                await db.execute("UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                                 (attempt_id,))
+                    WHERE e.id=? AND e.state IN ({stopped}))
+                AND status NOT IN ('completed','duplicate')
+                AND NOT (status='cancelled' AND withdrawn_attempt IS NOT NULL AND withdrawn_attempt=?)
+                AND torrent_id IN (SELECT id FROM torrents
+                    WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
+                                      (state, int(artifact_id), attempt_id, attempt_id, *stopped_states, attempt_id))
+            # The stopped attempt never keeps authority, whatever became of
+            # the file (only a terminal attempt: a running writer is untouched).
+            await db.execute(f"""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
+                WHERE id=? AND artifact_id=? AND state IN ({stopped})""",
+                             (attempt_id, int(artifact_id), *stopped_states))
             await db.commit()
         return cursor.rowcount == 1
 
@@ -5640,6 +5780,7 @@ class TransferRepository:
                 """DELETE FROM transfer_file_selection_intent_entries WHERE request_id IN
                    (SELECT request_id FROM transfer_file_selection_intents WHERE transfer_id=?)""", (transfer_id,))
             await db.execute("DELETE FROM transfer_file_selection_intents WHERE transfer_id=?", (transfer_id,))
+            await db.execute("DELETE FROM pending_provider_choices WHERE transfer_id=?", (transfer_id,))
             # FUNC-001: this path settles the parent into DELETED without
             # going through _write_lifecycle_transition, so it must invoke the
             # same transaction-local auxiliary-state retirement directly.

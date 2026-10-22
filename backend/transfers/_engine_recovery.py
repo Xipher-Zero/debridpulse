@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine, _EvidenceAuth
+from transfers import provider_choice
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import converge_collection_ownership, coordinate_collection, own_routes_to_prove
 from transfers.mirrors import EvidenceContext
@@ -136,6 +137,9 @@ class TransferEngine(_QualifiedTransferEngine):
             # Whatever this decision attached or allocated may have completed
             # the evidence that this transfer and another are one collection.
             await converge_collection_ownership(self, record.transfer_id)
+            # A provider's copy that landed here may fulfil an operator's
+            # pending provider choice: decided now, outside the cohort lock.
+            await provider_choice.reconcile(self, (record.transfer_id,))
             # The decision is committed: a changed candidate set is published
             # now, never held until unrelated resolutions of the pass finish.
             if await self._candidate_signature(record.transfer_id) != before:

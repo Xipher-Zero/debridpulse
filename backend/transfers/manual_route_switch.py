@@ -268,12 +268,108 @@ def route_switch_offer(registry, roots: dict[str, dict], memo: dict | None = Non
     """The bounded list's launcher for a transfer that is not one torrent
     root: ``"root"`` when its one root is switchable now (the launcher opens
     that root's picker), ``"transfer"`` when at least one of its several
-    roots is (the launcher opens the transfer's provider picker,
-    ``transfer_route_status``: a best-effort choice that each root's own
-    switch then admits or refuses), else ``None``."""
-    if not any(root_switches(registry, roots, memo).values()):
+    roots is -- or when some provider may become the primary of one of its
+    files through another proven-equivalent source of that file
+    (``equivalent_plan``) -- (the launcher opens the transfer's provider
+    picker, ``transfer_route_status``: a best-effort choice that each root's
+    own switch then admits or refuses), else ``None``."""
+    if any(root_switches(registry, roots, memo).values()):
+        return "root" if len(roots) == 1 else "transfer"
+    if len(roots) < 2:
         return None
-    return "root" if len(roots) == 1 else "transfer"
+    entries: dict[str, dict[str, dict]] = {}
+
+    def entry_for(root_id: str, provider_id: str | None):
+        """``provider_id``'s entry for the root, or every entry (``None``)."""
+        if root_id not in entries:
+            entries[root_id] = {item["provider_id"]: item for item in provider_choices(registry, roots[root_id], memo)}
+        return entries[root_id] if provider_id is None else entries[root_id].get(provider_id)
+
+    # A provider is offered when it serves, or may take the route of, a root
+    # that issued an equivalent source of some file.
+    offered = set()
+    for facts in roots.values():
+        if not facts["alternates"]:
+            continue
+        if facts["current"]:
+            offered.add(facts["current"])
+        if _root_exclusion(facts) is None:
+            offered.update(provider_id for provider_id, item in (entry_for(facts["root_id"], None) or {}).items()
+                           if item["selectable"])
+    # Exactly ``transfer_route_status``'s rule: a participant whose own link
+    # the provider does not claim (``unsupported``) reaches it through an
+    # equivalent source.
+    return "transfer" if any(
+        equivalent_plan(roots, facts, provider_id, entry_for)
+        for facts in roots.values() if facts["relevant"] and _root_exclusion(facts) is None
+        for provider_id in offered
+        if provider_id and provider_id != facts["current"] and entry_for(facts["root_id"], provider_id) is None
+    ) else None
+
+
+# How a provider becomes the primary of a file through ANOTHER of its
+# proven-equivalent sources (``equivalent_plan``): ``source`` -- that
+# provider already serves an equivalent source of the file (a root of this
+# transfer routed to it issued one), which is selected; ``alternate`` -- it
+# may take the route of a root that issued an equivalent source, which is
+# selected and then switched to it (its replacement lands in that file).
+VIA_ROUTE, VIA_SOURCE, VIA_ALTERNATE = "route", "source", "alternate"
+
+
+# A routing answer that is not a valid premium provider's claim on a link: the
+# provider is disabled, not entitled on this account, or a generic provider
+# deferring to the specialized ones.
+_NOT_A_CLAIM = frozenset({"disabled", "not_entitled", "held"})
+
+
+def _equivalent_claim(roots: dict[str, dict], facts: dict, provider_id: str, entry_for) -> dict | None:
+    """``provider_id``'s entry on a root that issued an equivalent source of
+    one of ``facts``' files -- a legitimate claim it cannot act on now (for
+    ``transfer_route_status``'s truthful status), or ``None``."""
+    for artifact_id in facts["artifacts"]:
+        for root_id, other in roots.items():
+            if root_id == facts["root_id"] or _root_exclusion(other) is not None:
+                continue
+            if any(item["artifact_id"] == artifact_id for item in other["alternates"]):
+                entry = entry_for(root_id, provider_id)
+                if entry is not None and entry.get("reason") not in _NOT_A_CLAIM:
+                    return entry
+    return None
+
+
+def equivalent_plan(roots: dict[str, dict], facts: dict, provider_id: str, entry_for) -> list[dict]:
+    """For each unfinished file whose selected source ``facts``' root
+    produced, the one way ``provider_id`` may become that file's provider
+    through another current, proven-equivalent source of it (the root route
+    facts' ``alternates``: canonical bindings of that same file, issued by
+    roots of this transfer), in canonical candidate order: an equivalent
+    source that provider already serves (``source``: its issuing root's
+    committed route is that provider), else one whose issuing root it may
+    legitimately take now (``alternate``: that root is a switch subject
+    once its source is selected -- not excluded, ``entry_for(root, provider)``
+    selectable). Files with neither are absent. Pure: route facts and the
+    caller's provider entries only; nothing here promises the switch."""
+    plan = []
+    for artifact_id in facts["artifacts"]:
+        offers = sorted(((item["order"], root_id, item) for root_id, other in roots.items()
+                         for item in other["alternates"] if item["artifact_id"] == artifact_id),
+                        key=lambda value: value[0])
+        chosen = next(({"artifact_id": artifact_id, "candidate_id": item["candidate_id"], "via_root_id": root_id,
+                        "via": VIA_SOURCE, "via_provider_id": roots[root_id]["current"]}
+                       for _order, root_id, item in offers
+                       if item["provider_id"] == provider_id and roots[root_id]["current"] == provider_id
+                       and not roots[root_id]["terminal"]), None)
+        if chosen is None:
+            chosen = next(({"artifact_id": artifact_id, "candidate_id": item["candidate_id"], "via_root_id": root_id,
+                            "via": VIA_ALTERNATE, "via_provider_id": roots[root_id]["current"]}
+                           for _order, root_id, item in offers
+                           if roots[root_id]["current"] and roots[root_id]["current"] != provider_id
+                           and item["provider_id"] == roots[root_id]["current"]
+                           and _root_exclusion(roots[root_id]) is None
+                           and (entry_for(root_id, provider_id) or {}).get("selectable")), None)
+        if chosen is not None:
+            plan.append(chosen)
+    return plan
 
 
 # One root's part in a transfer-level provider choice (``transfer_route_status``).
@@ -289,6 +385,9 @@ def route_switch_offer(registry, roots: dict[str, dict], memo: dict | None = Non
 ROOT_ELIGIBLE, ROOT_ALREADY_SELECTED, ROOT_UNSUPPORTED, ROOT_UNAVAILABLE, ROOT_PREPARING = (
     "eligible", "already_selected", "unsupported", "unavailable", "preparing")
 ROOT_INACTIVE, ROOT_DECOMPOSED, ROOT_SHARED, ROOT_NO_ROUTE = "inactive", "decomposed", "shared", "no_route"
+# ``pending``: every file of the root already has a pending choice of that
+# provider (``transfers.provider_choice``): nothing more to request now.
+ROOT_PENDING = "pending"
 
 
 def _root_exclusion(facts: dict) -> str | None:
@@ -446,7 +545,18 @@ async def transfer_route_status(engine, transfer_id: int) -> dict | None:
     choice made from it is admitted or refused root by root by the one-root
     switch, which re-reads everything. Nothing here promises that a switch
     will commit, or reserves anything. ``None`` for a transfer of one root:
-    a torrent root and a single link keep their own picker."""
+    a torrent root and a single link keep their own picker.
+
+    The choice is a provider as the operator's best-effort PRIMARY: it is
+    evaluated against every current, proven-equivalent source of the files
+    (the roots that issued their other sources -- ``alternates`` -- take
+    part in which providers are offered), not only the selected one. A
+    participant whose own route that provider cannot take now is still
+    ``eligible`` for it when some of its files may reach that provider
+    through another equivalent source (``equivalent_plan``: ``via``
+    ``source`` or ``alternate``, with the ``plan`` per file); otherwise
+    ``via`` is ``route`` (its own route). A provider claiming none of the
+    sources is not listed."""
     roots = await engine.repository.root_route_facts_by_root(int(transfer_id))
     if len(roots) < 2:
         return None
@@ -460,14 +570,55 @@ async def transfer_route_status(engine, transfer_id: int) -> dict | None:
             entries = await _providers(engine, transfer_id, facts)
             choices[facts["root_id"]] = {entry["provider_id"]: entry for entry in entries}
             order.extend(entry["provider_id"] for entry in entries if entry["provider_id"] not in order)
+    for facts in roots.values():
+        # The roots that issued other equivalent sources: their provider, and
+        # every provider that may legitimately take them now.
+        if not facts["alternates"] or facts["relevant"]:
+            continue
+        if facts["current"] and facts["current"] not in order:
+            order.append(facts["current"])
+        if _root_exclusion(facts) is None:
+            entries = await _providers(engine, transfer_id, facts)
+            choices[facts["root_id"]] = {entry["provider_id"]: entry for entry in entries}
+            # Every enabled provider with a legitimate claim on that link --
+            # whether or not it may take it now (its restriction is shown).
+            order.extend(entry["provider_id"] for entry in entries
+                         if entry.get("reason") not in _NOT_A_CLAIM and entry["provider_id"] not in order)
+
+    def entry_for(root_id: str, provider_id: str | None):
+        return choices.get(root_id, {}).get(provider_id)
+
     providers = []
     for provider_id in order:
         rows = []
         for facts in participants:
             status, reason = root_participation(facts, choices.get(facts["root_id"], {}).get(provider_id),
                                                 provider_id)
-            rows.append({"root_id": facts["root_id"], "status": status, "reason": reason,
-                         "current_provider_id": facts["current"], "artifact_ids": list(facts["artifacts"])})
+            row = {"root_id": facts["root_id"], "status": status, "reason": reason,
+                   "current_provider_id": facts["current"], "artifact_ids": list(facts["artifacts"]),
+                   "via": VIA_ROUTE if status == ROOT_ELIGIBLE else None}
+            awaiting = {item["artifact_id"] for item in facts["pending_choices"] if item["provider_id"] == provider_id}
+            if facts["artifacts"] and awaiting >= set(facts["artifacts"]):
+                rows.append(dict(row, status=ROOT_PENDING, reason=None, via=None))
+                continue
+            # A provider that cannot claim this root's own link at all may still
+            # reach its files through another equivalent source; one that
+            # claims it but cannot take it now keeps that truthful status.
+            if status == ROOT_UNSUPPORTED and not facts["terminal"]:
+                plan = [step for step in equivalent_plan(roots, facts, provider_id, entry_for)
+                        if step["artifact_id"] not in awaiting]
+                if plan:
+                    row.update(status=ROOT_ELIGIBLE, reason=None, plan=plan,
+                               via=VIA_SOURCE if all(item["via"] == VIA_SOURCE for item in plan)
+                               else VIA_ALTERNATE)
+                else:
+                    claim = _equivalent_claim(roots, facts, provider_id, entry_for)
+                    if claim is not None:
+                        # It claims an equivalent link of these files but cannot
+                        # take it now: that link's own restriction, truthfully.
+                        row.update(status=ROOT_PREPARING if claim["status"] == PREPARING else ROOT_UNAVAILABLE,
+                                   reason=None if claim["status"] == PREPARING else claim.get("reason"))
+            rows.append(row)
         eligible = sum(row["status"] == ROOT_ELIGIBLE for row in rows)
         providers.append({"provider_id": provider_id, "eligible": eligible,
                           "already_selected": sum(row["status"] == ROOT_ALREADY_SELECTED for row in rows),
@@ -567,7 +718,7 @@ async def _retire_for_switch(engine, transfer_id: int, artifact, *, queued: bool
 
 async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, expected_provider_id: str,
                                expected_demand=None, artifact_id: int | None = None,
-                               expected_root_id: str | None = None) -> dict:
+                               expected_root_id: str | None = None, source: tuple[int, str] | None = None) -> dict:
     """Replace one root's provider route with ``provider_id`` (see the module
     docstring). ``expected_provider_id`` is the provider the operator saw as
     current: if the committed route moved since, nothing changes. The root is
@@ -576,11 +727,24 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
     selected candidate of ``artifact_id``, re-derived here; when it is not
     ``expected_root_id`` (the root the operator saw) nothing changes. Raises a
     normalized ``TransferError`` for every refusal; the requested provider is
-    never silently replaced by another."""
+    never silently replaced by another.
+
+    ``source`` (``(artifact_id, candidate_id)``, with ``expected_root_id``):
+    an operator's provider choice for ONE file whose own link the provider
+    cannot take -- the root to switch is the one that issued that EQUIVALENT
+    source of the file (``equivalent_plan``'s ``alternate``), and the file
+    gets a pending provider choice (``transfers.provider_choice``) instead of
+    any change now (``_switch_root``'s ``choice``)."""
     transfer = await engine.repository.get(int(transfer_id))
     if transfer is None:
         raise KeyError(transfer_id)
     roots = await engine.repository.root_route_facts_by_root(int(transfer_id))
+    if source is not None:
+        if expected_root_id is None or str(expected_root_id) not in roots or len(roots) < 2:
+            raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
+        return await _switch_root(engine, transfer, roots, str(expected_root_id), provider_id,
+                                  expected_provider_id=expected_provider_id, expected_demand=expected_demand,
+                                  choice_for=(int(source[0]), str(source[1])))
     root_id = subject_root(roots, artifact_id)
     if root_id is None:
         raise _refusal(Category.UNSUPPORTED_REQUEST if artifact_id is None else Category.RESOURCE_STATE_CONFLICT,
@@ -654,13 +818,29 @@ async def _switch_torrent_root(engine, transfer, provider_id: str, *, expected_p
 
 
 async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, provider_id: str, *,
-                       expected_provider_id: str, expected_demand=None) -> dict:
+                       expected_provider_id: str, expected_demand=None,
+                       choice_for: tuple[int, str] | None = None) -> dict:
     """One root of a transfer that is not one torrent root, fenced by
     exclusive recovery claims on exactly the artifacts whose selected
-    candidate it alone produced (see the module docstring)."""
+    candidate it alone produced (see the module docstring).
+
+    ``choice_for`` (``(artifact_id, candidate_id)``): the operator chose this
+    provider as the primary of a file the root does NOT produce the selected
+    source of, but issued an equivalent source of (``_choice_subject``). The
+    root's route is replaced exactly as any switch, and -- in that same commit,
+    only while the file still selects what it selected here and the source is
+    still that root's equivalent binding of it -- the file gets a pending
+    provider choice (``transfers.provider_choice``): its selection, writer and
+    recovery are untouched now; the provider's copy is selected for it only
+    when it lands. Refusals decided before anything changes include moving
+    the file's writing onto that source discarding existing material (the
+    operator's own confirmation is required for that, never assumed)."""
     transfer_id = int(transfer.id)
     facts = roots[root_id]
-    if not manual_root(facts, single=len(roots) == 1):
+    if choice_for is not None:
+        if not _choice_subject(facts, *choice_for):
+            raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
+    elif not manual_root(facts, single=len(roots) == 1):
         raise _refusal(Category.UNSUPPORTED_REQUEST, domain=Domain.REQUEST)
     current = facts["current"]
     if current != expected_provider_id:
@@ -675,6 +855,9 @@ async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, p
                   None)
     if target is None or choice is None or not choice["selectable"]:
         raise _unselectable(choice, provider_id)
+    pending = None
+    if choice_for is not None:
+        pending = await _choice_preflight(engine, transfer_id, roots, choice_for)
     latest = await _preflight(engine, root, current, choice, target, provider_id)
 
     claims = await engine.claim_route_switch(facts["artifacts"])
@@ -687,7 +870,8 @@ async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, p
         current_roots = await repository.root_route_facts_by_root(transfer_id)
         again = current_roots.get(root_id)
         if (again is None or again["artifacts"] != facts["artifacts"]
-                or not manual_root(again, single=len(current_roots) == 1)):
+                or (choice_for is None and not manual_root(again, single=len(current_roots) == 1))
+                or (choice_for is not None and not _choice_subject(again, *choice_for))):
             raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
         if again.get("shared"):
             raise _refusal(Category.UNSUPPORTED_REQUEST, domain=Domain.REQUEST)
@@ -700,7 +884,7 @@ async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, p
             root.id, expected_attempt_id=str(latest["id"]), expected_provider_id=str(current),
             target_provider_id=str(provider_id), expected_demand=expected_demand,
             retain_replaced=engine._retains_replaced_route(root, str(current)), now=engine.clock(),
-            claims=tuple(claims))
+            claims=tuple(claims), pending_choice=pending)
         if outcome == "shared":
             raise _refusal(Category.UNSUPPORTED_REQUEST, domain=Domain.REQUEST)
         if outcome != "replaced":
@@ -717,5 +901,45 @@ async def _switch_root(engine, transfer, roots: dict[str, dict], root_id: str, p
         await engine._aggregate(transfer_id)
     await engine._cleanup_pending()
     engine._resolution_opportunity(transfer_id)
-    return {"transfer_id": transfer_id, "provider_id": str(provider_id), "previous_provider_id": current,
-            "root_id": root_id, "artifact_ids": list(facts["artifacts"])}
+    result = {"transfer_id": transfer_id, "provider_id": str(provider_id), "previous_provider_id": current,
+              "root_id": root_id, "artifact_ids": list(facts["artifacts"])}
+    if pending is not None:
+        result.update(pending_choice_id=pending["id"], pending_artifact_id=pending["artifact_id"])
+    return result
+
+
+def _choice_subject(facts: dict, artifact_id: int, candidate_id: str) -> bool:
+    """Whether a root may be switched for ONE file it did not produce the
+    selected source of: it is not expanded, shared or finished, and it issued
+    ``candidate_id`` -- a current, proven-equivalent source of that file on
+    its committed route (the route facts' ``alternates``)."""
+    return (not expanded(facts) and not facts.get("shared") and not facts["terminal"] and any(
+        item["artifact_id"] == int(artifact_id) and item["candidate_id"] == str(candidate_id)
+        and item["provider_id"] == facts["current"] for item in facts["alternates"]))
+
+
+async def _choice_preflight(engine, transfer_id: int, roots: dict[str, dict], choice_for: tuple[int, str]) -> dict:
+    """A pending provider choice's refusals knowable before anything changes,
+    and the record to create: the file is an unfinished artifact of the
+    transfer with that equivalent source among its candidates and a selected
+    source produced by one of its roots (``owning_root_id``); moving its
+    writing onto that source would not discard existing material (the same
+    preview the operator's own source switch confirms -- never confirmed here,
+    so refused). The file's selection now is the generation the choice is
+    bound to (``expected_candidate_id``)."""
+    from uuid import uuid4
+
+    from transfers.manual_failover import DiscardConfirmationRequired
+    artifact_id, candidate_id = choice_for
+    artifact = await engine._current_artifact(int(transfer_id), int(artifact_id))
+    candidate = next((item for item in (artifact.candidates if artifact else ())
+                      if str(item.id) == str(candidate_id)), None)
+    owning = subject_root(roots, int(artifact_id))
+    if artifact is None or candidate is None or artifact.state == "completed" or owning is None:
+        raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
+    preview = await engine.preview_continuation(artifact, candidate)
+    if preview is not None and preview.discarded_bytes:
+        raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes,
+                                          preview.material_generation, unusable_bytes=preview.unusable_bytes)
+    return {"id": uuid4().hex, "artifact_id": int(artifact_id), "source_candidate_id": str(candidate_id),
+            "owning_root_id": str(owning), "expected_candidate_id": str(artifact.candidates[artifact.selected].id)}

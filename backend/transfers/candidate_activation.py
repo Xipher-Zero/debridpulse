@@ -40,6 +40,8 @@ special-casing exceptions.
 """
 from __future__ import annotations
 
+import logging
+
 from dataclasses import dataclass, replace
 
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
@@ -53,6 +55,9 @@ _TERMINAL_EXECUTION_STATES = frozenset({
     ExecutionState.FAILED, ExecutionState.ABSENT, ExecutionState.CANCELLED, ExecutionState.SUCCEEDED,
 })
 
+
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ActivationResult:
@@ -308,9 +313,34 @@ async def reconcile_native_transition(engine, transfer_id: int, artifact_id: int
         old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
 
 
+async def _release_stopped_writer(engine, transfer_id: int, artifact_id: int, attempt_id: str | None, *,
+                                  stopped_states: tuple[str, ...] = ("failed", "absent", "cancelled")) -> None:
+    """A switch that stopped the artifact's writer itself (retirement
+    ``requested_confirmed``) and then did not commit -- a stale claim, a
+    concurrent Pause or route change, a moved or vanished target, a refused
+    selection: the stopped writer must not stay the artifact's authorized
+    execution, or reconciliation would read its cancellation as the transfer's.
+    Through the one owner of that release (``detach_retired_writer``): only
+    the exact still-current, terminal attempt is detached; the artifact keeps
+    its own selection and is ``queued`` for the ordinary planner (``paused``
+    under a pause now in force); a newer writer or selection is left alone;
+    a settled file or transfer is never resurrected. Best effort: its own
+    failure never replaces the activation's outcome (the caller still reports
+    and records the refusal)."""
+    if attempt_id is None:
+        return
+    try:
+        transfer = await engine.repository.get(transfer_id)
+        paused = bool(transfer and transfer.paused) or await engine.repository.globally_paused()
+        await engine.repository.detach_retired_writer(artifact_id, attempt_id, state="paused" if paused else "queued",
+                                                      stopped_states=stopped_states)
+    except Exception:
+        logger.exception("Stopped writer %s of artifact %s could not be released", attempt_id, artifact_id)
+
+
 async def activate_candidate(
     engine, artifact, target_index: int, *, retry_at: float, claim: RecoveryClaim, error=None,
-    permit_discard: bool = True,
+    permit_discard: bool = True, fulfils_choice: str | None = None,
 ) -> ActivationResult:
     """Activate ``artifact.candidates[target_index]`` as the selected candidate.
 
@@ -339,6 +369,10 @@ async def activate_candidate(
     Anything that is not a real ``RecoveryClaim`` is a programming error and
     raises ``TypeError`` before any state is read or mutated; it is never
     downgraded to a generic authority.
+
+    ``fulfils_choice``: this activation is the landing of that pending
+    provider choice (``transfers.provider_choice``); it commits only while the
+    choice is still pending, and commits the choice with it.
     """
     if not isinstance(claim, RecoveryClaim):
         raise TypeError("activate_candidate requires the caller's real RecoveryClaim")
@@ -384,6 +418,15 @@ async def activate_candidate(
     new_candidate = artifact.candidates[target_index]
     old_candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
     old_execution_id = artifact.execution.attempt_id if artifact.execution is not None else None
+    if fulfils_choice is not None and not await engine.repository.provider_choice_target_current(
+            fulfils_choice, str(new_candidate.id)):
+        # Landing a pending provider choice: the target must be exactly that
+        # choice's authorized result, checked before anything is disturbed (the
+        # commit checks it again, transactionally).
+        return await _record(
+            ActivationResult(False, "choice_target_mismatch", old_candidate=old_candidate,
+                             new_candidate=new_candidate, transfer_id=transfer_id, artifact_id=artifact_id),
+            partial_decision="not_applicable", admission_decision="not_applicable", old_execution_id=old_execution_id)
     partial_decision = "not_applicable"
     # Section 13: was the old writer, right now, genuinely occupying one of
     # the states the admission gate counts as an active slot? Computed BEFORE
@@ -441,6 +484,14 @@ async def activate_candidate(
         transfer = await engine.repository.get(transfer_id)
         paused = bool(transfer and transfer.paused) or await engine.repository.globally_paused()
         parked = await engine.repository.previous_writer(artifact_id) if paused else None
+        if fulfils_choice is not None and parked is not None and parked.handle == artifact.execution:
+            # A paused file's writer is parked: a pending provider choice lands
+            # after Resume (decided again then), never as a desired source.
+            return await _record(
+                ActivationResult(False, "source_paused", old_candidate=old_candidate, new_candidate=new_candidate,
+                                 transfer_id=transfer_id, artifact_id=artifact_id),
+                partial_decision="not_applicable", admission_decision="not_applicable",
+                old_execution_id=old_execution_id)
         if (parked is not None and parked.handle == artifact.execution and parked.state == "paused"
                 and not await _discards(engine, artifact, new_candidate)):
             # Paused, with a parked writer, and the fresh writer would keep
@@ -466,8 +517,15 @@ async def activate_candidate(
                 old_candidate=old_candidate, new_candidate=new_candidate, transfer_id=transfer_id,
                 artifact_id=artifact_id,
             )
-    retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate,
-                                  boundary=claim.trigger.value, permit_discard=permit_discard)
+    try:
+        retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate,
+                                      boundary=claim.trigger.value, permit_discard=permit_discard)
+    except BaseException:
+        # Whether the writer was stopped is unknown here: only an attempt this
+        # activation's own cancel left ``cancelled`` is released.
+        await _release_stopped_writer(engine, transfer_id, artifact_id, old_execution_id,
+                                      stopped_states=("cancelled",))
+        raise
     retirement, partial_decision = retired.retirement, retired.partial_decision
     if retired.reason:
         return await _record(
@@ -476,70 +534,84 @@ async def activate_candidate(
                 retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
             ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
         )
-    current = await engine._current_artifact(transfer_id, artifact_id)
-    if current is None:
-        return await _record(
-            ActivationResult(
-                False, "artifact_disappeared", old_candidate=old_candidate, new_candidate=new_candidate,
-                retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
-            ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-        )
-    resolved_index = resolve_candidate_index(current, new_candidate)
-    if resolved_index is None:
-        return await _record(
-            ActivationResult(
-                False, "candidate_no_longer_present", old_candidate=old_candidate, new_candidate=new_candidate,
-                retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
-            ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-        )
-    resolved_candidate = current.candidates[resolved_index]
-    accepted_size = current.expected_bytes if current.expected_bytes > 0 else resolved_candidate.expected_bytes
-    # Section 13: an artifact that genuinely held a live slot before its old
-    # writer was retired above keeps a bounded, durable continuation
-    # reservation across this same commit, so unrelated queued work cannot
-    # steal the slot before the replacement dispatches. An artifact that was
-    # NOT actively occupying a slot gains no priority merely from switching.
-    admission_decision = "not_needed"
-    continuation_reservation_until = None
-    if was_occupying_slot:
-        continuation_reservation_until = engine.clock() + max(300.0, float(engine.policy.max_retry_delay))
-        admission_decision = "reserved"
-    # Section 26/29: the provenance record is built BEFORE the commit and
-    # handed to transition_recovery so it is written in the SAME transaction
-    # as the candidate-selection commit itself -- "the switch committed but
-    # its provenance was lost" is structurally impossible for this path,
-    # rather than merely caught-and-flagged after the fact.
-    activation_detail = engine.repository.build_candidate_activation_detail(
-        transfer_id=transfer_id, artifact_id=artifact_id,
-        old_candidate=old_candidate, new_candidate=resolved_candidate,
-        authority=authority, recovery_generation=recovery_generation,
-        old_execution_id=old_execution_id, partial_decision=partial_decision,
-        admission_decision=admission_decision, outcome="activated",
-    )
+    # From here on the old writer may have been stopped by THIS activation; a
+    # refusal releases it (``_release_stopped_writer``).
+    stopped_here = old_execution_id if retirement == "requested_confirmed" else None
     try:
-        committed = await engine.repository.transition_recovery(
-            current.id, "queued", error=error, retry_at=retry_at,
-            selected=resolved_index, expected_bytes=max(0, accepted_size),
-            candidate_switched=True, clear_quiescence=True,
-            continuation_reservation_until=continuation_reservation_until,
-            activation_provenance=activation_detail,
-            claim=claim,
+        current = await engine._current_artifact(transfer_id, artifact_id)
+        if current is None:
+            await _release_stopped_writer(engine, transfer_id, artifact_id, stopped_here)
+            return await _record(
+                ActivationResult(
+                    False, "artifact_disappeared", old_candidate=old_candidate, new_candidate=new_candidate,
+                    retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
+                ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
+            )
+        resolved_index = resolve_candidate_index(current, new_candidate)
+        if resolved_index is None:
+            await _release_stopped_writer(engine, transfer_id, artifact_id, stopped_here)
+            return await _record(
+                ActivationResult(
+                    False, "candidate_no_longer_present", old_candidate=old_candidate, new_candidate=new_candidate,
+                    retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
+                ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
+            )
+        resolved_candidate = current.candidates[resolved_index]
+        accepted_size = current.expected_bytes if current.expected_bytes > 0 else resolved_candidate.expected_bytes
+        # Section 13: an artifact that genuinely held a live slot before its old
+        # writer was retired above keeps a bounded, durable continuation
+        # reservation across this same commit, so unrelated queued work cannot
+        # steal the slot before the replacement dispatches. An artifact that was
+        # NOT actively occupying a slot gains no priority merely from switching.
+        admission_decision = "not_needed"
+        continuation_reservation_until = None
+        if was_occupying_slot:
+            continuation_reservation_until = engine.clock() + max(300.0, float(engine.policy.max_retry_delay))
+            admission_decision = "reserved"
+        # Section 26/29: the provenance record is built BEFORE the commit and
+        # handed to transition_recovery so it is written in the SAME transaction
+        # as the candidate-selection commit itself -- "the switch committed but
+        # its provenance was lost" is structurally impossible for this path,
+        # rather than merely caught-and-flagged after the fact.
+        activation_detail = engine.repository.build_candidate_activation_detail(
+            transfer_id=transfer_id, artifact_id=artifact_id,
+            old_candidate=old_candidate, new_candidate=resolved_candidate,
+            authority=authority, recovery_generation=recovery_generation,
+            old_execution_id=old_execution_id, partial_decision=partial_decision,
+            admission_decision=admission_decision, outcome="activated",
         )
-    except Exception:
-        # The provenance write is now part of THIS SAME transaction: if it
-        # (or anything else in the transaction) raises, the whole commit
-        # rolls back -- correctly, nothing durably happened -- but this
-        # function still never raises on the caller-facing "was the switch
-        # accepted" question (module docstring); a graceful, real rejection
-        # is reported instead of an uncaught exception.
-        committed = False
-    if not committed:
-        return await _record(
-            ActivationResult(
-                False, "commit_conflict", old_candidate=old_candidate, new_candidate=resolved_candidate,
-                retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
-            ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-        )
+        try:
+            committed = await engine.repository.transition_recovery(
+                current.id, "queued", error=error, retry_at=retry_at,
+                selected=resolved_index, expected_bytes=max(0, accepted_size),
+                candidate_switched=True, clear_quiescence=True,
+                continuation_reservation_until=continuation_reservation_until,
+                activation_provenance=activation_detail,
+                claim=claim, fulfils_choice=fulfils_choice,
+                selected_candidate_id=str(resolved_candidate.id) if fulfils_choice is not None else None,
+            )
+        except Exception:
+            # The provenance write is now part of THIS SAME transaction: if it
+            # (or anything else in the transaction) raises, the whole commit
+            # rolls back -- correctly, nothing durably happened -- but this
+            # function still never raises on the caller-facing "was the switch
+            # accepted" question (module docstring); a graceful, real rejection
+            # is reported instead of an uncaught exception.
+            committed = False
+        if not committed:
+            await _release_stopped_writer(engine, transfer_id, artifact_id, stopped_here)
+            return await _record(
+                ActivationResult(
+                    False, "commit_conflict", old_candidate=old_candidate, new_candidate=resolved_candidate,
+                    retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
+                ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
+            )
+    except BaseException:
+        # Anything raising between this activation's stop of the writer and
+        # the outcome above (a read, the provenance build, the clock): the
+        # stopped writer is released, then the failure propagates.
+        await _release_stopped_writer(engine, transfer_id, artifact_id, stopped_here)
+        raise
     # Section 12: both the candidate just abandoned and the one just
     # activated are now durably "tried" for this recovery episode, so a
     # later automatic search never cycles back to either -- regardless of

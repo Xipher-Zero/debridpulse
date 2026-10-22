@@ -71,6 +71,7 @@
     unsupported: 'cannot use this link',
     unavailable: 'unavailable for this link',
     preparing: 'still preparing',
+    pending: 'waiting for this provider\'s copy',
     inactive: 'finished',
     decomposed: 'expanded into several files',
     shared: 'shared with another download',
@@ -86,6 +87,7 @@
     gone: 'download no longer available',
     error: 'stopped by an error',
     not_attempted: 'not attempted after an error',
+    discard_confirmation_required: 'would discard downloaded data; switch its source to confirm',
   };
 
   let menuEl = null;
@@ -146,9 +148,9 @@
     if (!(item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       const identity = identityOf(providerId);
       return '<span class="dp-provider-chip" data-provider-state="' + esc(state) + '"' + identity.attributes + '>' +
-        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id);
+        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id) + pendingMarkup(item);
     }
-    return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope});
+    return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope}) + pendingMarkup(item);
   }
 
   // One file's launcher in Details: the provider of the ROOT that produced
@@ -177,6 +179,17 @@
     return entry.roots === null || entry.roots.has(String(rootId)) ? entry.target : null;
   }
 
+  // An operator's pending provider choice (``pending_provider_ids``): a
+  // preference awaiting that provider's copy, shown beside -- never as -- the
+  // committed provider the badge names.
+  function pendingMarkup(item) {
+    const ids = (item && Array.isArray(item.pending_provider_ids)) ? item.pending_provider_ids : [];
+    if (!ids.length) return '';
+    const given = Array.isArray(item.pending_provider_names) ? item.pending_provider_names : [];
+    const names = ids.map(function (id, index) { return providerLabel(given[index], id); }).join(', ');
+    return '<span class="dp-root-provider-switching dp-root-provider-pending" role="status" ' +
+      'data-dp-pending-providers="' + esc(ids.join(' ')) + '">' + esc('Preparing ' + names + '…') + '</span>';
+  }
   function switchingMarkup(transferId, rootId) {
     const target = switchingTarget(transferId, rootId);
     return target == null ? '' : '<span class="dp-root-provider-switching" role="status" ' +
@@ -483,6 +496,9 @@
     const switched = Number(result.switched) || 0;
     const parts = [];
     if (result.already_selected) parts.push(links(result.already_selected) + ' already on ' + targetName);
+    // Accepted but not switched yet: each waits for the provider's copy and
+    // keeps downloading from its current source meanwhile.
+    if (result.pending) parts.push(links(result.pending) + ' will switch when ' + targetName + '\'s copy is ready');
     const reasons = {};
     (result.roots || []).forEach(function (root) {
       if (root.outcome === 'ineligible') {
@@ -497,6 +513,9 @@
     const body = parts.join('; ') + (parts.length ? '.' : '');
     if (result.result === 'complete') {
       toast({title: 'Switched ' + links(switched) + ' to ' + targetName + '.', body: body}, 'success');
+    } else if (result.result === 'pending') {
+      toast({title: (switched ? 'Switched ' + links(switched) + ' to ' + targetName + '; ' : '') +
+        'preparing ' + targetName + ' for ' + links(Number(result.pending) || 0) + '.', body: body}, 'info');
     } else if (result.result === 'partial') {
       toast({title: 'Switched ' + switched + ' of ' + links(Number(result.participants) || 0) + ' to ' +
         targetName + '.', body: body}, 'warning');

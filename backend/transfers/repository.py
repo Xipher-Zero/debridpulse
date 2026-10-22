@@ -50,6 +50,7 @@ attempted in the artifact's current recovery episode. Only ever grows
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import SimpleNamespace
@@ -1416,7 +1417,8 @@ class TransferRepository(_QualifiedTransferRepository):
                                   candidate_switched: bool = False,
                                   continuation_reservation_until: float | None = None,
                                   activation_provenance: dict | None = None,
-                                  claim=None) -> bool:
+                                  claim=None, fulfils_choice: str | None = None,
+                                  selected_candidate_id: str | None = None) -> bool:
         """Atomically revoke terminal writer authority and persist recovery state.
 
         DP 1.0.12 recovery leveling, Section 13: ``continuation_reservation_until``
@@ -1448,6 +1450,13 @@ class TransferRepository(_QualifiedTransferRepository):
         confirming ``_cancel_and_confirm_stopped`` call had already returned.
         Callers that do not hold (or no longer trust) a claim may omit it,
         preserving prior behavior exactly.
+
+        A committed candidate switch also decides the file's pending provider
+        choice (``transfers.provider_choice``) in this same transaction: the
+        landing of that choice (``fulfils_choice``) commits it -- and commits
+        nothing unless it is still the file's pending choice -- and any other
+        switch (the host selector, recovery failover) supersedes it, so a
+        later landing can never overwrite the newer selection.
         """
         if expected_bytes is not None and expected_bytes < 0:
             return False
@@ -1473,6 +1482,20 @@ class TransferRepository(_QualifiedTransferRepository):
                 or int(snapshot.get("recovery_generation") or 0) != claim.generation
             ):
                 await db.rollback(); return False
+            if fulfils_choice is not None:
+                target = selected if selected is not None else int(row["selected_candidate"] or 0)
+                stored_now = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+                if (selected_candidate_id is None or not 0 <= target < len(stored_now)
+                        # the index must still hold exactly the candidate the
+                        # activation resolved -- never another one at that index
+                        or str(stored_now[target].id) != str(selected_candidate_id)
+                        or not await self._fulfilment_valid(db, row, target, fulfils_choice)):
+                    # The landing of a pending provider choice whose target is no
+                    # longer exactly that choice's authorized result: refused --
+                    # nothing selected, the choice stays pending; the activation
+                    # releases the writer it stopped (candidate_activation
+                    # ._release_stopped_writer), as for any refused commit.
+                    await db.rollback(); return False
             assignments = [
                 "status=?", "normalized_error=?", "retry_at=?", "execution_attempt_id=NULL",
                 "continuation_reservation_expires_at=?", "updated_at=CURRENT_TIMESTAMP",
@@ -1495,6 +1518,10 @@ class TransferRepository(_QualifiedTransferRepository):
                 snapshot["wake_condition"] = str(wake_condition or "") or None
             params.append(artifact_id)
             cursor = await db.execute(f"UPDATE download_files SET {','.join(assignments)} WHERE id=?", tuple(params))
+            if cursor.rowcount and candidate_switched:
+                chosen = selected if selected is not None else int(row["selected_candidate"] or 0)
+                if not await self._settle_provider_choice(db, row, chosen, fulfils_choice):
+                    await db.rollback(); return False
             if cursor.rowcount:
                 await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
                 if activation_provenance is not None:
@@ -1578,6 +1605,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback(); return False
             await db.execute("UPDATE download_files SET selected_candidate=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                              (int(selected), artifact_id))
+            await self._settle_provider_choice(db, row, int(selected), None)
             record_id = await db.execute_returning_id(
                 "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
                 (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)))
@@ -3373,6 +3401,229 @@ class TransferRepository(_QualifiedTransferRepository):
                 roots[int(row["artifact_id"])] = str(row["root_id"])
         return roots
 
+    @classmethod
+    async def _root_alternate_sources(cls, db, transfer_ids) -> dict[str, list[dict]]:
+        """Inside the caller's session, set-oriented: by root id, every
+        CURRENT canonical candidate binding (``candidate_order <= 100000``:
+        never the replaced history band) of an unfinished canonical artifact
+        of ``transfer_ids`` (``_ROUTE_SUBJECT_ARTIFACT``) that is NOT the
+        artifact's selected candidate, attributed through its origins to the
+        root of the same transfer that issued it (a member to its root).
+        Canonical binding is the proof of equivalence: each is another
+        upstream source of that same file. Each entry: ``artifact_id``,
+        ``candidate_id``, ``provider_id`` (the binding's), ``order`` and the
+        provider of the artifact's selected candidate now
+        (``selected_provider_id``). One query for any number of transfers."""
+        ids = list(dict.fromkeys(int(item) for item in transfer_ids))
+        found: dict[str, list[dict]] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            for row in await db.fetchall(
+                    f"""SELECT DISTINCT f.id AS artifact_id,COALESCE(r.parent_id,r.id) AS root_id,b.candidate_id,
+                        b.provider_id,b.candidate_order,
+                        json_extract(f.candidates,'$['||COALESCE(f.selected_candidate,0)||'].provider_id')
+                            AS selected_provider_id
+                    FROM download_files f
+                    JOIN canonical_candidate_bindings b ON b.canonical_artifact_id=f.id AND b.candidate_order<=100000
+                        AND b.candidate_order!=COALESCE(f.selected_candidate,0)+1
+                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                    JOIN transfer_requests r ON r.id=o.request_id AND r.transfer_id=f.torrent_id
+                    WHERE f.torrent_id IN ({marks}) AND {cls._ROUTE_SUBJECT_ARTIFACT}
+                    ORDER BY f.id,b.candidate_order""", tuple(chunk)):
+                found.setdefault(str(row["root_id"]), []).append({
+                    "artifact_id": int(row["artifact_id"]), "candidate_id": str(row["candidate_id"]),
+                    "provider_id": str(row["provider_id"] or ""), "order": int(row["candidate_order"]),
+                    "selected_provider_id": row["selected_provider_id"]})
+        return found
+
+    # THE identity of a pending provider choice's authorized result
+    # (``transfers.provider_choice``): a CURRENT binding of the choice's file
+    # whose provider is the requested one, issued -- by an attempt of that
+    # provider -- for the choice's source root (the root or one of its members)
+    # under the choice's own operator switch or a later route attempt of it.
+    # Parameters: artifact id, provider id, source root id, switch attempt id.
+    # Every decision about a choice's target -- which candidate landed, whether
+    # the activation's target is it, whether the commit selects it -- reads
+    # exactly this.
+    _CHOICE_TARGET_SQL = """SELECT b.candidate_id FROM canonical_candidate_bindings b
+        JOIN canonical_candidate_origins o ON o.binding_id=b.id
+        JOIN transfer_requests r ON r.id=o.request_id
+        JOIN resolution_attempts a ON a.id=o.resolution_attempt_id
+        JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
+        WHERE b.canonical_artifact_id=? AND b.candidate_order<=100000 AND b.provider_id=?
+        AND a.provider_id=b.provider_id AND COALESCE(r.parent_id,r.id)=?
+        AND op.ordinal>=(SELECT ordinal FROM route_attempt_provenance WHERE resolution_attempt_id=?)"""
+
+    @classmethod
+    async def _choice_target(cls, db, choice, candidate_id: str | None = None) -> str | None:
+        """Inside the caller's session: the choice's authorized result -- the
+        first in canonical order, or exactly ``candidate_id`` when it is one --
+        else ``None`` (``_CHOICE_TARGET_SQL``)."""
+        sql = cls._CHOICE_TARGET_SQL
+        params = [int(choice["artifact_id"]), str(choice["provider_id"]), str(choice["source_root_id"]),
+                  str(choice["switch_attempt_id"])]
+        if candidate_id is not None:
+            sql += " AND b.candidate_id=?"
+            params.append(str(candidate_id))
+        found = await db.fetchone(sql + " ORDER BY b.candidate_order LIMIT 1", tuple(params))
+        return str(found["candidate_id"]) if found else None
+
+    async def provider_choice_target_current(self, choice_id: str, candidate_id: str) -> bool:
+        """Whether ``candidate_id`` is, now, the authorized result of the
+        still-pending choice ``choice_id`` (``_choice_target``): the activation
+        landing that choice checks this before it disturbs anything."""
+        async with get_db() as db:
+            choice = await db.fetchone("SELECT * FROM pending_provider_choices WHERE id=? AND state='pending'",
+                                       (str(choice_id),))
+            return choice is not None and await self._choice_target(db, choice, candidate_id) is not None
+
+    @classmethod
+    async def _fulfilment_valid(cls, db, row, chosen: int, choice_id: str) -> bool:
+        """Inside a transaction about to select candidate index ``chosen`` for
+        the file ``row`` (read before it): whether that selection is exactly the
+        fulfilment of pending choice ``choice_id`` -- still pending, the file
+        still selects what it selected when the choice was made, the choice's
+        switch is still its source root's latest operator switch, and the
+        candidate at ``chosen`` is the choice's authorized result
+        (``_choice_target``: identity, provider, root and switch generation)."""
+        stored = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+        if not 0 <= chosen < len(stored):
+            return False
+        prior = int(row["selected_candidate"] or 0)
+        prior_id = str(stored[prior].id) if 0 <= prior < len(stored) else None
+        choice = await db.fetchone(
+            """SELECT c.* FROM pending_provider_choices c WHERE c.id=? AND c.artifact_id=? AND c.state='pending'
+               AND c.expected_candidate_id=? AND c.switch_attempt_id=(
+                   SELECT p.resolution_attempt_id FROM route_attempt_provenance p WHERE p.request_id=c.source_root_id
+                   AND p.operation='operator_switch' ORDER BY p.ordinal DESC LIMIT 1)""",
+            (str(choice_id), int(row["id"]), prior_id))
+        return choice is not None and await cls._choice_target(db, choice, str(stored[chosen].id)) is not None
+
+    @classmethod
+    async def _settle_provider_choice(cls, db, row, chosen: int, fulfils_choice: str | None) -> bool:
+        """Inside a transaction committing the selection of candidate index
+        ``chosen`` for the file ``row`` (read before the commit), decide its
+        pending provider choice (``transfers.provider_choice``):
+
+        * ``fulfils_choice`` -- the choice's own landing: it commits only while
+          it is still pending, the file still selected what it selected when
+          the choice was made (``expected_candidate_id``) and the choice's
+          switch is still its source root's latest operator switch. ``False``
+          (the caller rolls back) otherwise, so a superseded choice never lands;
+        * any other selection (the host selector, recovery failover): the
+          pending choice is ``committed`` (``selected_directly``) when the
+          chosen candidate is exactly its authorized result
+          (``_choice_target``), else ``superseded`` (``selection_changed``).
+
+        The fulfilment additionally requires the newly selected candidate
+        itself to be the choice's authorized result (``_choice_target``): the
+        commit verifies the target's identity, provider, root and switch
+        generation, never only the selection it replaces."""
+        artifact_id = int(row["id"])
+        stored = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+        chosen_id = str(stored[chosen].id) if 0 <= chosen < len(stored) else None
+        prior = int(row["selected_candidate"] or 0)
+        prior_id = str(stored[prior].id) if 0 <= prior < len(stored) else None
+        now = time.time()
+        if fulfils_choice is not None:
+            # ``_fulfilment_valid`` decided, in this same transaction, that the
+            # candidate selected is exactly the choice's authorized result.
+            if not await cls._fulfilment_valid(db, row, chosen, fulfils_choice):
+                return False
+            fulfilled = await db.execute(
+                """UPDATE pending_provider_choices SET state='committed',reason='landed',committed_candidate_id=?,
+                   updated_at=? WHERE id=? AND artifact_id=? AND state='pending' AND expected_candidate_id=?
+                   AND switch_attempt_id=(SELECT p.resolution_attempt_id FROM route_attempt_provenance p
+                       WHERE p.request_id=pending_provider_choices.source_root_id AND p.operation='operator_switch'
+                       ORDER BY p.ordinal DESC LIMIT 1)""",
+                (chosen_id, now, str(fulfils_choice), artifact_id, prior_id))
+            return bool(fulfilled.rowcount)
+        for choice in await db.fetchall("SELECT * FROM pending_provider_choices WHERE artifact_id=? AND state='pending'",
+                                        (artifact_id,)):
+            direct = chosen_id is not None and await cls._choice_target(db, choice, chosen_id) is not None
+            await db.execute("""UPDATE pending_provider_choices SET state=?,reason=?,committed_candidate_id=?,
+                updated_at=? WHERE id=? AND state='pending'""",
+                ("committed", "selected_directly", chosen_id, now, choice["id"]) if direct
+                else ("superseded", "selection_changed", None, now, choice["id"]))
+        return True
+
+    @staticmethod
+    async def _choice_still_valid(db, root_id: str, choice: dict) -> bool:
+        """Inside the caller's transaction: the file still selects
+        ``expected_candidate_id``, is unfinished and of the same transfer, and
+        ``source_candidate_id`` is still one of its CURRENT bindings issued by
+        ``root_id`` (or a member of it) -- the canonical proof that root's link
+        is an equivalent source of this file."""
+        row = await db.fetchone(
+            """SELECT f.candidates,f.selected_candidate,f.status,f.torrent_id FROM download_files f
+               JOIN transfer_requests r ON r.id=? AND r.transfer_id=f.torrent_id
+               WHERE f.id=? AND COALESCE(f.mirror_state,'')!='standby'
+               AND f.status NOT IN ('completed','cancelled','duplicate')""",
+            (str(root_id), int(choice["artifact_id"])))
+        if not row:
+            return False
+        stored = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+        selected = int(row["selected_candidate"] or 0)
+        if not (0 <= selected < len(stored)) or str(stored[selected].id) != str(choice["expected_candidate_id"]):
+            return False
+        return await db.fetchone(
+            """SELECT 1 FROM canonical_candidate_bindings b JOIN canonical_candidate_origins o ON o.binding_id=b.id
+               JOIN transfer_requests r ON r.id=o.request_id
+               WHERE b.canonical_artifact_id=? AND b.candidate_id=? AND b.candidate_order<=100000
+               AND COALESCE(r.parent_id,r.id)=?""",
+            (int(choice["artifact_id"]), str(choice["source_candidate_id"]), str(root_id))) is not None
+
+    async def end_provider_choice(self, choice_id: str, state: str, reason: str) -> bool:
+        """Compare-and-set a pending choice to a terminal ``state`` (failed,
+        superseded or cancelled) with its ``reason``: ``False`` when it was no
+        longer pending."""
+        if state not in {"failed", "superseded", "cancelled"}:
+            raise ValueError(state)
+        async with get_db() as db:
+            cursor = await db.execute("""UPDATE pending_provider_choices SET state=?,reason=?,updated_at=?
+                WHERE id=? AND state='pending'""", (state, str(reason), time.time(), str(choice_id)))
+            await db.commit()
+        return bool(cursor.rowcount)
+
+    async def provider_choice_landing(self, choice: dict) -> dict:
+        """The durable facts a pending choice is decided from
+        (``transfers.provider_choice.reconcile``): the source root's latest
+        operator switch attempt and its committed route (latest route attempt,
+        its provider and state), the root request's state, the file's current
+        status and selected candidate, and the FIRST current binding of the
+        file (canonical order) issued by the requested provider for that root
+        -- the root or one of its members -- from the choice's own switch
+        attempt or a later one (``candidate_id``): only that can fulfil it."""
+        root_id, artifact_id = str(choice["source_root_id"]), int(choice["artifact_id"])
+        async with get_db() as db:
+            switch = await db.fetchone(
+                """SELECT p.resolution_attempt_id,p.ordinal FROM route_attempt_provenance p WHERE p.request_id=?
+                   AND p.operation='operator_switch' ORDER BY p.ordinal DESC LIMIT 1""", (root_id,))
+            route = await db.fetchone(
+                """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE p.request_id=? ORDER BY p.ordinal DESC LIMIT 1""", (root_id,))
+            root = await db.fetchone("SELECT state FROM transfer_requests WHERE id=?", (root_id,))
+            artifact = await db.fetchone(
+                """SELECT f.status,f.candidates,f.selected_candidate,f.mirror_state,t.status AS transfer_status
+                   FROM download_files f JOIN torrents t ON t.id=f.torrent_id WHERE f.id=?""", (artifact_id,))
+            landed = await self._choice_target(db, choice)
+        selected_id = None
+        if artifact:
+            stored = [codec.candidate(item) for item in codec.load(artifact["candidates"], [])]
+            selected = int(artifact["selected_candidate"] or 0)
+            selected_id = str(stored[selected].id) if 0 <= selected < len(stored) else None
+        return {"latest_switch_attempt_id": switch["resolution_attempt_id"] if switch else None,
+                "route_provider_id": route["provider_id"] if route else None,
+                "route_state": route["state"] if route else None,
+                "root_state": root["state"] if root else None,
+                "artifact_status": artifact["status"] if artifact else None,
+                "transfer_status": artifact["transfer_status"] if artifact else None,
+                "standby": bool(artifact and artifact["mirror_state"] == "standby"),
+                "selected_candidate_id": selected_id,
+                "landed_candidate_id": landed}
+
     async def _root_route_facts_by_root(self, db, transfer_ids) -> dict[int, dict[str, dict]]:
         """Inside the caller's session, set-oriented: for each transfer, the
         facts every one of its ROOT requests' provider route is decided from,
@@ -3386,7 +3637,12 @@ class TransferRepository(_QualifiedTransferRepository):
         members, how many of them are CURRENT (``members``: its current
         generation's, ``_current_member_ids``) and whether any member owns a
         canonical artifact of its own (``member_owned``), and the unfinished ``artifacts`` whose selected candidate it alone
-        produced (``_artifact_route_roots``; ``relevant`` when there is one).
+        produced (``_artifact_route_roots``; ``relevant`` when there is one),
+        and the ``alternates`` it issued: the current, proven-equivalent
+        sources (``_root_alternate_sources``) of this transfer's unfinished
+        files that are not the file's selected one, and the
+        ``pending_choices`` (``transfers.provider_choice``) of the files whose
+        selected source it produced.
         A bounded number of queries for any number of transfers; a transfer
         with no root request is absent."""
         ids = list(dict.fromkeys(int(item) for item in transfer_ids))
@@ -3435,6 +3691,14 @@ class TransferRepository(_QualifiedTransferRepository):
                     AND COALESCE(f.mirror_state,'')!='standby' AND f.status!='duplicate'""", tuple(root_chunk)))
             for artifact_id, root_id in sorted((await self._artifact_route_roots(db, chunk)).items()):
                 produced.setdefault(root_id, []).append(artifact_id)
+            alternates = await self._root_alternate_sources(db, chunk)
+            pending: dict[str, list[dict]] = {}
+            for choice in await db.fetchall(
+                    f"""SELECT owning_root_id,artifact_id,provider_id,source_root_id FROM pending_provider_choices
+                    WHERE transfer_id IN ({marks}) AND state='pending' ORDER BY created_at,id""", tuple(chunk)):
+                pending.setdefault(str(choice["owning_root_id"]), []).append({
+                    "artifact_id": int(choice["artifact_id"]), "provider_id": str(choice["provider_id"]),
+                    "source_root_id": str(choice["source_root_id"])})
             shared = await self._roots_shared_elsewhere(db, root_ids)
             torrents = {int(row["id"]): row for row in await db.fetchall(
                 f"""SELECT id,status,collection_route_authority,collection_route_provider_id FROM torrents
@@ -3457,6 +3721,8 @@ class TransferRepository(_QualifiedTransferRepository):
                     "decomposed": str(row["id"]) in decomposed, "members": members.get(str(row["id"]), 0),
                     "member_owned": str(row["id"]) in member_owned,
                     "artifacts": artifacts, "relevant": bool(artifacts),
+                    "alternates": tuple(alternates.get(str(row["id"]), ())),
+                    "pending_choices": tuple(pending.get(str(row["id"]), ())),
                     "shared": str(row["id"]) in shared,
                 }
         return facts
@@ -3526,7 +3792,7 @@ class TransferRepository(_QualifiedTransferRepository):
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
                                  target_provider_id: str, operation: str = OPERATOR_SWITCH,
                                  expected_demand=None, retain_replaced: bool = False, now: float = 0.0,
-                                 claims=()) -> str:
+                                 claims=(), pending_choice: dict | None = None) -> str:
         """THE operator root-route replacement, decided atomically.
 
         The root's current route -- its latest route attempt, which must still
@@ -3582,7 +3848,17 @@ class TransferRepository(_QualifiedTransferRepository):
         re-verified current in this commit (``"busy"`` otherwise), each of
         those artifacts must hold no live writer (``"writer_live"``), and the
         commit is journaled naming the root, both providers and those
-        artifacts."""
+        artifacts.
+
+        ``pending_choice`` (``transfers.provider_choice``): the replacement is
+        an operator's provider choice for ONE file this root supplies an
+        equivalent source of (``artifact_id``, ``source_candidate_id``,
+        ``expected_candidate_id``, ``owning_root_id``). That file is not
+        affected now: in this same commit -- only while it still selects
+        ``expected_candidate_id`` and the source is still one of its current
+        bindings issued by this root (``"stale"`` otherwise) -- its earlier
+        pending choice is superseded and the new one recorded against the
+        route attempt this commit opens."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             refusal, row, latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
@@ -3611,7 +3887,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback()
                 return "writer_live"
             affected = [int(claim.artifact_id) for claim in claims]
-            if claims and await self._roots_shared_elsewhere(db, (request_id,)):
+            if (claims or pending_choice is not None) and await self._roots_shared_elsewhere(db, (request_id,)):
                 # Another transfer's artifact holds a candidate of this root
                 # (a consolidation that landed meanwhile): nothing changes.
                 await db.rollback()
@@ -3627,6 +3903,9 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback()
                 return "writer_live"
             transfer_id = int(row["transfer_id"])
+            if pending_choice is not None and not await self._choice_still_valid(db, request_id, pending_choice):
+                await db.rollback()
+                return "stale"
             await db.execute("UPDATE resolution_attempts SET state='released',updated_at=CURRENT_TIMESTAMP WHERE id=?",
                              (latest["id"],))
             await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP "
@@ -3646,7 +3925,26 @@ class TransferRepository(_QualifiedTransferRepository):
                              (pin, request_id, target_provider_id))
             await self._begin_route_provenance(db, pin, transfer_id, request_id, target_provider_id,
                                                operation=operation)
-            if claims:
+            if affected:
+                # The files whose own source this switch replaces: an earlier
+                # pending provider choice of theirs is no longer what the
+                # operator asked for (transfers.provider_choice).
+                await db.execute(
+                    f"""UPDATE pending_provider_choices SET state='superseded',reason='owning_root_switched',
+                    updated_at=? WHERE state='pending' AND artifact_id IN ({",".join("?" * len(affected))})""",
+                    (time.time(), *affected))
+            if pending_choice is not None:
+                now_ = time.time()
+                await db.execute("""UPDATE pending_provider_choices SET state='superseded',reason='new_choice',
+                    updated_at=? WHERE artifact_id=? AND state='pending'""", (now_, int(pending_choice["artifact_id"])))
+                await db.execute(
+                    """INSERT INTO pending_provider_choices(id,transfer_id,artifact_id,owning_root_id,source_root_id,
+                       source_candidate_id,provider_id,switch_attempt_id,expected_candidate_id,state,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?)""",
+                    (str(pending_choice["id"]), transfer_id, int(pending_choice["artifact_id"]),
+                     str(pending_choice["owning_root_id"]), str(request_id), str(pending_choice["source_candidate_id"]),
+                     str(target_provider_id), pin, str(pending_choice["expected_candidate_id"]), now_, now_))
+            if claims or pending_choice is not None:
                 await journal(db, je.root_route_switched(
                     transfer_id=transfer_id, request_id=request_id, attempt_id=pin, provider_id=target_provider_id,
                     previous_provider_id=str(expected_provider_id), artifact_ids=sorted(affected)))

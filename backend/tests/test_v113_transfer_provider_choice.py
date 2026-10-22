@@ -56,10 +56,15 @@ def expected_routes(item):
 
 async def test_the_badge_opens_the_transfer_choice_with_each_roots_truthful_participation(tmp_path, monkeypatch):
     """1063's shape: part01 selects its rapidgator root (prov-ad), part02 its
-    pixeldrain root (prov-dl), extra.bin its 1fichier root (prov-ad). Roots
-    supplying only alternates take no part. Each provider's count is the
-    roots it may take now; a root already on it, or whose link it does not
-    claim, is reported as such and never counted as switchable."""
+    pixeldrain root (prov-dl), extra.bin its 1fichier root (prov-ad). The
+    participants are the roots of the selected sources; roots supplying only
+    alternates are not participants, but their equivalent sources count for
+    the provider a file may be moved to (the operator's best-effort primary
+    provider): prov-ad already serves part02's equivalent rapidgator source
+    (``via`` ``source``), and prov-tb may take part01's equivalent pixeldrain
+    link (``via`` ``alternate``). Each provider's count is the roots it may
+    take now; a root already on it, or none of whose files it can reach, is
+    reported as such and never counted as switchable."""
     lab_ = await lab(tmp_path, monkeypatch)
     roots = await roots_by_link(lab_.repository, lab_.transfer.id)
     row = await listed(lab_)
@@ -70,11 +75,17 @@ async def test_the_badge_opens_the_transfer_choice_with_each_roots_truthful_part
     providers = by_provider(status)
     assert {provider: (item["eligible"], item["already_selected"], item["participants"], item["selectable"])
             for provider, item in providers.items()} == {
-        "prov-ad": (0, 2, 3, False), "prov-dl": (1, 1, 3, True), "prov-tb": (1, 0, 3, True)}
+        "prov-ad": (1, 2, 3, True), "prov-dl": (1, 1, 3, True), "prov-tb": (2, 0, 3, True)}
     assert statuses(providers["prov-dl"], roots) == {
         RG1: ("eligible", None), PD2: ("already_selected", None), FICHIER: ("unsupported", None)}
     assert statuses(providers["prov-tb"], roots) == {
-        RG1: ("unsupported", None), PD2: ("eligible", None), FICHIER: ("unsupported", None)}
+        RG1: ("eligible", None), PD2: ("eligible", None), FICHIER: ("unsupported", None)}
+    assert statuses(providers["prov-ad"], roots) == {
+        RG1: ("already_selected", None), PD2: ("eligible", None), FICHIER: ("already_selected", None)}
+    via = {provider: {row["root_id"]: row.get("via") for row in providers[provider]["roots"]}
+           for provider in ("prov-ad", "prov-tb")}
+    assert (via["prov-ad"][roots[PD2]], via["prov-tb"][roots[RG1]], via["prov-tb"][roots[PD2]]) == (
+        "source", "alternate", "route")
     assert {RG2, PD1}.isdisjoint(statuses(providers["prov-dl"], roots))          # alternates only
 
     # The application read is the same answer; a transfer of one root has none.

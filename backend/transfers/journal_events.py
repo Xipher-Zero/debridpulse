@@ -318,9 +318,12 @@ def source_switch(provenance: dict, stage: str, *, old_source: str | None, new_s
     activation, so switching back and forth between the same candidates is
     as many occurrences as commits, and none for a refused switch."""
     event_type, message = _SWITCH_STAGES[stage]
-    operator = provenance.get("authority") == "user_candidate_switch"
+    authority = provenance.get("authority")
+    operator = authority in {"user_candidate_switch", "user_route_switch"}
     if message is None:
-        message = "Download source switched by the operator" if operator else "Download source switched automatically"
+        message = ("Download source switched to the provider the operator chose" if authority == "user_route_switch"
+                   else "Download source switched by the operator" if operator
+                   else "Download source switched automatically")
     detail = f"{old_source or 'unknown source'} -> {new_source or 'unknown source'}"
     if provenance.get("partial_decision"):
         detail += f"; partial download {str(provenance['partial_decision']).replace('_', ' ')}"

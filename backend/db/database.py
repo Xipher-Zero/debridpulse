@@ -887,6 +887,38 @@ TRANSFER_REPOSITORY_SCHEMA = (
         expected_bytes INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(request_id, relative_path))""",
     "CREATE INDEX IF NOT EXISTS idx_file_selection_intents_transfer ON transfer_file_selection_intents(transfer_id)",
+    # An operator's pending provider choice for ONE canonical file: "when the
+    # requested provider's copy of this proven-equivalent source lands, select
+    # it for this file" (``transfers.provider_choice``). It is an intent, never
+    # a selection: the file keeps its committed source and writer until the
+    # canonical landing commits it (``state`` committed, in the same
+    # transaction as the selection, ``TransferRepository.transition_recovery``).
+    # Bound to the operation that created it: the source root's operator-switch
+    # route attempt (``switch_attempt_id``, its route generation), the file's
+    # selection at creation (``expected_candidate_id``) and the equivalent
+    # source binding that proved equivalence (``source_candidate_id``). At
+    # most one pending choice per file; terminal rows stay as provenance for
+    # the transfer's life and are deleted with it.
+    """CREATE TABLE IF NOT EXISTS pending_provider_choices (
+        id TEXT PRIMARY KEY,
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        owning_root_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        source_root_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        source_candidate_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        switch_attempt_id TEXT NOT NULL REFERENCES resolution_attempts(id),
+        expected_candidate_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK(state IN ('pending','committed','failed','superseded','cancelled')),
+        reason TEXT,
+        committed_candidate_id TEXT,
+        created_at REAL NOT NULL,
+        updated_at REAL NOT NULL)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_provider_choice_current ON pending_provider_choices(artifact_id) "
+    "WHERE state='pending'",
+    "CREATE INDEX IF NOT EXISTS idx_pending_provider_choices_transfer ON pending_provider_choices(transfer_id,state)",
+    "CREATE INDEX IF NOT EXISTS idx_pending_provider_choices_source ON pending_provider_choices(source_root_id,state)",
+    "CREATE INDEX IF NOT EXISTS idx_pending_provider_choices_state ON pending_provider_choices(state)",
     # A root's speculative backup preparations: one row per (root, provider,
     # preparation generation). The provider-native resource itself is the
     # ordinary ``provider_resources`` binding (``binding_id``), so its state,
@@ -1273,6 +1305,9 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
     'transfer_file_selection_intents': {'request_id', 'transfer_id', 'origin_selection_id', 'created_at', 'updated_at'},
     'transfer_file_selection_intent_entries': {'request_id', 'relative_path', 'expected_bytes'},
+    'pending_provider_choices': {'id', 'transfer_id', 'artifact_id', 'owning_root_id', 'source_root_id',
+                                 'source_candidate_id', 'provider_id', 'switch_attempt_id', 'expected_candidate_id',
+                                 'state', 'reason', 'committed_candidate_id', 'created_at', 'updated_at'},
     'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint', 'collection_root', 'collection_root_conflict', 'queue_promotion'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},

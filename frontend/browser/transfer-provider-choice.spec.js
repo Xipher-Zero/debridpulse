@@ -82,7 +82,7 @@ async function apis(page, state) {
     if (url.pathname.startsWith('/api/torrents/40')) state.requests.push(`${request.method()} ${url.pathname}${url.search}`);
   });
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({ items: [listItem()], total: 1 }) }));
+    status: 200, contentType: 'application/json', body: JSON.stringify({ items: [state.item || listItem()], total: 1 }) }));
   await page.route(url => url.pathname === '/api/torrents/40', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(detail()) }));
   await page.route(url => url.pathname === '/api/torrents/40/route/transfer', async route => {
@@ -90,6 +90,7 @@ async function apis(page, state) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(transferStatus()) });
     }
     state.posts.push(JSON.parse(route.request().postData() || '{}'));
+    if (state.result) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state.result) });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       transfer_id: 40, provider_id: 'premiumize', result: 'partial', participants: 3,
       switched: 1, already_selected: 1, ineligible: 1, refused: 0, roots: [
@@ -199,4 +200,39 @@ test('a file\'s own switch in Details says "Switching to" beside that link\'s fi
   state.release();
   await expect(page.locator('#modal-body .dp-root-provider-switching')).toHaveCount(0);
   await expect(rowOf(2).locator('.dp-root-provider-launcher')).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+// Option A (transfer 1082): a provider that must first acquire an equivalent
+// source is accepted as a PENDING choice. The badge keeps naming the committed
+// provider; the pending preference is shown beside it, never as it; and the
+// outcome says the files will switch when that provider's copy is ready.
+test('a pending provider choice is shown beside the committed provider, never as it', async ({ page }) => {
+  const state = freshState();
+  state.result = { transfer_id: 40, provider_id: 'torbox', result: 'pending', participants: 1,
+    switched: 0, pending: 1, already_selected: 0, ineligible: 0, refused: 0, roots: [
+      { root_id: 'r1', outcome: 'pending', reason: null, previous_provider_id: 'alldebrid', artifact_ids: [1, 3],
+        files: [{ artifact_id: 1, via: 'alternate', outcome: 'pending', changed: true }] }] };
+  await apis(page, state);
+  await ready(page);
+  const launcher = page.locator('#dash-tbody tr[data-torrent-id="40"] .dp-root-provider-launcher');
+  await expect(launcher).toHaveText('AllDebrid');
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="40"] .dp-root-provider-pending')).toHaveCount(0);
+
+  await launcher.click();
+  const menu = page.locator('.dp-root-provider-menu');
+  await expect(menu).toBeVisible();
+  await menu.locator('.dp-root-provider-row', { hasText: 'Premiumize' }).locator('.dp-root-provider-switch').click();
+  await expect(page.locator('.toast, [role="status"], [role="alert"]').filter({
+    hasText: 'preparing Premiumize for 1 link.' }).first()).toBeVisible();
+  await expect(page.locator('.toast, [role="status"], [role="alert"]').filter({
+    hasText: "1 link will switch when Premiumize's copy is ready." }).first()).toBeVisible();
+
+  // The list now reports the pending preference: shown beside the badge, while
+  // the badge still names the committed provider.
+  state.item = Object.assign(listItem(), { pending_provider_ids: ['torbox'], pending_provider_names: ['TorBox'] });
+  await page.evaluate(() => loadRecent());
+  const hint = page.locator('#dash-tbody tr[data-torrent-id="40"] .dp-root-provider-pending');
+  await expect(hint).toHaveText('Preparing TorBox…');
+  await expect(hint).toHaveAttribute('data-dp-pending-providers', 'torbox');
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="40"] .dp-root-provider-launcher')).toHaveText('AllDebrid');
 });
