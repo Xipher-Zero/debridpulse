@@ -619,6 +619,9 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
     ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES`` (enforced
     by ``manual_candidate_failover`` above).
 
+    (DP 1.0.13: the owner is now the predicate ``switch_eligible``, which
+    also admits a ``recovery_wait`` waiting out a timed retry backoff.)
+
     An earlier version of this test only asserted the three sets were
     ``==``. That would still pass if ``transfers.repository
     ._SWITCHABLE_ARTIFACT_STATES`` or ``transfers.presentation_repository
@@ -629,15 +632,27 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
     consumer actually IMPORTS and re-exports the one canonical frozenset
     rather than declaring its own copy -- true delegation, the leveling
     requirement, not merely a currently-true equality."""
-    from transfers.presentation_repository import _SWITCHABLE_STATES
-    from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
-    from api.operational_downloads import _SWITCHABLE_STATES_SQL
+    import api.operational_downloads as listed
+    import transfers.presentation_repository as details
+    import transfers.repository as repository
+    from transfers.manual_failover import switch_eligible, switch_eligible_sql
 
-    assert _SWITCHABLE_ARTIFACT_STATES is SWITCH_ELIGIBLE_LIFECYCLE_STATES
-    assert _SWITCHABLE_STATES is SWITCH_ELIGIBLE_LIFECYCLE_STATES
-    assert _SWITCHABLE_STATES_SQL == ", ".join(
-        f"'{state}'" for state in sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES)
-    )
+    assert repository.switch_eligible is switch_eligible
+    assert details.switch_eligible is switch_eligible
+    assert listed.switch_eligible_sql is switch_eligible_sql
+    assert listed._SWITCHABLE_SQL == switch_eligible_sql("status", "quiescence_reason")
+    assert listed._GMA_SWITCHABLE_SQL == switch_eligible_sql("gma.status", "gma.quiescence_reason")
+    for module in (repository, details, listed):
+        assert not hasattr(module, "_SWITCHABLE_ARTIFACT_STATES") and not hasattr(module, "_SWITCHABLE_STATES")
+    # The rule itself: every listed state, and a recovery_wait only while it
+    # waits out a timed retry of the route that failed.
+    assert all(switch_eligible(state) for state in SWITCH_ELIGIBLE_LIFECYCLE_STATES)
+    assert switch_eligible("recovery_wait", "retry_backoff")
+    for reason in (None, "storage_unavailable", "executor_unavailable", "provider_disabled",
+                   "input_required", "materialization_hold"):
+        assert not switch_eligible("recovery_wait", reason)
+    for state in ("completed", "cancelled", "duplicate", "input_required", "lost"):
+        assert not switch_eligible(state, "retry_backoff")
 
 
 @pytest.mark.asyncio

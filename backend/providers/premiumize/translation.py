@@ -168,18 +168,23 @@ CLOUD, IMMEDIATE = "cloud", "immediate"
 
 
 def cloud_resource(transfer_id: str, *, ownership: Ownership = Ownership.CREATED,
-                   nzb_name: str = "") -> ProviderResource:
+                   nzb_name: str = "", source_host: str = "") -> ProviderResource:
     """A cloud transfer's durable identity: its transfer id. A transfer
     acquired from an NZB also keeps that posting's useful work name
     (``nzb_name``, ``integrations.usenet.nzb.useful_name``) -- a bounded, non-secret
     naming fact, never the NZB itself -- so its files are named the same way
-    after any restart (``named_cloud_members``)."""
+    after any restart (``named_cloud_members``). A transfer acquired from a
+    hoster link keeps that link's bare hostname (``source_host``), so each of
+    its files names that upstream source, never Premiumize itself
+    (``cloud_member_address``). Neither is part of the identity."""
     if native_id(transfer_id) != transfer_id:
         raise TransferError(NormalizedError(Domain.PROVIDER, Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION,
                                             integration_id=INTEGRATION_ID))
     context = {"mode": CLOUD, "transfer_id": transfer_id}
     if nzb_name:
         context["nzb_name"] = nzb_name
+    if source_host:
+        context["source_host"] = source_host
     return ProviderResource(INTEGRATION_ID, context, ownership,
                             uuid5(NAMESPACE_URL, f"premiumize:transfer:{transfer_id}").hex)
 

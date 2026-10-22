@@ -439,8 +439,10 @@ class CanonicalOwnership:
         binding -- the one ``_binding_for`` resolves for it, exactly as every
         reader and the origin backfill do -- takes that candidate's position; a
         binding no current candidate resolves to leaves the active positions
-        for the non-current band. Nothing is deleted, no origin moves, and an
-        aligned artifact is left untouched, so repeating it changes nothing.
+        for the non-current band, and every binding a current candidate
+        resolves to names that candidate (``_name_current_candidates``).
+        Nothing is deleted, no origin moves, and an aligned artifact is left
+        untouched, so repeating it changes nothing.
 
         Returns each current candidate with the origin resolved for it. Origin
         resolution reads no binding, so realignment never changes it: the
@@ -451,15 +453,21 @@ class CanonicalOwnership:
         candidates = tuple(codec.candidate(item) for item in codec.load(row.get("candidates"), []))
         resolved = []
         positions: dict[int, int] = {}
+        current_for: dict[int, list[str]] = {}
         for position, candidate in enumerate(candidates, start=1):
             origin = await self._p1_origin_for_candidate(db, artifact_id, candidate)
             resolved.append((candidate, origin))
             binding = await self._binding_for(db, artifact_id, candidate, origin.source if origin else None)
-            if binding and int(binding["id"]) not in positions:
-                positions[int(binding["id"])] = position
+            if binding:
+                current_for.setdefault(int(binding["id"]), []).append(str(candidate.id))
+                if int(binding["id"]) not in positions:
+                    positions[int(binding["id"])] = position
         bindings = await db.fetchall(
-            "SELECT id,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id=? "
+            "SELECT id,candidate_id,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id=? "
             "ORDER BY candidate_order,id", (artifact_id,))
+        # A binding re-issued a candidate still names its earlier one: name the
+        # current one first, so the positions below place truthful bindings.
+        await self._name_current_candidates(db, bindings, current_for, {str(item.id) for item in candidates})
         misplaced = [item for item in bindings
                      if (int(item["id"]) in positions and int(item["candidate_order"]) != positions[int(item["id"])])
                      or (int(item["id"]) not in positions and int(item["candidate_order"]) <= self._NON_CURRENT_ORDER)]
@@ -474,6 +482,42 @@ class CanonicalOwnership:
                 await db.execute("UPDATE canonical_candidate_bindings SET candidate_order=?,"
                                  "updated_at=CURRENT_TIMESTAMP WHERE id=?", (positions[int(item["id"])], item["id"]))
         return tuple(resolved)
+
+    @staticmethod
+    async def _name_current_candidates(db, bindings, current_for: dict[int, list[str]],
+                                       current_ids: set[str]) -> None:
+        """Inside the caller's transaction: every binding a current candidate
+        resolves to names THAT candidate. A binding is one source's
+        participation through one provider; the candidate it names is that
+        participation's current, provider-issued realization. When the
+        provider issues the source a new one -- a switch of its link back to a
+        provider that served it before, a refresh coalesced into an existing
+        binding -- the binding row, its order and every origin stay as they
+        are, and only the name moves to the candidate the binding's own origin
+        discovered. Every reader that asks a binding which candidate it is
+        (``bound_candidate_origin``, ``origin_for``, the projections, the
+        execution provenance trigger) then answers with a candidate the file
+        actually has.
+
+        Fails closed -- the binding is left as it is -- when two current
+        candidates resolve to one binding, when the name it holds is itself
+        still a current candidate, when no origin of the binding discovered the
+        candidate, or when another binding of the file already names it."""
+        named = {str(item["candidate_id"]) for item in bindings}
+        for item in bindings:
+            found = current_for.get(int(item["id"]), [])
+            stored = str(item["candidate_id"])
+            if len(found) != 1 or found[0] == stored or stored in current_ids or found[0] in named:
+                continue
+            proven = await db.fetchone(
+                "SELECT 1 FROM canonical_candidate_origins WHERE binding_id=? AND discovered_candidate_id=? LIMIT 1",
+                (item["id"], found[0]))
+            if not proven:
+                continue
+            await db.execute("UPDATE canonical_candidate_bindings SET candidate_id=?,updated_at=CURRENT_TIMESTAMP "
+                             "WHERE id=? AND candidate_id=?", (found[0], item["id"], stored))
+            named.discard(stored)
+            named.add(found[0])
 
     async def realign_rebuilt(self, artifact_id: int) -> None:
         """An artifact rebuilt in place by a new acquisition generation (its
@@ -1262,7 +1306,9 @@ class CanonicalOwnership:
           came before it); every other source's candidate, binding, origin and
           position is kept. The replaced binding keeps its row and every
           origin as history in the non-current band (``_realign_current_
-          candidates``), each new candidate gets its own binding and origin;
+          candidates``); each new candidate gets its own binding and origin
+          -- or, when its provider served this source before, an origin on
+          that provider's binding, which then names it again;
         * the selection is recomputed by candidate IDENTITY, never by index:
           an artifact whose selected candidate was this root's selects the
           root's first replacement and is queued again for the ordinary
@@ -1510,17 +1556,27 @@ class CanonicalOwnership:
                 await db.rollback()
                 return False
 
+            # Every CURRENT binding moves above every order the artifact has --
+            # never onto one: the non-current band may already hold history a
+            # replacement or an earlier refresh left there, which stays exactly
+            # where it is -- and into the non-current band, where a binding no
+            # current candidate resolves to stays. The placement below brings
+            # the current ones back to 1..n, so orders grow only by what leaves.
+            highest = await db.fetchone(
+                "SELECT COALESCE(MAX(candidate_order),0) AS n FROM canonical_candidate_bindings "
+                "WHERE canonical_artifact_id=?", (artifact.id,))
             await db.execute(
-                "UPDATE canonical_candidate_bindings SET candidate_order=candidate_order+100000 WHERE canonical_artifact_id=?",
-                (artifact.id,),
+                "UPDATE canonical_candidate_bindings SET candidate_order=candidate_order+? "
+                "WHERE canonical_artifact_id=? AND candidate_order<=?",
+                (max(self._NON_CURRENT_ORDER, int(highest["n"] or 0)), artifact.id, self._NON_CURRENT_ORDER),
             )
             ordered = []
             placed: set[int] = set()
             for candidate in canonical_candidates:
                 # Each candidate's binding is the one ``_binding_for`` resolves
                 # for it (source first, then id), exactly as realignment and
-                # every reader resolve it: a binding whose stored candidate id
-                # drifted still places its current candidate.
+                # every reader resolve it: a binding still naming an earlier
+                # candidate places its current one (and is renamed below).
                 found = await self._p1_origin_for_candidate(db, artifact.id, candidate)
                 binding = await self._binding_for(db, artifact.id, candidate, found.source if found else None)
                 if not binding or int(binding["id"]) in placed:
@@ -1553,5 +1609,9 @@ class CanonicalOwnership:
                     (codec.dump(tuple(holder_candidates)), holder["id"]),
                 )
             await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=?", (origin.request.id,))
+            # A refresh coalesced into an existing binding leaves that binding
+            # naming its earlier candidate: the one realignment names the
+            # current one, in this transaction.
+            await self._realign_current_candidates(db, int(artifact.id))
             await db.commit()
         return True

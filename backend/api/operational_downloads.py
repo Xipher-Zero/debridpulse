@@ -57,7 +57,7 @@ from transfers.presentation_repository import (
     public_source_identity,
     recovery_presentation,
 )
-from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
+from transfers.manual_failover import switch_eligible_sql
 from auth.permissions import require_destruction, transfer_access
 
 logger = logging.getLogger("debridpulse.api.operational_downloads")
@@ -66,23 +66,23 @@ router = APIRouter()
 # The bounded list's remaining-work signal (Section 10 of the DP 1.0.12
 # presentation task) reuses the SAME cheap artifact-state classification the
 # comprehensive Details presentation already uses for its own read-time
-# ``switch_eligible`` approximation -- ``transfers.repository
-# ._SWITCHABLE_ARTIFACT_STATES``, itself a re-export of the ONE canonical
-# owner ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES``
+# ``switch_eligible`` approximation -- the ONE canonical owner
+# ``transfers.manual_failover.switch_eligible``, in its SQL form
 # (DP 1.0.12 recovery leveling, Section 31) -- rather than a fourth
 # hand-copied literal list. A
-# non-completed artifact whose status is NOT in this set (e.g. ``cancelled``,
-# ``input_required``) has no acquisition path a candidate switch could ever
-# help with, so it must not count as remaining work; a status of ``error`` IS
-# included, matching this codebase's own established distinction between a
-# recoverable failure (still switchable) and a terminal one. This is
+# non-completed artifact that is NOT eligible (e.g. ``cancelled``,
+# ``input_required``, a ``recovery_wait`` for storage) has no acquisition path
+# a candidate switch could ever help with, so it must not count as remaining
+# work; a status of ``error`` IS included, matching this codebase's own
+# established distinction between a recoverable failure (still switchable)
+# and a terminal one, and so is a timed retry backoff of the route that
+# failed. This is
 # deliberately NOT the full authoritative actionability check — live
 # provider health / route binding / candidate-expiry are out of bounded-SQL
 # scope by design (see the group_common_sources comment below) and are only
 # ever re-validated at actual switch time by manual_candidate_failover.py.
-_SWITCHABLE_STATES_SQL = ", ".join(
-    f"'{state}'" for state in sorted(_SWITCHABLE_ARTIFACT_STATES)
-)
+_SWITCHABLE_SQL = switch_eligible_sql("status", "quiescence_reason")
+_GMA_SWITCHABLE_SQL = switch_eligible_sql("gma.status", "gma.quiescence_reason")
 # Route-attempt states that end a route, from their one owner
 # (transfers._repository_base._ENDED_ROUTE_STATES): never a current provider.
 _ENDED_ROUTE_STATES_SQL = ", ".join(f"'{state}'" for state in sorted(_ENDED_ROUTE_STATES))
@@ -1440,12 +1440,15 @@ async def list_operational_torrents(
                 f.torrent_id AS transfer_id,
                 f.id AS artifact_id,
                 f.status AS status,
+                rs.quiescence_reason AS quiescence_reason,
                 f.filename AS filename,
                 f.candidates AS candidates,
                 f.selected_candidate AS selected_candidate
             FROM download_files f
             JOIN page
               ON page.id = f.torrent_id
+            LEFT JOIN artifact_recovery_state rs
+              ON rs.artifact_id = f.id
             WHERE {_CANONICAL_ARTIFACT_SQL}
         ),
         group_member_counts AS (
@@ -1469,7 +1472,7 @@ async def list_operational_torrents(
         -- Remaining-work membership count: current authoritative artifacts of
         -- the transfer (same identity as group_member_artifacts above) whose
         -- own artifact-lifecycle state is one a candidate switch could ever
-        -- apply to (see _SWITCHABLE_STATES_SQL above — reused from the exact
+        -- apply to (see _SWITCHABLE_SQL above — reused from the exact
         -- classification the comprehensive Details presentation already
         -- uses). Independent of common-source MEMBERSHIP/count — this only
         -- tells the list surfaces whether the group launcher should render
@@ -1481,7 +1484,7 @@ async def list_operational_torrents(
         group_remaining_counts AS (
             SELECT transfer_id, COUNT(*) AS remaining_count
             FROM group_member_artifacts
-            WHERE LOWER(TRIM(COALESCE(status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+            WHERE {_SWITCHABLE_SQL}
             GROUP BY transfer_id
         ),
         -- Current authoritative artifact filenames for the transfer, in the
@@ -1553,7 +1556,7 @@ async def list_operational_torrents(
             JOIN group_member_artifacts gma
               ON gma.transfer_id = gmh.transfer_id
              AND gma.artifact_id = gmh.artifact_id
-             AND LOWER(TRIM(COALESCE(gma.status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+             AND {_GMA_SWITCHABLE_SQL}
             JOIN group_member_selected_candidate gmsc
               ON gmsc.transfer_id = gmh.transfer_id
              AND gmsc.artifact_id = gmh.artifact_id
@@ -1579,7 +1582,7 @@ async def list_operational_torrents(
               ON gma.transfer_id = gmh.transfer_id
              AND gma.artifact_id = gmh.artifact_id
              AND LOWER(TRIM(COALESCE(gma.status, ''))) != 'completed'
-             AND LOWER(TRIM(COALESCE(gma.status, ''))) NOT IN ({_SWITCHABLE_STATES_SQL})
+             AND NOT {_GMA_SWITCHABLE_SQL}
             JOIN group_member_selected_candidate gmsc
               ON gmsc.transfer_id = gmh.transfer_id
              AND gmsc.artifact_id = gmh.artifact_id
@@ -1644,7 +1647,7 @@ async def list_operational_torrents(
         -- MOVABLE artifacts: an operation-CLASSIFICATION SUBSET of
         -- group_member_artifacts (current authoritative, non-blocked, non-
         -- standby -- inherited, never redefined here). Additionally in a
-        -- switchable lifecycle state (the same _SWITCHABLE_STATES_SQL
+        -- switchable lifecycle state (the same _GMA_SWITCHABLE_SQL
         -- classification group_remaining_counts already uses) and backed by
         -- at least two distinct canonical candidate identities -- the same
         -- bar generic Details acquisition_candidates.switch_eligible uses
@@ -1659,7 +1662,7 @@ async def list_operational_torrents(
             FROM group_member_artifacts gma
             JOIN artifact_candidate_counts acc
               ON acc.artifact_id = gma.artifact_id
-            WHERE LOWER(TRIM(COALESCE(gma.status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+            WHERE {_GMA_SWITCHABLE_SQL}
               AND acc.candidate_count >= 2
         ),
         movable_artifact_counts AS (

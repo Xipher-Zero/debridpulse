@@ -33,24 +33,49 @@ from transfers.models import ResolutionResult, ResourceState
 
 
 # Canonical candidate-switch lifecycle-eligibility owner (DP 1.0.12 recovery
-# leveling, Section 31 corrective pass). This is the ONE set of artifact
-# lifecycle states in which a candidate switch is ever permitted -- both the
-# command's own precondition below and every presentation projection
-# (``transfers.repository._SWITCHABLE_ARTIFACT_STATES``,
-# ``transfers.presentation_repository._SWITCHABLE_STATES``, and
-# ``api.operational_downloads._SWITCHABLE_STATES_SQL``, which is derived from
-# ``transfers.repository._SWITCHABLE_ARTIFACT_STATES``) import THIS frozenset
-# rather than defining their own. There is no second literal anywhere in the
-# codebase; a presentation projection that merely re-declared an equal-valued
-# set would still be a second authority free to drift the next time this set
-# changes -- delegation, not coincidental equality, is what keeps them
-# actually in step. See
+# leveling, Section 31 corrective pass). ``switch_eligible`` -- and its SQL
+# form ``switch_eligible_sql`` -- is the ONE answer to "may this file's
+# candidate be switched in its lifecycle state": the command's own
+# precondition below and every presentation projection
+# (``transfers.repository._candidate_presentation``,
+# ``transfers.presentation_repository``, ``api.operational_downloads``) call
+# it rather than defining their own. There is no second literal anywhere in
+# the codebase; a presentation projection that merely re-declared an
+# equal-valued rule would still be a second authority free to drift the next
+# time this one changes -- delegation, not coincidental equality, is what
+# keeps them actually in step. See
 # ``tests/test_manual_candidate_failover.py::
 # test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner``.
 SWITCH_ELIGIBLE_LIFECYCLE_STATES = frozenset({
     "pending", "processing", "ready", "queued", "downloading", "paused",
     "refresh_pending", "error",
 })
+# A file waiting out a timed retry of the route that failed (``recovery_wait``
+# quiesced for ``retry_backoff``): no writer is attached and no recovery
+# claim is held -- only a timer on that route -- so the operator may choose
+# another eligible route now, through the ordinary activation admission
+# (the exclusive claim, one writer, discard confirmation, pause). Every other
+# ``recovery_wait`` -- storage, executor or provider unavailable, a provider
+# disabled, input required, a materialization hold -- stays refused.
+SWITCH_ELIGIBLE_BACKOFF = ("recovery_wait", "retry_backoff")
+
+
+def switch_eligible(state, quiescence_reason=None) -> bool:
+    """Whether a file in lifecycle ``state`` (quiesced for
+    ``quiescence_reason``, its recovery state's) may switch candidates."""
+    state = str(state or "").strip().lower()
+    return state in SWITCH_ELIGIBLE_LIFECYCLE_STATES or (
+        (state, str(quiescence_reason or "").strip().lower()) == SWITCH_ELIGIBLE_BACKOFF)
+
+
+def switch_eligible_sql(status: str, quiescence_reason: str) -> str:
+    """``switch_eligible`` as one SQL boolean over the two column expressions
+    (never NULL)."""
+    state = f"LOWER(TRIM(COALESCE({status}, '')))"
+    states = ", ".join(f"'{item}'" for item in sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES))
+    waiting, reason = SWITCH_ELIGIBLE_BACKOFF
+    return (f"({state} IN ({states}) OR ({state} = '{waiting}' "
+            f"AND LOWER(TRIM(COALESCE({quiescence_reason}, ''))) = '{reason}'))")
 
 
 def _error(
@@ -248,13 +273,21 @@ class DiscardConfirmationRequired(Exception):
         self.abandoned_bytes = int(abandoned_bytes)
 
 
-def _switch_index(artifact, wanted: str) -> int:
+async def _quiescence(engine, artifact) -> str | None:
+    """Why ``artifact`` is quiesced, when its lifecycle state alone does not
+    answer ``switch_eligible`` (a ``recovery_wait``); else ``None``."""
+    if str(artifact.state or "").strip().lower() != SWITCH_ELIGIBLE_BACKOFF[0]:
+        return None
+    return (await engine.repository.recovery_context(artifact.id)).get("quiescence_reason")
+
+
+def _switch_index(artifact, wanted: str, quiescence_reason: str | None = None) -> int:
     """The index of the exact requested candidate, when it may be switched to
     now; the one eligibility check shared by the switch and its preview."""
     index = _index_for(artifact, wanted)
     if index is None:
         raise _error(Category.SOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
-    if artifact.state not in SWITCH_ELIGIBLE_LIFECYCLE_STATES or len(artifact.candidates) < 2:
+    if not switch_eligible(artifact.state, quiescence_reason) or len(artifact.candidates) < 2:
         raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
     if index == artifact.selected:
         raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
@@ -300,7 +333,7 @@ async def preview_candidate_switch(engine, transfer_id: int, artifact_id: int, c
     planner the switch itself uses, read-only (nothing is refreshed, recorded,
     reserved or promised; the switch revalidates when it runs)."""
     wanted, artifact = await _switch_subject(engine, transfer_id, artifact_id, candidate_id)
-    index = _switch_index(artifact, wanted)
+    index = _switch_index(artifact, wanted, await _quiescence(engine, artifact))
     plan = await engine.preview_continuation(artifact, artifact.candidates[index])
     return {
         "transfer_id": int(transfer_id),
@@ -341,7 +374,7 @@ async def manual_candidate_failover(
     candidate = None
     claim_result = None
     try:
-        index = _switch_index(artifact, wanted)
+        index = _switch_index(artifact, wanted, await _quiescence(engine, artifact))
 
         old_candidate = artifact.candidates[artifact.selected]
         candidate = artifact.candidates[index]

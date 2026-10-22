@@ -18,7 +18,7 @@ from transfers._repository_base import (
     is_canonical_artifact_row,
 )
 from transfers.display_name import normalized_transfer_display_name
-from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
+from transfers.manual_failover import switch_eligible
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
 
@@ -872,7 +872,8 @@ class TransferRepository(_CanonicalTransferRepository):
                     # permanent capability verdict. The write path revalidates the
                     # exact bound candidate/provider before switching, so the UI
                     # must not suppress a retry solely because an older attempt failed.
-                    candidate["switch_eligible"] = not selected and state in _SWITCHABLE_STATES
+                    candidate["switch_eligible"] = not selected and switch_eligible(
+                        state, file.get("quiescence_reason"))
             result["manual_candidate_failovers"] = failover_transitions
 
         if details:

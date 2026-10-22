@@ -68,7 +68,7 @@ from transfers._repository_base import (
 )
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Permanence, Retryability, Stage, TransferError
-from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
+from transfers.manual_failover import switch_eligible
 from transfers.models import (
     CleanupAuthority, ExecutionState, FileManifestEntry, MaterializationAdmission, MaterializationAdmissionKind,
     Ownership, ProviderResource, ResolutionAttempt, ResourceState, SourceEntry, TransferProgress, new_identity,
@@ -226,13 +226,12 @@ def _safe_source_label(scope, key) -> str:
     return "Source"
 
 
-# Re-exported (not redefined -- Section 31) from the ONE canonical owner,
-# ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES``, so this
-# module's read-time group-switch eligibility projection can never drift from
-# the actual command gate. The authoritative switch command still
-# re-validates every other gate (live route/candidate-expiry, provider
-# health) itself; this frozenset only ever answers the lifecycle-state
-# question, identically everywhere it is asked.
+# Delegated (not redefined -- Section 31) to the ONE canonical owner,
+# ``transfers.manual_failover.switch_eligible``, so this module's read-time
+# group-switch eligibility projection can never drift from the actual command
+# gate. The authoritative switch command still re-validates every other gate
+# (live route/candidate-expiry, provider health) itself; this only ever
+# answers the lifecycle-state question, identically everywhere it is asked.
 
 
 def _group_source_host(scope, key) -> str | None:
@@ -1623,7 +1622,7 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def _candidate_presentation(self, transfer_id: int) -> dict[int, dict]:
         async with get_db() as db:
-            files = await db.fetchall("""SELECT id,candidates,selected_candidate,execution_attempt_id,status FROM download_files WHERE torrent_id=? AND request_id IS NOT NULL AND COALESCE(blocked,0)=0 AND COALESCE(mirror_state,'')!='standby' ORDER BY id""", (transfer_id,))
+            files = await db.fetchall("""SELECT f.id,f.candidates,f.selected_candidate,f.execution_attempt_id,f.status,r.quiescence_reason FROM download_files f LEFT JOIN artifact_recovery_state r ON r.artifact_id=f.id WHERE f.torrent_id=? AND f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0 AND COALESCE(f.mirror_state,'')!='standby' ORDER BY f.id""", (transfer_id,))
             artifact_ids = [int(row["id"]) for row in files]
             if not artifact_ids:
                 return {}
@@ -1633,10 +1632,10 @@ class TransferRepository(_QualifiedTransferRepository):
             # replacement or refresh kept -- never a source to choose.
             bindings = await db.fetchall(f"""SELECT canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id IN ({placeholders}) AND candidate_order<=100000 ORDER BY canonical_artifact_id,candidate_order,id""", tuple(artifact_ids))
             attempts = await db.fetchall(f"""SELECT p.artifact_id,p.candidate_id,p.outcome,p.delivered,p.ordinal,p.execution_attempt_id,e.state,e.authorized FROM execution_attempt_provenance p LEFT JOIN execution_attempts e ON e.id=p.execution_attempt_id WHERE p.artifact_id IN ({placeholders}) ORDER BY p.artifact_id,p.ordinal,p.execution_attempt_id""", tuple(artifact_ids))
-        selected_ids = {}; current_attempt_ids = {}; has_durable_candidate = {}; artifact_states = {}
+        selected_ids = {}; current_attempt_ids = {}; has_durable_candidate = {}; switchable = {}
         for row in files:
             artifact_id = int(row["id"]); selected_id = None
-            artifact_states[artifact_id] = str(row.get("status") or "").strip().lower()
+            switchable[artifact_id] = switch_eligible(row.get("status"), row.get("quiescence_reason"))
             try:
                 candidates = [codec.candidate(value) for value in codec.load(row.get("candidates"), [])]
                 has_durable_candidate[artifact_id] = bool(candidates)
@@ -1668,14 +1667,14 @@ class TransferRepository(_QualifiedTransferRepository):
                 # Read-side, provider/candidate-neutral switch-presentation
                 # eligibility (DP 1.0.12 Contextual Candidate Action Scope
                 # task, §6.1/§10.1): the exact same backend-owned
-                # _SWITCHABLE_ARTIFACT_STATES rule the host-scoped
+                # switch_eligible rule the host-scoped
                 # ``source_candidates`` projection below already uses, so the
                 # generic per-file candidate UI (ui-detail-candidates.js) can
                 # consume it without recreating lifecycle policy in JS. False
                 # for the selected candidate. Never a live provider/executor
                 # check; the switch endpoint remains the sole mutation
                 # authority and re-validates everything itself.
-                "switch_eligible": (not selected) and artifact_states.get(artifact_id, "") in _SWITCHABLE_ARTIFACT_STATES})
+                "switch_eligible": (not selected) and switchable.get(artifact_id, False)})
             # Ungated per-artifact canonical host projection for the transfer-level
             # common-source group wrapper (never rendered by the per-file UI). Only
             # host-scoped candidates carry a group identity; ``switch_eligible``
@@ -1686,7 +1685,7 @@ class TransferRepository(_QualifiedTransferRepository):
                     "source_host": group_host,
                     "candidate_id": candidate_id,
                     "is_selected": selected,
-                    "switch_eligible": (not selected) and artifact_states.get(artifact_id, "") in _SWITCHABLE_ARTIFACT_STATES,
+                    "switch_eligible": (not selected) and switchable.get(artifact_id, False),
                 })
         result = {}
         for artifact_id in artifact_ids:
@@ -3439,9 +3438,11 @@ class TransferRepository(_QualifiedTransferRepository):
 
     # THE identity of a pending provider choice's authorized result
     # (``transfers.provider_choice``): a CURRENT binding of the choice's file
-    # whose provider is the requested one, issued -- by an attempt of that
-    # provider -- for the choice's source root (the root or one of its members)
-    # under the choice's own operator switch or a later route attempt of it.
+    # whose provider is the requested one and whose candidate was issued -- by
+    # an attempt of that provider -- for the choice's source root (the root or
+    # one of its members) under the choice's own operator switch or a later
+    # route attempt of it: the origin that discovered exactly that candidate,
+    # never another origin of the same binding.
     # Parameters: artifact id, provider id, source root id, switch attempt id.
     # Every decision about a choice's target -- which candidate landed, whether
     # the activation's target is it, whether the commit selects it -- reads
@@ -3452,7 +3453,7 @@ class TransferRepository(_QualifiedTransferRepository):
         JOIN resolution_attempts a ON a.id=o.resolution_attempt_id
         JOIN route_attempt_provenance op ON op.resolution_attempt_id=o.resolution_attempt_id
         WHERE b.canonical_artifact_id=? AND b.candidate_order<=100000 AND b.provider_id=?
-        AND a.provider_id=b.provider_id AND COALESCE(r.parent_id,r.id)=?
+        AND a.provider_id=b.provider_id AND o.discovered_candidate_id=b.candidate_id AND COALESCE(r.parent_id,r.id)=?
         AND op.ordinal>=(SELECT ordinal FROM route_attempt_provenance WHERE resolution_attempt_id=?)"""
 
     @classmethod

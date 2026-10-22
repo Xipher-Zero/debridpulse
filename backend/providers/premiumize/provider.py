@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 from core.presentation_safety import safe_public_host
 from providers.premiumize.client import (
     API_HOST, CLOUD_MEMBER, PremiumizeAPIError, PremiumizeService, cloud_member_address,
-    immediate_member_address, native_id, parse_member_address,
+    immediate_member_address, member_source_host, native_id, parse_member_address,
 )
 from providers.premiumize.translation import (
     IMMEDIATE, INTEGRATION_ID, NativeMember, cloud_members, named_cloud_members, cloud_resource, creation_error, file_manifest,
@@ -191,7 +191,8 @@ class PremiumizeProvider:
                                                 Retryability.NEVER, origin=Origin.PROVIDER,
                                                 integration_id=INTEGRATION_ID))
         nzb_name = await self._nzb_name(request) if request.kind == "nzb" else ""
-        return await self._owned(cloud_resource(await self._create(request), nzb_name=nzb_name), request)
+        return await self._owned(cloud_resource(await self._create(request), nzb_name=nzb_name,
+                                                source_host=_link_host(request)), request)
 
     async def _try_immediate(self, request: TransferRequest) -> ResolutionResult | None:
         """The immediate result, ``None`` when there is no basis to ask for
@@ -423,7 +424,10 @@ class PremiumizeProvider:
             if native_id(details.get("id")) != member[1]:
                 raise TransferError(protocol_error(Stage.CANDIDATE_PREPARATION, "cloud file identity mismatch"))
             name, size, link = details.get("name"), details.get("size"), details.get("link")
-            source = API_HOST
+            # The upstream link the transfer was acquired from, when its member
+            # names one; a member addressed before that was recorded names
+            # Premiumize, as it always did.
+            source = member_source_host(request.payload) or API_HOST
         else:
             _kind, source_link, path, size_text = member
             content = await self.client.directdl(source_link)
@@ -566,8 +570,11 @@ class PremiumizeProvider:
         except ManifestInvalid:
             raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, stage,
                                                 integration_id=INTEGRATION_ID)) from None
+        host = resource_value.context.get("source_host")
+        host = host if isinstance(host, str) and host and safe_public_host(host) == host else None
         return tuple(SourceEntry(member.name, member.expected_bytes, member.relative_path, TransferRequest(
-            "https", cloud_member_address(member.file_id), member.name, preferred_provider=INTEGRATION_ID))
+            "https", cloud_member_address(member.file_id, source_host=host), member.name,
+            preferred_provider=INTEGRATION_ID))
             for member in members)
 
     # -- account inventory, cleanup and health ----------------------------------------
@@ -610,3 +617,15 @@ class PremiumizeProvider:
         except TransferError as exc:
             return HealthObservation(False, exc.error)
         return HealthObservation(True)
+
+
+def _link_host(request: TransferRequest) -> str:
+    """The bare, safe hostname of a hoster link ``request`` names, else ``""``
+    (a magnet, a torrent file, an NZB: no upstream host)."""
+    if request.kind not in {"http", "https"}:
+        return ""
+    try:
+        host = urlsplit(str(request.payload)).hostname or ""
+    except ValueError:
+        return ""
+    return safe_public_host(host) or ""

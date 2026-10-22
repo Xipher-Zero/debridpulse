@@ -306,15 +306,16 @@ def test_projection_group_summary_is_derived_from_canonical_bindings(monkeypatch
     # status/filename — feeding the SIBLING remaining-work count and
     # display-name filename aggregate (DP 1.0.12 §10/§19), never the
     # membership computation itself. The remaining-work predicate reuses the
-    # exact _SWITCHABLE_ARTIFACT_STATES classification the comprehensive
-    # Details presentation already uses for switch_eligible (imported, not a
-    # fourth hand-copied literal list) — 'error' (a recoverable-looking
-    # failure) counts as remaining work, but a non-completed status outside
-    # that set (e.g. 'cancelled', 'input_required') does not.
-    from api.operational_downloads import _SWITCHABLE_STATES_SQL
+    # exact switch_eligible classification the comprehensive Details
+    # presentation already uses for switch_eligible (its SQL form, imported,
+    # not a fourth hand-copied literal list) — 'error' (a recoverable-looking
+    # failure) and a timed retry backoff count as remaining work, but a
+    # non-completed status outside it (e.g. 'cancelled', 'input_required')
+    # does not.
+    from api.operational_downloads import _SWITCHABLE_SQL
     assert "f.status AS status" in group_block
     assert "group_remaining_counts AS" in group_block
-    assert _SWITCHABLE_STATES_SQL in group_block
+    assert _SWITCHABLE_SQL in group_block
     assert "'error'" in group_block  # recoverable failure still counts as remaining work
     assert "'completed'" not in group_block.split("group_remaining_counts AS", 1)[1].split(")", 1)[0]
 

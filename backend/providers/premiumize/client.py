@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import aiohttp
 
+from core.presentation_safety import safe_public_host
 from transfers.errors import safe_diagnostic
 
 API_HOST = "www.premiumize.me"
@@ -192,7 +193,10 @@ def _list(payload: dict, field: str, what: str) -> list:
 # shown and routed back to this provider -- while the download link it yields
 # is generated on demand and is never durable truth.
 #
-# * a cloud file: ``item/details?id=<file id>`` (Premiumize's stable file id);
+# * a cloud file: ``item/details?id=<file id>`` (Premiumize's stable file id),
+#   optionally ``&source_host=<host>``: the bare, already-safe hostname of the
+#   link Premiumize acquired the transfer from, so the member names that
+#   upstream source -- never Premiumize's own host -- as its source;
 # * a member of an immediate result: ``transfer/directdl?src=<source>&path=
 #   <member path>&size=<bytes>`` -- no file id exists, so the member is the
 #   source's exact collection path and exact size, proven again on each use.
@@ -200,10 +204,18 @@ CLOUD_MEMBER, IMMEDIATE_MEMBER = "cloud", "immediate"
 _CLOUD_PATH, _IMMEDIATE_PATH = "/api/item/details", "/api/transfer/directdl"
 
 
-def cloud_member_address(file_id: str) -> str:
+SOURCE_HOST_FIELD = "source_host"
+
+
+def cloud_member_address(file_id: str, *, source_host: str | None = None) -> str:
     if native_id(file_id) != file_id:
         raise ValueError("a cloud member is addressed by a Premiumize file id")
-    return f"{API}/item/details?" + urlencode({"id": file_id})
+    fields = {"id": file_id}
+    if source_host is not None:
+        if safe_public_host(source_host) != source_host:
+            raise ValueError("a cloud member's source host is a bare public hostname")
+        fields[SOURCE_HOST_FIELD] = source_host
+    return f"{API}/item/details?" + urlencode(fields)
 
 
 def immediate_member_address(source: str, path: str, size: int) -> str:
@@ -229,15 +241,26 @@ def parse_member_address(value: object) -> tuple[str, ...] | None:
     if any(len(values) != 1 for values in query.values()):
         return None
     fields = {key: values[0] for key, values in query.items()}
-    if parts.path == _CLOUD_PATH and set(fields) == {"id"}:
+    if parts.path == _CLOUD_PATH and set(fields) in ({"id"}, {"id", SOURCE_HOST_FIELD}):
         file_id = native_id(fields["id"])
-        return (CLOUD_MEMBER, file_id) if file_id is not None else None
+        host = fields.get(SOURCE_HOST_FIELD)
+        if file_id is None or (host is not None and safe_public_host(host) != host):
+            return None
+        return CLOUD_MEMBER, file_id
     if parts.path == _IMMEDIATE_PATH and set(fields) == {"src", "path", "size"}:
         size = fields["size"]
         if not fields["src"] or not fields["path"] or not size.isdigit():
             return None
         return IMMEDIATE_MEMBER, fields["src"], fields["path"], str(int(size))
     return None
+
+
+def member_source_host(value: object) -> str | None:
+    """The upstream host a cloud member address names, if any."""
+    member = parse_member_address(value)
+    if member is None or member[0] != CLOUD_MEMBER:
+        return None
+    return parse_qs(urlsplit(value).query).get(SOURCE_HOST_FIELD, [None])[0]
 
 
 class PremiumizeService:
