@@ -16,6 +16,12 @@ async function bootstrap(page) {
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => !!window.DPProviderStatus)).toBeTruthy();
   await expect(page.locator('#provider-status-list')).toBeVisible();
+  // These cases observe AllDebrid's probe, and only an enabled integration is
+  // probed. A fresh installation switches every premium service off, so the
+  // page's own settings document enables AllDebrid -- page-local, never the
+  // shared backend (this is an injected-document spec).
+  await expect.poll(() => page.evaluate(() => !!settingsData?.integrations?.alldebrid)).toBeTruthy();
+  await page.evaluate(() => { settingsData.integrations.alldebrid.enabled = true; });
 }
 
 async function controlledStatus(page) {

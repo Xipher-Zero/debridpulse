@@ -37,7 +37,7 @@ test.afterAll(async ({browser}) => {
   await page.close();
 });
 
-test('Advanced Settings is collapsed, its chevron sits beside the title, and four cards flow in the shared grid',
+test('Advanced Settings is collapsed, its chevron sits beside the title, and its cards flow in the shared grid',
   async ({page}) => {
     await resetPolicy(page);
     await page.setViewportSize({width: 1440, height: 1000});
@@ -74,11 +74,15 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     await chevron.click();
     await expect(chevron).toHaveAttribute('aria-expanded', 'true');
     const grid = section(page).locator('.dp-settings-tuning-grid');
-    await expect(grid).toHaveAttribute('data-tuning-lanes', '4');
+    await expect(grid).toHaveAttribute('data-tuning-lanes', '8');
+    // Three relations: the local-network pair, the two provider intervals and
+    // the resolution retry count with its delay.
+    await expect(grid.locator(':scope > .dp-settings-tuning-group')).toHaveCount(3);
     // The two local-network cells are one shared tuning relation: outlined
     // while THAT pair is whole on one row, withdrawn only once the pair itself
     // has to split.
-    const group = grid.locator(':scope > .dp-settings-tuning-group');
+    const group = grid.locator(':scope > .dp-settings-tuning-group')
+      .filter({has: page.locator('[data-setting="private_lan_connections"]')});
     await expect(group).toHaveCount(1);
     await expect(group).toHaveAttribute('data-tuning-span', '2');
     await expect(group.locator('[data-setting="private_lan_connections"]')).toHaveCount(1);
@@ -90,11 +94,13 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
       const box = child.getBoundingClientRect();
       return {top: Math.round(box.top), left: box.left, width: box.width, text: child.textContent};
     }));
-    expect(cells).toHaveLength(4);
-    // The four transfer_policy cards; Preferred Subtitle Language is the Media
-    // Downloads card's alone.
+    expect(cells).toHaveLength(8);
+    // Its own cards plus the global provider intervals and resolution retries;
+    // Preferred Subtitle Language is the Media Downloads card's alone.
     for (const label of ['Material Checkpoint Interval', 'Graceful Stop Timeout',
-      'Local Network Connections', 'Skip Local Connection Confirmation']) {
+      'Local Network Connections', 'Skip Local Connection Confirmation',
+      'Provider Poll Interval (seconds)', 'Full Sync Interval (minutes)',
+      'Resolution Failure Retries', 'Retry Delay (minutes)']) {
       expect(cells.some(cell => cell.text.includes(label)), label).toBe(true);
     }
     expect(cells.some(cell => cell.text.includes('Subtitle'))).toBe(false);

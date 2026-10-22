@@ -149,10 +149,11 @@ def test_display_name_defaults_to_derived_from_host():
 def test_usenet_is_off_until_an_operator_turns_it_on():
     """The normal state is OFF: enabling is what makes BOTH halves participate."""
     assert usenet_definition.default_enabled is False
-    # Every pre-existing integration keeps its participating default; Real-Debrid,
-    # TorBox, Debrid-Link and Premiumize, added later, are opt-in like Usenet.
+    # Every premium service is opt-in like Usenet -- AllDebrid included since the
+    # 1.0.13 premium default correction; every other integration keeps its
+    # participating default.
     for item in definitions:
-        if item.id not in {"usenet", "realdebrid", "torbox", "debridlink", "premiumize"}:
+        if item.id not in {"usenet", "alldebrid", "realdebrid", "torbox", "debridlink", "premiumize"}:
             assert item.default_enabled is True
 
 
@@ -161,7 +162,8 @@ def test_a_never_decided_namespace_takes_the_definition_default():
     from integrations.configuration import normalize_settings
     settings = normalize_settings(AppSettings(), definitions)
     assert settings.integrations["usenet"].enabled is False
-    assert settings.integrations["alldebrid"].enabled is True
+    assert settings.integrations["alldebrid"].enabled is False
+    assert settings.integrations["general_http"].enabled is True
 
 
 def test_an_explicit_operator_choice_always_wins_over_the_default():

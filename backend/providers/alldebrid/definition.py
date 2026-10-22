@@ -98,6 +98,8 @@ definition = IntegrationDefinition(
                    ("alldebrid_rate_limit_per_minute", "rate_limit_per_minute")),
     legacy_upgrade=_upgrade_legacy_options,
     required_options=frozenset({"api_key"}),
+    # Participates only once an operator turns it on, as every premium service.
+    default_enabled=False,
     verification_subjects=_verification_subjects,
     presentation=IntegrationPresentation(
         status_name="AllDebrid",

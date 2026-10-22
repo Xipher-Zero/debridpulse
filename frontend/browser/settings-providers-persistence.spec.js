@@ -58,6 +58,18 @@ async function openAdditional(page) {
   await expect(page.locator(RATE_LIMIT)).toBeVisible();
 }
 
+/* Open Downloads -> Download Behavior & Limits -> Advanced Settings, where the
+ * global Provider Poll Interval and Full Sync Interval live (they apply to
+ * every service, so no provider card holds them). */
+async function openBehaviorAdvanced(page) {
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await expect(page.locator('.dp-settings-panel[data-panel="downloads"]')).toBeVisible();
+  const chip = page.locator('#view-settings .dp-settings-disclosure[aria-controls="dp-settings-section-body-download-behavior-advanced"]');
+  if ((await chip.getAttribute('aria-expanded')) !== 'true') await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator(POLL_INTERVAL)).toBeVisible();
+}
+
 const settings = page => page.request.get('/api/settings').then(r => r.json());
 
 /* The suite's designated NEUTRAL whole-settings probe.
@@ -153,6 +165,10 @@ let baseline = null;
 
 test.beforeEach(async ({page}) => {
   await isolateExternalFonts(page);
+  // A fresh installation switches every premium service off; these cases need
+  // AllDebrid participating, so this file -- the one owner of
+  // integrations.alldebrid.enabled -- switches it on itself.
+  await page.request.patch('/api/integrations/alldebrid/configuration', {data: {enabled: true}});
   await page.goto('/');
   await openSources(page);
   await revealAllDebrid(page);
@@ -172,6 +188,13 @@ test.afterEach(async ({page}) => {
             clear_secrets: ['api_key']}});
   await page.request.patch('/api/transfer-policy',
     {data: {provider_poll_interval_seconds: baseline.provider_poll_interval_seconds}});
+});
+
+// Leave the shared backend at the fresh-installation default.
+test.afterAll(async ({browser}) => {
+  const page = await browser.newPage();
+  await page.request.patch('/api/integrations/alldebrid/configuration', {data: {enabled: false}});
+  await page.close();
 });
 
 // --- immediate: the AllDebrid Enable -------------------------------------
@@ -202,6 +225,7 @@ test('focusing and leaving an unchanged field causes zero mutation', async ({pag
   await openAdditional(page);
   await page.locator(RATE_LIMIT).focus();
   await page.locator(RATE_LIMIT).blur();
+  await openBehaviorAdvanced(page);
   await page.locator(POLL_INTERVAL).focus();
   await page.locator(POLL_INTERVAL).blur();
   await page.waitForTimeout(700);
@@ -243,7 +267,7 @@ test('the accepted value becomes the baseline, so a second blur writes nothing',
 
 test('a policy field writes only the universal transfer-policy namespace', async ({page}) => {
   const seen = mutations(page);
-  await openAdditional(page);
+  await openBehaviorAdvanced(page);
   const next = Number(baseline.provider_poll_interval_seconds) + 5;
   await page.locator(POLL_INTERVAL).fill(String(next));
   await page.locator(POLL_INTERVAL).blur();
@@ -272,7 +296,7 @@ test('a failed write converges the control to canonical state and says so', asyn
 });
 
 test('an older in-flight response can never overwrite a newer edit', async ({page}) => {
-  await openAdditional(page);
+  await openBehaviorAdvanced(page);
   let first = true;
   await page.route(url => url.pathname === '/api/transfer-policy', async route => {
     if (route.request().method() === 'PATCH' && first) {
@@ -566,7 +590,7 @@ test('the provider Enable toggle stays immediate and is never replayed by a late
 
 test('no later write can replay a migrated policy field over newer canonical state',
   async ({page}) => {
-    await openAdditional(page);
+    await openBehaviorAdvanced(page);
     const committed = Number(baseline.provider_poll_interval_seconds) + 15;
     await page.locator(POLL_INTERVAL).fill(String(committed));
     await page.locator(POLL_INTERVAL).blur();
@@ -583,7 +607,7 @@ test('no later write can replay a migrated policy field over newer canonical sta
 
 test('no later write can replay a migrated top-level field over newer canonical state',
   async ({page}) => {
-    await openAdditional(page);
+    await openBehaviorAdvanced(page);
     const committed = Number(baseline.full_sync_interval_minutes) + 3;
     await page.locator(FULL_SYNC).fill(String(committed));
     await page.locator(FULL_SYNC).blur();

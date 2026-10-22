@@ -37,8 +37,7 @@ def groups(block: str) -> list[list[str]]:
 
 ORDER = {
     "alldebrid": ["alldebrid_prepare_backup_torrents", "alldebrid_max_active_torrents",
-                  "alldebrid_rate_limit_per_minute", "poll_interval_seconds", "full_sync_interval_minutes",
-                  "upload_fail_retry_count", "upload_fail_retry_delay_minutes"],
+                  "alldebrid_rate_limit_per_minute"],
     "debridlink": ["debridlink_prepare_backup_torrents", "debridlink_request_timeout_seconds",
                    "debridlink_torrent_upload_timeout_seconds", "debridlink_host_refresh_interval_hours"],
     "premiumize": ["premiumize_prepare_backup_torrents", "premiumize_use_before_usenet",
@@ -52,8 +51,7 @@ ORDER = {
                "torbox_host_refresh_interval_hours"],
 }
 GROUPS = {
-    "alldebrid": [["alldebrid_prepare_backup_torrents", "alldebrid_max_active_torrents"],
-                  ["upload_fail_retry_count", "upload_fail_retry_delay_minutes"]],
+    "alldebrid": [["alldebrid_prepare_backup_torrents", "alldebrid_max_active_torrents"]],
     "debridlink": [],
     "premiumize": [],
     "realdebrid": [["realdebrid_prepare_backup_torrents", "realdebrid_max_active_torrents"]],

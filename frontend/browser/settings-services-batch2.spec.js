@@ -225,8 +225,14 @@ test('a refused provider option and a refused transfer-policy value name their f
   await expect(await refuse(page, torbox, 'torbox_request_timeout_seconds', 1, () =>
     page.request.patch('/api/integrations/torbox/configuration', {data: {options: {request_timeout_seconds: 1}}})))
     .toHaveText('Request Timeout (seconds) must be 5 or more.');
-  const alldebrid = await expand(page, 'alldebrid');
-  await expect(await refuse(page, alldebrid, 'poll_interval_seconds', 99999, () =>
+  // Provider Poll Interval applies to every service: Downloads -> Download
+  // Behavior & Limits -> Advanced Settings.
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  const chip = page.locator('#view-settings .dp-settings-disclosure[aria-controls="dp-settings-section-body-download-behavior-advanced"]');
+  if ((await chip.getAttribute('aria-expanded')) !== 'true') await chip.click();
+  const advanced = page.locator('#dp-settings-section-body-download-behavior-advanced');
+  await expect(advanced).toBeVisible();
+  await expect(await refuse(page, advanced, 'poll_interval_seconds', 99999, () =>
     page.request.patch('/api/transfer-policy', {data: {provider_poll_interval_seconds: 99999}})))
     .toHaveText('Provider Poll Interval (seconds) must be 3600 or less.');
 });

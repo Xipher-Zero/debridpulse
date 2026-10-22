@@ -34,6 +34,10 @@ down.
   link; such links are admitted only when Skip Local Connection Confirmation is on (see Security).
 - **TorBox Pro installations left at the default use TorBox as an NZB fallback behind native Usenet**
   (see "TorBox's NZB setting is now Use TorBox Before Usenet" under Changed).
+- **AllDebrid is now off by default, like every other premium service.** A new installation enables
+  only the Network Sources; no premium service is required. An enablement already saved for a provider,
+  on or off, is kept as it is. No migration is applied: a configuration that never saved an AllDebrid
+  choice now starts with AllDebrid off, so switch it on under Settings → Services if you use it.
 - **Maintenance gives up after 60 seconds behind a request that is still running.** Restore, the
   database reset, saving Settings and replacing a provider connection are refused with "Other work is
   still running" (nothing changed) instead of waiting forever; the second, short wait for open database
@@ -158,22 +162,35 @@ down.
   Reporting cards delivered only for their own requests, beside the unchanged global Notifications.
   New endpoints: `GET /api/account`, `PUT /api/account/actual-name`, `PUT /api/account/email` and
   `/api/account/notifications`.
-- **You can switch the provider of a torrent, or of a link, while it downloads.** Downloads,
-  Dashboard Download Activity and Details show the provider of a transfer's current route; its
-  chevron opens a picker listing each competing provider as Ready, Preparing…, Waiting for
-  selection, Deferred, Retrying… (with the failure and the next attempt time), Failed earlier
-  (explicitly retryable), available, or unavailable with a reason, and appears only when another
-  provider can legitimately take over. Choosing one moves the route at once ("Switching to
-  <provider>..." meanwhile), keeps the material already downloaded, takes over that provider's
-  prepared backup when there is one, and hands the old provider's torrent to cleanup or keeps it as
-  a backup (see Prepare Backup Torrents). For a transfer of several links, each file in Details
-  offers the switch for the link it is downloading from (a single link opens the choice directly):
-  only providers that handle that exact link are offered, only the files using it move, a new result
-  whose size does not match is never used, and a new provider that fails for good shows its error,
-  which Retry recovers. A link shared with another transfer, or one that expanded into several files
-  of a multi-link transfer, cannot be switched. A finished, cancelled or deleted transfer shows its
-  provider as a static badge, a switch never clears a Pause or Pause All, and Route History names
-  operator switches and readiness promotions.
+- **You can switch the provider of a torrent, or of a link, while it downloads.** Downloads, Dashboard
+  Download Activity and Details show the provider of a transfer's current route; its chevron opens a
+  picker listing each competing provider as Ready, Preparing…, Waiting for selection, Deferred,
+  Retrying… (with the failure and the next attempt time), Failed earlier (explicitly retryable), Not
+  checked, or Unavailable with a reason (the provider in use is Current), and appears only when
+  another provider can legitimately take over. It considers every link of the transfer confirmed to
+  hold the same file, not only the one in use; for a transfer of several links, **Provider for this
+  transfer** switches each link a provider can take and leaves the rest where they are. A provider
+  that can take the link in use takes over at once ("Switching to <provider>..." meanwhile); one that
+  must first make its own copy through another confirmed-equivalent link shows "Preparing
+  <provider>..." while the current route keeps downloading, then moves over once that copy is ready,
+  unless the choice is superseded or fails, in which case the transfer stays on its current route. A
+  switch takes over that provider's prepared backup when there is one, hands the old provider's
+  torrent to cleanup or keeps it as a backup (see Prepare Backup Torrents), and a provider switch is
+  refused, with its reason, rather than discard downloaded data (a source switch asks you to confirm
+  instead). A choice that cannot be made leaves the transfer on its current route, where normal
+  retries and recovery continue. While a transfer is paused, a provider that can take the link in use
+  takes over without resuming it (one that must first prepare its copy takes over after Resume), and a
+  source chosen for a file that had already started is shown beside the provider, when its destination
+  is known and the same for every such file, as "Switch to <provider> (<host>) on resume" (the host
+  when known), then "Switching to <provider> (<host>)..." after Resume until it has taken effect; the
+  row keeps naming the committed provider and host meanwhile. For a transfer of several links, each
+  file in Details offers the switch for the link it is downloading from (a single link opens the
+  choice directly): only providers that handle that exact link are offered, only the files using it
+  move, a new result whose size does not match is never used, and a new provider that fails for good
+  shows its error, which Retry recovers. A link shared with another transfer, or one that expanded
+  into several files of a multi-link transfer, cannot be switched. A finished, cancelled or deleted
+  transfer shows its provider as a static badge, a switch never clears a Pause or Pause All, and Route
+  History names operator switches and readiness promotions.
 - **Prepare Backup Torrents and Maximum Active Torrents.** Each premium provider's Additional
   Settings gain **Prepare Backup Torrents**: once a magnet or torrent has started on its primary
   provider, another provider that allows it prepares the same torrent as a backup, which never
@@ -743,6 +760,15 @@ down.
   are 1-8 and for Update Check Interval 0-168 hours, and the AllDebrid API calls, Backup Retention
   and Provider Poll Interval ranges in the interface now match the server's. Local Network
   Connections and a provider's Enable respond from the click and turn back if refused.
+- **Global polling, synchronization, and resolution-retry settings moved to Downloads.** Provider Poll
+  Interval, Full Sync Interval, **Resolution Failure Retries** (formerly Upload Failure Retries) and
+  Retry Delay (minutes) were shown in AllDebrid's Additional Settings although they apply beyond
+  AllDebrid; they are now under Settings → Downloads → Download Behavior & Limits → Advanced
+  Settings. Provider Poll Interval paces rechecks of work a service is still preparing; Full Sync
+  Interval paces reconciliation with enabled premium services that can list their transfers;
+  Resolution Failure Retries and Retry Delay apply to resolution failures of any service, Network
+  Sources included. Saved values, ranges and their effect are unchanged. AllDebrid's Additional
+  Settings keep Prepare Backup Torrents, Maximum Active Torrents and API Calls per Minute.
 - **Settings layout and wording.** Tunable cards sit at most five to a row, a related group moves
   whole, rows are centred, and every numeric, sized or selected value is centred; group outlines are
   lighter, and tuning cards have a visible edge in the light theme. On desktop the Services tab
@@ -1226,7 +1252,8 @@ silently changed, and DebridPulse tells you why an action is not available.
   first backup that is ready, and never while the download is paused, after you have chosen its
   files, after it has been split into files, after its download has started, or when it was routed
   by the provider you prefer anyway. Backups are prepared only by providers that support it for
-  torrents: AllDebrid, Debrid-Link, Real-Debrid and Premiumize by default; TorBox only when you turn
+  torrents: AllDebrid, Debrid-Link, Real-Debrid and Premiumize (Prepare Backup Torrents on by default,
+  once the provider itself is enabled); TorBox only when you turn
   it on, because TorBox's limits on new and active torrents are restrictive. Usenet, the direct
   sources (HTTP(S), FTP/SFTP, SCP, rsync, WebDAV), Metalink and Media Downloads never prepare
   backups.

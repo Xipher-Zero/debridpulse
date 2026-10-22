@@ -160,10 +160,6 @@
     torbox_request_timeout_seconds: {scope: 'integration:torbox', option: 'request_timeout_seconds'},
     torbox_upload_timeout_seconds: {scope: 'integration:torbox', option: 'upload_timeout_seconds'},
     torbox_host_refresh_interval_hours: {scope: 'integration:torbox', option: 'host_refresh_interval_hours'},
-    poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
-    upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
-    upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
-    full_sync_interval_minutes: {scope: 'settings-document', option: 'full_sync_interval_minutes'},
 
     // Downloads -> Network Sources tuning
     aria2_max_connection_per_server: {scope: 'integration:aria2', option: 'max_connection_per_server'},
@@ -214,6 +210,10 @@
     aria2_error_retry_count: {scope: 'transfer-policy', option: 'execution_retry_count'},
     aria2_error_retry_delay_seconds: {scope: 'transfer-policy', option: 'execution_retry_delay_seconds'},
     stuck_download_timeout_hours: {scope: 'transfer-policy', option: 'stalled_timeout_hours'},
+    poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
+    upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
+    upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
+    full_sync_interval_minutes: {scope: 'settings-document', option: 'full_sync_interval_minutes'},
 
     // Downloads -> settings-document values
     download_folder: {scope: 'settings-document', option: 'download_folder'},
@@ -1881,24 +1881,6 @@
               type: 'number', min: 0, max: 600,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
             }),
-            input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
-              type: 'number', min: 5, max: 3600,
-              hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
-            }),
-            input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
-              type: 'number', min: 0, max: 1440,
-              hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
-            }),
-            tuningGroup(
-              input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
-                type: 'number', min: 0, max: 20,
-                hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
-              }),
-              input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
-                type: 'number', min: 0, max: 1440,
-                hint: 'How long DebridPulse waits before resolving a failed upload again. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
-              }),
-            ),
           )}
         </div>
       </details>
@@ -2549,7 +2531,7 @@
           })}
         </div>
       </div>
-      ${downloadBehaviorAdvanced(policy)}
+      ${downloadBehaviorAdvanced(policy, s)}
     `, {
       className: 'dp-settings-download-engine-card',
       help: 'download-behavior',
@@ -2612,9 +2594,11 @@
   }
 
   /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
-   * continuation and local-network policy, four ordinary tuning cells in the
-   * one tuning grammar. Collapsed by default; expansion is presentation only. */
-  function downloadBehaviorAdvanced(policy) {
+   * continuation, local-network and provider-resolution policy, in the one
+   * tuning grammar. Collapsed by default; expansion is presentation only. The
+   * provider intervals and the resolution retries apply to every service, so
+   * they live here rather than on any one provider's card. */
+  function downloadBehaviorAdvanced(policy, s) {
     return disclosureSection('Advanced Settings', 'download-behavior-advanced', tuningCells(
       input('material_checkpoint_interval_seconds', 'Material Checkpoint Interval (seconds)',
         policy.material_checkpoint_interval_seconds ?? 5, {
@@ -2636,6 +2620,29 @@
         tuningToggle('skip_private_lan_confirmation', 'Skip Local Connection Confirmation',
           'Allow new private-LAN transfers without asking for confirmation each time.',
           !!policy.skip_private_lan_confirmation, {disabled: !policy.private_lan_connections}),
+      ),
+      // How often services are checked: the progress of the work a service is
+      // preparing, and the scheduled reconciliation with every connected account.
+      tuningGroup(
+        input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policy.provider_poll_interval_seconds ?? 30, {
+          type: 'number', min: 5, max: 3600,
+          hint: 'How often DebridPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Shorter intervals update status sooner but send more requests.'
+        }),
+        input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
+          type: 'number', min: 0, max: 1440,
+          hint: 'How often DebridPulse reconciles its downloads with every enabled premium service account that can list its transfers. Set to 0 to disable scheduled full syncs.'
+        }),
+      ),
+      // Resolution failures: the retry count and its delay, one relationship.
+      tuningGroup(
+        input('upload_fail_retry_count', 'Resolution Failure Retries', policy.resolution_retry_count ?? 3, {
+          type: 'number', min: 0, max: 20,
+          hint: 'How many times DebridPulse retries when a service fails to resolve a download into something it can fetch, for any service including Network Sources, before trying another service or giving up. Set to 0 to disable these retries.'
+        }),
+        input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policy.resolution_retry_delay_minutes ?? 5, {
+          type: 'number', min: 0, max: 1440,
+          hint: 'How long DebridPulse waits before trying to resolve a download again after such a failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
+        }),
       ),
     ));
   }

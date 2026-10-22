@@ -49,12 +49,13 @@
       sections: [
         {text: [
           'Premium Services are the accounts DebridPulse can use to obtain downloads on your behalf: debrid services such as AllDebrid, Real-Debrid, TorBox, Debrid-Link, and Premiumize, and your own Usenet news servers. Each service has its own card here.',
+          'Every premium service is switched off in a new installation, and none is required: Network Sources work without one. A choice you have saved, on or off, is always kept.',
         ]},
         {heading: 'On each card', list: [
           'Enable decides whether the service takes part in new downloads. Turning it off keeps its saved credentials and settings.',
           'The credentials are stored on the server and are never shown again after saving; leave a secret field blank to keep the stored value.',
           'Test checks the saved configuration against the service. The status beside it reports Unconfigured (enabled but nothing usable is saved), Unverified (saved but not yet proven by a test), or Verified (the current saved configuration passed a test).',
-          'Additional Settings hold that service’s own limits and options; they apply to that service only.',
+          'Additional Settings hold that service’s own limits and options; they apply to that service only. Provider Poll Interval, Full Sync Interval, Resolution Failure Retries, and Retry Delay are configured under Downloads → Download Behavior & Limits → Advanced Settings. Full Sync applies to eligible premium services; resolution retries also cover Network Sources.',
         ]},
         {heading: 'Usenet', text: [
           'Usenet uses your configured news servers rather than a debrid account. Open the Usenet card’s help for server configuration and download behavior.',
@@ -122,6 +123,8 @@
           'Material Checkpoint Interval sets how often reusable download progress is recorded, so less work is repeated after an unexpected interruption.',
           'Graceful Stop Timeout is how long DebridPulse waits for a download engine to stop cleanly before forcing it.',
           'Local Network Connections allows downloads you enter explicitly to reach private LAN addresses. Skip Local Connection Confirmation can be used only while that is on; it stops DebridPulse asking each time.',
+          'Provider Poll Interval is how often DebridPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Full Sync Interval is how often it reconciles its downloads with every enabled premium service account that can list its transfers.',
+          'Resolution Failure Retries and Retry Delay set how often, and how soon, DebridPulse tries again when a service fails to resolve a download, for any service including Network Sources, before trying another service or giving up.',
         ]},
       ],
     },

@@ -171,8 +171,10 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     assert "dp-settings-provider-recovery-card" not in sources
     assert '<details class="dp-settings-additional">' in sources
     assert "Additional Settings" in sources
-    assert "upload_fail_retry_count" in sources
-    assert "upload_fail_retry_delay_minutes" in sources
+    # The global provider intervals and resolution retries sit under Downloads,
+    # not on any one provider's card.
+    for key in ("poll_interval_seconds", "full_sync_interval_minutes", "upload_fail_retry_count", "upload_fail_retry_delay_minutes"):
+        assert f"'{key}'" not in sources, key
     # Source-type artwork is presentation-owned by CSS; runtime needs no icon class.
     assert "dp-settings-debrid-services-icon" not in sources
 
@@ -185,14 +187,7 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
     # ``alldebrid_api_key`` control name.
     assert "allDebridApiKeyField(" in sources
     assert "const key = 'alldebrid_api_key';" in runtime
-    for key in (
-        "alldebrid_rate_limit_per_minute",
-        "poll_interval_seconds",
-        "full_sync_interval_minutes",
-        "upload_fail_retry_count",
-        "upload_fail_retry_delay_minutes",
-    ):
-        assert key in sources
+    assert "alldebrid_rate_limit_per_minute" in sources
 
     # The Downloads section is assembled from the Executor Tuning helpers plus
     # downloadsPanel, so the inventory slice starts at the first of them.
@@ -212,6 +207,10 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "aria2_file_allocation",
         "aria2_lowest_speed_limit",
         "aria2_continue_downloads",
+        "poll_interval_seconds",
+        "full_sync_interval_minutes",
+        "upload_fail_retry_count",
+        "upload_fail_retry_delay_minutes",
     ):
         assert key in downloads
 
@@ -335,7 +334,7 @@ def test_settings_page_reads_only_canonical_namespaces():
         assert flat_read not in panels, f"panel still reads flat alias {flat_read!r}"
     assert "policy.max_concurrent_executions" in panels
     assert "policy.stalled_timeout_hours" in panels
-    assert "policyOf(s).provider_poll_interval_seconds" in panels
+    assert "policy.provider_poll_interval_seconds" in panels
 
 
 def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():

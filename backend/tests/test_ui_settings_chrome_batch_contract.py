@@ -193,14 +193,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     # Tuning-only, as compact cells in the reusable neutral tuning grid.
     additional = sources[sources.index('class="dp-settings-additional-body"'):]
     assert "tuningCells(" in additional
-    for key in (
-        "alldebrid_rate_limit_per_minute",
-        "poll_interval_seconds",
-        "full_sync_interval_minutes",
-        "upload_fail_retry_count",
-        "upload_fail_retry_delay_minutes",
-    ):
-        assert key in additional
+    assert "alldebrid_rate_limit_per_minute" in additional
 
     assert ".dp-settings-alldebrid-key-row.is-configured" in page
     # The row is the shared inline field: a stacked title + hint, the field as

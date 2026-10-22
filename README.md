@@ -12,11 +12,15 @@
 
 ## What is DebridPulse?
 
-**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. `1.0.13` builds on the 1.0.12 **Universal Transfer Core**: identity, lifecycle, retry, ownership, recovery, canonicalization, provenance, authentication continuation and post-processing belong to that core rather than to any provider or download engine, and 1.0.13 adds premium debrid services, Usenet, network sources, media downloads, Sonarr/Radarr download-client compatibility, user accounts and in-application backup and restore on top of it.
+**DebridPulse** is a self-hosted download manager for a server or NAS, used from your browser. You give it a link, a magnet, a `.torrent`, an NZB, a Metalink file or a list of links; it records one durable **transfer**, works out which of your enabled services can obtain it, downloads the files with the right download engine, and keeps that transfer -- and its history -- whole even when its service, source or engine changes along the way.
 
-The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record of the original 1.0.12 two-provider slice (AllDebrid + General HTTP(S) providers) that this release generalizes.
+That transfer, not any one service, is what DebridPulse manages. The service obtaining it, the sources and hosts its files come from (only ones confirmed to hold the same file), and each download-engine attempt are replaceable parts of it: they can be retried, recovered or switched while the transfer keeps its identity, its progress record and its route history.
 
-The current release is `v1.0.13`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the published image tags, and [`CHANGELOG.md`](CHANGELOG.md) for what changed, the **upgrade notes** and the **known limitations** of this release.
+It is provider-neutral. Ordinary network sources (HTTP(S), FTP/SFTP, SCP, rsync, WebDAV, Metalink and supported media pages) work out of the box with no premium-service account. Premium debrid services (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox) and Usenet are optional: each is switched off in a new installation and takes part only once you turn it on and connect your own account (Real-Debrid and TorBox switch on when a new connection is proven), and none is required.
+
+Around that core, 1.0.13 provides operator-controlled switching of a transfer's service or source, automatic retry and failover, file selection, Sonarr/Radarr download-client compatibility, user accounts and roles, and in-application backup and restore.
+
+This README describes `v1.0.13`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the published image tags, and [`CHANGELOG.md`](CHANGELOG.md) for what changed, the **upgrade notes** and the **known limitations** of this release.
 
 The workflow is deterministic:
 
@@ -43,7 +47,7 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 | **Usenet** | A bundled, private SABnzbd downloads NZBs from your own news servers |
 | **Network sources** | FTP & SFTP, SCP, rsync, WebDAV and Metalink sources, with sign-in prompts when a server asks |
 | **Media Downloads** | yt-dlp downloads from media pages it explicitly recognizes, without re-encoding |
-| **Provider switching** | Switch the provider of a torrent, of one link, or of every link of a download at once (best effort, link by link) while it downloads |
+| **Service and source switching** | Choose another service for a download (best effort, link by link), or another confirmed-equivalent source for its files; a source chosen for a paused file that had already started is recorded, shown beside the controls and applied on Resume. The row shows the committed service and source, with a pending switch beside it, never as it (see [Switching and recovery](#switching-and-recovery)) |
 | **Sonarr and Radarr** | DebridPulse acts as a qBittorrent or SABnzbd download client through Integration Delivery Profiles |
 | **User accounts and roles** | Admin, User, ReadOnly User and Integration accounts enforced by the server |
 | **Backups and restore** | Scheduled backups and in-application restore |
@@ -51,12 +55,12 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 | **Magnet links** | Submit one or more magnets to the premium services that accept them |
 | **Torrent files** | Upload `.torrent` files to the premium services that accept them |
 | **Pause-safe intake** | Pause All stops processing, not intake: new links, magnets, and `.torrent` files are recorded locally and begin provider work after Resume All |
-| **Delayed link generation** | Automatically handles AllDebrid links that require asynchronous generation |
+| **Provider-side preparation** | Waits for a premium service to prepare its copy or to generate a delayed link, without losing the transfer's place |
 | **Managed aria2** | DebridPulse starts, configures, and supervises its bundled aria2 daemon for a self-contained deployment |
 | **Unified Downloads view** | Direct links, magnets, torrent files, and imported transfers share one lifecycle and history |
 | **Recent Activity** | Dashboard view of active and recently processed downloads |
 | **Retry and recovery** | Retry failed transfers and regenerate expired provider download links from the original source |
-| **Import existing magnets** | Import AllDebrid magnets not yet represented in the local database |
+| **Import from premium accounts** | Bring in transfers already present on an enabled premium service's account that DebridPulse does not track yet |
 | **Live status updates** | Server-Sent Events carry the application's pulse without requiring full-page polling |
 | **Event log** | Searchable transfer and application event history |
 | **Statistics** | Built-in operational and download statistics |
@@ -109,8 +113,7 @@ This matrix is the **implemented and qualified v1.0.13 provider/executor set**. 
 
 | Integration | Kind | Enabled on a new installation |
 |---|---|---|
-| AllDebrid | Premium provider | Yes (needs an API key to resolve anything) |
-| Debrid-Link, Premiumize, Real-Debrid, TorBox | Premium providers | No — enable under **Settings → Services** |
+| AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox | Premium providers | No — enable under **Settings → Services** and connect your account (none is required) |
 | Usenet (bundled SABnzbd) | Provider with its own download engine | No — enable under **Settings → Services** |
 | HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV | Network-source providers | Yes |
 | Multimeta (Metalink) | Provider | Yes |
@@ -130,6 +133,19 @@ reconciles its tracked downloads against the daemon.
 
 Every aria2 job is still routed through the DebridPulse egress guard with per-job proxy, credential,
 and host-key settings, so a job never inherits daemon-wide network configuration.
+
+---
+
+## Switching and recovery
+
+A transfer is not tied to the service, source or engine it started with. Where you are allowed to change a transfer:
+
+- **Service:** the service name on a Dashboard or Downloads row opens the service picker. It lists the services that claim at least one of the transfer's confirmed-equivalent sources and switches only to those that can take one now. A service that can take the link in use takes over straight away; one that can reach a file only through another equivalent source prepares its copy first (**Preparing …**) while the file keeps downloading where it is.
+- **Source:** the network button with a number opens the source chooser for a file's other confirmed-equivalent sources, or for sources common to every remaining file.
+- **Paused transfers:** a source chosen for a paused file that had already started is recorded and shown beside the controls (for example *Switch to Real-Debrid (rapidgator.net) on resume*), and is applied when the transfer resumes. A service chosen while paused takes over at once, or after resume if it must prepare a copy; the transfer stays paused either way.
+- **Recovery:** temporary failures are retried; a service that keeps failing is replaced by another that can take the transfer; a refused or failed switch leaves the transfer where it was and normal recovery continues.
+
+Switches are best effort and checked again when made. The row shows the committed service and source; a switch that has not taken effect is shown beside it, never as it. The in-application **Help → How It Works** explains every message and state in detail.
 
 ---
 
@@ -158,11 +174,11 @@ Open:
 http://your-server:8080
 ```
 
-Go to **Settings → Services**. Enable the premium services and network sources you intend to use and connect each premium service's account (an API key, or the service's own device sign-in). **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
+Go to **Settings → Services**. Network sources are switched on in a new installation; every premium service is off until you turn it on (connecting a Real-Debrid or TorBox account turns that service on once the connection is proven). Enable the premium services you intend to use and connect each premium service's account (an API key, or the service's own device sign-in). **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
 
 ### Docker image
 
-Images are published to GHCR. Every image is built once immutably and tagged by its full source SHA, then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
+DebridPulse runs as a server application with a browser interface; images are published for `linux/amd64` and `linux/arm64`. Every image is built once immutably and tagged by its full source SHA (`sha-<commit>`), then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
 
 Versioned images use the release tag:
 
@@ -198,7 +214,7 @@ The primary supported configuration is available through **Settings**.
 
 ### Services
 
-**Settings → Services** lists the Premium Services (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox and Usenet) and the Network Sources (HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV, Multimeta and Media Downloads), each with its own enable control, account connection and Additional Settings.
+**Settings → Services** lists the Premium Services (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox and Usenet), each with its own enable control, account connection (news servers for Usenet) and Additional Settings for that service alone, and the Network Sources (HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV, Multimeta and Media Downloads), each with its own enable control.
 
 Provider enablement is backend-owned configuration. `enabled`, `configured`, provider health, and current host availability are distinct facts.
 
@@ -223,9 +239,10 @@ See **[docs/authentication.md](docs/authentication.md)** for configuration examp
 
 Configure:
 
-- download directory;
-- DebridPulse download concurrency;
-- download concurrency, limits, and recovery behavior.
+- the download folder and the number of downloads running at once;
+- under **Download Behavior & Limits → Advanced Settings**: continuation timing, local-network access, and shared polling, premium-service inventory synchronization, and global resolution-retry settings -- **Provider Poll Interval** (how often work a service is still preparing is rechecked), **Full Sync Interval** (how often downloads are reconciled with enabled premium accounts that can list their transfers) and **Resolution Failure Retries** with **Retry Delay** (for any service, Network Sources included);
+- per-engine tuning for network sources, rsync, WebDAV, Usenet and Media Downloads;
+- disk-space limits and download recovery.
 
 ### Extraction
 
@@ -268,11 +285,11 @@ The **Downloads** view is the unified transfer history.
 
 It includes transfers originating from:
 
-- direct debrid links;
+- direct and file-hoster links;
 - magnets;
 - `.torrent` files;
 - NZBs, network sources and media pages;
-- imported AllDebrid entries;
+- transfers imported from premium-service accounts;
 - supported API submissions, including Sonarr and Radarr through their download-client connections.
 
 Transfers can be searched and filtered by state, with retry, reset, pause, resume, and delete controls available where applicable.
@@ -296,7 +313,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 | `GET` | `/api/torrents/{id}` | Retrieve a tracked download |
 | `DELETE` | `/api/torrents/{id}` | Delete a tracked download |
 | `POST` | `/api/torrents/{id}/retry` | Retry a failed download |
-| `POST` | `/api/torrents/import-existing` | Import existing AllDebrid magnets |
+| `POST` | `/api/torrents/import-existing` | Import transfers already present on enabled premium-service accounts |
 | `POST` | `/api/torrents/recover-all` | Recover eligible stuck or failed transfers |
 | `GET` | `/api/torrents/diagnose` | Return transfer-state diagnostics |
 
@@ -372,6 +389,8 @@ The primary implementation areas are:
 
 
 Runtime dependencies are exactly pinned through `backend/requirements.in` → `backend/requirements.txt`. Python runtime license metadata is checked against `licenses/python-runtime.json`; published images also carry BuildKit provenance and SBOM attestations. See [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md).
+
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record of the original 1.0.12 two-provider slice (AllDebrid + General HTTP(S) providers) that later releases generalized.
 
 Release notes for every version are in [`CHANGELOG.md`](CHANGELOG.md); the release operations runbook is [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md).
 
