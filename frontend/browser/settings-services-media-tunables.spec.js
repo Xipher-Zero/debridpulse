@@ -185,6 +185,55 @@ test('desktop: the deck is fixed, Network Sources is pinned with one full row, e
     expect(await network(page).evaluate(node => node.scrollTop)).toBe(before.network);
   });
 
+/* An expanded provider card is content of the Premium list, never part of its
+ * minimum: with Usenet open and its last server's Advanced settings expanded,
+ * the list's viewport stays inside its card, its end is reachable, and
+ * Network Sources stays pinned. Adding a server card and opening a disclosure
+ * are page-local; nothing is written. */
+test('expanded Usenet servers keep the end of the Premium list reachable, Network Sources pinned',
+  async ({page}) => {
+    await page.setViewportSize({width: 1600, height: 935});
+    await openSettings(page, 'sources');
+    await expect.poll(async () => (await geometry(page)).bodyBottom).toBeGreaterThan(0);
+    const pinned = async () => page.evaluate(() => {
+      const card = document.querySelector('[data-panel="sources"] > .dp-settings-general-sources').getBoundingClientRect();
+      return [Math.round(card.top), Math.round(card.bottom)];
+    });
+    const at = await pinned();
+    const usenet = page.locator('.dp-settings-provider-card--usenet');
+    const disclosure = usenet.locator('.dp-settings-disclosure').first();
+    if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+    const servers = usenet.locator('[data-usenet-server-id]');
+    const reach = async () => {
+      await premium(page).evaluate(node => { node.scrollTop = node.scrollHeight; });
+      return premium(page).evaluate(list => {
+        const visible = Math.min(list.getBoundingClientRect().bottom, list.parentElement.getBoundingClientRect().bottom);
+        const all = list.querySelectorAll('.dp-settings-provider-card--usenet [data-usenet-server-id]');
+        const last = all[all.length - 1];
+        const fields = last.querySelectorAll('.dp-usenet-advanced-body input, .dp-usenet-advanced-body select');
+        return {viewportClipped: list.getBoundingClientRect().bottom > list.parentElement.getBoundingClientRect().bottom + 1,
+          atEnd: Math.abs(list.scrollTop + list.clientHeight - list.scrollHeight) <= 1,
+          serverReachable: last.getBoundingClientRect().bottom <= visible + 1,
+          lastFieldReachable: fields.length > 0 && fields[fields.length - 1].getBoundingClientRect().bottom <= visible + 1};
+      });
+    };
+    for (const count of [1, 4]) {
+      while (await servers.count() < count) await usenet.locator('[data-usenet-action="add"]').click();
+      const toggle = servers.last().locator('[data-usenet-advanced-toggle]');
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+      await expect(servers.last().locator('.dp-usenet-advanced-body')).toBeVisible();
+      await expect.poll(reach).toEqual({viewportClipped: false, atEnd: true, serverReachable: true, lastFieldReachable: true});
+      expect((await geometry(page)).deckOverflow, 'the deck itself scrolls').toBeLessThanOrEqual(1);
+      expect(await pinned()).toEqual(at);
+    }
+    // Collapsing gives the list back its at-rest geometry.
+    await servers.last().locator('[data-usenet-advanced-toggle]').click();
+    await disclosure.click();
+    await expect.poll(async () => (await reach()).viewportClipped).toBe(false);
+    expect((await geometry(page)).deckOverflow).toBeLessThanOrEqual(1);
+    expect(await pinned()).toEqual(at);
+  });
+
 test('a short viewport scrolls the deck by only its shortfall and keeps every control reachable',
   async ({page}) => {
     await page.setViewportSize({width: 1000, height: 420});

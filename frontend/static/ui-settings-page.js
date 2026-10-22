@@ -445,8 +445,12 @@
 
   /* Services' two lists, each with one full row it always shows: Network
    * Sources exactly one row of its protocol boxes (the rest scroll inside it),
-   * Premium Services at least its first provider card (its minimum; below the
-   * room both need, the deck scrolls by the shortfall). Both are MEASURED from
+   * Premium Services at least its first provider card at rest -- its header,
+   * never the configuration it may be showing (its minimum; below the room
+   * both need, the deck scrolls by the shortfall). An expanded card scrolls
+   * inside the list like any other content: counting its body would raise the
+   * minimum past the room the list has, and the list's own end would then lie
+   * beneath Network Sources, out of reach. Both are MEASURED from
    * the rendered layout -- track count, box and card heights, padding -- and
    * kept current as it is resized, shown or re-wrapped; no size is assumed.
    * The geometry itself is CSS's (ui-settings-page.css). */
@@ -467,7 +471,9 @@
       const row = tile ? tile.getBoundingClientRect().height : 0;
       if (row) network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row)}px`);
       const card = premium?.firstElementChild;
-      const first = card ? card.getBoundingClientRect().height : 0;
+      const body = card?.querySelector(':scope > .card-body');
+      const open = body && !body.hidden ? body.getBoundingClientRect().height : 0;
+      const first = card ? card.getBoundingClientRect().height - open : 0;
       if (first) premium.style.setProperty('--dp-settings-premium-row-min', `${padded(premium, first)}px`);
     };
     fit();
