@@ -148,10 +148,30 @@ class CanonicalOwnership:
             )
             if row:
                 return row
-        return await db.fetchone(
+        named = await db.fetchone(
             "SELECT * FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
             (canonical_artifact_id, str(candidate.id)),
         )
+        if named or source is not None:
+            return named
+        # No origin was resolved for the candidate from its file rows: a
+        # provider's copy issued by a MEMBER request -- which no file row is
+        # keyed by -- that landed on the provider's existing binding when the
+        # link returned to it. That binding is the one whose own origin
+        # discovered exactly this candidate (``bound_candidate_origin``: one
+        # such binding, or none), and only when it is the candidate's
+        # provider's binding of the candidate's own source.
+        bound = await bound_candidate_origin(db, canonical_artifact_id, str(candidate.id), exact=False)
+        if bound is None:
+            return None
+        binding = bound[0]
+        scope, key = CanonicalOwnership._source_parts(
+            {"scope": candidate.source_identity.scope, "key": candidate.source_identity.key}
+            if candidate.source_identity is not None else None)
+        if str(binding["provider_id"]) != str(candidate.provider_id or "") or (
+                scope is not None and (binding["source_scope"], binding["source_key"]) != (scope, key)):
+            return None
+        return binding
 
     @staticmethod
     async def _insert_origin(db, binding_id: int, origin: CandidateOrigin) -> None:
@@ -1459,15 +1479,28 @@ class CanonicalOwnership:
                     AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')""",
                 (artifact.id,),
             )
+            # The row the origin contributed through: one keyed by the issuing
+            # request -- or the canonical artifact itself, when the origin
+            # records it as the contributor: a provider's copy issued by a
+            # member request, which no row is keyed by, landed on the
+            # artifact by its link's switch (``replace_root_candidates``).
             holder = await db.fetchone(
-                "SELECT * FROM download_files WHERE id=? AND request_id=?",
-                (origin.contributing_artifact_id, origin.request.id),
+                "SELECT * FROM download_files WHERE id=? AND (request_id=? OR id=?)",
+                (origin.contributing_artifact_id, origin.request.id, artifact.id),
             )
             old_binding = await db.fetchone(
                 "SELECT * FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
                 (artifact.id, str(old_candidate.id)),
             )
-            if not current or not holder or not old_binding:
+            # The refresh is the ISSUING request's: an origin of the old
+            # candidate's own binding, from exactly ``origin``'s request, that
+            # discovered exactly the old candidate. Any other origin -- another
+            # provider's, another link's, another binding's -- refreshes nothing.
+            issued = old_binding and await db.fetchone(
+                "SELECT 1 FROM canonical_candidate_origins WHERE binding_id=? AND request_id=? "
+                "AND discovered_candidate_id=? LIMIT 1",
+                (old_binding["id"], origin.request.id, str(old_candidate.id)))
+            if not current or not holder or not old_binding or not issued:
                 await db.rollback()
                 return False
             old_id = str(old_candidate.id)

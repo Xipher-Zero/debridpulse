@@ -649,9 +649,13 @@ async def bound_candidate_origin(db, canonical_artifact_id: int, candidate_id: s
     not bound there. THE canonical answer to "which request issued this
     candidate of this file"; ``CanonicalOwnership`` and the transient
     material boundary (``_candidate_current``) both read it here.
-    ``exact=False`` (the transient material boundary) also answers for a
+    ``exact=False`` (the transient material boundary, and the binding
+    resolution ``CanonicalOwnership._binding_for``) also answers for a
     candidate recorded only as the discovery of another binding's origin
-    (one binding per source): the binding and THAT origin."""
+    (one binding per source -- a provider returning to a source, its copy
+    issued by a member request no file row is keyed by): the binding and
+    THAT origin, when exactly one binding of the artifact has an origin that
+    discovered it; ``None`` when none or several do (nothing is guessed)."""
     binding = await db.fetchone(
         "SELECT * FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
         (canonical_artifact_id, str(candidate_id)),
@@ -661,15 +665,18 @@ async def bound_candidate_origin(db, canonical_artifact_id: int, candidate_id: s
         # and source already binds (one binding per source) is recorded as
         # an origin of that binding, by the candidate it discovered: that
         # origin issued exactly this candidate.
-        discovered = await db.fetchone(
+        if exact:
+            return None
+        discovering = await db.fetchall(
             """SELECT o.*,r.*,o.binding_id AS origin_binding_id FROM canonical_candidate_origins o
                 JOIN canonical_candidate_bindings b ON b.id=o.binding_id
                 JOIN transfer_requests r ON r.id=o.request_id
-                WHERE b.canonical_artifact_id=? AND o.discovered_candidate_id=? ORDER BY o.id LIMIT 1""",
+                WHERE b.canonical_artifact_id=? AND o.discovered_candidate_id=? ORDER BY o.id""",
             (canonical_artifact_id, str(candidate_id)),
         )
-        if not discovered or exact:
+        if len({int(row["origin_binding_id"]) for row in discovering}) != 1:
             return None
+        discovered = discovering[0]
         binding = await db.fetchone("SELECT * FROM canonical_candidate_bindings WHERE id=?",
                                     (discovered["origin_binding_id"],))
         return None if not binding else (binding, discovered)
