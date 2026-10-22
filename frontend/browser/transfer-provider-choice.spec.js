@@ -236,3 +236,52 @@ test('a pending provider choice is shown beside the committed provider, never as
   await expect(hint).toHaveAttribute('data-dp-pending-providers', 'torbox');
   await expect(page.locator('#dash-tbody tr[data-torrent-id="40"] .dp-root-provider-launcher')).toHaveText('AllDebrid');
 });
+
+// 1086: a source switch accepted while the download is paused waits for
+// Resume. The row keeps naming the committed provider and says, in the same
+// place as the other switch messages, where Resume will take it -- only what
+// the list reports (``deferred_switch``), and nothing once it no longer does.
+test('a switch accepted while paused is shown beside the committed provider until Resume completes it', async ({ page }) => {
+  const state = freshState();
+  state.item = Object.assign(listItem(), { status: 'paused',
+    deferred_switch: { provider_id: 'realdebrid', provider_name: 'Real-Debrid', host: 'rapidgator.net' } });
+  await apis(page, state);
+  await ready(page);
+  await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
+  const row = page.locator('#t-tbody tr[data-torrent-id="40"]');
+  const launcher = row.locator('.dp-root-provider-launcher');
+  const deferred = row.locator('.dp-root-provider-deferred');
+  await expect(deferred).toHaveText('Switch to Real-Debrid (rapidgator.net) on resume');
+  await expect(deferred).toHaveAttribute('role', 'status');
+  await expect(deferred).toHaveAttribute('data-dp-deferred-provider', 'realdebrid');
+  await expect(deferred).toHaveClass(/dp-root-provider-switching/);
+  // Beside the badge, in the badge's own container -- never the badge itself.
+  expect(await page.evaluate(() => {
+    const target = document.querySelector('#t-tbody tr[data-torrent-id="40"] .dp-root-provider-deferred');
+    const badge = document.querySelector('#t-tbody tr[data-torrent-id="40"] .dp-root-provider-launcher');
+    return Boolean(target && badge && target.parentElement === badge.parentElement && !target.closest('.progress, [class*="progress"]'));
+  })).toBe(true);
+  await expect(launcher).toHaveText('AllDebrid');
+
+  // With a provider choice also preparing, both are said: one each.
+  state.item = Object.assign(listItem(), { status: 'paused', pending_provider_ids: ['torbox'], pending_provider_names: ['TorBox'],
+    deferred_switch: { provider_id: 'realdebrid', provider_name: 'Real-Debrid', host: null } });
+  await page.evaluate(() => loadTorrents());
+  await expect(deferred).toHaveText('Switch to Real-Debrid on resume');
+  await expect(deferred).not.toHaveAttribute('data-dp-deferred-host', /.*/);
+  await expect(row.locator('.dp-root-provider-pending')).toHaveText('Preparing TorBox…');
+  await expect(row.locator('.dp-root-provider-deferred')).toHaveCount(1);
+
+  // Resumed, the switch not applied yet: it is being applied, no longer "on resume".
+  state.item = Object.assign(listItem(), { status: 'queued',
+    deferred_switch: { provider_id: 'realdebrid', provider_name: 'Real-Debrid', host: 'rapidgator.net' } });
+  await page.evaluate(() => loadTorrents());
+  await expect(deferred).toHaveText('Switching to Real-Debrid (rapidgator.net)…');
+  await expect(launcher).toHaveText('AllDebrid');
+
+  // Resumed and completed: the list no longer reports it, and nothing lingers.
+  state.item = Object.assign(listItem(), { active_provider_id: 'realdebrid', active_provider_name: 'Real-Debrid' });
+  await page.evaluate(() => loadTorrents());
+  await expect(row.locator('.dp-root-provider-deferred')).toHaveCount(0);
+  expect(state.posts).toEqual([]);
+});

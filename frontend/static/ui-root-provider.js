@@ -136,9 +136,9 @@
     if (!known || !(item && item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
         (known ? 'known' : 'pending') + '"' + identity.attributes + '>' + identity.glyph + esc(label) + '</span>' +
-        switchingMarkup(item && item.id);
+        switchingMarkup(item && item.id) + deferredMarkup(item);
     }
-    return launcherMarkup(item.id, item.route_provider_id, label, surface);
+    return launcherMarkup(item.id, item.route_provider_id, label, surface) + deferredMarkup(item);
   }
 
   function sourceBadgeMarkup(item, surface, provider) {
@@ -148,9 +148,10 @@
     if (!(item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       const identity = identityOf(providerId);
       return '<span class="dp-provider-chip" data-provider-state="' + esc(state) + '"' + identity.attributes + '>' +
-        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id) + pendingMarkup(item);
+        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id) + deferredMarkup(item) + pendingMarkup(item);
     }
-    return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope}) + pendingMarkup(item);
+    return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope}) +
+      deferredMarkup(item) + pendingMarkup(item);
   }
 
   // One file's launcher in Details: the provider of the ROOT that produced
@@ -189,6 +190,23 @@
     const names = ids.map(function (id, index) { return providerLabel(given[index], id); }).join(', ');
     return '<span class="dp-root-provider-switching dp-root-provider-pending" role="status" ' +
       'data-dp-pending-providers="' + esc(ids.join(' ')) + '">' + esc('Preparing ' + names + '…') + '</span>';
+  }
+  // A source switch the server accepted while the download is paused
+  // (``deferred_switch``): its destination, said beside -- never as -- the
+  // committed provider the badge names, until Resume completes it. Only what
+  // the server reports: no provider, no message; a host only when it named one.
+  // While the transfer is paused it waits for Resume; once resumed it is being
+  // applied (until the server no longer reports it).
+  function deferredMarkup(item) {
+    const target = item && item.deferred_switch;
+    if (!target || !target.provider_id) return '';
+    const name = providerLabel(target.provider_name, target.provider_id);
+    const destination = target.host ? name + ' (' + target.host + ')' : name;
+    const waiting = String(item.status || '').toLowerCase() === 'paused';
+    return '<span class="dp-root-provider-switching dp-root-provider-deferred" role="status" ' +
+      'data-dp-deferred-provider="' + esc(target.provider_id) + '"' +
+      (target.host ? ' data-dp-deferred-host="' + esc(target.host) + '"' : '') + '>' +
+      esc(waiting ? 'Switch to ' + destination + ' on resume' : 'Switching to ' + destination + '…') + '</span>';
   }
   function switchingMarkup(transferId, rootId) {
     const target = switchingTarget(transferId, rootId);

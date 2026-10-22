@@ -1193,6 +1193,71 @@ async def list_operational_torrents(
             )
             WHERE row_number = 1
         ),
+        -- A source switch accepted while a file's download is parked: the file
+        -- SELECTS a candidate its paused, still-authorized writer is not
+        -- serving, and Resume completes it (``TransferEngine.pending_source``,
+        -- read here from the same durable truth: the writer's own candidate is
+        -- re-found by exact id, else by provider and source identity -- a
+        -- refresh descendant -- exactly as ``resolve_candidate_index``). Its
+        -- destination is the selected candidate's provider and source; one
+        -- per transfer, or none when files disagree or it names no provider.
+        parked_writers AS (
+            SELECT
+                f.id AS artifact_id,
+                f.torrent_id AS transfer_id,
+                f.candidates,
+                COALESCE(f.selected_candidate, 0) AS selected,
+                e.candidate AS writer
+            FROM download_files f
+            JOIN page
+              ON page.id = f.torrent_id
+            JOIN execution_attempts e
+              ON e.id = f.execution_attempt_id
+             AND e.authorized = 1
+             AND e.state = 'paused'
+            WHERE {_CANONICAL_ARTIFACT_SQL}
+              AND LOWER(TRIM(COALESCE(f.status, ''))) NOT IN ('completed', 'cancelled', 'duplicate')
+        ),
+        parked_writer_positions AS (
+            SELECT
+                w.artifact_id,
+                w.transfer_id,
+                w.candidates,
+                w.selected,
+                COALESCE(
+                    MIN(CASE WHEN json_extract(j.value, '$.id') = json_extract(w.writer, '$.id')
+                             THEN CAST(j.key AS INTEGER) END),
+                    MIN(CASE WHEN json_extract(w.writer, '$.source_identity') IS NOT NULL
+                              AND json_extract(j.value, '$.source_identity') IS NOT NULL
+                              AND COALESCE(json_extract(j.value, '$.provider_id'), '')
+                                  = COALESCE(json_extract(w.writer, '$.provider_id'), '')
+                              AND json_extract(j.value, '$.source_identity.scope')
+                                  = json_extract(w.writer, '$.source_identity.scope')
+                              AND json_extract(j.value, '$.source_identity.key')
+                                  = json_extract(w.writer, '$.source_identity.key')
+                             THEN CAST(j.key AS INTEGER) END)
+                ) AS writer_position
+            FROM parked_writers w, json_each(w.candidates) j
+            GROUP BY w.artifact_id, w.transfer_id, w.candidates, w.selected, w.writer
+        ),
+        deferred_source AS (
+            SELECT
+                transfer_id,
+                MIN(provider_id) AS provider_id,
+                MIN(source) AS source
+            FROM (
+                SELECT
+                    transfer_id,
+                    json_extract(candidates, '$[' || selected || '].provider_id') AS provider_id,
+                    json_extract(candidates, '$[' || selected || '].source_identity') AS source
+                FROM parked_writer_positions
+                WHERE writer_position IS NULL OR writer_position != selected
+            )
+            GROUP BY transfer_id
+            HAVING COUNT(DISTINCT COALESCE(provider_id, '') || '|' || COALESCE(source, '')) = 1
+               AND COUNT(*) = COUNT(provider_id)
+               AND MIN(COALESCE(provider_id, '')) != ''
+        ),
         root_request AS (
             SELECT transfer_id, payload
             FROM (
@@ -1778,6 +1843,8 @@ async def list_operational_torrents(
             root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
             active_source.candidate_source AS _active_candidate_source,
+            deferred_source.provider_id AS _deferred_provider_id,
+            deferred_source.source AS _deferred_source,
             latest_route.candidate_summary AS _route_candidate_summary,
             COALESCE(movable_artifact_counts.movable_count, 0) AS _movable_artifact_count,
             single_movable_artifact.artifact_id AS _single_movable_artifact_id,
@@ -1819,6 +1886,8 @@ async def list_operational_torrents(
           ON delivered_source.transfer_id = t.id
         LEFT JOIN active_source
           ON active_source.transfer_id = t.id
+        LEFT JOIN deferred_source
+          ON deferred_source.transfer_id = t.id
         LEFT JOIN root_request
           ON root_request.transfer_id = t.id
         LEFT JOIN root_request_kinds
@@ -1899,6 +1968,8 @@ async def list_operational_torrents(
             capacity_only_blocked_ids=capacity_only_blocked_ids,
         )
         source_identity = _bounded_source_identity(projected)
+        deferred_provider_id = projected.pop("_deferred_provider_id", None)
+        deferred_source = _decode_projection_value(projected.pop("_deferred_source", None), None)
         common_candidate_count = max(0, int(projected.get("common_candidate_count") or 0))
         group_remaining_count = max(0, int(projected.get("group_remaining_count") or 0))
         raw_filenames = _decode_projection_value(projected.pop("_group_member_filenames", None), [])
@@ -1977,6 +2048,20 @@ async def list_operational_torrents(
             item["pending_provider_ids"] = pending_providers
             item["pending_provider_names"] = [_provider_display_name(provider_id, application.definitions)
                                               for provider_id in pending_providers]
+        # A source switch accepted while the download is paused, which Resume
+        # completes (``deferred_source``): its destination, never the provider
+        # or source the paused download is on -- those stay the committed ones.
+        # Only the destination's own provider and safe public host; nothing
+        # when the provider is unknown, a host only when the source is one.
+        if deferred_provider_id:
+            host = None
+            if isinstance(deferred_source, dict) and str(deferred_source.get("scope") or "") == "host":
+                host = safe_public_host(str(deferred_source.get("key") or "")) or None
+            item["deferred_switch"] = {
+                "provider_id": str(deferred_provider_id),
+                "provider_name": _provider_display_name(str(deferred_provider_id), application.definitions),
+                "host": host,
+            }
         item["request_kinds"] = request_kinds
         # Transfer-level common-source MEMBERSHIP summary. ``common_candidate_count``
         # is the number of canonical hosts common to every current authoritative
