@@ -85,6 +85,18 @@ def pytest_manifest(backend: Path, collected: dict[str, Path], shards: dict[str,
     return manifest
 
 
+def read_manifest(path: Path) -> dict:
+    """The inventory manifest: one file, or a directory holding every run
+    attempt's copy (in any layout the download produced), which must agree."""
+    copies = sorted(path.rglob("manifest.json")) if path.is_dir() else [path]
+    if not copies:
+        raise OSError(f"no manifest.json under {path}")
+    texts = {copy.read_bytes() for copy in copies}
+    if len(texts) != 1:
+        raise ValueError(f"{len(copies)} manifest copies under {path} disagree")
+    return json.loads(texts.pop())
+
+
 def _latest_attempts(root: Path, pattern: str) -> list[Path]:
     """One evidence directory per shard: its latest run attempt."""
     latest: dict[str, tuple[int, Path]] = {}
@@ -254,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
                       + ", ".join(f"{shard}={counts.get(shard, 0)}" for shard in range(1, layer_data["shards"] + 1)))
             return 0
         if args.command == "pytest-verify":
-            return _report(pytest_verify(json.loads(args.manifest.read_text(encoding="utf-8")), args.executed),
+            return _report(pytest_verify(read_manifest(args.manifest), args.executed),
                            "pytest inventory")
         return _report(browser_verify(args.full_list, args.executed, args.shards, args.dir), "browser inventory")
     except (OSError, ValueError, KeyError, ET.ParseError) as error:

@@ -106,7 +106,12 @@ jobs:
             echo "A published package version is never rebuilt: bump ARIA2_PACKAGE_VERSION (+dpN) in packaging/aria2/."
             exit 1
           fi
-          digest="$(docker buildx imagetools inspect "$REF" | awk '/^Digest:/ {print $2; exit}')"
+          # Read the whole listing before parsing it: awk leaving a pipe at its
+          # first match breaks the pipe under docker while it may still be
+          # writing, buildx then dies of SIGPIPE and docker exits 255.
+          inspected="$(docker buildx imagetools inspect "$REF")"
+          digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspected")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Could not read the manifest digest of $REF"; exit 1; }
           echo "$REF already published from these exact inputs: $digest"
           echo "exists=true" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
@@ -242,7 +247,12 @@ jobs:
             [[ "$built" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "no linux/$1 image inside $2"; exit 1; }
             test "$(jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0]' <<< "$raw")" = "$built"
           done
-          digest="$(docker buildx imagetools inspect "$REF" | awk '/^Digest:/ {print $2; exit}')"
+          # Read the whole listing before parsing it: awk leaving a pipe at its
+          # first match breaks the pipe under docker while it may still be
+          # writing, buildx then dies of SIGPIPE and docker exits 255.
+          inspected="$(docker buildx imagetools inspect "$REF")"
+          digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspected")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Could not read the manifest digest of $REF"; exit 1; }
           {
             echo "### aria2 package image published"
             echo

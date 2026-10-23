@@ -44,7 +44,11 @@ the tree, the tag and the published image all name the same artifact.
    the Release Promotion workflow. It is **never rebuilt** as a separate release artifact.
 10. Create the version tag so it resolves to the exact final release commit, and verify the
     version image tag resolves to the same qualified immutable manifest digest.
-11. Create the GitHub Release from the canonical bracketed changelog entry for that version.
+11. Create the GitHub Release from the canonical bracketed changelog entry for that version
+    (`python3 release.py X.Y.Z` publishes exactly that entry; it refuses an entry still titled
+    `Development` and a body over GitHub's 125,000-character limit before sending anything, never
+    truncates, and exits non-zero on any failed GitHub call). A body that does not fit is a
+    changelog decision for the operator, not something to cut silently.
 12. The release is closed only after every identity check agrees (see *Release identity*).
 
 ### Why not a PR merge

@@ -1591,3 +1591,139 @@ def test_the_inventory_jobs_judge_every_shard_and_security_runs_on_its_own() -> 
     assert 'timeout "$remaining" env -u DP_TEST_SHARD "$py" -m pytest "$nodeid"' in _runs(TESTS_WORKFLOW)
     browser = _workflow(BROWSER_WORKFLOW)["jobs"]["inventory"]
     assert "shard_inventory.py browser-verify" in "\n".join(step.get("run", "") for step in browser["steps"])
+
+
+# "Re-run failed jobs": the inventory judges each shard's latest attempt, from a
+# listing that includes every attempt. The download is emulated exactly as the
+# pinned actions/download-artifact v8.0.2 performs it with github-token + run-id:
+# the REST listing of the run, the newest artifact per name, the glob pattern,
+# and one directory per artifact unless exactly one matched.
+def _download(artifacts: list[tuple[int, str, dict[str, str]]], pattern: str, root: Path) -> None:
+    import fnmatch
+    newest: dict[str, tuple[int, dict]] = {}
+    for artifact_id, name, files in sorted(artifacts, key=lambda artifact: -artifact[0]):
+        newest.setdefault(name, (artifact_id, files))
+    chosen = [(name, files) for name, (_id, files) in sorted(newest.items()) if fnmatch.fnmatchcase(name, pattern)]
+    root.mkdir(parents=True, exist_ok=True)
+    for name, files in chosen:
+        target = root if len(chosen) == 1 else root / name
+        target.mkdir(parents=True, exist_ok=True)
+        for file_name, content in files.items():
+            (target / file_name).write_text(content, encoding="utf-8")
+
+
+def _shard_evidence(layer: str, shard: str, index: int, nodes: list[str] | None) -> dict[str, str]:
+    files = {"shard.txt": f"{layer} {shard} {layer}-{index}\n"}
+    if nodes is not None:
+        body = "".join(f'<testcase classname="{c}" name="{n}"></testcase>' for c, n in map(inventory.node_case, nodes))
+        files["results.xml"] = f"<testsuites><testsuite>{body}</testsuite></testsuites>"
+    return files
+
+
+def test_a_partial_rerun_is_judged_from_each_shard_s_latest_attempt_and_fails_closed(tmp_path) -> None:
+    owners = {"tests/test_a.py::test_one": 1, "tests/test_b.py::test_two": 2, "tests/test_c.py::test_three[::1]": 3}
+    manifest = {"contract": {"shards": 3, "nodes": owners}}
+    by_shard = {shard: [node for node, owner in owners.items() if owner == shard] for shard in (1, 2, 3)}
+    name = lambda index, attempt: f"pytest-executed-{CANDIDATE}-contract-{index}-attempt-{attempt}"
+    first = [(10 + index, name(index, 1), _shard_evidence("contract", f"{index + 1}/3", index, by_shard[index + 1]))
+             for index in range(3)]
+    # Attempt 1's shard 2 evidence is stale and wrong (it also claims shard 3's test):
+    # judged, it would fail; the partial rerun replaces it.
+    first[1] = (11, name(1, 1), _shard_evidence("contract", "2/3", 1, by_shard[2] + by_shard[3]))
+    scenarios = {
+        "partial rerun of shard 2": (first + [(20, name(1, 2), _shard_evidence("contract", "2/3", 1, by_shard[2]))], []),
+        "rerun shard 2 never finished": (first + [(20, name(1, 2), _shard_evidence("contract", "2/3", 1, None))],
+                                         ["contract shard 2: no results.xml"]),
+        "rerun shard 2 ran another shard's test": (
+            first + [(20, name(1, 2), _shard_evidence("contract", "2/3", 1, by_shard[2] + by_shard[3]))],
+            ["ran 2 times tests.test_c::test_three[::1]"]),
+        # A listing limited to the current attempt would hold only the rerun shard.
+        "earlier attempts not listed": ([(20, name(1, 2), _shard_evidence("contract", "2/3", 1, by_shard[2]))],
+                                        ["no evidence from shard(s)"]),
+        "one shard's artifact alone": ([(10, name(0, 1), _shard_evidence("contract", "1/3", 0, by_shard[1]))],
+                                       ["no evidence from shard(s) [1, 2, 3]"]),
+    }
+    for label, (artifacts, expected) in scenarios.items():
+        root = tmp_path / label.replace(" ", "-").replace("'", "")
+        _download(artifacts, f"pytest-executed-{CANDIDATE}-*", root)
+        problems = inventory.pytest_verify(manifest, root)
+        if not expected:
+            assert problems == [], (label, problems)
+        for text in expected:
+            assert any(text in problem for problem in problems), (label, problems)
+
+
+def test_a_partial_browser_rerun_is_judged_from_each_shard_s_latest_attempt(tmp_path) -> None:
+    spec_dir = tmp_path / "specs"
+    spec_dir.mkdir()
+    for spec in ("a.spec.js", "b.spec.js"):
+        (spec_dir / spec).write_text("", encoding="utf-8")
+    plan = inventory.browser_plan(spec_dir, 2)
+    listing = "  a.spec.js:3:1 › one\n  b.spec.js:5:1 › two\nTotal: 2 tests in 2 files\n"
+    cases = {"a.spec.js": ("one", 3), "b.spec.js": ("two", 5)}
+
+    def evidence(shard: int, status: str | None) -> dict[str, str]:
+        files = {"shard.txt": f"{shard}/2\n", "full-list.txt": listing}
+        if status is not None:
+            spec = next(name for name, owner in plan.items() if owner == shard)
+            title, line = cases[spec]
+            files["results.json"] = json.dumps({"suites": [{"title": spec, "file": spec, "suites": [], "specs": [
+                {"title": title, "file": spec, "line": line, "column": 1, "tests": [{"status": status}]}]}]})
+        return files
+
+    name = lambda shard, attempt: f"browser-executed-{CANDIDATE}-shard-{shard - 1}-attempt-{attempt}"
+    first = [(10, name(1, 1), evidence(1, "expected")), (11, name(2, 1), evidence(2, "skipped"))]
+    for label, artifacts, ok in (
+        ("rerun replaces a stale attempt", first + [(20, name(2, 2), evidence(2, "expected"))], True),
+        ("rerun never finished", first + [(20, name(2, 2), evidence(2, None))], False),
+        ("earlier attempts not listed", [(20, name(2, 2), evidence(2, "expected"))], False),
+    ):
+        root = tmp_path / label.replace(" ", "-")
+        _download(artifacts, f"browser-executed-{CANDIDATE}-*", root)
+        listed = next(root.rglob("full-list.txt"))
+        assert (inventory.browser_verify(listed, root, 2, spec_dir) == []) is ok, label
+
+
+def test_every_attempt_records_its_shard_first_and_its_evidence_is_required() -> None:
+    for path, name in ((TESTS_WORKFLOW, "Upload the tests this shard ran"), (BROWSER_WORKFLOW, "Upload the cases this shard ran")):
+        steps = _steps(path)
+        names = [step["name"] for step in steps]
+        assert names.index("Record this shard's identity") == 0, path.name  # before Checkout, which can fail
+        upload = steps[names.index(name)]
+        assert upload["if"] == "always()" and upload["with"]["if-no-files-found"] == "error", path.name
+        assert "shard.txt" in steps[names.index("Record this shard's identity")]["run"]
+
+
+def test_every_attempt_s_inventory_manifest_must_agree(tmp_path) -> None:
+    one = {"contract": {"shards": 1, "nodes": {"tests/test_a.py::test_one": 1}}}
+    text = json.dumps(one, indent=0, sort_keys=True)
+    for layout in (("manifest.json",), ("a-attempt-1/manifest.json", "a-attempt-2/manifest.json")):
+        root = tmp_path / str(len(layout))
+        for relative in layout:
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text(text, encoding="utf-8")
+        assert inventory.read_manifest(root) == one
+    (tmp_path / "2" / "a-attempt-2" / "manifest.json").write_text(text.replace('"shards": 1', '"shards": 2'),
+                                                                    encoding="utf-8")
+    with pytest.raises(ValueError, match="disagree"):
+        inventory.read_manifest(tmp_path / "2")
+    with pytest.raises(OSError):
+        inventory.read_manifest(tmp_path / "empty")
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(OSError):
+        inventory.read_manifest(tmp_path / "empty")
+    steps = _workflow(TESTS_WORKFLOW)["jobs"]["inventory"]["steps"]
+    download = next(step for step in steps if step["name"] == "Download the test inventory")
+    assert "merge-multiple" not in download["with"]
+    assert '--manifest "$RUNNER_TEMP/inventory"' in "\n".join(step.get("run", "") for step in steps)
+
+
+def test_the_inventory_jobs_list_every_attempt_s_artifacts() -> None:
+    for path in (TESTS_WORKFLOW, BROWSER_WORKFLOW):
+        job = _workflow(path)["jobs"]["inventory"]
+        assert job["permissions"] == {"contents": "read", "actions": "read"}, path.name
+        downloads = [step for step in job["steps"] if "download-artifact" in step.get("uses", "")]
+        assert downloads, path.name
+        for step in downloads:
+            assert step["with"]["github-token"] == "${{ github.token }}", (path.name, step["name"])
+            assert step["with"]["run-id"] == "${{ github.run_id }}", (path.name, step["name"])

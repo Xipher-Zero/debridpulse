@@ -342,25 +342,64 @@ layers, each collected test exactly once:
 Each layer is partitioned by test node id across independent runners (`DP_TEST_SHARD=k/n`,
 `backend/tests/conftest.py`): a fixed partition, so a layer's shards together run each of its
 tests exactly once, and no two shards share a process, port, file or database. The contract
-layer runs on six runners and the runtime layer on three. The unit is the test, not the module:
+layer runs on eight runners and the runtime layer on three. The unit is the test, not the module:
 a module whose scale scenarios cost minutes of real work (`test_v113_identity_anchor.py`,
 `test_v113_root_provider_switch_corrective.py`) no longer holds one runner past the budget while
-the others idle -- the reason the contract layer moved from three module-partitioned runners,
-each about 23-26 minutes on hosted runners, to six (1.0.13 WS9, QUAL-001).
+the others idle (1.0.13 WS9, QUAL-001). The partition is weighted by measured duration: the
+committed `.github/qualification/pytest_seconds.json` lists the seconds hosted runners took per
+test of 0.5 s or more; each listed test is placed, longest first, on the least-loaded shard of
+its layer, a test listed as isolated (the transfer-595 scenario) owns contract shard 1/8 alone
+(which also runs the static checks and takes the test inventory), and every other test is
+spread by a hash of its node id over the shards that are not isolated. A test's owner is a pure
+function of its node id, its layer, the shard count and that table -- never of what else was
+collected -- so every shard and any isolated re-run of one node id agree on it; the classifier's
+isolated re-runs of a named node id are never shard-filtered at all.
 
 A test that needs an executable carries the `real_runtime` marker; nothing else selects it.
 Every layer ends with an accounting step (tests, summed and wall time, slowest cases); **a skip
 in any layer fails it**, because every layer runs in the environment its tests require -- a skip
 would be coverage that silently did not run.
 
-`Browser Runtime` runs its suite once the same way: Playwright `--shard=k/n` across independent
-runners, each serving its own candidate containers. `fullyParallel` is off, so a spec file never
-splits: the files of one shard share one backend exactly as before, and no two shards share any.
-Each shard runs its files with **one** Playwright worker (`--workers=1`), so no two of them drive
-that one backend at once -- the same isolation the classifier's own bounded runs already use (1.0.13
-WS9, QUAL-002: hosted failures that never reproduced in isolation). The suite runs on **six**
-runners, so one worker's serial time per shard fits the blocking budget (three two-worker runners
-became six one-worker runners).
+`Browser Runtime` runs its suite once the same way across independent runners, each serving its
+own candidate containers. Each shard runs a set of **whole** spec files planned by
+`.github/qualification/shard_inventory.py browser-plan` from the committed
+`browser_spec_seconds.json` (longest first onto the least-loaded shard; a spec file never
+splits), so the files of one shard share one backend exactly as before, and no two shards share
+any. Each shard runs its files with **one** Playwright worker (`--workers=1`), so no two of them
+drive that one backend at once -- the same isolation the classifier's own bounded runs already use
+(1.0.13 WS9, QUAL-002: hosted failures that never reproduced in isolation). The suite runs on
+**eight** runners, so one worker's serial time per shard, and a failing shard's bounded
+classification, fit inside the job.
+
+**Every required test runs exactly once, and that is checked.** Each workflow ends with an
+`inventory` job: Tests compares the inventory that contract shard 1/8 takes of every collected
+test and its owning shard against every shard's own junit results; Browser Runtime compares the
+suite's `--list` against every shard's JSON results. A test missing, run twice, run in a shard
+that does not own it, skipped or not inventoried fails it, and so does a shard whose evidence is
+missing (for example one that hit its deadline): the inventory never passes by default. Evidence
+is uploaded per run attempt and listed through the REST API of the run, so after "Re-run failed
+jobs" the shards that passed earlier keep their evidence and each shard's latest attempt is the
+one judged; every attempt that runs records its shard first, so a re-run that ends before its
+results fails the inventory rather than leaving an earlier attempt to stand in. Every attempt of
+contract shard 1/8 uploads its own copy of the inventory manifest, and the copies must be
+identical, or the inventory fails. A full re-run of the workflow is a new attempt in which every
+shard runs again and is judged by its new evidence; "Re-run failed jobs" re-runs only the failed
+shards and the inventory jobs. Hosted run data shows the listing spans attempts, but an end-to-end
+partial re-run of the inventory jobs has not yet been observed: if one cannot establish its
+evidence it fails closed, and only a full re-run of the workflow is then valid. Neither kind of
+re-run is a way to chase green; a failure is classified first. The `security` job runs beside the
+test matrix with its own conclusion.
+
+**Provisioning is cached by what it builds.** The runtime layer's patched aria2 packages are
+cached by the exact aria2 source package (`.dsc` name and hash) the runner's archive serves,
+`packaging/aria2/` and the OS release; its rsync build by the pinned version and checksum, the OS
+release and the workflow; Browser Runtime's locked Playwright Chromium and the Ubuntu packages its
+`--with-deps` installs by the lock file and the OS release. A miss builds and verifies exactly as
+before. A runtime hit is held to the same prerequisite assertions as a fresh build (the `+dp2`
+version and the feature verifier for aria2, the path and version for rsync), and those caches
+are saved only after the assertions passed; apt verifies every cached Ubuntu package Playwright's
+`--with-deps` installs against its signed index; the cached Chromium is identified by the lock
+file alone.
 
 **Milestone manifests are records, not owners.** A milestone qualification list
 (`post_audit_qualification.txt`, `two_provider_checkpoint_qualification.txt`) is evidence of what

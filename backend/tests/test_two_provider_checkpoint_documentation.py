@@ -101,7 +101,15 @@ def test_authoritative_development_version_surfaces_agree_with_the_version_file(
     assert lock["version"] == version
     assert lock["packages"][""]["version"] == version
     ui_arch = _text("docs/UI_FRONTEND_ARCHITECTURE.md")
-    assert f"reports `{version}` for the current release" in ui_arch
+    released = _released_version()
+    if version == released:
+        assert f"reports `{version}` for the current release" in ui_arch
+    else:
+        # A development line names its version as the development tree, beside
+        # the newest published release, and never calls itself released.
+        assert f"reports `{version}` for the current development tree" in ui_arch
+        assert f"`{released}` is the latest published release" in ui_arch
+        assert f"reports `{version}` for the current release" not in ui_arch
     assert "remains `1.0.11.1` for this corrective release" not in ui_arch
 
 
