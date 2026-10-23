@@ -155,10 +155,13 @@ test('Help accordions roll down and up, by mouse and keyboard, and settle after 
   // Five fast clicks end open; nothing is left on the body.
   for (let index = 0; index < 5; index += 1) await summary.click();
   await expect(details).toHaveAttribute('open', '');
-  await expect.poll(() => body.evaluate(element => element.getAnimations().length)).toBe(0);
-  expect(await body.evaluate(element => ({style: element.getAttribute('style') || '', hidden: element.hidden,
-    inert: element.inert, fits: Math.abs(element.getBoundingClientRect().height - element.scrollHeight) < 1})))
-    .toEqual({style: '', hidden: false, inert: false, fits: true});
+  // Settled is the motion owner's finish handler having run, which the browser
+  // delivers only after the animation has left getAnimations(): the whole
+  // settled state is observed together, never one before the other.
+  await expect.poll(() => body.evaluate(element => ({animations: element.getAnimations().length,
+    style: element.getAttribute('style') || '', hidden: element.hidden, inert: element.inert,
+    fits: Math.abs(element.getBoundingClientRect().height - element.scrollHeight) < 1})))
+    .toEqual({animations: 0, style: '', hidden: false, inert: false, fits: true});
 });
 
 test('with reduced motion a Help accordion opens and closes at once', async ({browser}) => {
@@ -198,6 +201,9 @@ test('the six-step flow is one group centred in its card, with aligned columns',
     await page.setViewportSize({width, height: 900});
     await openHelp(page);
     await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]').click();
+    // The tab's slide commits the panel a frame or two after the click; the
+    // live layout is final from that commit on, never transformed by the slide.
+    await expect(page.locator('#dp-help-panel-howitworks')).toBeVisible();
     const geometry = await page.locator('#dp-help-panel-howitworks .dp-help-pipeline').evaluate(pipe => {
       const parent = pipe.parentElement.getBoundingClientRect();
       const style = getComputedStyle(pipe.parentElement);
