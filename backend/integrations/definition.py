@@ -304,6 +304,17 @@ class IntegrationPresentation:
     # own -- a descriptor such as Metalink only names sources that other
     # integrations deliver -- and a delivery recorded against it is unattributed.
     acquisition_method: Optional[str] = None
+    # Operator wording for this integration's own native error codes whose
+    # normalized category alone would not say what happened:
+    # ``(native code, reason, explanation)``. Details shows it beside the
+    # error; nothing else reads it, and it never changes how an error is
+    # classified or recovered.
+    error_reasons: tuple[tuple[str, str, str], ...] = ()
+
+    def error_reason(self, native_code: str | None) -> tuple[str, str] | None:
+        """``(reason, explanation)`` declared for ``native_code``, or ``None``."""
+        return next(((reason, explanation) for code, reason, explanation in self.error_reasons
+                     if code == native_code), None)
 
     def public(self) -> dict:
         return {

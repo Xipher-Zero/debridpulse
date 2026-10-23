@@ -2358,6 +2358,25 @@ function dpRenderErrorDisclosure(modalBody, t) {
   field.replaceChildren(disclosure);
 }
 
+/* Details' REASON: the reporting integration's own words for the failure
+ * Details shows or DebridPulse is still recovering from (error_reason, from
+ * the Details route), with only a real schedule -- the next automatic attempt
+ * when one is scheduled, else that none is. The lifecycle stays the Status
+ * badge's; every value is text. */
+function dpErrorReasonMarkup(t) {
+  const reason = t.error_reason && typeof t.error_reason === 'object' ? t.error_reason : null;
+  if (!reason || typeof reason.reason !== 'string' || !reason.reason) return '';
+  const at = Number(reason.scheduled_retry_at);
+  const schedule = reason.scheduled_retry_at != null && Number.isFinite(at) && at > 0
+    ? 'Next automatic attempt: ' + window.downloadsDateMarkup(new Date(at * 1000).toISOString())
+    : 'No automatic retry is scheduled.';
+  const explanation = typeof reason.explanation === 'string' && reason.explanation
+    ? `<div class="dp-detail-error-reason-explanation">${esc(reason.explanation)}</div>` : '';
+  return `<div class="dp-detail-error-reason" style="grid-column:1/-1"><div class="dk">Reason</div><div class="dv">`
+    + `<div class="dp-detail-error-reason-text">${esc(reason.reason)}</div>${explanation}`
+    + `<div class="dp-detail-error-reason-schedule">${schedule}</div></div></div>`;
+}
+
 /* Details opens its backdrop at once and its shell with its content: the
  * shell stays unseen until the transfer is rendered into it, so it never
  * appears small and then grows. Only an answer slower than
@@ -2415,6 +2434,7 @@ async function showDetail(id) {
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
+        ${dpErrorReasonMarkup(t)}
         ${t.error_message?`<div class="dp-detail-error" style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
         ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}

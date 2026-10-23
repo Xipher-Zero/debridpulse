@@ -361,6 +361,10 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-error-disclosure > dl { display:grid; grid-template-columns:minmax(110px,max-content) minmax(0,1fr); gap:4px 12px; margin:8px 0 2px; font-size:10px; }
 .dp-detail-error-disclosure dt { color:var(--dp-text-muted, var(--text3)); }
 .dp-detail-error-disclosure dd { margin:0; min-width:0; overflow-wrap:anywhere; unicode-bidi:isolate; color:var(--dp-text-secondary, var(--text2)); font-weight:600; }
+/* Details' REASON row (app.js dpErrorReasonMarkup): the reason, then what it means and the real schedule. */
+.dp-detail-error-reason > .dv { min-width:0; display:grid; gap:3px; word-break:normal; }
+.dp-detail-error-reason-text { font-weight:650; color:var(--dp-text-primary, var(--text)); }
+.dp-detail-error-reason-explanation, .dp-detail-error-reason-schedule { font-size:11px; color:var(--dp-text-secondary, var(--text2)); overflow-wrap:break-word; }
 @media (prefers-reduced-motion: reduce) { .dp-detail-error-disclosure > summary::after, .dp-detail-requesters-more > summary::after { transition:none; } }
 .dp-detail-advanced { margin-top:10px; border-top:1px solid var(--dp-divider, var(--border)); }
 .dp-detail-advanced > summary { padding:10px 2px 6px; color:var(--dp-text-muted, var(--text3)); font-size:11px; font-weight:650; cursor:pointer; }

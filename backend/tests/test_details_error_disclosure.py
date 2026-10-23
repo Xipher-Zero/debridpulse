@@ -163,3 +163,123 @@ def test_the_list_and_event_stream_presentation_carry_no_disclosure():
     assert routes.count('result["error_disclosure"]') == 1
     downloads = Path(__file__).parents[1].joinpath("api", "operational_downloads.py").read_text()
     assert "error_disclosure" not in downloads
+
+
+# -- the reporting integration's own words for a failure ------------------------------
+# Details' REASON (``error_reason``): declared by the integration for one native
+# code (``IntegrationPresentation.error_reasons``), for the error Details shows or
+# the failure DebridPulse is still recovering from, with only a real schedule.
+
+def _challenge(stage=Stage.RESOLUTION, detail="Sign in to confirm you're not a bot. Use --cookies-from-browser "
+               "or --cookies. See https://example.test/wiki?token=sekrit-value&sig=abcdef0123456789"):
+    from integrations.media.outcomes import outcome_error
+    return outcome_error("verification_challenge", stage, detail=detail)
+
+
+CHALLENGE_WORDS = {
+    "reason": "YouTube requested verification",
+    "explanation": "YouTube requested additional verification during media extraction. This may be temporary; "
+                   "an account requirement has not been established.",
+}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_verification_challenge_states_its_reason_beside_the_unchanged_error(repository):
+    error = _challenge()
+    _store(711, error)
+    detail = await _details(repository, 711)
+    assert detail["error_reason"] == {**CHALLENGE_WORDS, "scheduled_retry_at": None}
+    # The error and its disclosure are exactly what they were: the category
+    # message, and the native facts -- sanitized -- only in the disclosure.
+    assert detail["error_message"] == "Source temporarily unavailable"
+    facts = detail["error_disclosure"]
+    assert facts["native_code"] == "verification_challenge" and facts["retryability"] == "backoff"
+    assert "sekrit-value" not in json.dumps(detail) and "abcdef0123456789" not in json.dumps(detail)
+
+
+@pytest.mark.asyncio
+async def test_errors_without_declared_words_present_exactly_as_before(repository):
+    from integrations.media.outcomes import outcome_error
+    _store(712, outcome_error("auth_required", Stage.RESOLUTION, detail="This video is private"))
+    _store(713, REJECTED)
+    _store(714, None)
+    for transfer_id in (712, 713, 714):
+        assert "error_reason" not in await _details(repository, transfer_id)
+
+
+class _Records:
+    """The repository's own record readers, as fakes."""
+
+    def __init__(self, requests=(), artifacts=()):
+        self._requests, self._artifacts = tuple(requests), tuple(artifacts)
+
+    async def requests(self, transfer_id):
+        return self._requests
+
+    async def artifacts(self, transfer_id):
+        return self._artifacts
+
+
+def _request(state, error=None, retry_at=0.0):
+    return SimpleNamespace(state=state, error=error, retry_at=retry_at)
+
+
+def _artifact(state, error=None):
+    return SimpleNamespace(state=state, error=error)
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_resolution_retry_shows_the_reason_and_that_sources_real_schedule():
+    from api.routes import _error_reason
+    records = _Records(requests=(_request("resolved"), _request("pending", _challenge(), 1_900_000_000.5)))
+    assert await _error_reason(records, 1, None, None, None, definitions) == {
+        **CHALLENGE_WORDS, "scheduled_retry_at": 1_900_000_000.5}
+    # A pending source with no scheduled retry is not a scheduled retry.
+    records = _Records(requests=(_request("pending", _challenge(), 0.0),))
+    assert await _error_reason(records, 1, None, None, None, definitions) is None
+
+
+@pytest.mark.asyncio
+async def test_a_held_acquisition_failure_reads_its_schedule_only_from_the_recovery_wake():
+    from api.routes import _error_reason
+    # The executor records its failures under its own identity (yt_dlp).
+    from integrations.media.outcomes import outcome_error
+    acquisition = outcome_error("verification_challenge", Stage.EXECUTION, integration_id="yt_dlp")
+    records = _Records(artifacts=(_artifact("recovery_wait", acquisition),))
+    waiting = await _error_reason(records, 1, None, None, "retry_at:1900000060.0", definitions)
+    assert waiting == {**CHALLENGE_WORDS, "scheduled_retry_at": 1_900_000_060.0}
+    # Held for the operator (budget spent): no automatic retry is claimed.
+    for wake in ("operator_retry", None, "retry_at:not-a-time"):
+        assert (await _error_reason(records, 1, None, None, wake, definitions))["scheduled_retry_at"] is None
+    # A settled file's error is history, and a success leaves nothing to explain.
+    for state in ("completed", "cancelled", "error"):
+        assert await _error_reason(_Records(artifacts=(_artifact(state, _challenge()),)), 1, None, None,
+                                   None, definitions) is None
+    assert await _error_reason(_Records(requests=(_request("resolved"),), artifacts=(_artifact("completed"),)),
+                               1, None, None, None, definitions) is None
+
+
+@pytest.mark.asyncio
+async def test_a_displayed_error_is_explained_only_when_it_is_that_same_error():
+    from api.routes import _error_reason
+    error = _challenge()
+    transfer = SimpleNamespace(error=error)
+    records = _Records(requests=(_request("pending", _challenge(), 1_900_000_000.0),))
+    assert (await _error_reason(records, 1, transfer, error.as_dict(), None, definitions))["scheduled_retry_at"] is None
+    # A transition between the two reads fails closed, never to another failure's words.
+    assert await _error_reason(records, 1, SimpleNamespace(error=REJECTED), error.as_dict(), None, definitions) is None
+
+
+@pytest.mark.asyncio
+async def test_nothing_more_is_read_when_no_integration_declares_words():
+    from api.routes import _error_reason
+
+    class Unreadable:
+        async def requests(self, transfer_id):
+            raise AssertionError("read")
+
+        artifacts = requests
+
+    assert await _error_reason(Unreadable(), 1, None, None, None, []) is None
+    assert await _error_reason(Unreadable(), 1, None, None, None,
+                               [item for item in definitions if not item.presentation.error_reasons]) is None

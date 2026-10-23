@@ -29,6 +29,7 @@ from pydantic_core import PydanticCustomError
 from core.settings_constraints import is_write
 
 from integrations.definition import IntegrationDefinition, IntegrationPresentation
+from integrations.media.outcomes import OPERATOR_REASONS
 
 TargetResolution = Literal["best", "2160", "1440", "1080", "720", "480", "360"]
 # A relative rank among the bitrates a site already offers at the chosen
@@ -200,5 +201,6 @@ definition = IntegrationDefinition(
         # One transfer is "a Media Download", in the Media Downloads accent.
         transfer_label="Media Download",
         transfer_theme="hot-rose",
+        error_reasons=OPERATOR_REASONS,
     ),
 )

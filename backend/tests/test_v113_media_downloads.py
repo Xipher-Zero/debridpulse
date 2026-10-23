@@ -32,7 +32,7 @@ from providers.media.provider import MEMBER_KIND, PLAN_KEY, MediaProvider
 from test_v113_collection_route_generic_closure import Route, by_payload, drive, lab, routes, submit
 from transfers import codec
 from transfers.applicability import ApplicabilityClass
-from transfers.errors import Category, Retryability, Stage, TransferError
+from transfers.errors import Category, Origin, Retryability, Stage, TransferError
 from transfers.models import (
     ContinuationCapability, Endpoint, ExecutionSubject, ExecutionWork, MaterializationKind, MaterializationPlan,
     ExecutionRequest, TransferCandidate, TransferRequest,
@@ -150,7 +150,7 @@ async def test_a_mixed_paste_routes_each_root_through_its_own_claimant(tmp_path,
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("code", ["unavailable", "extractor_failed", "network", "auth_required",
-                                  "runtime_unavailable", "egress_refused"])
+                                  "runtime_unavailable", "egress_refused", "verification_challenge"])
 async def test_a_claimed_medium_never_falls_through_to_generic_http(tmp_path, monkeypatch, code):
     media = MediaProvider(Extraction(MediaFailure(code)))
     generic = Route("generic-route", generic=True)
@@ -2027,9 +2027,10 @@ def test_both_worker_instructions_carry_the_sandboxs_one_effective_selection(tmp
             assert spec["youtube_player_clients"] == list(clients)
 
 
-def test_a_sign_in_challenge_with_chosen_clients_is_one_extraction_and_an_honest_failure(monkeypatch):
-    """Mocked: no request reaches YouTube. The upstream challenge stays the
-    ordinary non-retryable sign-in outcome; nothing tries other clients."""
+def test_a_verification_challenge_with_chosen_clients_is_one_extraction_and_an_honest_failure(monkeypatch):
+    """Mocked: no request reaches YouTube. YouTube's bot check is its own
+    verification-challenge outcome (never an account requirement), and the
+    extraction asks once: nothing tries other clients."""
     import yt_dlp
     from yt_dlp.utils import DownloadError, ExtractorError
     made, asked = [], []
@@ -2047,13 +2048,135 @@ def test_a_sign_in_challenge_with_chosen_clients_is_one_extraction_and_an_honest
         def extract_info(self, url, download=False):
             asked.append(url)
             cause = ExtractorError("Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies",
-                                   expected=True)
+                                   expected=True, ie="youtube")
             raise DownloadError("ERROR: [youtube] x: " + cause.msg, (ExtractorError, cause, None))
 
     monkeypatch.setattr(yt_dlp, "YoutubeDL", Challenged)
     with pytest.raises(worker.Failure) as failed:
         worker.extract({"url": VIDEO, "proxy": "http://route", "youtube_player_clients": ["tv", "web_safari"]})
-    assert failed.value.code == "auth_required"
+    assert failed.value.code == "verification_challenge"
     assert len(made) == 1 and asked == [VIDEO]
     assert made[0]["extractor_args"] == {"youtube": {"player_client": ["tv", "web_safari"]}}
-    assert outcome_error("auth_required", Stage.RESOLUTION).retryability is Retryability.NEVER
+    assert outcome_error("verification_challenge", Stage.RESOLUTION).retryability is Retryability.BACKOFF
+
+
+# -- YouTube's verification challenge ---------------------------------------------------
+# Hand-authored yt-dlp failures; nothing reaches YouTube. A verification challenge
+# is recognized only from yt-dlp's YouTube video extractor's own message (its
+# ``ie``, stamped by the extractor -- never a URL), only by its specific phrases,
+# and only after every typed guard, proxy and network failure has had its say.
+
+def _extraction_failure(reason: str, ie: str | None = "youtube"):
+    from yt_dlp.utils import DownloadError, ExtractorError
+    cause = ExtractorError(reason, expected=True, ie=ie)
+    return DownloadError(f"ERROR: [{ie or 'generic'}] x: {cause.msg}", (ExtractorError, cause, None))
+
+
+_LOGIN_HINT = ("Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/"
+               "yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies")
+
+
+@pytest.mark.parametrize("reason", [
+    f"Sign in to confirm you're not a bot. {_LOGIN_HINT}",
+    f"Sign in to confirm you’re not a bot. {_LOGIN_HINT}",          # YouTube's own typographic apostrophe
+    "Please confirm you're not a bot",
+    "Video unavailable. YouTube is requiring a captcha challenge before playback",
+])
+def test_youtubes_verification_requests_are_a_verification_challenge_at_extraction_and_acquisition(reason):
+    for acquire in (False, True):
+        assert worker.classify(_extraction_failure(reason), acquire=acquire).code == "verification_challenge"
+
+
+@pytest.mark.parametrize("reason,ie,code", [
+    # Genuinely account-bound media stays an account requirement, never a challenge.
+    (f"Private video. Sign in if you've been granted access to this video. {_LOGIN_HINT}", "youtube", "auth_required"),
+    (f"Join this channel to get access to members-only content like this video. {_LOGIN_HINT}", "youtube",
+     "auth_required"),
+    (f"Sign in to confirm your age. This video may be inappropriate for some users. {_LOGIN_HINT}", "youtube",
+     "auth_required"),
+    ("This video requires payment to watch. Sign in to YouTube Premium", "youtube", "auth_required"),
+    # "sign in", "bot" or "cookies" alone is not the challenge.
+    (f"Sign in to continue. {_LOGIN_HINT}", "youtube", "auth_required"),
+    ("Use --cookies for the authentication", "youtube", "auth_required"),
+    ("The uploader's bot account was terminated", "youtube", "unavailable"),
+    # The same words from any other extractor (or none) are not YouTube's request.
+    (f"Sign in to confirm you're not a bot. {_LOGIN_HINT}", "vimeo", "auth_required"),
+    (f"Sign in to confirm you're not a bot. {_LOGIN_HINT}", "youtube:tab", "auth_required"),
+    (f"Sign in to confirm you're not a bot. {_LOGIN_HINT}", None, "auth_required"),
+    # An unrecognized YouTube error keeps the conservative fallback.
+    ("Something unexpected happened", "youtube", "extractor_failed"),
+])
+def test_only_youtubes_own_verification_request_is_a_challenge(reason, ie, code):
+    assert worker.classify(_extraction_failure(reason, ie), acquire=False).code == code
+
+
+def test_typed_guard_proxy_and_http_failures_keep_their_priority_over_a_challenge_message():
+    from yt_dlp.networking.exceptions import ProxyError, TransportError
+    from yt_dlp.utils import DownloadError
+    bot = "Sign in to confirm you're not a bot"
+
+    def carrying(item):
+        return DownloadError(f"ERROR: [youtube] x: {bot}", (type(item), item, None))
+
+    assert worker.classify(carrying(_http_error(429)), acquire=False).code == "rate_limited"
+    assert worker.classify(carrying(_http_error(403, {"Proxy-Status": "debridpulse; error=destination_ip_prohibited"})),
+                           acquire=True, phase="component").code == "egress_refused"
+    assert worker.classify(carrying(_http_error(403)), acquire=True, phase="component").code == "source_refused"
+    assert worker.classify(carrying(_http_error(407)), acquire=False).code == "route_revoked"
+    assert worker.classify(carrying(ProxyError(bot)), acquire=False).code == "egress_refused"
+    assert worker.classify(carrying(TransportError(bot)), acquire=False).code == "network"
+    refusal = worker.SandboxRefusal("socket.connect")
+    assert worker.classify(carrying(refusal), acquire=False).code == "egress_refused"
+
+
+def test_a_challenge_means_the_same_at_resolution_and_execution_and_is_never_a_credential_request():
+    resolution = outcome_error("verification_challenge", Stage.RESOLUTION, detail="d")
+    execution = outcome_error("verification_challenge", Stage.EXECUTION, detail="d")
+    for error in (resolution, execution):
+        assert (error.category, error.retryability, error.origin) == (
+            Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF, Origin.REMOTE_SOURCE)
+        assert error.native_code == "verification_challenge" and not provider_attributable(error)
+    assert (resolution.stage, execution.stage) == (Stage.RESOLUTION, Stage.EXECUTION)
+    # The account requirement it is no longer confused with is unchanged.
+    auth = outcome_error("auth_required", Stage.RESOLUTION)
+    assert (auth.category, auth.retryability) == (Category.SOURCE_UNAVAILABLE, Retryability.NEVER)
+    # Its words are the integration's own declaration, read by Details alone.
+    assert media_definition.presentation.error_reason("verification_challenge") == (
+        "YouTube requested verification",
+        "YouTube requested additional verification during media extraction. This may be temporary; an account "
+        "requirement has not been established.")
+    assert media_definition.presentation.error_reason("auth_required") is None
+
+
+@pytest.mark.asyncio
+async def test_a_challenge_at_resolution_is_the_providers_own_failure_with_the_resolution_stage():
+    provider = MediaProvider(Extraction(MediaFailure("verification_challenge", "Sign in to confirm you're not a bot")))
+    with pytest.raises(TransferError) as raised:
+        await provider.resolve(TransferRequest("https", VIDEO))
+    error = raised.value.error
+    assert (error.native_code, error.stage, error.retryability) == ("verification_challenge", Stage.RESOLUTION,
+                                                                    Retryability.BACKOFF)
+
+
+def test_a_challenge_is_retried_only_within_the_existing_bounded_budgets():
+    """The configured defaults (``application.composition``): 3 resolution
+    retries 5 minutes apart, execution retries from 60 s. No policy branch is
+    YouTube's: these are rate_limited's exact decisions."""
+    from transfers.policy import RecoveryAction, RecoveryContext, TransferPolicy
+    policy = TransferPolicy(max_attempts=4, retry_delay=60.0, resolution_max_attempts=4, resolution_retry_delay=300.0)
+    now = 1_000.0
+    resolution = outcome_error("verification_challenge", Stage.RESOLUTION)
+    scheduled = [policy.retry_resolution(resolution, attempts, now).retry_at for attempts in range(1, 6)]
+    assert scheduled == [now + 300.0, now + 300.0, now + 300.0, None, None]
+    assert [policy.retry_resolution(outcome_error("rate_limited", Stage.RESOLUTION), attempts, now).retry_at
+            for attempts in range(1, 6)] == scheduled
+    # Acquisition: the same candidate is backed off twice, then the operator
+    # decides (Media Downloads cannot refresh a candidate or offer another).
+    execution = outcome_error("verification_challenge", Stage.EXECUTION)
+    decisions = [policy.recover(execution, RecoveryContext(consecutive_no_progress_failures=failures), now)
+                 for failures in (0, 1, 2)]
+    assert [(item.action, item.retry_at, item.wake_condition) for item in decisions] == [
+        (RecoveryAction.BACKOFF, now + 60.0, f"retry_at:{now + 60.0}"),
+        (RecoveryAction.BACKOFF, now + 60.0, f"retry_at:{now + 60.0}"),
+        (RecoveryAction.WAIT_FOR_OPERATOR, None, "operator_retry"),
+    ]

@@ -156,7 +156,16 @@ def test_release_tag_pushes_run_every_independent_qualifier() -> None:
         assert "- 'internal-v*'" in workflow, name
 
 
-def test_release_promotion_is_the_only_mutable_image_tag_owner() -> None:
+def test_release_promotion_is_the_only_release_tag_owner() -> None:
+    # Release tags (latest, v*, internal-v*) are Release Promotion's alone. The
+    # one other mutable tag of the application image, the 1.0.14-testing
+    # development alias, is Testing Alias's (test_testing_alias_contract); the
+    # package workflows tag only their own debridpulse-aria2/-ffmpeg images.
+    writers = {path.name for path in WORKFLOWS.glob("*.yml")
+               if "imagetools create" in path.read_text(encoding="utf-8")}
+    assert writers == {"release-promotion.yml", "testing-alias.yml", "aria2-package.yml", "ffmpeg-package.yml"}
+    for name in ("aria2-package.yml", "ffmpeg-package.yml"):
+        assert f"IMAGE_NAME: ghcr.io/xipher-zero/debridpulse-{name.split('-')[0]}" in _workflow(name)
     promotion = _workflow("release-promotion.yml")
     assert 'target_tag="latest"' in promotion
     assert 'target_tag="$GITHUB_REF_NAME"' in promotion

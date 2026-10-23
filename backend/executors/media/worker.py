@@ -285,6 +285,23 @@ _LIVE = re.compile(r"(?i)\bis live\b|live event|premieres? in|will begin|stream 
 _GONE = re.compile(r"(?i)unavailable|not available|removed|deleted|does not exist|no longer|terminated|"
                    r"not found|copyright|has been blocked")
 _NO_FORMATS = re.compile(r"(?i)requested format is not available|no video formats|no formats found")
+# YouTube's own request for additional verification, as yt-dlp's YouTube video
+# extractor reports it: its bot check ("Sign in to confirm you're not a bot")
+# and its captcha notice. Only these phrases, only in that extractor's own
+# message -- never "sign in" or "cookies" alone, never another site.
+_VERIFICATION = re.compile(r"(?i)confirm you[’']re not a bot|requiring a captcha challenge before playback")
+_YOUTUBE_EXTRACTOR = "youtube"
+
+
+def _verification_challenge(exc) -> bool:
+    """Whether the failure is YouTube asking for additional verification: an
+    ``ExtractorError`` that yt-dlp attributed to its YouTube video extractor
+    (``ie``, stamped by the extractor itself, never read from a URL) whose own
+    message is that request. A fact about the source's answer, not about any
+    account or this machine's address."""
+    from yt_dlp.utils import ExtractorError
+    return any(isinstance(item, ExtractorError) and getattr(item, "ie", None) == _YOUTUBE_EXTRACTOR
+               and _VERIFICATION.search(str(getattr(item, "orig_msg", "") or "")) for item in _chain(exc))
 
 
 def classify(exc, *, acquire: bool, phase: str = "") -> Failure:
@@ -340,6 +357,8 @@ def classify(exc, *, acquire: bool, phase: str = "") -> Failure:
         return Failure("unsupported", message)
     if _NO_FORMATS.search(message):
         return Failure("format_unavailable" if acquire else "no_usable_formats", message)
+    if _verification_challenge(exc):
+        return Failure("verification_challenge", message)
     if _AUTH.search(message):
         return Failure("auth_required", message)
     if _LIVE.search(message):

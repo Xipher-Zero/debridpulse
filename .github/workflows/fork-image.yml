@@ -576,3 +576,19 @@ jobs:
 
           echo "Candidate digest: $digest"
           printf 'Candidate tags:\n%s\n' "$GENERATED_TAGS"
+
+  # This required gate passed for a 1.0.14 push (first attempt or a re-run):
+  # Testing Alias re-evaluates 1.0.14-testing from all six gates of the branch
+  # tip, moving it only to a fully qualified tip, one evaluation at a time.
+  # Its outcome is the "1.0.14-testing" commit status, never this gate's.
+  testing-alias:
+    name: Testing alias
+    needs: [build-and-smoke-test, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      attestations: read
+      statuses: write
+    uses: ./.github/workflows/testing-alias.yml

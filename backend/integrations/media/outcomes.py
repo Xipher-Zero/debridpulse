@@ -45,6 +45,11 @@ _OUTCOMES = {
     "network": (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF, Origin.REMOTE_SOURCE),
     "rate_limited": (Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF,
                      Origin.REMOTE_SOURCE),
+    # YouTube asked for additional verification (its bot check or captcha).
+    # A fact about the source's answer, not an account requirement: possibly
+    # temporary, so the ordinary bounded backoff applies -- never a credential.
+    "verification_challenge": (Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF,
+                               Origin.REMOTE_SOURCE),
     # The origin itself answered 403 to a planned component or subtitle (never
     # the guard: its refusals stay egress_refused). Every attempt extracts
     # afresh, so a later attempt asks with newly issued addresses.
@@ -70,6 +75,17 @@ _OUTCOMES = {
     "runtime_unavailable": (Domain.EXECUTOR, Category.EXECUTOR_UNAVAILABLE, Retryability.BACKOFF,
                             Origin.LOCAL_SYSTEM),
 }
+
+
+# What Details says about an outcome whose category alone would not tell the
+# operator what happened: ``(native code, reason, explanation)``. Declared on
+# the integration's presentation (``IntegrationPresentation.error_reasons``);
+# the native diagnostic stays in the error's own disclosure.
+OPERATOR_REASONS = (
+    ("verification_challenge", "YouTube requested verification",
+     "YouTube requested additional verification during media extraction. This may be temporary; an account "
+     "requirement has not been established."),
+)
 
 
 class MediaFailure(Exception):

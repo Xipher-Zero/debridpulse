@@ -39,8 +39,29 @@ const CANARY = detail(44, {
                      diagnostic_evidence: {name: 'EVIDENCE-CANARY'}},
 });
 
+// YouTube's verification challenge: the integration's own words beside the
+// unchanged error (failed), and while a resolution retry is really scheduled.
+const CHALLENGE_WORDS = {
+  reason: 'YouTube requested verification',
+  explanation: 'YouTube requested additional verification during media extraction. This may be temporary; '
+    + 'an account requirement has not been established.',
+};
+const CHALLENGED = detail(1087, {
+  error_message: 'Source temporarily unavailable',
+  error_disclosure: {integration_id: 'media', integration_name: 'Media Download', origin: 'remote_source',
+                     domain: 'resolution', native_code: 'verification_challenge', stage: 'resolution',
+                     diagnostic: "Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies",
+                     retryability: 'backoff'},
+  error_reason: {...CHALLENGE_WORDS, scheduled_retry_at: null},
+});
+const RETRYING = detail(1088, {
+  status: 'resolving', presentation_status: 'resolving', presentation_label: 'Resolving',
+  error_reason: {...CHALLENGE_WORDS, scheduled_retry_at: 1924992000},
+});
+
 async function boot(page) {
-  const byId = new Map([REJECTED, STORAGE, EXECUTOR, PLAIN, CANARY].map(item => [String(item.id), item]));
+  const byId = new Map([REJECTED, STORAGE, EXECUTOR, PLAIN, CANARY, CHALLENGED, RETRYING]
+    .map(item => [String(item.id), item]));
   await page.route(url => /^\/api\/torrents\/\d+$/.test(url.pathname), route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify(byId.get(new URL(route.request().url()).pathname.split('/').pop()))}));
@@ -126,4 +147,32 @@ test('context and diagnostic evidence never reach the page; hostile text is iner
   const overflow = await page.locator('.dp-detail-error-disclosure dl').evaluate(list =>
     [...list.querySelectorAll('dd')].some(item => item.getBoundingClientRect().right > list.getBoundingClientRect().right + 1));
   expect(overflow).toBe(false);
+});
+
+test('a verification challenge states its reason and meaning in Details, outside the collapsed native facts', async ({ page }) => {
+  await boot(page);
+  await open(page, 1087);
+  const reason = page.locator('.dp-detail-error-reason');
+  await expect(reason.locator('.dk')).toHaveText('Reason');
+  await expect(reason.locator('.dp-detail-error-reason-text')).toBeVisible();
+  await expect(reason.locator('.dp-detail-error-reason-text')).toHaveText('YouTube requested verification');
+  await expect(reason.locator('.dp-detail-error-reason-explanation')).toHaveText(CHALLENGE_WORDS.explanation);
+  await expect(reason.locator('.dp-detail-error-reason-schedule')).toHaveText('No automatic retry is scheduled.');
+  // The error itself and its collapsed native facts are unchanged; yt-dlp's
+  // cookie instruction is only there, never the recommended action.
+  await expect(page.locator('.dp-detail-error-disclosure > summary')).toHaveText('Source temporarily unavailable');
+  await expect(page.locator('.dp-detail-error-disclosure')).not.toHaveAttribute('open', '');
+  await expect(reason).not.toContainText('cookies');
+
+  // While a resolution retry is scheduled: the reason, and only that real schedule.
+  await open(page, 1088);
+  await expect(page.locator('.dp-detail-error-reason-text')).toHaveText('YouTube requested verification');
+  await expect(page.locator('.dp-detail-error-reason-schedule')).toContainText('Next automatic attempt:');
+  await expect(page.locator('.dp-detail-error-reason-schedule .dp-downloads-date-value')).toHaveAttribute(
+    'data-tooltip', /2031/);
+  await expect(page.locator('.dp-detail-error')).toHaveCount(0);
+
+  // An error with no declared words shows exactly as before: no Reason row.
+  await open(page, 627);
+  await expect(page.locator('.dp-detail-error-reason')).toHaveCount(0);
 });
