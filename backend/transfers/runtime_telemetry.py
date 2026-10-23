@@ -38,8 +38,8 @@ evidence of zero) and not dominated by an isolated burst (no one of its
 into, its durable record by the engine -- and it never falls.
 
 A logical transfer's estimated time remaining is that transfer's remaining
-acquisition bytes over the summed acquisition rate of exactly its acquiring
-executions (``acquisition_eta``), each read from this same history
+acquisition bytes over the summed acquisition rate of its acquiring executions
+that have one (``acquisition_eta``), each read from this same history
 (``acquisition_rate``): no second sampler. The rate is the counter's growth
 over up to ``ETA_WINDOW_SECONDS`` ending at its last movement, measured only
 over the current run of movement and only once that run spans
@@ -205,6 +205,19 @@ class ExecutionThroughputMeter:
         rate = (moved - self._bytes_at(series, start)) / (moved_at - start)
         return (rate, now - moved_at > _SAMPLE_GRACE_SECONDS) if rate > 0 else None
 
+    def acquisition_stalled(self, key: str) -> bool:
+        """Whether an execution that moved has since been still for longer
+        than ``ETA_HOLD_SECONDS``: sustained inactivity, as opposed to one that
+        has not been measured yet (just started, never moved)."""
+        series = self._series.get(key)
+        if not series:
+            return False
+        moved_at = None
+        for before, sample in zip(series, list(series)[1:]):
+            if sample[1] > before[1]:
+                moved_at = sample[0]
+        return moved_at is not None and self.clock() - moved_at > ETA_HOLD_SECONDS
+
     def raise_sustained_peak(self) -> int | None:
         """Raise ``sustained_peak`` to the current sustained rate when that is
         higher; the new peak, or ``None`` when it did not rise."""
@@ -247,34 +260,47 @@ class ExecutionThroughputMeter:
         return float(before[1])
 
 
-def acquisition_eta(remaining_bytes: int | None, attempt_ids, meter: ExecutionThroughputMeter
-                    ) -> tuple[int, bool] | None:
-    """A logical transfer's estimated time remaining, ``(whole seconds,
-    held)``, or ``None``: its remaining acquisition bytes over the summed
-    ``acquisition_rate`` of exactly the executions acquiring them, each
-    counted once. ``None`` unless every one of them has a credible rate, the
-    remaining work is positive, and the estimate fits ``MAX_ETA_SECONDS``.
-    Rounded up, so unfinished work never reads as no time left. Held only
-    while every one of its executions is held: only then is the figure
-    exactly the one last shown."""
+def acquisition_eta(remaining_bytes: int | None, attempt_ids, meter: ExecutionThroughputMeter, *,
+                    estimated: bool = False) -> tuple[int, bool, bool] | None:
+    """A logical transfer's estimated time remaining, ``(whole seconds, held,
+    estimated)``, or ``None``: its remaining acquisition bytes over the summed
+    ``acquisition_rate`` of the executions acquiring them that have one, each
+    counted once.
+
+    Every writer's remaining work stays in the numerator. A writer not measured
+    yet (just started: no run of movement as long as ``ETA_MIN_SPAN_SECONDS``)
+    adds none to the denominator -- no rate is ever invented for it -- so the
+    figure assumes the measured writers' pace for its work too, and is
+    ``estimated``. A writer that moved and has been still past the hold is
+    sustained inactivity (``acquisition_stalled``): there is no estimate, as
+    for a single writer. ``None`` also when no writer has a credible rate, the
+    remaining work is not positive, or the estimate does not fit
+    ``MAX_ETA_SECONDS``. Rounded up, so unfinished work never reads as no
+    time left. ``estimated`` is also set by the caller when the remaining work
+    is itself extrapolated. Held only while every writer is measured and held:
+    only then is the figure exactly the one last shown."""
     attempts = sorted(set(attempt_ids))
     if remaining_bytes is None or remaining_bytes <= 0 or not attempts:
         return None
-    rates = [meter.acquisition_rate(attempt) for attempt in attempts]
-    if any(rate is None for rate in rates):
+    if any(meter.acquisition_stalled(attempt) for attempt in attempts):
         return None
-    total = sum(rate for rate, _held in rates)
+    rates = [meter.acquisition_rate(attempt) for attempt in attempts]
+    measured = [rate for rate in rates if rate is not None]
+    if not measured:
+        return None
+    total = sum(rate for rate, _held in measured)
     seconds = remaining_bytes / total if total > 0 else math.inf
     if not math.isfinite(seconds) or seconds > MAX_ETA_SECONDS:
         return None
     seconds = max(1, math.ceil(seconds))
     if seconds > MAX_ETA_SECONDS:
         return None
-    return seconds, all(held for _rate, held in rates)
+    complete = len(measured) == len(rates)
+    return seconds, complete and all(held for _rate, held in measured), estimated or not complete
 
 
-def acquisition_eta_payload(eta: tuple[int, bool] | None) -> dict | None:
+def acquisition_eta_payload(eta: tuple[int, bool, bool] | None) -> dict | None:
     """The one public form of an estimate, for the list and its live
-    progress updates alike: ``{"seconds", "held"}``, or ``None`` when the
-    transfer has no credible estimate."""
-    return None if eta is None else {"seconds": int(eta[0]), "held": bool(eta[1])}
+    progress updates alike: ``{"seconds", "held", "estimated"}``, or ``None``
+    when the transfer has no credible estimate."""
+    return None if eta is None else {"seconds": int(eta[0]), "held": bool(eta[1]), "estimated": bool(eta[2])}

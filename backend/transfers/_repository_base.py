@@ -590,6 +590,38 @@ def effective_progress(status, verified, active_percent, active_basis, active_by
     return {**figure, "percent": None if verified is None else round(min(max(float(verified), 0.0), 100.0), 1)}
 
 
+def acquisition_remaining(progress: dict) -> tuple[int, bool] | None:
+    """A running writer's remaining acquisition bytes from its recorded
+    progress (``TransferProgress`` as stored), ``(bytes, estimated)``, or
+    ``None`` when they cannot be measured: past acquisition (``acquiring``
+    false; unrecorded counts as acquiring, as ``active_execution_progress_sql``
+    reads it), or nothing measured to extrapolate from.
+
+    * An exact byte total: exactly ``total - completed``.
+    * Otherwise its completed bytes extrapolated, ``estimated``, by the share
+      of the work they are: completed parts of a consistent part count (the
+      bytes per part so far), else the writer's own estimate of its whole
+      execution. Never a percentage alone: without measured bytes there is
+      nothing to scale."""
+    def count(name):
+        value = progress.get(name)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if progress.get("acquiring") is False:
+        return None
+    total, completed = count("total_bytes"), count("completed_bytes")
+    if total is not None and completed is not None and total > 0 and 0 <= completed <= total:
+        return total - completed, False
+    if completed is None or completed <= 0:
+        return None
+    units, unit_total = count("completed_units"), count("total_units")
+    if units is not None and unit_total is not None and 0 < units <= unit_total:
+        return round(completed * (unit_total - units) / units), True
+    share = progress.get("estimated_percentage")
+    if isinstance(share, (int, float)) and not isinstance(share, bool) and math.isfinite(share) and 0 < share < 100:
+        return round(completed * (100 - share) / share), True
+    return None
+
+
 def verified_material_known(artifacts) -> bool:
     """Whether verified material has a percentage at all: every unfinished
     canonical artifact's size is known (otherwise it is unavailable, never a
@@ -4628,22 +4660,26 @@ class TransferRepository:
     _ETA_WAITING_STATES = frozenset({"pending", "ready", "queued"})
     _ETA_ACQUIRED_STATES = frozenset({"completed", "verifying", "extracting"})
 
-    async def acquisition_work(self, transfer_ids) -> dict[int, tuple[int, tuple[str, ...]]]:
+    async def acquisition_work(self, transfer_ids) -> dict[int, tuple[int, tuple[str, ...], bool]]:
         """The remaining acquisition work of each transfer whose whole
-        remaining work is known: ``transfer id -> (remaining bytes, the
-        attempts acquiring it now)``, one bounded read for all of them. A
-        transfer is absent when that cannot be proven (no number is better than
-        a partial one): a request still open (resolving, waiting, materializing,
-        input required or failed), or any canonical artifact that is neither
-        acquired, nor acquired by a running writer stating an exact byte total
-        of its own, nor waiting to start with a known size -- a writer past
-        acquisition, one counting units or estimating, an unknown size, a
-        retry or recovery wait, an error. A withdrawn artifact is no longer the
-        transfer's work. A writer's remaining work is its own exact scope
-        (``total - completed``, the executor's counters behind an exact
-        in-flight figure), never a declared size; a waiting artifact's is its
-        known size less its DP-valid material. Each attempt is its own
-        artifact's current writer, counted once."""
+        remaining work can be accounted for: ``transfer id -> (remaining bytes,
+        the attempts acquiring it now, estimated)``, one bounded read for all of
+        them. A transfer is absent when that cannot be done (no number is better
+        than a partial one): a request still open (resolving, waiting,
+        materializing, input required or failed), or any canonical artifact
+        that is neither acquired, nor acquired by a running writer whose
+        remaining bytes it can measure, nor waiting to start with a known size
+        -- a writer past acquisition or with nothing measured, an unknown size,
+        a retry or recovery wait, an error. A withdrawn artifact is no longer
+        the transfer's work. Each attempt is its own artifact's current writer,
+        counted once.
+
+        A writer's remaining work is its own scope, never a declared size:
+        exactly ``total - completed`` where it states an exact byte total;
+        otherwise, ``estimated``, its measured bytes extrapolated by the share
+        of the work they are -- completed parts of a known part count, or its
+        own estimate of its whole execution (``acquisition_remaining``). A
+        waiting artifact's is its known size less its DP-valid material."""
         ids = sorted({int(item) for item in transfer_ids})
         if not ids:
             return {}
@@ -4669,17 +4705,15 @@ class TransferRepository:
             transfer_id, status = int(row["torrent_id"]), str(row["status"] or "")
             if transfer_id in unprovable or artifact_withdrawn(row):
                 continue
-            entry = work.setdefault(transfer_id, [0, set()])
+            entry = work.setdefault(transfer_id, [0, set(), False])
             if status in self._ETA_ACQUIRED_STATES:
                 continue
             if row["attempt_id"] is not None and status == "downloading":
-                progress = codec.load(row["attempt_progress"], {}) or {}
-                total, completed = progress.get("total_bytes"), progress.get("completed_bytes")
-                exact = all(isinstance(value, int) and not isinstance(value, bool) for value in (total, completed))
-                # Unrecorded (``None``) is acquiring, as ``active_execution_progress_sql`` reads it.
-                if progress.get("acquiring") is not False and exact and total > 0 and 0 <= completed <= total:
-                    entry[0] += total - completed
+                remaining = acquisition_remaining(codec.load(row["attempt_progress"], {}) or {})
+                if remaining is not None:
+                    entry[0] += remaining[0]
                     entry[1].add(str(row["attempt_id"]))
+                    entry[2] = entry[2] or remaining[1]
                     continue
             elif row["attempt_id"] is None and status in self._ETA_WAITING_STATES:
                 size = int(row["size_bytes"] or 0)
@@ -4690,8 +4724,8 @@ class TransferRepository:
                     entry[0] += size - min(size, valid.get(int(row["id"]), 0))
                     continue
             unprovable.add(transfer_id)
-        return {transfer_id: (remaining, tuple(sorted(attempts)))
-                for transfer_id, (remaining, attempts) in work.items()
+        return {transfer_id: (remaining, tuple(sorted(attempts)), estimated)
+                for transfer_id, (remaining, attempts, estimated) in work.items()
                 if transfer_id not in unprovable and attempts}
 
     @staticmethod

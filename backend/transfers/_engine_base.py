@@ -1394,17 +1394,17 @@ class TransferEngine:
         for transfer_id in sorted(moved):
             await self._aggregate(transfer_id)
 
-    async def acquisition_etas(self, transfer_ids) -> dict[int, tuple[int, bool]]:
+    async def acquisition_etas(self, transfer_ids) -> dict[int, tuple[int, bool, bool]]:
         """THE estimated time remaining of each given transfer that has one,
-        ``transfer id -> (seconds, held)``: its provable remaining acquisition
-        work (``TransferRepository.acquisition_work``) over the rates this
-        engine's one throughput meter measures for exactly the attempts
-        acquiring it (``runtime_telemetry.acquisition_eta``). Every surface
-        reads it here; none estimates on its own."""
+        ``transfer id -> (seconds, held, estimated)``: its accountable
+        remaining acquisition work (``TransferRepository.acquisition_work``)
+        over the rates this engine's one throughput meter measures for the
+        attempts acquiring it (``runtime_telemetry.acquisition_eta``). Every
+        surface reads it here; none estimates on its own."""
         work = await self.repository.acquisition_work(transfer_ids)
         etas = {}
-        for transfer_id, (remaining, attempts) in work.items():
-            eta = acquisition_eta(remaining, attempts, self.throughput)
+        for transfer_id, (remaining, attempts, estimated) in work.items():
+            eta = acquisition_eta(remaining, attempts, self.throughput, estimated=estimated)
             if eta is not None:
                 etas[transfer_id] = eta
         return etas

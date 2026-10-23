@@ -193,12 +193,13 @@ const primary = row => row.locator('.prog-fill');
 
 // A2: the observed SAB-shaped row -- no verified percentage, a trustworthy
 // in-flight one -- leads with that percentage instead of an indeterminate stripe.
-test('active-only execution progress is the primary bar, worded as not yet verified', async ({ page }) => {
+test('active-only execution progress is the primary bar, one line worded as estimated progress', async ({ page }) => {
   await isolateExternalFonts(page);
   await downloads(page, [item(9720, null, 94.6)]);
   const row = cell(page, 9720);
-  await expect(row.locator('.prog-pct')).toHaveText('94.6% in progress');
-  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  // Downloads' compact line: the figure and what it is, no second line.
+  await expect(row.locator('.prog-pct')).toHaveText('94.6% estimated progress');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveCount(0);
   await expect(primary(row)).toHaveAttribute('style', /^width:94\.6%$/);
   await expect(primary(row)).toHaveAttribute('data-progress-basis', 'execution');
   await expect(primary(row)).not.toHaveClass(/done/);
@@ -247,9 +248,9 @@ test('execution replacement may move the primary bar backward', async ({ page })
   await isolateExternalFonts(page);
   await downloads(page, [item(9730, null, 67)]);
   const row = cell(page, 9730);
-  await expect(row.locator('.prog-pct')).toHaveText('67.0% in progress');
+  await expect(row.locator('.prog-pct')).toHaveText('67.0% estimated progress');
   await event(page, [{id: 9730, status: 'downloading', progress: null, active_execution_progress: 5, status_changed: false}]);
-  await expect(row.locator('.prog-pct')).toHaveText('5.0% in progress');
+  await expect(row.locator('.prog-pct')).toHaveText('5.0% estimated progress');
   await expect(primary(row)).toHaveAttribute('style', /^width:5%$/);
   // With verified material the replacement only moves the secondary lane.
   await event(page, [{id: 9730, status: 'downloading', progress: 31, active_execution_progress: 67, status_changed: false}]);
@@ -264,7 +265,7 @@ test('a full execution on a running row is never Done, and no fact is never 0%',
   await isolateExternalFonts(page);
   await downloads(page, [item(9731, null, 100), item(9732, null, null)]);
   const full = cell(page, 9731);
-  await expect(full.locator('.prog-pct')).toHaveText('100.0% in progress');
+  await expect(full.locator('.prog-pct')).toHaveText('100.0% estimated progress');
   await expect(primary(full)).not.toHaveClass(/done/);
   await expect(full).not.toContainText(/Done|Completed|100% verified/);
   const none = cell(page, 9732);
@@ -285,8 +286,11 @@ test('Recent Activity and Details follow the same priority', async ({ page }) =>
   await page.goto('/');
   await page.evaluate(async () => { await loadRecent(); });
   const recent = page.locator('#dash-tbody tr[data-torrent-id="9733"] [data-role="transfer-progress"]');
-  await expect(recent.locator('.prog-pct')).toHaveText('94.6% in progress');
-  await expect(recent.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  // Download Activity shows the same compact line as Downloads (its words
+  // where they fit, always in the label's accessible name); Details keeps its own.
+  await expect(recent.locator('.prog-pct')).toHaveText('94.6% estimated progress');
+  await expect(recent.locator('.prog-pct')).toHaveAttribute('aria-label', '94.6% estimated progress, not yet verified');
+  await expect(recent.locator('[data-role="execution-unverified"]')).toHaveCount(0);
   await page.evaluate(() => showDetail(9733));
   const detail = page.locator('#modal-body .dk', {hasText: /^Progress$/}).locator('..').locator('.dv');
   await expect(detail).toHaveText('in progress 94.6% (not yet verified)');
@@ -308,18 +312,18 @@ const at = (id, progress, active, basis, status = 'downloading') => ({
   presentation_badge_status: status,
 });
 
-test('at exactly 0% verified the acquisition leads the primary bar, not yet verified', async ({ page }) => {
+test('at exactly 0% verified the acquisition leads the primary bar as estimated progress', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await downloads(page, [at(9740, 0, 42.5, 'bytes')]);
   const row = cell(page, 9740);
-  await expect(row.locator('.prog-pct')).toHaveText('42.5% in progress');
-  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(row.locator('.prog-pct')).toHaveText('42.5% estimated progress');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveCount(0);
   await expect(primary(row)).toHaveAttribute('style', /^width:42\.5%$/);
   await expect(primary(row)).toHaveAttribute('data-progress-basis', 'execution');
   await expect(await lane(row)).toHaveCount(0);                     // one claim of the value
   await event(page, [{id: 9740, progress: 0, active_execution_progress: 57, active_execution_basis: 'bytes'}]);
-  await expect(row.locator('.prog-pct')).toHaveText('57.0% in progress');
+  await expect(row.locator('.prog-pct')).toHaveText('57.0% estimated progress');
   await expect(row).not.toContainText('verified 57');
   expect(errors).toEqual([]);
 });
@@ -337,7 +341,7 @@ test('completed parts are labelled as parts, never as bytes or completion', asyn
   await isolateExternalFonts(page);
   await downloads(page, [at(9750, null, 37.5, 'units'), at(9751, 0, 100, 'units')]);
   await expect(cell(page, 9750).locator('.prog-pct')).toHaveText('37.5% of parts');
-  await expect(cell(page, 9750).locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(cell(page, 9750).locator('[data-role="execution-unverified"]')).toHaveCount(0);
   await expect(cell(page, 9751).locator('.prog-pct')).toHaveText('100.0% of parts');
   await expect(primary(cell(page, 9751))).not.toHaveClass(/done/);
   await expect(cell(page, 9751)).not.toContainText(/Done|Completed|100% verified/);
@@ -347,7 +351,7 @@ test('acquisition hands over to processing, then to completion, without a verifi
   await isolateExternalFonts(page);
   await downloads(page, [at(9752, 0, 98, 'bytes')]);
   const row = cell(page, 9752);
-  await expect(row.locator('.prog-pct')).toHaveText('98.0% in progress');
+  await expect(row.locator('.prog-pct')).toHaveText('98.0% estimated progress');
   // Repair, unpack, remux or finalization: the acquisition figure is retired.
   await event(page, [{id: 9752, progress: 0, active_execution_progress: null, active_execution_basis: 'processing'}]);
   await expect(row.locator('.prog-pct')).toHaveText('processing');
@@ -412,10 +416,10 @@ test('a best-effort estimate is the one labelled primary bar, then processing, t
   await expect(row.locator('[data-role="execution-progress-lane"]')).toHaveCount(0);
   await expect(primary(row)).not.toHaveClass(/is-indeterminate/);
   await expect(primary(row)).toHaveAttribute('style', /width:25.7%/);
-  await expect(row.locator('.prog-pct')).toHaveText('~25.7% estimated');
-  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(row.locator('.prog-pct')).toHaveText('25.7% estimated progress');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveCount(0);
   await event(page, [{id: 9790, progress: 0, active_execution_progress: 61.4, active_execution_basis: 'estimated'}]);
-  await expect(row.locator('.prog-pct')).toHaveText('~61.4% estimated');
+  await expect(row.locator('.prog-pct')).toHaveText('61.4% estimated progress');
   await expect(primary(row)).toHaveAttribute('style', /width:61.4%/);
   await page.evaluate(() => showDetail(9790));
   const detail = page.locator('#modal-body .dk', {hasText: /^Progress$/}).locator('..').locator('.dv');

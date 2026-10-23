@@ -89,7 +89,7 @@ def test_a_steady_download_counts_down_by_the_time_that_passed():
         _run(meter, clock, counters, 1, {"a": 4 * MIB})
         remaining = total - counters["a"]
         seen.append(acquisition_eta(remaining, ["a"], meter))
-    expected = [(math.ceil((total - (10 + second) * 4 * MIB) / (4 * MIB)), False) for second in range(1, 11)]
+    expected = [(math.ceil((total - (10 + second) * 4 * MIB) / (4 * MIB)), False, False) for second in range(1, 11)]
     assert seen == expected                                         # 89, 88, ... 80: one second per second
     assert all(later[0] < earlier[0] for earlier, later in zip(seen, seen[1:]))
 
@@ -191,25 +191,47 @@ def test_concurrent_attempts_are_summed_and_only_the_named_ones():
     meter, clock = _meter()
     counters = {}
     _run(meter, clock, counters, 8, {"a": 1 * MIB, "b": 3 * MIB, "other": 50 * MIB})
-    assert acquisition_eta(40 * MIB, ["a", "b"], meter) == (10, False)   # 40 MiB at 4 MiB/s
-    assert acquisition_eta(40 * MIB, ["a", "a", "b"], meter) == (10, False)   # each attempt once
-    assert acquisition_eta(40 * MIB, ["a", "missing"], meter) is None    # every writer needs a rate
+    assert acquisition_eta(40 * MIB, ["a", "b"], meter) == (10, False, False)   # 40 MiB at 4 MiB/s
+    assert acquisition_eta(40 * MIB, ["a", "a", "b"], meter) == (10, False, False)   # each attempt once
+    # A writer without a rate yet keeps its bytes in the work but adds no rate:
+    # 40 MiB over the 1 MiB/s actually measured, never an invented speed.
+    assert acquisition_eta(40 * MIB, ["a", "missing"], meter) == (40, False, True)
+    assert acquisition_eta(40 * MIB, ["missing"], meter) is None          # nothing measured: none
+
+
+def test_one_writer_still_past_the_hold_clears_the_whole_estimate():
+    """A writer not measured yet adds bytes but no rate; one that moved and has
+    been still past the hold is sustained inactivity -- the transfer has no
+    estimate, exactly as a single still writer has none."""
+    meter, clock = _meter()
+    counters = {}
+    _run(meter, clock, counters, 8, {"a": 2 * MIB, "b": 2 * MIB})
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) == (20, False, False)
+    _run(meter, clock, counters, ETA_HOLD_SECONDS, {"a": 2 * MIB, "b": 0})
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) is not None    # b briefly still: within the hold
+    _run(meter, clock, counters, 0.5, {"a": 2 * MIB, "b": 0})
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) is None        # b stalled: no countdown at a's pace
+    # A writer that has not moved at all yet is new, not stalled: it does not clear it.
+    meter.record({**{key: (clock.now, value) for key, value in counters.items()}, "c": (clock.now, 0)})
+    assert not meter.acquisition_stalled("c")
+    assert acquisition_eta(80 * MIB, ["a", "c"], meter) == (40, False, True)
 
 
 def test_rounding_and_the_representable_ceiling():
     meter, clock = _meter()
     counters = {}
     _run(meter, clock, counters, 8, {"a": 1000})                    # exactly 1000 B/s
-    assert acquisition_eta(1, ["a"], meter) == (1, False)           # a fraction of a second is 1 s, never 0
-    assert acquisition_eta(1500, ["a"], meter) == (2, False)        # rounded up
-    assert acquisition_eta(MAX_ETA_SECONDS * 1000, ["a"], meter) == (MAX_ETA_SECONDS, False)
+    assert acquisition_eta(1, ["a"], meter) == (1, False, False)           # a fraction of a second is 1 s, never 0
+    assert acquisition_eta(1500, ["a"], meter) == (2, False, False)        # rounded up
+    assert acquisition_eta(MAX_ETA_SECONDS * 1000, ["a"], meter) == (MAX_ETA_SECONDS, False, False)
     assert acquisition_eta(MAX_ETA_SECONDS * 1000 + 1, ["a"], meter) is None
-    assert acquisition_eta(100 * 3600 * 1000, ["a"], meter) == (360000, False)   # 100 h stays 100 h
+    assert acquisition_eta(100 * 3600 * 1000, ["a"], meter) == (360000, False, False)   # 100 h stays 100 h
     assert acquisition_eta(0, ["a"], meter) is None                  # no remaining work is no estimate
     assert acquisition_eta(None, ["a"], meter) is None
     assert acquisition_eta(10, [], meter) is None
     assert acquisition_eta_payload(None) is None
-    assert acquisition_eta_payload((61, True)) == {"seconds": 61, "held": True}
+    assert acquisition_eta_payload((61, True, False)) == {"seconds": 61, "held": True, "estimated": False}
+    assert acquisition_eta(1500, ["a"], meter, estimated=True) == (2, False, True)   # extrapolated work
 
 
 # ── the logical transfer's remaining work (real repository and engine) ──────────
@@ -268,10 +290,10 @@ async def test_one_transfer_estimate_is_its_writers_remaining_bytes_over_their_r
     await _acquire(core, 3, {attempt: 400 * MIB}, {attempt: 4 * MIB})
     assert await core.engine.acquisition_etas([transfer]) == {}       # still measuring
     await _acquire(core, 7, {attempt: 400 * MIB}, {attempt: 4 * MIB})
-    assert await core.repository.acquisition_work([transfer]) == {transfer: (360 * MIB, (attempt,))}
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False)}
+    assert await core.repository.acquisition_work([transfer]) == {transfer: (360 * MIB, (attempt,), False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False)}
     await _acquire(core, 5, {attempt: 400 * MIB}, {attempt: 4 * MIB})
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (85, False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (85, False, False)}
 
 
 @pytest.mark.asyncio
@@ -285,7 +307,7 @@ async def test_concurrent_transfers_never_share_a_rate(tmp_path, monkeypatch):
         _started(core, attempt, total)
     await _acquire(core, 10, totals, {a: 1 * MIB, b: 4 * MIB})
     etas = await core.engine.acquisition_etas([slow, fast])
-    assert etas == {slow: (90, False), fast: (15, False)}             # 90 MiB at 1, 60 MiB at 4
+    assert etas == {slow: (90, False, False), fast: (15, False, False)}             # 90 MiB at 1, 60 MiB at 4
     # The global speed (5 MiB/s) would have claimed 18 s and 12 s.
     assert core.engine.throughput.current() == 5 * MIB
 
@@ -300,8 +322,8 @@ async def test_concurrent_artifacts_of_one_transfer_are_one_estimate(tmp_path, m
         _started(core, attempt, total)
     await _acquire(core, 10, totals, {a: 1 * MIB, b: 3 * MIB})
     work = await core.repository.acquisition_work([transfer])
-    assert work == {transfer: (90 * MIB + 270 * MIB, tuple(sorted((a, b))))}   # each writer once
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False)}   # 360 MiB at 4 MiB/s
+    assert work == {transfer: (90 * MIB + 270 * MIB, tuple(sorted((a, b))), False)}   # each writer once
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False)}   # 360 MiB at 4 MiB/s
 
 
 @pytest.mark.asyncio
@@ -319,9 +341,86 @@ async def test_a_waiting_member_of_known_size_is_remaining_work(tmp_path, monkey
     _started(core, attempt, 100 * MIB)
     await _acquire(core, 10, {attempt: 100 * MIB}, {attempt: 4 * MIB})
     work = await core.repository.acquisition_work([transfer])
-    assert work == {transfer: (60 * MIB + 600 * MIB, (attempt,))}
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (165, False)}   # not the writer's 15 s
+    assert work == {transfer: (60 * MIB + 600 * MIB, (attempt,), False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (165, False, False)}   # not the writer's 15 s
 
+
+@pytest.mark.asyncio
+async def test_writers_that_start_apart_never_suppress_the_estimate(tmp_path, monkeypatch):
+    """Transfer 1105's shape: three known-size downloads of one transfer,
+    started a few seconds apart. A writer without a measured rate yet keeps its
+    bytes in the work and adds no speed, so the estimate is there from the
+    first measured writer -- longer than the truth and marked estimated -- and
+    is exact once every writer is measured."""
+    core = await _core(tmp_path, monkeypatch, files=3)
+    [transfer] = core.transfers
+    a, b, c = await _writers(core, transfer)
+    totals = {a: 5000 * MIB, b: 10000 * MIB, c: 10000 * MIB}
+    for attempt, total in totals.items():
+        _started(core, attempt, total)
+    await core.engine.reconcile_executions()                             # every writer's total is recorded
+    rates = {a: 6 * MIB, b: 3 * MIB, c: 2 * MIB}
+    await _acquire(core, 4.5, totals, {a: rates[a]})                      # only a has moved for 4 s
+    remaining = sum(totals.values()) - int(4.5 * rates[a])
+    assert await core.engine.acquisition_etas([transfer]) == {
+        transfer: (math.ceil(remaining / rates[a]), False, True)}        # a's rate alone: never 0, never None
+    await _acquire(core, 2, totals, {a: rates[a], b: rates[b]})
+    eta = (await core.engine.acquisition_etas([transfer]))[transfer]
+    assert eta[2] is True                                                # c not measured yet
+    await _acquire(core, 6, totals, rates)
+    done = {attempt: core.executor.jobs[attempt].progress.completed_bytes for attempt in totals}
+    remaining = sum(totals[attempt] - done[attempt] for attempt in totals)
+    seconds, held, estimated = (await core.engine.acquisition_etas([transfer]))[transfer]
+    assert (held, estimated) == (False, False)                           # every writer measured: exact
+    assert seconds == pytest.approx(remaining / sum(rates.values()), rel=0.02)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["parts", "own_estimate"])
+async def test_measured_bytes_without_an_exact_total_give_a_best_effort_estimate(tmp_path, monkeypatch, scope):
+    """No exact byte total, but measured bytes and the share of the work they
+    are: the remaining bytes are those bytes scaled, marked estimated."""
+    core = await _core(tmp_path, monkeypatch)
+    [transfer] = core.transfers
+    [attempt] = await _writers(core, transfer)
+    completed = 0
+    for _ in range(12):                                                  # 6 s at 2 MiB/s
+        core.clock.now += 0.5
+        completed += MIB
+        share = completed / (80 * MIB)                                   # the work is 80 MiB in truth
+        progress = (TransferProgress(0, completed, 0, completed_units=round(share * 40), total_units=40)
+                    if scope == "parts" else TransferProgress(0, completed, 0, estimated_percentage=share * 100))
+        core.executor.jobs[attempt] = replace(core.executor.jobs[attempt], state=ExecutionState.RUNNING,
+                                              progress=progress)
+        await core.engine.sample_throughput()
+    [(remaining, attempts, estimated)] = (await core.repository.acquisition_work([transfer])).values()
+    assert attempts == (attempt,) and estimated is True
+    assert remaining == pytest.approx(80 * MIB - completed, rel=0.01)    # 68 MiB, from 12 MiB measured
+    seconds, held, rough = (await core.engine.acquisition_etas([transfer]))[transfer]
+    assert rough is True and held is False
+    assert seconds == math.ceil(remaining / (2 * MIB))
+
+
+@pytest.mark.asyncio
+async def test_a_usenet_download_has_an_estimate_from_the_services_own_counters(tmp_path, monkeypatch):
+    """The real SABnzbd executor over a fake SAB: the queue's ``mb``/``mbleft``
+    are the job's own byte counters, so a downloading Usenet transfer has an
+    estimate like any other."""
+    from test_v113_runtime_telemetry_matrix import SteppedClock, VALID_NZB, converge, mixed as mixed_fixture
+
+    mixed = await mixed_fixture.__wrapped__(tmp_path, monkeypatch)
+    transfer = await mixed.engine.submit((TransferRequest("nzb", VALID_NZB, name="posting.nzb"),), name="posting",
+                                         deduplicate=False)
+    await converge(mixed)
+    [job] = mixed.sab.queue.values()
+    job.mb = job.mbleft = 1000.0
+    clock = mixed.engine.throughput.clock = SteppedClock(mixed.engine.throughput.clock() + 1)
+    for _ in range(16):                                                  # 4 MB/s in SAB's megabytes
+        await mixed.engine.sample_throughput()
+        clock.now += 0.5
+        job.mbleft = round(job.mbleft - 2.0, 2)
+    await mixed.engine.sample_throughput()
+    assert await mixed.engine.acquisition_etas([transfer.id]) == {transfer.id: (math.ceil(968 / 4), False, False)}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unprovable", ["unknown_size", "open_request", "error_member"])
@@ -347,7 +446,7 @@ async def test_work_that_cannot_be_proven_complete_has_no_estimate(tmp_path, mon
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scope", ["units", "processing", "estimated_only"])
-async def test_a_writer_without_an_exact_byte_scope_has_no_estimate(tmp_path, monkeypatch, scope):
+async def test_a_writer_with_nothing_measured_or_past_acquisition_has_no_estimate(tmp_path, monkeypatch, scope):
     core = await _core(tmp_path, monkeypatch)
     [transfer] = core.transfers
     [attempt] = await _writers(core, transfer)
@@ -359,7 +458,7 @@ async def test_a_writer_without_an_exact_byte_scope_has_no_estimate(tmp_path, mo
         activity = ExecutionActivity(network_active=False, bandwidth_reservation_required=False,
                                      progress_expected=True)
     else:
-        progress, activity = TransferProgress(0, 5 * MIB, 0, estimated_percentage=40.0), job.activity
+        progress, activity = TransferProgress(0, 0, 0, estimated_percentage=40.0), job.activity   # a percentage alone
     core.executor.jobs[attempt] = replace(job, state=ExecutionState.RUNNING, progress=progress, activity=activity)
     await core.engine.reconcile_executions()
     assert await core.repository.acquisition_work([transfer]) == {}
@@ -396,11 +495,11 @@ async def test_list_and_live_updates_carry_the_same_estimate_and_clear_it_togeth
     _started(core, attempt, 200 * MIB)
     await live(8, 2 * MIB)
     measured = await live(0.5, 2 * MIB)
-    assert measured == {"seconds": math.ceil((200 - 17) * MIB / (2 * MIB)), "held": False}
+    assert measured == {"seconds": math.ceil((200 - 17) * MIB / (2 * MIB)), "held": False, "estimated": False}
     assert await listed() == measured                                # one owner, one truth
     published.clear()
     held = await live(1.5, 0)
-    assert held == {"seconds": measured["seconds"], "held": True}    # same figure, marked held
+    assert held == {"seconds": measured["seconds"], "held": True, "estimated": False}   # same figure, marked held
     assert await listed() == held
     published.clear()
     assert await live(3.0, 0) == "unpublished"                       # 4.5 s still: held, nothing changed
@@ -452,7 +551,7 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
     transfer = SimpleNamespace(id=7, state="downloading", progress=10.0, active_execution_progress=None,
                                active_execution_basis=None, paused=False)
     release = asyncio.Event()
-    answers = iter([({7: (50, False)}, release), ({7: (40, False)}, None)])
+    answers = iter([({7: (50, False, False)}, release), ({7: (40, False, False)}, None)])
 
     class Engine:
         async def acquisition_etas(self, ids):
@@ -467,7 +566,7 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
 
     application = ApplicationService.__new__(ApplicationService)
     # The browser shows 50 s, the figure last published.
-    application.engine, application.repository, application._published_etas = Engine(), Repository(), {7: (50, False)}
+    application.engine, application.repository, application._published_etas = Engine(), Repository(), {7: (50, False, False)}
     sent = []
 
     async def publish(kind, payload):
@@ -481,8 +580,8 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
     # Against the memo it found then (50 s) it would send nothing and leave the
     # memo at 50 s while the browser shows 40 s -- a later unchanged 50 s would
     # never correct it. Against what was last sent (40 s) it sends its 50 s.
-    assert sent == [{"seconds": 40, "held": False}, {"seconds": 50, "held": False}]
-    assert application._published_etas == {7: (50, False)}              # the memo matches the last sent
+    assert sent == [{"seconds": 40, "held": False, "estimated": False}, {"seconds": 50, "held": False, "estimated": False}]
+    assert application._published_etas == {7: (50, False, False)}              # the memo matches the last sent
 
 
 # ── what the estimate must not touch ──────────────────────────────────────────
@@ -512,3 +611,51 @@ def test_every_surface_reads_the_one_estimate_owner():
     for forbidden in ("setInterval", "setTimeout", "Date.now", "performance.now", "/execution/throughput"):
         assert forbidden not in eta_code
     assert f"const ACQUISITION_ETA_MAX_SECONDS = 9999 * 3600 + 59 * 60 + 59;" in app
+
+
+@pytest.mark.asyncio
+@pytest.mark.real_runtime
+async def test_three_real_aria2_downloads_of_one_transfer_have_one_estimate(tmp_path, monkeypatch):
+    """Transfer 1105's shape on a real aria2 daemon: one transfer of three
+    known-size downloads acquiring together, driven the way production drives
+    it -- the fast observation every half second, the reconcile cycle each
+    second -- has an estimate on the list and the live path, and it falls."""
+    import asyncio
+    import time
+    from dataclasses import replace as _replace
+
+    import application.service as service_module
+    from api import operational_downloads as downloads
+    from test_v113_continuation_runtime import build, start_origin, stop_daemon
+
+    async def publish(_kind, _payload):
+        return None
+    monkeypatch.setattr(service_module, "publish", publish)
+    server, port, _requests = await start_origin(rate=MIB // 5)          # 24 MiB each, ~30 s
+    ctx = await build(tmp_path, monkeypatch, checkpoint=5.0)
+    ctx.engine.policy = _replace(ctx.engine.policy, max_active_executions=3)
+    application = ApplicationService(ctx.engine)
+    try:
+        transfer = await ctx.engine.submit(tuple(
+            TransferRequest("http", f"http://127.0.0.1:{port}/part{index}.bin", name=f"part{index}.bin")
+            for index in range(3)), name="three", deduplicate=False)
+        seen, started, cycled = [], time.monotonic(), 0.0
+        while time.monotonic() - started < 15 and len(seen) < 6:
+            if time.monotonic() - cycled >= 1.0:
+                await ctx.engine.tick()
+                cycled = time.monotonic()
+            await application.observe_live_executions()
+            await asyncio.sleep(0.5)
+            states = [str(getattr(item.state, "value", item.state)) for item in await ctx.repository.artifacts(transfer.id)]
+            page = await downloads.list_operational_torrents(status=None, search=None, limit=0, offset=0,
+                                                             application=application)
+            eta = next(item["acquisition_eta"] for item in page["items"] if item["id"] == transfer.id)
+            if states == ["downloading"] * 3 and eta is not None:
+                seen.append(eta)
+        assert len(seen) == 6, f"no steady estimate while all three downloaded: {seen}"
+        assert all(0 < item["seconds"] <= 60 for item in seen)               # ~30 s of work at the origin's pace
+        assert seen[-1]["seconds"] < seen[0]["seconds"]                      # it falls as bytes arrive
+        assert seen[-1]["estimated"] is False                                # every writer measured: exact
+    finally:
+        await stop_daemon(ctx.proc, ctx.service)
+        server.close()

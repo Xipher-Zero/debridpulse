@@ -391,11 +391,13 @@ body.light #view-torrents .empty-icon {
   #view-torrents .t-table :is(th, td):nth-child(3) { width: 40%; }
 }
 
+/* Status keeps its widest badge whole; Progress gets the rest of that
+   column's room, enough for its percentage and estimate on one line. */
 @media (width > 1050px) and (width < 1180px) {
   #view-torrents .t-table :is(th, td):nth-child(1) { width: 19.7%; }
   #view-torrents .t-table :is(th, td):nth-child(2) { width: 27.4%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 29.3%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 23.6%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 25.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 27.2%; }
 }
 
 /* The full desktop shell: every badge, the hash line and the widest provider
@@ -584,26 +586,24 @@ body.light #view-torrents .empty-icon {
   line-height: 1.45;
 }
 
-/* ── Estimated time remaining ────────────────────────────────────────── */
-/* app.js progress() places it beneath the primary bar, floated right on the
-   percentage's line: where the column has room the label, the lane and the
-   row height stay as they are; where it has none the label moves to the next
-   line, never under it. Its width is reserved for HH:MM:SS (8ch), so "—" and
-   any estimate under 100 hours take the same room and a changing value never
-   moves the row; tabular figures, never wrapped. The secondary text token
-   keeps it legible in both themes. A held estimate is set apart by style and
-   its tooltip, not by a dimmer, harder-to-read tone. */
-#view-torrents #t-tbody .prog-eta {
-  float: right;
-  min-width: 8ch;
-  text-align: right;
-  margin: 3px 0 0 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--dp-text-secondary);
+/* ── Progress line: where Downloads shows its words ─────────────────── */
+/* The line itself (percentage and words left, estimate right) is the shared
+   progress cell's, in ui-dashboard.css. Downloads decides only where its own
+   columns have the room: from 1600px its Progress column holds the widest
+   line with the words; narrower, the line is the percentage and the estimate,
+   and the words stay in the label's accessible name and tooltip. */
+@media (width < 1600px) {
+  #view-torrents #t-tbody .prog-line .prog-words {
+    display: none;
+  }
 }
-#view-torrents #t-tbody .prog-eta.is-held {
-  font-style: italic;
+/* Below 901px the table sizes its columns to their content (and scrolls
+   sideways): the line keeps the percentage and estimate together there. */
+@media (max-width: 900px) {
+  #view-torrents #t-tbody .prog-line {
+    flex-wrap: nowrap;
+  }
+  #view-torrents #t-tbody .prog-line .prog-pct {
+    white-space: nowrap;
+  }
 }

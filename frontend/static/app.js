@@ -739,20 +739,28 @@ function acquisitionEtaMarkup(eta) {
     return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="Estimated time remaining: not available"' +
       ' data-tooltip="No reliable estimate of the time remaining right now">—</span>';
   }
+  // A best-effort figure (``estimated``: part of the work or its rate is not
+  // measured exactly) is marked "~"; a held one keeps its figure, set apart.
   const held = eta.held === true;
+  const rough = eta.estimated === true;
   const tooltip = held
     ? 'Estimated time remaining, held: no new data for a few seconds'
-    : 'Estimated time remaining for the download, a prediction; processing afterwards is not included';
+    : (rough
+      ? 'Rough estimate of the time remaining for the download; processing afterwards is not included'
+      : 'Estimated time remaining for the download, a prediction; processing afterwards is not included');
   return '<span class="prog-eta' + (held ? ' is-held' : '') + '" data-role="transfer-eta"' +
-    ' aria-label="Estimated time remaining ' + text + (held ? ', held' : '') + '" data-tooltip="' + tooltip + '">' +
-    text + '</span>';
+    ' aria-label="Estimated time remaining ' + (rough ? 'about ' : '') + text + (held ? ', held' : '') +
+    '" data-tooltip="' + tooltip + '">ETA ' + (rough ? '~' : '') + text + '</span>';
 }
 
 // ``activePct``: in-flight execution activity on the current source that is
 // not yet DP material, from any executor; shown beside, never as, completion.
 // ``basis`` (``active_execution_basis``) says what it counts. ``eta``: the
-// row's ``acquisition_eta`` where its surface shows one (Downloads), shown
-// only while the row is downloading; omitted, no estimate is rendered.
+// row's ``acquisition_eta`` where its surface shows one (Downloads and
+// Download Activity), shown
+// only while the row is downloading; omitted, no estimate is rendered. Such a
+// surface is compact: progress not yet verified is one line, its percentage
+// and what it counts, with no second line saying it is unverified.
 function progress(pct, status, activePct, basis, eta) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
@@ -797,28 +805,45 @@ function progress(pct, status, activePct, basis, eta) {
   // material; in-flight execution activity that is not yet material (from
   // any executor) gets its own thinner lane and label beneath, and the
   // verified figure says so.
+  const compact = eta !== undefined;
+  // The compact line's words are their own span, so the layout owner can set
+  // them aside where the column is too narrow; the figure always stays.
+  const compactWords = basis === 'units' ? 'of parts' : 'estimated progress';
   const label = done ? '100%' : (activeOnly
-    ? (processing ? 'processing' : (estimated ? executionProgressWords(activeValue, basis)
-      : activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress')))
+    ? (processing ? 'processing' : (compact
+      ? '<span class="prog-value">' + activeValue.toFixed(1) + '%</span><span class="prog-words"> ' + compactWords + '</span>'
+      : (estimated ? executionProgressWords(activeValue, basis)
+        : activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress'))))
     : (showStripe && processing ? 'processing' : (unknown ? '—'
-      : actual.toFixed(0) + '%' + (inFlight || processing ? ' verified' : ''))));
+      : (compact && (inFlight || processing)
+        ? '<span class="prog-value">' + actual.toFixed(0) + '%</span><span class="prog-words"> verified</span>'
+        : actual.toFixed(0) + '%' + (inFlight || processing ? ' verified' : '')))));
   const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
   const lane = besideVerified
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
       ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
-  const activityLabel = activeOnly || (showStripe && processing)
+  const activityLabel = (activeOnly && !(compact && !processing)) || (showStripe && processing)
     ? '<span class="prog-activity" data-role="execution-unverified" data-tooltip="' + inFlightTitle + '">not yet verified</span>'
     : (besideVerified
       ? '<span class="prog-activity" data-role="execution-progress" data-tooltip="' + inFlightTitle + '">' +
         executionProgressWords(activeValue, basis) + '</span>'
       : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));
-  // Floated right on the percentage's line, so it sits beneath the bar
-  // without moving the label, the lane or the row's height.
-  const etaLabel = active && eta !== undefined ? acquisitionEtaMarkup(eta) : '';
+  // The compact line still says, on hover, that its figure is not yet
+  // verified, and names what it counts even where its words are set aside.
+  const labelTip = compact && activeOnly && !processing
+    ? ' data-tooltip="' + inFlightTitle + '" aria-label="' + activeValue.toFixed(1) + '% ' + compactWords + ', not yet verified"'
+    : (compact && !unknown && !done && !showStripe && (inFlight || processing)
+      ? ' aria-label="' + actual.toFixed(0) + '% verified"' : '');
+  const pctLabel = '<span class="prog-pct"' + labelTip + '>' + label + '</span>';
+  // A compact surface shows the percentage and, while downloading, the
+  // estimate on one line beneath the bar: words left, estimate right.
+  const line = compact
+    ? '<div class="prog-line">' + pctLabel + (active ? acquisitionEtaMarkup(eta) : '') + '</div>'
+    : pctLabel;
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
-         lane + etaLabel + '<span class="prog-pct">' + label + '</span>' + activityLabel;
+         lane + line + activityLabel;
 }
 
 // An extraction failure is announced once per event; it paints nothing. Only
@@ -872,10 +897,10 @@ function patchProgressOnlyTransferEvent(data) {
           row.querySelector('[data-role="transfer-progress"]');
 
         if (progressCell) {
-          // Only a surface that renders an estimate (Downloads) gets one: its
-          // downloading rows always carry the estimate element, and a status
-          // change is never patched here.
-          const showsEta = progressCell.querySelector('[data-role="transfer-eta"]') !== null;
+          // Only a surface that renders the compact line (Downloads and
+          // Download Activity) gets the estimate, so a patched row matches its
+          // full render; a status change is never patched here.
+          const showsEta = progressCell.querySelector('.prog-line') !== null;
           progressCell.innerHTML =
             progress(nextProgress, status, nextActivity, nextBasis, showsEta ? nextEta : undefined);
         }

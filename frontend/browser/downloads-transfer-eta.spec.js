@@ -59,19 +59,23 @@ test('the estimate renders as HH:MM:SS, held, or unavailable, and only while dow
     item(9808, {seconds: 12.5, held: false}),
     item(9809, {seconds: 30, held: false}, {status: 'queued'}),
     item(9810, {seconds: 30, held: false}, {status: 'paused'}),
+    item(9811, {seconds: 3725, held: false, estimated: true}),
   ]);
   const eta = id => cell(page, id).locator('[data-role="transfer-eta"]');
-  await expect(eta(9801)).toHaveText('01:02:05');
+  await expect(eta(9801)).toHaveText('ETA 01:02:05');
   await expect(eta(9801)).toHaveAttribute('aria-label', 'Estimated time remaining 01:02:05');
   await expect(eta(9801)).not.toHaveClass(/is-held/);
-  await expect(eta(9802)).toHaveText('01:02:05');
+  await expect(eta(9802)).toHaveText('ETA 01:02:05');
   await expect(eta(9802)).toHaveClass(/is-held/);
   await expect(eta(9802)).toHaveAttribute('aria-label', 'Estimated time remaining 01:02:05, held');
   await expect(eta(9803)).toHaveText('—');
-  await expect(eta(9804)).toHaveText('100:01:05');
-  await expect(eta(9805)).toHaveText('9999:59:59');
+  await expect(eta(9804)).toHaveText('ETA 100:01:05');
+  await expect(eta(9805)).toHaveText('ETA 9999:59:59');
   for (const id of [9806, 9807, 9808]) await expect(eta(id)).toHaveText('—');
   for (const id of [9809, 9810]) await expect(eta(id)).toHaveCount(0);
+  // A best-effort figure is marked "~", in text and in what is announced.
+  await expect(eta(9811)).toHaveText('ETA ~01:02:05');
+  await expect(eta(9811)).toHaveAttribute('aria-label', 'Estimated time remaining about 01:02:05');
   // The primary percentage label is unchanged beside it.
   await expect(cell(page, 9801).locator('.prog-pct')).toHaveText('40%');
   expect(errors).toEqual([]);
@@ -120,7 +124,7 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
                       values: values.map(height)};
       cell.innerHTML = html;
       return result;
-    }, [null, {seconds: 5, held: false}, {seconds: 99 * 3600 + 59 * 60 + 59, held: true}]);
+    }, [null, {seconds: 5, held: false}, {seconds: 99 * 3600 + 59 * 60 + 59, held: true, estimated: true}]);
     expect(new Set(heights.values).size, `width ${width}`).toBe(1);
     // Where the column has room, the row is exactly as tall as without an estimate.
     if (width === 1440) expect(Math.abs(heights.values[0] - heights.without)).toBeLessThanOrEqual(0.5);
@@ -137,25 +141,25 @@ test('a live progress update and a full refresh show the same estimate', async (
   await isolateExternalFonts(page);
   await downloads(page, [item(9831, {seconds: 90, held: false})]);
   const eta = cell(page, 9831).locator('[data-role="transfer-eta"]');
-  await expect(eta).toHaveText('00:01:30');
+  await expect(eta).toHaveText('ETA 00:01:30');
   const patch = update => page.evaluate(update => patchProgressOnlyTransferEvent(
     {progress_only: true, items: [{id: 9831, status: 'downloading', progress: 45, active_execution_progress: null,
                                    active_execution_basis: null, status_changed: false, ...update}]}), update);
   expect(await patch({acquisition_eta: {seconds: 85, held: false}})).toBe(true);
-  await expect(eta).toHaveText('00:01:25');
+  await expect(eta).toHaveText('ETA 00:01:25');
   const live = await cell(page, 9831).innerHTML();
   served[0] = {...served[0], progress: 45, acquisition_eta: {seconds: 85, held: false}};
   await page.evaluate(() => loadTorrents());
   expect(await cell(page, 9831).innerHTML()).toBe(live);           // one renderer, one truth
   await patch({acquisition_eta: {seconds: 85, held: true}});
-  await expect(eta).toHaveText('00:01:25');
+  await expect(eta).toHaveText('ETA 00:01:25');
   await expect(eta).toHaveClass(/is-held/);
   await patch({acquisition_eta: null});                             // past the hold: none
   await expect(eta).toHaveText('—');
   // Nothing counts it down between updates.
   await patch({acquisition_eta: {seconds: 60, held: false}});
   await page.waitForTimeout(2200);
-  await expect(eta).toHaveText('00:01:00');
+  await expect(eta).toHaveText('ETA 00:01:00');
   // A status change is never patched: the authoritative refresh decides.
   expect(await patch({status_changed: true, status: 'paused'})).toBe(false);
 });
@@ -188,22 +192,137 @@ test('the estimate stays legible in both themes', async ({ page }) => {
   }
 });
 
-test('a live update never adds an estimate to the Dashboard, which shows none', async ({ page }) => {
+test('Download Activity and Downloads show the same estimate, on refresh and on live updates', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
-  await downloads(page, [item(9851, {seconds: 90, held: false})]);
-  await page.evaluate(async () => {
-    nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
-    await loadTorrents();
-  });
-  const dash = page.locator('#dash-tbody tr[data-torrent-id="9851"]');
-  await expect(dash).toHaveCount(1);
-  await expect(dash.locator('[data-role="transfer-eta"]')).toHaveCount(0);
-  await page.evaluate(() => patchProgressOnlyTransferEvent({progress_only: true, items: [{
-    id: 9851, status: 'downloading', progress: 45, active_execution_progress: null, active_execution_basis: null,
-    status_changed: false, acquisition_eta: {seconds: 85, held: false}}]}));
-  await expect(dash.locator('[data-role="transfer-eta"]')).toHaveCount(0);
-  // The Downloads row of the same transfer still carries it.
-  await expect(cell(page, 9851).locator('[data-role="transfer-eta"]')).toHaveText('00:01:25');
+  const usenet = {...item(9851, {seconds: 90, held: false}, {progress: 0}), active_execution_progress: 47.9,
+                  active_execution_basis: 'bytes'};
+  await downloads(page, [usenet, item(9852, {seconds: 4000, held: false, estimated: true}), item(9853, null),
+                         item(9854, {seconds: 30, held: false}, {status: 'paused'})]);
+  await page.evaluate(async () => { await loadRecent(); });
+  const both = id => [cell(page, id), page.locator(`#dash-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`)];
+  const etaText = async id => Promise.all(both(id).map(surface => surface.locator('[data-role="transfer-eta"]').allInnerTexts()));
+  const same = async (id, expected) => expect(await etaText(id), `transfer ${id}`).toEqual([expected, expected]);
+  await same(9851, ['ETA 00:01:30']);
+  await same(9852, ['ETA ~01:06:40']);                                // approximate
+  await same(9853, ['—']);                                            // unavailable
+  await same(9854, []);                                               // not downloading: none on either
+  for (const surface of both(9851)) await expect(surface.locator('.prog-pct')).toHaveText('47.9% estimated progress');
+  const patch = (id, update) => page.evaluate(([id, update]) => patchProgressOnlyTransferEvent(
+    {progress_only: true, items: [{id, status: 'downloading', progress: 0, active_execution_progress: 48.2,
+                                   active_execution_basis: 'bytes', status_changed: false, ...update}]}), [id, update]);
+  // A live update reaches both surfaces alike: a new figure, held, then none.
+  expect(await patch(9851, {acquisition_eta: {seconds: 85, held: false}})).toBe(true);
+  await same(9851, ['ETA 00:01:25']);
+  await patch(9851, {acquisition_eta: {seconds: 85, held: true}});
+  await same(9851, ['ETA 00:01:25']);
+  for (const surface of both(9851)) await expect(surface.locator('[data-role="transfer-eta"]')).toHaveClass(/is-held/);
+  await patch(9851, {acquisition_eta: null});
+  await same(9851, ['—']);
+  // A full refresh of each surface presents exactly what the live update left.
+  served[0] = {...served[0], active_execution_progress: 48.2, acquisition_eta: null};
+  const live = await Promise.all(both(9851).map(surface => surface.innerHTML()));
+  await page.evaluate(async () => { await loadTorrents(); await loadRecent(); });
+  expect(await Promise.all(both(9851).map(surface => surface.innerHTML()))).toEqual(live);
+  // A lifecycle change is never patched: both refresh, and the paused row has no estimate.
+  expect(await patch(9851, {status: 'paused', status_changed: true})).toBe(false);
+  served[0] = {...served[0], status: 'paused', presentation_status: 'paused', presentation_badge_status: 'paused',
+               acquisition_eta: {seconds: 85, held: false}};
+  await page.evaluate(async () => { await loadTorrents(); await loadRecent(); });
+  await same(9851, []);
   expect(errors).toEqual([]);
+});
+
+test('the percentage and its ETA share one line beneath the bar at every width that shows Progress', async ({ page }) => {
+  await isolateExternalFonts(page);
+  // The reported Usenet row (nothing verified, 47.9% acquired by the service),
+  // the widest line ("100.0%" and a best-effort estimate under 100 h) and a
+  // verified row with an in-flight lane.
+  const usenet = {...item(9861, {seconds: 2318, held: false}, {progress: 0}), active_execution_progress: 47.9,
+                  active_execution_basis: 'bytes'};
+  const widest = {...item(9862, {seconds: 99 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
+                  active_execution_progress: 100, active_execution_basis: 'bytes'};
+  const verified = {...item(9863, {seconds: 2318, held: true}, {progress: 41}), active_execution_progress: 76,
+                    active_execution_basis: 'bytes'};
+  await downloads(page, [usenet, widest, verified]);
+  const geometry = id => page.evaluate(id => {
+    const cell = document.querySelector(`#t-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`);
+    if (getComputedStyle(cell).display === 'none') return null;
+    const pct = cell.querySelector('.prog-pct'), words = pct.querySelector('.prog-words');
+    const range = document.createRange();
+    range.selectNodeContents(pct);
+    const text = [...range.getClientRects()].filter(rect => rect.width > 0);
+    const eta = cell.querySelector('[data-role="transfer-eta"]').getBoundingClientRect();
+    const bar = cell.querySelector('.prog').getBoundingClientRect();
+    return {lines: new Set(text.map(rect => Math.round(rect.top))).size, sameLine: Math.abs(text[0].top - eta.top) <= 2,
+            apart: Math.max(...text.map(rect => rect.right)) <= eta.left, aligned: Math.abs(eta.right - bar.right) <= 1.5,
+            inside: eta.right <= bar.right + 1.5 && text[0].left >= bar.left - 1.5, overflow: cell.scrollWidth > cell.clientWidth + 1,
+            words: words ? getComputedStyle(words).display !== 'none' : null, visible: pct.innerText.trim(),
+            label: pct.getAttribute('aria-label')};
+  }, id);
+  // Downloads shows Progress at <=700 never, at 701-900 (content-sized), and from 1051.
+  for (const width of [701, 800, 900, 1051, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+    await page.setViewportSize({width, height: 900});
+    for (const id of [9861, 9862, 9863]) {
+      const g = await geometry(id);
+      expect(g, `width ${width}`).not.toBeNull();
+      const where = `row ${id} at ${width}px`;
+      expect(g.lines, where).toBe(1);                                   // one line, never two
+      expect(g.sameLine && g.apart && g.aligned && g.inside, where).toBe(true);   // words left, ETA right, no overlap
+      expect(g.overflow, where).toBe(false);                            // nothing cut or spilling
+      expect(g.words, where).toBe(width >= 1600);                       // the words where they fit, else the figure
+    }
+    const usenetLine = await geometry(9861);
+    expect(usenetLine.visible).toBe(width >= 1600 ? '47.9% estimated progress' : '47.9%');
+    expect(usenetLine.label).toBe('47.9% estimated progress, not yet verified');   // the distinction stays announced
+    expect((await geometry(9863)).label).toBe('41% verified');
+  }
+  for (const width of [390, 700, 1000, 1050]) {
+    await page.setViewportSize({width, height: 900});
+    expect(await geometry(9861), `width ${width}`).toBeNull();          // Progress steps aside there, as before
+  }
+});
+
+test('Download Activity keeps the percentage and its ETA on one line at every width', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const usenet = {...item(9871, {seconds: 2318, held: false}, {progress: 0}), active_execution_progress: 47.9,
+                  active_execution_basis: 'bytes'};
+  const widest = {...item(9872, {seconds: 99 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
+                  active_execution_progress: 100, active_execution_basis: 'bytes'};
+  const verified = {...item(9873, {seconds: 2318, held: true}, {progress: 41}), active_execution_progress: 76,
+                    active_execution_basis: 'bytes'};
+  await downloads(page, [usenet, widest, verified]);
+  await page.evaluate(async () => { nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')); await loadRecent(); });
+  const geometry = id => page.evaluate(id => {
+    const cell = document.querySelector(`#dash-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`);
+    const pct = cell.querySelector('.prog-pct'), words = pct.querySelector('.prog-words');
+    const range = document.createRange();
+    range.selectNodeContents(pct);
+    const text = [...range.getClientRects()].filter(rect => rect.width > 0);
+    const eta = cell.querySelector('[data-role="transfer-eta"]').getBoundingClientRect();
+    const bar = cell.querySelector('.prog').getBoundingClientRect();
+    return {lines: new Set(text.map(rect => Math.round(rect.top))).size, sameLine: Math.abs(text[0].top - eta.top) <= 2,
+            apart: Math.max(...text.map(rect => rect.right)) <= eta.left, aligned: Math.abs(eta.right - bar.right) <= 1.5,
+            overflow: cell.scrollWidth > cell.clientWidth + 1, words: getComputedStyle(words).display !== 'none',
+            visible: pct.innerText.trim()};
+  }, id);
+  // The card clips what does not fit it: from 1179px nothing may (below that
+  // the activity table already scrolls sideways, as before this estimate).
+  const clipped = () => page.evaluate(() => {
+    const wrap = document.querySelector('#view-dashboard .dash-activity-table-wrap');
+    const last = document.querySelector('#dash-tbody tr[data-torrent-id] td:last-child').getBoundingClientRect();
+    return wrap.scrollWidth > wrap.clientWidth + 1 || last.right > wrap.getBoundingClientRect().right + 1;
+  });
+  for (const width of [701, 900, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+    await page.setViewportSize({width, height: 900});
+    if (width >= 1179) expect(await clipped(), `width ${width}`).toBe(false);
+    for (const id of [9871, 9872, 9873]) {
+      const g = await geometry(id), where = `row ${id} at ${width}px`;
+      expect(g.lines, where).toBe(1);
+      expect(g.sameLine && g.apart && g.aligned, where).toBe(true);
+      expect(g.overflow, where).toBe(false);
+      expect(g.words, where).toBe(width >= 1600);
+    }
+    expect((await geometry(9871)).visible).toBe(width >= 1600 ? '47.9% estimated progress' : '47.9%');
+  }
 });

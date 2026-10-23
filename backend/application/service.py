@@ -141,7 +141,7 @@ class ApplicationService:
         # The estimated times remaining the last progress batch published
         # (``_publish_active_changes``): what a change is detected against,
         # never a source of an estimate.
-        self._published_etas: dict[int, tuple[int, bool]] = {}
+        self._published_etas: dict[int, tuple[int, bool, bool]] = {}
         # Incremental candidate readiness (``TransferEngine.candidate_publication``):
         # transfers whose committed candidate set changed and are due one
         # publication, drained by at most one task -- a burst on one transfer
