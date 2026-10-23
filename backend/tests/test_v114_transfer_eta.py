@@ -30,8 +30,8 @@ from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 from transfers.runtime_telemetry import (
-    ETA_HOLD_SECONDS, ETA_MIN_SPAN_SECONDS, ETA_PAUSED_WINDOW_SECONDS, ETA_SMOOTHING_SECONDS, ETA_STEADY_SECONDS,
-    ETA_STEADY_SHARE, ETA_WINDOW_SECONDS, MAX_ETA_SECONDS, EtaPresentation, ExecutionThroughputMeter, acquisition_eta,
+    ETA_HOLD_SECONDS, ETA_MIN_SPAN_SECONDS, ETA_PAUSED_WINDOW_SECONDS, ETA_SMOOTHING_SECONDS,
+    ETA_DISPLAY_SECONDS, ETA_WINDOW_SECONDS, MAX_ETA_SECONDS, EtaPresentation, ExecutionThroughputMeter, acquisition_eta,
     acquisition_eta_payload,
 )
 
@@ -68,7 +68,7 @@ def _run(meter, clock, counters, seconds, rates, step=0.5):
 def test_the_estimator_derives_its_bounds_from_the_meters_own_windows():
     from transfers import runtime_telemetry as telemetry
     assert ETA_WINDOW_SECONDS == 5.0                                  # the presentation horizon, not 30 s
-    assert ETA_SMOOTHING_SECONDS == ETA_STEADY_SECONDS == 5.0 and ETA_STEADY_SHARE == 0.03
+    assert ETA_SMOOTHING_SECONDS == 12.0 and ETA_DISPLAY_SECONDS == 2.5   # presentation only, never the rate
     assert ETA_MIN_SPAN_SECONDS == telemetry.WINDOW_SECONDS == 4.0
     assert ETA_HOLD_SECONDS == telemetry._SUSTAINED_GAP_SECONDS == 5.0
     assert MAX_ETA_SECONDS == 9999 * 3600 + 59 * 60 + 59
@@ -272,43 +272,58 @@ def _replay(noise, *, change_at=None, seconds=90, total=4096 * MIB, seed=1105):
     return timeline
 
 
-def _replaced(figures):
-    """Passes on which the figure did not simply count down by the 0.5 s that
-    passed (one second of rounding allowed): a new figure was put up."""
-    return sum(1 for before, after in zip(figures, figures[1:]) if abs(after - (before - 0.5)) > 1)
+def _changes(timeline, at=0):
+    """The instants at which the number shown changed: what the operator sees
+    move, ordinary countdown steps included -- not only large revisions."""
+    return [b[0] for a, b in zip(timeline, timeline[1:]) if b[at] != a[at]]
+
+
+def _rested(changes, seconds):
+    return all(later - earlier >= seconds for earlier, later in zip(changes, changes[1:]))
 
 
 @pytest.mark.parametrize("noise", [0.2, 0.5])
-def test_a_jittery_rate_is_shown_as_a_steady_countdown(noise):
-    """The measurement's scatter is no longer put up every 0.5 s: the shown
-    figure counts down, replaced on a small share of passes, and is no further
-    from the truth than the raw measurement."""
+def test_a_jittery_rate_is_shown_as_a_number_that_rests(noise):
+    """The measurement's scatter is no longer put up every 0.5 s, and neither
+    is the countdown: the number shown changes at most once in 2.5 s, rests
+    between, and is no further from the truth than the raw measurement."""
     timeline = _replay(noise)
-    raw, shown = [item[1] for item in timeline], [item[2] for item in timeline]
-    error = lambda figures: sum(abs(got - item[3]) / item[3] for got, item in zip(figures, timeline)) / len(timeline)
-    assert _replaced(raw) > 0.9 * len(raw)                               # before: a new figure nearly every pass
-    assert _replaced(shown) <= 0.15 * len(shown)                         # after: a countdown
+    raw = [(t, raw) for t, raw, _shown, _true in timeline]
+    shown = [(t, shown) for t, _raw, shown, _true in timeline]
+    error = lambda figures: sum(abs(got - item[3]) / item[3] for (_t, got), item in zip(figures, timeline)) / len(timeline)
+    assert len(_changes(raw, 1)) > 0.9 * len(raw)                       # before: a new number nearly every pass
+    changes = _changes(shown, 1)
+    assert _rested(changes, 2.5) and len(changes) <= len(shown) * 0.5 / 2.5 + 1
     assert error(shown) <= error(raw)
     assert error(shown) <= (0.04 if noise == 0.2 else 0.08)
 
 
-def test_a_steady_rate_is_shown_exactly():
+def test_a_steady_rate_counts_down_in_steps_of_the_time_that_passed():
+    """At a steady rate the number steps every 2.5 s by the time that passed
+    (2 or 3 s, as whole seconds), never one second at a time every pass, and
+    is never more than one step behind the raw figure."""
     timeline = _replay(0.0)
-    assert all(abs(shown - raw) <= 1 for _t, raw, shown, _true in timeline)
-    assert _replaced([item[2] for item in timeline]) == 0
+    shown = [(t, shown) for t, _raw, shown, _true in timeline]
+    changes = _changes(shown, 1)
+    assert [b - a for a, b in zip(changes, changes[1:])] == [2.5] * (len(changes) - 1)
+    figures = dict(shown)
+    assert all(figures[earlier] - figures[later] in (2, 3) for earlier, later in zip(changes, changes[1:]))
+    assert all(0 <= shown - raw <= 3 for _t, raw, shown, _true in timeline)
 
 
-def test_a_sustained_change_of_pace_shows_within_seconds_and_settles():
-    """The rate halves at 40 s (the truth doubles). The shown figure starts to
-    move within the 5 s horizon, is within 10 % of the truth within 15 s, and
-    settles inside the steady band -- not the half-minute slide of a 30 s
-    window."""
-    timeline = {round(t * 2): (shown, true) for t, _raw, shown, true in _replay(0.0, change_at=40, seconds=80)}
-    before = timeline[2 * 39][0]
-    assert timeline[2 * 45][0] > before + 100                            # moving within 5 s
-    assert all(abs(shown - true) <= 0.10 * true for key, (shown, true) in timeline.items() if key >= 2 * 55)
-    assert all(abs(shown - true) <= ETA_STEADY_SHARE * true + 2 for key, (shown, true) in timeline.items()
-               if key >= 2 * 65)
+def test_a_sustained_change_of_pace_arrives_over_seconds_and_settles():
+    """The rate halves at 40 s (the truth doubles). The number starts to move
+    within one display step of the change being measured, is within 20 % of
+    the truth 15 s after it and within 10 % 25 s after -- a revision spread
+    over the smoothing horizon, neither at once nor the half-minute slide of a
+    30 s window -- and keeps resting between steps throughout."""
+    timeline = _replay(0.0, change_at=40, seconds=90)
+    by_t = {round(t * 2): (shown, true) for t, _raw, shown, true in timeline}
+    before = by_t[2 * 40][0]
+    assert by_t[2 * 47.5][0] > before + 25                               # moving within 7.5 s
+    assert all(abs(shown - true) <= 0.20 * true for key, (shown, true) in by_t.items() if key >= 2 * 55)
+    assert all(abs(shown - true) <= 0.10 * true for key, (shown, true) in by_t.items() if key >= 2 * 65)
+    assert _rested(_changes([(t, shown) for t, _raw, shown, _true in timeline], 1), 2.5)
 
 
 def test_a_held_estimate_is_shown_frozen_then_counts_on_from_it():
@@ -327,33 +342,30 @@ def test_a_held_estimate_is_shown_frozen_then_counts_on_from_it():
         figure = shown()
         if figure[1]:
             frozen = frozen or figure
-            assert figure == frozen                                      # held: exactly the same, never counted down
+            assert figure == frozen                                      # held: exactly the same, however long
         else:
-            assert last[0] - 2 <= figure[0] <= last[0]                   # the presentation grace: still counting down
-    assert frozen is not None and last[0] - 2 <= frozen[0] <= last[0]
+            assert last[0] - 3 <= figure[0] <= last[0]                   # the presentation grace: still counting down
+    assert frozen is not None and last[0] - 3 <= frozen[0] <= last[0]
     assert frozen == (frozen[0], True, False, False)
     # Resumed: a 4 s pause is part of the pace measured (``ETA_PAUSED_WINDOW_SECONDS``,
-    # stillness included), so the figure may rise by at most that share --
-    # smoothed, each step at most the steady band plus one smoothing step
-    # toward the raw figure, never a jump to the raw figure.
-    weight = 1 - math.exp(-0.5 / ETA_SMOOTHING_SECONDS)
-    before = frozen[0]
-    for _ in range(12):
+    # stillness included), so the figure may rise by at most that share,
+    # smoothed, and its number still rests between steps.
+    timeline = [(clock.now, frozen[0])]
+    for _ in range(24):
         _run(meter, clock, counters, 0.5, {"a": 4 * MIB})
-        raw = acquisition_eta(total - counters["a"], ["a"], meter)
         figure = shown()
         true = (total - counters["a"]) / (4 * MIB)
         assert figure[1] is False and true - 1.5 <= figure[0] <= true * (1 + 4 / 10)
-        bound = max(ETA_STEADY_SECONDS, ETA_STEADY_SHARE * before) + weight * abs(raw[0] - before) + 1.5
-        assert abs(figure[0] - (before - 0.5)) <= bound
-        before = figure[0]
+        timeline.append((clock.now, figure[0]))
+    assert _rested(_changes(timeline, 1), 2.5)
 
 
 @pytest.mark.parametrize("moving, still", [(1, 3), (3, 4.5), (4, 3), (6, 4.5), (8, 3), (12, 4.5)])
 def test_a_download_that_stops_and_starts_is_shown_at_its_true_average(moving, still):
     """Moving at 1000 B/s for ``moving`` seconds, then still for ``still``
     (within the hold), repeatedly: the pace is the average, stillness
-    included -- never the moving rate's promise, never a saw-tooth."""
+    included -- never the moving rate's promise, never a saw-tooth -- and the
+    number rests between steps whether held or not."""
     meter, clock = _meter()
     presentation, counter, total, average = EtaPresentation(), 0, 10 ** 7, 1000 * moving / (moving + still)
     figures = []
@@ -364,11 +376,11 @@ def test_a_download_that_stops_and_starts_is_shown_at_its_true_average(moving, s
         meter.record({"a": (clock.now, counter)})
         shown = presentation.present(1, ("a",), acquisition_eta(total - counter, ["a"], meter), clock.now)
         if index >= 120 and shown is not None:
-            figures.append((shown[0], (total - counter) / average))
+            figures.append((clock.now, shown[0], (total - counter) / average))
     assert len(figures) == 280                                           # a figure on every pass
-    for shown, true in figures:
+    for _t, shown, true in figures:
         assert 0.85 * true <= shown <= 1.10 * true, (shown, true)
-    assert _replaced([shown for shown, _true in figures]) <= 0.20 * len(figures)   # a 15 s window across stop-go cycles
+    assert _rested(_changes(figures, 1), 2.5)
 
 
 @pytest.mark.parametrize("counter", ["steps_0_7s", "random_writes"])
@@ -433,9 +445,10 @@ def test_older_figures_finishing_after_newer_finite_ones_change_nothing(older):
     basis, eta = older
     presentation, control = EtaPresentation(), EtaPresentation()
     for subject in (presentation, control):
-        subject.present(1, ("b",), (110, False, False, False), 98.0)
-        assert subject.present(1, ("b",), FINITE, 100.0) == (110 - 2, False, False, False)
-    assert presentation.present(1, basis, eta, 99.0) == (108, False, False, False)
+        subject.present(1, ("b",), (110, False, False, False), 97.5)
+        newer = subject.present(1, ("b",), FINITE, 100.0)
+    assert newer[1:] == (False, False, False) and 100 < newer[0] < 110   # smoothed toward B's figure
+    assert presentation.present(1, basis, eta, 99.0) == newer
     assert presentation._state == control._state                      # nothing moved
     for at, raw in ((100.5, (60, False, False, False)), (101.0, (60, True, False, False)), (101.5, FINITE)):
         assert presentation.present(1, ("b",), raw, at) == control.present(1, ("b",), raw, at)
@@ -478,6 +491,72 @@ def test_the_ordering_fence_is_retired_with_its_entry():
     assert set(presentation._state) == {1, 2}
     presentation.retire(31.5)
     assert presentation._state == {}
+
+
+def test_no_estimate_indeterminate_and_a_new_basis_are_shown_at_once_whatever_the_pace():
+    """The 2.5 s pace is the number's alone: half a second after the number
+    changed, no estimate, an indeterminate one or a new basis is shown at
+    once, and the next figure after any of them is the raw one at once."""
+    for invalidation, basis in ((None, ("a",)), (INDETERMINATE, ("a",)), ((50, False, False, False), ("a", "b"))):
+        presentation = EtaPresentation()
+        presentation.present(1, ("a",), (300, False, False, False), 0.0)
+        assert presentation.present(1, ("a",), (200, False, False, False), 2.5)[0] < 300     # the number changed
+        assert presentation.present(1, basis, invalidation, 3.0) == invalidation              # 0.5 s later: at once
+        assert presentation.present(1, ("a",), (120, False, False, False), 3.5) == (120, False, False, False)
+
+
+def test_a_held_number_stays_exactly_while_held_toggles():
+    """Held on and off every other pass for 20 s: while held the number is
+    exactly the one shown, never counted down, and it still changes at most
+    once in 2.5 s; held and best-effort are carried, never the number."""
+    presentation, figures = EtaPresentation(), []
+    presentation.present(1, ("a",), (600, False, False, False), 0.0)
+    for index in range(1, 41):
+        now, held, rough = index * 0.5, index % 2 == 0, index % 3 == 0
+        shown = presentation.present(1, ("a",), (600 - index * 0.5, held, rough, False), now)
+        assert shown[1:] == (held, rough, False)
+        if held:
+            assert shown[0] == figures[-1][1]                           # exactly the number last shown
+        figures.append((now, shown[0]))
+    assert _rested(_changes(figures, 1), 2.5) and figures[-1][1] < 600
+
+
+def test_an_older_call_is_answered_with_the_rested_number_and_moves_nothing():
+    """While the number rests, a newer pass still advances the observation
+    instant (the ordering fence) without changing the number; a pass older
+    than it is answered with that number and changes nothing -- the pace never
+    lets an older figure through."""
+    presentation, control = EtaPresentation(), EtaPresentation()
+    for subject in (presentation, control):
+        subject.present(1, ("b",), (300, False, False, False), 100.0)
+        rested = subject.present(1, ("b",), (240, False, False, False), 101.0)
+    assert rested == (300, False, False, False)                         # resting: the number stands
+    for basis, older in ((("b",), (10, False, False, False)), (("a",), (10, False, False, False)),
+                         (("b",), None), (("b",), INDETERMINATE)):
+        assert presentation.present(1, basis, older, 100.5) == rested
+    assert presentation._state == control._state
+    assert presentation.present(1, ("b",), (240, False, False, False), 102.5) == control.present(
+        1, ("b",), (240, False, False, False), 102.5)
+
+
+def test_a_finishing_download_counts_down_to_its_end_and_leaves_at_once():
+    """The last minute at a steady pace: the number steps down with the time
+    that passed, is never more than one step above the truth, and the moment
+    there is no remaining work it is gone."""
+    meter, clock = _meter()
+    presentation, counters, total, figures = EtaPresentation(), {}, 60 * 4 * MIB, []
+    _run(meter, clock, counters, 5, {"a": 4 * MIB})
+    while counters["a"] < total:
+        _run(meter, clock, counters, 0.5, {"a": 4 * MIB})
+        counters["a"] = min(counters["a"], total)
+        shown = presentation.present(1, ("a",), acquisition_eta(total - counters["a"], ["a"], meter), clock.now)
+        if shown is None:
+            break
+        true = (total - counters["a"]) / (4 * MIB)
+        assert true <= shown[0] <= true + 3.5
+        figures.append((clock.now, shown[0]))
+    assert shown is None and counters["a"] == total                    # done: no estimate at once
+    assert _rested(_changes(figures, 1), 2.5) and figures[-1][1] <= 4
 
 
 def test_presentation_state_is_bounded_to_transfers_presented_recently():

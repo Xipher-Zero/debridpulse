@@ -746,18 +746,12 @@ function acquisitionEtaMarkup(eta) {
     return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="Estimated time remaining: not available"' +
       ' data-tooltip="No reliable estimate of the time remaining right now">—</span>';
   }
-  // How rough a figure is (``estimated``) is said in its tooltip and what is
-  // announced, never by a glyph; a held one keeps its figure, set apart.
-  const held = eta.held === true;
-  const rough = eta.estimated === true;
-  const tooltip = held
-    ? 'Estimated time remaining, held: no new data for a few seconds'
-    : (rough
-      ? 'Rough estimate of the time remaining for the download; processing afterwards is not included'
-      : 'Estimated time remaining for the download, a prediction; processing afterwards is not included');
-  return '<span class="prog-eta' + (held ? ' is-held' : '') + '" data-role="transfer-eta"' +
-    ' aria-label="Estimated time remaining ' + (rough ? 'about ' : '') + text + (held ? ', held' : '') +
-    '" data-tooltip="' + tooltip + '">ETA ' + text + '</span>';
+  // Every figure reads the same: "ETA" already says it is a prediction, so
+  // whether it is held (``held``) or best-effort (``estimated``) changes
+  // neither its look nor its words.
+  return '<span class="prog-eta" data-role="transfer-eta" aria-label="Estimated time remaining ' + text + '"' +
+    ' data-tooltip="Estimated time remaining for the download, a prediction; processing afterwards is not included">ETA ' +
+    text + '</span>';
 }
 
 // ``activePct``: in-flight execution activity on the current source that is
@@ -908,8 +902,20 @@ function patchProgressOnlyTransferEvent(data) {
           // Download Activity) gets the estimate, so a patched row matches its
           // full render; a status change is never patched here.
           const showsEta = progressCell.querySelector('.prog-line') !== null;
+          const shownEta = progressCell.querySelector('[data-role="transfer-eta"]');
           progressCell.innerHTML =
             progress(nextProgress, status, nextActivity, nextBasis, showsEta ? nextEta : undefined);
+          // An estimate that reads the same stays the very element it was, so
+          // the figure, its tooltip and what is announced are left alone while
+          // the bar and percentage beside it move. Only what progress()
+          // renders is compared: an open tooltip's own marks on its host are
+          // not a different estimate.
+          const patchedEta = progressCell.querySelector('[data-role="transfer-eta"]');
+          const rendered = element => [element.className, element.getAttribute('aria-label'),
+            element.getAttribute('data-tooltip'), element.textContent];
+          if (shownEta && patchedEta && rendered(shownEta).join('\n') === rendered(patchedEta).join('\n')) {
+            patchedEta.replaceWith(shownEta);
+          }
         }
 
         const dashFill =

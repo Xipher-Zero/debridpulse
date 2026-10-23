@@ -56,11 +56,12 @@ A writer whose counter moved within the hold is acquiring now
 number, that is an indeterminate estimate, never a fabricated one.
 
 What is shown is the estimate as ``EtaPresentation`` presents it: the
-predicted finish smoothed over ``ETA_SMOOTHING_SECONDS`` of time, counting
-down between observations and moved only when the smoothed prediction leaves
-it by more than ``ETA_STEADY_SECONDS`` or ``ETA_STEADY_SHARE`` -- so the
-figure is readable at the meter's cadence while a sustained change of pace or
-of remaining work still shows within a few seconds.
+predicted finish smoothed with a time constant of ``ETA_SMOOTHING_SECONDS``,
+its number changing to it at most once per ``ETA_DISPLAY_SECONDS`` -- so the
+figure rests between steps of a few seconds while the meter observes every
+half second, and a sustained change of pace or of remaining work is about
+two-thirds shown twelve seconds after it is measured and nearly all within
+about half a minute.
 """
 from __future__ import annotations
 
@@ -110,13 +111,14 @@ ETA_PAUSE_SECONDS = 2.0
 ETA_PAUSED_WINDOW_SECONDS = 3 * ETA_WINDOW_SECONDS
 ETA_HOLD_SECONDS = _SUSTAINED_GAP_SECONDS
 # Its presentation (``EtaPresentation``): the predicted finish is smoothed with
-# this time constant -- the same five-second horizon, in time, never in passes
-# -- and the shown figure, counting down meanwhile, moves to it only once it
-# differs by more than the larger of these: below them a 5 s measurement's
-# own scatter is all there is to show.
-ETA_SMOOTHING_SECONDS = 5.0
-ETA_STEADY_SECONDS = 5.0
-ETA_STEADY_SHARE = 0.03
+# this time constant, in time, never in passes -- longer than the 5 s
+# measurement, so a revision of the forecast is spread over its time constant
+# (about two-thirds of it after 12 s) rather than shown at once -- and the
+# number shown changes to it at most once in ``ETA_DISPLAY_SECONDS``, however
+# often the figures are observed: a countdown read every half second is a
+# figure that never rests. Nothing but the number waits for it.
+ETA_SMOOTHING_SECONDS = 12.0
+ETA_DISPLAY_SECONDS = 2.5
 # The largest estimate presented, 9999:59:59 -- a prediction past ~416 days
 # says nothing an operator can use.
 MAX_ETA_SECONDS = 9999 * 3600 + 59 * 60 + 59
@@ -383,15 +385,16 @@ class EtaPresentation:
     estimate's owner (``TransferEngine.acquisition_etas``) for every surface.
 
     Per logical transfer and the basis it is measured from (its writers and
-    which of them are measured): the predicted finish is smoothed over
-    ``ETA_SMOOTHING_SECONDS`` of time (an exponential
-    weight of elapsed time, so irregular passes weigh by time, never by count),
-    and the shown figure counts down with elapsed time, moving to the smoothed
-    prediction only once they differ by more than ``ETA_STEADY_SECONDS`` or
-    ``ETA_STEADY_SHARE`` of it -- a change of pace or of remaining work beyond
-    a 5 s measurement's scatter shows at once. A held estimate shows exactly
-    the figure last shown. A transfer with no estimate, an indeterminate one or
-    a different basis starts afresh: nothing smoothed survives an invalidation.
+    which of them are measured), every pass smooths the predicted finish with
+    a time constant of ``ETA_SMOOTHING_SECONDS`` (an exponential weight of
+    elapsed time, so irregular passes weigh by time, never by count). The
+    number shown becomes the smoothed figure at most once per
+    ``ETA_DISPLAY_SECONDS``; between, the last number shown stands, so a
+    countdown steps every few seconds by the time that passed rather than
+    every pass. A held estimate shows exactly the number last shown, however
+    long it is held, and nothing counts down meanwhile. A transfer with no estimate, an indeterminate one or
+    a different basis is shown at once and starts afresh: nothing smoothed, and
+    no wait, survives an invalidation.
 
     Ordered by observation time: each entry records the instant of the newest
     figures presented and what was shown for them, and an invalidation leaves
@@ -399,13 +402,15 @@ class EtaPresentation:
     figures are older than that -- it read its clock before awaiting work a
     newer caller finished first -- changes nothing, whatever it carries (a
     figure, none, an indeterminate one or another basis), and is answered with
-    what the newer figures showed. Memory only; an entry not presented for
-    ``SUSTAINED_WINDOW_SECONDS`` is dropped."""
+    what the newer figures showed. The instant the number last changed is kept
+    apart from it and only paces the number. Memory only; an entry not
+    presented for ``SUSTAINED_WINDOW_SECONDS`` is dropped."""
 
     def __init__(self):
         # transfer id -> (instant, shown, smoothing): what the newest figures
         # presented (an ``Eta`` or ``None``) at that instant, and
-        # ``(basis, smoothed, aged)`` -- or ``None`` after an invalidation.
+        # ``(basis, smoothed, changed)`` -- ``changed`` the instant the number
+        # shown last changed -- or ``None`` after an invalidation.
         self._state: dict[int, tuple] = {}
 
     def present(self, transfer_id: int, basis, eta: Eta | None, now: float) -> Eta | None:
@@ -418,19 +423,19 @@ class EtaPresentation:
         if eta is None or eta[3]:
             shown, smoothing = eta, None
         elif smoothing is None or smoothing[0] != basis:
-            shown, smoothing = eta, (basis, float(eta[0]), float(eta[0]))
+            shown, smoothing = eta, (basis, float(eta[0]), now)
         else:
             seconds, held, estimated, _indeterminate = eta
-            _basis, smoothed, aged = smoothing
-            elapsed = now - state[0]
+            _basis, smoothed, changed = smoothing
+            number = state[1][0]
             if not held:
+                elapsed = now - state[0]
                 predicted = smoothed - elapsed
                 smoothed = predicted + (1 - math.exp(-elapsed / ETA_SMOOTHING_SECONDS)) * (seconds - predicted)
-                aged -= elapsed
-                if abs(smoothed - aged) > max(ETA_STEADY_SECONDS, ETA_STEADY_SHARE * max(aged, 0.0)):
-                    aged = smoothed
-            # Held: the figure last shown, exactly -- nothing counts down.
-            shown, smoothing = (max(1, math.ceil(aged)), held, estimated, False), (basis, smoothed, aged)
+                if now - changed >= ETA_DISPLAY_SECONDS and max(1, math.ceil(smoothed)) != number:
+                    number, changed = max(1, math.ceil(smoothed)), now
+            # Held: the number last shown, exactly -- nothing counts down.
+            shown, smoothing = (number, held, estimated, False), (basis, smoothed, changed)
         self._state[transfer_id] = (now, shown, smoothing)
         return shown
 

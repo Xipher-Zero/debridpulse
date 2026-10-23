@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 // DP 1.0.14: a downloading transfer's estimated time remaining, beneath its
 // primary bar in Downloads. The browser renders the backend's one estimate
-// (``acquisition_eta``) -- H:MM:SS or M:SS, held, "ETA ∞" while it acquires
+// (``acquisition_eta``) -- H:MM:SS or M:SS, alike held or not, "ETA ∞" while it acquires
 // without a number, or "—" -- and never counts it down
 // on its own. Mocked rows: no backend state is read or written.
 
@@ -74,19 +74,26 @@ test('the estimate renders compactly, held, infinite, or unavailable, and only w
   const eta = id => cell(page, id).locator('[data-role="transfer-eta"]');
   await expect(eta(9801)).toHaveText('ETA 1:02:05');
   await expect(eta(9801)).toHaveAttribute('aria-label', 'Estimated time remaining 1:02:05');
-  await expect(eta(9801)).not.toHaveClass(/is-held/);
+  // Held or best-effort, a figure reads and looks exactly like any other:
+  // the same class, words, tooltip and type.
+  const neutral = await page.evaluate(ids => ids.map(id => {
+    const element = document.querySelector(`#t-tbody tr[data-torrent-id="${id}"] [data-role="transfer-eta"]`);
+    const style = getComputedStyle(element);
+    return [element.className, element.getAttribute('aria-label'), element.getAttribute('data-tooltip'),
+            style.fontStyle, style.fontWeight, style.fontFamily, style.fontSize, style.color];
+  }), [9801, 9802, 9811]);
+  expect(neutral[1]).toEqual(neutral[0]);
+  expect(neutral[2]).toEqual(neutral[0]);
+  expect(neutral[0][0]).toBe('prog-eta');
+  expect(neutral[0][3]).toBe('normal');
+  expect(neutral[0][2]).toBe('Estimated time remaining for the download, a prediction; processing afterwards is not included');
   await expect(eta(9802)).toHaveText('ETA 1:02:05');
-  await expect(eta(9802)).toHaveClass(/is-held/);
-  await expect(eta(9802)).toHaveAttribute('aria-label', 'Estimated time remaining 1:02:05, held');
   await expect(eta(9803)).toHaveText('—');
   await expect(eta(9804)).toHaveText('ETA 100:01:05');
   await expect(eta(9805)).toHaveText('ETA 9999:59:59');
   for (const id of [9806, 9807, 9808]) await expect(eta(id)).toHaveText('—');
   for (const id of [9809, 9810, 9820]) await expect(eta(id)).toHaveCount(0);   // not downloading: none, not even ∞
-  // A best-effort figure carries no glyph: it is said in what is announced and its tooltip.
   await expect(eta(9811)).toHaveText('ETA 1:02:05');
-  await expect(eta(9811)).toHaveAttribute('aria-label', 'Estimated time remaining about 1:02:05');
-  await expect(eta(9811)).toHaveAttribute('data-tooltip', /^Rough estimate/);
   // Compact: M:SS under an hour, H:MM:SS from one, hours never wrapping.
   const compact = {9812: 'ETA 0:30', 9813: 'ETA 3:30', 9814: 'ETA 30:30', 9815: 'ETA 59:59', 9816: 'ETA 1:00:00',
                    9817: 'ETA 123:30:30'};
@@ -175,9 +182,42 @@ test('a live progress update and a full refresh show the same estimate', async (
   served[0] = {...served[0], progress: 45, acquisition_eta: {seconds: 85, held: false}};
   await page.evaluate(() => loadTorrents());
   expect(await cell(page, 9831).innerHTML()).toBe(live);           // one renderer, one truth
-  await patch({acquisition_eta: {seconds: 85, held: true}});
-  await expect(eta).toHaveText('ETA 1:25');
-  await expect(eta).toHaveClass(/is-held/);
+  // Held and best-effort toggling while the bar moves leaves the estimate's
+  // element exactly as it was: never replaced, never touched.
+  await page.evaluate(() => {
+    window.__eta = document.querySelector('#t-tbody tr[data-torrent-id="9831"] [data-role="transfer-eta"]');
+    window.__etaMutations = 0;
+    new MutationObserver(records => { window.__etaMutations += records.length; })
+      .observe(window.__eta, {attributes: true, childList: true, characterData: true, subtree: true});
+  });
+  let progressValue = 45;
+  for (const flags of [{held: true}, {held: false, estimated: true}, {held: true, estimated: true}, {held: false}]) {
+    progressValue += 0.5;
+    await patch({progress: progressValue, acquisition_eta: {seconds: 85, ...flags}});
+    await expect(cell(page, 9831).locator('.prog-pct')).toHaveText(`${Math.round(progressValue)}%`);
+  }
+  expect(await page.evaluate(() => [
+    window.__eta === document.querySelector('#t-tbody tr[data-torrent-id="9831"] [data-role="transfer-eta"]'),
+    window.__etaMutations, window.__eta.className, window.__eta.getAttribute('aria-label'),
+    getComputedStyle(window.__eta).fontStyle])).toEqual([true, 0, 'prog-eta', 'Estimated time remaining 1:25', 'normal']);
+  // Hovered, its tooltip stays open through live updates that leave the
+  // estimate as it reads, even though the open tooltip marks its host.
+  await eta.hover();
+  const tip = page.locator('#dp-tooltip');
+  await expect(tip).toBeVisible();
+  await expect(eta).toHaveAttribute('aria-describedby', 'dp-tooltip');
+  for (const flags of [{held: true}, {held: false, estimated: true}, {held: false}]) {
+    progressValue += 0.5;
+    await patch({progress: progressValue, acquisition_eta: {seconds: 85, ...flags}});
+    await expect(cell(page, 9831).locator('.prog-pct')).toHaveText(`${Math.round(progressValue)}%`);
+  }
+  expect(await page.evaluate(() =>
+    window.__eta === document.querySelector('#t-tbody tr[data-torrent-id="9831"] [data-role="transfer-eta"]'))).toBe(true);
+  await expect(tip).toBeVisible();
+  await expect(tip).toHaveText('Estimated time remaining for the download, a prediction; processing afterwards is not included');
+  await page.mouse.move(0, 0);
+  await patch({progress: progressValue, acquisition_eta: {seconds: 82, held: false}});
+  await expect(eta).toHaveText('ETA 1:22');                         // a new number is put up at once
   await patch({acquisition_eta: {seconds: null, held: false, estimated: false, indeterminate: true}});
   await expect(eta).toHaveText('ETA ∞');                            // acquiring, no number
   const infinite = await cell(page, 9831).innerHTML();
@@ -246,9 +286,15 @@ test('Download Activity and Downloads show the same estimate, on refresh and on 
   // A live update reaches both surfaces alike: a new figure, held, then none.
   expect(await patch(9851, {acquisition_eta: {seconds: 85, held: false}})).toBe(true);
   await same(9851, ['ETA 1:25']);
-  await patch(9851, {acquisition_eta: {seconds: 85, held: true}});
+  const looks = () => Promise.all(both(9851).map(surface => surface.locator('[data-role="transfer-eta"]').evaluate(element =>
+    [element.className, element.getAttribute('aria-label'), element.getAttribute('data-tooltip'),
+     getComputedStyle(element).fontStyle])));
+  const measured = await looks();
+  await patch(9851, {acquisition_eta: {seconds: 85, held: true, estimated: true}});
   await same(9851, ['ETA 1:25']);
-  for (const surface of both(9851)) await expect(surface.locator('[data-role="transfer-eta"]')).toHaveClass(/is-held/);
+  expect(await looks()).toEqual(measured);                            // held or rough: the same on both
+  expect(measured[0]).toEqual(measured[1]);
+  expect(measured[0][3]).toBe('normal');
   await patch(9851, {acquisition_eta: {seconds: null, held: false, estimated: false, indeterminate: true}});
   await same(9851, ['ETA ∞']);
   await patch(9851, {acquisition_eta: null});

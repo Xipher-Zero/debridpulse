@@ -1609,9 +1609,8 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
    right-aligned, rather than overlapping or being cut. The estimate's width
    is reserved for "ETA 999:59:59" (13ch), so "—", "ETA ∞" and any estimate
    under 1000 hours take the same room and a changing value never moves the row;
-   tabular figures. The secondary text token keeps it legible in both themes.
-   A held estimate is set apart by style and its tooltip, not by a dimmer,
-   harder-to-read tone. */
+   tabular figures. The secondary text token keeps it legible in both themes,
+   and every figure -- held, best-effort or measured -- has the same type. */
 :is(#dash-tbody, #t-tbody) .prog-line {
   display: flex;
   flex-wrap: wrap;
@@ -1627,9 +1626,6 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--dp-text-secondary);
-}
-:is(#dash-tbody, #t-tbody) .prog-eta.is-held {
-  font-style: italic;
 }
 
 /* Download Activity decides where its own columns have the room: from 1600px
