@@ -262,5 +262,5 @@ zc-lockfile==4.0
     #   cherrypy
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==84.0.0
+setuptools==84.1.0
     # via zc-lockfile

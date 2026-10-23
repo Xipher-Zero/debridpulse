@@ -73,7 +73,7 @@ the lock file and `licenses/python-runtime.json`.
 | requests | 2.34.2 | Apache-2.0 |
 | requests-oauthlib | 2.0.0 | ISC |
 | sabctools | 9.6.3 | GPL-2.0-or-later (bundled service dependency; see the copyleft review below) |
-| setuptools | 84.0.0 | MIT |
+| setuptools | 84.1.0 | MIT |
 | sgmllib3k | 1.0.0 | BSD (variant unspecified upstream) AND PSF-2.0 (derived from CPython sgmllib) ([bundled notice](../licenses/sgmllib3k-BSD.txt)) |
 | six | 1.17.0 | MIT |
 | starlette | 1.3.1 | BSD-3-Clause |
