@@ -103,6 +103,8 @@ _VALIDATION_REQUIREMENTS = {
     "setting_avatar": "must be an http:// or https:// image address that is not an SVG",
     "setting_path": "must be an absolute folder path",
     "setting_host": "must be a host name or IP address without a scheme, path, or spaces",
+    "setting_player_clients": "must name each client at most once, from {supported}",
+    "setting_player_clients_unknown": "can only be Automatic: the installed yt-dlp's player clients are unknown",
 }
 
 

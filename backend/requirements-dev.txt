@@ -73,7 +73,7 @@ cryptography==50.0.0
     #   joserfc
 ct3==3.4.0.post5
     # via -r requirements.in
-deno==2.9.5
+deno==2.9.8
     # via -r requirements.in
 fastapi==0.141.1
     # via -r requirements.in
@@ -252,7 +252,7 @@ uvloop==0.22.1 ; sys_platform != "win32"
     # via -r requirements.in
 yarl==1.25.1
     # via aiohttp
-yt-dlp==2026.8.19
+yt-dlp==2026.10.21
     # via -r requirements.in
 yt-dlp-ejs==0.8.0
     # via -r requirements.in

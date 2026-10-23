@@ -129,7 +129,7 @@
     },
     {
       "name": "deno",
-      "version": "2.9.5",
+      "version": "2.9.8",
       "license": "MIT"
     },
     {
@@ -389,7 +389,7 @@
     },
     {
       "name": "yt-dlp",
-      "version": "2026.8.19",
+      "version": "2026.10.21",
       "license": "Unlicense"
     },
     {

@@ -193,9 +193,11 @@ def test_one_paired_integration_one_enable_state_and_network_sources_membership(
                                                 environment)
     assert not provider.descriptor.enabled and not executor.descriptor.enabled
     # An installation that never stored a Video Quality reads the default,
-    # High -- and one fragment at a time, exactly as before the option existed.
+    # High -- one fragment at a time, and Automatic player clients, exactly as
+    # before those options existed.
     assert settings.integrations["media"].options == {"target_resolution": "720", "video_quality": "high",
-                                                      "video_codec": "auto", "concurrent_fragment_downloads": 1}
+                                                      "video_codec": "auto", "concurrent_fragment_downloads": 1,
+                                                      "youtube_player_clients": []}
     registry = _registry(provider, http_definition.build(IntegrationSettings(), None))
     assert [item.descriptor.id for item in registry.eligible_providers(TransferRequest("https", VIDEO))] == [
         "general_http"]
@@ -291,7 +293,8 @@ async def test_live_and_authenticated_media_are_refused_without_any_credential_f
     # Nothing can ask for, carry or store a cookie or login.
     assert not hasattr(private, "resolve_with_input")
     assert set(media_definition.options_model.model_fields) == {"target_resolution", "video_quality", "video_codec",
-                                                               "concurrent_fragment_downloads"}
+                                                               "concurrent_fragment_downloads",
+                                                               "youtube_player_clients"}
     params = worker._params({"proxy": "http://p"}, worker._Log())
     assert (params["cookiefile"], params["usenetrc"], params["remote_components"]) == (None, False, [])
 
@@ -934,6 +937,18 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "'media_video_quality'" in group and "'media_video_codec'" in group
     assert "never re-encodes media" in group
     assert "yt-dlp" not in tuning
+    # The one YouTube preference is its own standalone set beneath the five: a
+    # list of client names the server validates against the packaged yt-dlp,
+    # never a raw extractor argument or command-line text.
+    assert tuning.rstrip().endswith(") + tuningCells(youtubePlayerClientsField(options));\n  }")
+    clients = _function(page, "youtubePlayerClientsField")
+    assert re.findall(r"(selectField|input)\('(\w+)'", clients) == [("input", "media_youtube_player_clients")]
+    assert "placeholder: 'Automatic (yt-dlp default)'" in clients
+    assert "none guarantees passing a YouTube sign-in check" in clients  # never promised as a bypass
+    for raw in ("--", "extractor-args", "extractor_args", "player_client=", "youtube:"):
+        assert raw not in clients, raw
+    assert ("media_youtube_player_clients: {scope: 'integration:media', option: 'youtube_player_clients', "
+            "list: true}," in page)
     for absent in ("embed", "Embed", "sidecar", "Off'", "Subtitle Acquisition", "Download Behavior"):
         assert absent not in tuning.replace("embedded in the downloaded file", "")
     qualities = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_QUALITIES = Object.freeze([", 1)[1]
@@ -1455,7 +1470,8 @@ async def test_the_option_is_saved_or_refused_by_the_one_integration_configurati
             assert result["options"]["concurrent_fragment_downloads"] == value
             assert saved["cfg"].integrations["media"].options == {
                 "target_resolution": "best", "video_quality": "high", "video_codec": "hevc",
-                "concurrent_fragment_downloads": value}  # the other options stay exactly as they were
+                "concurrent_fragment_downloads": value,
+                "youtube_player_clients": []}  # the other options stay exactly as they were
         else:
             with pytest.raises(routes.HTTPException) as refused:
                 await routes.patch_integration_configuration("media", update, application=application)
@@ -1815,3 +1831,229 @@ async def test_a_finished_acquisition_is_never_100_until_the_artifact_is_complet
     assert width < 100 and "100" not in bar and "done" not in bar
     [completed] = _render([[100, "completed", None, None]])               # only DP's committed artifact
     assert ">100%<" in completed["bar"] and "prog-fill done" in completed["bar"]
+
+
+# -- YouTube Player Clients: Automatic by default, an explicit ordered choice validated
+# -- against the PACKAGED yt-dlp, and a stored choice it no longer offers read as Automatic
+
+def _player_client_route(current, options, monkeypatch=None):
+    """One ``PATCH /integrations/media/configuration`` against ``current``;
+    returns ``(result or HTTPException, saved settings or None)``."""
+    from unittest.mock import patch
+    from api import routes
+    from test_settings_namespace_mutation import _application
+    application = _application(current)
+    application.definitions = (media_definition,)
+    saved = {}
+
+    async def run():
+        with patch("api.routes.get_settings", return_value=current), \
+             patch("api.routes.load_settings", return_value=current.model_copy(deep=True)), \
+             patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
+             patch("api.routes.apply_settings"):
+            try:
+                return await routes.patch_integration_configuration(
+                    "media", routes.IntegrationConfigurationUpdate(options=options), application=application)
+            except routes.HTTPException as refused:
+                return refused
+    return asyncio.run(run()), saved.get("cfg")
+
+
+def test_the_offered_player_clients_are_the_packaged_yt_dlps_own_unauthenticated_clients():
+    from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
+    from yt_dlp.extractor.youtube import YoutubeIE
+    from integrations.media.definition import supported_player_clients
+    offered = supported_player_clients()
+    assert offered and len(set(offered)) == len(offered)
+    assert set(offered) == {name for name, entry in INNERTUBE_CLIENTS.items()
+                            if not name.startswith("_") and not entry.get("REQUIRE_AUTH")}
+    # yt-dlp's own unauthenticated defaults are all offered; a sign-in-only
+    # client never is (DebridPulse never signs in).
+    assert set(YoutubeIE._DEFAULT_CLIENTS) <= set(offered)
+    assert not {name for name, entry in INNERTUBE_CLIENTS.items() if entry.get("REQUIRE_AUTH")} & set(offered)
+
+
+def test_automatic_is_the_default_and_hands_yt_dlp_no_player_client_argument():
+    from integrations.media.definition import MediaOptions
+    options = MediaOptions()
+    assert options.youtube_player_clients == [] and options.effective_player_clients() == ()
+    for spec in ({"proxy": "http://route"}, {"proxy": "http://route", "youtube_player_clients": []}):
+        assert "extractor_args" not in worker._params(spec, worker._Log())
+
+
+def test_an_explicit_ordered_choice_reaches_only_yt_dlps_youtube_video_extractor():
+    baseline = worker._params({"proxy": "http://route"}, worker._Log())
+    chosen = worker._params({"proxy": "http://route", "youtube_player_clients": ["tv", "web_safari"]}, worker._Log())
+    assert chosen["extractor_args"] == {"youtube": {"player_client": ["tv", "web_safari"]}}
+    # Nothing else about the attempt changes.
+    assert {k: v for k, v in chosen.items() if k not in {"extractor_args", "logger"}} == \
+        {k: v for k, v in baseline.items() if k != "logger"}
+    def youtube(ydl):
+        # Initialized offline (the route is no address at all): yt-dlp's own
+        # client choice needs only its JavaScript-runtime check.
+        extractor = ydl.get_info_extractor("Youtube")
+        extractor.initialize()
+        return extractor
+
+    with YoutubeDL({**chosen, "logger": None}) as ydl:
+        assert youtube(ydl)._configuration_arg("player_client") == ["tv", "web_safari"]
+        # yt-dlp asks exactly those clients, in that order -- one extraction,
+        # not a DebridPulse rotation.
+        assert list(youtube(ydl)._get_requested_clients(VIDEO, {}, False)) == ["tv", "web_safari"]
+        # Other extractors -- YouTube's own playlist/tab reader included --
+        # never see it.
+        for other in ("YoutubeTab", "Vimeo", "Dailymotion", "Generic"):
+            assert ydl.get_info_extractor(other)._configuration_arg("player_client") == []
+    with YoutubeDL({**baseline, "logger": None}) as automatic, \
+            YoutubeDL({"quiet": True, "proxy": "http://route", "js_runtimes": baseline["js_runtimes"]}) as plain:
+        # Automatic is yt-dlp's own default, exactly as an unconfigured yt-dlp
+        # with the same runtime would choose it.
+        assert youtube(automatic)._get_requested_clients(VIDEO, {}, False) == \
+            youtube(plain)._get_requested_clients(VIDEO, {}, False)
+
+
+@pytest.mark.parametrize("value", [["tv", "tv"], ["all"], ["default"], ["-web"], ["TV"], ["tv;id"], ["tv web"],
+                                   ["no_such_client"], ["web_creator"], "tv", "tv,web", [1], [None], None,
+                                   {"tv": True}])
+def test_a_new_selection_outside_the_packaged_clients_is_refused_and_nothing_is_saved(value):
+    current = AppSettings(integrations={"media": IntegrationSettings(options={"youtube_player_clients": ["web"]})})
+    refused, saved = _player_client_route(current, {"youtube_player_clients": value})
+    assert getattr(refused, "status_code", None) == 400 and saved is None
+    assert refused.detail["field"] == "youtube_player_clients"
+    assert current.integrations["media"].options == {"youtube_player_clients": ["web"]}
+
+
+def test_a_valid_ordered_selection_saves_reloads_and_reaches_every_extraction(tmp_path, monkeypatch):
+    import core.config as config
+    from db import database
+    from integrations.media.definition import MediaOptions, build
+    from types import SimpleNamespace
+    current = AppSettings(integrations={"media": IntegrationSettings(options={"video_codec": "hevc"})})
+    result, saved = _player_client_route(current, {"youtube_player_clients": ["web_safari", "tv"]})
+    assert result["options"]["youtube_player_clients"] == ["web_safari", "tv"]
+    assert result["options"]["youtube_player_client_support"]["effective"] == ["web_safari", "tv"]
+    assert saved.integrations["media"].options["youtube_player_clients"] == ["web_safari", "tv"]
+    assert saved.integrations["media"].options["video_codec"] == "hevc"  # untouched
+    # The derived support facts are presentation only, never stored.
+    assert "youtube_player_client_support" not in saved.integrations["media"].options
+    assert _player_client_route(current, {"youtube_player_clients": []})[1].integrations["media"].options[
+        "youtube_player_clients"] == []
+
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    previous = config.get_settings()
+    try:
+        config.save_settings(saved)
+        options = MediaOptions(**config.load_settings().integrations["media"].options)  # what a restart reads
+        assert options.youtube_player_clients == ["web_safari", "tv"]
+        environment = SimpleNamespace(download_root=str(tmp_path / "downloads"), preferred_subtitle_language="en",
+                                      repository=SimpleNamespace(authorize_execution=None))
+        provider, executor = build(options, environment)
+        # ONE sandbox runs both the provider's extraction and the executor's.
+        assert executor.sandbox is provider.extract.__self__
+        assert executor.sandbox.youtube_player_clients == ("web_safari", "tv")
+        # A document without the key (every installation until now) is Automatic.
+        document = json.loads(config.CONFIG_PATH.read_text())
+        document["integrations"]["media"]["options"].pop("youtube_player_clients")
+        config.CONFIG_PATH.write_text(json.dumps(document))
+        assert MediaOptions(**config.load_settings().integrations["media"].options).youtube_player_clients == []
+    finally:
+        config.apply_settings(previous)
+
+
+def test_a_stored_client_the_upgraded_yt_dlp_no_longer_offers_is_kept_shown_and_read_as_automatic(monkeypatch):
+    """Upgrade from a previously valid selection: ``retired`` was offered when
+    it was saved; the packaged yt-dlp no longer offers it."""
+    import integrations.media.definition as media
+    from types import SimpleNamespace
+    monkeypatch.setattr(media, "supported_player_clients", lambda: ("tv", "web", "web_safari"))
+    stored = {"youtube_player_clients": ["retired", "tv"], "video_codec": "hevc"}
+    current = AppSettings(integrations={"media": IntegrationSettings(options=dict(stored))})
+    # Read back: kept exactly, never rewritten; Automatic is what extraction uses.
+    options = media.MediaOptions(**normalize_settings(current, catalog).integrations["media"].options)
+    assert options.youtube_player_clients == ["retired", "tv"]
+    assert options.effective_player_clients() == ()
+    assert options.public()["youtube_player_client_support"] == {
+        "supported": ["tv", "web", "web_safari"], "unsupported": ["retired"], "effective": []}
+    environment = SimpleNamespace(download_root="/downloads", preferred_subtitle_language="en",
+                                  repository=SimpleNamespace(authorize_execution=None))
+    assert media.build(options, environment)[1].sandbox.youtube_player_clients == ()
+    # An unrelated save works and carries the stored choice forward untouched.
+    result, saved = _player_client_route(current, {"video_codec": "av1"})
+    assert result["options"]["video_codec"] == "av1"
+    assert saved.integrations["media"].options["youtube_player_clients"] == ["retired", "tv"]
+    assert result["options"]["youtube_player_client_support"]["unsupported"] == ["retired"]
+    # Re-sending the stored value unchanged is not a new selection.
+    assert _player_client_route(current, {"youtube_player_clients": ["retired", "tv"]})[1] is not None
+    # A NEW selection still meets the rule: a stale name is refused...
+    refused, nothing = _player_client_route(current, {"youtube_player_clients": ["retired"]})
+    assert refused.status_code == 400 and nothing is None
+    assert refused.detail["requirement"] == "must name each client at most once, from tv, web, web_safari"
+    # ...and an explicit supported choice, or Automatic, corrects it.
+    for chosen in (["web"], []):
+        result, saved = _player_client_route(current, {"youtube_player_clients": chosen})
+        assert saved.integrations["media"].options["youtube_player_clients"] == chosen
+        assert result["options"]["youtube_player_client_support"] == {
+            "supported": ["tv", "web", "web_safari"], "unsupported": [], "effective": chosen}
+
+
+def test_when_yt_dlp_does_not_say_which_clients_it_offers_only_automatic_is_used(monkeypatch):
+    import integrations.media.definition as media
+    monkeypatch.setattr(media, "supported_player_clients", lambda: None)
+    current = AppSettings(integrations={"media": IntegrationSettings(options={"youtube_player_clients": ["tv"]})})
+    options = media.MediaOptions(**current.integrations["media"].options)
+    assert options.youtube_player_clients == ["tv"] and options.effective_player_clients() == ()
+    assert options.public()["youtube_player_client_support"] == {"supported": None, "unsupported": ["tv"],
+                                                                  "effective": []}
+    refused, saved = _player_client_route(current, {"youtube_player_clients": ["web"]})
+    assert refused.status_code == 400 and saved is None
+    assert refused.detail["requirement"].startswith("can only be Automatic")
+    assert _player_client_route(current, {"youtube_player_clients": []})[1] is not None
+
+
+def test_a_stored_value_that_never_had_a_clients_shape_reads_as_automatic():
+    from integrations.media.definition import MediaOptions
+    for stored in ("tv", ["TV"], ["tv", "tv"], [1], {"tv": 1}, ["x" * 40], None):
+        assert MediaOptions(youtube_player_clients=stored).youtube_player_clients == []
+
+
+def test_both_worker_instructions_carry_the_sandboxs_one_effective_selection(tmp_path):
+    from executors.media.sandbox import MediaSandbox, MediaTools
+    for clients in ((), ("tv", "web")):
+        sandbox = MediaSandbox(str(tmp_path / "runtime"), tools=MediaTools("/bin/true", "/bin/true", "/bin/true"),
+                               youtube_player_clients=clients)
+        for mode in ("extract", "acquire"):
+            spec = json.loads(sandbox._spec(mode, VIDEO, "http://route", ("127.0.0.1", 1)))
+            assert spec["youtube_player_clients"] == list(clients)
+
+
+def test_a_sign_in_challenge_with_chosen_clients_is_one_extraction_and_an_honest_failure(monkeypatch):
+    """Mocked: no request reaches YouTube. The upstream challenge stays the
+    ordinary non-retryable sign-in outcome; nothing tries other clients."""
+    import yt_dlp
+    from yt_dlp.utils import DownloadError, ExtractorError
+    made, asked = [], []
+
+    class Challenged:
+        def __init__(self, params):
+            made.append(params)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def extract_info(self, url, download=False):
+            asked.append(url)
+            cause = ExtractorError("Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies",
+                                   expected=True)
+            raise DownloadError("ERROR: [youtube] x: " + cause.msg, (ExtractorError, cause, None))
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", Challenged)
+    with pytest.raises(worker.Failure) as failed:
+        worker.extract({"url": VIDEO, "proxy": "http://route", "youtube_player_clients": ["tv", "web_safari"]})
+    assert failed.value.code == "auth_required"
+    assert len(made) == 1 and asked == [VIDEO]
+    assert made[0]["extractor_args"] == {"youtube": {"player_client": ["tv", "web_safari"]}}
+    assert outcome_error("auth_required", Stage.RESOLUTION).retryability is Retryability.NEVER

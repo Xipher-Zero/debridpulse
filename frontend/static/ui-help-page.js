@@ -491,7 +491,7 @@
             <ul>
               <li><b>rsync:</b> <b>Partial Transfers</b>, <b>Compression</b>, <b>Preserve Modification Time</b>, <b>Connection Timeout</b>, <b>Transfer Timeout</b> and <b>Directory Depth</b>.</li>
               <li><b>Usenet:</b> <b>Article Cache Limit</b>, <b>Maximum Retries</b> (for each part of a posting, separate from DebridPulse's own download retries), <b>Request Timeout</b> and <b>Direct Write</b>. Settings for each news server are on its card under Services.</li>
-              <li><b>Media Downloads:</b> <b>Target Resolution</b>, <b>Video Quality</b>, <b>Preferred Video Codec</b>, <b>Preferred Subtitle Language</b> and <b>Concurrent Fragment Downloads</b> (pieces of one streamed video fetched at once).</li>
+              <li><b>Media Downloads:</b> <b>Target Resolution</b>, <b>Video Quality</b>, <b>Preferred Video Codec</b>, <b>Preferred Subtitle Language</b>, <b>Concurrent Fragment Downloads</b> (pieces of one streamed video fetched at once) and <b>YouTube Player Clients</b> (empty is Automatic, yt-dlp's own choice; a different choice can change the formats offered and does not guarantee passing a YouTube sign-in check).</li>
             </ul>`)}
 
           ${accordion('Download Engine Activity', `

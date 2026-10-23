@@ -237,8 +237,8 @@ def test_deno_is_recorded_as_a_native_runtime_whose_embedded_notices_are_not_est
     dependency_licenses = (REPO_ROOT / "docs/DEPENDENCY_LICENSES.md").read_text()
     note = dependency_licenses.split("### Deno: a native runtime", 1)[1].split("\n## ", 1)[0]
     for statement in ("V8 `15.0.245.2`", "TypeScript `6.0.3`",
-                      "https://github.com/denoland/deno/blob/v2.9.5/LICENSE.md",
+                      "https://github.com/denoland/deno/blob/v2.9.8/LICENSE.md",
                       "https://chromium.googlesource.com/v8/v8/+/refs/tags/15.0.245.2/LICENSE",
                       "have not been\nindependently established", "does not record the\nexecutable as MIT-covered"):
         assert statement in note, statement
-    assert "| deno | 2.9.5 | MIT |" in dependency_licenses
+    assert "| deno | 2.9.8 | MIT |" in dependency_licenses

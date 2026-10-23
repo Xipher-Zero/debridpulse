@@ -80,8 +80,11 @@ def public_scope(identity: str) -> str:
 
 class MediaSandbox:
     def __init__(self, runtime_dir: str, *, egress=None, python: str = sys.executable, budget: str = "yt_dlp",
-                 tools: MediaTools | None = None):
+                 tools: MediaTools | None = None, youtube_player_clients: tuple[str, ...] = ()):
         self.processes = ProcessOwnership(runtime_dir)
+        # The effective YouTube player-client preference every extraction and
+        # acquisition this sandbox runs asks yt-dlp for; empty is Automatic.
+        self.youtube_player_clients = tuple(youtube_player_clients)
         self.scratch = Path(runtime_dir) / "extract"
         self.egress = egress or downloader_egress_guard
         self.python = python
@@ -148,7 +151,8 @@ class MediaSandbox:
         if missing:
             raise MediaFailure("runtime_unavailable", "missing: " + ", ".join(missing))
         return json.dumps({"mode": mode, "url": url, "proxy": proxy, "guard": list(guard),
-                           "tools": self.confined_tools(), "socket_timeout": SOCKET_TIMEOUT_SECONDS, **extra},
+                           "tools": self.confined_tools(), "socket_timeout": SOCKET_TIMEOUT_SECONDS,
+                           "youtube_player_clients": list(self.youtube_player_clients), **extra},
                           separators=(",", ":")).encode("utf-8")
 
     async def extract(self, url: str, *, selection: dict, collection_bound: int, single_item: bool = False) -> dict:

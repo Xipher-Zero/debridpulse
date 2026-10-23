@@ -234,6 +234,10 @@ def _emit(event: dict) -> None:
 
 def _params(spec: dict, log: _Log, **extra) -> dict:
     tools = spec.get("tools") or {}
+    # YouTube's player clients, in order, when the operator chose them; none
+    # (yt-dlp's own default) otherwise. The ``youtube`` key reaches only
+    # yt-dlp's YouTube video extractor.
+    clients = [str(client) for client in spec.get("youtube_player_clients") or ()]
     params = {
         "quiet": True, "no_warnings": True, "noprogress": True, "no_color": True, "logger": log,
         # The attempt's one route: every request, redirect and fragment
@@ -257,6 +261,8 @@ def _params(spec: dict, log: _Log, **extra) -> dict:
         # guarded request on this route (an extraction downloads nothing).
         "concurrent_fragment_downloads": int(spec.get("concurrent_fragment_downloads") or 1),
     }
+    if clients:
+        params["extractor_args"] = {"youtube": {"player_client": clients}}
     params.update(extra)
     return params
 

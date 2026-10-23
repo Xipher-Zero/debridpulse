@@ -139,7 +139,7 @@
           'rsync: compression, modification times, timeouts, and how many folder levels below an added folder are searched.',
           'WebDAV: folder depth, the maximum number of files accepted from one folder (a folder with more is rejected whole, never added in part), and the total time allowed to scan a folder.',
           'Usenet: article cache, retries, and request timeout shared by every news server. Each server’s own settings are on its card under Services.',
-          'Media Downloads: target resolution, quality, codec, subtitle language, and parallel fragment downloads for supported media pages.',
+          'Media Downloads: target resolution, quality, codec, subtitle language, parallel fragment downloads, and YouTube player clients for supported media pages.',
         ]},
         {heading: 'Related', text: [
           'Whether a method is used at all is decided under Services; how many downloads run at once is set in Download Behavior & Limits.',

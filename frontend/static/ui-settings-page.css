@@ -1045,8 +1045,15 @@
    cell up to the one selector bound instead of a number field's width (its
    menu matches the trigger). */
 #view-settings .dp-settings-tuning-grid .dp-settings-field > select.input,
-#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell {
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell,
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .input[data-control-width="selector"] {
   width: min(100%, var(--dp-tuning-select-max)) !important;
+}
+
+/* A text control that declares a selector's width (a short list of names)
+   needs a selector's lane, exactly as a selector cell does. */
+#view-settings .dp-settings-tuning-grid .dp-settings-field:has(> .input[data-control-width="selector"]) {
+  --dp-tuning-cell-min: var(--dp-tuning-select-lane);
 }
 
 /* A control that carries a unit inside its own border is the same cell control

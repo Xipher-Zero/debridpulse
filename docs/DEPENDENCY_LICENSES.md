@@ -33,7 +33,7 @@ the lock file and `licenses/python-runtime.json`.
 | configobj | 5.0.9 | BSD-3-Clause |
 | cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause |
 | ct3 | 3.4.0.post5 | MIT |
-| deno | 2.9.5 | MIT |
+| deno | 2.9.8 | MIT |
 | fastapi | 0.141.1 | MIT |
 | feedparser | 6.0.12 | BSD-2-Clause |
 | frozenlist | 1.8.0 | Apache-2.0 |
@@ -85,7 +85,7 @@ the lock file and `licenses/python-runtime.json`.
 | uvicorn | 0.52.4 | BSD-3-Clause |
 | uvloop | 0.22.1 | MIT OR Apache-2.0 |
 | yarl | 1.25.1 | Apache-2.0 |
-| yt-dlp | 2026.8.19 | Unlicense |
+| yt-dlp | 2026.10.21 | Unlicense |
 | yt-dlp-ejs | 0.8.0 | Unlicense AND MIT AND ISC |
 | zc-lockfile | 4.0 | ZPL-2.1 |
 
@@ -119,13 +119,13 @@ against the corresponding upstream/PyPI metadata when the lock is generated.
 
 ### Deno: a native runtime, and what its MIT declaration does not cover
 
-The `deno` 2.9.5 wheel is not Python code: it redistributes Deno's native
+The `deno` 2.9.8 wheel is not Python code: it redistributes Deno's native
 runtime, a single statically linked executable (`/usr/local/bin/deno` in the
-image, about 95 MB). That executable reports the components it embeds as
+image, about 96 MB). That executable reports the components it embeds as
 V8 `15.0.245.2` (`15.0.245.2-rusty`) and TypeScript `6.0.3`
 (`deno --version`). The wheel's one licence file declares MIT for the Deno
 project itself, matching Deno's version-matched upstream licence
-(<https://github.com/denoland/deno/blob/v2.9.5/LICENSE.md>). That MIT
+(<https://github.com/denoland/deno/blob/v2.9.8/LICENSE.md>). That MIT
 declaration is Deno's own; it is not an inventory of the components compiled
 into the executable. V8 carries its own BSD-style licence, which it states
 covers V8 and not V8's externally maintained libraries

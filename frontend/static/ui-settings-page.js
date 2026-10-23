@@ -199,6 +199,8 @@
     media_video_quality: {scope: 'integration:media', option: 'video_quality'},
     media_video_codec: {scope: 'integration:media', option: 'video_codec'},
     media_concurrent_fragment_downloads: {scope: 'integration:media', option: 'concurrent_fragment_downloads'},
+    // An ordered list, written as the names the field shows, comma-separated.
+    media_youtube_player_clients: {scope: 'integration:media', option: 'youtube_player_clients', list: true},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -575,6 +577,9 @@
       // draft that does not match it; the server still decides everything else.
       options.pattern ? `pattern="${html(options.pattern)}"` : '',
       options.invalidMessage ? `data-invalid-message="${html(options.invalidMessage)}"` : '',
+      // A text control holding a short list of names is as wide as a selector
+      // in a tuning cell, not a number field (ui-settings-page.css).
+      options.selectorWidth ? 'data-control-width="selector"' : '',
     ].filter(Boolean).join(' ');
     const bare =
       `<input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>`;
@@ -2405,7 +2410,52 @@
           type: 'number', min: 1, max: 8,
           hint: 'Number of media fragments downloaded simultaneously. Higher values may improve download speed for segmented media.',
         }),
-    );
+    ) + tuningCells(youtubePlayerClientsField(options));
+  }
+
+  function youtubePlayerClientsField(options) {
+    // YouTube Player Clients: empty is Automatic (yt-dlp's own default);
+    // otherwise the clients yt-dlp asks, in order. Which names exist is the
+    // PACKAGED yt-dlp's answer (``youtube_player_client_support``), never a
+    // list kept here; the server validates every new selection against it.
+    const supported = options.youtube_player_client_support?.supported;
+    const choices = Array.isArray(supported)
+      ? `Available: ${supported.join(', ')}.`
+      : 'The installed yt-dlp did not say which clients it offers, so only Automatic can be used.';
+    return input('media_youtube_player_clients', 'YouTube Player Clients',
+      (options.youtube_player_clients || []).join(', '), {
+        placeholder: 'Automatic (yt-dlp default)',
+        autocomplete: 'off',
+        selectorWidth: true,
+        pattern: '\\s*(?:[a-z][a-z0-9_]*(?:\\s*,\\s*[a-z][a-z0-9_]*)*)?\\s*',
+        invalidMessage: 'YouTube Player Clients must be client names separated by commas.',
+        hint: `Empty is Automatic. Otherwise list clients in the order yt-dlp should try them. ${html(choices)} `
+          + 'Clients differ in formats, DRM and PO-token needs; none guarantees passing a YouTube sign-in check.',
+        secondLine: `<div data-player-client-notice>${playerClientNotice(options)}</div>`,
+      });
+  }
+
+  /* A saved selection this yt-dlp no longer offers is kept exactly as saved
+   * and shown, with Automatic in use until the operator chooses again. */
+  function playerClientNotice(options) {
+    const unsupported = options.youtube_player_client_support?.unsupported || [];
+    if (!unsupported.length) return '';
+    return `<div class="dp-settings-caution" role="status"><b>Automatic in use</b>`
+      + `<span>The installed yt-dlp does not offer ${html(unsupported.join(', '))}. `
+      + 'Choose available clients, or use Automatic.</span>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="media-player-clients-automatic">Use Automatic</button></div>';
+  }
+
+  function projectPlayerClientNotice() {
+    const notice = root()?.querySelector('[data-player-client-notice]');
+    if (notice) notice.innerHTML = playerClientNotice(mediaOf(state.settings));
+  }
+
+  function usePlayerClientsAutomatic() {
+    const control = document.getElementById(fieldId('media_youtube_player_clients'));
+    if (!control) return;
+    control.value = '';
+    window.DPSettingsPersistence.commit(control);
   }
 
   function executorTuningCard(id, label, copy, body, protocol = '') {
@@ -5368,6 +5418,7 @@
     // A commit of the Local Network switch ended (accepted or rolled back).
     view.addEventListener('dp-settings-settled', event => {
       if (event.target.id === fieldId('private_lan_connections')) projectPrivateLanDependency();
+      if (event.target.id === fieldId('media_youtube_player_clients')) projectPlayerClientNotice();
     });
 
     view.addEventListener('change', event => {
@@ -5435,6 +5486,7 @@
       else if (action === 'verify-oidc') verifyOidc(button);
       else if (action === 'copy-oidc-callback') copyOidcCallback();
       else if (action === 'logout-session') logoutSession(button);
+      else if (action === 'media-player-clients-automatic') usePlayerClientsAutomatic();
     });
   }
 
@@ -5491,6 +5543,7 @@
     if (field && field.type === 'checkbox') return raw === true || raw === '1';
     if (field && field.type === 'number') return window.DPSettingsPersistence.numberDraft(field, raw).value;
     if (COMMIT_FIELDS[key]?.integer) return Number(raw);
+    if (COMMIT_FIELDS[key]?.list) return String(raw ?? '').split(',').map(item => item.trim()).filter(Boolean);
     return String(raw ?? '');
   }
 
@@ -5559,6 +5612,7 @@
     }
     if (accepted === undefined || accepted === null) return draft;
     if (typeof accepted === 'boolean') return accepted ? '1' : '0';
+    if (Array.isArray(accepted)) return accepted.join(', ');
     return String(accepted);
   }
 
