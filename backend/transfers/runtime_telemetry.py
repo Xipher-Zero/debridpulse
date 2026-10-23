@@ -41,16 +41,31 @@ A logical transfer's estimated time remaining is that transfer's remaining
 acquisition bytes over the summed acquisition rate of its acquiring executions
 that have one (``acquisition_eta``), each read from this same history
 (``acquisition_rate``): no second sampler. The rate is the counter's growth
-over up to ``ETA_WINDOW_SECONDS`` ending at its last movement, measured only
-over the current run of movement and only once that run spans
-``ETA_MIN_SPAN_SECONDS``. Anchored at the last movement, a counter that stops
-for less than ``ETA_HOLD_SECONDS`` keeps the estimate exactly as it was --
-held, never counted down -- and one that stays still longer has none; after
-such a stall the next run is measured afresh, so a stale rate never returns.
+over the last ``ETA_WINDOW_SECONDS`` ending at its last movement -- or, where
+a pause was seen in the run, over the last ``ETA_PAUSED_WINDOW_SECONDS``,
+stillness included -- measured only over the current run of
+movement and only once that run spans ``ETA_MIN_SPAN_SECONDS``. Anchored at
+the last movement, a counter that stops for less than ``ETA_HOLD_SECONDS``
+keeps the estimate exactly as it was -- held, never counted down -- and one
+that stays still longer has no rate: alone it ends the estimate, beside a
+writer still moving it makes it indeterminate (no countdown at the others'
+pace) for as long as that lasts; after such a stall the next run is measured
+afresh, so a stale rate never returns.
+A writer whose counter moved within the hold is acquiring now
+(``acquisition_moving``): where its transfer's time cannot be put into a
+number, that is an indeterminate estimate, never a fabricated one.
+
+What is shown is the estimate as ``EtaPresentation`` presents it: the
+predicted finish smoothed over ``ETA_SMOOTHING_SECONDS`` of time, counting
+down between observations and moved only when the smoothed prediction leaves
+it by more than ``ETA_STEADY_SECONDS`` or ``ETA_STEADY_SHARE`` -- so the
+figure is readable at the meter's cadence while a sustained change of pace or
+of remaining work still shows within a few seconds.
 """
 from __future__ import annotations
 
 import math
+import statistics
 import time
 from collections import deque
 from typing import Callable, Mapping
@@ -78,18 +93,32 @@ _SUSTAINED_GAP_SECONDS = 5.0
 # A sustained window is refused when one of these equal parts holds more than
 # half its bytes: an isolated burst, not a sustained rate.
 _SUSTAINED_BUCKETS = 6
-# The time-remaining estimate (``acquisition_rate``), from the windows above:
-# measured over at most the sustained window -- in practice the span the
-# ``_MAX_SAMPLES`` most recent passes cover (about 20 s with the fast
-# observation and the reconcile cycle both recording) -- so a bursty or coarse
-# counter moves it gently; first shown once its run of movement spans the presentation
-# window; held while the counter is still for no longer than the pass gap that
-# already ends sustained coverage, and gone after it.
-ETA_WINDOW_SECONDS = SUSTAINED_WINDOW_SECONDS
+# The time-remaining estimate (``acquisition_rate``): its rate is measured
+# over the last ``ETA_WINDOW_SECONDS`` of a run of movement (the paused window
+# below where the run paused) -- about five seconds, the horizon its
+# presentation answers a change of pace within (a longer window made the shown
+# figure slide for half a minute after one);
+# first shown once its run of movement spans the presentation window; held
+# while the counter is still for no longer than the pass gap that already ends
+# sustained coverage, and gone after it.
+ETA_WINDOW_SECONDS = 5.0
 ETA_MIN_SPAN_SECONDS = WINDOW_SECONDS
+# Stillness of at least this long (and twice the counter's cadence) within a
+# run is a pause, part of the pace: the rate then spans this much longer window,
+# stillness included, so a download that stops and starts reads its average.
+ETA_PAUSE_SECONDS = 2.0
+ETA_PAUSED_WINDOW_SECONDS = 3 * ETA_WINDOW_SECONDS
 ETA_HOLD_SECONDS = _SUSTAINED_GAP_SECONDS
+# Its presentation (``EtaPresentation``): the predicted finish is smoothed with
+# this time constant -- the same five-second horizon, in time, never in passes
+# -- and the shown figure, counting down meanwhile, moves to it only once it
+# differs by more than the larger of these: below them a 5 s measurement's
+# own scatter is all there is to show.
+ETA_SMOOTHING_SECONDS = 5.0
+ETA_STEADY_SECONDS = 5.0
+ETA_STEADY_SHARE = 0.03
 # The largest estimate presented, 9999:59:59 -- a prediction past ~416 days
-# says nothing an operator can use, and ten characters stay one fixed width.
+# says nothing an operator can use.
 MAX_ETA_SECONDS = 9999 * 3600 + 59 * 60 + 59
 
 
@@ -101,10 +130,13 @@ class ExecutionThroughputMeter:
         self.clock = clock
         self._max_age = max(0.0, float(max_age_seconds))
         self._window = float(window_seconds)
-        # History spans the longest window read from it (the estimate's),
-        # still bounded by ``_MAX_SAMPLES``.
-        self._retention = max(self._window, ETA_WINDOW_SECONDS)
+        # History spans the longest span read from it (a run of movement for
+        # the estimate, back to the sustained window), still bounded by
+        # ``_MAX_SAMPLES``; when each execution's counter last moved is kept
+        # apart, so a long stillness is never mistaken for no movement at all.
+        self._retention = max(self._window, ETA_WINDOW_SECONDS, SUSTAINED_WINDOW_SECONDS)
         self._series: dict[str, deque] = {}
+        self._moved: dict[str, float] = {}
         self._sampled_at: float | None = None
         self._acquired = 0                                 # aggregate counted bytes since construction
         self._totals: deque = deque()                      # (pass time, _acquired) over the sustained window
@@ -126,18 +158,23 @@ class ExecutionThroughputMeter:
         for key in [key for key, series in self._series.items()
                     if key not in samples and series[-1][0] < oldest]:
             del self._series[key]
+            self._moved.pop(key, None)
         for key, (at, value) in samples.items():
             series = self._series.get(key)
             if series and at <= series[-1][0]:
                 continue                                   # late: a newer sample already holds
             if value is None:
                 self._series.pop(key, None)
+                self._moved.pop(key, None)
                 continue
             value = max(0, int(value))
             if not series or value < series[-1][1]:
                 self._series[key] = series = deque(maxlen=_MAX_SAMPLES)
+                self._moved.pop(key, None)
             else:
                 self._acquired += value - series[-1][1]
+                if value > series[-1][1]:
+                    self._moved[key] = at
             series.append((at, value))
             while len(series) > 2 and series[1][0] <= at - self._retention:
                 series.popleft()                           # keep one sample at or before the window
@@ -186,37 +223,70 @@ class ExecutionThroughputMeter:
         so once the stillness outlasts the gap the presentation rate already
         tolerates (``_SAMPLE_GRACE_SECONDS``). The run starts where movement
         resumed after a stall longer than the hold, so the stall never dilutes
-        it and a rate from before it never returns."""
+        it and a rate from before it never returns. Within the run it spans the
+        last ``ETA_WINDOW_SECONDS`` between movements, or the last
+        ``ETA_PAUSED_WINDOW_SECONDS`` where a pause (``ETA_PAUSE_SECONDS``)
+        was seen in it."""
         series = self._series.get(key)
         if not self._fresh() or not series or len(series) < 2:
             return None
         now = self.clock()
-        run_start = moved_at = moved = None
+        # The current run's movements, (instant, bytes, whether the counter
+        # was seen still since the movement before); the first is where the
+        # run started.
+        moves: list[tuple[float, int, bool]] = []
+        moved_at, still = None, False
         for before, sample in zip(series, list(series)[1:]):
             if sample[1] > before[1]:
                 if moved_at is None or sample[0] - moved_at > ETA_HOLD_SECONDS:
-                    run_start = before[0]
-                moved_at, moved = sample[0], sample[1]
+                    moves, still = [(before[0], before[1], False)], False
+                moves.append((sample[0], sample[1], still))
+                moved_at, still = sample[0], False
+            elif moved_at is not None:
+                still = True
         if moved_at is None or now - moved_at > ETA_HOLD_SECONDS:
             return None
-        start = max(run_start, moved_at - ETA_WINDOW_SECONDS)
-        if moved_at - start < ETA_MIN_SPAN_SECONDS:
+        gaps = [after[0] - before[0] for before, after in zip(moves, moves[1:])]
+        # A pause is stillness seen within the run of at least twice the
+        # counter's own cadence and ``ETA_PAUSE_SECONDS`` (a coarse or jittery
+        # counter's uneven steps are its cadence, not pauses). Where one lies in
+        # the last ``ETA_PAUSED_WINDOW_SECONDS``, the rate spans that window,
+        # stillness included, so a
+        # download that stops and starts is never promised its moving pace.
+        # Otherwise it spans the last ``ETA_WINDOW_SECONDS``. Either way from
+        # the latest movement at least that long before the last one: both ends
+        # are movements, so a coarse counter is measured over whole steps.
+        cadence = statistics.median(gaps)
+        threshold = max(2 * cadence, ETA_PAUSE_SECONDS)
+        horizon = ETA_WINDOW_SECONDS
+        for index in range(len(gaps) - 1, -1, -1):
+            if moved_at - moves[index][0] > ETA_PAUSED_WINDOW_SECONDS:
+                break
+            if moves[index + 1][2] and gaps[index] >= threshold:
+                horizon = ETA_PAUSED_WINDOW_SECONDS
+                break
+        index, span = len(gaps), 0.0
+        while index > 0 and span < horizon - 1e-9:
+            index -= 1
+            span += gaps[index]
+        if span < ETA_MIN_SPAN_SECONDS:
             return None
-        rate = (moved - self._bytes_at(series, start)) / (moved_at - start)
+        rate = (moves[-1][1] - moves[index][1]) / span
         return (rate, now - moved_at > _SAMPLE_GRACE_SECONDS) if rate > 0 else None
 
     def acquisition_stalled(self, key: str) -> bool:
         """Whether an execution that moved has since been still for longer
         than ``ETA_HOLD_SECONDS``: sustained inactivity, as opposed to one that
         has not been measured yet (just started, never moved)."""
-        series = self._series.get(key)
-        if not series:
-            return False
-        moved_at = None
-        for before, sample in zip(series, list(series)[1:]):
-            if sample[1] > before[1]:
-                moved_at = sample[0]
+        moved_at = self._moved.get(key)
         return moved_at is not None and self.clock() - moved_at > ETA_HOLD_SECONDS
+
+    def acquisition_moving(self, key: str) -> bool:
+        """Whether an execution is acquiring now: observation is current and
+        its counter moved within ``ETA_HOLD_SECONDS``. Not a rate -- a writer
+        just started moves before it is measured."""
+        moved_at = self._moved.get(key)
+        return self._fresh() and moved_at is not None and self.clock() - moved_at <= ETA_HOLD_SECONDS
 
     def raise_sustained_peak(self) -> int | None:
         """Raise ``sustained_peak`` to the current sustained rate when that is
@@ -260,47 +330,123 @@ class ExecutionThroughputMeter:
         return float(before[1])
 
 
-def acquisition_eta(remaining_bytes: int | None, attempt_ids, meter: ExecutionThroughputMeter, *,
-                    estimated: bool = False) -> tuple[int, bool, bool] | None:
-    """A logical transfer's estimated time remaining, ``(whole seconds, held,
-    estimated)``, or ``None``: its remaining acquisition bytes over the summed
-    ``acquisition_rate`` of the executions acquiring them that have one, each
-    counted once.
+# One estimate: ``(seconds, held, estimated, indeterminate)``. ``seconds`` is a
+# whole number of seconds, or ``None`` with ``indeterminate`` set: acquisition
+# is going on but its time cannot be put into a number.
+Eta = tuple[int | None, bool, bool, bool]
 
+
+def acquisition_eta(remaining_bytes: int | None, attempt_ids, meter: ExecutionThroughputMeter, *,
+                    estimated: bool = False) -> Eta | None:
+    """A logical transfer's estimated time remaining from its writers'
+    measurements, before presentation (``EtaPresentation``), or ``None``.
+
+    ``remaining_bytes`` is its accountable remaining acquisition work, ``None``
+    when that cannot be accounted for; ``attempt_ids`` the writers acquiring it.
     Every writer's remaining work stays in the numerator. A writer not measured
     yet (just started: no run of movement as long as ``ETA_MIN_SPAN_SECONDS``)
     adds none to the denominator -- no rate is ever invented for it -- so the
     figure assumes the measured writers' pace for its work too, and is
-    ``estimated``. A writer that moved and has been still past the hold is
-    sustained inactivity (``acquisition_stalled``): there is no estimate, as
-    for a single writer. ``None`` also when no writer has a credible rate, the
-    remaining work is not positive, or the estimate does not fit
-    ``MAX_ETA_SECONDS``. Rounded up, so unfinished work never reads as no
-    time left. ``estimated`` is also set by the caller when the remaining work
-    is itself extrapolated. Held only while every writer is measured and held:
-    only then is the figure exactly the one last shown."""
+    ``estimated``. ``estimated`` is also set by the caller when the remaining
+    work is itself extrapolated. Rounded up, so unfinished work never reads as
+    no time left. Held only while every writer is measured and held: only then
+    is the figure exactly the one last shown.
+
+    Indeterminate -- acquisition goes on (a writer moved within the hold,
+    ``acquisition_moving``) but there is no number -- when the remaining work
+    is not accountable, no writer is measured yet, a writer that moved has been
+    still past the hold (sustained inactivity), or the time exceeds
+    ``MAX_ETA_SECONDS``. Without such movement: ``None``. Never for remaining
+    work of zero: what is left is finalization, not acquisition."""
     attempts = sorted(set(attempt_ids))
-    if remaining_bytes is None or remaining_bytes <= 0 or not attempts:
+    if not attempts or (remaining_bytes is not None and remaining_bytes <= 0):
         return None
-    if any(meter.acquisition_stalled(attempt) for attempt in attempts):
-        return None
+    moving = any(meter.acquisition_moving(attempt) for attempt in attempts)
+    indeterminate = (None, False, estimated, True) if moving else None
+    if remaining_bytes is None or any(meter.acquisition_stalled(attempt) for attempt in attempts):
+        return indeterminate
     rates = [meter.acquisition_rate(attempt) for attempt in attempts]
     measured = [rate for rate in rates if rate is not None]
     if not measured:
-        return None
+        return indeterminate
     total = sum(rate for rate, _held in measured)
     seconds = remaining_bytes / total if total > 0 else math.inf
-    if not math.isfinite(seconds) or seconds > MAX_ETA_SECONDS:
-        return None
-    seconds = max(1, math.ceil(seconds))
-    if seconds > MAX_ETA_SECONDS:
-        return None
+    if not math.isfinite(seconds) or math.ceil(seconds) > MAX_ETA_SECONDS:
+        return indeterminate
     complete = len(measured) == len(rates)
-    return seconds, complete and all(held for _rate, held in measured), estimated or not complete
+    return (max(1, math.ceil(seconds)), complete and all(held for _rate, held in measured),
+            estimated or not complete, False)
 
 
-def acquisition_eta_payload(eta: tuple[int, bool, bool] | None) -> dict | None:
+class EtaPresentation:
+    """The estimate as it is shown -- the one presentation state, kept by the
+    estimate's owner (``TransferEngine.acquisition_etas``) for every surface.
+
+    Per logical transfer and the basis it is measured from (its writers and
+    which of them are measured): the predicted finish is smoothed over
+    ``ETA_SMOOTHING_SECONDS`` of time (an exponential
+    weight of elapsed time, so irregular passes weigh by time, never by count),
+    and the shown figure counts down with elapsed time, moving to the smoothed
+    prediction only once they differ by more than ``ETA_STEADY_SECONDS`` or
+    ``ETA_STEADY_SHARE`` of it -- a change of pace or of remaining work beyond
+    a 5 s measurement's scatter shows at once. A held estimate shows exactly
+    the figure last shown. A transfer with no estimate, an indeterminate one or
+    a different basis starts afresh: nothing smoothed survives an invalidation.
+
+    Ordered by observation time: each entry records the instant of the newest
+    figures presented and what was shown for them, and an invalidation leaves
+    that record (with nothing smoothed) rather than nothing. A caller whose
+    figures are older than that -- it read its clock before awaiting work a
+    newer caller finished first -- changes nothing, whatever it carries (a
+    figure, none, an indeterminate one or another basis), and is answered with
+    what the newer figures showed. Memory only; an entry not presented for
+    ``SUSTAINED_WINDOW_SECONDS`` is dropped."""
+
+    def __init__(self):
+        # transfer id -> (instant, shown, smoothing): what the newest figures
+        # presented (an ``Eta`` or ``None``) at that instant, and
+        # ``(basis, smoothed, aged)`` -- or ``None`` after an invalidation.
+        self._state: dict[int, tuple] = {}
+
+    def present(self, transfer_id: int, basis, eta: Eta | None, now: float) -> Eta | None:
+        state = self._state.get(transfer_id)
+        if state is not None and now < state[0]:
+            # A caller that read its figures before a newer one presented:
+            # what the newer figures showed stands, unmoved by the older.
+            return state[1]
+        smoothing = None if state is None else state[2]
+        if eta is None or eta[3]:
+            shown, smoothing = eta, None
+        elif smoothing is None or smoothing[0] != basis:
+            shown, smoothing = eta, (basis, float(eta[0]), float(eta[0]))
+        else:
+            seconds, held, estimated, _indeterminate = eta
+            _basis, smoothed, aged = smoothing
+            elapsed = now - state[0]
+            if not held:
+                predicted = smoothed - elapsed
+                smoothed = predicted + (1 - math.exp(-elapsed / ETA_SMOOTHING_SECONDS)) * (seconds - predicted)
+                aged -= elapsed
+                if abs(smoothed - aged) > max(ETA_STEADY_SECONDS, ETA_STEADY_SHARE * max(aged, 0.0)):
+                    aged = smoothed
+            # Held: the figure last shown, exactly -- nothing counts down.
+            shown, smoothing = (max(1, math.ceil(aged)), held, estimated, False), (basis, smoothed, aged)
+        self._state[transfer_id] = (now, shown, smoothing)
+        return shown
+
+    def retire(self, now: float, keep=()) -> None:
+        """Forget every transfer not presented recently, except ``keep``."""
+        for transfer_id in [key for key, state in self._state.items()
+                            if key not in keep and now - state[0] > SUSTAINED_WINDOW_SECONDS]:
+            del self._state[transfer_id]
+
+
+def acquisition_eta_payload(eta: Eta | None) -> dict | None:
     """The one public form of an estimate, for the list and its live
-    progress updates alike: ``{"seconds", "held", "estimated"}``, or ``None``
-    when the transfer has no credible estimate."""
-    return None if eta is None else {"seconds": int(eta[0]), "held": bool(eta[1]), "estimated": bool(eta[2])}
+    progress updates alike: ``{"seconds", "held", "estimated",
+    "indeterminate"}`` (``seconds`` null while indeterminate), or ``None`` when
+    the transfer has no estimate."""
+    if eta is None:
+        return None
+    return {"seconds": None if eta[0] is None else int(eta[0]), "held": bool(eta[1]),
+            "estimated": bool(eta[2]), "indeterminate": bool(eta[3])}

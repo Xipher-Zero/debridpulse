@@ -2,7 +2,8 @@ const { test, expect } = require('@playwright/test');
 
 // DP 1.0.14: a downloading transfer's estimated time remaining, beneath its
 // primary bar in Downloads. The browser renders the backend's one estimate
-// (``acquisition_eta``) -- HH:MM:SS, held, or "—" -- and never counts it down
+// (``acquisition_eta``) -- H:MM:SS or M:SS, held, "ETA ∞" while it acquires
+// without a number, or "—" -- and never counts it down
 // on its own. Mocked rows: no backend state is read or written.
 
 async function isolateExternalFonts(page) {
@@ -45,7 +46,7 @@ function cell(page, id) {
   return page.locator(`#t-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`);
 }
 
-test('the estimate renders as HH:MM:SS, held, or unavailable, and only while downloading', async ({ page }) => {
+test('the estimate renders compactly, held, infinite, or unavailable, and only while downloading', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await downloads(page, [
@@ -60,22 +61,44 @@ test('the estimate renders as HH:MM:SS, held, or unavailable, and only while dow
     item(9809, {seconds: 30, held: false}, {status: 'queued'}),
     item(9810, {seconds: 30, held: false}, {status: 'paused'}),
     item(9811, {seconds: 3725, held: false, estimated: true}),
+    item(9812, {seconds: 30, held: false}),
+    item(9813, {seconds: 210, held: false}),
+    item(9814, {seconds: 1830, held: false}),
+    item(9815, {seconds: 3599, held: false}),
+    item(9816, {seconds: 3600, held: false}),
+    item(9817, {seconds: 123 * 3600 + 30 * 60 + 30, held: false}),
+    item(9818, {seconds: null, held: false, estimated: false, indeterminate: true}),
+    item(9819, {seconds: null, held: false, estimated: true, indeterminate: true}),
+    item(9820, {seconds: null, held: false, estimated: false, indeterminate: true}, {status: 'queued'}),
   ]);
   const eta = id => cell(page, id).locator('[data-role="transfer-eta"]');
-  await expect(eta(9801)).toHaveText('ETA 01:02:05');
-  await expect(eta(9801)).toHaveAttribute('aria-label', 'Estimated time remaining 01:02:05');
+  await expect(eta(9801)).toHaveText('ETA 1:02:05');
+  await expect(eta(9801)).toHaveAttribute('aria-label', 'Estimated time remaining 1:02:05');
   await expect(eta(9801)).not.toHaveClass(/is-held/);
-  await expect(eta(9802)).toHaveText('ETA 01:02:05');
+  await expect(eta(9802)).toHaveText('ETA 1:02:05');
   await expect(eta(9802)).toHaveClass(/is-held/);
-  await expect(eta(9802)).toHaveAttribute('aria-label', 'Estimated time remaining 01:02:05, held');
+  await expect(eta(9802)).toHaveAttribute('aria-label', 'Estimated time remaining 1:02:05, held');
   await expect(eta(9803)).toHaveText('—');
   await expect(eta(9804)).toHaveText('ETA 100:01:05');
   await expect(eta(9805)).toHaveText('ETA 9999:59:59');
   for (const id of [9806, 9807, 9808]) await expect(eta(id)).toHaveText('—');
-  for (const id of [9809, 9810]) await expect(eta(id)).toHaveCount(0);
-  // A best-effort figure is marked "~", in text and in what is announced.
-  await expect(eta(9811)).toHaveText('ETA ~01:02:05');
-  await expect(eta(9811)).toHaveAttribute('aria-label', 'Estimated time remaining about 01:02:05');
+  for (const id of [9809, 9810, 9820]) await expect(eta(id)).toHaveCount(0);   // not downloading: none, not even ∞
+  // A best-effort figure carries no glyph: it is said in what is announced and its tooltip.
+  await expect(eta(9811)).toHaveText('ETA 1:02:05');
+  await expect(eta(9811)).toHaveAttribute('aria-label', 'Estimated time remaining about 1:02:05');
+  await expect(eta(9811)).toHaveAttribute('data-tooltip', /^Rough estimate/);
+  // Compact: M:SS under an hour, H:MM:SS from one, hours never wrapping.
+  const compact = {9812: 'ETA 0:30', 9813: 'ETA 3:30', 9814: 'ETA 30:30', 9815: 'ETA 59:59', 9816: 'ETA 1:00:00',
+                   9817: 'ETA 123:30:30'};
+  for (const [id, text] of Object.entries(compact)) await expect(eta(Number(id))).toHaveText(text);
+  // Acquiring without a number: infinity, never a figure, and said so.
+  for (const id of [9818, 9819]) {
+    await expect(eta(id)).toHaveText('ETA ∞');
+    await expect(eta(id)).toHaveClass(/is-indeterminate/);
+    await expect(eta(id)).toHaveAttribute('aria-label', 'Estimated time remaining: cannot be estimated while downloading');
+  }
+  expect(await page.locator('#t-tbody [data-role="transfer-eta"]').allInnerTexts()).not.toContainEqual(
+    expect.stringContaining('~'));
   // The primary percentage label is unchanged beside it.
   await expect(cell(page, 9801).locator('.prog-pct')).toHaveText('40%');
   expect(errors).toEqual([]);
@@ -114,8 +137,8 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
     expect(withEta.overflow, `width ${width}`).toBe(false);
     expect(withEta.whiteSpace).toBe('nowrap');
     expect(withEta.numeric).toContain('tabular-nums');
-    // A changing value never moves the row: "—" and every estimate under 100 h
-    // take the reserved width.
+    // A changing value never moves the row: "—", "ETA ∞" and every estimate
+    // under 1000 h take the reserved width.
     const heights = await page.evaluate(values => {
       const cell = document.querySelector('#t-tbody tr[data-torrent-id="9821"] [data-role="transfer-progress"]');
       const html = cell.innerHTML;
@@ -124,7 +147,8 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
                       values: values.map(height)};
       cell.innerHTML = html;
       return result;
-    }, [null, {seconds: 5, held: false}, {seconds: 99 * 3600 + 59 * 60 + 59, held: true, estimated: true}]);
+    }, [null, {seconds: 5, held: false}, {seconds: null, held: false, indeterminate: true},
+        {seconds: 999 * 3600 + 59 * 60 + 59, held: true, estimated: true}]);
     expect(new Set(heights.values).size, `width ${width}`).toBe(1);
     // Where the column has room, the row is exactly as tall as without an estimate.
     if (width === 1440) expect(Math.abs(heights.values[0] - heights.without)).toBeLessThanOrEqual(0.5);
@@ -141,25 +165,31 @@ test('a live progress update and a full refresh show the same estimate', async (
   await isolateExternalFonts(page);
   await downloads(page, [item(9831, {seconds: 90, held: false})]);
   const eta = cell(page, 9831).locator('[data-role="transfer-eta"]');
-  await expect(eta).toHaveText('ETA 00:01:30');
+  await expect(eta).toHaveText('ETA 1:30');
   const patch = update => page.evaluate(update => patchProgressOnlyTransferEvent(
     {progress_only: true, items: [{id: 9831, status: 'downloading', progress: 45, active_execution_progress: null,
                                    active_execution_basis: null, status_changed: false, ...update}]}), update);
   expect(await patch({acquisition_eta: {seconds: 85, held: false}})).toBe(true);
-  await expect(eta).toHaveText('ETA 00:01:25');
+  await expect(eta).toHaveText('ETA 1:25');
   const live = await cell(page, 9831).innerHTML();
   served[0] = {...served[0], progress: 45, acquisition_eta: {seconds: 85, held: false}};
   await page.evaluate(() => loadTorrents());
   expect(await cell(page, 9831).innerHTML()).toBe(live);           // one renderer, one truth
   await patch({acquisition_eta: {seconds: 85, held: true}});
-  await expect(eta).toHaveText('ETA 00:01:25');
+  await expect(eta).toHaveText('ETA 1:25');
   await expect(eta).toHaveClass(/is-held/);
+  await patch({acquisition_eta: {seconds: null, held: false, estimated: false, indeterminate: true}});
+  await expect(eta).toHaveText('ETA ∞');                            // acquiring, no number
+  const infinite = await cell(page, 9831).innerHTML();
+  served[0] = {...served[0], acquisition_eta: {seconds: null, held: false, estimated: false, indeterminate: true}};
+  await page.evaluate(() => loadTorrents());
+  expect(await cell(page, 9831).innerHTML()).toBe(infinite);       // the refresh agrees
   await patch({acquisition_eta: null});                             // past the hold: none
   await expect(eta).toHaveText('—');
   // Nothing counts it down between updates.
   await patch({acquisition_eta: {seconds: 60, held: false}});
   await page.waitForTimeout(2200);
-  await expect(eta).toHaveText('ETA 00:01:00');
+  await expect(eta).toHaveText('ETA 1:00');
   // A status change is never patched: the authoritative refresh decides.
   expect(await patch({status_changed: true, status: 'paused'})).toBe(false);
 });
@@ -198,13 +228,15 @@ test('Download Activity and Downloads show the same estimate, on refresh and on 
   const usenet = {...item(9851, {seconds: 90, held: false}, {progress: 0}), active_execution_progress: 47.9,
                   active_execution_basis: 'bytes'};
   await downloads(page, [usenet, item(9852, {seconds: 4000, held: false, estimated: true}), item(9853, null),
-                         item(9854, {seconds: 30, held: false}, {status: 'paused'})]);
+                         item(9854, {seconds: 30, held: false}, {status: 'paused'}),
+                         item(9855, {seconds: null, held: false, estimated: false, indeterminate: true})]);
   await page.evaluate(async () => { await loadRecent(); });
   const both = id => [cell(page, id), page.locator(`#dash-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`)];
   const etaText = async id => Promise.all(both(id).map(surface => surface.locator('[data-role="transfer-eta"]').allInnerTexts()));
   const same = async (id, expected) => expect(await etaText(id), `transfer ${id}`).toEqual([expected, expected]);
-  await same(9851, ['ETA 00:01:30']);
-  await same(9852, ['ETA ~01:06:40']);                                // approximate
+  await same(9851, ['ETA 1:30']);
+  await same(9852, ['ETA 1:06:40']);                                  // approximate: no glyph
+  await same(9855, ['ETA ∞']);                                        // acquiring, no number
   await same(9853, ['—']);                                            // unavailable
   await same(9854, []);                                               // not downloading: none on either
   for (const surface of both(9851)) await expect(surface.locator('.prog-pct')).toHaveText('47.9% estimated progress');
@@ -213,10 +245,12 @@ test('Download Activity and Downloads show the same estimate, on refresh and on 
                                    active_execution_basis: 'bytes', status_changed: false, ...update}]}), [id, update]);
   // A live update reaches both surfaces alike: a new figure, held, then none.
   expect(await patch(9851, {acquisition_eta: {seconds: 85, held: false}})).toBe(true);
-  await same(9851, ['ETA 00:01:25']);
+  await same(9851, ['ETA 1:25']);
   await patch(9851, {acquisition_eta: {seconds: 85, held: true}});
-  await same(9851, ['ETA 00:01:25']);
+  await same(9851, ['ETA 1:25']);
   for (const surface of both(9851)) await expect(surface.locator('[data-role="transfer-eta"]')).toHaveClass(/is-held/);
+  await patch(9851, {acquisition_eta: {seconds: null, held: false, estimated: false, indeterminate: true}});
+  await same(9851, ['ETA ∞']);
   await patch(9851, {acquisition_eta: null});
   await same(9851, ['—']);
   // A full refresh of each surface presents exactly what the live update left.
@@ -236,11 +270,11 @@ test('Download Activity and Downloads show the same estimate, on refresh and on 
 test('the percentage and its ETA share one line beneath the bar at every width that shows Progress', async ({ page }) => {
   await isolateExternalFonts(page);
   // The reported Usenet row (nothing verified, 47.9% acquired by the service),
-  // the widest line ("100.0%" and a best-effort estimate under 100 h) and a
+  // the widest line ("100.0%" and the widest estimate under 1000 h) and a
   // verified row with an in-flight lane.
   const usenet = {...item(9861, {seconds: 2318, held: false}, {progress: 0}), active_execution_progress: 47.9,
                   active_execution_basis: 'bytes'};
-  const widest = {...item(9862, {seconds: 99 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
+  const widest = {...item(9862, {seconds: 999 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
                   active_execution_progress: 100, active_execution_basis: 'bytes'};
   const verified = {...item(9863, {seconds: 2318, held: true}, {progress: 41}), active_execution_progress: 76,
                     active_execution_basis: 'bytes'};
@@ -287,7 +321,7 @@ test('Download Activity keeps the percentage and its ETA on one line at every wi
   await isolateExternalFonts(page);
   const usenet = {...item(9871, {seconds: 2318, held: false}, {progress: 0}), active_execution_progress: 47.9,
                   active_execution_basis: 'bytes'};
-  const widest = {...item(9872, {seconds: 99 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
+  const widest = {...item(9872, {seconds: 999 * 3600 + 59 * 60 + 59, held: false, estimated: true}, {progress: 0}),
                   active_execution_progress: 100, active_execution_basis: 'bytes'};
   const verified = {...item(9873, {seconds: 2318, held: true}, {progress: 41}), active_execution_progress: 76,
                     active_execution_basis: 'bytes'};

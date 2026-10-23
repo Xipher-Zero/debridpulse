@@ -30,9 +30,12 @@ from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 from transfers.runtime_telemetry import (
-    ETA_HOLD_SECONDS, ETA_MIN_SPAN_SECONDS, ETA_WINDOW_SECONDS, MAX_ETA_SECONDS, ExecutionThroughputMeter,
-    acquisition_eta, acquisition_eta_payload,
+    ETA_HOLD_SECONDS, ETA_MIN_SPAN_SECONDS, ETA_PAUSED_WINDOW_SECONDS, ETA_SMOOTHING_SECONDS, ETA_STEADY_SECONDS,
+    ETA_STEADY_SHARE, ETA_WINDOW_SECONDS, MAX_ETA_SECONDS, EtaPresentation, ExecutionThroughputMeter, acquisition_eta,
+    acquisition_eta_payload,
 )
+
+INDETERMINATE = (None, False, False, True)
 
 MIB = 1024 * 1024
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +67,8 @@ def _run(meter, clock, counters, seconds, rates, step=0.5):
 
 def test_the_estimator_derives_its_bounds_from_the_meters_own_windows():
     from transfers import runtime_telemetry as telemetry
-    assert ETA_WINDOW_SECONDS == telemetry.SUSTAINED_WINDOW_SECONDS == 30.0
+    assert ETA_WINDOW_SECONDS == 5.0                                  # the presentation horizon, not 30 s
+    assert ETA_SMOOTHING_SECONDS == ETA_STEADY_SECONDS == 5.0 and ETA_STEADY_SHARE == 0.03
     assert ETA_MIN_SPAN_SECONDS == telemetry.WINDOW_SECONDS == 4.0
     assert ETA_HOLD_SECONDS == telemetry._SUSTAINED_GAP_SECONDS == 5.0
     assert MAX_ETA_SECONDS == 9999 * 3600 + 59 * 60 + 59
@@ -89,16 +93,17 @@ def test_a_steady_download_counts_down_by_the_time_that_passed():
         _run(meter, clock, counters, 1, {"a": 4 * MIB})
         remaining = total - counters["a"]
         seen.append(acquisition_eta(remaining, ["a"], meter))
-    expected = [(math.ceil((total - (10 + second) * 4 * MIB) / (4 * MIB)), False, False) for second in range(1, 11)]
+    expected = [(math.ceil((total - (10 + second) * 4 * MIB) / (4 * MIB)), False, False, False) for second in range(1, 11)]
     assert seen == expected                                         # 89, 88, ... 80: one second per second
     assert all(later[0] < earlier[0] for earlier, later in zip(seen, seen[1:]))
 
 
 def test_a_bursty_coarse_counter_moves_the_estimate_gently():
     """A counter that only moves in 8 MiB steps every 2 s (4 MiB/s on average)
-    swings the 4 s presentation speed between bursts; the estimate, measured
-    over up to the sustained window, stays near the true average."""
+    swings a 5 s measurement between bursts; the presented estimate stays near
+    the true average and never jumps upward of note."""
     meter, clock = _meter()
+    presentation = EtaPresentation()
     counter, total, estimates = 0, 2048 * MIB, []
     for step in range(120):                                         # 60 s
         clock.now += 0.5
@@ -106,7 +111,8 @@ def test_a_bursty_coarse_counter_moves_the_estimate_gently():
             counter += 8 * MIB
         meter.record({"a": (clock.now, counter)})
         if step >= 60:
-            estimates.append(acquisition_eta(total - counter, ["a"], meter)[0])
+            estimates.append(presentation.present(1, ("a",), acquisition_eta(total - counter, ["a"], meter),
+                                                  clock.now)[0])
     true_seconds = [(total - 4 * MIB * (0.5 * (step + 1))) / (4 * MIB) for step in range(60, 120)]
     for got, true in zip(estimates, true_seconds):
         assert abs(got - true) <= 0.15 * true                       # never an absurd swing
@@ -161,8 +167,10 @@ def test_a_resumed_download_is_measured_afresh_never_from_its_old_rate():
     counters, total = {}, 1000 * MIB
     _run(meter, clock, counters, 10, {"a": 1 * MIB})
     _run(meter, clock, counters, 10, {"a": 0})                      # a sustained stall
+    assert acquisition_eta(total - counters["a"], ["a"], meter) is None   # still past the hold: none at all
     _run(meter, clock, counters, 3.5, {"a": 5 * MIB})
-    assert acquisition_eta(total - counters["a"], ["a"], meter) is None, "no resurrected estimate"
+    # Moving again but not measured yet: acquisition without a number, never the old rate's figure.
+    assert acquisition_eta(total - counters["a"], ["a"], meter) == INDETERMINATE, "no resurrected estimate"
     _run(meter, clock, counters, 1.5, {"a": 5 * MIB})
     rate, _held = meter.acquisition_rate("a")
     assert rate == pytest.approx(5 * MIB), "neither the stall nor the old 1 MiB/s dilutes the new run"
@@ -191,47 +199,295 @@ def test_concurrent_attempts_are_summed_and_only_the_named_ones():
     meter, clock = _meter()
     counters = {}
     _run(meter, clock, counters, 8, {"a": 1 * MIB, "b": 3 * MIB, "other": 50 * MIB})
-    assert acquisition_eta(40 * MIB, ["a", "b"], meter) == (10, False, False)   # 40 MiB at 4 MiB/s
-    assert acquisition_eta(40 * MIB, ["a", "a", "b"], meter) == (10, False, False)   # each attempt once
+    assert acquisition_eta(40 * MIB, ["a", "b"], meter) == (10, False, False, False)   # 40 MiB at 4 MiB/s
+    assert acquisition_eta(40 * MIB, ["a", "a", "b"], meter) == (10, False, False, False)   # each attempt once
     # A writer without a rate yet keeps its bytes in the work but adds no rate:
     # 40 MiB over the 1 MiB/s actually measured, never an invented speed.
-    assert acquisition_eta(40 * MIB, ["a", "missing"], meter) == (40, False, True)
+    assert acquisition_eta(40 * MIB, ["a", "missing"], meter) == (40, False, True, False)
     assert acquisition_eta(40 * MIB, ["missing"], meter) is None          # nothing measured: none
 
 
-def test_one_writer_still_past_the_hold_clears_the_whole_estimate():
+def test_one_writer_still_past_the_hold_makes_the_whole_estimate_indeterminate():
     """A writer not measured yet adds bytes but no rate; one that moved and has
-    been still past the hold is sustained inactivity -- the transfer has no
-    estimate, exactly as a single still writer has none."""
+    been still past the hold is sustained inactivity -- no countdown at the
+    others' pace: while another still moves the transfer is acquiring without
+    a number (indeterminate), and once none moves it has no estimate at all."""
     meter, clock = _meter()
     counters = {}
     _run(meter, clock, counters, 8, {"a": 2 * MIB, "b": 2 * MIB})
-    assert acquisition_eta(80 * MIB, ["a", "b"], meter) == (20, False, False)
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) == (20, False, False, False)
     _run(meter, clock, counters, ETA_HOLD_SECONDS, {"a": 2 * MIB, "b": 0})
     assert acquisition_eta(80 * MIB, ["a", "b"], meter) is not None    # b briefly still: within the hold
     _run(meter, clock, counters, 0.5, {"a": 2 * MIB, "b": 0})
-    assert acquisition_eta(80 * MIB, ["a", "b"], meter) is None        # b stalled: no countdown at a's pace
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) == INDETERMINATE   # b stalled: no countdown at a's pace
     # A writer that has not moved at all yet is new, not stalled: it does not clear it.
     meter.record({**{key: (clock.now, value) for key, value in counters.items()}, "c": (clock.now, 0)})
     assert not meter.acquisition_stalled("c")
-    assert acquisition_eta(80 * MIB, ["a", "c"], meter) == (40, False, True)
+    assert acquisition_eta(80 * MIB, ["a", "c"], meter) == (40, False, True, False)
+    _run(meter, clock, counters, ETA_HOLD_SECONDS + 0.5, {"a": 0, "b": 0})
+    assert acquisition_eta(80 * MIB, ["a", "b"], meter) is None        # nothing moves: no estimate, not infinity
 
 
 def test_rounding_and_the_representable_ceiling():
     meter, clock = _meter()
     counters = {}
     _run(meter, clock, counters, 8, {"a": 1000})                    # exactly 1000 B/s
-    assert acquisition_eta(1, ["a"], meter) == (1, False, False)           # a fraction of a second is 1 s, never 0
-    assert acquisition_eta(1500, ["a"], meter) == (2, False, False)        # rounded up
-    assert acquisition_eta(MAX_ETA_SECONDS * 1000, ["a"], meter) == (MAX_ETA_SECONDS, False, False)
-    assert acquisition_eta(MAX_ETA_SECONDS * 1000 + 1, ["a"], meter) is None
-    assert acquisition_eta(100 * 3600 * 1000, ["a"], meter) == (360000, False, False)   # 100 h stays 100 h
+    assert acquisition_eta(1, ["a"], meter) == (1, False, False, False)           # a fraction of a second is 1 s, never 0
+    assert acquisition_eta(1500, ["a"], meter) == (2, False, False, False)        # rounded up
+    assert acquisition_eta(MAX_ETA_SECONDS * 1000, ["a"], meter) == (MAX_ETA_SECONDS, False, False, False)
+    assert acquisition_eta(MAX_ETA_SECONDS * 1000 + 1, ["a"], meter) == INDETERMINATE   # past the ceiling, moving
+    assert acquisition_eta(100 * 3600 * 1000, ["a"], meter) == (360000, False, False, False)   # 100 h stays 100 h
     assert acquisition_eta(0, ["a"], meter) is None                  # no remaining work is no estimate
-    assert acquisition_eta(None, ["a"], meter) is None
+    assert acquisition_eta(None, ["a"], meter) == INDETERMINATE      # unaccountable work, moving
+    assert acquisition_eta(None, ["a"], meter, estimated=True) == (None, False, True, True)
     assert acquisition_eta(10, [], meter) is None
+    assert acquisition_eta_payload(INDETERMINATE) == {"seconds": None, "held": False, "estimated": False,
+                                                      "indeterminate": True}
     assert acquisition_eta_payload(None) is None
-    assert acquisition_eta_payload((61, True, False)) == {"seconds": 61, "held": True, "estimated": False}
-    assert acquisition_eta(1500, ["a"], meter, estimated=True) == (2, False, True)   # extrapolated work
+    assert acquisition_eta_payload((61, True, False, False)) == {"seconds": 61, "held": True, "estimated": False, "indeterminate": False}
+    assert acquisition_eta(1500, ["a"], meter, estimated=True) == (2, False, True, False)   # extrapolated work
+
+
+# ── what is shown: the one presentation of the estimate (stepped clock) ──────
+
+def _replay(noise, *, change_at=None, seconds=90, total=4096 * MIB, seed=1105):
+    """4 MiB/s (2 MiB/s from ``change_at``) with each 0.5 s pass's bytes off by
+    up to ``noise`` of the rate, seeded: ``[(t, raw seconds, shown seconds,
+    true seconds)]`` for every pass with an estimate. The truth is the remaining
+    bytes over the true rate, never the estimator's own figure."""
+    import random
+
+    rnd, (meter, clock), presentation = random.Random(seed), _meter(), EtaPresentation()
+    counter, timeline = 0, []
+    for index in range(int(seconds / 0.5)):
+        clock.now += 0.5
+        elapsed = (index + 1) * 0.5
+        rate = 2 * MIB if change_at is not None and elapsed >= change_at else 4 * MIB
+        counter += int(rate * 0.5 * (1 + rnd.uniform(-noise, noise)))
+        meter.record({"a": (clock.now, counter)})
+        raw = acquisition_eta(total - counter, ["a"], meter)
+        shown = presentation.present(1, ("a",), raw, clock.now)
+        if raw is not None and raw[0] is not None:
+            timeline.append((elapsed, raw[0], shown[0], (total - counter) / rate))
+    return timeline
+
+
+def _replaced(figures):
+    """Passes on which the figure did not simply count down by the 0.5 s that
+    passed (one second of rounding allowed): a new figure was put up."""
+    return sum(1 for before, after in zip(figures, figures[1:]) if abs(after - (before - 0.5)) > 1)
+
+
+@pytest.mark.parametrize("noise", [0.2, 0.5])
+def test_a_jittery_rate_is_shown_as_a_steady_countdown(noise):
+    """The measurement's scatter is no longer put up every 0.5 s: the shown
+    figure counts down, replaced on a small share of passes, and is no further
+    from the truth than the raw measurement."""
+    timeline = _replay(noise)
+    raw, shown = [item[1] for item in timeline], [item[2] for item in timeline]
+    error = lambda figures: sum(abs(got - item[3]) / item[3] for got, item in zip(figures, timeline)) / len(timeline)
+    assert _replaced(raw) > 0.9 * len(raw)                               # before: a new figure nearly every pass
+    assert _replaced(shown) <= 0.15 * len(shown)                         # after: a countdown
+    assert error(shown) <= error(raw)
+    assert error(shown) <= (0.04 if noise == 0.2 else 0.08)
+
+
+def test_a_steady_rate_is_shown_exactly():
+    timeline = _replay(0.0)
+    assert all(abs(shown - raw) <= 1 for _t, raw, shown, _true in timeline)
+    assert _replaced([item[2] for item in timeline]) == 0
+
+
+def test_a_sustained_change_of_pace_shows_within_seconds_and_settles():
+    """The rate halves at 40 s (the truth doubles). The shown figure starts to
+    move within the 5 s horizon, is within 10 % of the truth within 15 s, and
+    settles inside the steady band -- not the half-minute slide of a 30 s
+    window."""
+    timeline = {round(t * 2): (shown, true) for t, _raw, shown, true in _replay(0.0, change_at=40, seconds=80)}
+    before = timeline[2 * 39][0]
+    assert timeline[2 * 45][0] > before + 100                            # moving within 5 s
+    assert all(abs(shown - true) <= 0.10 * true for key, (shown, true) in timeline.items() if key >= 2 * 55)
+    assert all(abs(shown - true) <= ETA_STEADY_SHARE * true + 2 for key, (shown, true) in timeline.items()
+               if key >= 2 * 65)
+
+
+def test_a_held_estimate_is_shown_frozen_then_counts_on_from_it():
+    meter, clock = _meter()
+    presentation, counters, total = EtaPresentation(), {}, 400 * MIB
+
+    def shown():
+        return presentation.present(1, ("a",), acquisition_eta(total - counters["a"], ["a"], meter), clock.now)
+
+    for _ in range(20):
+        _run(meter, clock, counters, 0.5, {"a": 4 * MIB})
+        last = shown()
+    frozen = None
+    for _ in range(8):                                                   # 4 s still: within the hold
+        _run(meter, clock, counters, 0.5, {"a": 0})
+        figure = shown()
+        if figure[1]:
+            frozen = frozen or figure
+            assert figure == frozen                                      # held: exactly the same, never counted down
+        else:
+            assert last[0] - 2 <= figure[0] <= last[0]                   # the presentation grace: still counting down
+    assert frozen is not None and last[0] - 2 <= frozen[0] <= last[0]
+    assert frozen == (frozen[0], True, False, False)
+    # Resumed: a 4 s pause is part of the pace measured (``ETA_PAUSED_WINDOW_SECONDS``,
+    # stillness included), so the figure may rise by at most that share --
+    # smoothed, each step at most the steady band plus one smoothing step
+    # toward the raw figure, never a jump to the raw figure.
+    weight = 1 - math.exp(-0.5 / ETA_SMOOTHING_SECONDS)
+    before = frozen[0]
+    for _ in range(12):
+        _run(meter, clock, counters, 0.5, {"a": 4 * MIB})
+        raw = acquisition_eta(total - counters["a"], ["a"], meter)
+        figure = shown()
+        true = (total - counters["a"]) / (4 * MIB)
+        assert figure[1] is False and true - 1.5 <= figure[0] <= true * (1 + 4 / 10)
+        bound = max(ETA_STEADY_SECONDS, ETA_STEADY_SHARE * before) + weight * abs(raw[0] - before) + 1.5
+        assert abs(figure[0] - (before - 0.5)) <= bound
+        before = figure[0]
+
+
+@pytest.mark.parametrize("moving, still", [(1, 3), (3, 4.5), (4, 3), (6, 4.5), (8, 3), (12, 4.5)])
+def test_a_download_that_stops_and_starts_is_shown_at_its_true_average(moving, still):
+    """Moving at 1000 B/s for ``moving`` seconds, then still for ``still``
+    (within the hold), repeatedly: the pace is the average, stillness
+    included -- never the moving rate's promise, never a saw-tooth."""
+    meter, clock = _meter()
+    presentation, counter, total, average = EtaPresentation(), 0, 10 ** 7, 1000 * moving / (moving + still)
+    figures = []
+    for index in range(400):                                             # 200 s
+        clock.now += 0.5
+        if 0 < ((index + 1) * 0.5) % (moving + still) <= moving:
+            counter += 500
+        meter.record({"a": (clock.now, counter)})
+        shown = presentation.present(1, ("a",), acquisition_eta(total - counter, ["a"], meter), clock.now)
+        if index >= 120 and shown is not None:
+            figures.append((shown[0], (total - counter) / average))
+    assert len(figures) == 280                                           # a figure on every pass
+    for shown, true in figures:
+        assert 0.85 * true <= shown <= 1.10 * true, (shown, true)
+    assert _replaced([shown for shown, _true in figures]) <= 0.20 * len(figures)   # a 15 s window across stop-go cycles
+
+
+@pytest.mark.parametrize("counter", ["steps_0_7s", "random_writes"])
+def test_an_uneven_counter_is_no_pause_and_a_change_of_pace_shows_within_seconds(counter):
+    """A counter that steps every 0.7 s (seen by 0.5 s passes) is uneven,
+    never paused: the rate stays on the 5 s window, so the pace halving at 60 s
+    is measured within 10 s -- not a 30 s slide. One written at random
+    instants is still at times for seconds, which is a pause: it is measured
+    within the paused window, never later."""
+    import random
+
+    rnd, (meter, clock) = random.Random(7), _meter()
+    total, writes, at = 0, [], 0.0
+    while at < 90:                                                       # the writes, 1 MB/s then 0.5 MB/s
+        at += 0.7 if counter == "steps_0_7s" else rnd.expovariate(1 / 0.6)
+        writes.append(at)
+    for index in range(180):
+        clock.now += 0.5
+        elapsed = (index + 1) * 0.5
+        while writes and writes[0] <= elapsed:
+            instant = writes.pop(0)
+            total = int(min(instant, 60) * 1_000_000 + max(0.0, instant - 60) * 500_000)
+        meter.record({"a": (clock.now, total)})
+        if elapsed == (70 if counter == "steps_0_7s" else 60 + ETA_PAUSED_WINDOW_SECONDS + 1):
+            rate, _held = meter.acquisition_rate("a")
+            assert rate == pytest.approx(500_000, rel=0.15)
+
+
+def test_an_invalidated_estimate_starts_afresh():
+    """No estimate, an indeterminate one, or a new basis (a writer started or
+    became measured): nothing smoothed survives; the next figure is the raw
+    one exactly."""
+    presentation = EtaPresentation()
+    assert presentation.present(1, ("a",), (100, False, False, False), 0.0) == (100, False, False, False)
+    assert presentation.present(1, ("a",), (300, False, False, False), 0.5)[0] < 300   # smoothed toward it
+    now = 1.0                                                            # each figure newer than the last
+    for invalidation, basis in ((None, ("a",)), (INDETERMINATE, ("a",)), ((50, False, False, False), ("a", "b"))):
+        assert presentation.present(1, basis, invalidation, now) == invalidation
+        assert presentation.present(1, ("a",), (300, False, False, False), now + 0.5) == (300, False, False, False)
+        now += 1.0
+    # The engine's basis names which writers are measured, too.
+    assert presentation.present(1, (("a", "b"), ("a",)), (300, False, True, False), now) == (300, False, True, False)
+    assert presentation.present(1, (("a", "b"), ("a", "b")), (100, False, False, False), now + 0.5) == (
+        100, False, False, False)
+
+
+FINITE = (100, False, False, False)
+
+
+@pytest.mark.parametrize("older", [
+    pytest.param((("a",), (950, False, False, False)), id="changed-basis"),
+    pytest.param((("b",), None), id="none"),
+    pytest.param((("b",), INDETERMINATE), id="indeterminate"),
+    pytest.param((("b",), (950, True, True, False)), id="same-basis-held-estimated"),
+    pytest.param((("b",), (950, False, False, False)), id="same-basis"),
+])
+def test_older_figures_finishing_after_newer_finite_ones_change_nothing(older):
+    """Writer B's figures, observed at 100, are presented first; figures read
+    at 99 (writer A's basis, none, indeterminate, or B's own with any flags)
+    finish after them: they are answered with what B's showed and change
+    nothing -- B's next figures continue smoothing, never start afresh."""
+    basis, eta = older
+    presentation, control = EtaPresentation(), EtaPresentation()
+    for subject in (presentation, control):
+        subject.present(1, ("b",), (110, False, False, False), 98.0)
+        assert subject.present(1, ("b",), FINITE, 100.0) == (110 - 2, False, False, False)
+    assert presentation.present(1, basis, eta, 99.0) == (108, False, False, False)
+    assert presentation._state == control._state                      # nothing moved
+    for at, raw in ((100.5, (60, False, False, False)), (101.0, (60, True, False, False)), (101.5, FINITE)):
+        assert presentation.present(1, ("b",), raw, at) == control.present(1, ("b",), raw, at)
+    assert presentation.present(1, ("b",), (60, False, False, False), 102.0)[0] != 60     # still smoothing
+
+
+@pytest.mark.parametrize("newer", [pytest.param(None, id="none"), pytest.param(INDETERMINATE, id="indeterminate")])
+def test_older_finite_figures_never_revive_a_newer_invalidation(newer):
+    """A newer invalidation stands against older finite figures: they are
+    answered with it, and the next current figure starts afresh."""
+    presentation = EtaPresentation()
+    presentation.present(1, ("b",), FINITE, 98.0)
+    assert presentation.present(1, ("b",), newer, 100.0) == newer
+    for older in (FINITE, (950, True, True, False), (950, False, False, False)):
+        for basis in (("b",), ("a",)):
+            assert presentation.present(1, basis, older, 99.0) == newer
+    assert presentation._state[1] == (100.0, newer, None)
+    assert presentation.present(1, ("b",), (300, False, False, False), 100.5) == (300, False, False, False)
+
+
+def test_a_newer_invalidation_takes_effect_at_once():
+    """Ordering never delays a genuinely newer transition: none or an
+    indeterminate figure replaces a finite one the moment it is newer, and
+    figures at the same instant are current, not older."""
+    presentation = EtaPresentation()
+    presentation.present(1, ("b",), FINITE, 100.0)
+    assert presentation.present(1, ("b",), INDETERMINATE, 100.0) == INDETERMINATE
+    assert presentation.present(1, ("b",), None, 100.5) is None
+    assert presentation.present(1, ("b",), FINITE, 101.0) == FINITE
+
+
+def test_the_ordering_fence_is_retired_with_its_entry():
+    """An invalidation keeps a fence, bounded like every entry: dropped once
+    not presented for the retention window, after which nothing is kept."""
+    presentation = EtaPresentation()
+    presentation.present(1, ("a",), FINITE, 0.0)
+    presentation.present(1, ("a",), None, 1.0)
+    presentation.present(2, ("b",), INDETERMINATE, 1.0)
+    presentation.retire(30.0)
+    assert set(presentation._state) == {1, 2}
+    presentation.retire(31.5)
+    assert presentation._state == {}
+
+
+def test_presentation_state_is_bounded_to_transfers_presented_recently():
+    presentation = EtaPresentation()
+    presentation.present(1, ("a",), (100, False, False, False), 0.0)
+    presentation.present(2, ("b",), (100, False, False, False), 0.0)
+    presentation.retire(25.0, keep={2})
+    assert set(presentation._state) == {1, 2}
+    presentation.retire(31.0, keep={2})
+    assert set(presentation._state) == {2}                               # kept only while it is presented
 
 
 # ── the logical transfer's remaining work (real repository and engine) ──────────
@@ -287,13 +543,49 @@ async def test_one_transfer_estimate_is_its_writers_remaining_bytes_over_their_r
     [transfer] = core.transfers
     [attempt] = await _writers(core, transfer)
     _started(core, attempt, 400 * MIB)
+    assert await core.engine.acquisition_etas([transfer]) == {}       # nothing moved yet: no estimate
     await _acquire(core, 3, {attempt: 400 * MIB}, {attempt: 4 * MIB})
-    assert await core.engine.acquisition_etas([transfer]) == {}       # still measuring
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: INDETERMINATE}   # moving, still measuring
     await _acquire(core, 7, {attempt: 400 * MIB}, {attempt: 4 * MIB})
     assert await core.repository.acquisition_work([transfer]) == {transfer: (360 * MIB, (attempt,), False)}
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False, False)}
     await _acquire(core, 5, {attempt: 400 * MIB}, {attempt: 4 * MIB})
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (85, False, False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (85, False, False, False)}
+
+
+@pytest.mark.asyncio
+async def test_an_older_overlapping_pass_finishing_last_changes_nothing(tmp_path, monkeypatch):
+    """``acquisition_etas`` reads its clock before awaiting the remaining
+    work. A pass that read the work while the transfer was acquiring, but
+    finishes after a newer pass that found it acquiring no more, is answered
+    with the newer pass's answer (no estimate) and revives nothing."""
+    import asyncio
+
+    core = await _core(tmp_path, monkeypatch)
+    [transfer] = core.transfers
+    [attempt] = await _writers(core, transfer)
+    _started(core, attempt, 400 * MIB)
+    await _acquire(core, 10, {attempt: 400 * MIB}, {attempt: 4 * MIB})
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False, False)}
+    work, gate, read = core.repository.acquisition_work, asyncio.Event(), []
+
+    async def overlapping(ids):
+        if not read:
+            read.append(await work(ids))                                  # the older pass reads first ...
+            await gate.wait()                                             # ... and finishes last
+            return read[0]
+        return {}                                                         # the newer: acquiring no more
+
+    monkeypatch.setattr(core.repository, "acquisition_work", overlapping)
+    older = asyncio.create_task(core.engine.acquisition_etas([transfer]))
+    while not read:
+        await asyncio.sleep(0)
+    await _acquire(core, 0.5, {attempt: 400 * MIB}, {attempt: 4 * MIB})
+    assert await core.engine.acquisition_etas([transfer]) == {}           # newer: no estimate, at once
+    standing = dict(core.engine.eta_presentation._state)
+    gate.set()
+    assert await older == {}                                              # never the obsolete figure
+    assert core.engine.eta_presentation._state == standing
 
 
 @pytest.mark.asyncio
@@ -307,7 +599,7 @@ async def test_concurrent_transfers_never_share_a_rate(tmp_path, monkeypatch):
         _started(core, attempt, total)
     await _acquire(core, 10, totals, {a: 1 * MIB, b: 4 * MIB})
     etas = await core.engine.acquisition_etas([slow, fast])
-    assert etas == {slow: (90, False, False), fast: (15, False, False)}             # 90 MiB at 1, 60 MiB at 4
+    assert etas == {slow: (90, False, False, False), fast: (15, False, False, False)}             # 90 MiB at 1, 60 MiB at 4
     # The global speed (5 MiB/s) would have claimed 18 s and 12 s.
     assert core.engine.throughput.current() == 5 * MIB
 
@@ -323,7 +615,7 @@ async def test_concurrent_artifacts_of_one_transfer_are_one_estimate(tmp_path, m
     await _acquire(core, 10, totals, {a: 1 * MIB, b: 3 * MIB})
     work = await core.repository.acquisition_work([transfer])
     assert work == {transfer: (90 * MIB + 270 * MIB, tuple(sorted((a, b))), False)}   # each writer once
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False)}   # 360 MiB at 4 MiB/s
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (90, False, False, False)}   # 360 MiB at 4 MiB/s
 
 
 @pytest.mark.asyncio
@@ -342,7 +634,7 @@ async def test_a_waiting_member_of_known_size_is_remaining_work(tmp_path, monkey
     await _acquire(core, 10, {attempt: 100 * MIB}, {attempt: 4 * MIB})
     work = await core.repository.acquisition_work([transfer])
     assert work == {transfer: (60 * MIB + 600 * MIB, (attempt,), False)}
-    assert await core.engine.acquisition_etas([transfer]) == {transfer: (165, False, False)}   # not the writer's 15 s
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: (165, False, False, False)}   # not the writer's 15 s
 
 
 @pytest.mark.asyncio
@@ -363,15 +655,15 @@ async def test_writers_that_start_apart_never_suppress_the_estimate(tmp_path, mo
     await _acquire(core, 4.5, totals, {a: rates[a]})                      # only a has moved for 4 s
     remaining = sum(totals.values()) - int(4.5 * rates[a])
     assert await core.engine.acquisition_etas([transfer]) == {
-        transfer: (math.ceil(remaining / rates[a]), False, True)}        # a's rate alone: never 0, never None
+        transfer: (math.ceil(remaining / rates[a]), False, True, False)}        # a's rate alone: never 0, never None
     await _acquire(core, 2, totals, {a: rates[a], b: rates[b]})
     eta = (await core.engine.acquisition_etas([transfer]))[transfer]
     assert eta[2] is True                                                # c not measured yet
     await _acquire(core, 6, totals, rates)
     done = {attempt: core.executor.jobs[attempt].progress.completed_bytes for attempt in totals}
     remaining = sum(totals[attempt] - done[attempt] for attempt in totals)
-    seconds, held, estimated = (await core.engine.acquisition_etas([transfer]))[transfer]
-    assert (held, estimated) == (False, False)                           # every writer measured: exact
+    seconds, held, estimated, indeterminate = (await core.engine.acquisition_etas([transfer]))[transfer]
+    assert (held, estimated, indeterminate) == (False, False, False)                           # every writer measured: exact
     assert seconds == pytest.approx(remaining / sum(rates.values()), rel=0.02)
 
 
@@ -396,8 +688,8 @@ async def test_measured_bytes_without_an_exact_total_give_a_best_effort_estimate
     [(remaining, attempts, estimated)] = (await core.repository.acquisition_work([transfer])).values()
     assert attempts == (attempt,) and estimated is True
     assert remaining == pytest.approx(80 * MIB - completed, rel=0.01)    # 68 MiB, from 12 MiB measured
-    seconds, held, rough = (await core.engine.acquisition_etas([transfer]))[transfer]
-    assert rough is True and held is False
+    seconds, held, rough, indeterminate = (await core.engine.acquisition_etas([transfer]))[transfer]
+    assert rough is True and held is False and indeterminate is False
     assert seconds == math.ceil(remaining / (2 * MIB))
 
 
@@ -420,11 +712,15 @@ async def test_a_usenet_download_has_an_estimate_from_the_services_own_counters(
         clock.now += 0.5
         job.mbleft = round(job.mbleft - 2.0, 2)
     await mixed.engine.sample_throughput()
-    assert await mixed.engine.acquisition_etas([transfer.id]) == {transfer.id: (math.ceil(968 / 4), False, False)}
+    assert await mixed.engine.acquisition_etas([transfer.id]) == {transfer.id: (math.ceil(968 / 4), False, False, False)}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unprovable", ["unknown_size", "open_request", "error_member"])
-async def test_work_that_cannot_be_proven_complete_has_no_estimate(tmp_path, monkeypatch, unprovable):
+async def test_work_that_cannot_be_proven_complete_is_indeterminate_while_acquiring(tmp_path, monkeypatch,
+                                                                                    unprovable):
+    """No partial number: the transfer acquires, but its whole remaining work
+    cannot be put into bytes -- an indeterminate estimate, and none at all
+    once nothing moves."""
     core = await _core(tmp_path, monkeypatch, files=2, width=1)
     [transfer] = core.transfers
     [attempt] = await _writers(core, transfer)
@@ -440,13 +736,18 @@ async def test_work_that_cannot_be_proven_complete_has_no_estimate(tmp_path, mon
         await db.commit()
     _started(core, attempt, 100 * MIB)
     await _acquire(core, 10, {attempt: 100 * MIB}, {attempt: 4 * MIB})
-    assert await core.repository.acquisition_work([transfer]) == {}
+    assert await core.repository.acquisition_work([transfer]) == {transfer: (None, (attempt,), False)}
+    assert await core.engine.acquisition_etas([transfer]) == {transfer: INDETERMINATE}
+    await _acquire(core, ETA_HOLD_SECONDS + 0.5, {attempt: 100 * MIB}, {attempt: 0})
     assert await core.engine.acquisition_etas([transfer]) == {}
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scope", ["units", "processing", "estimated_only"])
 async def test_a_writer_with_nothing_measured_or_past_acquisition_has_no_estimate(tmp_path, monkeypatch, scope):
+    """A writer counting only parts or a percentage moves no byte counter: no
+    accountable work and no movement, so no estimate -- not infinity. One past
+    acquisition (processing) is no acquiring writer at all."""
     core = await _core(tmp_path, monkeypatch)
     [transfer] = core.transfers
     [attempt] = await _writers(core, transfer)
@@ -461,7 +762,9 @@ async def test_a_writer_with_nothing_measured_or_past_acquisition_has_no_estimat
         progress, activity = TransferProgress(0, 0, 0, estimated_percentage=40.0), job.activity   # a percentage alone
     core.executor.jobs[attempt] = replace(job, state=ExecutionState.RUNNING, progress=progress, activity=activity)
     await core.engine.reconcile_executions()
-    assert await core.repository.acquisition_work([transfer]) == {}
+    expected = {} if scope == "processing" else {transfer: (None, (attempt,), False)}
+    assert await core.repository.acquisition_work([transfer]) == expected
+    assert await core.engine.acquisition_etas([transfer]) == {}
 
 
 @pytest.mark.asyncio
@@ -495,17 +798,61 @@ async def test_list_and_live_updates_carry_the_same_estimate_and_clear_it_togeth
     _started(core, attempt, 200 * MIB)
     await live(8, 2 * MIB)
     measured = await live(0.5, 2 * MIB)
-    assert measured == {"seconds": math.ceil((200 - 17) * MIB / (2 * MIB)), "held": False, "estimated": False}
+    assert measured == {"seconds": math.ceil((200 - 17) * MIB / (2 * MIB)), "held": False, "estimated": False, "indeterminate": False}
     assert await listed() == measured                                # one owner, one truth
     published.clear()
     held = await live(1.5, 0)
-    assert held == {"seconds": measured["seconds"], "held": True, "estimated": False}   # same figure, marked held
+    assert held == {"seconds": measured["seconds"], "held": True, "estimated": False, "indeterminate": False}   # same figure, marked held
     assert await listed() == held
     published.clear()
     assert await live(3.0, 0) == "unpublished"                       # 4.5 s still: held, nothing changed
     assert await listed() == held
     published.clear()
     assert await live(1.0, 0) is None                                # 5.5 s: past the hold, published as none
+    assert await listed() is None
+
+
+@pytest.mark.asyncio
+async def test_list_and_live_updates_agree_on_an_indeterminate_estimate(tmp_path, monkeypatch):
+    """A transfer acquiring work of unknown size: both surfaces read the same
+    indeterminate estimate while it moves, and both clear it once it stops."""
+    from api import operational_downloads as downloads
+    import application.service as service_module
+
+    core = await _core(tmp_path, monkeypatch, files=2, width=1)
+    [transfer] = core.transfers
+    [attempt] = await _writers(core, transfer)
+    [waiting] = [item for item in await core.repository.artifacts(transfer) if not item.execution]
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET size_bytes=0,size_knowledge='unknown' WHERE id=?", (waiting.id,))
+        await db.commit()
+    application = ApplicationService(core.engine)
+    published = []
+
+    async def publish(kind, payload):
+        published.append((kind, payload))
+    monkeypatch.setattr(service_module, "publish", publish)
+
+    async def listed():
+        page = await downloads.list_operational_torrents(status=None, search=None, limit=0, offset=0,
+                                                         application=application)
+        return next(item["acquisition_eta"] for item in page["items"] if item["id"] == transfer)
+
+    async def live(seconds, rate):
+        before = await core.repository.active()
+        await _acquire(core, seconds, {attempt: 200 * MIB}, {attempt: rate})
+        await application._publish_active_changes(before, stats=False)
+        updates = [item for kind, payload in published if kind == "torrent_updated" for item in payload["items"]
+                   if item["id"] == transfer]
+        return updates[-1]["acquisition_eta"] if updates else "unpublished"
+
+    _started(core, attempt, 200 * MIB)
+    infinity = {"seconds": None, "held": False, "estimated": False, "indeterminate": True}
+    assert await live(1.0, 2 * MIB) == infinity                     # moving at once, never a figure
+    assert await listed() == infinity
+    assert await live(8, 2 * MIB) == infinity                       # measured, but the work is not: still infinity
+    assert await listed() == infinity
+    assert await live(ETA_HOLD_SECONDS + 0.5, 0) is None            # stopped past the hold: none on both
     assert await listed() is None
 
 
@@ -551,7 +898,7 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
     transfer = SimpleNamespace(id=7, state="downloading", progress=10.0, active_execution_progress=None,
                                active_execution_basis=None, paused=False)
     release = asyncio.Event()
-    answers = iter([({7: (50, False, False)}, release), ({7: (40, False, False)}, None)])
+    answers = iter([({7: (50, False, False, False)}, release), ({7: (40, False, False, False)}, None)])
 
     class Engine:
         async def acquisition_etas(self, ids):
@@ -566,7 +913,7 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
 
     application = ApplicationService.__new__(ApplicationService)
     # The browser shows 50 s, the figure last published.
-    application.engine, application.repository, application._published_etas = Engine(), Repository(), {7: (50, False, False)}
+    application.engine, application.repository, application._published_etas = Engine(), Repository(), {7: (50, False, False, False)}
     sent = []
 
     async def publish(kind, payload):
@@ -580,8 +927,8 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
     # Against the memo it found then (50 s) it would send nothing and leave the
     # memo at 50 s while the browser shows 40 s -- a later unchanged 50 s would
     # never correct it. Against what was last sent (40 s) it sends its 50 s.
-    assert sent == [{"seconds": 40, "held": False, "estimated": False}, {"seconds": 50, "held": False, "estimated": False}]
-    assert application._published_etas == {7: (50, False, False)}              # the memo matches the last sent
+    assert sent == [{"seconds": 40, "held": False, "estimated": False, "indeterminate": False}, {"seconds": 50, "held": False, "estimated": False, "indeterminate": False}]
+    assert application._published_etas == {7: (50, False, False, False)}              # the memo matches the last sent
 
 
 # ── what the estimate must not touch ──────────────────────────────────────────
@@ -650,7 +997,9 @@ async def test_three_real_aria2_downloads_of_one_transfer_have_one_estimate(tmp_
             page = await downloads.list_operational_torrents(status=None, search=None, limit=0, offset=0,
                                                              application=application)
             eta = next(item["acquisition_eta"] for item in page["items"] if item["id"] == transfer.id)
-            if states == ["downloading"] * 3 and eta is not None:
+            # "ETA ∞" while a download is moving but not yet measured is
+            # correct; the steady figures are the ones that follow it.
+            if states == ["downloading"] * 3 and eta is not None and not eta["indeterminate"]:
                 seen.append(eta)
         assert len(seen) == 6, f"no steady estimate while all three downloaded: {seen}"
         assert all(0 < item["seconds"] <= 60 for item in seen)               # ~30 s of work at the origin's pace

@@ -722,25 +722,32 @@ function inFlightExecutionPercent(status, activePct) {
   return Number.isFinite(raw) ? Number(Math.min(Math.max(raw, 0), 100).toFixed(1)) : null;
 }
 // The estimated time remaining of a downloading transfer, beneath its bar:
-// the backend's one estimate (``acquisition_eta``: whole seconds, and whether
-// it is held while no new data arrives), never one of the browser's own, and
-// never counted down between updates. ``HH:MM:SS`` with at least two hour
-// digits and no 24-hour wrap; anything that is not a whole number of seconds
+// the backend's one estimate as it presents it (``acquisition_eta``: whole
+// seconds, held while no new data arrives, or indeterminate while acquisition
+// goes on but its time is not a number), never one of the browser's own, and
+// never counted down between updates. ``H:MM:SS`` from an hour (hours never
+// wrap at 24), else ``M:SS``; anything that is not a whole number of seconds
 // within the backend's ceiling (``MAX_ETA_SECONDS``, 9999:59:59) is "—".
 const ACQUISITION_ETA_MAX_SECONDS = 9999 * 3600 + 59 * 60 + 59;
 function acquisitionEtaText(seconds) {
   if (!Number.isInteger(seconds) || seconds <= 0 || seconds > ACQUISITION_ETA_MAX_SECONDS) return null;
   const two = value => String(value).padStart(2, '0');
-  return two(Math.floor(seconds / 3600)) + ':' + two(Math.floor(seconds / 60) % 60) + ':' + two(seconds % 60);
+  const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds / 60) % 60;
+  return hours ? hours + ':' + two(minutes) + ':' + two(seconds % 60) : minutes + ':' + two(seconds % 60);
 }
 function acquisitionEtaMarkup(eta) {
+  if (eta?.indeterminate === true) {
+    return '<span class="prog-eta is-indeterminate" data-role="transfer-eta"' +
+      ' aria-label="Estimated time remaining: cannot be estimated while downloading"' +
+      ' data-tooltip="Downloading; the time remaining cannot be estimated right now">ETA ∞</span>';
+  }
   const text = acquisitionEtaText(eta?.seconds);
   if (text === null) {
     return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="Estimated time remaining: not available"' +
       ' data-tooltip="No reliable estimate of the time remaining right now">—</span>';
   }
-  // A best-effort figure (``estimated``: part of the work or its rate is not
-  // measured exactly) is marked "~"; a held one keeps its figure, set apart.
+  // How rough a figure is (``estimated``) is said in its tooltip and what is
+  // announced, never by a glyph; a held one keeps its figure, set apart.
   const held = eta.held === true;
   const rough = eta.estimated === true;
   const tooltip = held
@@ -750,7 +757,7 @@ function acquisitionEtaMarkup(eta) {
       : 'Estimated time remaining for the download, a prediction; processing afterwards is not included');
   return '<span class="prog-eta' + (held ? ' is-held' : '') + '" data-role="transfer-eta"' +
     ' aria-label="Estimated time remaining ' + (rough ? 'about ' : '') + text + (held ? ', held' : '') +
-    '" data-tooltip="' + tooltip + '">ETA ' + (rough ? '~' : '') + text + '</span>';
+    '" data-tooltip="' + tooltip + '">ETA ' + text + '</span>';
 }
 
 // ``activePct``: in-flight execution activity on the current source that is

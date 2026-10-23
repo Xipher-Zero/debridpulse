@@ -4660,19 +4660,20 @@ class TransferRepository:
     _ETA_WAITING_STATES = frozenset({"pending", "ready", "queued"})
     _ETA_ACQUIRED_STATES = frozenset({"completed", "verifying", "extracting"})
 
-    async def acquisition_work(self, transfer_ids) -> dict[int, tuple[int, tuple[str, ...], bool]]:
-        """The remaining acquisition work of each transfer whose whole
-        remaining work can be accounted for: ``transfer id -> (remaining bytes,
-        the attempts acquiring it now, estimated)``, one bounded read for all of
-        them. A transfer is absent when that cannot be done (no number is better
-        than a partial one): a request still open (resolving, waiting,
-        materializing, input required or failed), or any canonical artifact
-        that is neither acquired, nor acquired by a running writer whose
-        remaining bytes it can measure, nor waiting to start with a known size
-        -- a writer past acquisition or with nothing measured, an unknown size,
-        a retry or recovery wait, an error. A withdrawn artifact is no longer
-        the transfer's work. Each attempt is its own artifact's current writer,
-        counted once.
+    async def acquisition_work(self, transfer_ids) -> dict[int, tuple[int | None, tuple[str, ...], bool]]:
+        """The remaining acquisition work of each transfer with a writer
+        acquiring it now: ``transfer id -> (remaining bytes, the attempts
+        acquiring it, estimated)``, one bounded read for all of them.
+        ``remaining`` is ``None`` when the whole remaining work cannot be
+        accounted for (no number is better than a partial one): a request still
+        open (resolving, waiting, materializing, input required or failed), or
+        any canonical artifact that is neither acquired, nor acquired by a
+        running writer whose remaining bytes it can measure, nor waiting to
+        start with a known size -- a writer with nothing measured, an unknown
+        size, a retry or recovery wait, an error. A transfer without an
+        acquiring writer (every writer past acquisition, or none) is absent. A
+        withdrawn artifact is no longer the transfer's work. Each attempt is
+        its own artifact's current writer, counted once.
 
         A writer's remaining work is its own scope, never a declared size:
         exactly ``total - completed`` where it states an exact byte total;
@@ -4700,16 +4701,22 @@ class TransferRepository:
                        and str(row["status"]) in self._ETA_WAITING_STATES]
             valid = await self._valid_material_bytes(db, waiting)
         work: dict[int, list] = {}
+        acquiring: dict[int, set] = {}
         unprovable = set(open_requests)
         for row in rows:
             transfer_id, status = int(row["torrent_id"]), str(row["status"] or "")
-            if transfer_id in unprovable or artifact_withdrawn(row):
+            if artifact_withdrawn(row):
+                continue
+            progress = (codec.load(row["attempt_progress"], {}) or {}) if row["attempt_id"] is not None else {}
+            if row["attempt_id"] is not None and status == "downloading" and progress.get("acquiring") is not False:
+                acquiring.setdefault(transfer_id, set()).add(str(row["attempt_id"]))
+            if transfer_id in unprovable:
                 continue
             entry = work.setdefault(transfer_id, [0, set(), False])
             if status in self._ETA_ACQUIRED_STATES:
                 continue
             if row["attempt_id"] is not None and status == "downloading":
-                remaining = acquisition_remaining(codec.load(row["attempt_progress"], {}) or {})
+                remaining = acquisition_remaining(progress)
                 if remaining is not None:
                     entry[0] += remaining[0]
                     entry[1].add(str(row["attempt_id"]))
@@ -4724,9 +4731,12 @@ class TransferRepository:
                     entry[0] += size - min(size, valid.get(int(row["id"]), 0))
                     continue
             unprovable.add(transfer_id)
-        return {transfer_id: (remaining, tuple(sorted(attempts)), estimated)
-                for transfer_id, (remaining, attempts, estimated) in work.items()
-                if transfer_id not in unprovable and attempts}
+        result = {}
+        for transfer_id, attempts in acquiring.items():
+            remaining, _measured, estimated = work.get(transfer_id, (None, (), False))
+            result[transfer_id] = (None if transfer_id in unprovable else remaining,
+                                   tuple(sorted(attempts)), estimated)
+        return result
 
     @staticmethod
     async def _valid_material_bytes(db, artifact_ids) -> dict[int, int]:

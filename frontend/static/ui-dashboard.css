@@ -1607,8 +1607,8 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
    Progress the width for that line and decide where its words fit; if a
    column is ever narrower, the estimate moves to the next line,
    right-aligned, rather than overlapping or being cut. The estimate's width
-   is reserved for "ETA ~HH:MM:SS" (13ch), so "—" and any estimate under 100
-   hours take the same room and a changing value never moves the row;
+   is reserved for "ETA 999:59:59" (13ch), so "—", "ETA ∞" and any estimate
+   under 1000 hours take the same room and a changing value never moves the row;
    tabular figures. The secondary text token keeps it legible in both themes.
    A held estimate is set apart by style and its tooltip, not by a dimmer,
    harder-to-read tone. */

@@ -165,7 +165,7 @@ from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers._repository_base import KnownProviderResource, terminal_cleanup_authority
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
-from transfers.runtime_telemetry import ExecutionThroughputMeter, acquisition_eta
+from transfers.runtime_telemetry import EtaPresentation, ExecutionThroughputMeter, acquisition_eta
 
 
 logger = logging.getLogger(__name__)
@@ -485,6 +485,9 @@ class TransferEngine:
         # complete observation pass -- the reconcile cycle and, between cycles,
         # ``sample_throughput`` -- so a retired execution leaves no rate behind.
         self.throughput = ExecutionThroughputMeter()
+        # How the estimate is shown (``acquisition_etas``): its one presentation
+        # state, ephemeral and per transfer.
+        self.eta_presentation = EtaPresentation()
         # The sustained peak last written to its durable record.
         self._persisted_sustained_peak = 0
         # Succeeded executions awaiting their stability-delayed verification,
@@ -1394,19 +1397,31 @@ class TransferEngine:
         for transfer_id in sorted(moved):
             await self._aggregate(transfer_id)
 
-    async def acquisition_etas(self, transfer_ids) -> dict[int, tuple[int, bool, bool]]:
+    async def acquisition_etas(self, transfer_ids) -> dict[int, tuple]:
         """THE estimated time remaining of each given transfer that has one,
-        ``transfer id -> (seconds, held, estimated)``: its accountable
-        remaining acquisition work (``TransferRepository.acquisition_work``)
-        over the rates this engine's one throughput meter measures for the
-        attempts acquiring it (``runtime_telemetry.acquisition_eta``). Every
-        surface reads it here; none estimates on its own."""
+        ``transfer id -> (seconds, held, estimated, indeterminate)``, as it is
+        shown: its accountable remaining acquisition work
+        (``TransferRepository.acquisition_work``) over the rates this engine's
+        one throughput meter measures for the attempts acquiring it
+        (``runtime_telemetry.acquisition_eta``), presented by this engine's one
+        ``EtaPresentation``. Every surface reads it here; none estimates or
+        smooths on its own."""
+        transfer_ids = list(transfer_ids)
+        now = self.throughput.clock()                      # read before the work: never newer than it
         work = await self.repository.acquisition_work(transfer_ids)
         etas = {}
-        for transfer_id, (remaining, attempts, estimated) in work.items():
-            eta = acquisition_eta(remaining, attempts, self.throughput, estimated=estimated)
+        for transfer_id in transfer_ids:
+            remaining, attempts, estimated = work.get(transfer_id, (None, (), False))
+            # What the figure is measured from: the writers and which of them
+            # have a rate. A writer starting or becoming measured changes the
+            # figure's basis, never a change of pace to be smoothed.
+            basis = (attempts, tuple(attempt for attempt in attempts
+                                     if self.throughput.acquisition_rate(attempt) is not None))
+            eta = self.eta_presentation.present(
+                transfer_id, basis, acquisition_eta(remaining, attempts, self.throughput, estimated=estimated), now)
             if eta is not None:
                 etas[transfer_id] = eta
+        self.eta_presentation.retire(now, keep=etas)
         return etas
 
     @staticmethod
