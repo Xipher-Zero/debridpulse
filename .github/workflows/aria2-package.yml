@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - '1.0.13'
+      - '1.0.14'
       - 'staging/**'
     paths:
       - 'packaging/aria2/**'

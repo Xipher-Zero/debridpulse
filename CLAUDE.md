@@ -1,8 +1,8 @@
 # DebridPulse — Project Notes for Claude Code
 
 Reference notes for future sessions. Verify against the live tree before relying on
-specifics — line numbers and counts drift. Branch of record for active work: **`1.0.13`**
-(`main` is the released `v1.0.12`). Last substantive update: 2026-10-20.
+specifics — line numbers and counts drift. Branch of record for active work: **`1.0.14`**
+(`main` is the released `v1.0.13`). Last substantive update: 2026-10-22.
 
 ---
 
@@ -42,8 +42,9 @@ fixed native queue width). Materialization verify/cleanup: `transfers/filesystem
 application via `integrations/definition.py` `ManagedIntegration`/`AdministeredIntegration`
 — `application/composition.py` names no executor. Non-aria2 proofs: `tests/executor_fakes.py`.
 
-`VERSION` = `1.0.13`. Its release-identity commit retitled `CHANGELOG.md` `[1.0.13]` (no longer
-`Development`) and moved README, `docker-compose.yml` and `index.html` to `v1.0.13`; while a top entry
+`VERSION` = `1.0.14` (development; `CHANGELOG.md` `[1.0.14] — Development` is open). The 1.0.13
+release-identity commit retitled `CHANGELOG.md` `[1.0.13]` (no longer `Development`) and moved README,
+`docker-compose.yml` and `index.html` to `v1.0.13`; while a top entry
 is titled `Development`, those install references must keep naming the newest released image (pinned
 by the documentation contract tests; see `docs/RELEASE_PROCESS.md` → Release identity). Tagging,
 GitHub Release, `latest` and `main` stay operator actions.
@@ -255,7 +256,7 @@ storage-health checks can diagnose bad mounts — chmods `700` config/data, `600
 
 ### Local image testing
 
-A push to `1.0.13` triggers **Fork Image** which publishes a write-once
+A push to `1.0.14` triggers **Fork Image** which publishes a write-once
 `ghcr.io/xipher-zero/debridpulse:sha-<full 40-char sha>` multi-arch image (amd64 + arm64,
 provenance + SBOM). Pull that tag into a local compose file to verify a change before it
 gets a release tag. The image is pullable once Fork Image's "Publish immutable image"
@@ -330,9 +331,9 @@ require the adversarial preflight in that document *before* production edits.
 
 ## 7. GitHub Actions workflows (`.github/workflows/`)
 
-The qualification workflows gate on `main`, `1.0.11`, `1.0.12`, `1.0.13`, mostly
+The qualification workflows gate on `main`, `1.0.11`, `1.0.12`, `1.0.13`, `1.0.14`, mostly
 `staging/**` (CodeQL's push trigger omits it), some `audit/**`, plus `v*` / `internal-v*` tags (Release Promotion: `main` and tags only;
-the two package workflows: `main`, `1.0.13`, `staging/**`, path-filtered). All `uses:` are
+the two package workflows: `main`, `1.0.13`, `1.0.14`, `staging/**`, path-filtered). All `uses:` are
 SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
 
 | Workflow | What it does |
@@ -340,11 +341,11 @@ SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
 | **tests.yml** (`Tests`) | One matrix job `test` (contract 1/6–6/6 + runtime 1/3–3/3, partitioned by test node id), each entry: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; runs its layer of `pytest tests/` exactly once (junit XML + `--durations`), then the classifier decides the entry (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv), then an accounting step (counts, timings, slowest cases; any skip fails). Runtime entries install `aria2`+`openssl` and build pinned rsync 3.4.1. Contract shard 1 also runs `ruff check … --select F821,F822,F823`, `python -m compileall -q .` and `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
 | **browser-runtime.yml** (`Browser Runtime`) | Matrix of 6 runners (one Playwright worker each) (`--shard=k/n` by whole spec file, `PW_SHARD`); each builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`). Uploads traces, classification evidence + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
-| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.13` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
+| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.14` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
 | **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
 | **candidate-runtime-qualification.yml** (`Candidate Runtime Qualification`) | Pulls the published amd64 + arm64 children by digest (arm64 via QEMU), verifies OCI labels, non-root runtime (uid/gid 99/100), writable `/app/data` `/app/config` `/download`, `/api/health` version, AllDebrid integration status, a live `GeneralHttpProvider.resolve()` call, and a 7z+RAR round-trip; signs a `candidate-runtime/v1` attestation. |
-| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.13` pushes. |
-| **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12` and `1.0.13` branches. Runs `ws3p1_adversarial_qualification.txt`. Not a Release Promotion requirement. |
+| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.14` pushes. |
+| **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12`, `1.0.13` and `1.0.14` branches. Runs `ws3p1_adversarial_qualification.txt`. Not a Release Promotion requirement. |
 | **aria2-package.yml** / **ffmpeg-package.yml** | Build DebridPulse's own aria2 and FFmpeg Debian packages per architecture from `packaging/aria2/` and `packaging/ffmpeg/`, publish them write-once as `ghcr.io/xipher-zero/debridpulse-aria2` / `-ffmpeg`, which the Dockerfile consumes by digest. Path-filtered; not release gates. |
 
 Supporting config: `.github/dependabot.yml` (weekly pip updates for `/backend`, grouped
@@ -433,7 +434,7 @@ mutating the same DOM — could recur in other settings panels. Check
 ## 10. Working notes for sessions
 
 - The maintainer historically worked directly on GitHub (no local clone); now clones
-  locally. Active branch: **`1.0.13`**. Direct pushes to `1.0.13` are the established
+  locally. Active branch: **`1.0.14`**. Direct pushes to `1.0.14` are the established
   pattern for this dev branch (no PR, no merge to `main`, no force-push).
 - Honor **"explore and report, don't change anything yet"** literally when given.
 - For local verification, prefer building/pulling a Docker image (or running

@@ -69,8 +69,8 @@ Before publication, verify all release surfaces agree:
 - OCI image `version` and `revision` labels
 
 While the top `CHANGELOG.md` entry is titled `Development`, the README and Compose install
-examples must keep naming the newest *released* entry's image (for example `v1.0.12` while
-`[1.0.13] — Development` is open); the documentation contract tests refuse an image reference to
+examples must keep naming the newest *released* entry's image (for example `v1.0.13` while
+`[1.0.14] — Development` is open); the documentation contract tests refuse an image reference to
 the development `VERSION` in the README or Compose example. Releasing therefore changes these
 surfaces together in one release-identity commit: the top entry's title no longer says
 `Development` (it takes the release's title), and the README, Compose and landing-page image

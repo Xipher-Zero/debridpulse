@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.14] — Development
+
+1.0.14 is the active development line following the 1.0.13 release.
+
 ## [1.0.13] — Premium services, Usenet, network sources and external clients
 
 1.0.13 builds on the 1.0.12 Universal Transfer Core. It adds Debrid-Link, Premiumize, Real-Debrid and
