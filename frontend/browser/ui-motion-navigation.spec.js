@@ -467,11 +467,24 @@ async function track(page, body, next, cap = 1500) {
   return page.evaluate(([bodySelector, nextSelector, limit]) => new Promise(resolve => {
     const frames = [], end = performance.now() + limit;
     let moved = false;
+    // What follows is placed in its own scroll container's content, so a scroll of
+    // that container (the browser keeping a returned focus in view) is neither
+    // travel nor a jump of the follower: only the disclosure moves it.
+    const container = node => {
+      for (let el = node.parentElement; el; el = el.parentElement) {
+        if (/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) return el;
+      }
+      return null;
+    };
+    const placed = node => {
+      const box = container(node);
+      return node.getBoundingClientRect().top - (box ? box.getBoundingClientRect().top - box.scrollTop : 0);
+    };
     const sample = () => {
       const b = document.querySelector(bodySelector), n = document.querySelector(nextSelector);
       const running = !!b && b.getAnimations().length > 0;
       moved = moved || running;
-      frames.push({height: b && !b.hidden ? b.getBoundingClientRect().height : 0, next: n.getBoundingClientRect().top,
+      frames.push({height: b && !b.hidden ? b.getBoundingClientRect().height : 0, next: placed(n),
                    span: n.getBoundingClientRect().height});
       if ((moved && !running) || performance.now() > end) resolve(frames); else requestAnimationFrame(sample);
     };

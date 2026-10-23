@@ -439,7 +439,9 @@ def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None
     assert job["timeout-minutes"] == 25 and job["strategy"]["fail-fast"] is False
     shards = job["strategy"]["matrix"]["shard"]
     assert shards == [f"{index}/{len(shards)}" for index in range(1, len(shards) + 1)]
-    assert len(shards) == 6        # one worker each fits the budget only across six (QUAL-002)
+    # One worker each (QUAL-002); eight shards keep the longest planned shard near ten
+    # minutes, so even a failing shard's bounded classification stays inside the job.
+    assert len(shards) == 8
     assert job["env"]["PW_SHARD"] == "${{ matrix.shard }}"
     text = _runs(BROWSER_WORKFLOW)
     # The shard's whole spec files come from the one duration-weighted planner,
