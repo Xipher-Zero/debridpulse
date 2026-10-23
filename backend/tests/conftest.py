@@ -13,7 +13,14 @@ else is the deterministic contract layer, ``-m "not real_runtime"``. ``DP_TEST_S
 the tests of shard ``k`` of ``n``: a fixed partition by test node id, so the
 shards of one layer together run each of its tests exactly once. (By test, not
 by module: a module whose scale scenarios cost minutes no longer holds one
-shard past the budget while the others idle.)
+shard past the budget while the others idle.) The partition is weighted by the
+measured durations committed in ``.github/qualification/pytest_seconds.json``:
+each listed test is placed, longest first, on the least-loaded shard of its
+layer, a test listed as isolated gets a shard of its own, and every other test
+is spread by a hash of its node id over the shards that are not isolated. It is
+a pure function of the node id, the layer, the shard count and that committed
+table -- never of what else was collected -- so every shard, and any isolated
+re-run of one node id, computes the same owner.
 
 ``--stall-dump=SECONDS`` writes every thread's stack, and every pending task of
 the running event loop, to stderr once a test has run that long; the test goes
@@ -24,11 +31,14 @@ running Python at that moment -- an aiosqlite worker handing a result back
 through ``call_soon_threadsafe``, say.
 """
 import asyncio
+import functools
+import json
 import os
 import sys
 import threading
 import traceback
 import zlib
+from pathlib import Path
 
 import aiosqlite  # noqa: F401
 import pytest
@@ -156,9 +166,44 @@ def pytest_runtest_protocol(item, nextitem):
         timer.cancel()
 
 
-def shard_of(node_id: str, shards: int) -> int:
-    """The 1-based shard a test belongs to: a pure function of its node id."""
-    return zlib.crc32(node_id.replace(os.sep, "/").encode("utf-8")) % shards + 1
+SHARD_TIMINGS = Path(__file__).resolve().parents[2] / ".github" / "qualification" / "pytest_seconds.json"
+
+
+@functools.lru_cache(maxsize=None)
+def _shard_plan(layer: str, shards: int) -> tuple[dict, tuple[int, ...]]:
+    """(node id -> shard for the timed tests of ``layer``, the shards hashing spreads the rest over)."""
+    try:
+        table = json.loads(SHARD_TIMINGS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}, tuple(range(1, shards + 1))            # no table: the plain node-id hash
+    seconds = {str(node): float(value) for node, value in (table.get(layer) or {}).items()}
+    isolated = sorted(node for node in table.get("isolated", ()) if node in seconds)
+    if len(isolated) >= shards:
+        isolated = []                                     # too few shards to give any one its own
+    plan = {node: index for index, node in enumerate(isolated, start=1)}
+    free = tuple(range(len(isolated) + 1, shards + 1))
+    load = dict.fromkeys(free, 0.0)
+    for node, cost in sorted(seconds.items(), key=lambda item: (-item[1], item[0])):
+        if node in plan:
+            continue
+        target = min(free, key=lambda shard: (load[shard], shard))
+        plan[node] = target
+        load[target] += cost
+    return plan, free
+
+
+def shard_of(node_id: str, shards: int, layer: str = "contract") -> int:
+    """The 1-based shard a test belongs to: a pure function of its node id, its
+    layer, the shard count and the committed timing table."""
+    node = node_id.replace(os.sep, "/")
+    plan, free = _shard_plan(layer, shards)
+    if node in plan:
+        return plan[node]
+    return free[zlib.crc32(node.encode("utf-8")) % len(free)]
+
+
+def layer_of(item) -> str:
+    return "runtime" if item.get_closest_marker(RUNTIME_MARKER) else "contract"
 
 
 def parse_shard(value: str) -> tuple[int, int] | None:
@@ -178,7 +223,7 @@ def pytest_collection_modifyitems(config, items):
     shard, shards = selected
     kept, dropped = [], []
     for item in items:
-        (kept if shard_of(item.nodeid, shards) == shard else dropped).append(item)
+        (kept if shard_of(item.nodeid, shards, layer_of(item)) == shard else dropped).append(item)
     if dropped:
         config.hook.pytest_deselected(items=dropped)
         items[:] = kept

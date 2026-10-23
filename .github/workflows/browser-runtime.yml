@@ -30,8 +30,9 @@ permissions:
   contents: read
 
 jobs:
-  # The suite runs once, split by spec file across independent runners
-  # (Playwright --shard; fullyParallel is off, so a file never splits). Each
+  # The suite runs once, split by whole spec file across independent runners,
+  # weighted by measured duration (.github/qualification/shard_inventory.py
+  # browser-plan; fullyParallel is off, so a file never splits). Each
   # shard serves its own candidate containers, so no two shards share a backend,
   # and within a shard the files share one exactly as before
   # (docs/QUALIFICATION_DETERMINISM.md section 11).
@@ -212,13 +213,53 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then docker logs dp-browser-usenet || true; exit 1; fi
 
+      # The locked Playwright's Chromium and the Ubuntu packages its
+      # --with-deps installs are cached by the lock file and the OS release, so
+      # a hit downloads no package: only apt's own index is still fetched.
+      # apt resolves and verifies every package against that signed index (a
+      # cached .deb whose checksum no longer matches is fetched again); a miss
+      # installs exactly as before.
+      - name: Identify the runner OS release
+        id: runner_os
+        run: |
+          . /etc/os-release
+          echo "release=${ID}-${VERSION_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the locked Playwright Chromium and its system packages
+        id: playwright_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/dp-playwright-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner_os.outputs.release }}-${{ hashFiles('frontend/browser/package-lock.json') }}
+
       - name: Install and audit locked Playwright Chromium
+        id: playwright_install
         working-directory: frontend/browser
+        env:
+          PLAYWRIGHT_CACHED: ${{ steps.playwright_cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
           npm audit --audit-level=high
+          debs="$HOME/.cache/dp-playwright-apt"
+          mkdir -p "$debs"
+          if compgen -G "$debs/*.deb" > /dev/null; then sudo cp "$debs"/*.deb /var/cache/apt/archives/; fi
           npx playwright install --with-deps chromium
+          if [ "$PLAYWRIGHT_CACHED" != true ] && compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then
+            cp /var/cache/apt/archives/*.deb "$debs"/
+          fi
+          echo "packages=$(find "$debs" -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: Save the locked Playwright Chromium and its system packages
+        if: steps.playwright_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/dp-playwright-apt
+          key: ${{ steps.playwright_cache.outputs.cache-primary-key }}
 
       - name: Inventory and run browser runtime contract
         id: full_browser
@@ -227,13 +268,22 @@ jobs:
           set -uo pipefail
           full="$RUNNER_TEMP/qualification/candidate/full"
           mkdir -p "$full"
-          NO_COLOR=1 npx playwright test --config=playwright.config.js --list --shard="$PW_SHARD" 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
+          # This shard's whole spec files, and the whole suite's listing for the inventory.
+          if ! plan="$(python3 "$GITHUB_WORKSPACE/.github/qualification/shard_inventory.py" browser-plan --shard "$PW_SHARD" --dir .)"; then
+            echo "::error title=Browser shard plan::no spec files planned for shard $PW_SHARD"; exit 1
+          fi
+          read -r -a specs <<< "$(printf '%s' "$plan" | tr '\n' ' ')"
+          if [ "${#specs[@]}" -eq 0 ]; then echo "::error title=Browser shard plan::shard $PW_SHARD has no spec files"; exit 1; fi
+          printf '%s\n' "${specs[@]}" > "$full/specs.txt"
+          printf '%s\n' "$PW_SHARD" > "$full/shard.txt"
+          NO_COLOR=1 npx playwright test --config=playwright.config.js --list > "$full/full-list.txt" 2>&1
+          NO_COLOR=1 npx playwright test --config=playwright.config.js --list "${specs[@]}" 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
           discovered="$(sed -nE 's/.*Total: ([0-9]+) tests? in .*/\1/p' "$RUNNER_TEMP/playwright-list.log" | tail -n1)"
 
           # The full suite runs exactly once. Its exit status is evidence, not the gate:
           # the classification step decides, so evidence is always generated first.
           set +e
-          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --shard="$PW_SHARD" --workers=1 --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- "${specs[@]}" --workers=1 --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
           test_status=${PIPESTATUS[0]}
           set -e
           echo "$test_status" > "$full/exit_code.txt"
@@ -401,6 +451,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Upload the cases this shard ran
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-executed-${{ github.sha }}-${{ env.SHARD_ID }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/qualification/candidate/full/shard.txt
+            ${{ runner.temp }}/qualification/candidate/full/specs.txt
+            ${{ runner.temp }}/qualification/candidate/full/full-list.txt
+            ${{ runner.temp }}/qualification/candidate/full/results.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload browser classification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -435,3 +498,34 @@ jobs:
         if: always()
         run: |
           docker rm -f dp-browser-open dp-browser-auth dp-browser-contract dp-browser-usenet dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true
+
+  # Every listed browser case ran exactly once, in the shard that owns its spec
+  # file: every shard's own results (their latest attempt) against the suite's
+  # listing. Missing evidence fails it; it never passes by default.
+  inventory:
+    runs-on: ubuntu-latest
+    needs: browser-runtime
+    if: ${{ !cancelled() }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # The browser-runtime matrix's shard count.
+      BROWSER_SHARDS: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download every shard's results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: browser-executed-${{ github.sha }}-*
+          path: ${{ runner.temp }}/executed
+
+      - name: Every listed case ran exactly once
+        run: |
+          set -uo pipefail
+          lists=$(find "$RUNNER_TEMP/executed" -name full-list.txt -exec sha256sum {} + | cut -d' ' -f1 | sort -u | wc -l)
+          if [ "$lists" != 1 ]; then echo "the shards listed different suites ($lists listings)"; exit 1; fi
+          listing="$(find "$RUNNER_TEMP/executed" -name full-list.txt | sort | head -n1)"
+          python3 .github/qualification/shard_inventory.py browser-verify --full-list "$listing" \
+            --executed "$RUNNER_TEMP/executed" --shards "$BROWSER_SHARDS" --dir frontend/browser | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"

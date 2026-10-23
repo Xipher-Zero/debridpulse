@@ -269,10 +269,11 @@ def test_no_automatic_full_suite_rerun_loops() -> None:
         if "playwright test" in line and "--list" not in line:
             assert depth > 0 and " -g " in f" {line} ", f"only bounded, single-case isolated runs may invoke playwright: {line}"
     pytest_lines = [(d, l) for d, l in _loop_depths(_runs(TESTS_WORKFLOW)) if "pytest" in l and "-m pytest" in l]
-    full = [(d, l) for d, l in pytest_lines if re.search(r"-m pytest tests/(\s|$)", l)]
+    # A --collect-only invocation (the test inventory) collects and runs nothing.
+    full = [(d, l) for d, l in pytest_lines if re.search(r"-m pytest tests/(\s|$)", l) and "--collect-only" not in l]
     assert len(full) == 1 and full[0][0] == 0, "the full pytest suite runs exactly once, outside any loop"
     for depth, line in pytest_lines:
-        if line in [l for _d, l in full]:
+        if line in [l for _d, l in full] or (depth == 0 and "--collect-only" in line):
             continue
         assert depth > 0 and '"$nodeid"' in line, f"unexpected pytest invocation: {line}"
 
@@ -296,6 +297,8 @@ def test_the_suite_runs_once_as_two_layers_and_milestone_manifests_are_never_exe
     assert sum(1 for entry in entries if entry["static"]) == 1
     assert job["env"]["PYTEST_LAYER"] == "${{ matrix.select }}"
     assert job["env"]["DP_TEST_SHARD"] == "${{ matrix.shard }}"
+    # The inventory partitions over exactly the matrix's shard counts.
+    assert (job["env"]["CONTRACT_SHARDS"], job["env"]["RUNTIME_SHARDS"]) == (len(contract), len(runtime))
     assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" .*--durations=', _runs(TESTS_WORKFLOW))
 
 
@@ -439,10 +442,17 @@ def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None
     assert len(shards) == 6        # one worker each fits the budget only across six (QUAL-002)
     assert job["env"]["PW_SHARD"] == "${{ matrix.shard }}"
     text = _runs(BROWSER_WORKFLOW)
-    assert '--list --shard="$PW_SHARD"' in text and 'npm test -- --shard="$PW_SHARD"' in text
+    # The shard's whole spec files come from the one duration-weighted planner,
+    # and exactly those are listed and run.
+    assert 'shard_inventory.py" browser-plan --shard "$PW_SHARD" --dir .' in text
+    assert '--list "${specs[@]}"' in text
+    assert "--shard=" not in text
     # One worker per shard (QUAL-002): a shard's spec files never run concurrently
     # against its one backend, exactly as the classifier's isolated runs already do.
-    assert 'npm test -- --shard="$PW_SHARD" --workers=1 ' in text
+    assert 'npm test -- "${specs[@]}" --workers=1 ' in text
+    inventory = _workflow(BROWSER_WORKFLOW)["jobs"]["inventory"]
+    assert inventory["needs"] == "browser-runtime" and inventory["if"] == "${{ !cancelled() }}"
+    assert int(inventory["env"]["BROWSER_SHARDS"]) == len(shards)
     # A spec file never splits across shards: one file shares one backend, as before.
     config = (ROOT / "frontend" / "browser" / "playwright.config.js").read_text(encoding="utf-8")
     assert re.search(r"fullyParallel\s*:\s*false", config)
@@ -494,22 +504,46 @@ def test_the_runtime_layer_runs_aria2_built_by_the_package_image_s_one_script() 
 
 def test_the_layer_partition_runs_every_test_exactly_once() -> None:
     """The partition unit is the test node id (QUAL-001): each test of a module
-    lands in exactly one shard, whatever the shard count."""
+    lands in exactly one shard, whatever the shard count, weighted by the
+    committed timing table and never by what else was collected."""
+    import conftest
     from conftest import parse_shard, shard_of
     nodes = sorted(f"{path.relative_to(ROOT / 'backend').as_posix()}::{name}"
                    for path in (ROOT / "backend" / "tests").glob("test_*.py")
                    for name in re.findall(r"^(?:async )?def (test_\w+)", path.read_text(encoding="utf-8"), re.M))
     assert len(nodes) > 1000
-    for shards in (1, 2, 3, 5, 6):
-        owners = {node: [k for k in range(1, shards + 1) if shard_of(node, shards) == k] for node in nodes}
-        assert all(len(owner) == 1 for owner in owners.values())
+    table = json.loads(conftest.SHARD_TIMINGS.read_text(encoding="utf-8"))
+    timed = sorted((set(table["contract"]) | set(table["runtime"])) - set(nodes))
+    for layer in ("contract", "runtime"):
+        for shards in (1, 2, 3, 5, 6, 8):
+            owners = {node: [k for k in range(1, shards + 1) if shard_of(node, shards, layer) == k]
+                      for node in nodes + timed}
+            assert all(len(owner) == 1 for owner in owners.values())
+    # A pure function: recomputed from nothing, every owner is the same.
+    before = {node: shard_of(node, 8) for node in nodes + timed}
+    conftest._shard_plan.cache_clear()
+    assert before == {node: shard_of(node, 8) for node in nodes + timed}
+    # The isolated scenario owns a shard of its own: nothing timed or hashed joins it.
+    isolated = table["isolated"]
+    assert isolated == ["tests/test_v113_identity_anchor.py::test_transfer_595_continues_after_debrid_link_with_every_member"]
+    assert isolated[0] in table["contract"]
+    assert [node for node in nodes + timed if shard_of(node, 8) == 1] == isolated
+    # The weighted shards are balanced by the measured seconds (within the largest test).
+    load = {}
+    for node, seconds in table["contract"].items():
+        load[shard_of(node, 8)] = load.get(shard_of(node, 8), 0.0) + seconds
+    weighted = [load[k] for k in range(2, 9)]
+    assert max(weighted) - min(weighted) <= max(seconds for node, seconds in table["contract"].items()
+                                               if node not in isolated)
     # A heavy module is spread across shards, never held by one.
     heavy = [node for node in nodes if node.startswith("tests/test_v113_identity_anchor.py::")]
-    assert len({shard_of(node, 6) for node in heavy}) > 1
+    assert len({shard_of(node, 8) for node in heavy}) > 1
     job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
     entries = job["strategy"]["matrix"]["include"]
-    assert sum(1 for entry in entries if entry["layer"] == "contract") == 6
+    assert sum(1 for entry in entries if entry["layer"] == "contract") == 8
     assert sum(1 for entry in entries if entry["layer"] == "runtime") == 3
+    # The static checks and the inventory ride the isolated shard.
+    assert [entry["shard"] for entry in entries if entry["static"]] == ["1/8"]
     assert parse_shard("") is None and parse_shard("2/3") == (2, 3)
     for bad in ("0/3", "4/3"):
         with pytest.raises(pytest.UsageError):
@@ -530,7 +564,7 @@ def test_every_workflow_loop_is_bounded_by_the_classifier_budget() -> None:
         raw = path.read_text(encoding="utf-8")
         # The budget has one owner: workflows never restate its values.
         assert "seq 1 8" not in raw and "seq 1 3" not in raw
-        assert not re.search(r"\b(900|MAX_CASES_TO_CLASSIFY=|ISOLATED_RUNS_PER_REF=|DISCRIMINATOR_RUNS_PER_REF=)", raw)
+        assert not re.search(r"\b(900\b|MAX_CASES_TO_CLASSIFY=|ISOLATED_RUNS_PER_REF=|DISCRIMINATOR_RUNS_PER_REF=)", raw)
         assert "seq 1 16" not in raw
         assert "MAX_CLASSIFICATION_WALL_TIME_SECONDS" in raw and "ISOLATED_RUNS_PER_REF" in raw
 
@@ -622,6 +656,8 @@ PRODUCT_PATHS = (
 QUALIFICATION_OWNED = (
     ".github/workflows/browser-runtime.yml", ".github/workflows/tests.yml",
     ".github/qualification/failure_classifier.py", ".github/qualification/known_flakes.json",
+    ".github/qualification/shard_inventory.py", ".github/qualification/pytest_seconds.json",
+    ".github/qualification/browser_spec_seconds.json",
     "docs/QUALIFICATION_DETERMINISM.md", "backend/tests/test_qualification_infrastructure_contract.py",
     "backend/tests/test_universal_lifecycle.py",
     "frontend/browser/ui-regression-restoration.spec.js", "frontend/browser/ui-fix-ws1-p2.spec.js",
@@ -1366,3 +1402,190 @@ def test_documentation_states_the_evidentiary_rule() -> None:
         assert "not merely \"candidate happened to fail and anchor happened not to fail in a small sample.\"" in text
         assert "INCONCLUSIVE is the required classification when bounded evidence cannot distinguish a rare candidate regression from low-rate pre-existing nondeterminism." in text
         assert "must not alter production source solely because an isolated candidate sample contains a failure while a small anchor sample happens to contain none" in text
+
+
+# The duration-weighted shards, their caches and the exactly-once inventory.
+INVENTORY_PATH = QUALIFICATION / "shard_inventory.py"
+_inventory_spec = importlib.util.spec_from_file_location("shard_inventory", INVENTORY_PATH)
+inventory = importlib.util.module_from_spec(_inventory_spec)
+_inventory_spec.loader.exec_module(inventory)
+
+
+def _executed(root: Path, layer: str, shard: str, cases: list[tuple[str, str]], *, attempt: int = 1,
+              skipped: tuple = (), finished: bool = True, index: int = 0) -> None:
+    directory = root / f"pytest-executed-{CANDIDATE}-{layer}-{index}-attempt-{attempt}"
+    directory.mkdir(parents=True)
+    (directory / "shard.txt").write_text(f"{layer} {shard} {layer}-{index}\n", encoding="utf-8")
+    if finished:
+        body = "".join(f'<testcase classname="{c}" name="{n}">{"<skipped/>" if (c, n) in skipped else ""}</testcase>'
+                       for c, n in cases)
+        (directory / "results.xml").write_text(f"<testsuites><testsuite>{body}</testsuite></testsuites>", encoding="utf-8")
+
+
+def test_the_pytest_inventory_proves_every_test_ran_exactly_once_in_its_own_shard(tmp_path) -> None:
+    nodes = {"tests/test_a.py::test_one": 1, "tests/test_a.py::TestK::test_two[x-1]": 2, "tests/test_b.py::test_three": 2}
+    manifest = {"contract": {"shards": 2, "nodes": nodes}}
+    case = inventory.node_case
+    assert case("tests/test_a.py::TestK::test_two[x-1]") == ("tests.test_a.TestK", "test_two[x-1]")
+    # pytest splits only the part before the first "[": a parameter may hold "::".
+    assert case("tests/test_a.py::test_host[::1]") == ("tests.test_a", "test_host[::1]")
+    assert case("tests/test_a.py::TestK::test_url[http://[::1]/f]") == ("tests.test_a.TestK", "test_url[http://[::1]/f]")
+    good = tmp_path / "good"
+    _executed(good, "contract", "1/2", [case("tests/test_a.py::test_one")], index=0)
+    _executed(good, "contract", "2/2", [case("tests/test_a.py::TestK::test_two[x-1]"), case("tests/test_b.py::test_three")],
+              index=1)
+    assert inventory.pytest_verify(manifest, good) == []
+    # A re-run attempt replaces that shard's evidence; earlier attempts are ignored.
+    _executed(good, "contract", "1/2", [], attempt=2, index=0)
+    assert any("never ran tests.test_a::test_one" in p for p in inventory.pytest_verify(manifest, good))
+    for build, expected in (
+        (lambda root: _executed(root, "contract", "1/2", [case("tests/test_a.py::test_one")]), "no evidence from shard(s) [2]"),
+        (lambda root: (_executed(root, "contract", "1/2", [case("tests/test_a.py::test_one")], index=0),
+                       _executed(root, "contract", "2/2", [case("tests/test_a.py::test_one"),
+                                                           case("tests/test_a.py::TestK::test_two[x-1]"),
+                                                           case("tests/test_b.py::test_three")], index=1)),
+         "ran 2 times tests.test_a::test_one"),
+        (lambda root: (_executed(root, "contract", "1/2", [case("tests/test_a.py::test_one")], index=0),
+                       _executed(root, "contract", "2/2", [], finished=False, index=1)),
+         "contract shard 2: no results.xml"),
+        (lambda root: (_executed(root, "contract", "1/2", [case("tests/test_a.py::test_one")], index=0,
+                                 skipped=(case("tests/test_a.py::test_one"),)),
+                       _executed(root, "contract", "2/2", [case("tests/test_a.py::TestK::test_two[x-1]"),
+                                                           case("tests/test_b.py::test_three")], index=1)),
+         "skipped tests.test_a::test_one"),
+        (lambda root: (_executed(root, "contract", "1/2", [case("tests/test_a.py::test_one"), ("tests.test_c", "test_new")],
+                                 index=0),
+                       _executed(root, "contract", "2/2", [case("tests/test_a.py::TestK::test_two[x-1]"),
+                                                           case("tests/test_b.py::test_three")], index=1)),
+         "uninventoried test tests.test_c::test_new"),
+        (lambda root: (_executed(root, "contract", "1/2", [case("tests/test_b.py::test_three")], index=0),
+                       _executed(root, "contract", "2/2", [case("tests/test_a.py::test_one"),
+                                                           case("tests/test_a.py::TestK::test_two[x-1]")], index=1)),
+         "ran in shard 1, owned by shard 2"),
+    ):
+        root = tmp_path / str(len(list(tmp_path.iterdir())))
+        root.mkdir()
+        build(root)
+        problems = inventory.pytest_verify(manifest, root)
+        assert any(expected in problem for problem in problems), (expected, problems)
+
+
+def test_the_pytest_manifest_uses_the_one_partition_owner(tmp_path) -> None:
+    from conftest import shard_of
+    collected = tmp_path / "contract.txt"
+    collected.write_text("tests/test_v113_identity_anchor.py::test_transfer_595_continues_after_debrid_link_with_every_member\n"
+                         "tests/test_a.py::test_one\n\n3 tests collected\n", encoding="utf-8")
+    runtime = tmp_path / "runtime.txt"
+    runtime.write_text("tests/test_r.py::test_real\n", encoding="utf-8")
+    manifest = inventory.pytest_manifest(ROOT / "backend", {"contract": collected, "runtime": runtime},
+                                         {"contract": 2, "runtime": 1})
+    assert manifest["contract"]["shards"] == 2 and manifest["runtime"]["shards"] == 1
+    for layer, data in manifest.items():
+        assert all(owner == shard_of(node, data["shards"], layer) for node, owner in data["nodes"].items())
+    assert manifest["contract"]["nodes"] == {
+        "tests/test_v113_identity_anchor.py::test_transfer_595_continues_after_debrid_link_with_every_member": 1,
+        "tests/test_a.py::test_one": 2}
+    # A shard that would own nothing -- the isolated test no longer collected, say -- is refused.
+    stale = tmp_path / "stale.txt"
+    stale.write_text("tests/test_a.py::test_one\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match=r"shard\(s\) \[1\] own no collected test"):
+        inventory.pytest_manifest(ROOT / "backend", {"contract": stale, "runtime": runtime}, {"contract": 2, "runtime": 1})
+
+
+def test_every_browser_spec_file_belongs_to_exactly_one_shard_whole() -> None:
+    spec_dir = ROOT / "frontend" / "browser"
+    files = sorted(path.name for path in spec_dir.glob("*.spec.js"))
+    table = json.loads((QUALIFICATION / "browser_spec_seconds.json").read_text(encoding="utf-8"))["seconds"]
+    for shards in (1, 3, 6):
+        plan = inventory.browser_plan(spec_dir, shards)
+        assert sorted(plan) == files and set(plan.values()) == set(range(1, shards + 1))
+    plan = inventory.browser_plan(spec_dir, 6)
+    load = {}
+    for name, owner in plan.items():
+        load[owner] = load.get(owner, 0.0) + table.get(name, 0.0)
+    assert max(load.values()) - min(load.values()) <= max(table.values())
+    # The plan is a pure function of the spec files and the committed table.
+    assert plan == inventory.browser_plan(spec_dir, 6)
+    # Each name is passed to Playwright as a file filter (a pattern over the path):
+    # none may also select another spec file.
+    for name in files:
+        assert [other for other in files if re.search(name, other)] == [name], name
+
+
+def test_the_browser_inventory_matches_listing_and_results(tmp_path) -> None:
+    spec_dir = tmp_path / "specs"
+    spec_dir.mkdir()
+    for name in ("a.spec.js", "b.spec.js"):
+        (spec_dir / name).write_text("", encoding="utf-8")
+    plan = inventory.browser_plan(spec_dir, 2)
+    listing = tmp_path / "full-list.txt"
+    listing.write_text("Listing tests:\n  a.spec.js:3:1 › one\n  a.spec.js:9:3 › group › two\n"
+                       "  b.spec.js:5:1 › three\nTotal: 3 tests in 2 files\n", encoding="utf-8")
+
+    def shard_results(root, shard, specs):
+        directory = root / f"browser-executed-{CANDIDATE}-shard-{shard - 1}-attempt-1"
+        directory.mkdir(parents=True)
+        (directory / "shard.txt").write_text(f"{shard}/2\n", encoding="utf-8")
+        suites = [{"title": file, "file": file, "specs": [s for s in top], "suites": nested}
+                  for file, top, nested in specs]
+        (directory / "results.json").write_text(json.dumps({"suites": suites}), encoding="utf-8")
+
+    a = ("a.spec.js", [{"title": "one", "file": "a.spec.js", "line": 3, "column": 1, "tests": [{"status": "expected"}]}],
+         [{"title": "group", "file": "a.spec.js", "specs": [
+             {"title": "two", "file": "a.spec.js", "line": 9, "column": 3, "tests": [{"status": "expected"}]}], "suites": []}])
+    b = ("b.spec.js", [{"title": "three", "file": "b.spec.js", "line": 5, "column": 1, "tests": [{"status": "unexpected"}]}], [])
+    good = tmp_path / "good"
+    shard_results(good, plan["a.spec.js"], [a])
+    shard_results(good, plan["b.spec.js"], [b])
+    assert inventory.browser_verify(listing, good, 2, spec_dir) == []
+    bad = tmp_path / "bad"
+    shard_results(bad, plan["a.spec.js"], [a])
+    problems = inventory.browser_verify(listing, bad, 2, spec_dir)
+    assert any("no evidence from shard(s)" in problem for problem in problems)
+    assert inventory.browser_listed("  [chromium] › a.spec.js:3:1 › one\n") == [("a.spec.js:3:1", "one")]
+
+
+def test_the_runtime_and_browser_provisioning_caches_are_keyed_by_what_they_build() -> None:
+    steps = {step["name"]: step for step in _steps(TESTS_WORKFLOW)}
+    inputs = steps["Resolve the supported runtime's build inputs (runtime layer)"]
+    assert "--print-uris aria2" in inputs["run"] and "os_release=" in inputs["run"]
+    aria2 = steps["Restore the built aria2 packages (runtime layer)"]["with"]
+    assert "steps.runtime_inputs.outputs.aria2_source" in aria2["key"] and "hashFiles('packaging/aria2/**')" in aria2["key"]
+    assert "steps.runtime_inputs.outputs.os_release" in aria2["key"]
+    rsync = steps["Restore the built rsync (runtime layer)"]["with"]
+    for part in ("env.RSYNC_VERSION", "env.RSYNC_SHA256", "hashFiles('.github/workflows/tests.yml')", "os_release"):
+        assert part in rsync["key"], part
+    provide = steps["Provide the supported runtime (runtime layer)"]
+    assert 'if [ "$ARIA2_CACHED" != true ]; then' in provide["run"] and 'if [ "$RSYNC_CACHED" != true ]; then' in provide["run"]
+    # A hit is held to the same prerequisite assertions as a fresh build.
+    # Only what the prerequisite assertions verified is ever saved.
+    names = list(steps)
+    for name in ("Save the built aria2 packages (runtime layer)", "Save the built rsync (runtime layer)"):
+        assert names.index("Assert the runtime layer prerequisites") < names.index(name)
+    for name in ("Save the built aria2 packages (runtime layer)", "Save the built rsync (runtime layer)"):
+        assert "cache-hit != 'true'" in steps[name]["if"] and "cache-primary-key" in steps[name]["with"]["key"]
+    browser = {step["name"]: step for step in _steps(BROWSER_WORKFLOW)}
+    cache = browser["Restore the locked Playwright Chromium and its system packages"]["with"]
+    assert "hashFiles('frontend/browser/package-lock.json')" in cache["key"] and "steps.runner_os.outputs.release" in cache["key"]
+    install = browser["Install and audit locked Playwright Chromium"]["run"]
+    assert "npx playwright install --with-deps chromium" in install and "/var/cache/apt/archives/" in install
+    assert "cache-hit != 'true'" in browser["Save the locked Playwright Chromium and its system packages"]["if"]
+    for path in (TESTS_WORKFLOW, BROWSER_WORKFLOW):
+        for uses in re.findall(r"uses:\s*(\S+)", path.read_text(encoding="utf-8")):
+            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", uses), uses   # every action pinned to a commit
+
+
+def test_the_inventory_jobs_judge_every_shard_and_security_runs_on_its_own() -> None:
+    jobs = _workflow(TESTS_WORKFLOW)["jobs"]
+    assert jobs["inventory"]["needs"] == "test" and jobs["inventory"]["if"] == "${{ !cancelled() }}"
+    verify = "\n".join(step.get("run", "") for step in jobs["inventory"]["steps"])
+    assert "shard_inventory.py pytest-verify" in verify and 'exit "${PIPESTATUS[0]}"' in verify
+    assert "needs" not in jobs["security"]
+    steps = {step["name"]: step for step in _steps(TESTS_WORKFLOW)}
+    assert steps["Inventory every test and the shard that owns it"]["if"] == "matrix.static"
+    executed = steps["Upload the tests this shard ran"]
+    assert executed["if"] == "always()" and "attempt-${{ github.run_attempt }}" in executed["with"]["name"]
+    # An explicitly named node id is never shard-filtered, in the candidate tree or the anchor's.
+    assert 'timeout "$remaining" env -u DP_TEST_SHARD "$py" -m pytest "$nodeid"' in _runs(TESTS_WORKFLOW)
+    browser = _workflow(BROWSER_WORKFLOW)["jobs"]["inventory"]
+    assert "shard_inventory.py browser-verify" in "\n".join(step.get("run", "") for step in browser["steps"])

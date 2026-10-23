@@ -46,12 +46,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {layer: contract, shard: 1/6, select: not real_runtime, static: true}
-          - {layer: contract, shard: 2/6, select: not real_runtime, static: false}
-          - {layer: contract, shard: 3/6, select: not real_runtime, static: false}
-          - {layer: contract, shard: 4/6, select: not real_runtime, static: false}
-          - {layer: contract, shard: 5/6, select: not real_runtime, static: false}
-          - {layer: contract, shard: 6/6, select: not real_runtime, static: false}
+          # Contract shards are weighted by measured duration (.github/qualification/
+          # pytest_seconds.json, read by tests/conftest.py); shard 1/8 holds only the
+          # isolated transfer-595 scenario, so it also carries the static checks and
+          # the test inventory.
+          - {layer: contract, shard: 1/8, select: not real_runtime, static: true}
+          - {layer: contract, shard: 2/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 3/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 4/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 5/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 6/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 7/8, select: not real_runtime, static: false}
+          - {layer: contract, shard: 8/8, select: not real_runtime, static: false}
           - {layer: runtime, shard: 1/3, select: real_runtime, static: false}
           - {layer: runtime, shard: 2/3, select: real_runtime, static: false}
           - {layer: runtime, shard: 3/3, select: real_runtime, static: false}
@@ -60,6 +66,10 @@ jobs:
       PYTEST_LAYER: ${{ matrix.select }}
       DP_TEST_SHARD: ${{ matrix.shard }}
       LAYER_ID: ${{ matrix.layer }}-${{ strategy.job-index }}
+      # The shard counts of the two layers (the matrix above): the test inventory
+      # assigns every collected test to exactly one of them.
+      CONTRACT_SHARDS: 8
+      RUNTIME_SHARDS: 3
       # The product's rsync executor requires rsync >= 3.4.0. The runtime layer
       # builds exactly the supported release the shipped image carries,
       # verified against its published digest, rather than the runner's own.
@@ -126,8 +136,51 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # The patched aria2 packages and the rsync build are cached by everything
+      # they are built from: the exact aria2 source package (.dsc name and
+      # SHA-256) the runner's archive serves, packaging/aria2/, the OS release,
+      # and the verified rsync release and this workflow (its configure flags).
+      # A miss rebuilds and verifies exactly as before; a hit is verified by
+      # the same prerequisite assertions before any test runs.
+      - name: Resolve the supported runtime's build inputs (runtime layer)
+        id: runtime_inputs
+        if: matrix.layer == 'runtime'
+        run: |
+          set -euo pipefail
+          for sources in /etc/apt/sources.list.d/*.sources; do
+            if [ -e "$sources" ]; then sudo sed -ri 's/^Types: deb$/Types: deb deb-src/' "$sources"; fi
+          done
+          if [ -e /etc/apt/sources.list ]; then sudo sed -ri 's/^# ?deb-src /deb-src /' /etc/apt/sources.list; fi
+          sudo apt-get update
+          dsc="$(apt-get source --only-source --print-uris aria2 | awk '$2 ~ /^aria2_.*\.dsc$/ && !found {print $2 "-" $4; found = 1}')"
+          test -n "$dsc"
+          . /etc/os-release
+          {
+            echo "aria2_source=$(printf '%s' "$dsc" | tr -c 'A-Za-z0-9._+-' '_')"
+            echo "os_release=${ID}-${VERSION_ID}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore the built aria2 packages (runtime layer)
+        id: aria2_cache
+        if: matrix.layer == 'runtime'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/aria2
+          key: aria2-dp-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime_inputs.outputs.os_release }}-${{ steps.runtime_inputs.outputs.aria2_source }}-${{ hashFiles('packaging/aria2/**') }}
+
+      - name: Restore the built rsync (runtime layer)
+        id: rsync_cache
+        if: matrix.layer == 'runtime'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/rsync
+          key: rsync-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime_inputs.outputs.os_release }}-${{ env.RSYNC_VERSION }}-${{ env.RSYNC_SHA256 }}-${{ hashFiles('.github/workflows/tests.yml') }}
+
       - name: Provide the supported runtime (runtime layer)
         if: matrix.layer == 'runtime'
+        env:
+          ARIA2_CACHED: ${{ steps.aria2_cache.outputs.cache-hit }}
+          RSYNC_CACHED: ${{ steps.rsync_cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
           # aria2 is the runner distribution's own aria2 source package rebuilt
@@ -137,11 +190,7 @@ jobs:
           # out and the same +dp2 suffix, so the runtime layer exercises the
           # binary DebridPulse ships; the published image's own packages are
           # qualified separately by Candidate Runtime Qualification.
-          for sources in /etc/apt/sources.list.d/*.sources; do
-            if [ -e "$sources" ]; then sudo sed -ri 's/^Types: deb$/Types: deb deb-src/' "$sources"; fi
-          done
-          if [ -e /etc/apt/sources.list ]; then sudo sed -ri 's/^# ?deb-src /deb-src /' /etc/apt/sources.list; fi
-          sudo apt-get update
+          # deb-src and the package index were prepared by the build-inputs step.
           sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot patch
           # ffmpeg/ffprobe, the Media Downloads executor's one local lossless
           # finalizer: the exact package the image ships, taken from the same
@@ -155,20 +204,24 @@ jobs:
           docker rm "$carrier"
           sudo apt-get install -y --no-install-recommends "$RUNNER_TEMP"/ffmpeg/ffmpeg_*.deb
           echo "FFMPEG_PACKAGE_VERSION=$(cat "$RUNNER_TEMP/ffmpeg/VERSION")" >> "$GITHUB_ENV"
-          sudo apt-get build-dep -y --no-install-recommends aria2
-          bash "$GITHUB_WORKSPACE/packaging/aria2/build-package.sh" "$RUNNER_TEMP/aria2-src" "$RUNNER_TEMP/aria2" > "$RUNNER_TEMP/aria2-build.log" 2>&1 \
-            || { tail -60 "$RUNNER_TEMP/aria2-build.log"; exit 1; }
+          if [ "$ARIA2_CACHED" != true ]; then
+            sudo apt-get build-dep -y --no-install-recommends aria2
+            bash "$GITHUB_WORKSPACE/packaging/aria2/build-package.sh" "$RUNNER_TEMP/aria2-src" "$RUNNER_TEMP/aria2" > "$RUNNER_TEMP/aria2-build.log" 2>&1 \
+              || { tail -60 "$RUNNER_TEMP/aria2-build.log"; exit 1; }
+          fi
           aria2_version="$(cat "$RUNNER_TEMP/aria2/VERSION")"
           sudo apt-get install -y --no-install-recommends "$RUNNER_TEMP"/aria2/packages/*.deb
           echo "ARIA2_PATCHED_VERSION=$aria2_version" >> "$GITHUB_ENV"
           src="$RUNNER_TEMP/rsync-src"; prefix="$RUNNER_TEMP/rsync"
-          mkdir -p "$src"
-          curl -sSfL -o "$src/rsync.tar.gz" "https://download.samba.org/pub/rsync/src/rsync-$RSYNC_VERSION.tar.gz"
-          echo "$RSYNC_SHA256  $src/rsync.tar.gz" | sha256sum -c -
-          tar -xzf "$src/rsync.tar.gz" -C "$src"
-          (cd "$src/rsync-$RSYNC_VERSION" && ./configure --prefix="$prefix" --disable-md2man --disable-xxhash \
-             --disable-zstd --disable-lz4 --disable-openssl --with-included-popt --with-included-zlib > /dev/null \
-           && make -j"$(nproc)" > /dev/null && make install > /dev/null)
+          if [ "$RSYNC_CACHED" != true ]; then
+            mkdir -p "$src"
+            curl -sSfL -o "$src/rsync.tar.gz" "https://download.samba.org/pub/rsync/src/rsync-$RSYNC_VERSION.tar.gz"
+            echo "$RSYNC_SHA256  $src/rsync.tar.gz" | sha256sum -c -
+            tar -xzf "$src/rsync.tar.gz" -C "$src"
+            (cd "$src/rsync-$RSYNC_VERSION" && ./configure --prefix="$prefix" --disable-md2man --disable-xxhash \
+               --disable-zstd --disable-lz4 --disable-openssl --with-included-popt --with-included-zlib > /dev/null \
+             && make -j"$(nproc)" > /dev/null && make install > /dev/null)
+          fi
           echo "$prefix/bin" >> "$GITHUB_PATH"
           # rsync's own default ports (873 daemon, 22 SSH) are part of what the
           # runtime layer proves; loopback binding of them needs no root, and the
@@ -201,6 +254,20 @@ jobs:
           print("loopback 873 and 22 bindable")
           PY
 
+      - name: Save the built aria2 packages (runtime layer)
+        if: matrix.layer == 'runtime' && steps.aria2_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/aria2
+          key: ${{ steps.aria2_cache.outputs.cache-primary-key }}
+
+      - name: Save the built rsync (runtime layer)
+        if: matrix.layer == 'runtime' && steps.rsync_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/rsync
+          key: ${{ steps.rsync_cache.outputs.cache-primary-key }}
+
       - name: Install dependencies
         run: |
           cd backend
@@ -211,6 +278,31 @@ jobs:
         run: |
           cd backend
           ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
+
+      - name: Inventory every test and the shard that owns it
+        if: matrix.static
+        run: |
+          set -euo pipefail
+          inventory="$RUNNER_TEMP/inventory"
+          mkdir -p "$inventory"
+          cd backend
+          env -u DP_TEST_SHARD python -m pytest tests/ --collect-only -q -p no:cacheprovider -m "not real_runtime" \
+            | grep '::' > "$inventory/contract.txt"
+          env -u DP_TEST_SHARD python -m pytest tests/ --collect-only -q -p no:cacheprovider -m real_runtime \
+            | grep '::' > "$inventory/runtime.txt"
+          python "$GITHUB_WORKSPACE/.github/qualification/shard_inventory.py" pytest-manifest --backend . \
+            --contract "$inventory/contract.txt" --contract-shards "$CONTRACT_SHARDS" \
+            --runtime "$inventory/runtime.txt" --runtime-shards "$RUNTIME_SHARDS" \
+            --out "$inventory/manifest.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the test inventory
+        if: matrix.static
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-inventory-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/inventory/manifest.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run this layer of the suite
         id: full_pytest
@@ -224,6 +316,7 @@ jobs:
           set -uo pipefail
           full="$RUNNER_TEMP/qualification/candidate/full"
           mkdir -p "$full"
+          printf '%s %s %s\n' "${LAYER_ID%-*}" "$DP_TEST_SHARD" "$LAYER_ID" > "$full/shard.txt"
           cd backend
           set +e
           started=$(date +%s)
@@ -272,7 +365,7 @@ jobs:
                 fi
                 (
                   cd "$dir" || exit 1
-                  timeout "$remaining" "$py" -m pytest "$nodeid" -q --tb=short -p no:cacheprovider \
+                  timeout "$remaining" env -u DP_TEST_SHARD "$py" -m pytest "$nodeid" -q --tb=short -p no:cacheprovider \
                     -o junit_family=xunit1 --junitxml="$out/$slug.$tag$i.xml" \
                     < /dev/null > "$out/$slug.$tag$i.log" 2>&1
                 )
@@ -342,6 +435,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload the tests this shard ran
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-executed-${{ github.sha }}-${{ env.LAYER_ID }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/qualification/candidate/full/shard.txt
+            ${{ runner.temp }}/qualification/candidate/full/results.xml
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload pytest classification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -393,11 +497,44 @@ jobs:
           node --check frontend/browser/playwright.config.js
           find frontend/browser -maxdepth 1 -name '*.spec.js' -print0 | sort -z | xargs -0 -n1 node --check
 
+  # Every required test ran exactly once, in the shard that owns it: the
+  # inventory taken by the static shard against every shard's own results
+  # (their latest attempt). Missing evidence fails it; it never passes by default.
+  inventory:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ !cancelled() }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download the test inventory
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: pytest-inventory-${{ github.sha }}-attempt-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/inventory
+
+      - name: Download every shard's results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: pytest-executed-${{ github.sha }}-*
+          path: ${{ runner.temp }}/executed
+
+      - name: Every required test ran exactly once
+        run: |
+          python3 .github/qualification/shard_inventory.py pytest-verify \
+            --manifest "$RUNNER_TEMP/inventory/manifest.json" --executed "$RUNNER_TEMP/executed" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
+
+  # Runs beside the test matrix: its checks and conclusion are its own.
   security:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    needs: test
 
     steps:
       - name: Checkout
