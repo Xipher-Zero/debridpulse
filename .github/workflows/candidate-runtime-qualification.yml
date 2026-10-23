@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   packages: write
   id-token: write
   attestations: write
@@ -68,26 +69,25 @@ jobs:
       - name: Wait for and resolve exact published candidate
         id: identity
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"
           manifest_digest=""
           manifest_json=""
 
-          for attempt in $(seq 1 120); do
-            if inspect="$(docker buildx imagetools inspect "$source_ref" 2>/dev/null)" && \
-               manifest_json="$(docker buildx imagetools inspect --raw "$source_ref" 2>/dev/null)"; then
-              manifest_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect")"
-              if [[ "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-                break
-              fi
-            fi
-            if [ "$attempt" -eq 120 ]; then
-              echo "Immutable candidate was not published for exact SHA $GITHUB_SHA"
-              exit 1
-            fi
-            sleep 5
-          done
+          # Wait on this commit's own Fork Image run, not on a clock: while it
+          # is queued or running (a re-run included) the candidate may still
+          # come; once it finished without publishing, fail saying so. Bounded.
+          python3 .github/qualification/candidate_image.py --sha "$GITHUB_SHA" --ref "$source_ref"
+          inspect="$(docker buildx imagetools inspect "$source_ref")"
+          manifest_json="$(docker buildx imagetools inspect --raw "$source_ref")"
+          manifest_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect")"
+          if [[ ! "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Immutable candidate $source_ref did not resolve to an index digest"
+            exit 1
+          fi
 
           index_revision="$(jq -r '.annotations["org.opencontainers.image.revision"] // empty' <<< "$manifest_json")"
           if [ "$index_revision" != "$GITHUB_SHA" ]; then
@@ -285,19 +285,3 @@ jobs:
           predicate-path: candidate-runtime-evidence.json
           push-to-registry: true
           create-storage-record: false
-
-  # This required gate passed for a 1.0.14 push (first attempt or a re-run):
-  # Testing Alias re-evaluates 1.0.14-testing from all six gates of the branch
-  # tip, moving it only to a fully qualified tip, one evaluation at a time.
-  # Its outcome is the "1.0.14-testing" commit status, never this gate's.
-  testing-alias:
-    name: Testing alias
-    needs: [identity, runtime, evidence]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'
-    permissions:
-      contents: read
-      actions: read
-      packages: write
-      attestations: read
-      statuses: write
-    uses: ./.github/workflows/testing-alias.yml

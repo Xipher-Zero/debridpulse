@@ -1,29 +1,27 @@
 name: Testing Alias
 
-# Moves ghcr.io/xipher-zero/debridpulse:1.0.14-testing to the immutable
-# sha-<commit> index of the CURRENT 1.0.14 tip, once that exact commit is fully
-# qualified (.github/qualification/testing_alias.py decides). A development
-# testing alias, never a release: latest, v* and internal-v* stay Release
-# Promotion's alone, and nothing is ever built or re-tagged per architecture.
+# Moves the rolling development alias ghcr.io/xipher-zero/debridpulse:1.0.14-testing
+# to the immutable sha-<commit> index that Fork Image has just published, when
+# that commit is still the 1.0.14 tip (.github/qualification/testing_alias.py
+# decides). Not a qualification or release target: the six required workflows
+# stay independently authoritative, latest, v* and internal-v* stay Release
+# Promotion's, and nothing is ever built or re-tagged per architecture.
 #
-# Called as the last job ("Testing alias") of each of the six required
-# workflows, after every other job of that run passed, on a 1.0.14 push --
-# first attempt or a later re-run. A workflow that exists only on 1.0.14 can
-# be started by nothing else: GitHub runs workflow_dispatch, workflow_run,
+# Called only as Fork Image's last job, after its publication succeeded, on a
+# 1.0.14 push (a re-run included). A workflow that exists only on 1.0.14 can be
+# started by nothing else: GitHub runs workflow_dispatch, workflow_run,
 # repository_dispatch and schedule workflows only from the default branch.
-# Whichever required run passes last sees all six passed and moves the alias.
 #
-# Writers are serialized: every evaluation, from all six workflows, waits its
-# turn in ONE concurrency group with `queue: max` (up to 100 waiting, first in
-# first out, none cancelled or replaced) and reads the branch tip, the gates,
-# the evidence and the alias inside its turn. So no two registry writes ever
-# overlap, and a delayed evaluation can only ever write the tip of its own turn.
+# One writer: every evaluation waits its turn in ONE concurrency group with
+# `queue: max` (up to 100 waiting, first in first out, none cancelled or
+# replaced) and reads the branch tip, its image and the alias inside its turn.
+# No two registry writes overlap, and a commit that is no longer the tip never
+# writes -- a newer commit's own publication does.
 #
-# The outcome is the commit status "1.0.14-testing" on the evaluated commit --
-# success (the alias is at this commit's qualified index), pending (not moved
-# yet, with why) or failure (a fault: the alias is unchanged; re-run a "Testing
-# alias" job on 1.0.14 to retry). It never changes a gate's verdict: every step
-# continues on error, so a green required workflow says nothing about the alias.
+# The outcome is the commit status "1.0.14-testing" on the published commit:
+# success (the alias is this commit's image), pending (superseded: no write) or
+# failure (a fault, naming the retry). It never changes Fork Image's verdict:
+# every step continues on error.
 on:
   workflow_call:
 
@@ -34,28 +32,24 @@ env:
   BRANCH: "1.0.14"
   ALIAS_TAG: "1.0.14-testing"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/container-security/v1
-  RUNTIME_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/candidate-runtime/v1
 
 jobs:
   alias:
-    name: Evaluate 1.0.14-testing
+    name: Move 1.0.14-testing to this commit's image
     if: >-
       github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'
       && github.repository == 'Xipher-Zero/debridpulse'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The one alias writer: one group for every caller (a literal, never
-    # github.workflow, which a called workflow shares with its caller).
+    # The one alias writer (a literal, never github.workflow, which a called
+    # workflow shares with its caller).
     concurrency:
       group: dp-1.0.14-testing-alias-writer
       cancel-in-progress: false
       queue: max
     permissions:
       contents: read
-      actions: read
       packages: write
-      attestations: read
       statuses: write
 
     steps:
@@ -66,38 +60,25 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/qualification
 
-      - name: Read the current tip and its six required gates
-        id: gates
+      - name: Read the current tip
+        id: tip
         continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          api() { gh api -H 'X-GitHub-Api-Version: 2022-11-28' "$@"; }
-          decide() { python3 .github/qualification/testing_alias.py "$@"; }
-          tip="$(api "repos/${GITHUB_REPOSITORY}/branches/${BRANCH}" --jq .commit.sha)"
+          tip="$(gh api -H 'X-GitHub-Api-Version: 2022-11-28' "repos/${GITHUB_REPOSITORY}/branches/${BRANCH}" --jq .commit.sha)"
           [[ "$tip" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::The ${BRANCH} tip is not a full SHA"; exit 1; }
-          api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${tip}&event=push&branch=${BRANCH}&per_page=100" > runs.json
-          # A required run still finishing (this one included) is read by its jobs.
-          echo '{}' > jobs.json
-          for run in $(decide --tip "$tip" --runs runs.json --unfinished); do
-            [[ "$run" =~ ^[0-9]+$ ]] || continue
-            api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}/jobs?filter=latest&per_page=100" --jq .jobs > run-jobs.json
-            jq --arg run "$run" --slurpfile listed run-jobs.json '.[$run] = $listed[0]' jobs.json > jobs.next && mv jobs.next jobs.json
-          done
-          decide --tip "$tip" --runs runs.json --jobs jobs.json --gates-only > gates.json
-          jq . gates.json
           echo "tip=$tip" >> "$GITHUB_OUTPUT"
-          echo "qualified=$(jq -r .qualified gates.json)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        if: steps.gates.outputs.qualified == 'true'
+        if: steps.tip.outputs.tip == github.sha
         continue-on-error: true
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Log in to GHCR
-        if: steps.gates.outputs.qualified == 'true'
+        if: steps.tip.outputs.tip == github.sha
         continue-on-error: true
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
@@ -105,16 +86,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve the immutable source index and the alias
+      - name: Resolve this commit's image and the alias
         id: images
-        if: steps.gates.outputs.qualified == 'true'
+        if: steps.tip.outputs.tip == github.sha
         continue-on-error: true
         shell: bash
-        env:
-          TIP: ${{ steps.gates.outputs.tip }}
         run: |
           set -euo pipefail
-          source_ref="${IMAGE_NAME}:sha-${TIP}"
+          source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"
           digest=""
           for attempt in $(seq 1 12); do
             if inspect="$(docker buildx imagetools inspect "$source_ref" 2>/dev/null)" && \
@@ -134,59 +113,32 @@ jobs:
           fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "alias_digest=$alias_digest" >> "$GITHUB_OUTPUT"
-          echo "alias_read=true" >> "$GITHUB_OUTPUT"
-
-      - name: Verify the signed qualification attestations
-        if: steps.images.outputs.alias_read == 'true'
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TIP: ${{ steps.gates.outputs.tip }}
-          DIGEST: ${{ steps.images.outputs.digest }}
-        run: |
-          set -euo pipefail
-          subject="oci://${IMAGE_NAME}@${DIGEST}"
-          # Signed by the qualifying workflow itself, from this branch, for this commit.
-          for kind in security runtime; do
-            if [ "$kind" = security ]; then
-              predicate="$SECURITY_PREDICATE_TYPE"; signer="container-security.yml"
-            else
-              predicate="$RUNTIME_PREDICATE_TYPE"; signer="candidate-runtime-qualification.yml"
-            fi
-            gh attestation verify "$subject" -R "$GITHUB_REPOSITORY" --predicate-type "$predicate" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/${signer}" \
-              --source-ref "refs/heads/${BRANCH}" --source-digest "$TIP" \
-              --deny-self-hosted-runners --format json > "${kind}.json" \
-              || { echo "::warning::No verifiable ${kind} attestation for ${subject}"; echo '[]' > "${kind}.json"; }
-          done
 
       - name: Decide
         id: decide
-        if: steps.gates.outputs.tip != ''
+        if: steps.tip.outputs.tip != ''
         continue-on-error: true
         shell: bash
         env:
-          TIP: ${{ steps.gates.outputs.tip }}
+          TIP: ${{ steps.tip.outputs.tip }}
           DIGEST: ${{ steps.images.outputs.digest }}
           ALIAS_DIGEST: ${{ steps.images.outputs.alias_digest }}
         run: |
           set -euo pipefail
           optional() { if [ -s "$1" ]; then echo "$1"; fi; }
-          python3 .github/qualification/testing_alias.py --tip "$TIP" --runs runs.json --jobs jobs.json \
-            --digest "${DIGEST:-}" --index "$(optional index.json)" --security "$(optional security.json)" \
-            --runtime "$(optional runtime.json)" --alias-digest "${ALIAS_DIGEST:-}" > decision.json
+          python3 .github/qualification/testing_alias.py --tip "$TIP" --sha "$GITHUB_SHA" --digest "${DIGEST:-}" \
+            --index "$(optional index.json)" --alias-digest "${ALIAS_DIGEST:-}" > decision.json
           jq . decision.json
           echo "action=$(jq -r .action decision.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Move the alias to the qualified index
+      - name: Move the alias to this commit's image
         id: move
         if: steps.decide.outputs.action == 'advance'
         continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TIP: ${{ steps.gates.outputs.tip }}
+          TIP: ${{ steps.tip.outputs.tip }}
           DIGEST: ${{ steps.images.outputs.digest }}
           PREVIOUS: ${{ steps.images.outputs.alias_digest }}
         run: |
@@ -230,7 +182,7 @@ jobs:
           then
             write=advanced
           elif [ "$status" -ne 0 ] && { [ "$observed" = "${PREVIOUS:-absent}" ]; }; then
-            write=unchanged                                  # refused, and observed still the previous alias
+            write=unchanged                                  # failed, and observed still the previous alias
           fi
           echo "write=$write" >> "$GITHUB_OUTPUT"
           echo "observed=${observed:-no answer}" >> "$GITHUB_OUTPUT"
@@ -243,25 +195,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TIP: ${{ steps.gates.outputs.tip }}
           WRITE: ${{ steps.move.outputs.write }}
           OBSERVED: ${{ steps.move.outputs.observed }}
           PREVIOUS: ${{ steps.images.outputs.alias_digest }}
         run: |
           set -euo pipefail
-          # The one authoritative outcome, on the evaluated commit, apart from the gates.
-          python3 .github/qualification/testing_alias.py --tip "${TIP:-$GITHUB_SHA}" --runs /dev/null \
-            --outcome decision.json --write "${WRITE:-}" --previous "${PREVIOUS:-}" > status.json \
-            || echo '{"state": "failure", "description": "1.0.14-testing state UNKNOWN: outcome unreadable, inspect the tag. Reconcile: re-run a Testing alias job on 1.0.14."}' > status.json
+          # The one authoritative outcome, on the published commit, apart from Fork Image's verdict.
+          python3 .github/qualification/testing_alias.py --outcome decision.json --write "${WRITE:-}" \
+            --previous "${PREVIOUS:-}" > status.json \
+            || echo '{"state": "failure", "description": "1.0.14-testing state UNKNOWN: outcome unreadable, inspect the tag. Reconcile: re-run the Testing alias job."}' > status.json
           state="$(jq -r .state status.json)"; description="$(jq -r .description status.json)"
           {
             echo "## ${IMAGE_NAME}:${ALIAS_TAG}"
             if [ -s decision.json ]; then
-              jq -r '"- Commit: `\(.commit)`", "- Source: `\(.source_tag // "—")`", "- Index digest: `\(.digest // "—")`",
-                     "- amd64: `\(.platforms.amd64 // "—")`", "- arm64: `\(.platforms.arm64 // "—")`",
-                     "- Alias before: `\(.previous_alias_digest // "none")`", "- Decision: **\(.action)** — \(.reason)",
-                     "", "| Required workflow | Verdict | Run | Attempt |", "|---|---|---|---|",
-                     (.gates | to_entries[] | "| \(.key) | \(.value.state) | \(.value.run_id // "—") | \(.value.attempt // "—") |")' decision.json
+              jq -r '"- Commit: `\(.commit)` (1.0.14 tip: `\(.tip // "unread")`)", "- Source: `\(.source_tag // "—")`",
+                     "- Index digest: `\(.digest // "—")`", "- amd64: `\(.platforms.amd64 // "—")`",
+                     "- arm64: `\(.platforms.arm64 // "—")`", "- Alias before: `\(.previous_alias_digest // "none")`",
+                     "- Decision: **\(.action)** — \(.reason)"' decision.json
             else
               echo "- No decision was reached, so no write was made."
             fi
@@ -269,8 +219,8 @@ jobs:
               echo "- Write: **${WRITE}** — the registry holds \`${OBSERVED:-no answer}\` (before: \`${PREVIOUS:-absent}\`)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "- Status \`${ALIAS_TAG}\` on \`${TIP:-$GITHUB_SHA}\`: **${state}** — ${description}" >> "$GITHUB_STEP_SUMMARY"
-          if ! gh api -X POST -H 'X-GitHub-Api-Version: 2022-11-28' "repos/${GITHUB_REPOSITORY}/statuses/${TIP:-$GITHUB_SHA}" \
+          echo "- Status \`${ALIAS_TAG}\` on \`${GITHUB_SHA}\`: **${state}** — ${description}" >> "$GITHUB_STEP_SUMMARY"
+          if ! gh api -X POST -H 'X-GitHub-Api-Version: 2022-11-28' "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
               -f state="$state" -f context="$ALIAS_TAG" -f description="$description" \
               -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null; then
             echo "::error::The ${ALIAS_TAG} commit status could not be recorded (${state}: ${description})"

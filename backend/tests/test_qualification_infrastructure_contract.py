@@ -1573,10 +1573,8 @@ def test_the_runtime_and_browser_provisioning_caches_are_keyed_by_what_they_buil
     assert "npx playwright install --with-deps chromium" in install and "/var/cache/apt/archives/" in install
     assert "cache-hit != 'true'" in browser["Save the locked Playwright Chromium and its system packages"]["if"]
     for path in (TESTS_WORKFLOW, BROWSER_WORKFLOW):
-        for uses in re.findall(r"(?m)^\s*(?:-\s+)?uses:\s*(\S+)", path.read_text(encoding="utf-8")):
-            # Every action pinned to a commit; the one local reusable workflow
-            # runs at the calling run's own commit and takes no ref at all.
-            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", uses) or uses == "./.github/workflows/testing-alias.yml", uses
+        for uses in re.findall(r"uses:\s*(\S+)", path.read_text(encoding="utf-8")):
+            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", uses), uses   # every action pinned to a commit
 
 
 def test_the_inventory_jobs_judge_every_shard_and_security_runs_on_its_own() -> None:
