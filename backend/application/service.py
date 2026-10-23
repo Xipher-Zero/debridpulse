@@ -25,6 +25,7 @@ from transfers.filesystem import safe_name
 from transfers.manual_queue_move import move_in_queue
 from transfers._repository_base import DemandChanged
 from transfers.models import TransferRequest, TransferState
+from transfers.runtime_telemetry import acquisition_eta_payload
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
     direct_link_host, normalize_direct_links, torrent_identity,
@@ -137,6 +138,10 @@ class ApplicationService:
         self.integration_wakeup = asyncio.Event()
         self.execution_wakeup = asyncio.Event()
         self.execution_poll_interval = 1
+        # The estimated times remaining the last progress batch published
+        # (``_publish_active_changes``): what a change is detected against,
+        # never a source of an estimate.
+        self._published_etas: dict[int, tuple[int, bool]] = {}
         # Incremental candidate readiness (``TransferEngine.candidate_publication``):
         # transfers whose committed candidate set changed and are due one
         # publication, drained by at most one task -- a burst on one transfer
@@ -364,6 +369,16 @@ class ApplicationService:
         # collection refresh in the browser.
         after = await self.repository.active()
         after_by_id = {transfer.id: transfer for transfer in after}
+        # The same estimate the list projects (``TransferEngine.acquisition_etas``),
+        # for the transfers acquiring now; a changed one is published like a
+        # changed progress figure, and one that ended is published as none.
+        # The memo is read and replaced with no await between, so concurrent
+        # publishers (the reconcile cycle and the fast observation) each
+        # compare against what was last published, whichever finished last.
+        etas = await self.engine.acquisition_etas(
+            [transfer.id for transfer in after
+             if str(getattr(transfer.state, "value", transfer.state)) == "downloading" and not transfer.paused])
+        published, self._published_etas = self._published_etas, etas
         updates = []
         for previous in before:
             current = after_by_id.get(previous.id)
@@ -373,14 +388,15 @@ class ApplicationService:
             previous_state = str(getattr(previous.state, "value", previous.state))
             current_state = str(getattr(current.state, "value", current.state))
             previous_progress = (previous.progress, previous.active_execution_progress,
-                                 previous.active_execution_basis)
+                                 previous.active_execution_basis, published.get(previous.id))
             current_progress = (current.progress, current.active_execution_progress,
-                                current.active_execution_basis)
+                                current.active_execution_basis, self._published_etas.get(current.id))
             if current_state != previous_state or current_progress != previous_progress:
                 updates.append(
                     self._active_overlay_item(
                         current,
                         status_changed=current_state != previous_state,
+                        eta=self._published_etas.get(current.id),
                     )
                 )
 
@@ -484,7 +500,7 @@ class ApplicationService:
         return item
 
     @staticmethod
-    def _active_overlay_item(transfer, *, status_changed=False):
+    def _active_overlay_item(transfer, *, status_changed=False, eta=None):
         """Project only mutable list fields needed by live browser updates."""
         state = getattr(transfer.state, "value", transfer.state)
         return {
@@ -495,6 +511,7 @@ class ApplicationService:
             "active_execution_progress": (None if transfer.active_execution_progress is None
                                           else float(transfer.active_execution_progress)),
             "active_execution_basis": transfer.active_execution_basis,
+            "acquisition_eta": acquisition_eta_payload(eta),
             "status_changed": bool(status_changed),
         }
 

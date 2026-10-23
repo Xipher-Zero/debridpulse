@@ -196,7 +196,7 @@ async def test_the_neutral_read_names_no_executor():
 def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
     from pathlib import Path
     app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-    renderer = app[app.index("function progress(pct, status, activePct, basis)"):]
+    renderer = app[app.index("function progress(pct, status, activePct, basis, eta)"):]
     renderer = renderer[:renderer.index("\n}\n")]
     details = app[app.index("function dpDetailProgress(t)"):]
     details = details[:details.index("\n}\n")]
@@ -327,7 +327,7 @@ def _render(cases):
     if node is None:
         pytest.fail("node is required to run the shared progress renderer")
     app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-    names = ("progress(pct, status, activePct, basis)", "dpDetailProgress(t)", "executionProgressWords(value, basis)",
+    names = ("progress(pct, status, activePct, basis, eta)", "dpDetailProgress(t)", "executionProgressWords(value, basis)",
              "executionProcessing(status, basis)", "transferDisplayStatus(t)",
              "inFlightExecutionPercent(status, activePct)")
     functions = []

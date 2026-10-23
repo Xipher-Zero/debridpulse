@@ -4623,6 +4623,77 @@ class TransferRepository:
                             size_knowledge=SizeKnowledge.durable(row["size_bytes"], row["size_knowledge"]))
             for row in rows), valid)
 
+    # A canonical artifact with no current writer whose whole size is still
+    # to be acquired, as opposed to one whose acquisition is over.
+    _ETA_WAITING_STATES = frozenset({"pending", "ready", "queued"})
+    _ETA_ACQUIRED_STATES = frozenset({"completed", "verifying", "extracting"})
+
+    async def acquisition_work(self, transfer_ids) -> dict[int, tuple[int, tuple[str, ...]]]:
+        """The remaining acquisition work of each transfer whose whole
+        remaining work is known: ``transfer id -> (remaining bytes, the
+        attempts acquiring it now)``, one bounded read for all of them. A
+        transfer is absent when that cannot be proven (no number is better than
+        a partial one): a request still open (resolving, waiting, materializing,
+        input required or failed), or any canonical artifact that is neither
+        acquired, nor acquired by a running writer stating an exact byte total
+        of its own, nor waiting to start with a known size -- a writer past
+        acquisition, one counting units or estimating, an unknown size, a
+        retry or recovery wait, an error. A withdrawn artifact is no longer the
+        transfer's work. A writer's remaining work is its own exact scope
+        (``total - completed``, the executor's counters behind an exact
+        in-flight figure), never a declared size; a waiting artifact's is its
+        known size less its DP-valid material. Each attempt is its own
+        artifact's current writer, counted once."""
+        ids = sorted({int(item) for item in transfer_ids})
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        async with get_db() as db:
+            open_requests = {int(row["transfer_id"]) for row in await db.fetchall(
+                f"""SELECT DISTINCT transfer_id FROM transfer_requests
+                    WHERE transfer_id IN ({marks}) AND state NOT IN ('resolved','skipped')""", ids)}
+            rows = await db.fetchall(
+                f"""SELECT f.id, f.torrent_id, f.status, f.size_bytes, f.size_knowledge, f.withdrawn_attempt,
+                           f.execution_attempt_id, e.id AS attempt_id, e.progress AS attempt_progress
+                    FROM download_files f
+                    LEFT JOIN execution_attempts e ON e.id = f.execution_attempt_id AND e.artifact_id = f.id
+                         AND e.state = 'running' AND e.authorized = 1
+                    WHERE f.torrent_id IN ({marks}) AND {canonical_artifact_membership_sql('f')}
+                    ORDER BY f.torrent_id, f.id""", ids)
+            waiting = [row["id"] for row in rows if row["attempt_id"] is None
+                       and str(row["status"]) in self._ETA_WAITING_STATES]
+            valid = await self._valid_material_bytes(db, waiting)
+        work: dict[int, list] = {}
+        unprovable = set(open_requests)
+        for row in rows:
+            transfer_id, status = int(row["torrent_id"]), str(row["status"] or "")
+            if transfer_id in unprovable or artifact_withdrawn(row):
+                continue
+            entry = work.setdefault(transfer_id, [0, set()])
+            if status in self._ETA_ACQUIRED_STATES:
+                continue
+            if row["attempt_id"] is not None and status == "downloading":
+                progress = codec.load(row["attempt_progress"], {}) or {}
+                total, completed = progress.get("total_bytes"), progress.get("completed_bytes")
+                exact = all(isinstance(value, int) and not isinstance(value, bool) for value in (total, completed))
+                # Unrecorded (``None``) is acquiring, as ``active_execution_progress_sql`` reads it.
+                if progress.get("acquiring") is not False and exact and total > 0 and 0 <= completed <= total:
+                    entry[0] += total - completed
+                    entry[1].add(str(row["attempt_id"]))
+                    continue
+            elif row["attempt_id"] is None and status in self._ETA_WAITING_STATES:
+                size = int(row["size_bytes"] or 0)
+                knowledge = SizeKnowledge.durable(row["size_bytes"], row["size_knowledge"])
+                if knowledge == SizeKnowledge.KNOWN_ZERO:
+                    continue
+                if knowledge == SizeKnowledge.KNOWN_POSITIVE:
+                    entry[0] += size - min(size, valid.get(int(row["id"]), 0))
+                    continue
+            unprovable.add(transfer_id)
+        return {transfer_id: (remaining, tuple(sorted(attempts)))
+                for transfer_id, (remaining, attempts) in work.items()
+                if transfer_id not in unprovable and attempts}
+
     @staticmethod
     async def _valid_material_bytes(db, artifact_ids) -> dict[int, int]:
         """DP-valid material bytes per artifact (absent = nothing valid)."""

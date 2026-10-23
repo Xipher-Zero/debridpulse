@@ -43,6 +43,7 @@ from transfers._repository_base import (
     active_execution_projection, canonical_artifact_membership_sql,
 )
 from transfers.display_name import normalized_transfer_display_name
+from transfers.runtime_telemetry import acquisition_eta_payload
 from transfers.errors import Category, TransferError
 from transfers.models import BITTORRENT_REQUEST_KINDS
 from transfers.input_required import public_challenge
@@ -2116,6 +2117,15 @@ async def list_operational_torrents(
             current_resource_state=current_root_resource_state,
         ))
         items.append(item)
+    # The estimated time remaining of each row acquiring now, from the one
+    # owner (``TransferEngine.acquisition_etas``): one bounded read for the
+    # page and the meter's memory, never an estimate of this projection's own.
+    engine = getattr(application, "engine", None)
+    acquiring = [int(item["id"]) for item in items
+                 if item.get("status") == "downloading" and item.get("presentation_status") == "downloading"]
+    etas = await engine.acquisition_etas(acquiring) if engine is not None and acquiring else {}
+    for item in items:
+        item["acquisition_eta"] = acquisition_eta_payload(etas.get(int(item["id"])))
     if activity_mode:
         items = _apply_activity_priority_order(items)
     return {"items": await _with_access(request, application, items), "total": total,

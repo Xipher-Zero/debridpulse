@@ -539,7 +539,7 @@ function rowMarkup(t) {
       ${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}
     </td>
     <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}${consent}</td>
-    <td data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis)}</td>
+    <td data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis, t.acquisition_eta ?? null)}</td>
     <td class="sz">${fmtSize(t.size_bytes)}</td>
     <td class="sz">${dateMarkup(t.created_at)}</td>
     ${operable ? `<td onclick="event.stopPropagation()">

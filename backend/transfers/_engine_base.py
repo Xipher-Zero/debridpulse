@@ -165,7 +165,7 @@ from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers._repository_base import KnownProviderResource, terminal_cleanup_authority
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
-from transfers.runtime_telemetry import ExecutionThroughputMeter
+from transfers.runtime_telemetry import ExecutionThroughputMeter, acquisition_eta
 
 
 logger = logging.getLogger(__name__)
@@ -1393,6 +1393,21 @@ class TransferEngine:
             self._persisted_sustained_peak = peak
         for transfer_id in sorted(moved):
             await self._aggregate(transfer_id)
+
+    async def acquisition_etas(self, transfer_ids) -> dict[int, tuple[int, bool]]:
+        """THE estimated time remaining of each given transfer that has one,
+        ``transfer id -> (seconds, held)``: its provable remaining acquisition
+        work (``TransferRepository.acquisition_work``) over the rates this
+        engine's one throughput meter measures for exactly the attempts
+        acquiring it (``runtime_telemetry.acquisition_eta``). Every surface
+        reads it here; none estimates on its own."""
+        work = await self.repository.acquisition_work(transfer_ids)
+        etas = {}
+        for transfer_id, (remaining, attempts) in work.items():
+            eta = acquisition_eta(remaining, attempts, self.throughput)
+            if eta is not None:
+                etas[transfer_id] = eta
+        return etas
 
     @staticmethod
     def _acquired_bytes(observation) -> int | None:

@@ -583,3 +583,27 @@ body.light #view-torrents .empty-icon {
   font-size: 12px;
   line-height: 1.45;
 }
+
+/* ── Estimated time remaining ────────────────────────────────────────── */
+/* app.js progress() places it beneath the primary bar, floated right on the
+   percentage's line: where the column has room the label, the lane and the
+   row height stay as they are; where it has none the label moves to the next
+   line, never under it. Its width is reserved for HH:MM:SS (8ch), so "—" and
+   any estimate under 100 hours take the same room and a changing value never
+   moves the row; tabular figures, never wrapped. The secondary text token
+   keeps it legible in both themes. A held estimate is set apart by style and
+   its tooltip, not by a dimmer, harder-to-read tone. */
+#view-torrents #t-tbody .prog-eta {
+  float: right;
+  min-width: 8ch;
+  text-align: right;
+  margin: 3px 0 0 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--dp-text-secondary);
+}
+#view-torrents #t-tbody .prog-eta.is-held {
+  font-style: italic;
+}

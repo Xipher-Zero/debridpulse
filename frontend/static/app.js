@@ -721,10 +721,39 @@ function inFlightExecutionPercent(status, activePct) {
   const raw = activePct === null || activePct === undefined ? NaN : Number(activePct);
   return Number.isFinite(raw) ? Number(Math.min(Math.max(raw, 0), 100).toFixed(1)) : null;
 }
+// The estimated time remaining of a downloading transfer, beneath its bar:
+// the backend's one estimate (``acquisition_eta``: whole seconds, and whether
+// it is held while no new data arrives), never one of the browser's own, and
+// never counted down between updates. ``HH:MM:SS`` with at least two hour
+// digits and no 24-hour wrap; anything that is not a whole number of seconds
+// within the backend's ceiling (``MAX_ETA_SECONDS``, 9999:59:59) is "—".
+const ACQUISITION_ETA_MAX_SECONDS = 9999 * 3600 + 59 * 60 + 59;
+function acquisitionEtaText(seconds) {
+  if (!Number.isInteger(seconds) || seconds <= 0 || seconds > ACQUISITION_ETA_MAX_SECONDS) return null;
+  const two = value => String(value).padStart(2, '0');
+  return two(Math.floor(seconds / 3600)) + ':' + two(Math.floor(seconds / 60) % 60) + ':' + two(seconds % 60);
+}
+function acquisitionEtaMarkup(eta) {
+  const text = acquisitionEtaText(eta?.seconds);
+  if (text === null) {
+    return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="Estimated time remaining: not available"' +
+      ' data-tooltip="No reliable estimate of the time remaining right now">—</span>';
+  }
+  const held = eta.held === true;
+  const tooltip = held
+    ? 'Estimated time remaining, held: no new data for a few seconds'
+    : 'Estimated time remaining for the download, a prediction; processing afterwards is not included';
+  return '<span class="prog-eta' + (held ? ' is-held' : '') + '" data-role="transfer-eta"' +
+    ' aria-label="Estimated time remaining ' + text + (held ? ', held' : '') + '" data-tooltip="' + tooltip + '">' +
+    text + '</span>';
+}
+
 // ``activePct``: in-flight execution activity on the current source that is
 // not yet DP material, from any executor; shown beside, never as, completion.
-// ``basis`` (``active_execution_basis``) says what it counts.
-function progress(pct, status, activePct, basis) {
+// ``basis`` (``active_execution_basis``) says what it counts. ``eta``: the
+// row's ``acquisition_eta`` where its surface shows one (Downloads), shown
+// only while the row is downloading; omitted, no estimate is rendered.
+function progress(pct, status, activePct, basis, eta) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
   const failed = state === 'error';
@@ -785,8 +814,11 @@ function progress(pct, status, activePct, basis) {
       ? '<span class="prog-activity" data-role="execution-progress" data-tooltip="' + inFlightTitle + '">' +
         executionProgressWords(activeValue, basis) + '</span>'
       : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));
+  // Floated right on the percentage's line, so it sits beneath the bar
+  // without moving the label, the lane or the row's height.
+  const etaLabel = active && eta !== undefined ? acquisitionEtaMarkup(eta) : '';
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
-         lane + '<span class="prog-pct">' + label + '</span>' + activityLabel;
+         lane + etaLabel + '<span class="prog-pct">' + label + '</span>' + activityLabel;
 }
 
 // An extraction failure is announced once per event; it paints nothing. Only
@@ -823,6 +855,7 @@ function patchProgressOnlyTransferEvent(data) {
     const nextProgress = update?.progress == null ? null : Number(update.progress);
     const nextActivity = update?.active_execution_progress == null ? null : Number(update.active_execution_progress);
     const nextBasis = update?.active_execution_basis ?? null;
+    const nextEta = update?.acquisition_eta ?? null;
 
     if (!Number.isFinite(id) || (nextProgress !== null && !Number.isFinite(nextProgress))) {
       continue;
@@ -839,8 +872,12 @@ function patchProgressOnlyTransferEvent(data) {
           row.querySelector('[data-role="transfer-progress"]');
 
         if (progressCell) {
+          // Only a surface that renders an estimate (Downloads) gets one: its
+          // downloading rows always carry the estimate element, and a status
+          // change is never patched here.
+          const showsEta = progressCell.querySelector('[data-role="transfer-eta"]') !== null;
           progressCell.innerHTML =
-            progress(nextProgress, status, nextActivity, nextBasis);
+            progress(nextProgress, status, nextActivity, nextBasis, showsEta ? nextEta : undefined);
         }
 
         const dashFill =

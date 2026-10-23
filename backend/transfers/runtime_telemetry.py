@@ -36,9 +36,21 @@ evidence of zero) and not dominated by an isolated burst (no one of its
 ``_SUSTAINED_BUCKETS`` equal parts holding more than half of its bytes).
 ``sustained_peak`` is the highest such rate seen -- seeded from, and raised
 into, its durable record by the engine -- and it never falls.
+
+A logical transfer's estimated time remaining is that transfer's remaining
+acquisition bytes over the summed acquisition rate of exactly its acquiring
+executions (``acquisition_eta``), each read from this same history
+(``acquisition_rate``): no second sampler. The rate is the counter's growth
+over up to ``ETA_WINDOW_SECONDS`` ending at its last movement, measured only
+over the current run of movement and only once that run spans
+``ETA_MIN_SPAN_SECONDS``. Anchored at the last movement, a counter that stops
+for less than ``ETA_HOLD_SECONDS`` keeps the estimate exactly as it was --
+held, never counted down -- and one that stays still longer has none; after
+such a stall the next run is measured afresh, so a stale rate never returns.
 """
 from __future__ import annotations
 
+import math
 import time
 from collections import deque
 from typing import Callable, Mapping
@@ -66,6 +78,19 @@ _SUSTAINED_GAP_SECONDS = 5.0
 # A sustained window is refused when one of these equal parts holds more than
 # half its bytes: an isolated burst, not a sustained rate.
 _SUSTAINED_BUCKETS = 6
+# The time-remaining estimate (``acquisition_rate``), from the windows above:
+# measured over at most the sustained window -- in practice the span the
+# ``_MAX_SAMPLES`` most recent passes cover (about 20 s with the fast
+# observation and the reconcile cycle both recording) -- so a bursty or coarse
+# counter moves it gently; first shown once its run of movement spans the presentation
+# window; held while the counter is still for no longer than the pass gap that
+# already ends sustained coverage, and gone after it.
+ETA_WINDOW_SECONDS = SUSTAINED_WINDOW_SECONDS
+ETA_MIN_SPAN_SECONDS = WINDOW_SECONDS
+ETA_HOLD_SECONDS = _SUSTAINED_GAP_SECONDS
+# The largest estimate presented, 9999:59:59 -- a prediction past ~416 days
+# says nothing an operator can use, and ten characters stay one fixed width.
+MAX_ETA_SECONDS = 9999 * 3600 + 59 * 60 + 59
 
 
 class ExecutionThroughputMeter:
@@ -76,6 +101,9 @@ class ExecutionThroughputMeter:
         self.clock = clock
         self._max_age = max(0.0, float(max_age_seconds))
         self._window = float(window_seconds)
+        # History spans the longest window read from it (the estimate's),
+        # still bounded by ``_MAX_SAMPLES``.
+        self._retention = max(self._window, ETA_WINDOW_SECONDS)
         self._series: dict[str, deque] = {}
         self._sampled_at: float | None = None
         self._acquired = 0                                 # aggregate counted bytes since construction
@@ -111,7 +139,7 @@ class ExecutionThroughputMeter:
             else:
                 self._acquired += value - series[-1][1]
             series.append((at, value))
-            while len(series) > 2 and series[1][0] <= at - self._window:
+            while len(series) > 2 and series[1][0] <= at - self._retention:
                 series.popleft()                           # keep one sample at or before the window
         self._sampled_at = passed
         self._totals.append((passed, self._acquired))
@@ -146,6 +174,36 @@ class ExecutionThroughputMeter:
         if total > 0 and max(b - a for a, b in zip(edges, edges[1:])) > total / 2:
             return None
         return max(0.0, total) / SUSTAINED_WINDOW_SECONDS
+
+    def acquisition_rate(self, key: str) -> tuple[float, bool] | None:
+        """One execution's rate for its time-remaining estimate, ``(bytes per
+        second, held)``, or ``None`` when there is no credible one: observation
+        stopped, the counter has not moved for ``ETA_HOLD_SECONDS``, or its
+        current run of movement is shorter than ``ETA_MIN_SPAN_SECONDS``.
+
+        Measured up to its last movement, so while the counter is still the
+        rate -- and the estimate -- stay exactly what they were; ``held`` says
+        so once the stillness outlasts the gap the presentation rate already
+        tolerates (``_SAMPLE_GRACE_SECONDS``). The run starts where movement
+        resumed after a stall longer than the hold, so the stall never dilutes
+        it and a rate from before it never returns."""
+        series = self._series.get(key)
+        if not self._fresh() or not series or len(series) < 2:
+            return None
+        now = self.clock()
+        run_start = moved_at = moved = None
+        for before, sample in zip(series, list(series)[1:]):
+            if sample[1] > before[1]:
+                if moved_at is None or sample[0] - moved_at > ETA_HOLD_SECONDS:
+                    run_start = before[0]
+                moved_at, moved = sample[0], sample[1]
+        if moved_at is None or now - moved_at > ETA_HOLD_SECONDS:
+            return None
+        start = max(run_start, moved_at - ETA_WINDOW_SECONDS)
+        if moved_at - start < ETA_MIN_SPAN_SECONDS:
+            return None
+        rate = (moved - self._bytes_at(series, start)) / (moved_at - start)
+        return (rate, now - moved_at > _SAMPLE_GRACE_SECONDS) if rate > 0 else None
 
     def raise_sustained_peak(self) -> int | None:
         """Raise ``sustained_peak`` to the current sustained rate when that is
@@ -187,3 +245,36 @@ class ExecutionThroughputMeter:
                 return before[1] + (sample[1] - before[1]) * share
             before = sample
         return float(before[1])
+
+
+def acquisition_eta(remaining_bytes: int | None, attempt_ids, meter: ExecutionThroughputMeter
+                    ) -> tuple[int, bool] | None:
+    """A logical transfer's estimated time remaining, ``(whole seconds,
+    held)``, or ``None``: its remaining acquisition bytes over the summed
+    ``acquisition_rate`` of exactly the executions acquiring them, each
+    counted once. ``None`` unless every one of them has a credible rate, the
+    remaining work is positive, and the estimate fits ``MAX_ETA_SECONDS``.
+    Rounded up, so unfinished work never reads as no time left. Held only
+    while every one of its executions is held: only then is the figure
+    exactly the one last shown."""
+    attempts = sorted(set(attempt_ids))
+    if remaining_bytes is None or remaining_bytes <= 0 or not attempts:
+        return None
+    rates = [meter.acquisition_rate(attempt) for attempt in attempts]
+    if any(rate is None for rate in rates):
+        return None
+    total = sum(rate for rate, _held in rates)
+    seconds = remaining_bytes / total if total > 0 else math.inf
+    if not math.isfinite(seconds) or seconds > MAX_ETA_SECONDS:
+        return None
+    seconds = max(1, math.ceil(seconds))
+    if seconds > MAX_ETA_SECONDS:
+        return None
+    return seconds, all(held for _rate, held in rates)
+
+
+def acquisition_eta_payload(eta: tuple[int, bool] | None) -> dict | None:
+    """The one public form of an estimate, for the list and its live
+    progress updates alike: ``{"seconds", "held"}``, or ``None`` when the
+    transfer has no credible estimate."""
+    return None if eta is None else {"seconds": int(eta[0]), "held": bool(eta[1])}
