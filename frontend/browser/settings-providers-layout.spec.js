@@ -294,7 +294,9 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
 
   test.beforeEach(async ({page}) => {
     await isolateExternalFonts(page);
-    await page.setViewportSize({width: 1440, height: 1000});
+    // The 1200px content area these cases were written against (1440px with the
+    // full sidebar before 1.0.14; the same content beside the compact rail).
+    await page.setViewportSize({width: 1272, height: 1000});
     await page.goto('/');
     await page.locator('#sidebar .nav-item[data-view="settings"]').click();
     await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);

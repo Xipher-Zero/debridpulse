@@ -365,16 +365,181 @@ body.light .theme-toggle {
 
 @media (max-width: 1180px) {
   :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; --dp-sidebar-item-inset: 18px; }
-  .logo { padding-left: 18px; }
 }
 
-/* Wherever the navigation icons form the left rail (the expanded sidebar and
-   the drawer; not the compact 900-1179px shell), the brand glyph is centred on
-   that rail. Only the block's leading padding moves, so the wordmark follows
-   the glyph at its existing gap. */
-@media (min-width: 1180px), (max-width: 899px) {
-  .logo {
-    padding-left: calc(var(--dp-sidebar-item-inset) + (var(--dp-sidebar-icon-size) - var(--dp-sidebar-brand-glyph)) / 2);
+/* The brand glyph is centred on the navigation icon rail at every width (the
+   expanded sidebar, the compact rail, the drawer). Only the block's leading
+   padding moves, so the wordmark follows the glyph at its existing gap. */
+.logo {
+  padding-left: calc(var(--dp-sidebar-item-inset) + (var(--dp-sidebar-icon-size) - var(--dp-sidebar-brand-glyph)) / 2);
+}
+
+/* ── Desktop sidebar: expanded and compact ───────────────────────────────
+   One universal width decides the desktop shell. From 1560 CSS px the full
+   240px sidebar; from 901 to 1559px the compact 72px icon rail. 1560 is just
+   above the Dashboard's first measured pressure point with the full sidebar
+   (its six-card row runs out of room near 1535px); the rail gives the page
+   168px back. Below 901px the existing tablet sidebar and drawer apply
+   unchanged. app.js reads the same range (SIDEBAR_COMPACT_QUERY) for the
+   rail's handle.
+
+   The rail is the same sidebar, not a second one: every label stays in place
+   and in the accessibility tree, faded out and clipped by the sidebar's edge,
+   while the section headings, the icons, the brand glyph, Provider Status
+   (as its indicators) and the session controls stay on the one icon rail.
+   Its handle shows the same sidebar at full width above the page for the
+   moment: the overlay's negative trailing margin keeps the sidebar's share
+   of the row at the rail's width, so the page does not move at all. */
+:root {
+  --dp-shell-rail: 72px;
+  --dp-shell-sidebar-full: 240px;
+}
+
+.sidebar-handle { display: none; }
+
+@media (min-width: 901px) {
+  /* The persistent change (a window crossing 1560px) and the overlay animate
+     the sidebar's width -- the page follows only the persistent one. Labels
+     fade out before the edge reaches them, and fade in once it has passed. */
+  #sidebar {
+    transition:
+      width var(--dp-motion-expand) var(--dp-motion-ease),
+      min-width var(--dp-motion-expand) var(--dp-motion-ease),
+      margin-right var(--dp-motion-expand) var(--dp-motion-ease),
+      box-shadow var(--dp-motion-expand) var(--dp-motion-ease);
+  }
+  .logo,
+  .nav-item {
+    transition: background .14s ease, color .14s ease, box-shadow .14s ease,
+      padding var(--dp-motion-expand) var(--dp-motion-ease);
+  }
+  #sidebar :is(.logo-text, .nav-label) {
+    white-space: nowrap;
+    transition: opacity 140ms var(--dp-motion-ease) 110ms;
+  }
+  /* A change of presentation (rail, full, overlay) replaces the Provider
+     Status and session composition at once; app.js marks the moment and the
+     stack fades back in once the sidebar has nearly reached its new width. */
+  #sidebar.sidebar-reflowing .sidebar-bottom-stack > *,
+  #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer {
+    animation: dp-sidebar-reveal 140ms var(--dp-motion-ease) 120ms both;
+  }
+}
+
+@keyframes dp-sidebar-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (min-width: 901px) and (max-width: 1559px) {
+  :root {
+    --dp-shell-sidebar: var(--dp-shell-rail);
+    --dp-sidebar-item-inset: 26px;
+  }
+
+  #sidebar:not(.sidebar-overlay-open) {
+    transition:
+      width var(--dp-motion-collapse) var(--dp-motion-ease) 60ms,
+      min-width var(--dp-motion-collapse) var(--dp-motion-ease) 60ms,
+      margin-right var(--dp-motion-collapse) var(--dp-motion-ease) 60ms,
+      box-shadow var(--dp-motion-collapse) var(--dp-motion-ease);
+  }
+  #sidebar:not(.sidebar-overlay-open) :is(.logo-text, .nav-label) {
+    opacity: 0;
+    transition: opacity 90ms var(--dp-motion-ease);
+  }
+
+  /* The temporary overlay: the full sidebar above the page, its row share
+     still the rail's. */
+  #sidebar.sidebar-overlay-open {
+    width: var(--dp-shell-sidebar-full);
+    min-width: var(--dp-shell-sidebar-full);
+    margin-right: calc(var(--dp-shell-rail) - var(--dp-shell-sidebar-full));
+    box-shadow: 10px 0 34px rgba(0, 0, 10, .38);
+  }
+  body.light #sidebar.sidebar-overlay-open {
+    box-shadow: 10px 0 30px rgba(45, 61, 96, .16);
+  }
+
+  /* The handle: centred on the sidebar's right edge, it follows that edge
+     as the overlay opens and closes, and its chevron says which way it goes. */
+  .sidebar-handle {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    top: 50%;
+    right: 0;
+    z-index: 6;
+    width: 18px;
+    height: 46px;
+    margin: 0;
+    padding: 0;
+    transform: translateY(-50%);
+    border: 1px solid rgba(116, 130, 194, .24);
+    border-right: 0;
+    border-radius: 9px 0 0 9px;
+    background: rgba(14, 19, 45, .92);
+    color: #bec3da;
+    font: inherit;
+    cursor: pointer;
+  }
+  .sidebar-handle:hover {
+    color: #f3f4ff;
+    background: rgba(32, 28, 72, .96);
+  }
+  .sidebar-handle:focus-visible {
+    outline: 2px solid var(--accent, #a855f7);
+    outline-offset: -2px;
+  }
+  .sidebar-handle svg {
+    width: 14px;
+    height: 14px;
+    transition: transform var(--dp-motion-expand) var(--dp-motion-ease);
+  }
+  #sidebar.sidebar-overlay-open .sidebar-handle svg {
+    transform: rotate(180deg);
+  }
+  body.light .sidebar-handle {
+    border-color: #d9deed;
+    background: rgba(255, 255, 255, .94);
+    color: #4c526d;
+  }
+  body.light .sidebar-handle:hover {
+    color: #1c2037;
+    background: #f0edff;
+  }
+
+  /* Downloads' active count stays with its icon. */
+  #sidebar:not(.sidebar-overlay-open) nav .nav-badge {
+    position: absolute;
+    top: 5px;
+    left: calc(var(--dp-sidebar-item-inset) + var(--dp-sidebar-icon-size) - 6px);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 8px;
+  }
+
+  /* Provider Status keeps its bounded panel on the rail, as indicators
+     (ui-provider-state.css composes them). */
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer {
+    padding: 10px 4px 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sidebar,
+  #sidebar:not(.sidebar-overlay-open),
+  .logo,
+  .nav-item,
+  #sidebar :is(.logo-text, .nav-label),
+  #sidebar:not(.sidebar-overlay-open) :is(.logo-text, .nav-label),
+  .sidebar-handle svg {
+    transition: none;
+  }
+  #sidebar.sidebar-reflowing .sidebar-bottom-stack > *,
+  #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer {
+    animation: none;
   }
 }
 

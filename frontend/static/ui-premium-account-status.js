@@ -94,6 +94,10 @@
       ? [fullBlock(...accounts[0])]
       : accounts.map(([name, account]) => compactLine(name, account));
     label.replaceChildren(...blocks);
+    // The compact sidebar rail shows the crown alone; the DP tooltip then
+    // says what the label says (index.html marks the label it repeats).
+    row.dataset.tooltip = blocks.map(block => (block.children.length ? [...block.children] : [block])
+      .map(line => line.textContent).join(' ')).join(' · ');
     row.style.display = blocks.length ? '' : 'none';
     if (blocks.length) row.dataset.premiumAccounts = String(blocks.length);
     else delete row.dataset.premiumAccounts;

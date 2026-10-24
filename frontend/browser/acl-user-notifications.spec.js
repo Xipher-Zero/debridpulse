@@ -105,6 +105,16 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   const labels = await navLabels(page);
   expect(labels).not.toContain('Settings');
   expect(labels.slice(labels.indexOf('Statistics'))).toEqual(['Statistics', 'Notifications', 'Help & License']);
+  // 1440px is the compact desktop rail: the User's own entries are its icons,
+  // each keeping its accessible name and DP tooltip; no Admin entry and no
+  // Provider Status appear on the rail either.
+  await expect(page.locator('#sidebar-handle')).toBeVisible();
+  const ownEntry = page.locator('#sidebar .nav-item', {hasText: 'Notifications'});
+  await expect(ownEntry).toHaveAccessibleName('Notifications');
+  await expect(ownEntry).toHaveAttribute('data-tooltip', 'Notifications');
+  await expect(ownEntry.locator('.nav-label')).toHaveCSS('opacity', '0');
+  await expect(page.locator('#sidebar .nav-item[data-view="events"], #sidebar .nav-item[data-view="settings"]:not([data-title])')).toHaveCount(0);
+  await expect(page.locator('#sidebar .sidebar-footer')).toHaveCount(0);
   await page.locator('#sidebar .nav-item', {hasText: 'Notifications'}).click();
   await expect(page.locator('#sidebar .nav-item.active .nav-label')).toHaveText('Notifications');
   await expect(page.locator('#page-title')).toHaveText('Notifications');

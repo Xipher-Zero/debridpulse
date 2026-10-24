@@ -17,7 +17,8 @@
  * scrolls, and the pointer can reach it to do so; every other tooltip lets the
  * pointer through to what lies beneath. This owns presentation only: it renders
  * nothing else and changes no element but its own and the described element's
- * aria-describedby while shown. */
+ * aria-describedby while shown. An element whose tooltip repeats a label it
+ * shows (data-tooltip-label) gets it only while that label is not shown. */
 (function () {
   'use strict';
 
@@ -172,9 +173,20 @@
     pending = null;
   }
 
+  /* An element may name the label inside it that its tooltip repeats
+   * (data-tooltip-label, a selector). While that label is shown the tooltip
+   * has nothing to add; once it is faded out -- the compact sidebar rail's
+   * labels -- the tooltip says it. */
+  function repeatsShownLabel(host) {
+    const selector = host.getAttribute('data-tooltip-label');
+    if (!selector) return false;
+    const label = host.querySelector(selector);
+    return Boolean(label) && Number(getComputedStyle(label).opacity) > 0.5;
+  }
+
   function hostOf(node) {
     const host = node instanceof Element ? node.closest(SELECTOR) : null;
-    return host && textOf(host) ? host : null;
+    return host && textOf(host) && !repeatsShownLabel(host) ? host : null;
   }
 
   function hover(host) {

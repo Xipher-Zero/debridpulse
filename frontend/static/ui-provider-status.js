@@ -157,15 +157,27 @@
     return 'unknown';
   }
 
+  // The state each indicator's dot shows, in words: the dot's own accessible
+  // name, and with its row's name the DP tooltip the compact sidebar rail
+  // gives the row once that name is no longer shown.
+  function stateLabel(state) {
+    return ({healthy:'Healthy', degraded:'Degraded', auth_required:'Sign-in required', unhealthy:'Unhealthy',
+      unconfigured:'Not configured', unverified:'Not verified', unknown:'Status unknown', checking:'Checking',
+      mixed:'Partly enabled', unavailable:'Unavailable', disabled:'Disabled', inactive:'Inactive'})[state] || 'Status unknown';
+  }
+  function indicator(className, state, dot, name, extra = '') {
+    return `<div class="conn-row ${className}"${extra} data-provider-state="${esc(state)}" data-tooltip="${esc(`${name}: ${stateLabel(state)}`)}" data-tooltip-label=".dp-provider-status-name"><div class="dot ${dot}" role="img" aria-label="${esc(stateLabel(state))}"></div><span class="dp-provider-status-name">${esc(name)}</span></div>`;
+  }
+
   function render(entries, mode = 'ready') {
     const host = statusHost();
     if (!host) return;
     if (mode === 'loading') {
-      host.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="checking"><div class="dot check"></div><span>Checking providers…</span></div>';
+      host.innerHTML = indicator('dp-provider-status-row', 'checking', 'check', 'Checking providers…');
       return;
     }
     if (mode === 'unknown') {
-      host.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider status unavailable</span></div>';
+      host.innerHTML = indicator('dp-provider-status-row', 'unknown', 'check', 'Provider status unavailable');
       return;
     }
     // Two levels, both driven purely by integration-owned presentation
@@ -187,7 +199,7 @@
       }
     }
     const rowFor = entry =>
-      `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}</span></div>`;
+      indicator('dp-provider-status-row', entry.state, dotClass(entry.state), entry.name, ` data-provider-id="${esc(entry.id)}"`);
 
     for (const entry of entries) {
       const bucket = entry.tierId && entry.tierLabel
@@ -215,7 +227,7 @@
     const markup = item => {
       if (item.entry) return rowFor(item.entry);
       const state = aggregateState(item.entries, item.gate);
-      return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(item.label)}</span></div></div>`;
+      return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}">${indicator('dp-provider-status-group-row', state, dotClass(state), item.label)}</div>`;
     };
 
     // A tier with nothing to show renders nothing: no bare heading is left behind.
@@ -229,7 +241,7 @@
     ).concat(untiered.map(markup));
 
     host.innerHTML = rendered.length ? rendered.join('')
-      : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
+      : indicator('dp-provider-status-row', 'inactive', 'warn', 'No download providers enabled');
   }
 
   /* Current observation, else valid last-known-good, else unresolved.

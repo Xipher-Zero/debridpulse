@@ -427,22 +427,8 @@ body.light #runtime-speed-badge {
   #runtime-speed-badge { padding-inline: 8px !important; }
 }
 
+/* The compact desktop sidebar (901-1559px) is ui-shell-structural.css's. */
 @media (max-width: 1179px) {
-  :root { --dp-sidebar-width: var(--dp-sidebar-collapsed-width); }
-  .logo { padding-inline: 17px; justify-content: center; }
-  .logo-text, .nav-label, .nav-group, .sidebar-footer { display: none; }
-  #sidebar nav { padding-inline: 10px; }
-  .nav-item { justify-content: center; padding-inline: 0; }
-  .nav-item .icon { margin: 0; }
-  .nav-badge {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    font-size: 8px;
-  }
   #page-title::after { display: none; }
 }
 

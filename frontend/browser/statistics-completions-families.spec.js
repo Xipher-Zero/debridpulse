@@ -15,7 +15,9 @@ const CASES = [
 const PERIODS = {'7d': CASES, '30d': CASES, all: CASES, '1y': [bucket('2026-09', 0, 1, 0), bucket('2026-10', 5, 4, 4)],
                  '24h': [], '1h': []};
 
-async function boot(page, {width = 1440, height = 900, light = false, clock = false} = {}) {
+// 1272px: the 1200px content area these cases were written against (1440px
+// with the full sidebar before 1.0.14; the same content beside the compact rail).
+async function boot(page, {width = 1272, height = 900, light = false, clock = false} = {}) {
   await page.setViewportSize({width, height});
   // Only the test moves time, from before the application exists (page-clock.js).
   if (clock) await pauseClockBeforeBoot(page);

@@ -642,7 +642,11 @@ body.light #view-dashboard .direct-link-input {
 body.light #view-dashboard .t-table thead th { background: #f5f7fc; color: #777e98; }
 body.light #view-dashboard .t-table td { color: #454b67; }
 
-@media (max-width: 1450px) {
+/* The six cards keep one row through the whole desktop: with the full
+   sidebar (from 1560px) and on the compact rail down to 1390px, where the
+   widest label, "Total Downloaded", still keeps the clearance it has at the
+   full sidebar's minimum (measured; it meets its card edge near 1365px). */
+@media (max-width: 1389px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {

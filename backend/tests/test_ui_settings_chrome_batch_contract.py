@@ -51,13 +51,21 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     feature = read(FEATURE)
     manifest = json.loads(read(MANIFEST))
 
-    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in chrome
-    assert ".dp-settings-header-copy" in chrome
-    assert "grid-column: 1;" in chrome
+    # True-centred tabs while the copy fits beside them: a trailing space that
+    # grows exactly as the copy does, taking no room of its own. The header is
+    # one row through the desktop; nothing stacks it at a fixed width.
+    spacer = chrome[chrome.index("#view-settings .dp-settings-master-header::after {"):]
+    spacer = spacer[:spacer.index("}")]
+    assert "flex: 1 1 0;" in spacer and "min-width: 0;" in spacer and "margin-left: -16px;" in spacer
     assert ".dp-settings-tabs" in chrome
-    assert "grid-column: 2;" in chrome
-    assert "justify-self: center;" in chrome
-    assert "@media (max-width: 1699px)" in chrome
+    assert "@media (max-width: 1699px)" not in chrome
+    page = read(CHROME.parent / "ui-settings-page.css")
+    header = page[page.index("#view-settings .dp-settings-master-header {"):]
+    header = header[:header.index("}")]
+    assert "display: flex;" in header and "flex-wrap: wrap;" in header and "gap: 16px;" in header
+    copy = page[page.index("#view-settings .dp-settings-header-copy {"):]
+    copy = copy[:copy.index("}")]
+    assert "flex: 1 1 0;" in copy and "min-width: max-content;" in copy
 
     # The explicit query generation prevents a browser-cached synthetic glyph
     # from masking the supplied Settings asset after a staging image update.

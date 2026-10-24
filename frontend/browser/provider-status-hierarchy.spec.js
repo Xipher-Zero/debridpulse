@@ -247,6 +247,10 @@ test('each tier label is horizontally centred within the status region', async (
 });
 
 test('centring the tier label does not centre the provider rows beneath it', async ({page}) => {
+  // The full Provider Status panel: the expanded sidebar (from 1560px; the
+  // compact rail shows the same rows as indicators).
+  await page.setViewportSize({width: 1600, height: 1000});
+  await expect.poll(() => page.evaluate(() => document.getElementById('sidebar').getAnimations().length)).toBe(0);
   await renderWith(page);
   const rows = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#provider-status-list .conn-row')).map(row => {

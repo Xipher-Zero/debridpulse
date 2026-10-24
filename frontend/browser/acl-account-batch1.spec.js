@@ -66,28 +66,36 @@ test('the session row holds Log Out and the account as two separate controls, at
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   // One session, three widths: sign-in pages are rate limited per client.
   const admin = await signIn(browser, ADMIN, undefined, {fresh: true});  // it logs out
-  for (const width of [1440, 1024, 800]) {
+  // The full sidebar and the drawer: one line, Log Out then the account. The
+  // compact desktop rail (901-1559px): both glyphs on the icon rail, the
+  // account above and Log Out at the bottom.
+  for (const [width, layout] of [[1600, 'line'], [1440, 'rail'], [1024, 'rail'], [800, 'line']]) {
     await admin.page.setViewportSize({width, height: 900});
+    await admin.page.waitForFunction(() => document.getElementById('sidebar').getAnimations().length === 0);
     if (width === 800) await admin.page.evaluate(() => window.toggleSidebar());
     const facts = await admin.page.evaluate(() => {
       const row = document.querySelector('#sidebar-auth-row');
       const box = node => node.getBoundingClientRect();
       const logout = row.querySelector('.dp-sidebar-logout');
       const profile = row.querySelector('.dp-sidebar-profile');
+      const glyph = node => { const r = box(node.querySelector('.icon')); return r.left + r.width / 2; };
+      const middle = node => box(node).top + box(node).height / 2;
       return {
         rows: document.querySelectorAll('#sidebar-account-row').length,
         controls: [...row.querySelectorAll('button')].map(button => button.className),
         rowIsControl: row.getAttribute('role'),
-        separate: box(logout).right <= box(profile).left,
-        inside: box(profile).right <= box(row).right + 0.5 && box(logout).left >= box(row).left - 0.5,
-        oneLine: Math.abs((box(logout).top + box(logout).height / 2) - (box(profile).top + box(profile).height / 2)) < 2,
+        separate: box(logout).right <= box(profile).left || box(profile).bottom <= box(logout).top,
+        inside: box(logout).left >= box(row).left - 0.5 && box(profile).left >= box(row).left - 0.5
+          && box(logout).bottom <= box(row).bottom + 0.5,
+        layout: Math.abs(middle(logout) - middle(profile)) < 2 ? 'line'
+          : box(profile).bottom <= box(logout).top && Math.abs(glyph(logout) - glyph(profile)) < 0.5 ? 'rail' : 'other',
       };
     });
-    expect(facts).toEqual({rows: 0, controls: ['dp-sidebar-logout', 'dp-sidebar-profile'], rowIsControl: null,
-      separate: true, inside: true, oneLine: true});
+    expect(facts, `${width}px`).toEqual({rows: 0, controls: ['dp-sidebar-logout', 'dp-sidebar-profile'], rowIsControl: null,
+      separate: true, inside: true, layout});
   }
   await admin.page.evaluate(() => window.closeSidebar());
-  await admin.page.setViewportSize({width: 1440, height: 914});
+  await admin.page.setViewportSize({width: 1600, height: 914});
   await expect(admin.page.locator('.dp-sidebar-profile .dp-sidebar-account-role')).toHaveText('Admin');
   // The account side opens My Account; it never logs out.
   await admin.page.locator('.dp-sidebar-profile .dp-sidebar-account-name').click();

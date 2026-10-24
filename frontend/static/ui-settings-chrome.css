@@ -7,18 +7,18 @@
  */
 
 /* ── Master header identity and true-centered navigation ─────────────── */
-#view-settings .dp-settings-master-header {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-}
-
-#view-settings .dp-settings-header-copy {
-  grid-column: 1;
-  justify-self: start;
-}
-
-#view-settings .dp-settings-tabs {
-  grid-column: 2;
-  justify-self: center;
+/* A trailing space that grows exactly as the copy does centres the tab strip
+   in the header while the copy fits beside it (to within half the row gap:
+   the copy's side also holds the gap before the strip); when the copy does
+   not fit, the space yields first and the strip keeps its full width
+   (ui-settings-page.css owns the row itself). The space takes no room of its
+   own -- its negative margin gives back the gap before it -- so it never
+   decides whether the strip fits, nor starts a line of its own. */
+#view-settings .dp-settings-master-header::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: -16px;
 }
 
 /* The supplied Settings feature artwork owns its own rounded-square visual
@@ -327,23 +327,4 @@ body.light #view-settings .dp-settings-action-glyph {
    Sources & Providers purple rather than the previous darker purple. */
 #view-settings button.dp-settings-provider-test .dp-settings-action-glyph {
   content: url('/icons/lucide/flask-conical.svg?v=2');
-}
-
-/* The six-tab strip needs more horizontal room than the Settings workspace
-   has at ordinary desktop widths once the sidebar and shell gutters are removed.
-   Stack the copy and centered navigation before those grid tracks can overlap. */
-@media (max-width: 1699px) {
-  #view-settings .dp-settings-master-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  #view-settings .dp-settings-header-copy,
-  #view-settings .dp-settings-tabs {
-    grid-column: 1;
-  }
-
-  #view-settings .dp-settings-tabs {
-    width: 100%;
-    justify-self: stretch;
-  }
 }

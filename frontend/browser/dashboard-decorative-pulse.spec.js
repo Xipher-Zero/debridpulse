@@ -254,6 +254,8 @@ test('a reflow re-measures the strip under the heartbeats already on it, without
   };
   const [beforeReflow] = await entries(INTERVAL + 100);
   await page.setViewportSize({width: 1000, height: 900});
+  // 1000px is the compact desktop sidebar: its width transition has finished.
+  await expect.poll(() => page.evaluate(() => document.getElementById('sidebar').getAnimations().length)).toBe(0);
   await expect.poll(async () => route(await strip(page)).rows.length).toBe(2);
   await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
     .every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01))).toBe(true);
@@ -266,6 +268,50 @@ test('a reflow re-measures the strip under the heartbeats already on it, without
     const phase = ((at - beforeReflow) % INTERVAL + INTERVAL) % INTERVAL;
     expect(Math.min(phase, INTERVAL - phase)).toBeLessThanOrEqual(STEP + 16);
   });
+});
+
+/* The desktop sidebar's persistent change at 1560px (ui-shell-structural.css)
+ * narrows and widens the six cards under the heartbeats already on the strip:
+ * each direction re-measures the route through the existing KPI observer and
+ * the heartbeats carry straight on -- no restart, no second timer, no stale
+ * route, the six cards one row on both sides. */
+const viewBoxesFit = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
+  .every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01));
+const sidebarWidth = page => page.evaluate(() => document.getElementById('sidebar').getBoundingClientRect().width);
+
+test('the desktop sidebar collapsing and expanding re-measures the strip under its heartbeats in both directions', async ({page}) => {
+  test.setTimeout(90000);
+  await boot(page);                                       // 1600px: the full sidebar
+  const {times: [anchor]} = await births(page, INTERVAL + 100);
+  expect(anchor).toBeDefined();
+  for (const [width, sidebar] of [[1559, 72], [1600, 240]]) {
+    const was = (await strip(page)).map(card => card.width);
+    expect((await strip(page)).some(card => leads(card).some(x => x > -48 && x < card.width))).toBe(true);   // mid-flight
+    await page.setViewportSize({width, height: 900});
+    await expect.poll(() => sidebarWidth(page)).toBe(sidebar);
+    await expect.poll(() => viewBoxesFit(page)).toBe(true);
+    const cards = await strip(page);
+    expect(route(cards).rows.length).toBe(1);
+    expect(cards.map(card => card.width)).not.toEqual(was);
+    expectOneContinuousLine(cards);
+    // The heartbeats born after the change fall on the same 2 s phase as the
+    // one before it (no restart), one per 2 s (no second timer).
+    const after = await births(page, 2 * INTERVAL);
+    expect(after.times.length).toBe(2);
+    after.times.forEach(at => {
+      const phase = ((at - anchor) % INTERVAL + INTERVAL) % INTERVAL;
+      expect(Math.min(phase, INTERVAL - phase)).toBeLessThanOrEqual(QUANTUM);
+    });
+  }
+});
+
+test('negative control: a strip whose route is not re-measured fails the sidebar transition check', async ({page}) => {
+  await boot(page);
+  await page.evaluate(() => { const stale = _dashboardHeartbeat.route; window.measureDashboardHeartbeatRoute = () => stale; });
+  await page.setViewportSize({width: 1559, height: 900});
+  await expect.poll(() => sidebarWidth(page)).toBe(72);
+  await page.clock.runFor(100);
+  expect(await viewBoxesFit(page)).toBe(false);
 });
 
 /* Heartbeat births, read where each one enters the route's first card,

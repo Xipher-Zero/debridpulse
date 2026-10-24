@@ -110,22 +110,27 @@ body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sideba
 }
 /* Log Out is a navigation item inside the inset stack: its leading padding
    gives the stack's inset back, so its glyph sits on the sidebar icon rail
-   (ui-shell-structural.css) with its label following at the item gap. */
-@media (min-width: 1180px), (max-width: 899px) {
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
-    padding-left: calc(var(--dp-sidebar-item-inset) - var(--dp-sidebar-stack-inset));
-    padding-right: 10px;
-  }
+   (ui-shell-structural.css) with its label following at the item gap -- at
+   every sidebar width. */
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+  padding-left: calc(var(--dp-sidebar-item-inset) - var(--dp-sidebar-stack-inset));
+  padding-right: 10px;
 }
 
-/* The compact rail shows glyphs only: Log Out and the account sit side by side
-   in the same row. */
-@media (min-width: 900px) and (max-width: 1179px) {
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
-    justify-content: space-between;
-    padding-inline: 4px;
+/* The compact desktop rail (901-1559px, ui-shell-structural.css): both
+   session controls keep their glyphs on the rail, the account above and Log
+   Out at the bottom, each label faded in place (its accessible name is its
+   own; the account's DP tooltip names it). */
+@media (min-width: 901px) and (max-width: 1559px) {
+  #sidebar:not(.sidebar-overlay-open) .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    row-gap: 2px;
   }
-  #sidebar .dp-sidebar-session-space {
+  #sidebar:not(.sidebar-overlay-open) .dp-sidebar-session-space {
     display: none;
+  }
+  #sidebar:not(.sidebar-overlay-open) .dp-sidebar-session-row > .dp-sidebar-profile .icon {
+    order: -1;
   }
 }

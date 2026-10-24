@@ -962,6 +962,10 @@ function setDot(id, state, label) {
   if (!d || !l) return;  // element not in DOM yet
   d.className = 'dot' + (state ? ' '+state : '');
   l.textContent = label;
+  // The compact sidebar rail shows this row as its dot alone; the DP tooltip
+  // then says it (index.html marks the label it repeats).
+  const row = l.closest('.conn-row');
+  if (row) row.dataset.tooltip = label;
 }
 
 async function pauseProcessing() {
@@ -2705,7 +2709,66 @@ function toggleSidebar() {
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('mobile-overlay').classList.remove('open');
+  setSidebarOverlay(false);
 }
+
+/* The compact desktop sidebar rail and its temporary overlay: the one sidebar
+ * state owner. ui-shell-structural.css owns the rail's geometry and this same
+ * range. Its handle shows the same sidebar at full width above the page for
+ * the moment, leaving the page exactly where it is; the handle again, Escape,
+ * a press outside the sidebar or choosing a page (closeSidebar) closes it, and
+ * leaving the range clears it. Nothing is remembered. */
+const SIDEBAR_COMPACT_QUERY = '(min-width: 901px) and (max-width: 1559px)';
+const _sidebarCompact = window.matchMedia(SIDEBAR_COMPACT_QUERY);
+
+function sidebarOverlayOpen() {
+  return Boolean(document.getElementById('sidebar')?.classList.contains('sidebar-overlay-open'));
+}
+
+// A change of presentation replaces Provider Status' and the session's
+// composition at once: the stack fades back in as the width settles.
+function markSidebarReflow(sidebar) {
+  sidebar.classList.remove('sidebar-reflowing');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('sidebar-reflowing');
+}
+
+function setSidebarOverlay(open, {focusHandle = false} = {}) {
+  const sidebar = document.getElementById('sidebar');
+  const handle = document.getElementById('sidebar-handle');
+  if (!sidebar || !handle) return;
+  const next = Boolean(open) && _sidebarCompact.matches;
+  if (sidebar.classList.contains('sidebar-overlay-open') !== next) {
+    markSidebarReflow(sidebar);
+    sidebar.classList.toggle('sidebar-overlay-open', next);
+  }
+  const label = next ? 'Collapse sidebar' : 'Expand sidebar';
+  handle.setAttribute('aria-expanded', String(next));
+  handle.setAttribute('aria-label', label);
+  handle.dataset.tooltip = label;
+  if (focusHandle) handle.focus();
+}
+
+function toggleSidebarOverlay() {
+  setSidebarOverlay(!sidebarOverlayOpen(), {focusHandle: true});
+}
+
+_sidebarCompact.addEventListener('change', () => {
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) markSidebarReflow(sidebar);
+  setSidebarOverlay(false);
+});
+document.getElementById('sidebar')?.addEventListener('animationend', event => {
+  if (event.animationName === 'dp-sidebar-reveal') event.currentTarget.classList.remove('sidebar-reflowing');
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.defaultPrevented || !sidebarOverlayOpen()) return;
+  setSidebarOverlay(false, {focusHandle: true});
+});
+document.addEventListener('pointerdown', event => {
+  if (!sidebarOverlayOpen() || (event.target instanceof Element && event.target.closest('#sidebar'))) return;
+  setSidebarOverlay(false);
+}, true);
 
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light');

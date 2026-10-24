@@ -46,6 +46,51 @@
   width: 100%;
 }
 
+/* The compact desktop sidebar rail (901-1559px, ui-shell-structural.css):
+   Provider Status as indicators -- the crown, a separator, the premium
+   services, a separator, the general services. Each indicator is its real
+   row: its name and state stay its accessible text and the DP tooltip says
+   them on hover or focus. Only tiers that exist are shown, so no separator is
+   ever left without something to separate. The crown, the tier headings and
+   the aria2/DB exceptions are ui-shell-provider-status.css's. */
+@media (min-width: 901px) and (max-width: 1559px) {
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer :is(.dp-provider-status-heading, .dp-provider-status-name) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+  }
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer :is(.dp-provider-status-list, .dp-provider-status-tier) {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 5px;
+  }
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer .dp-provider-status-tier {
+    width: 100%;
+  }
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer .dp-provider-status-tier + .dp-provider-status-tier {
+    margin-top: 7px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(119, 132, 190, .15);
+  }
+  body.light #sidebar:not(.sidebar-overlay-open) .sidebar-footer .dp-provider-status-tier + .dp-provider-status-tier {
+    border-top-color: rgba(120, 131, 171, .2);
+  }
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer :is(.dp-provider-status-group, .conn-row) {
+    width: auto;
+    min-height: 12px;
+    margin: 0;
+  }
+  #sidebar:not(.sidebar-overlay-open) .sidebar-footer .conn-row {
+    gap: 0;
+    padding: 1px;
+  }
+}
+
 /* ── Premium provider Settings card (rendered by ui-settings-page.js providerCard()) ──── */
 /* The disclosure/config-status/header-controls elements are created only for
    an integration with presentation.premium set (AllDebrid today), directly

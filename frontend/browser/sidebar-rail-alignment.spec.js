@@ -4,12 +4,13 @@ const { test, expect } = require('@playwright/test');
  *
  * Every sidebar navigation icon shares one horizontal centerline. The brand
  * glyph (with its wordmark) and the Log Out glyph (with its label) sit on that
- * same rail wherever the icons form the left rail: the expanded sidebar and the
- * drawer. The brand block is also a silent pointer shortcut to Dashboard
- * through the one navigation owner -- it gains no visible treatment at all.
+ * same rail at every width: the expanded sidebar (from 1560px), the compact
+ * desktop rail (901-1559px, its labels faded in place) and the drawer. The
+ * brand block is also a silent pointer shortcut to Dashboard through the one
+ * navigation owner -- it gains no visible treatment at all.
  */
 
-const RAIL_WIDTHS = [1440, 1300, 1180, 800];
+const RAIL_WIDTHS = [1600, 1440, 1300, 1180, 800];
 
 async function open(page, {authenticated = false} = {}) {
   await page.route('https://fonts.googleapis.com/**', route =>

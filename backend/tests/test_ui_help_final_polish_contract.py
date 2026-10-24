@@ -32,11 +32,14 @@ def test_help_section_selector_matches_settings_geometry_and_emphasis():
     css = _read("ui-help-chrome.css")
 
     tabs = _block(css, "#view-help .dp-help-tabs {")
-    assert "grid-column: 2" in tabs
     assert "width: max-content" in tabs
     assert "max-width: 100%" in tabs
     assert "margin: 0" in tabs
-    assert "justify-self: center" in tabs
+    # Centred as Settings' strip is: a trailing space that grows as the copy
+    # does; the header is one row through the desktop, never stacked at 1699px.
+    spacer = _block(css, "#view-help .dp-help-master-header::after {")
+    assert "flex: 1 1 0" in spacer and "margin-left: -16px" in spacer
+    assert "@media (max-width: 1699px)" not in css
 
     tab = _block(css, "#view-help .dp-help-tab {")
     assert "appearance: none" in tab

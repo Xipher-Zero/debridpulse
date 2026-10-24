@@ -48,7 +48,17 @@ body.light #sidebar::before {
   filter: saturate(.92) drop-shadow(0 0 8px rgba(124, 58, 237, .055));
 }
 
-@media (max-width: 1179px) {
+/* On the desktop the field keeps the full sidebar's geometry at every
+   sidebar width: the compact rail (ui-shell-structural.css) and its width
+   transitions clip it, never squeeze it. */
+@media (min-width: 901px) {
+  #sidebar::before {
+    right: auto !important;
+    width: calc(var(--dp-shell-sidebar-full) + 48px);
+  }
+}
+
+@media (max-width: 900px) {
   #sidebar::before {
     left: -38px !important;
     right: -30px !important;

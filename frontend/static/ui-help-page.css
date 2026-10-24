@@ -28,18 +28,23 @@
   }
 }
 
+/* One row, as Settings: the identity copy, then the complete tab strip at
+   its own width, moving beneath the copy -- still at its own width -- only
+   when the two genuinely do not fit side by side; ui-help-chrome.css centres
+   it while there is room to. */
 #view-help .dp-help-master-header {
   flex: 0 0 auto;
   min-height: 76px;
   padding: 10px 16px;
-  display: grid;
-  grid-template-columns: minmax(210px, .42fr) minmax(0, 1.58fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
 }
 
 #view-help .dp-help-header-copy {
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: max-content;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -65,14 +70,12 @@
 }
 
 #view-help .dp-help-tabs {
-  width: 100%;
+  flex: 0 0 auto;
   min-width: 0;
-  justify-self: stretch;
   scrollbar-width: thin;
 }
 
 #view-help .dp-help-tab {
-  flex: 1 0 auto;
   min-width: max-content;
 }
 
@@ -405,11 +408,6 @@
 }
 
 @media (max-width: 1180px) {
-  #view-help .dp-help-master-header {
-    grid-template-columns: minmax(190px, .34fr) minmax(0, 1.66fr);
-    gap: 12px;
-  }
-
   #view-help .dp-help-title-icon {
     width: 44px;
     min-width: 44px;
@@ -426,9 +424,12 @@
   }
 
   #view-help .dp-help-master-header {
-    grid-template-columns: 1fr;
     min-height: 0;
     align-items: stretch;
+  }
+
+  #view-help .dp-help-header-copy {
+    min-width: 0;
   }
 
   #view-help .dp-help-tabs {

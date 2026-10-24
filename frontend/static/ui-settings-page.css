@@ -32,18 +32,24 @@
 }
 
 /* ── Master header ───────────────────────────────────────────────────── */
+/* One row: the identity copy, then the complete tab strip at its own width.
+   The strip moves beneath the copy -- still at its own width -- only when
+   the two genuinely do not fit side by side (below the desktop range), never
+   at a fixed breakpoint; ui-settings-chrome.css centres it while there is
+   room to. */
 #view-settings .dp-settings-master-header {
   flex: 0 0 auto;
   min-height: 76px;
   padding: 10px 16px;
-  display: grid;
-  grid-template-columns: minmax(250px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
 }
 
 #view-settings .dp-settings-header-copy {
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: max-content;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -77,6 +83,7 @@
 }
 
 #view-settings .dp-settings-tabs {
+  flex: 0 0 auto;
   width: max-content;
   max-width: 100%;
   margin: 0;
@@ -1336,15 +1343,6 @@
 }
 
 @media (max-width: 1180px) {
-  #view-settings .dp-settings-master-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-  }
-
-  #view-settings .dp-settings-tabs {
-    width: 100%;
-  }
-
   #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -1417,6 +1415,11 @@
 @media (max-width: 700px) {
   #view-settings .dp-settings-master-header {
     padding: 12px;
+  }
+
+  /* A handheld header may wrap its own copy. */
+  #view-settings .dp-settings-header-copy {
+    min-width: 0;
   }
 
   #view-settings .dp-settings-panels {

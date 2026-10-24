@@ -5,13 +5,14 @@
  */
 
 /* ── Settings master-header geometry ────────────────────────────────── */
-#view-help .dp-help-master-header {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-}
-
-#view-help .dp-help-header-copy {
-  grid-column: 1;
-  justify-self: start;
+/* As Settings: a trailing space that grows exactly as the copy does centres
+   the tab strip while the copy fits beside it, then yields first, so the
+   strip keeps its full width (ui-help-page.css owns the row itself). */
+#view-help .dp-help-master-header::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: -16px;
 }
 
 #view-help .dp-help-header-text {
@@ -27,11 +28,9 @@
 }
 
 #view-help .dp-help-tabs {
-  grid-column: 2;
   width: max-content;
   max-width: 100%;
   margin: 0;
-  justify-self: center;
 }
 
 /* ── Settings section-selector geometry and emphasis ────────────────── */
@@ -162,25 +161,6 @@ body.light #view-help .dp-help-tab-glyph {
 
 #view-help .dp-help-section-card-body > a {
   color: var(--dp-accent-purple-bright);
-}
-
-/* The title and the centred section selector share one row only where the
-   selector's width plus the title on either side fits; below that the title
-   sits above a full-width selector instead of under it. */
-@media (max-width: 1699px) {
-  #view-help .dp-help-master-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  #view-help .dp-help-header-copy,
-  #view-help .dp-help-tabs {
-    grid-column: 1;
-  }
-
-  #view-help .dp-help-tabs {
-    width: 100%;
-    justify-self: stretch;
-  }
 }
 
 @media (max-width: 900px) {
