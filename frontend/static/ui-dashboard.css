@@ -645,14 +645,16 @@ body.light #view-dashboard .t-table td { color: #454b67; }
 /* The six cards keep one row through the whole desktop: with the full
    sidebar (from 1560px) and on the compact rail down to 1390px, where the
    widest label, "Total Downloaded", still keeps the clearance it has at the
-   full sidebar's minimum (measured; it meets its card edge near 1365px). */
+   full sidebar's minimum (measured; it meets its card edge near 1365px).
+   Below the desktop the strip keeps three of them -- Total Downloads,
+   Completed and Total Downloaded, in that order -- on one row down to 780px:
+   Active Now, Processing and Errors leave the layout (each named by its own
+   value), still filled with every update and shown again from 1390px. */
 @media (max-width: 1389px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #view-dashboard .dash-hero-stat:has(#s-active, #s-processing, #s-error) { display: none; }
 }
-@media (max-width: 900px) {
-  #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #view-dashboard .dash-hero { grid-template-columns: 1fr; }
   #view-dashboard .direct-link-entry { flex-direction: column; align-items: stretch; }
   #view-dashboard #btn-add-transfer { min-height: 42px; }
@@ -1543,7 +1545,7 @@ body.light .nav-item.active::after {
 /* Sidebar and viewport remain independent components. On the desktop
    Dashboard only, share the same 24px lower gutter so Provider Status and the
    fully extended Recent Activity card finish on one visual baseline. */
-@media (min-width: 901px) {
+@media (min-width: 780px) {
   body:has(#content.dashboard-active) .sidebar-footer {
     bottom: 24px !important;
   }
@@ -1997,7 +1999,7 @@ body.light #view-dashboard textarea.input.direct-link-input {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #dash-activity-card { display: block; }
   .dash-activity-table-wrap { overflow-x: auto; }
 }
@@ -2046,7 +2048,7 @@ body.light #view-dashboard textarea.input.direct-link-input {
 .dhs-val--sm { font-size: 18px; }
 .dhs-label { font-size: 10px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
 .dhs-sub { font-size: 10px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .dash-hero { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
   .dhs-val { font-size: 22px !important; }
   .dhs-icon { font-size: 18px !important; }
@@ -2092,7 +2094,7 @@ body.light #view-dashboard textarea.input.direct-link-input {
 body.light .dash-hero-stat:hover {
   box-shadow: 0 8px 20px rgba(28,44,70,.10);
 }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .dash-kpi-strip { flex-wrap: wrap; }
   .dash-kpi { flex: 0 0 calc(50% - 1px); border-bottom: 1px solid var(--border); }
   .dash-kpi:last-child, .dash-kpi:nth-last-child(2) { border-bottom: none; }

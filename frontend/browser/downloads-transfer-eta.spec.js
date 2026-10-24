@@ -134,8 +134,8 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
                     numeric: eta && getComputedStyle(eta).fontVariantNumeric};
     return result;
   });
-  // Every Downloads layout that shows the progress column (hidden at 901-1050 px and at 700 px and below).
-  for (const width of [1440, 1100, 900, 701]) {
+  // Every Downloads layout that shows the progress column (hidden at 901-1050 px and at 779 px and below).
+  for (const width of [1440, 1100, 900, 780]) {
     await resize(page, width);
     const withEta = await measure();
     expect(Math.abs(withEta.eta.right - withEta.bar.right)).toBeLessThanOrEqual(1.5);   // right-aligned to the bar
@@ -349,8 +349,8 @@ test('the percentage and its ETA share one line beneath the bar at every width t
             words: words ? getComputedStyle(words).display !== 'none' : null, visible: pct.innerText.trim(),
             label: pct.getAttribute('aria-label')};
   }, id);
-  // Downloads shows Progress at <=700 never, at 701-900 (content-sized), and from 1051.
-  for (const width of [701, 800, 900, 1051, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+  // Downloads shows Progress at <=779 never, at 780-900 (content-sized), and from 1051.
+  for (const width of [780, 800, 900, 1051, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
     await resize(page, width);
     for (const id of [9861, 9862, 9863]) {
       const g = await geometry(id);

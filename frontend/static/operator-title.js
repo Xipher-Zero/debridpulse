@@ -188,7 +188,7 @@
       return {narrow: false, left: 16, right: Math.max(17, window.innerWidth - 16), top: 0, bottom: 80};
     }
     const topbarRect = topbar.getBoundingClientRect();
-    if (window.matchMedia('(max-width: 700px)').matches) {
+    if (window.matchMedia('(max-width: 779px)').matches) {
       return {
         narrow: true,
         left: 16,
@@ -245,8 +245,38 @@
       left: free[0].left,
       right: free[0].right,
       top: usableBottom > usableTop ? usableTop : topbarRect.top,
-      bottom: usableBottom > usableTop ? usableBottom : topbarRect.bottom
+      bottom: usableBottom > usableTop ? usableBottom : topbarRect.bottom,
+      // Where a toast goes when the topbar's free gap is too narrow for it:
+      // the band just below the topbar, across its interior.
+      below: {
+        narrow: true,
+        left: interiorLeft,
+        right: Math.max(interiorLeft + 1, interiorRight),
+        top: topbarRect.bottom + 8,
+        bottom: window.innerHeight - 8
+      }
     };
+  }
+
+  /* The topbar's free gap holds the toasts only while it costs none of them
+   * more than one line over its own width (at most TOAST_MAX_WIDTH, within
+   * the band below) and each still fits the topbar's height; narrower, the
+   * copy would wrap word by word, or letter by letter, down the page. */
+  function toastsFitLane(host, lane) {
+    const toasts = Array.from(host.children).filter(function (node) { return node instanceof HTMLElement; });
+    if (!toasts.length) return true;
+    const heights = function (width) {
+      toasts.forEach(function (node) { node.style.maxWidth = Math.max(1, Math.min(TOAST_MAX_WIDTH, width)) + 'px'; });
+      return toasts.map(function (node) { return node.getBoundingClientRect().height; });
+    };
+    host.style.width = 'max-content';
+    host.style.maxWidth = 'none';
+    const own = heights(lane.below.right - lane.below.left);
+    const there = heights(lane.right - lane.left);
+    return toasts.every(function (node, i) {
+      const line = parseFloat(window.getComputedStyle(node).lineHeight) || 16;
+      return there[i] <= own[i] + line + 0.5 && there[i] <= lane.bottom - lane.top;
+    });
   }
 
   function clamp(value, minimum, maximum) {
@@ -258,7 +288,8 @@
     toastPositionFrame = 0;
     const host = document.getElementById('toasts');
     if (!host) return;
-    const lane = toastSafeLane();
+    let lane = toastSafeLane();
+    if (!lane.narrow && !toastsFitLane(host, lane)) lane = lane.below;
     const laneWidth = Math.max(1, lane.right - lane.left);
     const maxToastWidth = Math.max(1, Math.min(TOAST_MAX_WIDTH, laneWidth));
     Array.from(host.children).forEach(function (node) {

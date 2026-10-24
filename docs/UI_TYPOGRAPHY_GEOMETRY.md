@@ -117,13 +117,12 @@ These are implementation defaults, not rigid limits; transfer details may use th
 
 ## Responsive decisions not visible in the mockups
 
-The references are desktop-first, so responsive behavior is a sane extension rather than something recoverable from the screenshots. Use these breakpoints when page-specific implementation begins:
+The references are desktop-first, so responsive behavior is a sane extension rather than something recoverable from the screenshots. The application has four global layout widths; a page's own components may still adapt within them at their measured fit limits:
 
-- **1440 px and above:** full desktop composition.
-- **1180–1439 px:** compact desktop; preserve sidebar and reduce/wrap wide card groups.
-- **900–1179 px:** tablet/narrow desktop; sidebar may collapse to the 76 px icon rail or drawer depending on final shell implementation.
-- **700–899 px:** narrow tablet; data tables progressively hide low-priority columns or scroll.
-- **Below 700 px:** mobile drawer navigation and stacked content.
+- **1560 px and above:** expanded desktop, with the full 240 px sidebar.
+- **1390–1559 px:** compact desktop, with the 72 px icon rail.
+- **780–1389 px:** tablet, still on the icon rail; the Dashboard keeps three KPI cards in one row.
+- **779 px and below:** mobile, with drawer navigation and stacked content.
 
 Breakpoints should be encoded directly in media queries; CSS custom properties are not used as media-query conditions.
 

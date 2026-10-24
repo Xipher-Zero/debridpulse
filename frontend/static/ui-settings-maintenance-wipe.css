@@ -371,7 +371,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   /* One control per line; each keeps its own title/hint + control. */
   #view-settings .dp-settings-event-logging-island,
   #view-settings .dp-settings-backup-folder-island {

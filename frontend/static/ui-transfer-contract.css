@@ -77,7 +77,7 @@
 .t-hash { font-family: var(--mono); font-size: 10px; color: var(--text2); margin-top: 2px; }
 .actions { display: flex; gap: 5px; align-items: center; }
 .sz { font-family: var(--mono); font-size: 11px; color: var(--text2); }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .t-hash { display: none; }
   .actions { gap: 4px; flex-wrap: nowrap; }
   .actions .btn { padding: 4px 6px !important; font-size: 10px !important; }
@@ -372,7 +372,7 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-advanced-grid > div { display:grid; grid-template-columns:minmax(150px,.45fr) minmax(0,1fr); gap:12px; font-size:10px; }
 .dp-detail-advanced-grid span { color:var(--dp-text-muted, var(--text3)); }
 .dp-detail-advanced-grid strong { min-width:0; overflow-wrap:anywhere; color:var(--dp-text-secondary, var(--text2)); font-weight:600; }
-@media (max-width:700px) {
+@media (max-width:779px) {
   /* Stacked: the row leaves the shared tracks and owns its own two columns. */
   .dp-detail-route-list { display:block; }
   .dp-detail-route-row { grid-template-columns:24px minmax(0,1fr); }

@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.14 universal desktop sidebar reflow.
  *
  * One width decides the desktop shell for every page: from 1560 CSS px the
- * full 240px sidebar, from 901 to 1559px the compact 72px icon rail (the same
+ * full 240px sidebar, from 780 to 1559px the compact 72px icon rail (the same
  * sidebar, its labels faded in place). The rail keeps its section headings,
  * its icons, the brand glyph, Provider Status as indicators and the session
  * controls on one icon rail; DP's own tooltips name what is no longer written.
@@ -357,19 +357,25 @@ test('the overlay keeps its motion and the page its place around abrupt window c
   expect(await railProblems(page)).toEqual([]);
 });
 
-/* The rail's other edge, 900px, is not the persistent change: the tablet
- * sidebar becomes the rail with its accepted motion, dragged or at once, the
- * page beside it in every frame (it only gains room there). */
-test('crossing into the rail from the tablet sidebar keeps its motion and never covers the page', async ({page}) => {
-  await open(page, 880);
-  for (const act of [() => drag(page, 880, 928, 12), () => page.setViewportSize({width: 800, height: 1000}), () => page.setViewportSize({width: 1051, height: 1000})]) {
+/* The rail's other edge, 779/780px, is the drawer's: a change of kind, not
+ * of width. Dragged or at once, in either direction, the sidebar takes its
+ * new place in the change's own frame -- the page beside the rail, or the
+ * whole width beside the hidden drawer -- never an in-flow width narrowing
+ * the page and giving it back, nor the drawer sliding away over it. */
+test('crossing between the drawer and the rail changes the sidebar at once and never narrows or covers the page', async ({page}) => {
+  await open(page, 760);
+  for (const act of [() => drag(page, 768, 792, 4), () => drag(page, 792, 768, 4),
+    () => page.setViewportSize({width: 1051, height: 1000}), () => page.setViewportSize({width: 700, height: 1000})]) {
     const frames = await framesDuring(page, null, act);
     for (const frame of frames) {
+      expect(['', 'drawer']).toContain(frame.mark);
       expect(frame.overlap, JSON.stringify(frame)).toBeLessThanOrEqual(0.5);
-      expect(['', 'tablet']).toContain(frame.mark);
+      expect([frame.mainLeft, frame.mainWidth], JSON.stringify(frame))
+        .toEqual(frame.vw >= 780 ? [RAIL, frame.vw - RAIL] : [0, frame.vw]);
+      if (frame.vw >= 780) expect(frame.sidebar).toBe(RAIL);
     }
-    if (frames.at(-1).vw > 900) expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < 279)).toBe(true);
   }
+  await resize(page, 1051);
   expect(await railProblems(page)).toEqual([]);
 });
 
@@ -400,17 +406,48 @@ test('negative control: the abrupt-change check fails when a snap animates the s
   expect(Math.max(...frames.map(frame => frame.copyCovered))).toBeGreaterThan(0);
 });
 
-test('the Dashboard keeps its six cards on one row through the desktop, down to 1390px', async ({page}) => {
+test('the Dashboard keeps its six cards on one row through the desktop, down to 1390px, and three on one row through the tablet, down to 780px', async ({page}) => {
   await open(page, 1600);
-  const rows = () => page.evaluate(() => new Set([...document.querySelectorAll('#view-dashboard .dash-hero-stat')]
-    .map(card => Math.round(card.getBoundingClientRect().top))).size);
-  for (const width of [1600, EXPANDED, COMPACT, 1440, 1390]) {
+  // The cards in the layout, in order: label, row top, edges, whether its
+  // label and value are whole, and the strip's own edges.
+  const strip = () => page.evaluate(() => {
+    const hero = document.getElementById('dash-hero').getBoundingClientRect();
+    const cards = [...document.querySelectorAll('#view-dashboard .dash-hero-stat')];
+    return {hero: [hero.left, hero.right], hidden: cards.filter(card => getComputedStyle(card).display === 'none')
+      .map(card => [card.getBoundingClientRect().width, card.getBoundingClientRect().height]),
+    shown: cards.filter(card => getComputedStyle(card).display !== 'none').map(card => {
+      const box = card.getBoundingClientRect();
+      const label = card.querySelector('.dhs-label');
+      return {label: label.textContent, top: Math.round(box.top), left: box.left, right: box.right,
+        whole: [...card.querySelectorAll('.dhs-label, .dhs-val')].every(text => text.scrollWidth <= text.clientWidth)};
+    })};
+  });
+  const ALL = ['Total Downloads', 'Completed', 'Active Now', 'Processing', 'Errors', 'Total Downloaded'];
+  const TABLET = ['Total Downloads', 'Completed', 'Total Downloaded'];
+  for (const [width, labels] of [[1600, ALL], [EXPANDED, ALL], [COMPACT, ALL], [1440, ALL], [1390, ALL],
+    [1389, TABLET], [1200, TABLET], [1000, TABLET], [901, TABLET], [900, TABLET], [800, TABLET], [780, TABLET],
+    [1390, ALL], [1389, TABLET]]) {
     await resize(page, width);
-    await expect(page.locator('#view-dashboard .dash-hero-stat')).toHaveCount(6);
-    expect(await rows(), `${width}px`).toBe(1);
+    const {hero, hidden, shown} = await strip();
+    expect(shown.map(card => card.label), `${width}px`).toEqual(labels);
+    expect(new Set(shown.map(card => card.top)).size, `${width}px: one row`).toBe(1);
+    // The row is the strip's whole width: no empty column, even gaps.
+    expect(Math.abs(shown[0].left - hero[0]), `${width}px`).toBeLessThan(0.5);
+    expect(Math.abs(shown[shown.length - 1].right - hero[1]), `${width}px`).toBeLessThan(0.5);
+    const gaps = shown.slice(1).map((card, i) => card.left - shown[i].right);
+    expect(Math.max(...gaps) - Math.min(...gaps), `${width}px`).toBeLessThan(0.5);
+    // On the tablet every label and value is whole: none of its text clipped.
+    if (labels === TABLET) expect(shown.filter(card => !card.whole).map(card => card.label), `${width}px`).toEqual([]);
+    // The other three are out of the layout, not merely transparent.
+    expect(hidden, `${width}px`).toEqual(labels === TABLET ? [[0, 0], [0, 0], [0, 0]] : []);
   }
-  await resize(page, 1389);
-  expect(await rows()).toBe(2);
+  // Mobile (779px and below) keeps its own layout of the same three cards.
+  await resize(page, 779);
+  const mobile = await strip();
+  expect(mobile.shown.map(card => card.label)).toEqual(TABLET);
+  expect(new Set(mobile.shown.map(card => card.top)).size).toBe(2);
+  // Every value is still written while its card is out of the layout.
+  for (const id of ['s-active', 's-processing', 's-error']) await expect(page.locator(`#${id}`)).not.toHaveText('—');
 });
 
 test('every page keeps its desktop content on both sides of the boundary', async ({page}) => {

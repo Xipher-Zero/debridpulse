@@ -204,7 +204,7 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn('class="dash-activity-table-wrap"', html)
         self.assertIn("content.classList.toggle('dashboard-active', v === 'dashboard');", js)
         self.assertIn("function dashboardRecentLimit()", js)
-        self.assertIn("window.matchMedia('(max-width: 700px)').matches ? 4 : 6", js)
+        self.assertIn("window.matchMedia('(max-width: 779px)').matches ? 4 : 6", js)
         # Recent Items row rendering is owned by the bounded presentation owner;
         # app.js only holds the viewport-limit helper and the delegating entrypoint.
         owner = (

@@ -231,7 +231,7 @@ body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   /* Keep body as flex — sidebar is position:fixed so it's out of flow.
      #main will naturally fill 100% width since sidebar takes no flex space. */
   body { font-size: 13px; }

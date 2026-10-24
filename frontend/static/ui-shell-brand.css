@@ -67,7 +67,7 @@ body.light #sidebar .logo-icon {
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 779px) {
   #sidebar .logo-text {
     display: flex;
   }

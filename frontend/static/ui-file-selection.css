@@ -272,7 +272,7 @@
   cursor: not-allowed;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .dp-fs-tree { max-height: 40vh; }
   .dp-fs-actions {
     flex-wrap: wrap;

@@ -1645,8 +1645,8 @@ let _dashboardRecentFitLimit = null;
 let _dashboardRecentResizeTimer = null;
 
 function dashboardRecentLimit() {
-  const mobile = window.matchMedia('(max-width: 700px)').matches;
-  const fallback = window.matchMedia('(max-width: 700px)').matches ? 4 : 6;
+  const mobile = window.matchMedia('(max-width: 779px)').matches;
+  const fallback = window.matchMedia('(max-width: 779px)').matches ? 4 : 6;
   if (mobile) return fallback;
 
   const wrap = document.querySelector('#dash-activity-card .dash-activity-table-wrap');
@@ -2718,7 +2718,7 @@ function closeSidebar() {
  * the moment, leaving the page exactly where it is; the handle again, Escape,
  * a press outside the sidebar or choosing a page (closeSidebar) closes it, and
  * leaving the range clears it. Nothing is remembered. */
-const SIDEBAR_COMPACT_QUERY = '(min-width: 901px) and (max-width: 1559px)';
+const SIDEBAR_COMPACT_QUERY = '(min-width: 780px) and (max-width: 1559px)';
 const _sidebarCompact = window.matchMedia(SIDEBAR_COMPACT_QUERY);
 
 function sidebarOverlayOpen() {
@@ -2728,7 +2728,7 @@ function sidebarOverlayOpen() {
 // A change of presentation replaces Provider Status' and the session's
 // composition at once: the stack fades back in as the width settles. Which
 // change it is -- the persistent one (the window crossing 1560px), the
-// tablet one (crossing 900px, beyond the rail's other edge), or the overlay,
+// drawer one (crossing 779px, the rail's other edge), or the overlay,
 // which never moves the page -- is said beside it. The
 // mark lasts exactly as long as that fade: where there is none (reduced
 // motion, or no desktop sidebar), it is not left behind.
@@ -2806,7 +2806,7 @@ _sidebarCompact.addEventListener('change', () => {
   if (sidebar) {
     // Into the range by narrowing, or out of it by widening: 1560px.
     const persistent = _sidebarCompact.matches === (_sidebarViewportStep < 0);
-    markSidebarReflow(sidebar, persistent ? 'persistent' : 'tablet');
+    markSidebarReflow(sidebar, persistent ? 'persistent' : 'drawer');
     settleSidebarChange(sidebar);
   }
   setSidebarOverlay(false);

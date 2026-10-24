@@ -642,7 +642,7 @@ td { padding: 11px 16px; vertical-align: middle; }
    that are the sole source of mobile-responsive card geometry (the material
    bridge above has no mobile treatment of its own), migrated from the
    retired ui-legacy-foundation.css. */
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .card { border-radius: 8px !important; margin-bottom: 10px !important; }
   .card-header { padding: 8px 12px !important; }
   .card-body   { padding: 8px 12px !important; }

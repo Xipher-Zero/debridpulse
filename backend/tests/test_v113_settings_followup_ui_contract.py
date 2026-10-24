@@ -69,8 +69,8 @@ def test_route_rows_share_one_column_definition():
 
 
 def test_route_mobile_stacking_is_preserved():
-    assert "@media (max-width:700px)" in TRANSFER_CONTRACT
-    mobile = TRANSFER_CONTRACT[TRANSFER_CONTRACT.index("@media (max-width:700px)"):]
+    assert "@media (max-width:779px)" in TRANSFER_CONTRACT
+    mobile = TRANSFER_CONTRACT[TRANSFER_CONTRACT.index("@media (max-width:779px)"):]
     assert ".dp-detail-route-row { grid-template-columns:24px minmax(0,1fr); }" in mobile
 
 

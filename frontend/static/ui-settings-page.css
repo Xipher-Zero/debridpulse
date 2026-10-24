@@ -1412,7 +1412,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-master-header {
     padding: 12px;
   }
@@ -1587,7 +1587,7 @@
   font-size: 11px;
   line-height: 1.45;
 }
-@media (max-width:700px) {
+@media (max-width:779px) {
   #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
   /* Narrow: the copy wraps beneath the title group and the controls, still
      inside the same canonical header. The title group keeps its own width and
@@ -1625,7 +1625,7 @@
   overflow-y: auto;
   padding: 18px 28px 0 24px;
 }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #settings-tabs {
     margin-left: 10px;
     margin-right: 10px;

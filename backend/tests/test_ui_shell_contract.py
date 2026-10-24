@@ -207,13 +207,13 @@ def test_provider_status_heading_and_list_are_static_shell_markup_the_owner_only
 
 
 def test_one_universal_desktop_sidebar_width_owns_the_compact_rail() -> None:
-    """Expanded from 1560px, the compact rail from 901 to 1559px: one range,
+    """Expanded from 1560px, the compact rail from 780 to 1559px: one range,
     declared once by the shell geometry owner and read by the one sidebar
     state owner; the former 1179px glyph rail is gone."""
     structural = read(SHELL_STRUCTURAL)
     shell = read(SHELL_STYLE)
     app = read(STATIC / "app.js")
-    compact = "@media (min-width: 901px) and (max-width: 1559px) {"
+    compact = "@media (min-width: 780px) and (max-width: 1559px) {"
     rail = structural[structural.index(compact):]
     rail = rail[:rail.index("\n}\n")]
     assert "--dp-shell-sidebar: var(--dp-shell-rail);" in rail
@@ -222,7 +222,7 @@ def test_one_universal_desktop_sidebar_width_owns_the_compact_rail() -> None:
     overlay = rail[rail.index("#sidebar.sidebar-overlay-open {"):]
     overlay = overlay[:overlay.index("}")]
     assert "margin-right: calc(var(--dp-shell-rail) - var(--dp-shell-sidebar-full));" in overlay
-    assert "const SIDEBAR_COMPACT_QUERY = '(min-width: 901px) and (max-width: 1559px)';" in app
+    assert "const SIDEBAR_COMPACT_QUERY = '(min-width: 780px) and (max-width: 1559px)';" in app
     assert ".logo-text, .nav-label, .nav-group, .sidebar-footer { display: none; }" not in shell
     # Faded in place (still the accessible name), never removed.
     assert "#sidebar:not(.sidebar-overlay-open) :is(.logo-text, .nav-label) {\n    opacity: 0;" in rail

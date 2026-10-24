@@ -1,9 +1,10 @@
 const { test, expect } = require('@playwright/test');
 const { pauseClockBeforeBoot } = require('./page-clock');
 
-/* DP 1.0.13 decorative Dashboard ECG strip. The six KPI cards' lines form one
- * virtual strip: rows top to bottom, each row right to left, gaps and row
- * breaks travelled unseen at their real distance. One owner starts the
+/* DP 1.0.13 decorative Dashboard ECG strip. The shown KPI cards' lines (all
+ * six on the desktop, three below 1390px) form one virtual strip: rows top to
+ * bottom, each row right to left, gaps and row breaks travelled unseen at
+ * their real distance. One owner starts the
  * heartbeats, 3.5 BPM with no throughput up to 90 BPM as download throughput
  * reaches the installation's sustained peak; each travels the whole strip
  * right to left at 0.24 px/ms, so several can be on it at once. Each card's
@@ -72,8 +73,9 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
   await expect.poll(() => page.evaluate(() => _dashboardHeartbeat.running)).toBe(reducedMotion !== 'reduce');
 }
 
-/* Each card in DOM order: its geometry, line points, path count and gradient stops. */
-const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
+/* Each shown card in DOM order: its geometry, line points, path count and gradient stops. */
+const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
+  .filter(svg => svg.getBoundingClientRect().width > 0).map(svg => {
   const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
   const box = svg.getBoundingClientRect();
   const gradient = svg.querySelector('linearGradient[id^="dp-card-spark-signal-"]');
@@ -87,7 +89,8 @@ const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-d
 /* What the birth and position samplers read (births, observe): each card's
  * geometry and line points -- exactly the values strip() returns for them --
  * without reading every gradient stop's computed style on every 50 ms sample. */
-const geometryAndLines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
+const geometryAndLines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
+  .filter(svg => svg.getBoundingClientRect().width > 0).map(svg => {
   const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
   const box = svg.getBoundingClientRect();
   return {width: box.width, left: box.left, right: box.right, middle: (box.top + box.bottom) / 2,
@@ -226,10 +229,11 @@ test('one heartbeat strip crosses the single row right to left at one speed, the
   expect(await page.evaluate(() => localStorage.getItem('debridpulse.dashboard.metric-history.v2'))).toBeNull();
 });
 
-for (const [width, height, rows] of [[1000, 900, 2], [560, 1400, 3]]) {
-  test(`wrapped into ${rows} rows the cards are one strip: rows top to bottom, each right to left, row breaks travelled unseen`, async ({page}) => {
+for (const [width, height, rows] of [[1000, 900, 1], [560, 1400, 2]]) {
+  test(`at ${width}px the three cards shown are one strip on ${rows} row(s): rows top to bottom, each right to left, row breaks travelled unseen`, async ({page}) => {
     test.setTimeout(90000);
     await boot(page, {width, height});
+    expect((await strip(page)).length).toBe(3);
     await expectStripFollowsLayout(page, {rowsExpected: rows});
   });
 }
@@ -256,9 +260,10 @@ test('a reflow re-measures the strip under the heartbeats already on it, without
   await page.setViewportSize({width: 1000, height: 900});
   // 1000px is the compact desktop sidebar: its width transition has finished.
   await expect.poll(() => page.evaluate(() => document.getElementById('sidebar').getAnimations().length)).toBe(0);
-  await expect.poll(async () => route(await strip(page)).rows.length).toBe(2);
+  await expect.poll(async () => (await strip(page)).length).toBe(3);
+  expect(route(await strip(page)).rows.length).toBe(1);
   await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
-    .every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01))).toBe(true);
+    .filter(svg => svg.getBoundingClientRect().width > 0).every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01))).toBe(true);
   expectOneContinuousLine(await strip(page));
   // The heartbeat cadence carries straight on through the reflow: the next
   // entries fall on the same 2 s phase (no restart), one per 2 s (no second timer).
@@ -276,7 +281,7 @@ test('a reflow re-measures the strip under the heartbeats already on it, without
  * the heartbeats carry straight on -- no restart, no second timer, no stale
  * route, the six cards one row on both sides. */
 const viewBoxesFit = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
-  .every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01));
+  .filter(svg => svg.getBoundingClientRect().width > 0).every(svg => Math.abs(Number(svg.getAttribute('viewBox').split(' ')[2]) - svg.getBoundingClientRect().width) < 0.01));
 const sidebarWidth = page => page.evaluate(() => document.getElementById('sidebar').getBoundingClientRect().width);
 
 test('the desktop sidebar collapsing and expanding re-measures the strip under its heartbeats in both directions', async ({page}) => {
@@ -296,6 +301,38 @@ test('the desktop sidebar collapsing and expanding re-measures the strip under i
     expectOneContinuousLine(cards);
     // The heartbeats born after the change fall on the same 2 s phase as the
     // one before it (no restart), one per 2 s (no second timer).
+    const after = await births(page, 2 * INTERVAL);
+    expect(after.times.length).toBe(2);
+    after.times.forEach(at => {
+      const phase = ((at - anchor) % INTERVAL + INTERVAL) % INTERVAL;
+      expect(Math.min(phase, INTERVAL - phase)).toBeLessThanOrEqual(QUANTUM);
+    });
+  }
+});
+
+/* Below 1390px the strip is the three cards still shown -- Total Downloads,
+ * Completed and Total Downloaded, one row -- and from 1390px all six again:
+ * each direction re-measures the route through the same KPI observer under
+ * the heartbeats already on it, without a restart or a second timer. */
+test('crossing 1390px re-measures the strip to the three cards shown and back to six, under its heartbeats', async ({page}) => {
+  test.setTimeout(90000);
+  await boot(page, {width: 1440});
+  const {times: [anchor]} = await births(page, INTERVAL + 100);
+  expect(anchor).toBeDefined();
+  const routeLabels = () => page.evaluate(() => _dashboardHeartbeat.route.cards
+    .map(card => card.svg.closest('.dash-hero-stat').querySelector('.dhs-label').textContent));
+  for (const [width, labels] of [
+    [1389, ['Total Downloaded', 'Completed', 'Total Downloads']],
+    [1390, ['Total Downloaded', 'Errors', 'Processing', 'Active Now', 'Completed', 'Total Downloads']],
+    [1389, ['Total Downloaded', 'Completed', 'Total Downloads']]]) {
+    expect((await strip(page)).some(card => leads(card).some(x => x > -48 && x < card.width))).toBe(true);   // mid-flight
+    await page.setViewportSize({width, height: 900});
+    await expect.poll(async () => (await strip(page)).length).toBe(labels.length);
+    await expect.poll(() => viewBoxesFit(page)).toBe(true);
+    expect(await routeLabels()).toEqual(labels);                   // the route is the shown cards, right to left
+    const cards = await strip(page);
+    expect(route(cards).rows.length).toBe(1);
+    expectOneContinuousLine(cards);
     const after = await births(page, 2 * INTERVAL);
     expect(after.times.length).toBe(2);
     after.times.forEach(at => {
@@ -489,7 +526,7 @@ test('while the cadence changes and across row breaks every trail reaches rest i
   for (let t = 0; t < 16000; t += 100) {
     await page.clock.runFor(100);
     const cards = await strip(page);
-    expect(route(cards).rows.length).toBe(3);
+    expect(route(cards).rows.length).toBe(2);
     const beats = stripBeats(cards);
     spanned += beats.filter(beat => beat.cards > 1).length;
     broken += beats.filter(beat => beat.broken).length;
@@ -1147,7 +1184,8 @@ test('fully paused, the red lines breathe over each card\'s still accent glow at
     await page.evaluate(() => loadStats());
   }
   await page.setViewportSize({width: 1000, height: 900});
-  await expect.poll(async () => route(await strip(page)).rows.length).toBe(2);
+  await expect.poll(async () => (await strip(page)).length).toBe(3);
+  expect(route(await strip(page)).rows.length).toBe(1);
   pause.paused = false;
   await page.evaluate(() => loadStats());
   await page.clock.runFor(3000);
@@ -1169,7 +1207,8 @@ const leaveDashboard = page => page.evaluate(() => nav(document.querySelector('#
 const returnAndRead = page => page.evaluate(() => {
   nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
   return {flatline: document.getElementById('dash-hero').classList.contains('dash-hero--flatline'),
-    lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d'))};
+    lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark')].filter(svg => svg.getBoundingClientRect().width > 0)
+      .map(svg => svg.querySelector('.dp-card-spark-line').getAttribute('d'))};
 });
 const allLeads = cards => cards.map(card => leads(card).map(x => Math.round(x)));
 /* Two pages' strips agree: the same heartbeats on every card, each within one

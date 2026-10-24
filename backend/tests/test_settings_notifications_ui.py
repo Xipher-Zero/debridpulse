@@ -460,7 +460,7 @@ def test_the_second_line_is_placed_in_a_row_of_its_own_not_wrapped_into_one():
     assert variant_selector in unconditional
     narrow = [chunk for chunk in blocks if "--two-line" in chunk]
     assert len(narrow) == 1, [chunk[:40] for chunk in narrow]
-    assert narrow[0].startswith("@media (max-width: 700px)")
+    assert narrow[0].startswith("@media (max-width: 779px)")
     assert "flex-direction: column" in narrow[0]
 
 

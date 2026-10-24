@@ -181,6 +181,6 @@ def test_provenance_is_right_aligned_and_the_url_keeps_the_flexible_space():
 
 
 def test_the_responsive_stack_releases_the_inline_offset():
-    mobile = TRANSFER_CSS[TRANSFER_CSS.index("@media (max-width:700px)"):]
+    mobile = TRANSFER_CSS[TRANSFER_CSS.index("@media (max-width:779px)"):]
     assert "dp-detail-route-outcome" in mobile
     assert "margin-inline-start: 0" in mobile

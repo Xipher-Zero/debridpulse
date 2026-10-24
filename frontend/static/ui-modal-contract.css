@@ -222,7 +222,7 @@ body.light #modal.dp-detail-modal {
   font-size: 10px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #overlay { padding: 12px; }
   #modal.dp-detail-modal { width: 100%; max-height: 90vh; }
   #modal .detail-grid { grid-template-columns: 1fr; }
@@ -477,7 +477,7 @@ body.light .dp-modal-dialog {
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
 .dk { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); margin-bottom: 3px; }
 .dv { font-size: 13px; font-family: var(--mono); word-break: break-all; }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #modal { width: 95vw !important; max-height: 85vh; }
   .detail-grid { grid-template-columns: 1fr !important; }
 }

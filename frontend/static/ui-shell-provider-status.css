@@ -143,7 +143,7 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
    the crown alone above its separator, the tiers without their headings, and
    an aria2/DB exception as its dot beneath its separator. Each text stays the
    row's accessible text; the DP tooltip says it on hover or focus. */
-@media (min-width: 901px) and (max-width: 1559px) {
+@media (min-width: 780px) and (max-width: 1559px) {
   #sidebar:not(.sidebar-overlay-open) .sidebar-footer :is(#lbl-premium, .dp-provider-status-tier-label, .conn-row:has(#dot-aria2, #dot-db) > span) {
     position: absolute;
     height: 1px;

@@ -193,7 +193,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   /* One setting per line; each keeps its own inline title/hint + control. */
   #view-settings .dp-settings-extraction-behavior {
     width: auto;

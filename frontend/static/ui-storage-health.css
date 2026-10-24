@@ -92,7 +92,7 @@ body.light .dp-storage-warning {
     grid-column: 1 / -1;
   }
 }
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .dp-storage-health-region {
     padding: 8px 12px;
   }

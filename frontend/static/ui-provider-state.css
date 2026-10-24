@@ -53,7 +53,7 @@
    them on hover or focus. Only tiers that exist are shown, so no separator is
    ever left without something to separate. The crown, the tier headings and
    the aria2/DB exceptions are ui-shell-provider-status.css's. */
-@media (min-width: 901px) and (max-width: 1559px) {
+@media (min-width: 780px) and (max-width: 1559px) {
   #sidebar:not(.sidebar-overlay-open) .sidebar-footer :is(.dp-provider-status-heading, .dp-provider-status-name) {
     position: absolute;
     width: 1px;

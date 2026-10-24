@@ -162,9 +162,9 @@ body.light .logo-name span { color: #7c3aed; }
 .sidebar-footer::before {
   text-align: center !important;
 }
-/* Desktop shell owns one lower datum for every page. The compact/mobile
-   sidebar retains the inherited 12px inset below 901px. */
-@media (min-width: 901px) {
+/* Desktop shell owns one lower datum for every page. The mobile drawer
+   retains the inherited 12px inset below 780px. */
+@media (min-width: 780px) {
   .sidebar-footer {
     bottom: 24px !important;
   }
@@ -376,11 +376,11 @@ body.light .theme-toggle {
 
 /* ── Desktop sidebar: expanded and compact ───────────────────────────────
    One universal width decides the desktop shell. From 1560 CSS px the full
-   240px sidebar; from 901 to 1559px the compact 72px icon rail. 1560 is just
+   240px sidebar; from 780 to 1559px the compact 72px icon rail. 1560 is just
    above the Dashboard's first measured pressure point with the full sidebar
    (its six-card row runs out of room near 1535px); the rail gives the page
-   168px back. Below 901px the existing tablet sidebar and drawer apply
-   unchanged. app.js reads the same range (SIDEBAR_COMPACT_QUERY) for the
+   168px back. Below 780px the existing mobile drawer applies unchanged; the
+   sidebar never widens again as the window narrows. app.js reads the same range (SIDEBAR_COMPACT_QUERY) for the
    rail's handle.
 
    The rail is the same sidebar, not a second one: every label stays in place
@@ -397,7 +397,7 @@ body.light .theme-toggle {
 
 .sidebar-handle { display: none; }
 
-@media (min-width: 901px) {
+@media (min-width: 780px) {
   /* The persistent change (a window crossing 1560px) and the overlay animate
      the sidebar's width -- the page follows only the persistent one. Labels
      fade out before the edge reaches them, and fade in once it has passed. */
@@ -444,7 +444,7 @@ body.light .theme-toggle {
   to { opacity: 1; }
 }
 
-@media (min-width: 901px) and (max-width: 1559px) {
+@media (min-width: 780px) and (max-width: 1559px) {
   :root {
     --dp-shell-sidebar: var(--dp-shell-rail);
     --dp-sidebar-item-inset: 26px;
@@ -554,6 +554,16 @@ body.light .theme-toggle {
   }
 }
 
+/* The rail's other edge (779/780px) is a change of kind, not of width: the
+   drawer is not in the row, so the sidebar takes its new place at once --
+   neither an in-flow width shrinking from the drawer's (which would narrow
+   the page and give it back) nor the drawer sliding away over the page.
+   app.js names the change; the name lasts only for its reveal, if any. */
+#sidebar[data-sidebar-reflow="drawer"],
+#sidebar[data-sidebar-reflow="drawer"] :is(.logo, .nav-item, .logo-text, .nav-label) {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #sidebar,
   #sidebar:not(.sidebar-overlay-open),
@@ -577,7 +587,7 @@ body.light .theme-toggle {
   .dp-page-heading { min-width: 0; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #topbar {
     padding-left: 58px;
     padding-right: 16px !important;
@@ -585,10 +595,10 @@ body.light .theme-toggle {
   #sidebar { width: min(280px, 88vw); }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   :root { --dp-shell-header: 88px; --dp-shell-x: 14px; }
   /* Preserve the accepted effective layout while removing its dependency on
-     the legacy <=700px !important topbar rule. */
+     the legacy <=779px !important topbar rule. */
   #topbar { padding: 8px 16px 8px 12px !important; }
   #page-title { font-size: 23px; }
   #page-title::after { display: none; }

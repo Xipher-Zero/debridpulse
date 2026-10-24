@@ -256,7 +256,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-notifications-identity-row,
   #view-settings .dp-settings-notifications-delivery-row {
     grid-template-columns: minmax(0, 1fr);

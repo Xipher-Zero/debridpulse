@@ -295,7 +295,7 @@ body.light #view-torrents .empty-icon {
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #view-torrents > .card > .card-header {
     flex-wrap: wrap;
     gap: 8px;
@@ -340,7 +340,7 @@ body.light #view-torrents .empty-icon {
      viewport. Actions is reserved for both 72px button slots and their gap
      whether one or both are present. Below the width where every column's
      content fits whole, Size and Date step aside (the table's existing
-     column-hide idiom, as at 700px) rather than squeezing Name, Provider,
+     column-hide idiom, as at 779px) rather than squeezing Name, Provider,
      Status or Progress until they overlap. Progress's weight keeps its bar at
      least as wide as before. */
   #view-torrents .t-table {
@@ -377,12 +377,12 @@ body.light #view-torrents .empty-icon {
   #view-torrents .t-table :is(th, td):is(:nth-child(5), :nth-child(6)) { display: none; }
 }
 
-/* The compact shell also sets the hash line aside (as at 700px). */
+/* The compact shell also sets the hash line aside (as at 779px). */
 @media (min-width: 901px) and (width < 1180px) {
   #view-torrents .t-hash { display: none; }
 }
 
-/* Narrowest of all, Progress steps aside too (as at 700px): Name, the whole
+/* Narrowest of all, Progress steps aside too (as at 779px): Name, the whole
    provider identity, Status and Actions remain. */
 @media (min-width: 901px) and (width <= 1050px) {
   #view-torrents .t-table :is(th, td):nth-child(4) { display: none; }

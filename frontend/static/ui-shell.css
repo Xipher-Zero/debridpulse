@@ -432,7 +432,8 @@ body.light #runtime-speed-badge {
   #page-title::after { display: none; }
 }
 
-@media (max-width: 899px) {
+/* The drawer's sidebar (below 780px); above it the compact rail holds. */
+@media (max-width: 779px) {
   #sidebar {
     width: min(290px, 86vw);
     min-width: 0;
@@ -442,12 +443,15 @@ body.light #runtime-speed-badge {
   .sidebar-footer { display: block; }
   .nav-item { justify-content: flex-start; padding-inline: 12px; }
   #topbar { padding-left: 16px; padding-right: 60px; }
+}
+
+@media (max-width: 899px) {
   #page-title { font-size: 21px; }
   #topbar-actions .btn { padding-inline: 9px; }
   #runtime-speed-badge { display: none !important; }
 }
 
-@media (max-width: 699px) {
+@media (max-width: 778px) {
   :root { --dp-page-gutter-x: 14px; --dp-page-gutter-y: 14px; }
   #topbar { min-height: 58px; height: 58px; }
   .sidebar-theme-control { top: 11px; right: 12px; }
@@ -465,13 +469,13 @@ body.light #runtime-speed-badge {
 .view { display: none !important; }
 .view.active { display: block !important; }
 
-@media (min-width: 701px) {
+@media (min-width: 780px) {
   .mobile-menu-btn { display: none; }
   /* Keep the shared page header divider aligned with the sidebar logo divider. */
   .logo { box-sizing: border-box; height: var(--chrome-header-height); }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .view.active { display: block !important; }
   #view-dashboard.active { height: auto; min-height: 0; overflow: visible; }
 

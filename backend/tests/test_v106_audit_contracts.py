@@ -180,7 +180,7 @@ def test_dashboard_has_one_mixed_submission_control():
 def test_dashboard_recent_activity_uses_viewport_slack():
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     js = (static / "app.js").read_text()
-    assert "window.matchMedia('(max-width: 700px)').matches ? 4 : 6" in js
+    assert "window.matchMedia('(max-width: 779px)').matches ? 4 : 6" in js
     # The Recent Items fetch lives in the canonical presentation owner; the
     # viewport-limit helper it consults stays in app.js.
     owner = (static / "ui-dashboard-transfer-presentation.js").read_text()

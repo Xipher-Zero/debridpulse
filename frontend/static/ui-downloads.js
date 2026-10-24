@@ -245,7 +245,7 @@ function ensureDateMenu(tableSelector, headings, text) {
 }
 
 // ── Measured desktop capacity ───────────────────────────────────────────
-const DESKTOP_QUERY = '(min-width: 701px)';
+const DESKTOP_QUERY = '(min-width: 780px)';
 let capacityTimer = null;
 let capacityObserver = null;
 let busy = false;

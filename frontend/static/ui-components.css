@@ -490,7 +490,7 @@ body.light .dp-backdrop,
   .dp-page-btn:not(:disabled):active { transform: none; }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   .dp-backdrop { padding: 12px; }
   .dp-dialog,
   .dp-dialog--sm,

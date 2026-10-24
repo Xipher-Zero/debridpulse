@@ -337,7 +337,7 @@ body.light #view-events .dp-activity-search-band {
   display: none;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   #view-events .dp-activity-pagination {
     grid-template-columns: 1fr;
     justify-items: center;
@@ -411,7 +411,7 @@ body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
   color: inherit;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 779px) {
   body:has(.nav-item[data-view="events"].active) #page-title::before {
     font-size: 23px;
   }
