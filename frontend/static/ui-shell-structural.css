@@ -424,6 +424,19 @@ body.light .theme-toggle {
   #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer {
     animation: dp-sidebar-reveal 140ms var(--dp-motion-ease) 120ms both;
   }
+  /* A single change of the window wider than the page's clear inset (a snap
+     rather than a drag; app.js measures it) takes the new width at once, in
+     that frame, in either direction: app.js holds this class only for the
+     style update that applies it. */
+  #sidebar.sidebar-settling:not(.sidebar-overlay-open),
+  #sidebar.sidebar-settling:not(.sidebar-overlay-open) :is(.logo, .nav-item, .logo-text, .nav-label) {
+    transition: none;
+  }
+}
+
+@keyframes dp-sidebar-yield {
+  from { margin-right: clamp(calc(var(--dp-shell-rail) - var(--dp-shell-sidebar-full)), 100vw - 1560px, 0px); }
+  to { margin-right: 0px; }
 }
 
 @keyframes dp-sidebar-reveal {
@@ -447,6 +460,20 @@ body.light .theme-toggle {
   #sidebar:not(.sidebar-overlay-open) :is(.logo-text, .nav-label) {
     opacity: 0;
     transition: opacity 90ms var(--dp-motion-ease);
+  }
+
+  /* The persistent change to the rail gives the page its room back at once.
+     A window still narrowing as it crosses 1559px (a drag) would otherwise
+     leave the page narrower than at any resting width -- the full sidebar not
+     yet contracting while the window keeps losing width -- and its content
+     would re-flow for that moment alone. So the sidebar's share of the row
+     yields at once whatever the window has lost below 1560px (as the
+     overlay's trailing margin does, never more than the rail keeps), and
+     gives it back on the width's own timing as the sidebar contracts; its
+     drawn width, motion and timing are unchanged, passing over the page's
+     edge by that much meanwhile. Without motion there is no such moment. */
+  #sidebar.sidebar-reflowing[data-sidebar-reflow="persistent"]:not(.sidebar-overlay-open) {
+    animation: dp-sidebar-yield var(--dp-motion-collapse) var(--dp-motion-ease) 60ms both;
   }
 
   /* The temporary overlay: the full sidebar above the page, its row share
@@ -538,7 +565,8 @@ body.light .theme-toggle {
     transition: none;
   }
   #sidebar.sidebar-reflowing .sidebar-bottom-stack > *,
-  #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer {
+  #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer,
+  #sidebar.sidebar-reflowing[data-sidebar-reflow="persistent"]:not(.sidebar-overlay-open) {
     animation: none;
   }
 }

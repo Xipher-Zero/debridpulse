@@ -120,38 +120,284 @@ test('negative control: the rail check fails when a section heading or Provider 
   expect(await railProblems(page)).toEqual(['provider status']);
 });
 
-test('the persistent change is animated, the page follows it, and reduced motion makes it immediate', async ({page}) => {
+/* Every animation frame from now until `act` has finished and the sidebar's
+ * change is over (its width settled and its reflow mark gone): the window
+ * width, the sidebar's drawn width and mark, how far its edge passes over the
+ * page and over the page's content (the page's clear inset is #content's
+ * leading padding), and -- on Settings or Help -- whether the tab strip is on
+ * a second row, the header's own genuine-fit rule, and whether every tab is
+ * inside the header. */
+async function framesDuring(page, view, act) {
+  await page.evaluate(view => {
+    const rect = node => node.getBoundingClientRect();
+    window.__dpFrames = [];
+    window.__dpStop = false;
+    const sample = () => {
+      const sidebarNode = document.getElementById('sidebar');
+      const sidebar = rect(sidebarNode);
+      const main = rect(document.getElementById('main'));
+      const content = document.getElementById('content');
+      const inset = parseFloat(getComputedStyle(content).paddingLeft);
+      const frame = {vw: innerWidth, sidebar: sidebar.width, mainLeft: main.left, mainWidth: main.width,
+        overlap: sidebar.right - main.left, contentCovered: sidebar.right - (rect(content).left + inset),
+        mark: sidebarNode.classList.contains('sidebar-reflowing') ? sidebarNode.dataset.sidebarReflow || 'unnamed' : '',
+        labelOpacity: Number(getComputedStyle(sidebarNode.querySelector('.nav-label')).opacity)};
+      if (view) {
+        const root = document.getElementById(`view-${view}`);
+        const header = root.querySelector(`.dp-${view}-master-header`);
+        const style = getComputedStyle(header);
+        const box = rect(header);
+        const inner = {left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight)};
+        const copyNode = root.querySelector(`.dp-${view}-header-copy`);
+        const copy = rect(copyNode);
+        const strip = root.querySelector(`.dp-${view}-tabs`);
+        const s = rect(strip);
+        const tabs = [...strip.querySelectorAll('[data-tab]')].map(rect);
+        const stripStyle = getComputedStyle(strip);
+        const natural = [...copyNode.children].reduce((sum, child) => sum + rect(child).width, 0)
+          + parseFloat(getComputedStyle(copyNode).columnGap) * (copyNode.children.length - 1);
+        const stripNatural = tabs.reduce((sum, tab) => sum + tab.width, 0) + parseFloat(stripStyle.columnGap || 0) * (tabs.length - 1)
+          + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + parseFloat(stripStyle[key]), 0);
+        Object.assign(frame, {
+          second: s.top > copy.bottom - 4,
+          fits: natural + parseFloat(style.columnGap) + stripNatural <= inner.right - inner.left + 0.5,
+          inside: s.left >= inner.left - 0.5 && s.right <= inner.right + 0.5
+            && tabs.every(tab => tab.left >= s.left - 0.5 && tab.right <= s.right + 0.5 && Math.abs(tab.top - tabs[0].top) < 1),
+          copyCovered: sidebar.right - copy.left,
+        });
+      }
+      window.__dpFrames.push(frame);
+      if (!window.__dpStop) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, view);
+  await act();
+  await page.waitForFunction(() => {
+    const sidebar = document.getElementById('sidebar');
+    return !sidebar.classList.contains('sidebar-reflowing') && sidebar.dataset.sidebarReflow === undefined
+      && sidebar.getAnimations({subtree: true}).every(animation => animation.playState !== 'running' || animation.effect.getTiming().iterations === Infinity);
+  });
+  return page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
+    window.__dpStop = true;
+    resolve(window.__dpFrames);
+  }))));
+}
+
+// The header's tab strip is on a second row (Settings or Help), at rest.
+const restRow = (page, view) => page.evaluate(view => {
+  const root = document.getElementById(`view-${view}`);
+  return root.querySelector(`.dp-${view}-tabs`).getBoundingClientRect().top
+    > root.querySelector(`.dp-${view}-header-copy`).getBoundingClientRect().bottom - 4;
+}, view);
+
+const changes = values => values.reduce((count, value, i) => count + (i && value !== values[i - 1] ? 1 : 0), 0);
+
+// The window moving a frame's width at a time, as a dragged window edge does.
+async function drag(page, from, to, step) {
+  const sign = Math.sign(to - from);
+  for (let width = from; sign * (to - width) >= 0; width += sign * step) {
+    await page.setViewportSize({width, height: 1000});
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  }
+}
+
+test('a window dragged across 1560px animates the persistent change, the page keeping its room, and reduced motion makes it immediate', async ({page}) => {
   await open(page, 1600);
   const transition = await page.evaluate(() => getComputedStyle(document.getElementById('sidebar')).transitionProperty);
   expect(transition).toContain('width');
-  // Every frame of the change until it settles: the sidebar passes through
-  // the widths between, and the page stays beside it at every frame.
-  const frames = page.evaluate(() => new Promise(resolve => {
-    const seen = [];
-    const sample = () => {
-      const sidebar = document.getElementById('sidebar').getBoundingClientRect();
-      const main = document.getElementById('main').getBoundingClientRect();
-      seen.push({sidebar: sidebar.width, main: main.left});
-      if (seen.length > 3 && sidebar.width === 72) resolve(seen);
-      else if (seen.length < 120) requestAnimationFrame(sample);
-      else resolve(seen);
-    };
-    requestAnimationFrame(sample);
-  }));
-  await page.setViewportSize({width: 1440, height: 1000});
-  const seen = await frames;
-  expect(seen.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1)).toBe(true);
-  for (const frame of seen) expect(Math.abs(frame.main - frame.sidebar)).toBeLessThan(1);
-  expect(seen[seen.length - 1].sidebar).toBe(RAIL);
-  await settledShell(page);
-  expect(await railProblems(page)).toEqual([]);
+  for (const [from, to] of [[1600, 1500], [1500, 1600]]) {
+    const frames = await framesDuring(page, null, () => drag(page, from, to, 8));
+    // Animated: the sidebar passes through the widths between, and the change
+    // is the persistent one throughout (never taken at once).
+    expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1)).toBe(true);
+    expect(frames.filter(frame => frame.mark === 'immediate')).toEqual([]);
+    for (const frame of frames) {
+      // The page never has less room than at the narrowest resting width the
+      // window passes through (1560px with the full sidebar) ...
+      expect(frame.mainWidth).toBeGreaterThanOrEqual(Math.min(frame.vw - (frame.vw >= EXPANDED ? FULL : RAIL), EXPANDED - FULL) - 0.5);
+      // ... and the moving edge passes over the page by no more than the
+      // window has lost below 1560px (how much of the page that reaches
+      // depends on the drag's speed: the Gate 9 packet measures it).
+      expect(frame.overlap, JSON.stringify(frame)).toBeLessThanOrEqual(Math.max(0, EXPANDED - frame.vw) + 0.5);
+      expect(frame.mainLeft).toBeGreaterThanOrEqual(RAIL - 0.5);
+    }
+    expect(frames.at(-1).sidebar).toBe(to >= EXPANDED ? FULL : RAIL);
+  }
+  expect((await box(page, '#main')).left).toBe(FULL);
 
+  // Reduced motion: every change is immediate, and nothing is marked or left behind.
   await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.setViewportSize({width: 1600, height: 1000});
-  const immediate = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() =>
-    resolve({width: document.getElementById('sidebar').getBoundingClientRect().width,
-      running: document.getElementById('sidebar').getAnimations().length}))));
-  expect(immediate).toEqual({width: FULL, running: 0});
+  for (const act of [() => page.setViewportSize({width: 1440, height: 1000}), () => drag(page, 1440, 1600, 16), () => page.setViewportSize({width: 1440, height: 1000})]) {
+    const frames = await framesDuring(page, null, act);
+    expect(frames.filter(frame => frame.sidebar !== (frame.vw >= EXPANDED ? FULL : RAIL) || frame.mark)).toEqual([]);
+    expect(await page.evaluate(() => document.getElementById('sidebar').getAnimations().length)).toBe(0);
+  }
+});
+
+/* A window that changes by more than the page's clear inset at once (a snap,
+ * maximise or restore) takes the new sidebar width in that same frame, either
+ * way: every frame is the page's resting layout at that frame's window width
+ * -- the header's row included -- and the sidebar never passes over the page. */
+for (const view of ['settings', 'help']) {
+  test(`abrupt window changes take the ${view} page straight to its resting layout, frame by frame`, async ({page}) => {
+    await open(page, 1600);
+    await page.locator(`#sidebar .nav-item[data-view="${view}"]:not([data-title])`).click();
+    await expect(page.locator(`#view-${view} .dp-${view}-tabs [data-tab]`).first()).toBeVisible();
+    const cases = [[1600, 1559], [1700, 1540], [1600, 1500], [1600, 1440], [1920, 1400]];
+    const rest = {};
+    for (const width of new Set(cases.flat())) {
+      await resize(page, width);
+      rest[width] = await restRow(page, view);
+    }
+    for (const [from, to] of [...cases, ...cases.map(([a, b]) => [b, a])]) {
+      await resize(page, from);
+      const frames = await framesDuring(page, view, () => page.setViewportSize({width: to, height: 1000}));
+      const label = `${view} ${from}->${to}`;
+      const after = frames.filter(frame => frame.vw === to);
+      expect(after.length, label).toBeGreaterThan(3);
+      for (const frame of frames) {
+        expect(frame.sidebar, label).toBe(frame.vw >= EXPANDED ? FULL : RAIL);
+        expect(frame.overlap, label).toBeLessThanOrEqual(0.5);
+        expect(frame.copyCovered, label).toBeLessThanOrEqual(0);
+        expect(frame.inside, label).toBe(true);
+        expect(frame.second, `${label} at ${frame.vw}`).toBe(rest[frame.vw]);
+      }
+      expect(after.some(frame => frame.mark === 'immediate'), label).toBe(true);
+      expect(changes([rest[from], ...frames.map(frame => frame.second), rest[to]]), label).toBe(rest[from] === rest[to] ? 0 : 1);
+      expect(await restRow(page, view), label).toBe(rest[to]);
+    }
+    expect((await box(page, '#main')).left).toBe(FULL);   // 1920: the full sidebar
+  });
+}
+
+/* A further abrupt change while the sidebar is still moving -- narrowing on,
+ * widening back, or narrowing again during an expansion -- takes the new
+ * width in that frame too, and the change's mark is gone once it is over. */
+test('an abrupt change while the sidebar is moving settles at once in either direction and leaves nothing behind', async ({page}) => {
+  await open(page, 1600);
+  await page.locator('#sidebar .nav-item[data-view="settings"]:not([data-title])').click();
+  await expect(page.locator('#view-settings .dp-settings-tabs [data-tab]').first()).toBeVisible();
+  for (const [start, cross, then] of [[1568, 1552, 1400], [1568, 1552, 1600], [1552, 1568, 1920], [1552, 1568, 1440]]) {
+    await resize(page, start);
+    const label = `${start}->${cross}->${then}`;
+    const frames = await framesDuring(page, 'settings', async () => {
+      await page.setViewportSize({width: cross, height: 1000});
+      // The sidebar is moving: part-way between its two widths.
+      await page.waitForFunction(() => document.getElementById('sidebar').getAnimations()
+        .some(animation => animation.transitionProperty === 'width' && animation.playState === 'running' && animation.currentTime > 100));
+      await page.setViewportSize({width: then, height: 1000});
+    });
+    const moving = frames.filter(frame => frame.vw === cross && frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1);
+    expect(moving.length, label).toBeGreaterThan(0);
+    expect(moving.every(frame => frame.mark === 'persistent'), label).toBe(true);
+    const settled = frames.filter(frame => frame.vw === then);
+    expect(settled.length, label).toBeGreaterThan(3);
+    for (const frame of settled) expect(frame.sidebar, label).toBe(then >= EXPANDED ? FULL : RAIL);
+    for (const frame of frames) {
+      expect(frame.contentCovered, label).toBeLessThanOrEqual(0.5);
+      expect(frame.inside, label).toBe(true);
+    }
+    expect(await page.evaluate(() => {
+      const sidebar = document.getElementById('sidebar');
+      return {mark: sidebar.className.includes('sidebar-reflowing'), data: sidebar.dataset.sidebarReflow ?? null,
+        margin: getComputedStyle(sidebar).marginRight, transition: getComputedStyle(sidebar).transitionProperty.includes('width')};
+    }), label).toEqual({mark: false, data: null, margin: '0px', transition: true});
+  }
+});
+
+/* Continuous drags at 8 and 16px a frame, both directions, Settings and
+ * Help: the accepted motion. The header follows its own genuine fit in every
+ * frame (no premature second row), every tab stays inside it, the page never
+ * has less room than at 1560px, and the moving edge passes over the page by
+ * no more than the window has lost below 1560px. (How far that reaches into
+ * the header depends on the drag's real speed, which a headless browser's
+ * frames do not fix; the Gate 9 packet measures it.) */
+for (const view of ['settings', 'help']) {
+  test(`continuous drags across 1560px keep the ${view} header's row and the accepted motion`, async ({page}) => {
+    await open(page, 1640);
+    await page.locator(`#sidebar .nav-item[data-view="${view}"]:not([data-title])`).click();
+    await expect(page.locator(`#view-${view} .dp-${view}-tabs [data-tab]`).first()).toBeVisible();
+    for (const step of [8, 16]) {
+      for (const [from, to] of [[1640, 1480], [1480, 1640]]) {
+        await resize(page, from);
+        const label = `${view} ${from}->${to} at ${step}px a frame`;
+        const frames = await framesDuring(page, view, () => drag(page, from, to, step));
+        expect(frames.filter(frame => frame.mark === 'immediate'), label).toEqual([]);
+        expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1), label).toBe(true);
+        for (const frame of frames) {
+          expect(frame.second, `${label} at ${frame.vw}`).toBe(!frame.fits);
+          expect(frame.inside, label).toBe(true);
+          expect(frame.mainWidth, label).toBeGreaterThanOrEqual(EXPANDED - FULL - 0.5);
+          expect(frame.overlap, label).toBeLessThanOrEqual(Math.max(0, EXPANDED - frame.vw) + 0.5);
+        }
+      }
+    }
+  });
+}
+
+/* The overlay is not the persistent change: an abrupt window change while it
+ * is open, or the overlay opened right after one, never moves the page, and
+ * the overlay keeps its own animation. */
+test('the overlay keeps its motion and the page its place around abrupt window changes', async ({page}) => {
+  await open(page, 1600);
+  await page.setViewportSize({width: 1440, height: 1000});
+  // Opened while the abrupt change's mark is still there: animated, the page unmoved.
+  const opening = await framesDuring(page, null, () => page.locator('#sidebar-handle').click());
+  expect(opening.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1)).toBe(true);
+  for (const frame of opening) expect([frame.mainLeft, frame.mainWidth]).toEqual([RAIL, 1440 - RAIL]);
+  const during = await framesDuring(page, null, () => page.setViewportSize({width: 1300, height: 1000}));
+  for (const frame of during) {
+    expect([frame.sidebar, frame.mainLeft, frame.mainWidth]).toEqual([FULL, RAIL, frame.vw - RAIL]);
+    expect(['', 'overlay']).toContain(frame.mark);
+  }
+  await expect(page.locator('#sidebar')).toHaveClass(/sidebar-overlay-open/);
+  const closing = await framesDuring(page, null, () => page.locator('#sidebar-handle').click());
+  expect(closing.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1)).toBe(true);
+  for (const frame of closing) expect([frame.mainLeft, frame.mainWidth]).toEqual([RAIL, 1300 - RAIL]);
+  expect(await railProblems(page)).toEqual([]);
+});
+
+/* The rail's other edge, 900px, is not the persistent change: the tablet
+ * sidebar becomes the rail with its accepted motion, dragged or at once, the
+ * page beside it in every frame (it only gains room there). */
+test('crossing into the rail from the tablet sidebar keeps its motion and never covers the page', async ({page}) => {
+  await open(page, 880);
+  for (const act of [() => drag(page, 880, 928, 12), () => page.setViewportSize({width: 800, height: 1000}), () => page.setViewportSize({width: 1051, height: 1000})]) {
+    const frames = await framesDuring(page, null, act);
+    for (const frame of frames) {
+      expect(frame.overlap, JSON.stringify(frame)).toBeLessThanOrEqual(0.5);
+      expect(['', 'tablet']).toContain(frame.mark);
+    }
+    if (frames.at(-1).vw > 900) expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < 279)).toBe(true);
+  }
+  expect(await railProblems(page)).toEqual([]);
+});
+
+/* The labels: faded out on the rail and in on the full sidebar, through the
+ * accepted fade when dragged and at once on an abrupt change. */
+test('the labels fade with a dragged change and follow an abrupt one at once', async ({page}) => {
+  await open(page, 1600);
+  const dragged = await framesDuring(page, null, () => drag(page, 1576, 1544, 8));
+  expect(dragged.some(frame => frame.labelOpacity > 0.01 && frame.labelOpacity < 0.99)).toBe(true);
+  expect(dragged.at(-1).labelOpacity).toBe(0);
+  const snapped = await framesDuring(page, null, () => page.setViewportSize({width: 1700, height: 1000}));
+  for (const frame of snapped.filter(frame => frame.vw === 1700)) expect(frame.labelOpacity).toBe(1);
+});
+
+/* Negative control: with the abrupt change animated as before (the immediate
+ * mark ignored), the frame check sees the cover and the premature row. */
+test('negative control: the abrupt-change check fails when a snap animates the sidebar', async ({page}) => {
+  await open(page, 1600);
+  await page.locator('#sidebar .nav-item[data-view="settings"]:not([data-title])').click();
+  await expect(page.locator('#view-settings .dp-settings-tabs [data-tab]').first()).toBeVisible();
+  await page.addStyleTag({content: `@media (min-width: 901px) and (max-width: 1559px) {
+    #sidebar.sidebar-settling:not(.sidebar-overlay-open) {
+      transition: width 200ms cubic-bezier(.4,0,.2,1) 60ms, min-width 200ms cubic-bezier(.4,0,.2,1) 60ms; }
+    #sidebar.sidebar-reflowing[data-sidebar-reflow="immediate"]:not(.sidebar-overlay-open) {
+      animation: dp-sidebar-yield 200ms cubic-bezier(.4,0,.2,1) 60ms both; } }`});
+  const frames = await framesDuring(page, 'settings', () => page.setViewportSize({width: 1440, height: 1000}));
+  expect(frames.some(frame => frame.vw === 1440 && frame.sidebar > RAIL + 1)).toBe(true);
+  expect(Math.max(...frames.map(frame => frame.copyCovered))).toBeGreaterThan(0);
 });
 
 test('the Dashboard keeps its six cards on one row through the desktop, down to 1390px', async ({page}) => {

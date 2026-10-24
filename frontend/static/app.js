@@ -2726,11 +2726,51 @@ function sidebarOverlayOpen() {
 }
 
 // A change of presentation replaces Provider Status' and the session's
-// composition at once: the stack fades back in as the width settles.
-function markSidebarReflow(sidebar) {
+// composition at once: the stack fades back in as the width settles. Which
+// change it is -- the persistent one (the window crossing 1560px), the
+// tablet one (crossing 900px, beyond the rail's other edge), or the overlay,
+// which never moves the page -- is said beside it. The
+// mark lasts exactly as long as that fade: where there is none (reduced
+// motion, or no desktop sidebar), it is not left behind.
+function markSidebarReflow(sidebar, change) {
   sidebar.classList.remove('sidebar-reflowing');
+  sidebar.dataset.sidebarReflow = change;
   void sidebar.offsetWidth;
   sidebar.classList.add('sidebar-reflowing');
+  if (!sidebarRevealing(sidebar)) endSidebarReflow(sidebar);
+}
+
+function sidebarRevealing(sidebar) {
+  return sidebar.getAnimations({subtree: true}).some(animation => animation.animationName === 'dp-sidebar-reveal');
+}
+
+function endSidebarReflow(sidebar) {
+  sidebar.classList.remove('sidebar-reflowing');
+  delete sidebar.dataset.sidebarReflow;
+}
+
+// The persistent change follows a window that changes continuously, a
+// frame's width at a time: the sidebar animates its width, and on the way to
+// the rail yields the page its room at once (ui-shell-structural.css), its
+// moving edge passing over no more than the page's clear inset. A single
+// change of the window wider than that inset -- a snap, maximise or restore,
+// at the crossing or while the sidebar is still moving -- is no such motion:
+// animating after it would cover the page's content or move it through
+// widths neither side has, so the sidebar takes its new geometry in that
+// same frame instead: its transitions are off for exactly the one style
+// update that applies it, and the change is then named immediate (no yield).
+let _sidebarViewportWidth = window.innerWidth;
+let _sidebarViewportStep = 0;
+
+function settleSidebarChange(sidebar) {
+  if (sidebar.dataset.sidebarReflow !== 'persistent') return;
+  const content = document.getElementById('content');
+  const clearInset = content ? parseFloat(getComputedStyle(content).paddingLeft) || 0 : 0;
+  if (Math.abs(_sidebarViewportStep) <= clearInset) return;
+  sidebar.dataset.sidebarReflow = 'immediate';
+  sidebar.classList.add('sidebar-settling');
+  void sidebar.offsetWidth;
+  sidebar.classList.remove('sidebar-settling');
 }
 
 function setSidebarOverlay(open, {focusHandle = false} = {}) {
@@ -2739,7 +2779,7 @@ function setSidebarOverlay(open, {focusHandle = false} = {}) {
   if (!sidebar || !handle) return;
   const next = Boolean(open) && _sidebarCompact.matches;
   if (sidebar.classList.contains('sidebar-overlay-open') !== next) {
-    markSidebarReflow(sidebar);
+    markSidebarReflow(sidebar, 'overlay');
     sidebar.classList.toggle('sidebar-overlay-open', next);
   }
   const label = next ? 'Collapse sidebar' : 'Expand sidebar';
@@ -2753,13 +2793,31 @@ function toggleSidebarOverlay() {
   setSidebarOverlay(!sidebarOverlayOpen(), {focusHandle: true});
 }
 
+// The window's resize is reported before its change of range, in the same
+// frame and before that frame is drawn.
+window.addEventListener('resize', () => {
+  _sidebarViewportStep = window.innerWidth - _sidebarViewportWidth;
+  _sidebarViewportWidth = window.innerWidth;
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) settleSidebarChange(sidebar);
+});
 _sidebarCompact.addEventListener('change', () => {
   const sidebar = document.getElementById('sidebar');
-  if (sidebar) markSidebarReflow(sidebar);
+  if (sidebar) {
+    // Into the range by narrowing, or out of it by widening: 1560px.
+    const persistent = _sidebarCompact.matches === (_sidebarViewportStep < 0);
+    markSidebarReflow(sidebar, persistent ? 'persistent' : 'tablet');
+    settleSidebarChange(sidebar);
+  }
   setSidebarOverlay(false);
 });
 document.getElementById('sidebar')?.addEventListener('animationend', event => {
-  if (event.animationName === 'dp-sidebar-reveal') event.currentTarget.classList.remove('sidebar-reflowing');
+  if (event.animationName === 'dp-sidebar-reveal') endSidebarReflow(event.currentTarget);
+});
+// A fade cancelled without a new one (the sidebar leaving the desktop range,
+// or motion being reduced mid-change) ends the mark too.
+document.getElementById('sidebar')?.addEventListener('animationcancel', event => {
+  if (event.animationName === 'dp-sidebar-reveal' && !sidebarRevealing(event.currentTarget)) endSidebarReflow(event.currentTarget);
 });
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.defaultPrevented || !sidebarOverlayOpen()) return;
