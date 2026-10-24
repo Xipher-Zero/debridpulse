@@ -240,11 +240,16 @@ for (const view of ['settings', 'help']) {
     // Wide: one row, in the accepted centred presentation.
     expect(await header(page, view)).toEqual({fits: true, problems: []});
     const centre = await page.evaluate(view => {
-      const box = document.querySelector(`#view-${view} .dp-${view}-master-header`).getBoundingClientRect();
+      const header = document.querySelector(`#view-${view} .dp-${view}-master-header`);
+      const box = header.getBoundingClientRect();
       const strip = document.querySelector(`#view-${view} .dp-${view}-tabs`).getBoundingClientRect();
-      return (strip.left + strip.right) / 2 - (box.left + box.right) / 2;
+      const copy = document.querySelector(`#view-${view} .dp-${view}-header-copy`).getBoundingClientRect();
+      // Centred while there is room; when the copy (its width is the font's) is
+      // wider than its half, the strip sits right after it, the row gap apart.
+      const centred = (box.left + box.right) / 2 - strip.width / 2;
+      return strip.left - Math.max(centred, copy.right + parseFloat(getComputedStyle(header).columnGap));
     }, view);
-    // (Centred to within half the 16px row gap, which sits on the copy's side.)
+    // (To within half the 16px row gap, which sits on the copy's side.)
     expect(Math.abs(centre)).toBeLessThanOrEqual(8.5);
     // Both sides of the former 1699px stacking rule, the expanded minimum, the
     // rail just below it, and the compact desktop down to 1390px (the former

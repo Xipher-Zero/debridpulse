@@ -373,7 +373,7 @@ body.light #view-torrents .empty-icon {
 
 /* Below the full composition: Name, Provider, Status, Progress and Actions,
    with Size and Date set aside. */
-@media (min-width: 901px) and (width < 1440px) {
+@media (min-width: 901px) and (width < 1390px) {
   #view-torrents .t-table :is(th, td):is(:nth-child(5), :nth-child(6)) { display: none; }
 }
 
@@ -402,7 +402,7 @@ body.light #view-torrents .empty-icon {
 
 /* The full desktop shell: every badge, the hash line and the widest provider
    block fit whole. */
-@media (min-width: 1180px) and (width < 1440px) {
+@media (min-width: 1180px) and (width < 1390px) {
   #view-torrents .t-table :is(th, td):nth-child(1) { width: 25.4%; }
   #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
   #view-torrents .t-table :is(th, td):nth-child(3) { width: 26%; }
@@ -411,8 +411,12 @@ body.light #view-torrents .empty-icon {
 
 /* The full composition. Status holds every badge whole and Date the widest
    date the one formatter writes -- Friendly 12-hour with a year,
-   "Dec 28, 2025 10:54 PM" -- on one line. */
-@media (min-width: 1440px) {
+   "Dec 28, 2025 10:54 PM" -- on one line. It holds the whole desktop (from
+   1390px, with either sidebar): the table there is never narrower than about
+   1256px (the compact rail at 1390px, the full sidebar at 1560px), and its
+   widest provider block ("Media Downloads" beside its source) and sizes stay
+   whole down to about 1250px of table. */
+@media (min-width: 1390px) {
   #view-torrents .t-table :is(th, td):nth-child(1) { width: 23.4%; }
   #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
   #view-torrents .t-table :is(th, td):nth-child(3) { width: 180px; }

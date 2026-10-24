@@ -105,7 +105,9 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     # from a px column and the table never outgrows its viewport. Where the
     # full composition cannot fit whole, Size and Date (and, narrowest,
     # Progress) step aside rather than squeezing the rest; at full width
-    # Status holds every badge and Date its widest one-line value. 1.0.13
+    # Status holds every badge and Date its widest one-line value. 1.0.14: the
+    # full composition holds the whole desktop, from 1390px with either
+    # sidebar (its narrowest table there still fits every column whole). 1.0.13
     # operator queue: Name is the first column and the selection column the
     # last, after Actions.
     import re
@@ -119,20 +121,20 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     def weights(query):
         return dict(re.findall(r"nth-child\((\d)\) \{ width: ([\d.]+(?:%|px)); \}", block(query)))
 
-    hidden_below_full = block("@media (min-width: 901px) and (width < 1440px)")
+    hidden_below_full = block("@media (min-width: 901px) and (width < 1390px)")
     assert ":is(:nth-child(5), :nth-child(6)) { display: none; }" in hidden_below_full
     assert "nth-child(4) { display: none; }" in block("@media (min-width: 901px) and (width <= 1050px)")
     bands = {
         "@media (min-width: 901px) and (width <= 1050px)": {"1", "2", "3"},
         "@media (width > 1050px) and (width < 1180px)": {"1", "2", "3", "4"},
-        "@media (min-width: 1180px) and (width < 1440px)": {"1", "2", "3", "4"},
-        "@media (min-width: 1440px)": {"1", "2", "3", "4", "5", "6"},
+        "@media (min-width: 1180px) and (width < 1390px)": {"1", "2", "3", "4"},
+        "@media (min-width: 1390px)": {"1", "2", "3", "4", "5", "6"},
     }
     for query, columns in bands.items():
         widths = weights(query)
         assert set(widths) == columns, query
         assert sum(float(value[:-1]) for value in widths.values() if value.endswith("%")) == 100, query
-    full = weights("@media (min-width: 1440px)")
+    full = weights("@media (min-width: 1390px)")
     assert full["3"] == "180px" and full["6"] == "178px"
 
 

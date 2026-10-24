@@ -42,6 +42,15 @@ async function downloads(page, items) {
   });
 }
 
+// A width change can move the shell between the drawer, the compact rail and
+// the full sidebar, and the sidebar animates its width: geometry is read once
+// that transition has finished (the real CSS transition, not a sleep).
+async function resize(page, width) {
+  await page.setViewportSize({width, height: 900});
+  await page.waitForFunction(() =>
+    document.getElementById('sidebar').getAnimations().every(animation => animation.playState !== 'running'));
+}
+
 function cell(page, id) {
   return page.locator(`#t-tbody tr[data-torrent-id="${id}"] [data-role="transfer-progress"]`);
 }
@@ -127,7 +136,7 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
   });
   // Every Downloads layout that shows the progress column (hidden at 901-1050 px and at 700 px and below).
   for (const width of [1440, 1100, 900, 701]) {
-    await page.setViewportSize({width, height: 900});
+    await resize(page, width);
     const withEta = await measure();
     expect(Math.abs(withEta.eta.right - withEta.bar.right)).toBeLessThanOrEqual(1.5);   // right-aligned to the bar
     expect(withEta.eta.top).toBeGreaterThanOrEqual(withEta.bar.bottom - 0.5);          // beneath it
@@ -162,7 +171,7 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
   }
   // Where the layout hides the progress column, the estimate goes with its bar.
   for (const width of [1000, 390]) {
-    await page.setViewportSize({width, height: 900});
+    await resize(page, width);
     await expect(cell(page, 9821)).toBeHidden();
     await expect(cell(page, 9821).locator('[data-role="transfer-eta"]')).toBeHidden();
   }
@@ -342,7 +351,7 @@ test('the percentage and its ETA share one line beneath the bar at every width t
   }, id);
   // Downloads shows Progress at <=700 never, at 701-900 (content-sized), and from 1051.
   for (const width of [701, 800, 900, 1051, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
-    await page.setViewportSize({width, height: 900});
+    await resize(page, width);
     for (const id of [9861, 9862, 9863]) {
       const g = await geometry(id);
       expect(g, `width ${width}`).not.toBeNull();
@@ -358,7 +367,7 @@ test('the percentage and its ETA share one line beneath the bar at every width t
     expect((await geometry(9863)).label).toBe('41% verified');
   }
   for (const width of [390, 700, 1000, 1050]) {
-    await page.setViewportSize({width, height: 900});
+    await resize(page, width);
     expect(await geometry(9861), `width ${width}`).toBeNull();          // Progress steps aside there, as before
   }
 });
@@ -394,7 +403,7 @@ test('Download Activity keeps the percentage and its ETA on one line at every wi
     return wrap.scrollWidth > wrap.clientWidth + 1 || last.right > wrap.getBoundingClientRect().right + 1;
   });
   for (const width of [701, 900, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
-    await page.setViewportSize({width, height: 900});
+    await resize(page, width);
     if (width >= 1179) expect(await clipped(), `width ${width}`).toBe(false);
     for (const id of [9871, 9872, 9873]) {
       const g = await geometry(id), where = `row ${id} at ${width}px`;

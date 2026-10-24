@@ -137,10 +137,13 @@ def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
     canonical_calibration = css.split(marker, 1)[0]
     assert ".t-table th:nth-child(5)" in canonical_calibration
     assert ".t-table td:nth-child(5)" in canonical_calibration
+    # 1.0.14: Added keeps that proportion with a content floor (Name is now
+    # the complement), still one declared width summing to exactly 100%.
     assert (
-        "width: calc(21cqw - var(--dp-dashboard-action-track) - 3.57px) !important"
+        "--dp-dashboard-date-track: max(21cqw - var(--dp-dashboard-action-track) - 3.57px, 158px);"
         in canonical_calibration
     )
+    assert "width: var(--dp-dashboard-date-track) !important" in canonical_calibration
     assert ".t-table th:nth-child(6)" in canonical_calibration
     assert ".t-table td:nth-child(6)" in canonical_calibration
     assert (

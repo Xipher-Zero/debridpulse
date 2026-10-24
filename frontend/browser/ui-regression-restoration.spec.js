@@ -342,7 +342,7 @@ test('Dashboard Download Activity mirrors the first fitted rows of the Downloads
  }
 });
 
-const DASH_WIDE_WIDTHS=[1440,1600,1920,2200];
+const DASH_WIDE_WIDTHS=[1390,1440,1560,1600,1920,2200];
 // The Dashboard Recent owner replaces #dash-tbody after every read (its startup refresh, its own fit
 // re-check, resize/SSE/polling refreshes), so rows injected for a geometry probe can be swept away by
 // a late render. Refreshes are coalesced and run one fetch+render at a time: once the owner's next
@@ -422,8 +422,8 @@ test('Dashboard Recent Activity table/rows reach the card\'s full right content 
  }
 });
 
-test('Below the 1440px Dashboard breakpoint, Recent Activity keeps auto column layout and no wrapper inset',async({page})=>{
- for(const width of [1439,1200]){
+test('Below the 1390px desktop boundary, Recent Activity keeps auto column layout and no wrapper inset',async({page})=>{
+ for(const width of [1389,1200]){
   await page.setViewportSize({width,height:900});
   await ready(page);
   await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);

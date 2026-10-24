@@ -236,7 +236,7 @@
   border-collapse: collapse;
   font-size: var(--dp-type-table-body-size);
 }
-/* Below the 1440px breakpoint the table keeps auto layout (no forced
+/* Below the 1390px desktop boundary the table keeps auto layout (no forced
    nth-child track), so the Action column still needs its own shrink-to-fit
    hint -- the same behavior the removed inline width:1% used to provide. */
 #view-dashboard .dp-dashboard-action-column {
@@ -1635,7 +1635,7 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
 /* Download Activity decides where its own columns have the room: from 1600px
    its Progress column holds the widest line with the words; narrower, the
    line is the percentage and the estimate, and the words stay in the
-   label's accessible name and tooltip. Below 1440px this table sizes its
+   label's accessible name and tooltip. Below 1390px this table sizes its
    columns to their content, so there the line keeps the percentage and
    estimate together and the column takes their room. */
 @media (width < 1600px) {
@@ -1643,7 +1643,7 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
     display: none;
   }
 }
-@media (max-width: 1439px) {
+@media (max-width: 1389px) {
   #view-dashboard #dash-tbody .prog-line {
     flex-wrap: nowrap;
   }
@@ -1760,8 +1760,12 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
 
 /* On wide Dashboard layouts, Status had far more horizontal allocation than
    its content needed. Reclaim that slack for Progress while keeping Name and
-   the trailing metadata/action columns balanced. */
-@media (min-width: 1440px) {
+   the trailing metadata/action columns balanced. This composition holds the
+   whole desktop (from 1390px, with either sidebar): its narrowest table there
+   is about 1256px wide, on the compact rail at 1390px and with the full
+   sidebar at 1560px alike, and only below the desktop does the table size its
+   columns to their content. */
+@media (min-width: 1390px) {
   /* Correction 3 (DP 1.0.12 UI Finishing, row-extent follow-up): the table
      wrapper previously carried a padding-right equal to the accepted
      Quick-Add-matching inset (--dp-dashboard-action-inset), so the
@@ -1790,22 +1794,34 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
     container-type: inline-size;
   }
+  /* Status and Date Added keep their proportional tracks, but never less
+     than their content: Status the widest badge ("Awaiting confirmation")
+     and Date Added the widest date the one formatter writes ("Dec 28, 2025
+     10:54 PM") with its heading and trigger, each on one line. Below about
+     1400px (Status) and 1320px (Date Added) of table the proportion would
+     cut them, so the floor holds and Name, the one column that truncates,
+     gives up exactly that much. max() of two cqw/px lengths is still one
+     plain length, so the fixed layout resolves it like the tracks below. */
   #view-dashboard .dp-dashboard-activity .t-table {
     table-layout: fixed !important;
+    --dp-dashboard-status-track: max(13cqw - 2.21px, 180px);
+    --dp-dashboard-date-track: max(21cqw - var(--dp-dashboard-action-track) - 3.57px, 158px);
   }
   /* Columns 1-4 and Added (5) are re-expressed against the now-wider table
      (W = old table width T + the inset I) so their absolute pixel widths --
      and every column boundary through Action's left edge -- stay exactly
      where they were: each Npct of T equals (Ncqw of W) - (Npct of I), and
      Npct of I is a flat px figure since I is a constant 17px, not a
-     percentage. */
+     percentage. Name is the complement of the other five, which is exactly
+     36cqw - 6.12px while neither floor above holds. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: calc(36cqw - 6.12px) !important;
+    width: calc(100cqw - var(--dp-dashboard-status-track) - (21cqw - 3.57px) - (9cqw - 1.53px)
+      - var(--dp-dashboard-date-track) - var(--dp-dashboard-action-track) - var(--dp-dashboard-action-inset)) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
-    width: calc(13cqw - 2.21px) !important;
+    width: var(--dp-dashboard-status-track) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
@@ -1815,21 +1831,21 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
     width: calc(9cqw - 1.53px) !important;
   }
-  /* Correction 3: Date Added absorbs whatever the fixed action track (below)
-     does not use, expressed as a calc() complement of the OTHER four
-     columns' percentages (36 + 13 + 21 + 9 = 79%) rather than its own
-     independent percentage. Combined with the Action column's fixed px
-     width, every column's declared width now sums to exactly 100% of the
-     table's width algebraically, at any viewport width -- not just at one
-     coincidental width -- so the action track never gets rescaled by the
-     browser's fixed-table-layout column-width reconciliation the way a
-     plain "8%" alongside a fixed px column previously could. The trailing
+  /* Correction 3: Date Added's proportion is whatever the fixed action track
+     (below) does not use of its 21%, rather than its own independent
+     percentage. With Name the complement of the other five (above), every
+     column's declared width sums to exactly 100% of the table's width
+     algebraically, at any width -- not just at one coincidental width --
+     so the action track never gets rescaled by the browser's
+     fixed-table-layout column-width reconciliation the way a plain "8%"
+     alongside a fixed px column previously could. The trailing
      "- 3.57px" is 21% of the recovered inset. Its 21% (four points taken
      from Name) is what lets the Date Added heading carry its label and the
-     date-presentation trigger side by side at 1440px. */
+     date-presentation trigger side by side; its floor (above) keeps that
+     true on the narrowest desktop table. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
-    width: calc(21cqw - var(--dp-dashboard-action-track) - 3.57px) !important;
+    width: var(--dp-dashboard-date-track) !important;
   }
   /* The Action column keeps the same shared action track as Recover All and
      Add, but now also carries the recovered inset -- entirely as extra
