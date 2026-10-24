@@ -938,13 +938,18 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "never re-encodes media" in group
     assert "yt-dlp" not in tuning
     # The one YouTube preference is its own standalone set beneath the five: a
-    # list of client names the server validates against the packaged yt-dlp,
-    # never a raw extractor argument or command-line text.
+    # single choice -- Automatic or one client the packaged yt-dlp offers (the
+    # server validates it) -- never free text, a raw extractor argument or
+    # command-line text. A saved selection of several stays as saved (Custom).
     assert tuning.rstrip().endswith(") + tuningCells(youtubePlayerClientsField(options));\n  }")
     clients = _function(page, "youtubePlayerClientsField")
-    assert re.findall(r"(selectField|input)\('(\w+)'", clients) == [("input", "media_youtube_player_clients")]
-    assert "placeholder: 'Automatic (yt-dlp default)'" in clients
-    assert "none guarantees passing a YouTube sign-in check" in clients  # never promised as a bypass
+    assert re.findall(r"(selectField|input)\('(\w+)'", clients) == [("selectField", "media_youtube_player_clients")]
+    assert "['', 'Automatic (yt-dlp default)']" in clients
+    assert "'Custom (multiple clients)'" in clients
+    assert ("'Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.'"
+            in clients)
+    for gone in ("Available:", "PO-token", "DRM", "separated by commas"):
+        assert gone not in clients, gone
     for raw in ("--", "extractor-args", "extractor_args", "player_client=", "youtube:"):
         assert raw not in clients, raw
     assert ("media_youtube_player_clients: {scope: 'integration:media', option: 'youtube_player_clients', "

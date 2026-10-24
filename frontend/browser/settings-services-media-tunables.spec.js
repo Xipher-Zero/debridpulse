@@ -271,8 +271,8 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   await expect(fields).toHaveCount(6);
   await expect(fields.locator('.form-label')).toHaveText(
     ['Target Resolution', 'Video Quality', 'Preferred Video Codec', 'Preferred Subtitle Language',
-     'Concurrent Fragment Downloads', 'YouTube Player Clients']);
-  // The five keep their one row; YouTube Player Clients is its own set beneath.
+     'Concurrent Fragment Downloads', 'YouTube Player Client']);
+  // The five keep their one row; YouTube Player Client is its own set beneath.
   await expect(mediaCard(page).locator('.dp-settings-tuning-grid').first()).toHaveAttribute('data-tuning-lanes', '5');
   await expect(mediaCard(page).locator('.dp-settings-tuning-grid').nth(1)).toHaveAttribute('data-tuning-lanes', '1');
   // The two video preferences: one related group, drawn with the shared outline.
@@ -505,7 +505,7 @@ for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'ph
   });
 }
 
-// --- YouTube Player Clients: Automatic by default, a validated ordered choice -------------
+// --- YouTube Player Client: Automatic, or exactly one client the packaged yt-dlp offers -----
 
 const EVIDENCE = process.env.DP_EVIDENCE_DIR || '';
 const clients = page => mediaCard(page).locator('#dp-settings-field-media-youtube-player-clients');
@@ -513,109 +513,195 @@ const clientsField = page => mediaCard(page).locator('.dp-settings-field',
   {has: page.locator('#dp-settings-field-media-youtube-player-clients')});
 const storedClients = async page =>
   (await (await page.request.get('/api/settings')).json()).integrations.media.options.youtube_player_clients;
+const supportedClients = async page => (await (await page.request.get('/api/settings')).json())
+  .integrations.media.options.youtube_player_client_support.supported;
 const mediaPatch = page => page.waitForResponse(r => r.request().method() === 'PATCH'
   && new URL(r.url()).pathname === '/api/integrations/media/configuration');
+const optionValues = page => clients(page).locator('option').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent]));
+// The selection the closed control shows, and whether it reads whole.
+const shown = page => clientsField(page).locator('.dp-dropdown__trigger .dp-dropdown__value').evaluate(node =>
+  ({text: node.textContent.trim(), whole: node.scrollWidth <= node.clientWidth + 1}));
+const storeClients = async (page, list) => expect((await page.request.patch('/api/integrations/media/configuration',
+  {data: {options: {youtube_player_clients: list}}})).ok()).toBe(true);
 
-test('YouTube Player Clients is Automatic by default, saves an ordered choice and refuses an invalid one',
+test('YouTube Player Client is one dropdown: Automatic by default, and every offered client saves alone and reloads',
   async ({page}) => {
     await resetMedia(page);
     await openMedia(page);
     await clients(page).scrollIntoViewIfNeeded();
-    await expect(clients(page)).toHaveValue('');
-    await expect(clients(page)).toHaveAttribute('placeholder', 'Automatic (yt-dlp default)');
-    const supported = (await (await page.request.get('/api/settings')).json())
-      .integrations.media.options.youtube_player_client_support.supported;
+    const supported = await supportedClients(page);
     expect(supported.length).toBeGreaterThan(3);
-    await expect(clientsField(page).locator('.form-hint')).toContainText(`Available: ${supported.join(', ')}.`);
-    await expect(clientsField(page).locator('.form-hint')).toContainText('none guarantees passing a YouTube sign-in check');
+    // A single-choice select (no free text, no multiple selection): Automatic, then each offered client by name.
+    expect(await clients(page).evaluate(node => [node.tagName, node.multiple])).toEqual(['SELECT', false]);
+    expect(await optionValues(page)).toEqual([['', 'Automatic (yt-dlp default)'], ...supported.map(name => [name, name])]);
+    await expect(clients(page)).toHaveValue('');
+    expect(await shown(page)).toEqual({text: 'Automatic (yt-dlp default)', whole: true});
+    await expect(clientsField(page).locator('.form-label')).toHaveText('YouTube Player Client');
+    await expect(clientsField(page).locator('.form-hint')).toHaveText(
+      'Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.');
+    await expect(clientsField(page)).not.toContainText('PO-token');
+    await expect(clientsField(page)).not.toContainText('Available:');
     await expect(clientsField(page).locator('[data-player-client-notice]')).toBeEmpty();
 
-    // Keyboard: focused like every field, an ordered choice commits when focus leaves.
-    const [first, second] = supported;
-    await clients(page).focus();
-    await expect(clients(page)).toBeFocused();
+    // Each offered client: exactly that one, as a list of one; reloaded, it is the selection shown.
+    for (const name of supported) {
+      const saved = mediaPatch(page);
+      await clients(page).selectOption(name);
+      const written = await saved;
+      expect(written.ok()).toBe(true);
+      expect(written.request().postDataJSON()).toEqual({options: {youtube_player_clients: [name]}});
+      expect(await storedClients(page)).toEqual([name]);
+      await expect(clients(page)).toHaveValue(name);
+      expect(await shown(page)).toEqual({text: name, whole: true});
+    }
+    await page.reload();
+    await openMedia(page);
+    await expect(clients(page)).toHaveValue(supported[supported.length - 1]);
+
+    // Automatic: the existing no-override form, the empty list.
+    const saved = mediaPatch(page);
+    await clients(page).selectOption('');
+    expect((await saved).request().postDataJSON()).toEqual({options: {youtube_player_clients: []}});
+    expect(await storedClients(page)).toEqual([]);
+    await page.reload();
+    await openMedia(page);
+    await expect(clients(page)).toHaveValue('');
+    await resetMedia(page);
+  });
+
+test('a saved selection of several clients is kept as Custom through unrelated saves until another choice replaces it',
+  async ({page}) => {
+    await resetMedia(page);
+    const [first, second, third] = await supportedClients(page);
+    await storeClients(page, [second, first]);
+    await openMedia(page);
+    await clients(page).scrollIntoViewIfNeeded();
+    // Shown exactly as saved, as one explicit Custom entry (nothing to edit: no multiple selection).
+    await expect(clients(page)).toHaveValue(`${second}, ${first}`);
+    expect((await optionValues(page)).at(-1)).toEqual([`${second}, ${first}`, 'Custom (multiple clients)']);
+    await expect(clients(page).locator('option:checked')).toHaveAttribute('data-dp-detail', `${second}, ${first}`);
+    expect(await shown(page)).toEqual({text: 'Custom (multiple clients)', whole: true});
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
+      if (EVIDENCE) await clientsField(page).screenshot({path: `${EVIDENCE}/player-client-custom-${theme}.png`});
+    }
+    await page.evaluate(() => document.body.classList.remove('light'));
+
+    // Unrelated saves -- a Media Downloads option and the whole settings document -- leave it untouched.
     let saved = mediaPatch(page);
-    await clients(page).fill(`${second},${first}`);
-    await page.keyboard.press('Tab');
-    expect((await saved).ok()).toBe(true);
-    await expect(clients(page)).toHaveValue(`${second}, ${first}`);
+    await mediaCard(page).locator('#dp-settings-field-media-video-quality').selectOption('low');
+    const written = await saved;
+    expect(written.ok()).toBe(true);
+    expect(written.request().postDataJSON()).toEqual({options: {video_quality: 'low'}});
+    await saveSubtitle(page, 'de');
     expect(await storedClients(page)).toEqual([second, first]);
-
-    // A name the packaged yt-dlp does not offer is refused by the server and undone.
-    saved = mediaPatch(page);
-    await clients(page).fill('all');
-    await clients(page).blur();
-    expect((await saved).status()).toBe(400);
-    await expect(page.locator('#toasts .toast').last()).toContainText('YouTube Player Clients must name each client');
-    await expect(clients(page)).toHaveValue(`${second}, ${first}`);
-    expect(await storedClients(page)).toEqual([second, first]);
-
-    // Text that is not a list of names never leaves the browser.
-    let requested = false;
-    const watch = request => { if (request.method() === 'PATCH') requested = true; };
-    page.on('request', watch);
-    await clients(page).fill('--extractor-args youtube:player_client=tv');
-    await clients(page).blur();
-    await expect(page.locator('#toasts .toast').last())
-      .toContainText('YouTube Player Clients must be client names separated by commas.');
-    page.off('request', watch);
-    expect(requested).toBe(false);
-    expect(await storedClients(page)).toEqual([second, first]);
-
     await page.reload();
     await openMedia(page);
     await expect(clients(page)).toHaveValue(`${second}, ${first}`);
-    await resetMedia(page);
-  });
 
-test('a saved client the installed yt-dlp no longer offers shows Automatic in use and one way back',
-  async ({page}) => {
-    await resetMedia(page);
-    // What the server reports for a selection saved under an earlier yt-dlp
-    // (that backend contract is proven in test_v113_media_downloads.py).
-    await page.route('**/api/settings', async route => {
-      if (route.request().method() !== 'GET') return route.continue();
-      const response = await route.fetch();
-      const body = await response.json();
-      const options = body.integrations.media.options;
-      options.youtube_player_clients = ['retired_client', options.youtube_player_client_support.supported[0]];
-      options.youtube_player_client_support = {...options.youtube_player_client_support,
-                                               unsupported: ['retired_client'], effective: []};
-      await route.fulfill({response, json: body});
-    });
-    await openMedia(page);
-    await clients(page).scrollIntoViewIfNeeded();
-    const notice = clientsField(page).locator('[data-player-client-notice] .dp-settings-caution');
-    await expect(notice).toHaveCount(1);
-    await expect(notice).toHaveAttribute('role', 'status');
-    await expect(notice).toContainText('Automatic in use');
-    await expect(notice).toContainText('does not offer retired_client');
-    await expect(clients(page)).toHaveValue(/^retired_client, /);   // shown exactly as saved
-    await expect(page.locator('#toasts .toast')).toHaveCount(0);    // a notice, never a toast
-    for (const theme of ['dark', 'light']) {
-      await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme);
-      if (EVIDENCE) await clientsField(page).screenshot({path: `${EVIDENCE}/player-clients-stale-${theme}.png`});
-    }
-
-    // An unrelated save is unaffected by the stale choice.
-    let saved = mediaPatch(page);
-    await mediaCard(page).locator('#dp-settings-field-media-video-quality').selectOption('low');
-    expect((await saved).ok()).toBe(true);
-    await expect(notice).toHaveCount(1);
-
-    // Use Automatic: one explicit write of the empty selection, and the notice goes.
+    // Choosing one client replaces it, and Custom is no longer offered.
     saved = mediaPatch(page);
-    await notice.getByRole('button', {name: 'Use Automatic'}).click();
-    const written = await saved;
-    expect(written.ok()).toBe(true);
-    expect(written.request().postDataJSON()).toEqual({options: {youtube_player_clients: []}});
-    await expect(clientsField(page).locator('[data-player-client-notice]')).toBeEmpty();
-    await expect(clients(page)).toHaveValue('');
-    await page.unroute('**/api/settings');
+    await clients(page).selectOption(third);
+    expect((await saved).request().postDataJSON()).toEqual({options: {youtube_player_clients: [third]}});
+    expect(await storedClients(page)).toEqual([third]);
+    await expect(clients(page).locator('option', {hasText: 'Custom'})).toHaveCount(0);
+
+    // ...and Automatic replaces a Custom selection the same way.
+    await storeClients(page, [first, second]);
+    await page.reload();
+    await openMedia(page);
+    await expect(clients(page)).toHaveValue(`${first}, ${second}`);
+    saved = mediaPatch(page);
+    await clients(page).selectOption('');
+    expect((await saved).request().postDataJSON()).toEqual({options: {youtube_player_clients: []}});
+    expect(await storedClients(page)).toEqual([]);
+    await expect(clients(page).locator('option', {hasText: 'Custom'})).toHaveCount(0);
     await resetMedia(page);
   });
 
-test('YouTube Player Clients reads whole at a narrow width in both themes', async ({page}) => {
+test('a refused choice is reported and undone; nothing is saved', async ({page}) => {
+  await resetMedia(page);
+  const [first, second] = await supportedClients(page);
+  await storeClients(page, [first]);
+  await openMedia(page);
+  await clients(page).scrollIntoViewIfNeeded();
+  await expect(clients(page)).toHaveValue(first);
+  // The server's own validation answer, as for any Settings field.
+  await page.route('**/api/integrations/media/configuration', route => route.request().method() === 'PATCH'
+    ? route.fulfill({status: 400, contentType: 'application/json',
+      body: JSON.stringify({detail: 'YouTube Player Clients must name each client at most once.'})})
+    : route.continue());
+  const refused = mediaPatch(page);
+  await clients(page).selectOption(second);
+  expect((await refused).status()).toBe(400);
+  await expect(page.locator('#toasts .toast').last()).toContainText('YouTube Player Clients must name each client');
+  await expect(clients(page)).toHaveValue(first);
+  await page.unroute('**/api/integrations/media/configuration');
+  expect(await storedClients(page)).toEqual([first]);
+  await resetMedia(page);
+});
+
+for (const [label, stored] of [['one client', ['retired_client']], ['several clients', ['retired_client', null]]]) {
+  test(`a saved selection of ${label} the installed yt-dlp no longer offers is kept, with Automatic in use and one way back`,
+    async ({page}) => {
+      await resetMedia(page);
+      const supported = await supportedClients(page);
+      const list = stored.map(name => name ?? supported[0]);
+      // What the server reports for a selection saved under an earlier yt-dlp
+      // (that backend contract is proven in test_v113_media_downloads.py).
+      await page.route('**/api/settings', async route => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const response = await route.fetch();
+        const body = await response.json();
+        const options = body.integrations.media.options;
+        options.youtube_player_clients = list;
+        options.youtube_player_client_support = {...options.youtube_player_client_support,
+                                                 unsupported: ['retired_client'], effective: []};
+        await route.fulfill({response, json: body});
+      });
+      await openMedia(page);
+      await clients(page).scrollIntoViewIfNeeded();
+      const notice = clientsField(page).locator('[data-player-client-notice] .dp-settings-caution');
+      await expect(notice).toHaveCount(1);
+      await expect(notice).toHaveAttribute('role', 'status');
+      await expect(notice).toContainText('Automatic in use');
+      await expect(notice).toContainText('does not offer retired_client');
+      // Shown exactly as saved, never silently replaced.
+      await expect(clients(page)).toHaveValue(list.join(', '));
+      const label = list.length > 1 ? 'Custom (multiple clients)' : 'retired_client';
+      await expect(clients(page).locator('option:checked')).toHaveText(label);
+      await expect(clients(page).locator('option:checked')).toHaveAttribute('data-dp-detail',
+        list.length > 1 ? list.join(', ') : 'No longer offered');
+      expect(await shown(page)).toEqual({text: label, whole: true});
+      await expect(page.locator('#toasts .toast')).toHaveCount(0);    // a notice, never a toast
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
+        if (EVIDENCE) await clientsField(page).screenshot({path: `${EVIDENCE}/player-client-stale-${list.length}-${theme}.png`});
+      }
+      await page.evaluate(() => document.body.classList.remove('light'));
+
+      // An unrelated save is unaffected by the stale choice.
+      let saved = mediaPatch(page);
+      await mediaCard(page).locator('#dp-settings-field-media-video-quality').selectOption('low');
+      const unrelated = await saved;
+      expect(unrelated.ok()).toBe(true);
+      expect(unrelated.request().postDataJSON()).toEqual({options: {video_quality: 'low'}});
+      await expect(notice).toHaveCount(1);
+
+      // Use Automatic: one explicit write of the empty selection, and the notice goes.
+      saved = mediaPatch(page);
+      await notice.getByRole('button', {name: 'Use Automatic'}).click();
+      const written = await saved;
+      expect(written.ok()).toBe(true);
+      expect(written.request().postDataJSON()).toEqual({options: {youtube_player_clients: []}});
+      await expect(clientsField(page).locator('[data-player-client-notice]')).toBeEmpty();
+      await expect(clients(page)).toHaveValue('');
+      await page.unroute('**/api/settings');
+      await resetMedia(page);
+    });
+}
+
+test('YouTube Player Client reads whole at a narrow width in both themes', async ({page}) => {
   await resetMedia(page);
   await openMedia(page);
   for (const [width, theme] of [[1440, 'dark'], [1440, 'light'], [700, 'dark'], [700, 'light']]) {

@@ -199,7 +199,8 @@
     media_video_quality: {scope: 'integration:media', option: 'video_quality'},
     media_video_codec: {scope: 'integration:media', option: 'video_codec'},
     media_concurrent_fragment_downloads: {scope: 'integration:media', option: 'concurrent_fragment_downloads'},
-    // An ordered list, written as the names the field shows, comma-separated.
+    // An ordered list: Automatic is the empty list, a chosen client a list of
+    // one; a saved list of several is kept as the field shows it, comma-separated.
     media_youtube_player_clients: {scope: 'integration:media', option: 'youtube_player_clients', list: true},
 
     // Downloads -> global admission and safety/recovery policy
@@ -673,13 +674,13 @@
     // caller asked for -- exactly as input(), directoryField() and
     // tuningToggle() already offer it.
     if (options.inline) {
-      return inlineField(id, label, hint, control, {className: options.className});
+      return inlineField(id, label, hint, control, {className: options.className, secondLine: options.secondLine});
     }
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
         ${control}
-        ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+        ${hint ? `<span class="form-hint">${hint}</span>` : ''}${options.secondLine || ''}
       </div>`;
   }
 
@@ -2414,25 +2415,27 @@
   }
 
   function youtubePlayerClientsField(options) {
-    // YouTube Player Clients: empty is Automatic (yt-dlp's own default);
-    // otherwise the clients yt-dlp asks, in order. Which names exist is the
-    // PACKAGED yt-dlp's answer (``youtube_player_client_support``), never a
-    // list kept here; the server validates every new selection against it.
-    const supported = options.youtube_player_client_support?.supported;
-    const choices = Array.isArray(supported)
-      ? `Available: ${supported.join(', ')}.`
-      : 'The installed yt-dlp did not say which clients it offers, so only Automatic can be used.';
-    return input('media_youtube_player_clients', 'YouTube Player Clients',
-      (options.youtube_player_clients || []).join(', '), {
-        placeholder: 'Automatic (yt-dlp default)',
-        autocomplete: 'off',
-        selectorWidth: true,
-        pattern: '\\s*(?:[a-z][a-z0-9_]*(?:\\s*,\\s*[a-z][a-z0-9_]*)*)?\\s*',
-        invalidMessage: 'YouTube Player Clients must be client names separated by commas.',
-        hint: `Empty is Automatic. Otherwise list clients in the order yt-dlp should try them. ${html(choices)} `
-          + 'Clients differ in formats, DRM and PO-token needs; none guarantees passing a YouTube sign-in check.',
-        secondLine: `<div data-player-client-notice>${playerClientNotice(options)}</div>`,
-      });
+    // YouTube Player Client: Automatic (no client named: yt-dlp's own default)
+    // or exactly one client. Which names exist is the PACKAGED yt-dlp's answer
+    // (``youtube_player_client_support``), never a list kept here; the server
+    // validates every new selection against it. The option keeps its ordered
+    // list shape: a choice is the empty list or a list of one. A selection
+    // saved before this was a single choice (several clients, or a client the
+    // installed yt-dlp no longer offers) is shown exactly as saved and never
+    // rewritten until the operator chooses Automatic or one client.
+    const saved = Array.isArray(options.youtube_player_clients) ? options.youtube_player_clients.map(String) : [];
+    const supported = Array.isArray(options.youtube_player_client_support?.supported)
+      ? options.youtube_player_client_support.supported.map(String) : [];
+    // The control's value is the saved list as the field shows it (acceptedValue).
+    const current = saved.join(', ');
+    const choices = [['', 'Automatic (yt-dlp default)'], ...supported.map(name => [name, name])];
+    if (saved.length > 1) choices.push([current, 'Custom (multiple clients)', {detail: current}]);
+    else if (saved.length === 1 && !supported.includes(saved[0])) {
+      choices.push([current, saved[0], {detail: 'No longer offered'}]);
+    }
+    return selectField('media_youtube_player_clients', 'YouTube Player Client', current, choices,
+      'Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.',
+      {secondLine: `<div data-player-client-notice>${playerClientNotice(options)}</div>`});
   }
 
   /* A saved selection this yt-dlp no longer offers is kept exactly as saved
@@ -2442,13 +2445,21 @@
     if (!unsupported.length) return '';
     return `<div class="dp-settings-caution" role="status"><b>Automatic in use</b>`
       + `<span>The installed yt-dlp does not offer ${html(unsupported.join(', '))}. `
-      + 'Choose available clients, or use Automatic.</span>'
+      + 'Choose an available client, or use Automatic.</span>'
       + '<button type="button" class="btn btn-ghost btn-sm" data-action="media-player-clients-automatic">Use Automatic</button></div>';
   }
 
   function projectPlayerClientNotice() {
+    const options = mediaOf(state.settings);
     const notice = root()?.querySelector('[data-player-client-notice]');
-    if (notice) notice.innerHTML = playerClientNotice(mediaOf(state.settings));
+    if (notice) notice.innerHTML = playerClientNotice(options);
+    // A saved selection the operator has replaced is no longer offered: only
+    // Automatic, the packaged clients and the current value remain.
+    const control = document.getElementById(fieldId('media_youtube_player_clients'));
+    const supported = options.youtube_player_client_support?.supported || [];
+    for (const option of [...(control?.options || [])]) {
+      if (option.value && !supported.includes(option.value) && option.value !== control.value) option.remove();
+    }
   }
 
   function usePlayerClientsAutomatic() {
