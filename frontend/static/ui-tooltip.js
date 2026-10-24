@@ -184,9 +184,12 @@
     return Boolean(label) && Number(getComputedStyle(label).opacity) > 0.5;
   }
 
+  // The nearest described element -- passing over one that would only repeat
+  // the label it shows, so a described element around it keeps its tooltip.
   function hostOf(node) {
-    const host = node instanceof Element ? node.closest(SELECTOR) : null;
-    return host && textOf(host) && !repeatsShownLabel(host) ? host : null;
+    let host = node instanceof Element ? node.closest(SELECTOR) : null;
+    while (host && repeatsShownLabel(host)) host = host.parentElement?.closest(SELECTOR) || null;
+    return host && textOf(host) ? host : null;
   }
 
   function hover(host) {

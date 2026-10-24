@@ -1797,7 +1797,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      axis, not by its content, so containment changes nothing about its own
      size. */
   #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
-    container-type: inline-size;
+    container: dp-recent-activity / inline-size;
   }
   /* Status and Date Added keep their proportional tracks, but never less
      than their content: Status the widest badge ("Awaiting confirmation")
@@ -1811,6 +1811,9 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
     table-layout: fixed !important;
     --dp-dashboard-status-track: max(13cqw - 2.21px, 180px);
     --dp-dashboard-date-track: max(21cqw - var(--dp-dashboard-action-track) - 3.57px, 158px);
+    /* The row-action column's own track: the shared action track, until the
+       compact controls below narrow it. */
+    --dp-dashboard-row-action-track: var(--dp-dashboard-action-track);
   }
   /* Columns 1-4 and Added (5) are re-expressed against the now-wider table
      (W = old table width T + the inset I) so their absolute pixel widths --
@@ -1826,7 +1829,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
     width: max(280px, 100cqw - var(--dp-dashboard-status-track) - (21cqw - 3.57px) - (9cqw - 1.53px)
-      - var(--dp-dashboard-date-track) - var(--dp-dashboard-action-track) - var(--dp-dashboard-action-inset)) !important;
+      - var(--dp-dashboard-date-track) - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset)) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
@@ -1864,9 +1867,25 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      footprint, and therefore center, it had before. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
-    width: calc(var(--dp-dashboard-action-track) + var(--dp-dashboard-action-inset)) !important;
+    width: calc(var(--dp-dashboard-row-action-track) + var(--dp-dashboard-action-inset)) !important;
     padding-right: calc(14px + var(--dp-dashboard-action-inset)) !important;
     text-align: center;
+  }
+}
+
+/* Compact row controls (Recent Activity's geometry). Where the table itself
+   is 987px or narrower -- the table the operator marked on the live
+   Dashboard, at a 1105px window -- its Status badges and row actions show
+   their glyph alone (ui-transfer-contract.css, under this same container
+   condition), and their tracks narrow to that content: Status to its icon
+   chip (9 + 15 + 9px and its border: 35px, with the cell's 14px each side:
+   63px), the actions to a 36px square (with the cell's 14px each side: 64px,
+   the inset unchanged). Name, the complement, takes the room they give up.
+   The table's own width decides this, not the window's layout width. */
+@container dp-recent-activity (width <= 987px) {
+  #view-dashboard .dp-dashboard-activity .t-table {
+    --dp-dashboard-status-track: 63px;
+    --dp-dashboard-row-action-track: 64px;
   }
 }
 

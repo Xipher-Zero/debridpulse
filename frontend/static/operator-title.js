@@ -102,12 +102,25 @@
     return '<svg class="' + cls + '" data-dp-lucide="' + name + '" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + geometry + '</svg>';
   }
 
+  /* The badge names its whole status in its label; where a compact table sets
+   * that label aside (icon only), DP's tooltip says it (ui-tooltip.js shows a
+   * data-tooltip-label tooltip only while its label is not shown). */
   function statusBadge(status, label, category) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
     const descriptor = STATUS[key] || {icon: 'info', label: key || 'Unknown', className: key || 'pending'};
-    return '<span class="badge badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') + '>' +
+    const text = escapeHtml(label || descriptor.label);
+    return '<span class="badge badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') +
+      ' data-tooltip="' + text + '" data-tooltip-label=".dp-status-label">' +
       lucideSvg(descriptor.icon, 'dp-status-icon') +
-      '<span class="dp-status-label">' + escapeHtml(label || descriptor.label) + '</span></span>';
+      '<span class="dp-status-label">' + text + '</span></span>';
+  }
+
+  /* A row action's content: its glyph and its label (the label is the
+   * button's name; the label element is the one decorateButton and
+   * setButtonPending write). A table that sets the label aside shows the
+   * glyph alone; otherwise the glyph is not shown (ui-transfer-contract.css). */
+  function iconLabel(iconName, label) {
+    return lucideSvg(iconName, 'dp-row-action-icon') + '<span data-dp-icon-label="1">' + escapeHtml(label) + '</span>';
   }
 
   function decorateButton(button, iconName, label, labelMarker) {
@@ -492,6 +505,7 @@
     statusMap: STATUS,
     toastMap: TOAST_ICON,
     decorateButton: decorateButton,
+    iconLabel: iconLabel,
     toast: canonicalToast,
     toastDuration: toastDuration,
     toastWordCount: toastWordCount,

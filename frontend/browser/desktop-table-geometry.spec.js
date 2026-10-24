@@ -194,16 +194,20 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
   // track -- with every column present. Name, the complement, never goes
   // below its 280px floor (reached near a 1200px window); narrower, the
   // tracks together are wider than the card and the table overflows it,
-  // left visible as the next column's fit limit. (Whether each column's
+  // left visible as the next column's fit limit. Where the table itself is
+  // 987px or narrower its controls are compact (icon only): Status takes a
+  // 63px track and the actions a 64px one, Name the room they give up. (Whether each column's
   // content still fits depends on the font -- this file blocks the web font
   // -- so that is measured with the production font instead.)
-  for (const width of [1300, 1200, 1199, 1100, 1000, 900, 850, 800, 780]) {
+  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 850, 800, 780]) {
     await resize(page, width);
     const g = await geometry(page, 'dashboard'), where = `${width}px`;
     expect(g.layout, where).toBe('fixed');
     expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date Added', 'Action']);
     const [name, status, progress, size, date, action] = g.columns, W = g.wrap.width;
-    const others = [Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, 0.09 * W - 1.53, Math.max(0.21 * W - track - 3.57, 158), track + inset];
+    const compact = W <= 987;
+    const others = [compact ? 63 : Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, 0.09 * W - 1.53,
+      Math.max(0.21 * W - track - 3.57, 158), (compact ? 64 : track) + inset];
     [status, progress, size, date, action].forEach((column, index) =>
       expect(Math.abs(column.width - others[index]), `${where} ${column.label}`).toBeLessThanOrEqual(1));
     const complement = W - others.reduce((sum, value) => sum + value, 0);

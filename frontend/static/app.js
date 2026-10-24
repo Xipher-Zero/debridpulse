@@ -564,8 +564,9 @@ function setButtonPending(button, pending, pendingLabel) {
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
 
+    // A button with a glyph keeps it: only its label says the pending state.
     if (pendingLabel) {
-      button.textContent = pendingLabel;
+      (button.querySelector('[data-dp-icon-label]') || button).textContent = pendingLabel;
     }
 
     return;
@@ -576,7 +577,7 @@ function setButtonPending(button, pending, pendingLabel) {
   button.removeAttribute('aria-busy');
 
   if (button.dataset.defaultLabel) {
-    button.textContent = button.dataset.defaultLabel;
+    (button.querySelector('[data-dp-icon-label]') || button).textContent = button.dataset.defaultLabel;
   }
 }
 

@@ -146,7 +146,10 @@ def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
     assert "width: var(--dp-dashboard-date-track) !important" in canonical_calibration
     assert ".t-table th:nth-child(6)" in canonical_calibration
     assert ".t-table td:nth-child(6)" in canonical_calibration
+    # The column's own track is the shared action track, narrowed only where
+    # the table's compact controls apply (an icon-only action).
+    assert "--dp-dashboard-row-action-track: var(--dp-dashboard-action-track);" in canonical_calibration
     assert (
-        "width: calc(var(--dp-dashboard-action-track) + var(--dp-dashboard-action-inset)) !important"
+        "width: calc(var(--dp-dashboard-row-action-track) + var(--dp-dashboard-action-inset)) !important"
         in canonical_calibration
     )

@@ -105,6 +105,45 @@
   white-space: nowrap;
 }
 
+/* A row action built with DPIcons.iconLabel carries its glyph and its label;
+   it shows the label, and the glyph only where its table sets the label aside
+   (a compact table's own geometry owner). */
+:is(#dash-tbody, #t-tbody) .actions .dp-row-action-icon {
+  display: none;
+}
+
+/* A compact table sets its controls' labels aside: each Status badge and row
+   action shows its glyph alone, in the same chip or button, the glyph where it
+   was; the label leaves the row but stays the control's name, and DP's
+   tooltip says it (a badge's whole status; an action's own tooltip). The
+   table decides when, by its own width: Recent Activity at 987px or narrower
+   (ui-dashboard.css narrows its tracks under the same condition). */
+@container dp-recent-activity (width <= 987px) {
+  #dash-tbody :is(.badge .dp-status-label, .actions [data-dp-icon-label]) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #dash-tbody :is(.badge, .actions .btn) {
+    position: relative;
+  }
+  #dash-tbody .actions .btn {
+    width: 36px !important;
+    min-width: 36px !important;
+    padding: 0 !important;
+    justify-content: center;
+  }
+  #dash-tbody .actions .dp-row-action-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
+  }
+}
+
 /* Pause/Resume material is shared by both list implementations. */
 :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
 #view-torrents .dp-downloads-bulk-action--pause {
