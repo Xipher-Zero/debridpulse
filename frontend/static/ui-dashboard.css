@@ -1891,9 +1891,12 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
    and track), and Progress becomes the column that flexes: it takes all the
    room Name's 280px, Status, Size and the actions leave, so Name, the
    complement, rests at its 280px floor. The table's own width decides this,
-   not the window's layout width. */
+   not the window's layout width. Here the table's legacy 760px minimum (the
+   shared Dashboard table rule above) yields: these tracks are the table's
+   width, so a narrower card no longer spreads a forced 760px across them. */
 @container dp-recent-activity (width <= 987px) {
   #view-dashboard .dp-dashboard-activity .t-table {
+    min-width: 0 !important;
     --dp-dashboard-status-track: 63px;
     --dp-dashboard-row-action-track: 64px;
     --dp-dashboard-date-column: 0px;

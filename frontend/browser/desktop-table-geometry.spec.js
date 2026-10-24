@@ -198,11 +198,11 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
   // 987px or narrower its controls are compact (icon only): Status takes a
   // 63px track and the actions a 64px one, Date Added steps aside (heading,
   // cells and track), and Progress is the column that flexes -- all the room
-  // left -- so Name rests at 280px. The table's own 760px minimum still holds,
-  // so narrower than that it overflows and every column shares the excess.
+  // left -- so Name rests at 280px. There the table's legacy 760px minimum
+  // yields, so the table is the card's width all the way down to 780px.
   // (Whether each column's content still fits depends on the font -- this
   // file blocks the web font -- so that is measured with the production font.)
-  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 878, 850, 800, 780]) {
+  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 878, 877, 850, 800, 780]) {
     await resize(page, width);
     const g = await geometry(page, 'dashboard'), where = `${width}px`, W = g.wrap.width;
     expect(g.layout, where).toBe('fixed');
@@ -219,8 +219,7 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
       continue;
     }
     expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Action']);
-    expect(g.wrapScrolls, where).toBe(W < 759.5);
-    if (W < 760) continue;                       // the 760px minimum: every column shares the excess
+    expect(g.wrapScrolls, where).toBe(false);
     const [name, status, progress, size, , action] = g.columns;
     expect(Math.abs(name.width - 280), where).toBeLessThanOrEqual(1);
     expect(Math.abs(status.width - 63), where).toBeLessThanOrEqual(1);

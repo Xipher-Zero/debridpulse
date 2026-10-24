@@ -204,11 +204,16 @@ test('Status is centred, and the compact table sets Date Added aside and gives P
     const range = document.createRange();
     range.selectNodeContents(status);
     const text = range.getBoundingClientRect();
+    const box = r(status).width - parseFloat(getComputedStyle(status).paddingLeft) - parseFloat(getComputedStyle(status).paddingRight);
     return {
       wrap: r(document.querySelector('#view-dashboard .dash-activity-table-wrap')).width,
       columns: heads.map(th => getComputedStyle(th).display === 'none' ? null : r(th).width),
       dateCells: [...new Set([...table.querySelectorAll('tbody tr[data-torrent-id] td:nth-child(5)')].map(td => getComputedStyle(td).display))],
-      heading: text.left + text.width / 2 - centre,
+      // The heading's offset from the centre line where its text fits the
+      // column's content box; wider (a fallback font's STATUS on the compact
+      // 35px box) text-align cannot centre it, so it is only kept in the cell.
+      heading: text.width <= box ? text.left + text.width / 2 - centre : null,
+      headingInCell: text.left >= r(status).left && text.right <= r(status).right,
       // Each badge that fits its cell's content box (in this file's fallback
       // font "Awaiting confirmation" is wider than Status's 152px and overflows).
       badges: [...table.querySelectorAll('tbody .badge')].filter(badge => {
@@ -223,6 +228,7 @@ test('Status is centred, and the compact table sets Date Added aside and gives P
   expect(full.columns.every(width => width !== null)).toBe(true);
   expect(full.dateCells).toEqual(['table-cell']);
   expect(Math.abs(full.heading)).toBeLessThanOrEqual(1.5);
+  expect(full.headingInCell).toBe(true);
   expect(full.badges.length).toBeGreaterThanOrEqual(4);
   full.badges.forEach(offset => expect(Math.abs(offset)).toBeLessThanOrEqual(1));
   // The date menu in its heading still opens.
@@ -239,7 +245,8 @@ test('Status is centred, and the compact table sets Date Added aside and gives P
   expect(name + status + progress + size + action).toBeCloseTo(compact.wrap, 0);   // nothing reserved for it
   expect(name).toBeCloseTo(280, 0);
   expect(progress).toBeGreaterThan(full.columns[2]);                  // Progress, not Name, takes the room
-  expect(Math.abs(compact.heading)).toBeLessThanOrEqual(1.5);
+  if (compact.heading !== null) expect(Math.abs(compact.heading)).toBeLessThanOrEqual(1.5);
+  expect(compact.headingInCell).toBe(true);
   expect(compact.badges.length).toBe(5);
   compact.badges.forEach(offset => expect(Math.abs(offset)).toBeLessThanOrEqual(1));
 });
