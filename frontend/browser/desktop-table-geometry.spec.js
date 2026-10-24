@@ -198,7 +198,8 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
   // 987px or narrower its controls are compact (icon only): Status takes a
   // 63px track and the actions a 64px one, Date Added steps aside (heading,
   // cells and track), and Progress is the column that flexes -- all the room
-  // left -- so Name rests at 280px. There the table's legacy 760px minimum
+  // left -- so Name rests at 280px. Size keeps its proportion but never goes
+  // under 84px, its widest value ("999.9 MB") on one line. There the table's legacy 760px minimum
   // yields, so the table is the card's width all the way down to 780px.
   // (Whether each column's content still fits depends on the font -- this
   // file blocks the web font -- so that is measured with the production font.)
@@ -209,7 +210,7 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
     if (W > 987) {
       expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date Added', 'Action']);
       const [name, status, progress, size, date, action] = g.columns;
-      const others = [Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, 0.09 * W - 1.53,
+      const others = [Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, Math.max(0.09 * W - 1.53, 84),
         Math.max(0.21 * W - track - 3.57, 158), track + inset];
       [status, progress, size, date, action].forEach((column, index) =>
         expect(Math.abs(column.width - others[index]), `${where} ${column.label}`).toBeLessThanOrEqual(1));
@@ -220,16 +221,26 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
     }
     expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Action']);
     expect(g.wrapScrolls, where).toBe(false);
-    const [name, status, progress, size, , action] = g.columns;
+    const [name, status, progress, size, , action] = g.columns, sizeTrack = Math.max(0.09 * W - 1.53, 84);
     expect(Math.abs(name.width - 280), where).toBeLessThanOrEqual(1);
     expect(Math.abs(status.width - 63), where).toBeLessThanOrEqual(1);
-    expect(Math.abs(size.width - (0.09 * W - 1.53)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(size.width - sizeTrack), where).toBeLessThanOrEqual(1);   // never under its 84px floor
     expect(Math.abs(action.width - (64 + inset)), where).toBeLessThanOrEqual(1);
-    expect(Math.abs(progress.width - (W - 280 - 63 - (0.09 * W - 1.53) - 64 - inset)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(progress.width - (W - 280 - 63 - sizeTrack - 64 - inset)), where).toBeLessThanOrEqual(1);
   }
   // Mobile keeps sizing its columns to their content.
   await resize(page, 779);
   expect((await geometry(page, 'dashboard')).layout).toBe('auto');
+});
+
+/* fmtSize never writes four integer digits: from 1000 (as written) a size is
+ * the next unit's 1.0, so the longest size is eight characters, "999.9 XB" --
+ * the width Recent Activity's Size floor is measured for. */
+test('a size rolls over to the next unit before it would show four integer digits', async ({ page }) => {
+  await page.goto('/');
+  const sizes = await page.evaluate(() => [999.9 * 1024 ** 2, 999.96 * 1024 ** 2, 1000 * 1024 ** 2, 1023.9 * 1024 ** 2,
+    257.7 * 1024 ** 2, 987.6 * 1024 ** 4, 1000 * 1024 ** 4, 999, 1000, 0].map(fmtSize));
+  expect(sizes).toEqual(['999.9 MB', '1.0 GB', '1.0 GB', '1.0 GB', '257.7 MB', '987.6 TB', '1.0 PB', '999.0 B', '1.0 KB', '—']);
 });
 
 test('both tables resize continuously: no column jumps at 1440/1439, and the sidebar change only widens them', async ({ page }) => {

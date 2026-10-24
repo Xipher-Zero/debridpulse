@@ -1818,6 +1818,11 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
        row, until the compact controls below change both. */
     --dp-dashboard-progress-track: calc(21cqw - 3.57px);
     --dp-dashboard-date-column: var(--dp-dashboard-date-track);
+    /* Size keeps its proportion, but never less than its widest value on one
+       line: fmtSize never writes four integer digits, so its longest size is
+       eight characters ("999.9 MB"), 56px in the 11.5px mono face, with the
+       cell's 14px each side. */
+    --dp-dashboard-size-track: max(84px, 9cqw - 1.53px);
   }
   /* Columns 1-4 and Added (5) are re-expressed against the now-wider table
      (W = old table width T + the inset I) so their absolute pixel widths --
@@ -1832,7 +1837,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      overflow is left to show where the next column must give way. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: max(280px, 100cqw - var(--dp-dashboard-status-track) - var(--dp-dashboard-progress-track) - (9cqw - 1.53px)
+    width: max(280px, 100cqw - var(--dp-dashboard-status-track) - var(--dp-dashboard-progress-track) - var(--dp-dashboard-size-track)
       - var(--dp-dashboard-date-column) - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset)) !important;
   }
   /* Status's heading and each badge (a chip, centred as a unit) share the
@@ -1848,7 +1853,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
-    width: calc(9cqw - 1.53px) !important;
+    width: var(--dp-dashboard-size-track) !important;
   }
   /* Correction 3: Date Added's proportion is whatever the fixed action track
      (below) does not use of its 21%, rather than its own independent
@@ -1889,7 +1894,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
    63px), the actions to a 36px square (with the cell's 14px each side: 64px,
    the inset unchanged). Date Added steps aside entirely (its heading, cells
    and track), and Progress becomes the column that flexes: it takes all the
-   room Name's 280px, Status, Size and the actions leave, so Name, the
+   room Name's 280px, Status, Size (at least 84px) and the actions leave, so Name, the
    complement, rests at its 280px floor. The table's own width decides this,
    not the window's layout width. Here the table's legacy 760px minimum (the
    shared Dashboard table rule above) yields: these tracks are the table's
@@ -1900,7 +1905,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
     --dp-dashboard-status-track: 63px;
     --dp-dashboard-row-action-track: 64px;
     --dp-dashboard-date-column: 0px;
-    --dp-dashboard-progress-track: calc(100cqw - 280px - var(--dp-dashboard-status-track) - (9cqw - 1.53px)
+    --dp-dashboard-progress-track: calc(100cqw - 280px - var(--dp-dashboard-status-track) - var(--dp-dashboard-size-track)
       - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset));
   }
   #view-dashboard .dp-dashboard-activity .t-table :is(th, td):nth-child(5) {

@@ -614,10 +614,12 @@ function coalesceAsync(fn) {
 
 
 // ── Format ─────────────────────────────────────────────────────────────────
+// A size never shows four integer digits: from 1000 (as written, so 999.96
+// rolls too) it is the next unit's 1.0, at most "999.9 XB" -- eight characters.
 function fmtSize(b) {
   if (!b) return '—';
-  const u = ['B','KB','MB','GB','TB']; let i = 0;
-  while (b >= 1024 && i < u.length-1) {b/=1024; i++;}
+  const u = ['B','KB','MB','GB','TB','PB']; let i = 0;
+  while (Number(b.toFixed(1)) >= 1000 && i < u.length-1) {b/=1024; i++;}
   return b.toFixed(1)+' '+u[i];
 }
 function fmtTransferRate(bps, rollover) {
