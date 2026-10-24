@@ -270,7 +270,7 @@ def test_canonical_dashboard_keeps_color_spacing_and_sidebar_hover_refinements()
             "--c: #ff4854 !important",
             "saturate(1.28)",
             "height: 4.5px !important",
-            "@media (min-width: 1390px)",
+            "@media (min-width: 780px) {\n  /* Correction 3",
             "table-layout: fixed !important",
             "--dp-dashboard-status-track: max(13cqw - 2.21px, 180px);",
             "--dp-dashboard-date-track: max(21cqw - var(--dp-dashboard-action-track) - 3.57px, 158px);",

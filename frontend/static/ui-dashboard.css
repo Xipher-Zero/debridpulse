@@ -1637,15 +1637,15 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
 /* Download Activity decides where its own columns have the room: from 1600px
    its Progress column holds the widest line with the words; narrower, the
    line is the percentage and the estimate, and the words stay in the
-   label's accessible name and tooltip. Below 1390px this table sizes its
-   columns to their content, so there the line keeps the percentage and
-   estimate together and the column takes their room. */
+   label's accessible name and tooltip. On mobile (779px and below) this
+   table sizes its columns to their content, so there the line keeps the
+   percentage and estimate together and the column takes their room. */
 @media (width < 1600px) {
   #view-dashboard #dash-tbody .prog-line .prog-words {
     display: none;
   }
 }
-@media (max-width: 1389px) {
+@media (max-width: 779px) {
   #view-dashboard #dash-tbody .prog-line {
     flex-wrap: nowrap;
   }
@@ -1763,11 +1763,14 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
 /* On wide Dashboard layouts, Status had far more horizontal allocation than
    its content needed. Reclaim that slack for Progress while keeping Name and
    the trailing metadata/action columns balanced. This composition holds the
-   whole desktop (from 1390px, with either sidebar): its narrowest table there
-   is about 1256px wide, on the compact rail at 1390px and with the full
-   sidebar at 1560px alike, and only below the desktop does the table size its
-   columns to their content. */
-@media (min-width: 1390px) {
+   desktop and the tablet (from 780px): it is the table's own geometry, not
+   the Dashboard's six- or three-card composition, so it carries on through
+   1390/1389px unchanged, and only on mobile does the table size its columns
+   to their content. Its narrowest desktop table is about 1256px wide (the
+   compact rail at 1390px and the full sidebar at 1560px alike); how far
+   below that the tablet's narrower tables still fit is measured, not
+   assumed here. */
+@media (min-width: 780px) {
   /* Correction 3 (DP 1.0.12 UI Finishing, row-extent follow-up): the table
      wrapper previously carried a padding-right equal to the accepted
      Quick-Add-matching inset (--dp-dashboard-action-inset), so the

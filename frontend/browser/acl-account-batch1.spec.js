@@ -67,12 +67,12 @@ test('the session row holds Log Out and the account as two separate controls, at
   // One session, three widths: sign-in pages are rate limited per client.
   const admin = await signIn(browser, ADMIN, undefined, {fresh: true});  // it logs out
   // The full sidebar and the drawer: one line, Log Out then the account. The
-  // compact desktop rail (901-1559px): both glyphs on the icon rail, the
-  // account above and Log Out at the bottom.
-  for (const [width, layout] of [[1600, 'line'], [1440, 'rail'], [1024, 'rail'], [800, 'line']]) {
+  // compact rail (780-1559px): both glyphs on the icon rail, the account
+  // above and Log Out at the bottom.
+  for (const [width, layout] of [[1600, 'line'], [1440, 'rail'], [1024, 'rail'], [800, 'rail'], [760, 'line']]) {
     await admin.page.setViewportSize({width, height: 900});
     await admin.page.waitForFunction(() => document.getElementById('sidebar').getAnimations().length === 0);
-    if (width === 800) await admin.page.evaluate(() => window.toggleSidebar());
+    if (width === 760) await admin.page.evaluate(() => window.toggleSidebar());
     const facts = await admin.page.evaluate(() => {
       const row = document.querySelector('#sidebar-auth-row');
       const box = node => node.getBoundingClientRect();

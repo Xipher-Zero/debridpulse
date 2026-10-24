@@ -282,9 +282,18 @@ test('an abrupt change while the sidebar is moving settles at once in either dir
     const label = `${start}->${cross}->${then}`;
     const frames = await framesDuring(page, 'settings', async () => {
       await page.setViewportSize({width: cross, height: 1000});
-      // The sidebar is moving: part-way between its two widths.
-      await page.waitForFunction(() => document.getElementById('sidebar').getAnimations()
-        .some(animation => animation.transitionProperty === 'width' && animation.playState === 'running' && animation.currentTime > 100));
+      // The sidebar is moving: the whole change (its width and min-width
+      // transitions and the yield, which share one timing) is put 160ms on --
+      // past the collapse's 60ms delay into its 200ms, or 160 of the
+      // expansion's 250ms -- and drawn there for one frame. It is not waited
+      // for: a loaded runner can draw no frame at all inside it.
+      await page.evaluate(() => {
+        const sidebar = document.getElementById('sidebar');
+        const animations = sidebar.getAnimations();
+        if (!animations.some(animation => animation.transitionProperty === 'width')) throw new Error('the sidebar is not moving');
+        for (const animation of animations) animation.currentTime = 160;
+      });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
       await page.setViewportSize({width: then, height: 1000});
     });
     const moving = frames.filter(frame => frame.vw === cross && frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1);
@@ -408,8 +417,10 @@ test('negative control: the abrupt-change check fails when a snap animates the s
 
 test('the Dashboard keeps its six cards on one row through the desktop, down to 1390px, and three on one row through the tablet, down to 780px', async ({page}) => {
   await open(page, 1600);
-  // The cards in the layout, in order: label, row top, edges, whether its
-  // label and value are whole, and the strip's own edges.
+  // The cards in the layout, in order: label, row top, edges, and the
+  // strip's own edges. (Whether a label fits its card depends on the font:
+  // this file blocks the web font, and each machine's fallback is its own,
+  // so the fit is measured with the production font instead.)
   const strip = () => page.evaluate(() => {
     const hero = document.getElementById('dash-hero').getBoundingClientRect();
     const cards = [...document.querySelectorAll('#view-dashboard .dash-hero-stat')];
@@ -418,8 +429,7 @@ test('the Dashboard keeps its six cards on one row through the desktop, down to 
     shown: cards.filter(card => getComputedStyle(card).display !== 'none').map(card => {
       const box = card.getBoundingClientRect();
       const label = card.querySelector('.dhs-label');
-      return {label: label.textContent, top: Math.round(box.top), left: box.left, right: box.right,
-        whole: [...card.querySelectorAll('.dhs-label, .dhs-val')].every(text => text.scrollWidth <= text.clientWidth)};
+      return {label: label.textContent, top: Math.round(box.top), left: box.left, right: box.right};
     })};
   });
   const ALL = ['Total Downloads', 'Completed', 'Active Now', 'Processing', 'Errors', 'Total Downloaded'];
@@ -436,8 +446,6 @@ test('the Dashboard keeps its six cards on one row through the desktop, down to 
     expect(Math.abs(shown[shown.length - 1].right - hero[1]), `${width}px`).toBeLessThan(0.5);
     const gaps = shown.slice(1).map((card, i) => card.left - shown[i].right);
     expect(Math.max(...gaps) - Math.min(...gaps), `${width}px`).toBeLessThan(0.5);
-    // On the tablet every label and value is whole: none of its text clipped.
-    if (labels === TABLET) expect(shown.filter(card => !card.whole).map(card => card.label), `${width}px`).toEqual([]);
     // The other three are out of the layout, not merely transparent.
     expect(hidden, `${width}px`).toEqual(labels === TABLET ? [[0, 0], [0, 0], [0, 0]] : []);
   }

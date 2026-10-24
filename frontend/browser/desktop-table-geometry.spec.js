@@ -5,9 +5,11 @@ const { test, expect } = require('@playwright/test');
  * desktop (from 1390 CSS px, with the full sidebar from 1560px and the compact
  * rail below it): every Downloads column (Size and Date included), and the
  * Dashboard's fixed proportional tracks with Status and Date Added never cut.
- * Only below 1390px -- the tablet band, unchanged here -- do Downloads set Size
- * and Date aside and the Dashboard size its columns to their content. Mocked
- * rows: no backend state is read or written. */
+ * Recent Activity's tracks are the table's own, not the Dashboard's six- or
+ * three-card composition: they carry on through 1390/1389px and the tablet
+ * (to 780px), and only on mobile does it size its columns to their content.
+ * Below 1390px Downloads still sets Size and Date aside. Mocked rows: no
+ * backend state is read or written. */
 
 const DESKTOP = [1600, 1560, 1559, 1500, 1440, 1439, 1400, 1390];
 
@@ -176,8 +178,42 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
       expect(name.width, where).toBeGreaterThanOrEqual(400);
     }
   }
+  // The Dashboard's 1390/1389px composition change leaves the table alone:
+  // the same fixed tracks, each column within the one pixel the window lost.
+  await page.evaluate(() => document.body.classList.remove('light'));
+  await resize(page, 1390);
+  const at1390 = await geometry(page, 'dashboard');
   await resize(page, 1389);
-  expect((await geometry(page, 'dashboard')).layout).toBe('auto');   // the tablet band, unchanged
+  const at1389 = await geometry(page, 'dashboard');
+  expect(at1389.layout).toBe('fixed');
+  at1389.columns.forEach((column, index) => {
+    expect(column.shown).toBe(true);
+    expect(Math.abs(column.width - at1390.columns[index].width), column.label).toBeLessThanOrEqual(1);
+  });
+  // Through the tablet the same tracks hold -- proportions, floors, the action
+  // track -- with every column present, and while the table still has the
+  // room for its floors (down to 900px here) it fills the card exactly.
+  // Whether each column's content still fits these narrower tracks depends on
+  // the font (this file blocks the web font), so that is measured with the
+  // production font instead; narrower than 900px the tracks are left to show
+  // where they no longer fit.
+  for (const width of [1300, 1200, 1100, 1000, 900, 850, 800, 780]) {
+    await resize(page, width);
+    const g = await geometry(page, 'dashboard'), where = `${width}px`;
+    expect(g.layout, where).toBe('fixed');
+    expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date Added', 'Action']);
+    if (width < 900) continue;
+    expect(g.wrapScrolls || g.pageScrolls, where).toBe(false);
+    const [, status, progress, size, date, action] = g.columns, W = g.wrap.width;
+    expect(Math.abs(status.width - Math.max(0.13 * W - 2.21, 180)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(progress.width - (0.21 * W - 3.57)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(size.width - (0.09 * W - 1.53)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(date.width - Math.max(0.21 * W - track - 3.57, 158)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.width - (track + inset)), where).toBeLessThanOrEqual(1);
+  }
+  // Mobile keeps sizing its columns to their content.
+  await resize(page, 779);
+  expect((await geometry(page, 'dashboard')).layout).toBe('auto');
 });
 
 test('both tables resize continuously: no column jumps at 1440/1439, and the sidebar change only widens them', async ({ page }) => {
@@ -233,10 +269,16 @@ test('at the narrowest desktop width the Downloads controls still work: date men
   await expect(remove).toBeVisible();
   const removeBox = await remove.boundingBox();
   expect(removeBox.x + removeBox.width).toBeLessThanOrEqual(1390);
+  // Each filter asks for its own list. (Other owners read /api/torrents too --
+  // the authorization prompt's input_required scan among them -- so the
+  // filter's request is looked for among those since the click, not taken to
+  // be the last one.)
+  let since = requests.length;
   await page.locator('#view-torrents .ftab[data-dp-status="paused"]').click();
-  await expect.poll(() => requests.at(-1)?.get('status')).toBe('paused');
+  await expect.poll(() => requests.slice(since).some(params => params.get('status') === 'paused')).toBe(true);
+  since = requests.length;
   await page.locator('#view-torrents .ftab[data-dp-status=""]').click();
-  await expect.poll(() => requests.at(-1)?.get('status') ?? null).toBe(null);
+  await expect.poll(() => requests.slice(since).some(params => !params.get('status'))).toBe(true);
   const next = page.locator('#torrent-page-btns [aria-label="Next page"]');
   await expect(next).toBeVisible();
   await next.click();
