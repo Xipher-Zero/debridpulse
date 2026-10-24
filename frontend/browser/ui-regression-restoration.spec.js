@@ -422,7 +422,10 @@ test('Dashboard Recent Activity table/rows reach the card\'s full right content 
  }
 });
 
-test('Below the 1390px desktop boundary, Recent Activity keeps auto column layout and no wrapper inset',async({page})=>{
+// Recent Activity's fixed tracks are the table's own, not the Dashboard's six-
+// or three-card composition: below 1390px (the tablet, to 780px) they hold too,
+// still with no wrapper inset, the table reaching the card's right edge.
+test('Below the 1390px desktop boundary, Recent Activity keeps its fixed tracks and no wrapper inset',async({page})=>{
  for(const width of [1389,1200]){
   await page.setViewportSize({width,height:900});
   await ready(page);
@@ -437,7 +440,7 @@ test('Below the 1390px desktop boundary, Recent Activity keeps auto column layou
     tableRight:table.getBoundingClientRect().right,
    };
   });
-  expect(info.tableLayout).toBe('auto');
+  expect(info.tableLayout).toBe('fixed');
   expect(parseFloat(info.wrapPaddingRight)).toBe(0);
   expect(Math.abs(info.tableRight-info.wrapRight)).toBeLessThanOrEqual(1);
  }

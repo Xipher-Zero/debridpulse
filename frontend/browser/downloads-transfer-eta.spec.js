@@ -395,16 +395,18 @@ test('Download Activity keeps the percentage and its ETA on one line at every wi
             overflow: cell.scrollWidth > cell.clientWidth + 1, words: getComputedStyle(words).display !== 'none',
             visible: pct.innerText.trim()};
   }, id);
-  // The card clips what does not fit it: from 1179px nothing may (below that
-  // the activity table already scrolls sideways, as before this estimate).
+  // The card clips what does not fit it: from 1200px nothing may. Below that
+  // the Name column's 280px floor makes the tracks wider than the card and the
+  // table scrolls sideways -- the Dashboard tablet's measured fit limit, left
+  // visible until another column gives way.
   const clipped = () => page.evaluate(() => {
     const wrap = document.querySelector('#view-dashboard .dash-activity-table-wrap');
     const last = document.querySelector('#dash-tbody tr[data-torrent-id] td:last-child').getBoundingClientRect();
     return wrap.scrollWidth > wrap.clientWidth + 1 || last.right > wrap.getBoundingClientRect().right + 1;
   });
-  for (const width of [701, 900, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+  for (const width of [701, 900, 1100, 1179, 1180, 1200, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
     await resize(page, width);
-    if (width >= 1179) expect(await clipped(), `width ${width}`).toBe(false);
+    if (width >= 1200) expect(await clipped(), `width ${width}`).toBe(false);
     for (const id of [9871, 9872, 9873]) {
       const g = await geometry(id), where = `row ${id} at ${width}px`;
       expect(g.lines, where).toBe(1);

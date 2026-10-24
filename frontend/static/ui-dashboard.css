@@ -1818,10 +1818,14 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      where they were: each Npct of T equals (Ncqw of W) - (Npct of I), and
      Npct of I is a flat px figure since I is a constant 17px, not a
      percentage. Name is the complement of the other five, which is exactly
-     36cqw - 6.12px while neither floor above holds. */
+     36cqw - 6.12px while neither floor above holds -- but never narrower
+     than 280px, the Name/Status boundary the operator marked on the live
+     tablet table (a 1206px window). It reaches that floor near a 1200px
+     window; narrower, the tracks together are wider than the card, and that
+     overflow is left to show where the next column must give way. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: calc(100cqw - var(--dp-dashboard-status-track) - (21cqw - 3.57px) - (9cqw - 1.53px)
+    width: max(280px, 100cqw - var(--dp-dashboard-status-track) - (21cqw - 3.57px) - (9cqw - 1.53px)
       - var(--dp-dashboard-date-track) - var(--dp-dashboard-action-track) - var(--dp-dashboard-action-inset)) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
