@@ -196,23 +196,37 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
   // tracks together are wider than the card and the table overflows it,
   // left visible as the next column's fit limit. Where the table itself is
   // 987px or narrower its controls are compact (icon only): Status takes a
-  // 63px track and the actions a 64px one, Name the room they give up. (Whether each column's
-  // content still fits depends on the font -- this file blocks the web font
-  // -- so that is measured with the production font instead.)
-  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 850, 800, 780]) {
+  // 63px track and the actions a 64px one, Date Added steps aside (heading,
+  // cells and track), and Progress is the column that flexes -- all the room
+  // left -- so Name rests at 280px. The table's own 760px minimum still holds,
+  // so narrower than that it overflows and every column shares the excess.
+  // (Whether each column's content still fits depends on the font -- this
+  // file blocks the web font -- so that is measured with the production font.)
+  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 878, 850, 800, 780]) {
     await resize(page, width);
-    const g = await geometry(page, 'dashboard'), where = `${width}px`;
+    const g = await geometry(page, 'dashboard'), where = `${width}px`, W = g.wrap.width;
     expect(g.layout, where).toBe('fixed');
-    expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date Added', 'Action']);
-    const [name, status, progress, size, date, action] = g.columns, W = g.wrap.width;
-    const compact = W <= 987;
-    const others = [compact ? 63 : Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, 0.09 * W - 1.53,
-      Math.max(0.21 * W - track - 3.57, 158), (compact ? 64 : track) + inset];
-    [status, progress, size, date, action].forEach((column, index) =>
-      expect(Math.abs(column.width - others[index]), `${where} ${column.label}`).toBeLessThanOrEqual(1));
-    const complement = W - others.reduce((sum, value) => sum + value, 0);
-    expect(Math.abs(name.width - Math.max(280, complement)), where).toBeLessThanOrEqual(1);
-    expect(g.wrapScrolls, where).toBe(complement < 279);
+    if (W > 987) {
+      expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date Added', 'Action']);
+      const [name, status, progress, size, date, action] = g.columns;
+      const others = [Math.max(0.13 * W - 2.21, 180), 0.21 * W - 3.57, 0.09 * W - 1.53,
+        Math.max(0.21 * W - track - 3.57, 158), track + inset];
+      [status, progress, size, date, action].forEach((column, index) =>
+        expect(Math.abs(column.width - others[index]), `${where} ${column.label}`).toBeLessThanOrEqual(1));
+      const complement = W - others.reduce((sum, value) => sum + value, 0);
+      expect(Math.abs(name.width - Math.max(280, complement)), where).toBeLessThanOrEqual(1);
+      expect(g.wrapScrolls, where).toBe(complement < 279);
+      continue;
+    }
+    expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Action']);
+    expect(g.wrapScrolls, where).toBe(W < 759.5);
+    if (W < 760) continue;                       // the 760px minimum: every column shares the excess
+    const [name, status, progress, size, , action] = g.columns;
+    expect(Math.abs(name.width - 280), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(status.width - 63), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(size.width - (0.09 * W - 1.53)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(action.width - (64 + inset)), where).toBeLessThanOrEqual(1);
+    expect(Math.abs(progress.width - (W - 280 - 63 - (0.09 * W - 1.53) - 64 - inset)), where).toBeLessThanOrEqual(1);
   }
   // Mobile keeps sizing its columns to their content.
   await resize(page, 779);

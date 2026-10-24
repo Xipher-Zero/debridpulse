@@ -7,7 +7,8 @@ const { test, expect } = require('@playwright/test');
  * name, and DP's tooltip says it -- a badge its whole status, an action its own
  * tooltip. Wider, both are exactly as before and a badge has no tooltip. The
  * table's own width decides, not the window's. Mocked rows; no backend state is
- * read or written (the one pause request is answered here). */
+ * read or written (the one pause request is answered here). Where compact,
+ * Date Added also steps aside and Progress takes the room. */
 
 function row(id, o) {
   return {
@@ -187,6 +188,60 @@ test('a compact action keeps its glyph and square while pending, and its label s
   release();
   await expect.poll(() => page.locator('#dash-tbody tr[data-torrent-id="9801"] .actions .btn [data-dp-icon-label]').first().textContent())
     .toBe('Pause');
+});
+
+/* Status's heading and each badge share the column's centre line, in full and
+ * compact; where the controls are compact, Date Added steps aside entirely
+ * (heading, cells and track) and Progress takes the room, Name resting at its
+ * 280px floor. Wider, Date Added and its date menu are as before. */
+test('Status is centred, and the compact table sets Date Added aside and gives Progress the room', async ({page}) => {
+  await open(page, () => BASE);
+  const layout = () => page.evaluate(() => {
+    const r = node => node.getBoundingClientRect();
+    const table = document.querySelector('#view-dashboard .dash-activity-table-wrap .t-table');
+    const heads = [...table.querySelectorAll('thead th')];
+    const status = heads[1], centre = r(status).left + r(status).width / 2;
+    const range = document.createRange();
+    range.selectNodeContents(status);
+    const text = range.getBoundingClientRect();
+    return {
+      wrap: r(document.querySelector('#view-dashboard .dash-activity-table-wrap')).width,
+      columns: heads.map(th => getComputedStyle(th).display === 'none' ? null : r(th).width),
+      dateCells: [...new Set([...table.querySelectorAll('tbody tr[data-torrent-id] td:nth-child(5)')].map(td => getComputedStyle(td).display))],
+      heading: text.left + text.width / 2 - centre,
+      // Each badge that fits its cell's content box (in this file's fallback
+      // font "Awaiting confirmation" is wider than Status's 152px and overflows).
+      badges: [...table.querySelectorAll('tbody .badge')].filter(badge => {
+        const cell = badge.closest('td'), style = getComputedStyle(cell);
+        return r(badge).width <= r(cell).width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      }).map(badge => r(badge).left + r(badge).width / 2 - centre),
+    };
+  });
+  await resize(page, 1300);
+  const full = await layout();
+  expect(full.wrap).toBeGreaterThan(987);
+  expect(full.columns.every(width => width !== null)).toBe(true);
+  expect(full.dateCells).toEqual(['table-cell']);
+  expect(Math.abs(full.heading)).toBeLessThanOrEqual(1.5);
+  expect(full.badges.length).toBeGreaterThanOrEqual(4);
+  full.badges.forEach(offset => expect(Math.abs(offset)).toBeLessThanOrEqual(1));
+  // The date menu in its heading still opens.
+  await page.locator('#view-dashboard .dash-activity-table-wrap th .dp-date-menu-trigger').click();
+  await expect(page.locator('#view-dashboard .dash-activity-table-wrap th .dp-date-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await resize(page, 1000);
+  const compact = await layout();
+  expect(compact.wrap).toBeLessThanOrEqual(987);
+  expect(compact.columns[4]).toBeNull();                              // Date Added: no heading, no track
+  expect(compact.dateCells).toEqual(['none']);
+  const [name, status, progress, size, , action] = compact.columns;
+  expect(name + status + progress + size + action).toBeCloseTo(compact.wrap, 0);   // nothing reserved for it
+  expect(name).toBeCloseTo(280, 0);
+  expect(progress).toBeGreaterThan(full.columns[2]);                  // Progress, not Name, takes the room
+  expect(Math.abs(compact.heading)).toBeLessThanOrEqual(1.5);
+  expect(compact.badges.length).toBe(5);
+  compact.badges.forEach(offset => expect(Math.abs(offset)).toBeLessThanOrEqual(1));
 });
 
 test('a badge whose label is shown passes the hover to a described element around it', async ({page}) => {

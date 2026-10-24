@@ -1814,6 +1814,10 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
     /* The row-action column's own track: the shared action track, until the
        compact controls below narrow it. */
     --dp-dashboard-row-action-track: var(--dp-dashboard-action-track);
+    /* Progress keeps its proportional track, and Date Added its share of the
+       row, until the compact controls below change both. */
+    --dp-dashboard-progress-track: calc(21cqw - 3.57px);
+    --dp-dashboard-date-column: var(--dp-dashboard-date-track);
   }
   /* Columns 1-4 and Added (5) are re-expressed against the now-wider table
      (W = old table width T + the inset I) so their absolute pixel widths --
@@ -1828,16 +1832,19 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      overflow is left to show where the next column must give way. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: max(280px, 100cqw - var(--dp-dashboard-status-track) - (21cqw - 3.57px) - (9cqw - 1.53px)
-      - var(--dp-dashboard-date-track) - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset)) !important;
+    width: max(280px, 100cqw - var(--dp-dashboard-status-track) - var(--dp-dashboard-progress-track) - (9cqw - 1.53px)
+      - var(--dp-dashboard-date-column) - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset)) !important;
   }
+  /* Status's heading and each badge (a chip, centred as a unit) share the
+     column's centre line. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
     width: var(--dp-dashboard-status-track) !important;
+    text-align: center;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
-    width: calc(21cqw - 3.57px) !important;
+    width: var(--dp-dashboard-progress-track) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
@@ -1880,12 +1887,21 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
    condition), and their tracks narrow to that content: Status to its icon
    chip (9 + 15 + 9px and its border: 35px, with the cell's 14px each side:
    63px), the actions to a 36px square (with the cell's 14px each side: 64px,
-   the inset unchanged). Name, the complement, takes the room they give up.
-   The table's own width decides this, not the window's layout width. */
+   the inset unchanged). Date Added steps aside entirely (its heading, cells
+   and track), and Progress becomes the column that flexes: it takes all the
+   room Name's 280px, Status, Size and the actions leave, so Name, the
+   complement, rests at its 280px floor. The table's own width decides this,
+   not the window's layout width. */
 @container dp-recent-activity (width <= 987px) {
   #view-dashboard .dp-dashboard-activity .t-table {
     --dp-dashboard-status-track: 63px;
     --dp-dashboard-row-action-track: 64px;
+    --dp-dashboard-date-column: 0px;
+    --dp-dashboard-progress-track: calc(100cqw - 280px - var(--dp-dashboard-status-track) - (9cqw - 1.53px)
+      - var(--dp-dashboard-row-action-track) - var(--dp-dashboard-action-inset));
+  }
+  #view-dashboard .dp-dashboard-activity .t-table :is(th, td):nth-child(5) {
+    display: none;
   }
 }
 
