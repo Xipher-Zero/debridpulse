@@ -514,8 +514,11 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
  await expect(page.locator('#dash-tbody tr[data-torrent-id="1"] .dp-candidate-chip')).toHaveCount(0);
  const launcher=page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-group-candidate-launcher');
  await expect(launcher).toHaveCount(1);
+ // The row's controls, in order; the size it closes with (shown there only in a
+ // narrow table) is a value after them, not one of them.
  const order=await page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-transfer-provider-meta').evaluate(meta=>[...meta.children].map(node=>node.className.split(' ')[0]));
- expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
+ expect(order.filter(name=>name!=='dp-recent-size')).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
+ expect(order.at(-1)).toBe('dp-recent-size');
  await expect(launcher.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
  await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('3');
  // DP 1.0.12 Defect 1: the dense list launcher is glyph+count only now: the

@@ -251,6 +251,81 @@ test('Status is centred, and the compact table sets Date Added aside and gives P
   compact.badges.forEach(offset => expect(Math.abs(offset)).toBeLessThanOrEqual(1));
 });
 
+/* Where the table is 756px or narrower (about an 874px window) Size leaves its
+ * column -- heading, cells and track -- and the same formatted value closes the
+ * name's metadata row, at its right end, in the name's own type, the row's
+ * controls exactly where they were; Progress takes the room. Wider, the value
+ * is not shown and Size keeps its column. */
+test('a narrow table moves Size beside the name, in its type, and gives Progress the room', async ({page}) => {
+  const items = [{...BASE[0], size_bytes: 999.9 * 1024 ** 2, route_provider_id: 'debridlink', route_provider_name: 'Debrid-Link',
+    route_switch_available: true, access: {destroy: true}}, ...BASE.slice(1)];
+  await open(page, () => items);
+  const state = () => page.evaluate(() => {
+    const r = node => node.getBoundingClientRect();
+    const wrap = document.querySelector('#view-dashboard .dash-activity-table-wrap');
+    const heads = [...wrap.querySelectorAll('thead th')];
+    return {
+      wrap: r(wrap).width,
+      sizeColumn: getComputedStyle(heads[3]).display !== 'none',
+      columns: heads.filter(th => getComputedStyle(th).display !== 'none').map(th => r(th).width),
+      rows: [...document.querySelectorAll('#dash-tbody tr[data-torrent-id]')].map(tr => {
+        const cell = tr.children[0], meta = cell.querySelector('.dp-transfer-provider-meta'), size = meta.querySelector('.dp-recent-size');
+        const title = getComputedStyle(cell.querySelector('.t-name')), type = getComputedStyle(size);
+        const shown = node => getComputedStyle(node).display !== 'none' && r(node).width > 0;
+        const controls = [...meta.children].filter(node => node !== size && shown(node));
+        return {
+          id: tr.dataset.torrentId, value: size.textContent, cellValue: tr.children[3].textContent.trim(),
+          sizes: [shown(size), shown(tr.children[3])].filter(Boolean).length,
+          relocated: shown(size),
+          rightGap: r(cell).right - parseFloat(getComputedStyle(cell).paddingRight) - r(size).right,
+          clear: shown(size) ? r(size).left - Math.max(...controls.map(node => r(node).right)) : null,
+          sameType: ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].every(key => title[key] === type[key]),
+          controls: controls.map(node => [Math.round(r(node).left - r(cell).left), Math.round(r(node).width)]),
+          metaHeight: r(meta).height,
+        };
+      }),
+    };
+  });
+  let wide = null;
+  for (let width = 890; width >= 860; width--) {
+    await resize(page, width);
+    const now = await state();
+    if (now.wrap <= 756) {
+      expect(wide && wide.wrap).toBeGreaterThan(756);
+      // Wider: Size in its column, the relocated value not shown.
+      expect(wide.sizeColumn).toBe(true);
+      wide.rows.forEach(row => expect([row.sizes, row.relocated], row.id).toEqual([1, false]));
+      // Narrower: no Size column, the value once, at the row's right end, in the name's type.
+      expect(now.sizeColumn).toBe(false);
+      expect(now.columns.length).toBe(4);
+      expect(now.columns.reduce((sum, width) => sum + width, 0)).toBeCloseTo(now.wrap, 0);
+      now.rows.forEach((row, index) => {
+        expect([row.sizes, row.relocated, row.sameType], row.id).toEqual([1, true, true]);
+        expect(row.value, row.id).toBe(row.cellValue);                       // the same formatted value
+        expect(Math.abs(row.rightGap), row.id).toBeLessThanOrEqual(0.5);
+        expect(row.clear, row.id).toBeGreaterThan(0);                        // clear of every control
+        expect(row.controls, row.id).toEqual(wide.rows[index].controls);    // the controls where they were
+        expect(row.metaHeight, row.id).toBeCloseTo(wide.rows[index].metaHeight, 1);
+      });
+      expect(now.columns[2]).toBeGreaterThan(wide.columns[2]);               // Progress takes the room
+      // The Debrid-Link route selector is still there and still opens its picker (which reads its providers).
+      await page.route(url => url.pathname === '/api/torrents/9801/route', route => route.fulfill({status: 200,
+        contentType: 'application/json', body: JSON.stringify({transfer_id: 9801, current_provider_id: 'debridlink',
+          current_provider_name: 'Debrid-Link', switchable: true, providers: [
+            {provider_id: 'debridlink', provider_name: 'Debrid-Link', status: 'current', selectable: false, reason: null, readiness: null},
+            {provider_id: 'alldebrid', provider_name: 'AllDebrid', status: 'available', selectable: true, reason: null, readiness: null}]})}));
+      const launcher = page.locator('#dash-tbody tr[data-torrent-id="9801"] .dp-root-provider-launcher');
+      await expect(launcher).toContainText('Debrid-Link');
+      await launcher.click();
+      await expect(page.locator('.dp-root-provider-menu')).toBeVisible();
+      await expect(launcher).toHaveAttribute('aria-expanded', 'true');
+      return;
+    }
+    wide = now;
+  }
+  throw new Error('no window between 890 and 860px gave a 756px table');
+});
+
 test('a badge whose label is shown passes the hover to a described element around it', async ({page}) => {
   await open(page, () => BASE);
   await resize(page, 1300);

@@ -1913,6 +1913,31 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   }
 }
 
+/* Size beside its name. Where the table itself is 756px or narrower -- the
+   table the operator marked on the live Dashboard, at about an 874px window
+   -- Size leaves its own column (heading, cells and track) and the same
+   formatted value closes the name's metadata row, at its right end, in the
+   name's own type; Progress, the column that flexes, takes the room. Wider,
+   that value is not shown and Size keeps its column. */
+#dash-tbody .dp-recent-size {
+  display: none;
+}
+@container dp-recent-activity (width <= 756px) {
+  #view-dashboard .dp-dashboard-activity .t-table {
+    --dp-dashboard-size-track: 0px;
+  }
+  #view-dashboard .dp-dashboard-activity .t-table :is(th, td):nth-child(4) {
+    display: none;
+  }
+  #dash-tbody .dp-recent-size {
+    display: block;
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
 /* Sidebar hover now uses the same directional material language as the rest
    of the shell. It remains intentionally much quieter than the active row. */
 .nav-item:not(.active):hover {

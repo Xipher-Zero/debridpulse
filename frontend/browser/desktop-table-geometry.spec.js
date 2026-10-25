@@ -203,7 +203,7 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
   // yields, so the table is the card's width all the way down to 780px.
   // (Whether each column's content still fits depends on the font -- this
   // file blocks the web font -- so that is measured with the production font.)
-  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 878, 877, 850, 800, 780]) {
+  for (const width of [1300, 1200, 1199, 1150, 1100, 1000, 950, 900, 878, 877, 875, 874, 850, 800, 780]) {
     await resize(page, width);
     const g = await geometry(page, 'dashboard'), where = `${width}px`, W = g.wrap.width;
     expect(g.layout, where).toBe('fixed');
@@ -219,12 +219,14 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
       expect(g.wrapScrolls, where).toBe(complement < 279);
       continue;
     }
-    expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Action']);
+    // At 756px or narrower Size leaves its column for the name's metadata row.
+    const sizeColumn = W > 756;
+    expect(shown(g), where).toEqual(sizeColumn ? ['Name', 'Status', 'Progress', 'Size', 'Action'] : ['Name', 'Status', 'Progress', 'Action']);
     expect(g.wrapScrolls, where).toBe(false);
-    const [name, status, progress, size, , action] = g.columns, sizeTrack = Math.max(0.09 * W - 1.53, 84);
+    const [name, status, progress, size, , action] = g.columns, sizeTrack = sizeColumn ? Math.max(0.09 * W - 1.53, 84) : 0;
     expect(Math.abs(name.width - 280), where).toBeLessThanOrEqual(1);
     expect(Math.abs(status.width - 63), where).toBeLessThanOrEqual(1);
-    expect(Math.abs(size.width - sizeTrack), where).toBeLessThanOrEqual(1);   // never under its 84px floor
+    if (sizeColumn) expect(Math.abs(size.width - sizeTrack), where).toBeLessThanOrEqual(1);   // never under its 84px floor
     expect(Math.abs(action.width - (64 + inset)), where).toBeLessThanOrEqual(1);
     expect(Math.abs(progress.width - (W - 280 - 63 - sizeTrack - 64 - inset)), where).toBeLessThanOrEqual(1);
   }
