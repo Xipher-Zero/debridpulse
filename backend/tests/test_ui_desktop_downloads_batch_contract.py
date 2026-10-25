@@ -27,10 +27,15 @@ def test_downloads_desktop_filter_contract_and_details_are_directly_owned():
 
 def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_progress():
     # DP 1.0.12 canonical flattening: folded into ui-downloads-page.css.
+    # 1.0.14 unified table: the tracks are named by their columns (no
+    # positional selectors); Added keeps its 178px, Actions its 72px button
+    # slots and 7px gap, and the layout stays fixed.
     css = read("ui-downloads-page.css")
-    assert "nth-child(6) { width: 178px; }" in css
-    assert "nth-child(7) { width: 190px; }" in css
+    assert "--dp-downloads-date-track: 178px;" in css
+    assert "--dp-downloads-action-slot: 72px;" in css
+    assert "(var(--dp-downloads-action-slots) - 1) * 7px + 28px" in css
     assert "table-layout: fixed" in css
+    assert "nth-child(6)" not in css and "nth-child(7)" not in css
 
 
 def test_provider_subscription_is_one_centered_crown_and_copy_unit():

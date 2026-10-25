@@ -82,13 +82,12 @@ function paintTorrentPlaceholder(page) {
   const cell = (index, className, shapes) => `<td${className ? ` class="${className}"` : ''} style="${widths[index] || ''}">${shapes}</td>`;
   const operable = dpCan('transfers.operate');
   const row = `<tr class="dp-page-placeholder-row" style="height:${Math.round(height)}px">
-    ${cell(0, 'dp-downloads-name-cell', '<span class="dp-ph dp-ph--title"></span><span class="dp-ph dp-ph--sub"></span>')}
-    ${cell(1, 'sz dp-downloads-provider-cell', '<span class="dp-ph dp-ph--icon"></span><span class="dp-ph dp-ph--chip"></span><span class="dp-ph dp-ph--sub"></span>')}
-    ${cell(2, '', '<span class="dp-ph dp-ph--badge"></span>')}
-    ${cell(3, '', '<span class="dp-ph dp-ph--bar"></span><span class="dp-ph dp-ph--sub"></span>')}
-    ${cell(4, 'sz', '<span class="dp-ph dp-ph--number"></span>')}
-    ${cell(5, 'sz', '<span class="dp-ph dp-ph--number"></span>')}
-    ${operable ? cell(6, '', '<span class="dp-ph dp-ph--button"></span>') + cell(7, 'dp-downloads-select-cell', '<span class="dp-ph dp-ph--box"></span>') : ''}
+    ${cell(0, 'dp-downloads-name-cell', '<span class="dp-ph dp-ph--title"></span><span class="dp-ph dp-ph--icon"></span><span class="dp-ph dp-ph--chip"></span>')}
+    ${cell(1, 'dp-downloads-status-cell', '<span class="dp-ph dp-ph--badge"></span>')}
+    ${cell(2, 'dp-downloads-progress-cell', '<span class="dp-ph dp-ph--bar"></span><span class="dp-ph dp-ph--sub"></span>')}
+    ${cell(3, 'sz dp-downloads-size-cell', '<span class="dp-ph dp-ph--number"></span>')}
+    ${cell(4, 'sz dp-downloads-date-cell', '<span class="dp-ph dp-ph--number"></span>')}
+    ${operable ? cell(5, 'dp-downloads-action-cell', '<span class="dp-ph dp-ph--button"></span>') + cell(6, 'dp-downloads-select-cell', '<span class="dp-ph dp-ph--box"></span>') : ''}
   </tr>`;
   tb.dataset.dpPlaceholder = String(expected);
   tb.setAttribute('aria-hidden', 'true');
@@ -518,36 +517,39 @@ function rowMarkup(t) {
   // Admission found this promoted transfer waiting only on restarts nobody
   // confirmed: the operator may reaffirm its place (reaffirmQueue).
   const consent = operable && t.queue_member === true && t.queue_restart_consent === true
-    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" data-tooltip="Lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">Start Now</button>`
+    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" data-tooltip="Start Now: lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">${window.DPIcons.iconLabel('play', 'Start Now')}</button>`
     : '';
+  // The name's secondary bar, as Download Activity draws it: verified
+  // progress while the transfer is still on its way (app.js patches its fill
+  // on a live progress update, as it does there).
+  const pct = t.progress != null ? Math.round(t.progress) : 0;
+  const bar = pct > 0 && !['completed', 'consolidated', 'deleted'].includes(presentation);
   const nameCell = movable
     ? `<td class="dp-downloads-name-cell" data-queue-drag="true" tabindex="0" aria-label="${name}" aria-describedby="dp-queue-help"><div class="dp-downloads-name-line">
       <span class="dp-queue-grip" aria-hidden="true">${window.DPIcons?.svg?.('grip-vertical') || ''}</span>`
     : '<td class="dp-downloads-name-cell"><div class="dp-downloads-name-line">';
+  // One Name column, as Download Activity draws it: the name, its secondary
+  // bar, then the source, the provider and the candidate controls (and a
+  // label, when set) -- closed by the size, which shows there only where the
+  // table moves Size out of its own column (ui-downloads-page.css).
   return `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-queue-member="${t.queue_member === true}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" tabindex="0" onclick="onDownloadRowClick(event,${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
     ${nameCell}
       <div class="dp-downloads-name-copy">
-        <div class="t-name">${name}</div>
-        <div class="t-hash">${(t.hash || '').substring(0, 16)}${t.hash ? '…' : ''}</div>
+        <div class="t-name" data-tooltip="${name}">${name}</div>
+        <div class="dash-row-bar-slot" aria-hidden="true"><div class="dash-row-bar${bar ? '' : ' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0, Math.min(100, pct))}%;background:var(--blue)"></div></div></div>
+        <div class="dp-transfer-provider-meta">${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}<span class="dp-downloads-size">${fmtSize(t.size_bytes)}</span></div>
       </div>
     </div></td>
-    <td class="sz dp-downloads-provider-cell">
-      <span class="dp-downloads-provider-block">
-        <span class="dp-downloads-provider-line">${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}</span>
-        <span class="dp-transfer-source-label">${sourceLabel(t.source, t.request_kinds)}</span>
-      </span>
-      ${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}
-    </td>
-    <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}${consent}</td>
-    <td data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis, t.acquisition_eta ?? null)}</td>
-    <td class="sz">${fmtSize(t.size_bytes)}</td>
-    <td class="sz">${dateMarkup(t.created_at)}</td>
-    ${operable ? `<td onclick="event.stopPropagation()">
+    <td class="dp-downloads-status-cell" data-role="transfer-status">${badge(transferDisplayStatus(t), t)}${consent}</td>
+    <td class="dp-downloads-progress-cell" data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis, t.acquisition_eta ?? null)}</td>
+    <td class="sz dp-downloads-size-cell">${fmtSize(t.size_bytes)}</td>
+    <td class="sz dp-downloads-date-cell">${dateMarkup(t.created_at)}</td>
+    ${operable ? `<td class="dp-downloads-action-cell" onclick="event.stopPropagation()">
       <div class="actions">
-        ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
-        ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
-        ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>` : ''}
-        ${destroyable ? `<button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>` : ''}
+        ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)" data-tooltip="Pause this download">${window.DPIcons.iconLabel('pause', 'Pause')}</button>` : ''}
+        ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)" data-tooltip="Resume this download">${window.DPIcons.iconLabel('play', 'Resume')}</button>` : ''}
+        ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)" data-tooltip="Retry this download">${window.DPIcons.iconLabel('refresh', 'Retry')}</button>` : ''}
+        ${destroyable ? `<button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)" data-tooltip="Remove this download">${window.DPIcons.iconLabel('trash2', 'Remove')}</button>` : ''}
       </div>
     </td>
     <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="Select ${name}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>` : ''}
@@ -603,7 +605,7 @@ async function fetchAndRenderTorrents() {
       // A page shown while a reorder is held is a preview: selection is kept.
       if (!reorder) reconcileDownloadSelection(items);
       if (!items.length) {
-        tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 8 : 6}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
+        tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 7 : 5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
         syncDownloadSelectionUi();
       } else {
         tb.innerHTML = items.map(rowMarkup).join('');
@@ -856,6 +858,9 @@ function releasePointer() {
 function onNamePointerDown(event) {
   const cell = event.target.closest?.('td[data-queue-drag="true"]');
   if (!cell || reorder || pressed || event.button !== 0 || !event.isPrimary) return;
+  // The name's own controls (the provider selector, file selection, the
+  // candidate launcher) act on their own: pressing one never picks the row up.
+  if (dpIsInteractiveRowTarget(event.target)) return;
   // A touch on the name scrolls the table; the grip is the touch handle.
   if (event.pointerType === 'touch' && !event.target.closest('.dp-queue-grip')) return;
   suppressClick = false;

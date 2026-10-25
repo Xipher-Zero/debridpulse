@@ -337,7 +337,6 @@
             <div class="ftab" data-dp-status="completed" role="tab" aria-selected="false" onclick="setFilter(this,'completed')">Done</div>
             <div class="ftab" data-dp-status="error" role="tab" aria-selected="false" onclick="setFilter(this,'error')">Error</div>
           </div>
-          <button class="btn btn-ghost btn-sm dp-downloads-refresh" data-default-label="Refresh" onclick="loadTorrents()" aria-label="Refresh downloads" data-tooltip="Refresh downloads"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
         </div>
         <div class="dp-downloads-pause-shim">Processing paused. Queued and newly added downloads will not start until processing is resumed.</div>
         <div style="padding:10px 14px 0">
@@ -371,8 +370,8 @@
         </template>
         <div class="dp-downloads-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="t-table" style="min-width:500px">
-          <thead><tr><th>Name</th><th>Provider / Source</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><template data-requires="transfers.operate"><th>Actions</th><th class="dp-downloads-select-cell"><input type="checkbox" id="chk-all" aria-label="Select every download on this page" onchange="toggleAllCheckboxes(this)"/></th></template></tr></thead>
-          <tbody id="t-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+          <thead><tr><th class="dp-downloads-name-cell">Name</th><th class="dp-downloads-status-cell">Status</th><th class="dp-downloads-progress-cell">Progress</th><th class="sz dp-downloads-size-cell">Size</th><th class="sz dp-downloads-date-cell">Added</th><template data-requires="transfers.operate"><th class="dp-downloads-action-cell">Actions</th><th class="dp-downloads-select-cell"><input type="checkbox" id="chk-all" aria-label="Select every download on this page" onchange="toggleAllCheckboxes(this)"/></th></template></tr></thead>
+          <tbody id="t-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
         </table>
         </div>
         <div id="torrent-pagination" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;flex-wrap:wrap;gap:8px">

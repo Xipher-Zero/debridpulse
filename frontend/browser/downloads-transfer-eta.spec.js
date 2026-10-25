@@ -169,8 +169,8 @@ test('the estimate sits right-aligned beneath the bar without moving the row', a
     // Where the column has room, the row is exactly as tall as without an estimate.
     if (width === 1440) expect(Math.abs(heights.values[0] - heights.without)).toBeLessThanOrEqual(0.5);
   }
-  // Where the layout hides the progress column, the estimate goes with its bar.
-  for (const width of [1000, 390]) {
+  // Where the layout hides the progress column (mobile), the estimate goes with its bar.
+  for (const width of [779, 390]) {
     await resize(page, width);
     await expect(cell(page, 9821)).toBeHidden();
     await expect(cell(page, 9821).locator('[data-role="transfer-eta"]')).toBeHidden();
@@ -349,8 +349,10 @@ test('the percentage and its ETA share one line beneath the bar at every width t
             words: words ? getComputedStyle(words).display !== 'none' : null, visible: pct.innerText.trim(),
             label: pct.getAttribute('aria-label')};
   }, id);
-  // Downloads shows Progress at <=779 never, at 780-900 (content-sized), and from 1051.
-  for (const width of [780, 800, 900, 1051, 1100, 1179, 1180, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+  // Downloads shows Progress at <=779 never, and from 780 at every width (1.0.14:
+  // it is the column that flexes in the tablet table, never set aside).
+  for (const width of [780, 800, 880, 881, 900, 1000, 1050, 1051, 1100, 1179, 1180, 1283, 1284, 1300, 1439, 1440, 1500,
+                       1599, 1600, 1920, 2560]) {
     await resize(page, width);
     for (const id of [9861, 9862, 9863]) {
       const g = await geometry(id);
@@ -366,9 +368,9 @@ test('the percentage and its ETA share one line beneath the bar at every width t
     expect(usenetLine.label).toBe('47.9% estimated progress, not yet verified');   // the distinction stays announced
     expect((await geometry(9863)).label).toBe('41% verified');
   }
-  for (const width of [390, 700, 1000, 1050]) {
+  for (const width of [390, 700, 779]) {
     await resize(page, width);
-    expect(await geometry(9861), `width ${width}`).toBeNull();          // Progress steps aside there, as before
+    expect(await geometry(9861), `width ${width}`).toBeNull();          // Progress steps aside on mobile, as before
   }
 });
 

@@ -95,7 +95,11 @@ test('Downloads uses current provider for active transfers and delivering provid
   await expect(page.locator('#t-tbody tr[data-torrent-id="903"] .dp-provider-chip')).toHaveText('AllDebrid');
   await expect(page.locator('#t-tbody tr[data-torrent-id="904"] .dp-provider-chip')).toHaveText('HTTP(S)');
   await expect(page.locator('#t-tbody tr[data-torrent-id="905"] .dp-provider-chip')).toHaveText('Pending');
-  await expect(page.locator('#view-torrents thead')).toContainText('Provider / Source');
+  // 1.0.14: each provider is named on its row's Name second line (no separate Provider / Source column).
+  for (const id of [903, 904, 905]) {
+    await expect(page.locator(`#t-tbody tr[data-torrent-id="${id}"] .dp-downloads-name-cell .dp-transfer-provider-meta .dp-provider-chip`)).toHaveCount(1);
+  }
+  await expect(page.locator('#view-torrents thead')).not.toContainText('Provider');
 });
 
 test('Details separates safe original resource, final provider, ordered failover history, and advanced executor identity', async ({ page }) => {

@@ -108,7 +108,8 @@
 /* A row action built with DPIcons.iconLabel carries its glyph and its label;
    it shows the label, and the glyph only where its table sets the label aside
    (a compact table's own geometry owner). */
-:is(#dash-tbody, #t-tbody) .actions .dp-row-action-icon {
+:is(#dash-tbody, #t-tbody) .actions .dp-row-action-icon,
+#t-tbody .dp-queue-consent .dp-row-action-icon {
   display: none;
 }
 
@@ -117,7 +118,8 @@
    was; the label leaves the row but stays the control's name, and DP's
    tooltip says it (a badge's whole status; an action's own tooltip). The
    table decides when, by its own width: Recent Activity at 987px or narrower
-   (ui-dashboard.css narrows its tracks under the same condition). */
+   (ui-dashboard.css narrows its tracks under the same condition), and
+   Downloads narrower than 1166px (ui-downloads-page.css, likewise). */
 @container dp-recent-activity (width <= 987px) {
   #dash-tbody :is(.badge .dp-status-label, .actions [data-dp-icon-label]) {
     position: absolute;
@@ -141,6 +143,37 @@
     display: block;
     width: 15px;
     height: 15px;
+  }
+}
+@container dp-downloads-table (width < 1166px) {
+  #t-tbody :is(.badge .dp-status-label, :is(.actions, .dp-queue-consent) [data-dp-icon-label]) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #t-tbody :is(.badge, .actions .btn, .dp-queue-consent) {
+    position: relative;
+  }
+  #t-tbody .actions .btn {
+    width: 36px !important;
+    min-width: 36px !important;
+    padding: 0 !important;
+    justify-content: center;
+  }
+  #t-tbody :is(.actions, .dp-queue-consent) .dp-row-action-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
+  }
+  /* Start Now beneath its badge: the badge chip's width. */
+  #t-tbody .dp-queue-consent {
+    width: 35px;
+    padding-inline: 0;
+    justify-content: center;
   }
 }
 
@@ -314,9 +347,6 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 }
 
 .dp-transfer-provider-meta { display:flex; align-items:center; gap:6px; min-width:0; margin-top:4px; }
-.dp-downloads-provider-cell { min-width:0; }
-.dp-downloads-provider-cell .dp-provider-chip { margin-bottom:3px; }
-.dp-transfer-source-label { display:block; color:var(--dp-text-muted, var(--text3)); font-size:10px; line-height:1.3; }
 .dp-detail-original-resource .dv { overflow-wrap:anywhere; word-break:break-word; }
 /* The compact value; the complete safe URL is its tooltip (ui-tooltip.js). */
 .dp-detail-resource { border-radius:var(--dp-radius-xs); cursor:default; }

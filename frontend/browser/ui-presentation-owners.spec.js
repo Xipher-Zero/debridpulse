@@ -57,17 +57,18 @@ test('Dashboard Recent Activity keeps fixed row geometry across host artwork and
  expect(geometry.find(row=>row.status==='downloading').barVisibility).toBe('visible');expect(geometry.filter(row=>row.status==='completed').every(row=>row.barVisibility==='hidden')).toBe(true);
 });
 
-test('Downloads provider/source block adds host artwork and centers its two lines without moving the block',async({page})=>{
+test('Downloads Name carries host artwork and its provider on its second line, aligned beneath the name',async({page})=>{
  await page.setViewportSize({width:1440,height:800});
  const item={id:77,name:'Rapidgator layout transfer',status:'paused',presentation_status:'paused',progress:18,size_bytes:7340032,created_at:'2026-09-08 18:00:00',source:'direct_link',hash:'request:layout',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:null,delivering_provider_name:null,active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'};
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[item],total:1,page:1,page_size:1})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
  const release=await parkDownloadsList(page);
- const row=page.locator('#t-tbody tr[data-torrent-id="77"]');await expect(row).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-block')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-source-host-logo')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-provider-chip')).toContainText('AllDebrid');await expect(row.locator('.dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
+ // 1.0.14: one Name column -- the provider identity is its second line (no Provider / Source column, no source caption).
+ const row=page.locator('#t-tbody tr[data-torrent-id="77"]');await expect(row).toHaveCount(1);const meta=row.locator('.dp-downloads-name-cell .dp-transfer-provider-meta');await expect(meta).toHaveCount(1);await expect(meta.locator('.dp-source-host-logo')).toHaveCount(1);await expect(meta.locator('.dp-provider-chip')).toContainText('AllDebrid');await expect(row.locator('.dp-transfer-source-label')).toHaveCount(0);
  await expect.poll(()=>row.locator('.dp-source-host-logo').evaluate(node=>node.complete&&node.naturalWidth>0)).toBe(true);
- const geometry=await row.locator('.dp-downloads-provider-cell').evaluate(cell=>{const block=cell.querySelector('.dp-downloads-provider-block'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector('.dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),cellStyle=getComputedStyle(cell),rect=node=>node.getBoundingClientRect(),center=node=>{const r=rect(node);return r.left+r.width/2;};return{cellLeft:rect(cell).left,paddingLeft:Number.parseFloat(cellStyle.paddingLeft)||0,blockLeft:rect(block).left,lineCenter:center(line),labelCenter:center(label),iconHeight:rect(icon).height,chipHeight:rect(chip).height};});
+ const geometry=await row.locator('.dp-downloads-name-cell').evaluate(cell=>{const meta=cell.querySelector('.dp-transfer-provider-meta'),title=cell.querySelector('.t-name'),icon=meta.querySelector('.dp-source-icon-slot'),chip=meta.querySelector('.dp-provider-chip'),rect=node=>node.getBoundingClientRect(),middle=node=>{const r=rect(node);return r.top+r.height/2;};return{cellRight:rect(cell).right-(Number.parseFloat(getComputedStyle(cell).paddingRight)||0),titleLeft:rect(title).left,titleBottom:rect(title).bottom,metaLeft:rect(meta).left,metaTop:rect(meta).top,iconLeft:rect(icon).left,iconMiddle:middle(icon),chipMiddle:middle(chip),chipRight:rect(chip).right,iconHeight:rect(icon).height,chipHeight:rect(chip).height};});
  await release();
- expect(Math.abs(geometry.blockLeft-(geometry.cellLeft+geometry.paddingLeft))).toBeLessThanOrEqual(1.5);expect(Math.abs(geometry.lineCenter-geometry.labelCenter)).toBeLessThanOrEqual(1.5);expect(geometry.iconHeight).toBeCloseTo(20,1);expect(geometry.chipHeight).toBeGreaterThanOrEqual(19.5);
+ expect(Math.abs(geometry.metaLeft-geometry.titleLeft)).toBeLessThanOrEqual(1.5);expect(Math.abs(geometry.iconLeft-geometry.metaLeft)).toBeLessThanOrEqual(0.75);expect(geometry.metaTop).toBeGreaterThanOrEqual(geometry.titleBottom-0.5);expect(Math.abs(geometry.iconMiddle-geometry.chipMiddle)).toBeLessThanOrEqual(0.75);expect(geometry.chipRight).toBeLessThanOrEqual(geometry.cellRight+0.5);expect(geometry.iconHeight).toBeCloseTo(20,1);expect(geometry.chipHeight).toBeGreaterThanOrEqual(19.5);
 });
 
 test('Downloads owner exposes fixed three-slot pager and date options',async({page})=>{
@@ -247,10 +248,12 @@ test('Downloads pager: a shrink-triggered clamp refetches the clamped page inste
  downloads=downloads.slice(0,Math.max(1,Math.min(3,effectiveLimit-1)));
  const beforeRefresh=requests.length;
 
- // Trigger a normal refresh through the real Refresh control -- not a
- // test-only setter -- while the application's authoritative state is still
- // "page 3" (now out of range for the shrunk collection).
- await page.locator('.dp-downloads-refresh').click();
+ // Trigger a normal refresh through the application's one refresh path
+ // (loadTorrents, which every live update and operator action calls; the
+ // header Refresh control is retired in 1.0.14) -- not a test-only setter --
+ // while the authoritative state is still "page 3" (now out of range).
+ await expect(page.locator('.dp-downloads-refresh')).toHaveCount(0);
+ await page.evaluate(()=>loadTorrents());
 
  // The application must issue a fresh request for the clamped page (offset
  // 0), not merely relabel the out-of-range response.

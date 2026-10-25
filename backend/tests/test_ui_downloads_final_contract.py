@@ -99,43 +99,53 @@ def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
 
 def test_downloads_desktop_columns_preserve_provider_identity_status_progress_and_actions() -> None:
     # DP 1.0.12 canonical flattening: ui-downloads-desktop.css was folded
-    # into ui-downloads-page.css. 1.0.13: Actions holds both button slots at
-    # every desktop width. In every band the visible weighted columns'
-    # percentages sum to exactly 100%, so the fixed layout never takes width
-    # from a px column and the table never outgrows its viewport. Where the
-    # full composition cannot fit whole, Size and Date (and, narrowest,
-    # Progress) step aside rather than squeezing the rest; at full width
-    # Status holds every badge and Date its widest one-line value. 1.0.14: the
-    # full composition holds the whole desktop, from 1390px with either
-    # sidebar (its narrowest table there still fits every column whole). 1.0.13
-    # operator queue: Name is the first column and the selection column the
-    # last, after Actions.
+    # into ui-downloads-page.css. 1.0.13 operator queue: Name is the first
+    # column and the selection column the last, after Actions. 1.0.14 unified
+    # table: one composition from 780px up, Download Activity's -- the
+    # provider identity joins the Name column, every track is a length
+    # against the table's own width (a size container), and the tracks always
+    # sum to the table (Name is the complement), so the fixed layout never
+    # takes width from another column and the table never outgrows its
+    # viewport. Status holds every badge (180px) and Added its widest one-line
+    # value (178px); Actions holds every button its rows show together (two
+    # 72px slots and their 7px gap, three where a row shows three); Progress
+    # yields to Name's 280px floor and never steps aside. The compact table
+    # (narrower than 1166px) sets Added aside and narrows Status and each
+    # action to its glyph; narrower than 763px Size moves beside the name.
     import re
 
     css = read("ui-downloads-page.css")
-    assert "nth-child(7) { width: 190px; }" in css and "nth-child(8) { width: 36px; }" in css and "gap: 7px;" in css
+    assert "nth-child" not in css.replace("#t-tbody .actions > :nth-child(3)", "")
+    for retired in ("(width <= 1050px)", "(width > 1050px) and (width < 1180px)",
+                    "(min-width: 1180px) and (width < 1390px)", "(min-width: 901px) and (width < 1390px)"):
+        assert retired not in css
 
     def block(query):
         return css.split(query + " {", 1)[1].split("\n}", 1)[0]
 
-    def weights(query):
-        return dict(re.findall(r"nth-child\((\d)\) \{ width: ([\d.]+(?:%|px)); \}", block(query)))
+    full = block("@media (min-width: 780px)")
+    assert "container: dp-downloads-table / inline-size;" in full
+    assert "--dp-downloads-status-track: 180px;" in full and "--dp-downloads-date-track: 178px;" in full
+    assert "--dp-downloads-size-track: max(84px, 7cqw);" in full
+    assert "--dp-downloads-action-slot: 72px;" in full and "--dp-downloads-action-slots: 2;" in full
+    assert "--dp-downloads-select-track: 36px;" in full and "* 7px + 28px" in full and "gap: 7px;" in full
+    assert ":has(> #t-tbody .actions > :nth-child(3))" in full and "--dp-downloads-action-slots: 3;" in full
+    assert "min(22cqw, 100cqw - 280px - var(--dp-downloads-fixed-tracks))" in full
+    assert "width: calc(100cqw - var(--dp-downloads-progress-track) - var(--dp-downloads-fixed-tracks));" in full
+    assert re.search(r"\.dp-downloads-status-cell \{\s*width: var\(--dp-downloads-status-track\);\s*text-align: center;", full)
+    assert re.search(r"\.dp-downloads-action-cell \{\s*width: var\(--dp-downloads-action-track\);\s*text-align: center;", full)
 
-    hidden_below_full = block("@media (min-width: 901px) and (width < 1390px)")
-    assert ":is(:nth-child(5), :nth-child(6)) { display: none; }" in hidden_below_full
-    assert "nth-child(4) { display: none; }" in block("@media (min-width: 901px) and (width <= 1050px)")
-    bands = {
-        "@media (min-width: 901px) and (width <= 1050px)": {"1", "2", "3"},
-        "@media (width > 1050px) and (width < 1180px)": {"1", "2", "3", "4"},
-        "@media (min-width: 1180px) and (width < 1390px)": {"1", "2", "3", "4"},
-        "@media (min-width: 1390px)": {"1", "2", "3", "4", "5", "6"},
-    }
-    for query, columns in bands.items():
-        widths = weights(query)
-        assert set(widths) == columns, query
-        assert sum(float(value[:-1]) for value in widths.values() if value.endswith("%")) == 100, query
-    full = weights("@media (min-width: 1390px)")
-    assert full["3"] == "180px" and full["6"] == "178px"
+    compact = block("@container dp-downloads-table (width < 1166px)")
+    assert "--dp-downloads-status-track: 63px;" in compact and "--dp-downloads-action-slot: 36px;" in compact
+    assert "--dp-downloads-date-track: 0px;" in compact
+    assert re.search(r"\.dp-downloads-date-cell \{\s*display: none;", compact)
+    relocated = block("@container dp-downloads-table (width < 763px)")
+    assert "--dp-downloads-size-track: 0px;" in relocated
+    assert re.search(r"\.dp-downloads-size-cell \{\s*display: none;", relocated)
+    assert re.search(r"#t-tbody \.dp-downloads-size \{\s*display: block;", relocated)
+    # Progress steps aside only on mobile (779px and below).
+    hide = ".t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }"
+    assert css.count(hide) == 1 and hide in block("@media (max-width: 779px)")
 
 
 def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> None:

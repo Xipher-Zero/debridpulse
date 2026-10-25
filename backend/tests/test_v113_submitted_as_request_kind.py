@@ -144,8 +144,13 @@ def test_both_surfaces_use_the_one_formatter_with_the_canonical_fact():
     details = APP_JS[APP_JS.index("cell('Submitted As',"):]
     details = details[:details.index("\n")]
     assert "sourceLabel(t.source, t.request_kinds)" in details
+    # 1.0.14 unified table: the Downloads list no longer repeats the source
+    # description beneath its provider (the operator retired that caption);
+    # it says it nowhere else either -- Details, opened from the row, is
+    # where the one formatter shows the canonical fact.
     downloads = (STATIC / "ui-downloads.js").read_text(encoding="utf-8")
-    assert "sourceLabel(t.source, t.request_kinds)" in downloads
+    assert "sourceLabel(" not in downloads
+    assert "dp-transfer-source-label" not in downloads
 
 
 def test_channel_only_aggregates_stop_asserting_an_uploaded_file_is_a_torrent():

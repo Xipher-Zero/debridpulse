@@ -65,18 +65,28 @@ test('a mixed or unknown upload gets a truthful neutral label', async ({page}) =
   await expect(submittedAs(page)).toHaveText('Uploaded file');
 });
 
-test('the Downloads list uses the same formatter and the same canonical fact', async ({page}) => {
+test('from the Downloads list, each row opens Details with the same formatter and the same canonical fact', async ({page}) => {
+  // 1.0.14: the list no longer repeats the source description beneath the
+  // provider; Details, opened from the row, says it.
   const rows = [base(970, {source: 'manual_file', request_kinds: ['nzb']}),
                 base(971, {source: 'manual_file', request_kinds: ['torrent']})];
   await page.route(url => url.pathname === '/api/torrents',
     route => route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({items: rows, total: rows.length})}));
+  for (const detail of rows) {
+    await page.route(url => url.pathname === `/api/torrents/${detail.id}`,
+      route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(detail)}));
+  }
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="torrents"]').click();
-  await expect(page.locator('#t-tbody tr[data-torrent-id="970"] .dp-transfer-source-label'))
-    .toHaveText('NZB file');
-  await expect(page.locator('#t-tbody tr[data-torrent-id="971"] .dp-transfer-source-label'))
-    .toHaveText('Torrent file');
+  await expect(page.locator('#t-tbody tr[data-torrent-id="970"]')).toBeVisible();
+  await expect(page.locator('#t-tbody .dp-transfer-source-label')).toHaveCount(0);
+  for (const [id, label] of [[970, 'NZB file'], [971, 'Torrent file']]) {
+    await page.locator(`#t-tbody tr[data-torrent-id="${id}"] .t-name`).click();
+    await expect(submittedAs(page)).toHaveText(label);
+    await page.evaluate(() => closeModal());
+    await expect(page.locator('#overlay')).toBeHidden();
+  }
 });
 
 test('the real backend projects the canonical request kind for an uploaded NZB', async ({page}) => {

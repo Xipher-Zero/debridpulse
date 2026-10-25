@@ -8,7 +8,8 @@ const { test, expect } = require('@playwright/test');
  * Recent Activity's tracks are the table's own, not the Dashboard's six- or
  * three-card composition: they carry on through 1390/1389px and the tablet
  * (to 780px), and only on mobile does it size its columns to their content.
- * Below 1390px Downloads still sets Size and Date aside. Mocked rows: no
+ * Downloads keeps its full composition down to a 1166px table (about a 1284px
+ * window; downloads-unified-table.spec.js owns the tablet). Mocked rows: no
  * backend state is read or written. */
 
 const DESKTOP = [1600, 1560, 1559, 1500, 1440, 1439, 1400, 1390];
@@ -136,18 +137,26 @@ test('Downloads keeps every column, whole, through the desktop with either sideb
       await resize(page, width);
       const g = await geometry(page, 'torrents'), where = `${theme} ${width}px`;
       expect(g.sidebar, where).toBe(width >= 1560 ? 240 : 72);
-      expect(shown(g), where).toEqual(['Name', 'Provider / Source', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
+      expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
       expect(g.misfits, where).toEqual([]);
       expect(g.wrapScrolls || g.pageScrolls, where).toBe(false);
       expect(Math.abs(g.tableRight - g.wrap.right), where).toBeLessThanOrEqual(1);
-      const [name, provider] = g.columns;
-      expect(name.width, where).toBeGreaterThanOrEqual(150);       // Name and Provider never squeezed for the
-      expect(provider.width, where).toBeGreaterThanOrEqual(160);   // secondary columns
+      // Name, which now carries the provider identity beneath the name, never
+      // squeezed below its 280px floor for the secondary columns; its
+      // provider controls whole inside it.
+      const [name] = g.columns;
+      expect(name.width, where).toBeGreaterThanOrEqual(279.5);
+      expect(await page.evaluate(() => [...document.querySelectorAll('#t-tbody .dp-downloads-name-cell')].every(cell => {
+        const right = cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight) + 0.75;
+        return [...cell.querySelectorAll('.dp-transfer-provider-meta > *')]
+          .every(node => getComputedStyle(node).display === 'none' || node.getBoundingClientRect().right <= right);
+      })), where).toBe(true);
     }
   }
-  // The tablet band below is unchanged: Size and Date step aside from 1389px.
+  // The tablet keeps the full composition while the table holds it whole: at
+  // 1389px (a 1255px table) every column is still there.
   await resize(page, 1389);
-  expect(shown(await geometry(page, 'torrents'))).toEqual(['Name', 'Provider / Source', 'Status', 'Progress', 'Actions', 'select']);
+  expect(shown(await geometry(page, 'torrents'))).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
 });
 
 test('Recent Activity keeps its fixed desktop tracks through the desktop, Status and Date Added never cut', async ({ page }) => {

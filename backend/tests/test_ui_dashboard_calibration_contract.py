@@ -291,7 +291,6 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
         (
             "#btn-recover-all",
             "#view-events .dp-activity-refresh",
-            "#view-torrents .dp-downloads-refresh",
             "height: 36px !important",
             "min-height: 36px !important",
             "box-shadow: none !important",
@@ -305,6 +304,8 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
         ),
         "shared utility-control contract",
     )
+    # 1.0.14: the Downloads header Refresh control is retired with its material.
+    assert "dp-downloads-refresh" not in read(UTILITY)
 
 
 def test_shared_utility_controls_keep_light_pause_all_treatment() -> None:

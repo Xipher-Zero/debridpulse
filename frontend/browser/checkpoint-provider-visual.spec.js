@@ -81,13 +81,16 @@ test('checkpoint visually captures Recent Activity and Downloads provider indica
   const httpProviderChip = page.locator('#t-tbody tr[data-torrent-id="952"] .dp-provider-chip');
   await expect(httpProviderChip).toHaveText('HTTP & HTTPS');
   await expect(page.locator('#t-tbody tr[data-torrent-id="953"] .dp-provider-chip')).toHaveText('Unknown');
-  const providerHeading = page.locator('#view-torrents thead th').filter({ hasText: 'Provider / Source' });
-  await expect(providerHeading).toHaveCount(1);
+  // 1.0.14: the provider identity is the Name column's second line (no
+  // Provider / Source column): the chip lives in the Name cell, whole.
+  await expect(page.locator('#view-torrents thead th').filter({ hasText: 'Provider' })).toHaveCount(0);
+  const nameHeading = page.locator('#view-torrents thead th.dp-downloads-name-cell');
+  await expect(nameHeading).toHaveText('Name');
   expect(await httpProviderChip.evaluate(chip => {
     const chipRect = chip.getBoundingClientRect();
-    const cellRect = chip.closest('td').getBoundingClientRect();
-    return chip.scrollWidth <= chip.clientWidth && chipRect.right <= cellRect.right + 0.5;
+    const cell = chip.closest('td'), cellRect = cell.getBoundingClientRect();
+    return cell.classList.contains('dp-downloads-name-cell') && chip.scrollWidth <= chip.clientWidth && chipRect.right <= cellRect.right + 0.5;
   })).toBe(true);
-  expect(await providerHeading.evaluate(heading => heading.scrollWidth <= heading.clientWidth)).toBe(true);
+  expect(await nameHeading.evaluate(heading => heading.scrollWidth <= heading.clientWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/checkpoint-downloads-provider-dark-desktop.png', fullPage: true });
 });

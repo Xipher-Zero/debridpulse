@@ -479,7 +479,7 @@ test('Download speed custom cap reads Set Custom and still applies on Enter and 
  expect(bodies[2].max_download_bytes_per_second).toBe(1048576);
 });
 
-test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{
+test('Downloads Provider Inventory icon and provider badge share canonical alignment on the Name second line',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const common={status:'completed',presentation_status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'link'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'recorded'};
  const items=[
@@ -489,13 +489,15 @@ test('Downloads Provider Inventory icon, provider badge, and source label share 
  ];
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:3,page:1,page_size:3})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
- const blocks=page.locator('#t-tbody .dp-downloads-provider-block');await expect(blocks).toHaveCount(3);
- const labels=blocks.locator(':scope > .dp-transfer-source-label');await expect(labels.nth(0)).toHaveText('Direct link');await expect(labels.nth(1)).toHaveText('Provider inventory');await expect(labels.nth(2)).toHaveText('Direct link');
- const geometry=await blocks.evaluateAll(nodes=>nodes.map(block=>{const cell=block.closest('.dp-downloads-provider-cell'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector(':scope > .dp-transfer-source-label'),slot=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),icon=slot||chip.querySelector('.dp-provider-glyph');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};return{cell:box(cell),block:box(block),line:box(line),label:box(label),icon:box(icon),chip:box(chip),glyphInside:!slot};}));
+ // 1.0.14: the provider identity is the Name column's second line; the source caption ("Direct link",
+ // "Provider inventory") no longer repeats in the list -- Details says it (details-submitted-as.spec.js).
+ const lines=page.locator('#t-tbody .dp-downloads-name-cell .dp-transfer-provider-meta');await expect(lines).toHaveCount(3);
+ await expect(page.locator('#t-tbody .dp-transfer-source-label')).toHaveCount(0);
+ const geometry=await lines.evaluateAll(nodes=>nodes.map(line=>{const cell=line.closest('.dp-downloads-name-cell'),title=cell.querySelector('.t-name'),slot=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),icon=slot||chip.querySelector('.dp-provider-glyph');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};const pad=Number.parseFloat(getComputedStyle(cell).paddingRight)||0;return{cell:{...box(cell),right:box(cell).right-pad},title:box(title),line:box(line),icon:box(icon),chip:box(chip),glyphInside:!slot};}));
  // A protocol identity (General HTTP) carries its glyph inside the badge, so the badge leads the line.
  expect(geometry.map(row=>row.glyphInside)).toEqual([false,false,true]);
- for(const row of geometry){expect(Math.abs(row.line.left-row.label.left)).toBeLessThanOrEqual(0.75);expect(Math.abs((row.glyphInside?row.chip:row.icon).left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);expect(row.chip.scrollWidth).toBeLessThanOrEqual(row.chip.clientWidth);}
- expect(Math.abs(geometry[0].label.left-geometry[1].label.left)).toBeLessThanOrEqual(0.75);
+ for(const row of geometry){expect(Math.abs(row.line.left-row.title.left)).toBeLessThanOrEqual(0.75);expect(Math.abs((row.glyphInside?row.chip:row.icon).left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);expect(row.chip.scrollWidth).toBeLessThanOrEqual(row.chip.clientWidth);}
+ expect(Math.abs(geometry[0].line.left-geometry[1].line.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].icon.left-geometry[1].icon.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].chip.left-geometry[1].chip.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].icon.left-geometry[2].chip.left)).toBeLessThanOrEqual(0.75);
@@ -539,7 +541,7 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
  expect(parseFloat(lightBorder)).toBeGreaterThan(0);
 });
 
-test('Downloads common-source group launcher joins the first line for 2+ common hosts only, source label kept beneath',async({page})=>{
+test('Downloads common-source group launcher joins the Name second line for 2+ common hosts only, in [source][provider][network N] order',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const common={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'recorded',source:'direct_link'};
  const items=[
@@ -548,21 +550,23 @@ test('Downloads common-source group launcher joins the first line for 2+ common 
  ];
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:2,page:1,page_size:2})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
- await expect(page.locator('#t-tbody .dp-downloads-provider-block')).toHaveCount(2);
+ await expect(page.locator('#t-tbody .dp-downloads-name-cell .dp-transfer-provider-meta')).toHaveCount(2);
  const singleCells=await page.locator('#t-tbody tr[data-torrent-id="81"] > td').count();
  const multiCells=await page.locator('#t-tbody tr[data-torrent-id="82"] > td').count();
  expect(multiCells).toBe(singleCells);
  await expect(page.locator('#t-tbody tr[data-torrent-id="81"] .dp-candidate-chip')).toHaveCount(0);
- const line=page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-line');
+ const line=page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-name-cell .dp-transfer-provider-meta');
  const launcher=line.locator('.dp-group-candidate-launcher');
  await expect(launcher).toHaveCount(1);
+ // The row's controls, in order; the size it closes with (shown there only in a narrow table) is a value after them.
  const order=await line.evaluate(node=>[...node.children].map(child=>child.className.split(' ')[0]));
- expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
- await expect(page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
+ expect(order.filter(name=>name!=='dp-downloads-size')).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
+ expect(order.at(-1)).toBe('dp-downloads-size');
+ await expect(page.locator('#t-tbody tr[data-torrent-id="82"] .dp-transfer-source-label')).toHaveCount(0);
  await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('4');
  await expect(launcher).toHaveJSProperty('tagName','BUTTON');
  const geometry=await page.locator('#t-tbody tr[data-torrent-id="82"]').evaluate(row=>{
-  const cell=row.querySelector('.dp-downloads-provider-cell');
+  const cell=row.querySelector('.dp-downloads-name-cell');
   const chip=row.querySelector('.dp-candidate-chip');
   const chipRect=chip.getBoundingClientRect(),cellRect=cell.getBoundingClientRect();
   return {withinCell:chipRect.right<=cellRect.right+0.5,noClip:chip.scrollWidth<=chip.clientWidth,rowHeight:row.getBoundingClientRect().height};

@@ -130,12 +130,14 @@ test('Downloads and Activity Log: shell controls and rows rendered after load us
   await date.focus();                                                                     // a row's exact date, by keyboard
   expect(await shown(page)).toBe(true);
   await expect(tip(page)).toHaveText(await date.getAttribute('data-tooltip'));
-  await page.locator('.dp-downloads-refresh').hover();
+  // A row's full name, by pointer (the Downloads header has no Refresh control since 1.0.14).
+  await expect(page.locator('.dp-downloads-refresh')).toHaveCount(0);
+  await page.locator('#t-tbody tr[data-torrent-id="1"] .t-name').hover();
   expect(await shown(page)).toBe(true);
-  await expect(tip(page)).toHaveText('Refresh downloads');
+  await expect(tip(page)).toHaveText('Transfer 1');
   // A re-render that removes the described row hides its tooltip (the pointer clear of every target).
   await page.mouse.move(4, 4);
-  await page.locator('.dp-downloads-refresh').focus();
+  await page.locator('#torrent-search').focus();
   await date.focus();
   expect(await shown(page)).toBe(true);
   await page.evaluate(() => { document.getElementById('t-tbody').innerHTML = ''; });
@@ -143,7 +145,9 @@ test('Downloads and Activity Log: shell controls and rows rendered after load us
   // Navigation dismisses a shown tooltip (the pointer moved clear first, so nothing new lies beneath it).
   await page.mouse.move(4, 4);
   await page.keyboard.press('Shift');
-  await page.locator('.dp-downloads-refresh').focus();
+  await page.evaluate(() => loadTorrents());
+  await page.locator('#torrent-search').focus();
+  await page.locator('#t-tbody tr[data-torrent-id="1"] .dp-downloads-date-value').focus();
   expect(await shown(page)).toBe(true);
   await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
   await expect.poll(() => shown(page)).toBe(false);

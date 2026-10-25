@@ -246,7 +246,7 @@ test('U1 a Name click opens Details once; a Name-cell drag reorders and never op
   // Selection survives the reorders; checkbox and action clicks never drag.
   await expect(row(page, 2).locator('.t-chk')).toBeChecked();
   await drag(page, row(page, 1).locator('.t-chk'), row(page, 4));
-  await drag(page, row(page, 1).locator('td').nth(2), row(page, 4));
+  await drag(page, row(page, 1).locator('[data-role="transfer-status"]'), row(page, 4));
   expect(queue.log.moves.length).toBe(2);
   expect(queue.log.details).toEqual([2]);
 });
@@ -434,18 +434,24 @@ test('U6 a promoted transfer waiting on an unconfirmed restart offers Start Now 
 
 test('U4 selection sits after Actions at every width; an unhovered Remove is quiet', async ({ page }) => {
   await boot(page, [transfer(1, {status: 'downloading', progress: 40}), transfer(2)]);
+  // 1.0.14: seven columns (the provider identity is Name's second line), the
+  // selection column last, after Actions, by position and by name.
   const head = page.locator('#view-torrents thead th');
-  await expect(head).toHaveCount(8);
+  await expect(head).toHaveCount(7);
   await expect(head.nth(0)).toHaveText(/Name/);
-  await expect(head.nth(6)).toHaveText('Actions');
-  await expect(head.nth(7).locator('#chk-all')).toHaveCount(1);
-  await expect(row(page, 1).locator('td').nth(7).locator('.t-chk')).toHaveCount(1);
-  await expect(row(page, 1).locator('td').nth(6).locator('.actions')).toHaveCount(1);
+  await expect(head.nth(5)).toHaveText('Actions');
+  await expect(head.nth(5)).toHaveClass(/\bdp-downloads-action-cell\b/);
+  await expect(head.nth(6).locator('#chk-all')).toHaveCount(1);
+  await expect(head.nth(6)).toHaveClass(/\bdp-downloads-select-cell\b/);
+  await expect(row(page, 1).locator('td').nth(6).locator('.t-chk')).toHaveCount(1);
+  await expect(row(page, 1).locator('td').nth(5).locator('.actions')).toHaveCount(1);
 
   const visibleColumns = () => row(page, 1).locator('td').evaluateAll(cells => cells
     .map((cell, index) => (getComputedStyle(cell).display === 'none' ? null : index)).filter(index => index !== null));
-  for (const [width, expected] of [[1500, [0, 1, 2, 3, 4, 5, 6, 7]], [1300, [0, 1, 2, 3, 6, 7]],
-                                   [1000, [0, 1, 2, 6, 7]], [600, [0, 1, 2, 5, 6, 7]]]) {
+  // The full table while it holds every column (1500, 1300); the compact
+  // table sets Added aside (1000); mobile sets Progress and Size aside (600).
+  for (const [width, expected] of [[1500, [0, 1, 2, 3, 4, 5, 6]], [1300, [0, 1, 2, 3, 4, 5, 6]],
+                                   [1000, [0, 1, 2, 3, 5, 6]], [600, [0, 1, 4, 5, 6]]]) {
     await page.setViewportSize({width, height: 900});
     await expect.poll(visibleColumns).toEqual(expected);
     // Both cells measured in ONE read of the row as it stands: a live list
@@ -458,7 +464,7 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
       const node = document.querySelector('#t-tbody tr[data-torrent-id="1"]');
       const box = cell => { const r = cell.getBoundingClientRect(); return {x: r.x, width: r.width}; };
       const cells = node.querySelectorAll(':scope > td');
-      return {actions: box(cells[6]), select: box(cells[7])};
+      return {actions: box(cells[5]), select: box(cells[6])};
     });
     expect(select.x).toBeGreaterThanOrEqual(actions.x + actions.width - 1);
     expect(select.width).toBeGreaterThanOrEqual(24);
@@ -537,7 +543,7 @@ test('U7 right-click anywhere on an unfinished row offers Move to Top: one globa
   const gets = queue.log.gets.length;
 
   // Outside the Name cell: the Size cell.
-  await row(page, target).locator('td').nth(4).click({button: 'right'});
+  await row(page, target).locator('.dp-downloads-size-cell').click({button: 'right'});
   await expect(rowMenu(page)).toHaveCount(1);
   await expect(rowMenu(page)).toBeVisible();
   await expect(rowMenu(page)).toHaveAttribute('role', 'menu');
@@ -566,7 +572,15 @@ test('U7 right-click anywhere on an unfinished row offers Move to Top: one globa
   // A settled row has no queue command and no browser menu.
   await page.locator('#torrent-order').selectOption('newest');
   await expect.poll(() => queue.page().order).toBeUndefined();
-  await row(page, 31).locator('td').nth(4).click({button: 'right'});
+  // The settled row is on whichever page the measured capacity puts it in
+  // the Newest order: turn to it.
+  for (let turns = 0; await row(page, 31).count() === 0; turns++) {
+    expect(turns).toBeLessThan(10);
+    const first = (await renderedIds(page))[0];
+    await page.locator('#torrent-page-btns [aria-label="Next page"]').click();
+    await expect.poll(async () => (await renderedIds(page))[0]).not.toBe(first);
+  }
+  await row(page, 31).locator('.dp-downloads-size-cell').click({button: 'right'});
   await expect(rowMenu(page)).toHaveCount(0);
   expect((await prevented()).at(-1)).toBe(true);
   // Plain chrome: suppressed, no DP menu.
@@ -597,7 +611,7 @@ test('U8 native menus stay for editing, selected text and links; the row menu is
   // Selected text in the row: the native Copy menu.
   // Right-click on the selected text itself (the draggable Name cell is not
   // selectable; the Size cell is).
-  const text = await row(page, 2).locator('td').nth(4).evaluate(node => {
+  const text = await row(page, 2).locator('.dp-downloads-size-cell').evaluate(node => {
     const range = document.createRange();
     range.selectNodeContents(node);
     getSelection().removeAllRanges();
@@ -612,7 +626,7 @@ test('U8 native menus stay for editing, selected text and links; the row menu is
   await page.locator('#view-torrents .dp-downloads-tracked, #view-torrents h2, #bulk-count').first().evaluate(node => {
     const range = document.createRange(); range.selectNodeContents(node); getSelection().removeAllRanges(); getSelection().addRange(range);
   });
-  await row(page, 2).locator('td').nth(3).click({button: 'right'});
+  await row(page, 2).locator('[data-role="transfer-progress"]').click({button: 'right'});
   await expect(rowMenu(page)).toBeVisible();
   expect((await prevented()).at(-1)).toBe(true);
   // Escape closes it and returns focus to the row.
@@ -631,12 +645,12 @@ test('U8 native menus stay for editing, selected text and links; the row menu is
     await expect(row(page, 3)).toBeFocused();
   }
   // Outside pointer and scrolling dismiss; only one menu ever exists.
-  await row(page, 3).locator('td').nth(4).click({button: 'right'});
-  await row(page, 2).locator('td').nth(4).click({button: 'right'});
+  await row(page, 3).locator('.dp-downloads-size-cell').click({button: 'right'});
+  await row(page, 2).locator('.dp-downloads-size-cell').click({button: 'right'});
   await expect(rowMenu(page)).toHaveCount(1);
   await page.locator('#torrent-pagination').click({position: {x: 2, y: 2}});
   await expect(rowMenu(page)).toHaveCount(0);
-  await row(page, 3).locator('td').nth(4).click({button: 'right'});
+  await row(page, 3).locator('.dp-downloads-size-cell').click({button: 'right'});
   await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
   await expect(rowMenu(page)).toHaveCount(0);
   // Enter activates the command from the keyboard; the row never opened Details.

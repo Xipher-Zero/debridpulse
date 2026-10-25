@@ -92,7 +92,6 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
         "#view-torrents.active",
         ".dp-downloads-heading",
         ".filter-tabs",
-        ".dp-downloads-refresh",
         ".dp-downloads-table-wrap",
         "#torrent-pagination",
         "#torrent-page-btns",
@@ -100,6 +99,10 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"Downloads page contract is missing: {missing}"
+    # 1.0.14: the Downloads header has no Refresh control (the list refreshes
+    # itself); neither its markup nor any rule for it remains.
+    assert ".dp-downloads-refresh" not in css
+    assert "dp-downloads-refresh" not in (DOWNLOADS.parent / "index.html").read_text(encoding="utf-8")
 
     forbidden = (
         "#7440bb",
@@ -128,8 +131,11 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
     )
     missing = [fragment for fragment in required_app if fragment not in app]
     assert not missing, f"Downloads direct owner is missing: {missing}"
-    for fragment in ("card-download.svg?v=11", "On the Books", "Search downloads…", "Refresh downloads", "dp-downloads-table-wrap"):
+    for fragment in ("card-download.svg?v=11", "On the Books", "Search downloads…", "dp-downloads-table-wrap"):
         assert fragment in index
+    # 1.0.14: the header Refresh control is retired (the list refreshes itself).
+    downloads_view = index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
+    assert "Refresh downloads" not in downloads_view and "dp-downloads-refresh" not in downloads_view
     assert "card-document-stack.svg" not in index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
     assert "green-download-button.svg" not in index
     assert "api('POST'" in app
