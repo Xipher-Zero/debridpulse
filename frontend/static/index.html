@@ -399,47 +399,50 @@
         <div class="dp-activity-search-band">
           <div class="ev-search-row dp-activity-search-row">
             <input class="input" id="ev-search" type="search" aria-label="Search events" placeholder="Search events, names, or transfer ID…"/>
-            <label class="dp-activity-filter-field dp-activity-filter-field--time">
-              <span class="dp-activity-filter-label"><span>Time</span><span>Window</span></span>
-              <select class="input" id="ev-timeframe">
-                <option value="1h">Last hour</option>
-                <option value="12h">Last 12 hours</option>
-                <option value="24h">Last day</option>
-                <option value="72h">Last 3 days</option>
-                <option value="7d">Last week</option>
-                <option value="30d">Last 30 days</option>
-                <option value="all" selected>Available history</option>
-              </select>
-            </label>
-            <label class="dp-activity-filter-field dp-activity-filter-field--severity">
-              <span class="dp-activity-filter-label">Severity</span>
-              <select class="input" id="ev-level">
-                <option value="" selected>All</option>
-                <option value="info">Info</option>
-                <option value="warning">Warning</option>
-                <option value="error">Error</option>
-              </select>
-            </label>
-            <label class="dp-activity-filter-field dp-activity-filter-field--type">
-              <span class="dp-activity-filter-label"><span>Event</span><span>Type</span></span>
-              <select class="input" id="ev-category">
-                <option value="" selected>All</option>
-                <option value="transfer">Transfers</option>
-                <option value="routing">Routing</option>
-                <option value="resource">Provider Resources</option>
-                <option value="selection">File Selection</option>
-                <option value="consolidation">Consolidation</option>
-                <option value="execution">Downloads</option>
-                <option value="recovery">Recovery</option>
-                <option value="storage">Storage</option>
-                <option value="extraction">Extraction</option>
-                <option value="input">Input Required</option>
-                <option value="integration">Integrations</option>
-                <option value="configuration">Configuration</option>
-                <option value="administration">Administration</option>
-              </select>
-            </label>
-            <button type="button" id="ev-reset" class="btn btn-ghost btn-sm" hidden>Reset Filters</button>
+            <button type="button" id="ev-filter" class="btn btn-ghost dp-activity-filter-trigger" data-state="filter" popovertarget="ev-filter-panel" aria-haspopup="dialog" aria-expanded="false"><svg class="lucide dp-utility-icon" data-dp-lucide="funnel" data-dp-filter-glyph="filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"/></svg><svg class="lucide dp-utility-icon" data-dp-lucide="funnel-x" data-dp-filter-glyph="clear" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.531 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l.427-.473"/><path d="m16.5 3.5 5 5"/><path d="m21.5 3.5-5 5"/></svg><span id="ev-filter-label">Filter Results</span></button>
+            <span id="ev-filter-applied" hidden></span>
+          </div>
+          <div id="ev-filter-panel" class="dp-dropdown-menu dp-activity-filter-panel" popover="auto" role="dialog" aria-label="Filter results">
+            <div class="dp-activity-filter-columns">
+              <fieldset class="dp-activity-filter-group" data-filter="timeframe">
+                <legend>Time Window</legend>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="all" checked><span>Available history</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="1h"><span>Last hour</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="12h"><span>Last 12 hours</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="24h"><span>Last day</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="72h"><span>Last 3 days</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="7d"><span>Last week</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-timeframe" value="30d"><span>Last 30 days</span></label>
+              </fieldset>
+              <fieldset class="dp-activity-filter-group" data-filter="level">
+                <legend>Severity</legend>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-level" value="" checked><span>All</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-level" value="info"><span>Info</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-level" value="warning"><span>Warning</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-level" value="error"><span>Error</span></label>
+              </fieldset>
+              <fieldset class="dp-activity-filter-group" data-filter="category">
+                <legend>Event Type</legend>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="" checked><span>All</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="transfer"><span>Transfers</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="routing"><span>Routing</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="resource"><span>Provider Resources</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="selection"><span>File Selection</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="consolidation"><span>Consolidation</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="execution"><span>Downloads</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="recovery"><span>Recovery</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="storage"><span>Storage</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="extraction"><span>Extraction</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="input"><span>Input Required</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="integration"><span>Integrations</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="configuration"><span>Configuration</span></label>
+                <label class="dp-activity-filter-option"><input type="radio" name="ev-filter-category" value="administration"><span>Administration</span></label>
+              </fieldset>
+            </div>
+            <div class="dp-activity-filter-actions">
+              <button type="button" class="btn btn-ghost btn-sm" data-filter-action="cancel">Cancel</button>
+              <button type="button" class="btn btn-success btn-sm" data-filter-action="apply">Apply</button>
+            </div>
           </div>
         </div>
         <div id="event-list" class="dp-activity-list" aria-live="polite"><div class="empty">Loading…</div></div>

@@ -296,7 +296,9 @@ test('Auto Refresh: a lost stream is said, a reconnect is caught up from the jou
 
     await page.locator('.dp-activity-live').click();
     await expect.poll(() => requests.length).toBe(4);
-    await page.locator('#ev-level').selectOption('error');     // a filter change is the newest request
+    await page.locator('#ev-filter').click();                  // a filter change is the newest request
+    await page.locator('#ev-filter-panel fieldset[data-filter="level"] label', {hasText: /^Error$/}).click();
+    await page.locator('#ev-filter-panel [data-filter-action="apply"]').click();
     await hint(page, 490);
     await settle(page);
     const after = requests.slice(4);

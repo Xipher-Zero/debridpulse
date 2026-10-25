@@ -3,32 +3,18 @@ const { test, expect } = require('@playwright/test');
 const MARKERS=['DPActivityLog','DPArchivePasswords','DPDownloads'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
 
-test('Activity Log keeps search, Time Window dropdown, Severity label, and Severity dropdown in order',async({page})=>{
+test('Activity Log keeps Search first and its one filter control after it, apart and on one line',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  await page.route('**/api/events*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})}));
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
- await page.waitForFunction(()=>document.querySelector('#ev-timeframe')?._dpDropdownShell&&document.querySelector('#ev-level')?._dpDropdownShell);
  const geometry=await page.locator('#view-events .dp-activity-search-row').evaluate(row=>{
-  const search=row.querySelector('#ev-search');
-  const time=row.querySelector('.dp-activity-filter-field--time');
-  const severity=row.querySelector('.dp-activity-filter-field--severity');
-  const timeLabel=time.querySelector('.dp-activity-filter-label');
-  const timeShell=time.querySelector('.dp-dropdown-shell');
-  const severityLabel=severity.querySelector('.dp-activity-filter-label');
-  const severityShell=severity.querySelector('.dp-dropdown-shell');
-  const span=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,width:r.width,height:r.height};};
-  return {
-   children:[...row.children].map(node=>node.id||node.className),
-   search:span(search),timeLabel:span(timeLabel),timeShell:span(timeShell),severityLabel:span(severityLabel),severityShell:span(severityShell)
-  };
+  const span=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+  return {children:[...row.children].filter(node=>!node.hidden).map(node=>node.id||node.className),search:span(row.querySelector('#ev-search')),filter:span(row.querySelector('#ev-filter'))};
  });
- expect(geometry.children[0]).toBe('ev-search');
- expect(geometry.children[1]).toContain('dp-activity-filter-field--time');
- expect(geometry.children[2]).toContain('dp-activity-filter-field--severity');
- expect(geometry.search.right).toBeLessThanOrEqual(geometry.timeLabel.left+1);
- expect(geometry.timeLabel.right).toBeLessThanOrEqual(geometry.timeShell.left+1);
- expect(geometry.timeShell.right).toBeLessThanOrEqual(geometry.severityLabel.left+1);
- expect(geometry.severityLabel.right).toBeLessThanOrEqual(geometry.severityShell.left+1);
+ expect(geometry.children).toEqual(['ev-search','ev-filter']);
+ expect(geometry.search.right).toBeLessThanOrEqual(geometry.filter.left+1);
+ expect(Math.abs((geometry.search.top+geometry.search.bottom)/2-(geometry.filter.top+geometry.filter.bottom)/2)).toBeLessThan(1);
+ expect(geometry.filter.width).toBeGreaterThan(0);
 });
 
 test('Activity Log search keeps focus across debounced refreshes and other controls still initialize exactly once',async({page})=>{
@@ -36,7 +22,7 @@ test('Activity Log search keeps focus across debounced refreshes and other contr
  let requestCount=0;
  await page.route('**/api/events*',route=>{requestCount+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})});});
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
- await page.waitForFunction(()=>document.querySelector('#ev-timeframe')?._dpDropdownShell&&document.querySelector('#ev-level')?._dpDropdownShell);
+ await expect(page.locator('#ev-filter')).toBeVisible();
  const search=page.locator('#ev-search');
  await search.click();
  await page.keyboard.type('a');
@@ -47,12 +33,14 @@ test('Activity Log search keeps focus across debounced refreshes and other contr
  await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('ev-search');
  await expect(search).toHaveValue('abc');
  await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(3);
- // Severity/timeframe/Event Type/reset controls initialize exactly once (one
- // dropdown shell each) and remain interactive after the repeated debounced refreshes.
- const shellCount=await page.evaluate(()=>document.querySelectorAll('#view-events .dp-dropdown-shell').length);
- expect(shellCount).toBe(3);
- await page.selectOption('#ev-level','error');
- await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(4);
+ // The one filter control and its panel initialize exactly once (no projected
+ // select shells) and remain interactive after the repeated debounced refreshes.
+ expect(await page.evaluate(()=>({filters:document.querySelectorAll('#view-events #ev-filter').length,panels:document.querySelectorAll('#ev-filter-panel').length,shells:document.querySelectorAll('#view-events .dp-dropdown-shell').length}))).toEqual({filters:1,panels:1,shells:0});
+ const before=requestCount;
+ await page.locator('#ev-filter').click();
+ await page.locator('#ev-filter-panel fieldset[data-filter="level"] label',{hasText:/^Error$/}).click();
+ await page.locator('#ev-filter-panel [data-filter-action="apply"]').click();
+ await expect.poll(()=>requestCount).toBe(before+1);
 });
 
 test('Archive Passwords hydrate stored values and Show all/Hide all keep identical geometry',async({page})=>{

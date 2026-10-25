@@ -2,6 +2,8 @@ const { test, expect } = require('@playwright/test');
 
 const MARKERS=['DPToastContract','DPDownloads','DPProcessingPresentation','DPActivityLog','DPArchivePasswords'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
+// Activity Log filters: chosen in the Filter Results panel and committed together by Apply, as an operator does.
+async function applyActivityFilters(page,picks){await page.locator('#ev-filter').click();for(const [column,label] of picks)await page.locator(`#ev-filter-panel fieldset[data-filter="${column}"] label`,{hasText:new RegExp(`^${label}$`)}).click();await page.locator('#ev-filter-panel [data-filter-action="apply"]').click();}
 // The Downloads owner replaces its rows after every list read (navigation, its measured-capacity
 // re-checks, SSE/polling refreshes), which detaches any element a probe has already resolved and
 // makes its rect read as zero. Refreshes are coalesced and run one fetch+render at a time, so once
@@ -271,8 +273,8 @@ test('Downloads pager: a shrink-triggered clamp refetches the clamped page inste
 
 test('Activity Log filter interaction reaches server with filter metadata',async({page})=>{
  const requests=[];await page.route('**/api/events*',async route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams.entries()));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{id:1,severity:'warning',category:'routing',type:'routing.request_failed',message:'Retry delayed',name:'example.iso',transfer_id:4,occurred_at:'2026-09-06T08:30:00Z'}],limit:100,snapshot:1,has_more:false,next_before:null,newer_available:false,search:{text:'indexed',pending:0,complete:true}})});});
- await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));await page.locator('#ev-timeframe').selectOption('72h');await page.locator('#ev-level').selectOption('warning');await page.locator('#ev-search').fill('Retry');await page.waitForTimeout(325);await expect.poll(()=>requests.length).toBeGreaterThan(0);
- const filtered=requests.find(item=>item.search==='Retry');expect(filtered).toEqual({limit:'100',timeframe:'72h',level:'warning',search:'Retry'});await expect(page.locator('#ev-reset')).toBeVisible();
+ await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));await applyActivityFilters(page,[['timeframe','Last 3 days'],['level','Warning']]);await page.locator('#ev-search').fill('Retry');await page.waitForTimeout(325);await expect.poll(()=>requests.length).toBeGreaterThan(0);
+ const filtered=requests.find(item=>item.search==='Retry');expect(filtered).toEqual({limit:'100',timeframe:'72h',level:'warning',search:'Retry'});await expect(page.locator('#ev-filter')).toHaveText('Clear Filters');
 });
 
 test('Archive Password owner uses click reveal and line-aware editing',async({page})=>{
@@ -290,13 +292,13 @@ test('Activity Log has one owner: explicit API, no compatibility globals, contro
  const shape=await page.evaluate(()=>({
   loadEvents:typeof window.loadEvents,filterEvents:typeof window.filterEvents,
   api:Object.keys(window.DPActivityLog).sort(),frozen:Object.isFrozen(window.DPActivityLog),
-  inline:['ev-search','ev-level','ev-timeframe'].map(id=>document.getElementById(id)?.getAttribute('oninput')||document.getElementById(id)?.getAttribute('onchange')||null),
-  fields:document.querySelectorAll('#view-events .dp-activity-search-row > *').length,
+  inline:['#ev-search','#ev-filter','#ev-filter-panel input','#ev-filter-panel button'].map(selector=>[...document.querySelectorAll(selector)].filter(node=>['oninput','onchange','onclick'].some(name=>node.hasAttribute(name))).length),
+  fields:[...document.querySelectorAll('#view-events .dp-activity-search-row > *')].filter(node=>!node.hidden).map(node=>node.id),
  }));
- expect(shape).toEqual({loadEvents:'undefined',filterEvents:'undefined',api:['formatTimestamp','load'],frozen:true,inline:[null,null,null],fields:5});
+ expect(shape).toEqual({loadEvents:'undefined',filterEvents:'undefined',api:['formatTimestamp','load'],frozen:true,inline:[0,0,0,0],fields:['ev-search','ev-filter']});
 });
 
-test('Activity Log refresh, reset, empty state and single render',async({page})=>{
+test('Activity Log refresh, empty state and single render; Search alone is not a filter combination',async({page})=>{
  await ready(page);
  const requests=[];
  await page.route('**/api/events*',route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams));
@@ -309,14 +311,14 @@ test('Activity Log refresh, reset, empty state and single render',async({page})=
  await page.locator('.dp-activity-refresh').click();
  await expect.poll(()=>page.evaluate(()=>window.__renders)).toBe(1);
  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
- await expect(page.locator('#ev-reset')).toBeHidden();
+ await expect(page.locator('#ev-filter')).toHaveText('Filter Results');
  await page.locator('#ev-search').fill('nothing');
  await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
- await expect(page.locator('#ev-reset')).toBeVisible();
- await page.locator('#ev-reset').click();
+ await expect(page.locator('#ev-filter')).toHaveText('Filter Results');
+ await page.locator('#ev-search').fill('');
  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
- await expect(page.locator('#ev-search')).toHaveValue('');
- await expect(page.locator('#ev-reset')).toBeHidden();
+ expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all'});
+ await expect(page.locator('#ev-filter')).toHaveText('Filter Results');
  expect(await page.evaluate(()=>DPActivityLog.formatTimestamp('2026-09-08 17:00:00'))).toMatch(/Sep 8, 2026/);
 });
 
@@ -348,8 +350,9 @@ test('Activity Log pages through history by cursor and never jumps off a histori
  await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');await expect(pager.locator('[aria-label="Previous page"]')).toHaveCount(0);
  await page.locator('#ev-newest').click();await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 300');
  // A filter change starts a new investigation; a failure is shown as a failure, not as an empty history.
- await page.locator('#ev-category').selectOption('storage');
- await expect(page.locator('#event-list .empty')).toContainText('Events could not be loaded');await expect(page.locator('#dp-activity-pagination')).toBeHidden();
+ await applyActivityFilters(page,[['category','Storage']]);
+ await expect(page.locator('#event-list .empty')).toContainText('Events could not be loaded');
+ await expect(page.locator('#ev-filter')).toHaveText('Clear Filters'); // a failed load leaves the filters it asked with appliedawait expect(page.locator('#dp-activity-pagination')).toBeHidden();
  expect(requests.at(-1).snapshot).toBeUndefined();expect(requests.at(-1).before).toBeUndefined();
 });
 
@@ -373,27 +376,24 @@ test('Activity Log never presents an incomplete search as "no matches"',async({p
  await expect(page.locator('#dp-activity-pagination')).toBeHidden();
 });
 
-test('Activity Log Reset Filters restores every visible filter label, value and the unfiltered request at once',async({page})=>{
+test('Activity Log Clear Filters restores the three applied defaults and the unfiltered request at once, keeping Search',async({page})=>{
  await ready(page);
  const requests=[];
  await page.route('**/api/events*',route=>{requests.push(Object.fromEntries(new URL(route.request().url()).searchParams));return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})});});
  await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
- await page.waitForFunction(()=>['ev-timeframe','ev-level','ev-category'].every(id=>document.getElementById(id)?._dpDropdownTrigger));
- const shown=()=>page.evaluate(()=>Object.fromEntries(['ev-timeframe','ev-level','ev-category'].map(id=>{const select=document.getElementById(id);return [id,{value:select.value,label:select._dpDropdownTrigger.querySelector('.dp-dropdown__value').textContent.trim()}];})));
- // Chosen through the visible projected menus, exactly as an operator does.
- for(const [id,label] of [['ev-timeframe','Last 3 days'],['ev-level','Error'],['ev-category','Downloads']]){
-  await page.locator(`#${id}`).evaluate(select=>select._dpDropdownTrigger.click());
-  await page.getByRole('option',{name:label,exact:true}).click();
- }
+ const shown=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#ev-filter-panel fieldset')].map(group=>{const radio=group.querySelector('input:checked');return [group.dataset.filter,{value:radio.value,label:radio.closest('label').textContent.trim()}];})));
+ // Chosen through the visible panel, exactly as an operator does.
+ await applyActivityFilters(page,[['timeframe','Last 3 days'],['level','Error'],['category','Downloads']]);
  await page.locator('#ev-search').fill('needle');
  await expect.poll(()=>requests.at(-1)?.search).toBe('needle');
- expect(await shown()).toEqual({'ev-timeframe':{value:'72h',label:'Last 3 days'},'ev-level':{value:'error',label:'Error'},'ev-category':{value:'execution',label:'Downloads'}});
+ expect(requests.at(-1)).toEqual({limit:'100',timeframe:'72h',level:'error',category:'execution',search:'needle'});
  const before=requests.length;
- await page.locator('#ev-reset').click();
- // Immediately, with no further interaction: labels, values, search and the request agree.
- expect(await shown()).toEqual({'ev-timeframe':{value:'all',label:'Available history'},'ev-level':{value:'',label:'All'},'ev-category':{value:'',label:'All'}});
- await expect(page.locator('#ev-search')).toHaveValue('');
+ await page.locator('#ev-filter').click();
+ // Immediately, with no further interaction: the control, the request and the panel's choices agree; Search is the operator's own.
+ await expect(page.locator('#ev-filter')).toHaveText('Filter Results');
+ await expect(page.locator('#ev-search')).toHaveValue('needle');
  await expect.poll(()=>requests.length).toBe(before+1);
- expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all'});
- await expect(page.locator('#ev-reset')).toBeHidden();
+ expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all',search:'needle'});
+ await page.locator('#ev-filter').click();
+ expect(await shown()).toEqual({timeframe:{value:'all',label:'Available history'},level:{value:'',label:'All'},category:{value:'',label:'All'}});
 });

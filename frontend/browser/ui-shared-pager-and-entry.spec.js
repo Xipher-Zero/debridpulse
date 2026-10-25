@@ -299,7 +299,9 @@ test('Activity Log: a relative time window keeps the first page\'s cutoff on eve
     await isolate(page);
     const {requests} = await activity(page);
     const pager = activityPager(page);
-    await page.locator('#ev-timeframe').selectOption('24h');
+    await page.locator('#ev-filter').click();
+    await page.locator('#ev-filter-panel fieldset[data-filter="timeframe"] label', {hasText: /^Last day$/}).click();
+    await page.locator('#ev-filter-panel [data-filter-action="apply"]').click();
     await expect.poll(() => requests.at(-1).timeframe).toBe('24h');
     expect(requests.at(-1).window_start).toBeUndefined();                    // a new investigation measures it
     await expect(pager.locator('.dp-pager-current')).toHaveText('1');

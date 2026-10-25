@@ -46,9 +46,9 @@ def test_activity_functional_controls_are_unchanged() -> None:
 
     for fragment in (
         'id="ev-search"',
-        'id="ev-timeframe"',
-        'id="ev-level"',
-        'id="ev-reset"',
+        'id="ev-filter"',
+        'popovertarget="ev-filter-panel"',
+        'id="ev-filter-panel"',
         'onclick="DPActivityLog.load()"',
         'id="event-list"',
     ):

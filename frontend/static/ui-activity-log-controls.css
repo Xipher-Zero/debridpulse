@@ -1,5 +1,150 @@
-/* Activity Log filter-control geometry and result notice. */
-#view-events .dp-activity-search-row{display:flex!important;align-items:center!important;gap:12px!important}#view-events .dp-activity-search-row>#ev-search{flex:1 1 360px!important;min-width:260px!important;height:38px!important;margin:0!important}#view-events .dp-activity-filter-field{display:inline-flex!important;align-items:center!important;gap:8px!important;width:auto!important;margin:0!important}#view-events .dp-activity-filter-label{display:inline-flex!important;align-items:center!important;justify-content:center!important;color:var(--text2)!important;font-size:11px!important;font-weight:600!important}#view-events .dp-activity-filter-field--time .dp-activity-filter-label{width:42px!important;flex-direction:column!important;text-align:center!important}#view-events .dp-activity-filter-field--time .dp-dropdown-shell{width:174px!important;min-width:174px!important}#view-events .dp-activity-filter-field--severity .dp-dropdown-shell{width:116px!important;min-width:116px!important}#view-events .dp-activity-filter-field--type .dp-activity-filter-label{width:42px!important;flex-direction:column!important;text-align:center!important}#view-events .dp-activity-filter-field--type .dp-dropdown-shell{width:190px!important;min-width:190px!important}#view-events .dp-activity-filter-field .dp-dropdown__trigger{width:100%!important;height:38px!important}#view-events #ev-reset{flex:0 0 auto!important;white-space:nowrap!important}#view-events #ev-reset[hidden]{display:none!important}
+/* Activity Log search band: Search, and the one filter control beside it --
+   Filter Results (opens the filter panel) or, with filters applied, Clear
+   Filters -- and the panel itself. ui-activity-log-runtime.js owns their
+   behaviour. */
+#view-events .dp-activity-search-row > #ev-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  margin: 0;
+}
+
+/* One fixed footprint for both functions: the wider, Filter Results with its
+   glyph and padding (128px in Outfit, 133.3px in the fallback face), with room
+   to spare, so changing function never moves Search or the control. */
+#view-events .dp-activity-filter-trigger {
+  flex: 0 0 140px;
+  width: 140px;
+  height: 38px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+#view-events .dp-activity-filter-trigger .dp-utility-icon {
+  width: 15px;
+  height: 15px;
+}
+
+#view-events .dp-activity-filter-trigger[data-state="filter"] [data-dp-filter-glyph="clear"],
+#view-events .dp-activity-filter-trigger[data-state="clear"] [data-dp-filter-glyph="filter"] {
+  display: none;
+}
+
+/* The panel: the projected menu's material (.dp-dropdown-menu), in the top
+   layer (a popover), placed and bounded by the runtime. Its columns scroll;
+   Cancel and Apply stay in view. */
+#view-events .dp-activity-filter-panel {
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  display: none;
+}
+
+#view-events .dp-activity-filter-panel:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+
+#view-events .dp-activity-filter-columns {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 4px 10px;
+  min-height: 0;
+  padding: 10px 10px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#view-events .dp-activity-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+#view-events .dp-activity-filter-group > legend {
+  padding: 2px 10px 6px;
+  color: color-mix(in srgb, var(--dp-state-active) 78%, var(--dp-text-primary));
+  font-family: var(--dp-font-sans);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* A choice is its whole row: the projected menu's option and selected-option
+   treatment, with a check beside the chosen row in each column. */
+#view-events .dp-activity-filter-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 12px 6px 28px;
+  border-radius: var(--dp-radius-sm);
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-body-sm-size);
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+#view-events .dp-activity-filter-option > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#view-events .dp-activity-filter-option:hover,
+#view-events .dp-activity-filter-option:has(> input:focus-visible) {
+  background: color-mix(in srgb, var(--dp-accent-purple) 10%, var(--dp-surface-2));
+  color: var(--dp-text-primary);
+}
+
+#view-events .dp-activity-filter-option:has(> input:focus-visible) {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: -2px;
+}
+
+#view-events .dp-activity-filter-option:has(> input:checked) {
+  background: color-mix(in srgb, var(--dp-accent-purple) 16%, var(--dp-surface-2));
+  color: var(--dp-accent-purple-bright);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dp-accent-purple-bright) 20%, transparent);
+}
+
+#view-events .dp-activity-filter-option:has(> input:checked)::before {
+  content: '✓';
+  position: absolute;
+  left: 11px;
+}
+
+#view-events .dp-activity-filter-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--dp-divider);
+}
+
+/* Too narrow for three columns side by side: one above the other, each whole. */
+@media (max-width: 560px) {
+  #view-events .dp-activity-filter-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* Event search (DP 1.0.12 canonical flattening: migrated from the retired
    ui-legacy-foundation.css) */

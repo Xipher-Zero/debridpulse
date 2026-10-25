@@ -141,63 +141,13 @@ body.light #view-events .dp-activity-search-band {
     transparent 78%);
 }
 
+/* One row at every width: Search takes the room, the filter control sits at
+   the far right (ui-activity-log-controls.css). */
 #view-events .dp-activity-search-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
-}
-
-#view-events #ev-search {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-#view-events #ev-level {
-  width: 160px;
-  max-width: 160px;
-  flex: 0 0 160px;
-}
-
-/* The universal projected select is inserted next to the native control. Once
-   the native select becomes visually hidden its old flex-basis no longer owns
-   the row, so carry the reviewed 160px footprint onto the projected shell. */
-#view-events #ev-level + .dp-dropdown-shell {
-  width: 160px;
-  max-width: 160px;
-  flex: 0 0 160px;
-}
-
-/* P4 Activity filters add three labeled projected selects (Time Window,
-   Severity, Event Type) plus a conditional Reset control. Own the desktop
-   geometry here so shared compact-control rules cannot collapse the
-   selected-value text. */
-@media (min-width: 901px) {
-  #view-events .dp-activity-search-row {
-    display: grid;
-    grid-template-columns: minmax(240px, 1fr) minmax(170px, 190px) minmax(150px, 170px) minmax(190px, 220px) auto;
-    align-items: end;
-    gap: 12px;
-  }
-
-  #view-events .dp-activity-filter-field {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-  }
-
-  #view-events .dp-activity-filter-field .input,
-  #view-events .dp-activity-filter-field .dp-dropdown-shell,
-  #view-events .dp-activity-filter-field .dp-dropdown__trigger {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    box-sizing: border-box;
-  }
-
-  #view-events #ev-reset {
-    justify-self: end;
-    white-space: nowrap;
-  }
+  gap: 12px;
 }
 
 /* ── Event viewport ───────────────────────────────────────────────────── */

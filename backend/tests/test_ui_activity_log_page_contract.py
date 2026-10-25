@@ -128,15 +128,23 @@ def test_activity_rebuild_uses_downloads_search_band_recipe() -> None:
         assert fragment in downloads
 
 
-def test_activity_projected_level_filter_keeps_compact_reviewed_footprint() -> None:
-    css = read("ui-activity-log-page.css")
+def test_activity_filter_control_keeps_one_fixed_footprint_and_no_projected_selects() -> None:
+    # 1.0.14: the three projected selects (Time Window, Severity, Event Type)
+    # and Reset gave way to one control beside Search -- Filter Results or Clear
+    # Filters -- whose one fixed footprint holds the wider of the two, so Search
+    # never moves when it changes function. Nothing of the old fields remains.
+    page = read("ui-activity-log-page.css")
+    controls = read("ui-activity-log-controls.css")
+    index = read("index.html")
+    view = index[index.index('id="view-events"'):index.index('<!-- Statistics -->')]
 
-    native = css.split("#view-events #ev-level {", 1)[1].split("}", 1)[0]
-    projected = css.split("#view-events #ev-level + .dp-dropdown-shell {", 1)[1].split("}", 1)[0]
-    for block in (native, projected):
-        assert "width: 160px;" in block
-        assert "max-width: 160px;" in block
-        assert "flex: 0 0 160px;" in block
+    trigger = controls.split("#view-events .dp-activity-filter-trigger {", 1)[1].split("}", 1)[0]
+    for declaration in ("flex: 0 0 140px;", "width: 140px;", "height: 38px;"):
+        assert declaration in trigger
+    for retired in ("#ev-level", "#ev-timeframe", "#ev-category", "#ev-reset", "dp-activity-filter-field", "dp-activity-filter-label"):
+        assert retired not in page and retired not in controls and retired not in view
+    assert "<select" not in view
+    assert view.count('type="radio"') == 7 + 4 + 14
 
 
 def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:

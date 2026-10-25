@@ -1,7 +1,8 @@
 /* Activity Log behavior and render owner.
  *
- * The only implementation of loading, server-side filtering, page navigation,
- * reset and rendering for #view-events. The search box and its request
+ * The only implementation of loading, server-side filtering (the applied
+ * filters, their panel and Clear Filters), page navigation and rendering for
+ * #view-events. The search box and its request
  * identity belong to the shared search lifecycle (DPSearch, ui-search.js), as
  * on Downloads. The control markup is
  * static in index.html; this module binds it once and renders only into
@@ -52,9 +53,41 @@ let live=false,timer=null,dirty=false,hinted=null,investigation=0;
 const LIVE_CHOICE='dp-activity-auto-refresh';
 function chosen(){try{return sessionStorage.getItem(LIVE_CHOICE)!=='off';}catch(_){return true;}}
 function choose(on){try{sessionStorage.setItem(LIVE_CHOICE,on?'on':'off');}catch(_){}}
-function controls(){const search=document.getElementById('ev-search'),timeframe=document.getElementById('ev-timeframe'),severity=document.getElementById('ev-level'),category=document.getElementById('ev-category'),reset=document.getElementById('ev-reset'),pagination=document.getElementById('dp-activity-pagination'),info=document.getElementById('dp-activity-page-info'),pager=document.getElementById('dp-activity-page-btns'),newest=document.getElementById('ev-newest');return search&&timeframe&&severity&&category&&reset?{search,timeframe,severity,category,reset,pagination,info,pager,newest}:null;}
-function filters(c,text){return Boolean(text||(c.timeframe.value||'all')!=='all'||(c.severity.value||'')!==''||(c.category.value||'')!=='');}
-function syncReset(c){c.reset.hidden=!filters(c,c.search.value.trim());}
+function controls(){const search=document.getElementById('ev-search'),filter=document.getElementById('ev-filter'),label=document.getElementById('ev-filter-label'),applied=document.getElementById('ev-filter-applied'),panel=document.getElementById('ev-filter-panel'),pagination=document.getElementById('dp-activity-pagination'),info=document.getElementById('dp-activity-page-info'),pager=document.getElementById('dp-activity-page-btns'),newest=document.getElementById('ev-newest');return search&&filter&&label&&applied&&panel?{search,filter,label,applied,panel,pagination,info,pager,newest}:null;}
+// ── Filters ──
+// The applied filters are the only values a request reads: Available history,
+// All and All until the operator applies another combination. The panel's
+// radios (index.html, the one list of options, labels and values) are a draft
+// of them while it is open -- set from the applied filters whenever it opens or
+// closes, read once by Apply, never by a request, Auto Refresh or the pager.
+const FILTERS=Object.freeze(['timeframe','level','category']),DEFAULT_FILTERS=Object.freeze({timeframe:'all',level:'',category:''});
+let applied=DEFAULT_FILTERS;
+const restricted=()=>FILTERS.some(key=>applied[key]!==DEFAULT_FILTERS[key]);
+function filters(text){return Boolean(text||restricted());}
+const group=(c,key)=>c.panel.querySelector(`fieldset[data-filter="${key}"]`);
+const radios=(c,key)=>Array.from(group(c,key)?.querySelectorAll('input[type="radio"]')||[]);
+function setDraft(c,values){for(const key of FILTERS)for(const radio of radios(c,key))radio.checked=radio.value===values[key];}
+function draft(c){return Object.freeze(Object.fromEntries(FILTERS.map(key=>[key,radios(c,key).find(radio=>radio.checked)?.value??DEFAULT_FILTERS[key]])));}
+// The applied restrictions in the panel's own words, in its column order:
+// "Time Window: Last hour · Severity: Error". Columns at their defaults restrict nothing.
+function restrictions(c){return FILTERS.filter(key=>applied[key]!==DEFAULT_FILTERS[key]).map(key=>{const option=radios(c,key).find(radio=>radio.value===applied[key]);return `${group(c,key).querySelector('legend').textContent.trim()}: ${option?.closest('label')?.textContent.trim()||applied[key]}`;}).join(' · ');}
+// One control, two functions: with the defaults applied it opens the panel
+// (Filter Results); with any other combination applied it clears it (Clear
+// Filters), and its DP tooltip and description name what is applied.
+function syncFilter(c){const t=c.filter,clear=restricted(),own=(t.getAttribute('aria-describedby')||'').split(/\s+/).filter(id=>id&&id!==c.applied.id);
+t.dataset.state=clear?'clear':'filter';c.label.textContent=clear?'Clear Filters':'Filter Results';
+if(clear){const text=restrictions(c);c.applied.textContent=text;t.dataset.tooltip=`Clear filters — ${text}`;t.setAttribute('aria-describedby',[c.applied.id,...own].join(' '));t.removeAttribute('popovertarget');t.removeAttribute('aria-haspopup');t.removeAttribute('aria-expanded');}
+else{c.applied.textContent='';t.removeAttribute('data-tooltip');if(own.length)t.setAttribute('aria-describedby',own.join(' '));else t.removeAttribute('aria-describedby');t.setAttribute('popovertarget',c.panel.id);t.setAttribute('aria-haspopup','dialog');t.setAttribute('aria-expanded',String(c.panel.matches(':popover-open')));}}
+// The applied filters become ``next`` (one new investigation, if they changed).
+function applyFilters(c,next){if(FILTERS.every(key=>next[key]===applied[key]))return;applied=next;syncFilter(c);changed(c);}
+// The panel opens below the control, its right edge on the control's (above it
+// where there is more room), inside the window; its columns scroll, its actions stay.
+const EDGE=8,GAP=6;
+function place(c){const p=c.panel;if(!p.matches(':popover-open'))return;const box=c.filter.getBoundingClientRect(),vw=document.documentElement.clientWidth,vh=document.documentElement.clientHeight;
+p.style.maxHeight='';p.style.left=`${EDGE}px`;p.style.top=`${EDGE}px`;const size=p.getBoundingClientRect();
+const below=vh-box.bottom-GAP-EDGE,above=box.top-GAP-EDGE,up=size.height>below&&above>below,room=Math.max(0,up?above:below);
+p.style.maxHeight=`${room}px`;const height=Math.min(size.height,room);
+p.style.left=`${Math.max(EDGE,Math.min(box.right-size.width,vw-EDGE-size.width))}px`;p.style.top=`${up?box.top-GAP-height:box.bottom+GAP}px`;}
 function pageSize(){let value=DEFAULT_PAGE_SIZE;try{value=Number(settingsData?.activity_log_page_size);}catch(_){}return PAGE_SIZES.includes(value)?value:DEFAULT_PAGE_SIZE;}
 // nav: the accepted page -- {page, first, oldest, following, pages, lastUnavailable}.
 function restart(){cursor={snapshot:null,windowStart:null};request={};nav=null;investigation++;}
@@ -85,23 +118,29 @@ list.scrollTop=0;list.replaceChildren(block);}
 function replace(commit){const list=document.getElementById('event-list'),block=list?.querySelector(':scope > .dp-activity-placeholder');
 if(block&&window.DPMotion)window.DPMotion.resolve({region:block,host:list,content:()=>Array.from(list.children).filter(node=>!node.classList.contains('dp-motion-still'))},commit);else commit();}
 const ACTIONS=Object.freeze({first:()=>go({kind:'first'}),previous:()=>go({kind:'previous',after:nav.first}),next:()=>go({kind:'next',before:nav.oldest}),last:()=>go({kind:'last'})});
-function changed(c){syncReset(c);restart();void fetchPage();}
+function changed(c){restart();void fetchPage();}
 function bind(){const c=controls();if(!c||bound)return c;bound=true;
 search=window.DPSearch.attach({input:c.search,noun:'events',onCommit:()=>changed(c)});
-c.search.addEventListener('input',()=>syncReset(c));
-c.timeframe.addEventListener('change',()=>changed(c));
-c.severity.addEventListener('change',()=>changed(c));
-c.category.addEventListener('change',()=>changed(c));
-c.reset.addEventListener('click',()=>{search.clear();c.timeframe.value='all';c.severity.value='';c.category.value='';for(const select of [c.timeframe,c.severity,c.category]){try{window.DPDropdowns?.sync(select);}catch(_){}}changed(c);});
+// Clear Filters: the defaults at once, Search untouched. (Filter Results opens the panel through popovertarget.)
+c.filter.addEventListener('click',event=>{if(!restricted())return;event.preventDefault();applyFilters(c,DEFAULT_FILTERS);});
+// Every open starts from the applied filters; every close -- Apply, Cancel, Escape, a press outside -- leaves no draft behind.
+c.panel.addEventListener('beforetoggle',event=>{if(event.newState==='open')setDraft(c,applied);});
+c.panel.addEventListener('toggle',event=>{const open=event.newState==='open';if(!restricted())c.filter.setAttribute('aria-expanded',String(open));
+if(open){place(c);(radios(c,FILTERS[0]).find(radio=>radio.checked)||radios(c,FILTERS[0])[0])?.focus();}else setDraft(c,applied);});
+c.panel.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches?.('input[type="radio"]')){event.preventDefault();event.target.checked=true;}});
+c.panel.querySelector('[data-filter-action="cancel"]')?.addEventListener('click',()=>c.panel.hidePopover());
+c.panel.querySelector('[data-filter-action="apply"]')?.addEventListener('click',()=>{const next=draft(c);c.panel.hidePopover();applyFilters(c,next);});
+window.addEventListener('resize',()=>place(c));
+document.addEventListener('scroll',()=>place(c),{capture:true,passive:true});
 c.newest?.addEventListener('click',()=>{restart();void fetchPage();});
 const toggle=document.getElementById('ev-live');toggle?.addEventListener('change',()=>{live=toggle.checked;choose(live);stopFollowing();syncLive();if(live)catchUp();});
 document.getElementById('event-list')?.addEventListener('scroll',()=>{if(live&&c.newest&&!c.newest.hidden&&following())schedule();},{passive:true});
-syncReset(c);syncLive();return c;}
+syncFilter(c);syncLive();return c;}
 function parseTimestamp(value){if(!value)return null;try{if(typeof parseApiDate==='function')return parseApiDate(value);}catch(_){}const raw=String(value),d=new Date(/[zZ]|[+-]\d\d:\d\d$/.test(raw)?raw:`${raw.replace(' ','T')}Z`);return Number.isNaN(d.getTime())?null:d;}
 function formatTimestamp(value){const d=parseTimestamp(value);if(!d)return String(value||'—');let zone='UTC';try{zone=String(settingsData?.timezone||'').trim()||'UTC';}catch(_){}try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);}catch(_){return d.toLocaleString();}}
 function empty(list,text){const e=document.createElement('div');e.className='empty';e.textContent=text;list.appendChild(e);}
 function subjectLine(event){const parts=[CATEGORY_LABELS[event.category]||'Event'];const name=event.name?String(event.name):'';if(name)parts.push(name);if(event.transfer_id!==null&&event.transfer_id!==undefined)parts.push(`#${event.transfer_id}`);return parts.join(' · ');}
-function render(payload,c){const list=document.getElementById('event-list');if(!list)return;list.replaceChildren();const items=Array.isArray(payload?.items)?payload.items:[];if(!items.length){if(search.completeness()!=='complete')empty(list,'No matching events among those searched so far.');else if(filters(c,search.accepted()))empty(list,'No events match your filters.');else empty(list,payload?.history_started_at?`No events recorded yet. Event history begins ${formatTimestamp(payload.history_started_at)}.`:'No events recorded yet.');}
+function render(payload,c){const list=document.getElementById('event-list');if(!list)return;list.replaceChildren();const items=Array.isArray(payload?.items)?payload.items:[];if(!items.length){if(search.completeness()!=='complete')empty(list,'No matching events among those searched so far.');else if(filters(search.accepted()))empty(list,'No events match your filters.');else empty(list,payload?.history_started_at?`No events recorded yet. Event history begins ${formatTimestamp(payload.history_started_at)}.`:'No events recorded yet.');}
 for(const event of items){const row=document.createElement('div');row.className='dp-activity-row';row.dataset.eventType=String(event.type||'');const sev=String(event.severity||'info').toLowerCase();const level=document.createElement('div');level.className=`elevel dp-activity-level ${sev==='warning'?'warn':sev==='error'?'error':'info'}`;level.setAttribute('role','img');level.setAttribute('aria-label',sev==='warning'?'Warning':sev==='error'?'Error':'Info');const copy=document.createElement('div');copy.className='dp-activity-copy';const msg=document.createElement('div');msg.className='emsg dp-activity-message';msg.textContent=String(event.message??'');copy.appendChild(msg);const subject=document.createElement('div');subject.className='ename dp-activity-transfer';subject.textContent=subjectLine(event);copy.appendChild(subject);if(event.detail){const detail=document.createElement('details');detail.className='dp-activity-detail';const summary=document.createElement('summary');summary.textContent='Details';const body=document.createElement('div');body.className='dp-activity-detail-text';body.textContent=String(event.detail);detail.append(summary,body);copy.appendChild(detail);}const time=document.createElement('div');time.className='etime dp-activity-time';time.textContent=formatTimestamp(event.occurred_at);row.append(level,copy,time);list.appendChild(row);}
 document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));}
 // The page an answer to a `kind` request lands on, from the page it left.
@@ -144,9 +183,9 @@ document.addEventListener('debridpulse:activity-journal-changed',hint);
 document.addEventListener('debridpulse:pulse-connected',()=>{hinted=null;syncLive();if(live)catchUp();});
 document.addEventListener('debridpulse:pulse-lost',()=>{hinted=null;syncLive();});
 // Every entry to the page restores the session's choice; a departure stops following.
-document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();stopFollowing();syncLive();});
-async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',c.timeframe.value||'all');if(c.severity.value)params.set('level',c.severity.value);if(c.category.value)params.set('category',c.category.value);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
-try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);syncReset(c);};
+document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();stopFollowing();syncLive();const panel=document.getElementById('ev-filter-panel');if(event.detail?.view!=='events'&&panel?.matches(':popover-open'))panel.hidePopover();});
+async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',applied.timeframe);if(applied.level)params.set('level',applied.level);if(applied.category)params.set('category',applied.category);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
+try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);};
 // The page turn this request makes is already sliding here: its placeholder crossfades into the page, or -- not yet drawn -- the slide draws it. Every other answer is shown in place.
 const t=turn;if(t&&t.request===request){turn=null;t.ended=true;if(t.shown)replace(commit);else{t.paint=()=>{if(search.current(ticket))replace(commit);};await t.motion.done;}}
 else{endTurn(t);replace(commit);}
