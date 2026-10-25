@@ -13,9 +13,9 @@
 
 .badge[data-dp-status],
 :is(#dash-tbody, #t-tbody, #modal-body) .badge {
-  box-shadow:
+  box-shadow: var(--dp-op-glow,
     0 0 6px color-mix(in srgb, var(--dp-badge-color) 72%, transparent),
-    0 0 13px color-mix(in srgb, var(--dp-badge-color) 32%, transparent) !important;
+    0 0 13px color-mix(in srgb, var(--dp-badge-color) 32%, transparent)) !important;
 }
 
 /* ── Terminal failure progress ───────────────────────────────────────── */

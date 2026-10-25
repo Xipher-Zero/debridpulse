@@ -4,14 +4,18 @@ const { test, expect } = require('@playwright/test');
  * the surfaces that show it -- Downloading and Done badges and their glyphs,
  * progress fill and percentage on Dashboard and Downloads, and the healthy
  * Provider Status dot -- in both themes, and provider identity chips beside
- * them unchanged. The Downloads collection is answered by the page itself. */
+ * them unchanged. On a light theme the backed operational components (badges,
+ * chips, dots) draw the light operational material: the vivid emerald mark,
+ * and a label ink of the same hue and chroma deepened only in lightness; bare
+ * percentages keep the light label green. The Downloads collection is
+ * answered by the page itself. */
 
 const EMERALD = 'rgb(0, 230, 118)';            // #00E676: primary (dark labels and marks; fills in both themes)
-const LABEL_LIGHT = 'rgb(1, 120, 59)';         // #01783B: light-theme labels, percentages
-const MARK_LIGHT = 'rgb(1, 151, 75)';          // #01974B: light-theme glyphs and dots
+const LABEL_LIGHT = 'rgb(1, 120, 59)';         // #01783B: light-theme bare percentages
+const INK_LIGHT = 'oklch(0.3 0.214114 151.762)'; // emerald's hue and chroma at lightness 0.30: light badge labels
 const IDENTITY_INK = {                          // the locked identity colours, as the chip draws them
   dark: {TorBox: 'oklch(0.707893 0.148228 164.215)', 'Real-Debrid': 'oklch(0.691582 0.126192 132.063)'},
-  light: {TorBox: 'oklch(0.48 0.148228 164.215)', 'Real-Debrid': 'oklch(0.48 0.126192 132.063)'},
+  light: {TorBox: 'oklch(0.3 0.148228 164.215)', 'Real-Debrid': 'oklch(0.3 0.126192 132.063)'},
 };
 
 const DEEP = 'rgb(0, 200, 83)';                 // #00C853: the progress gradient's leading stop
@@ -50,7 +54,7 @@ test('success reads emerald in both themes, with locked identity chips beside it
   await expect(dot).toBeVisible();
   for (const theme of ['dark', 'light']) {
     await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
-    const label = theme === 'dark' ? EMERALD : LABEL_LIGHT, mark = theme === 'dark' ? EMERALD : MARK_LIGHT;
+    const label = theme === 'dark' ? EMERALD : INK_LIGHT, mark = EMERALD, pct = theme === 'dark' ? EMERALD : LABEL_LIGHT;
     expect(await dot.evaluate(node => getComputedStyle(node).backgroundColor), `${theme} healthy dot`).toBe(mark);
     for (const [view, body] of [['dashboard', '#dash-tbody'], ['torrents', '#t-tbody']]) {
       await page.locator(`#sidebar .nav-item[data-view="${view}"]`).click();
@@ -62,7 +66,7 @@ test('success reads emerald in both themes, with locked identity chips beside it
           expect(r.badge, `${at} badge label`).toBe(label);
           if (view === 'dashboard') expect(r.glyph, `${at} badge glyph`).toBe(mark);
           expect(r.fill, `${at} progress fill`).toBe(`linear-gradient(90deg, ${DEEP}, ${EMERALD})`);
-          if (status === 'downloading') expect(r.pct, `${at} percentage`).toBe(label);
+          if (status === 'downloading') expect(r.pct, `${at} percentage`).toBe(pct);
           expect(r.chip, `${at} identity chip`).toBe(IDENTITY_INK[theme][provider]);
         }
       }

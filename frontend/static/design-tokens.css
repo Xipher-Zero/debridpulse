@@ -67,9 +67,6 @@
      imported): the native accent's value, held as a state of its own so an
      alternative palette's accent never recolours a status. */
   --dp-state-processing-badge: #b45cff;
-  /* What a translucent status badge or provider chip tints: the surface
-     beneath it, except in the operational experiment below. */
-  --dp-operational-interior: transparent;
 
   /* Semantic tinted surfaces */
   --dp-state-success-bg: color-mix(in srgb, var(--dp-state-success) 11%, transparent);
@@ -266,21 +263,21 @@ body.light,
   --shadow-soft: 0 8px 24px rgba(28, 44, 70, .08);
 }
 
-/* Operational treatment of the alternative light palettes: the backed
-   operational elements -- status badges, provider chips, Provider Status dots,
-   the topbar Pause / Resume controls and Retry -- draw state with DP Dark's
-   own values over DP Dark's surface (--dp-operational-interior), and each of
-   their light-only overrides reads body.light:where(:not([data-dp-palette])).
-   Every other reader of a state colour -- a bare value, percentage or
-   statistic drawn on the palette's light surface -- keeps the light value.
-   Native DebridPulse Light is unchanged. */
-body.light[data-dp-palette] :is(
+/* Light operational material (every light theme, native DebridPulse Light
+   included). The backed operational components -- status badges, provider
+   chips, Provider Status dots, the topbar Pause / Resume controls and the row
+   and bulk Pause, Resume and Retry actions -- draw state with DP Dark's own
+   values, and each draws its backing, edge, label ink and glow from its own
+   hue (--dp-op-hue: the badge's state, the chip's identity, the control's
+   state; set by the component's owner). Every other reader of a state colour
+   -- a bare value, percentage or statistic -- keeps the light value. */
+body.light :is(
   :is(#dash-tbody, #t-tbody, #modal-body) .badge,
   .dp-provider-chip,
   #provider-status-list .dot,
   #topbar-actions > .btn,
-  :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
-  #view-torrents .dp-downloads-bulk-action--reset
+  :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("], [onclick*="resumeT("], [onclick*="resumeTorrent("], [onclick*="retryT("], [onclick*="retryTorrent("]),
+  #view-torrents :is(.dp-downloads-bulk-action--pause, .dp-downloads-bulk-action--resume, .dp-downloads-bulk-action--reset)
 ) {
   --dp-state-success: #00E676;
   --dp-state-success-mark: #00E676;
@@ -294,6 +291,22 @@ body.light[data-dp-palette] :is(
   --dp-state-ready: #6f8dba;
   --dp-state-recoverable: #ffb52b;
   --dp-state-processing-badge: #b45cff;
-  --dp-operational-interior: #0b1224;
-  --dp-state-active-bg: color-mix(in srgb, var(--dp-state-active) 11%, var(--dp-operational-interior));
+  /* The backing carries the hue: a saturated wash of the component's own
+     hue, concentrated at its leading edge over a lighter wash of the same
+     hue -- never a neutral, never a dark interior. */
+  --dp-op-surface:
+    radial-gradient(130% 160% at 18% 0%, color-mix(in oklab, var(--dp-op-hue) 46%, transparent) 0%, transparent 72%),
+    linear-gradient(135deg, color-mix(in oklab, var(--dp-op-hue) 30%, transparent) 0%, color-mix(in oklab, var(--dp-op-hue) 16%, transparent) 100%);
+  --dp-op-edge: color-mix(in oklab, var(--dp-op-hue) 82%, transparent);
+  /* Label ink: the same hue and chroma, deepened only in lightness. */
+  --dp-op-ink: oklch(from var(--dp-op-hue) min(l, 0.30) c h);
+  --dp-op-glow:
+    0 0 7px color-mix(in oklab, var(--dp-op-hue) 62%, transparent),
+    0 0 16px color-mix(in oklab, var(--dp-op-hue) 30%, transparent);
+  --dp-op-surface-hover:
+    radial-gradient(130% 160% at 18% 0%, color-mix(in oklab, var(--dp-op-hue) 58%, transparent) 0%, transparent 72%),
+    linear-gradient(135deg, color-mix(in oklab, var(--dp-op-hue) 40%, transparent) 0%, color-mix(in oklab, var(--dp-op-hue) 22%, transparent) 100%);
+  --dp-op-glow-hover:
+    0 0 9px color-mix(in oklab, var(--dp-op-hue) 72%, transparent),
+    0 0 20px color-mix(in oklab, var(--dp-op-hue) 36%, transparent);
 }

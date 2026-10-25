@@ -173,8 +173,9 @@ def test_transfer_row_actions_have_equal_footprint_and_shared_pause_material() -
     assert "width: 72px !important;" in transfer
     assert "min-width: 72px !important;" in transfer
     assert "height: 36px !important;" in transfer
-    shared_pause = "linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%)"
-    shared_pause_hover = "linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%)"
+    # Row and topbar Pause share one light material: the caution hue's.
+    shared_pause = "--dp-op-hue: var(--dp-state-caution);"
+    shared_pause_hover = "background: var(--dp-op-surface-hover) !important;"
     assert shared_pause in transfer
     assert shared_pause in controls
     assert shared_pause_hover in transfer

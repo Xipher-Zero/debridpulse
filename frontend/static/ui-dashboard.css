@@ -968,17 +968,17 @@ body.light .nav-item.active::after {
   font-family: var(--dp-font-sans), 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
 }
 #t-tbody tr[data-status="downloading"] .badge-downloading {
-  color: var(--dp-state-success) !important;
+  color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
 #t-tbody tr[data-status="downloading"] .badge-partial,
 #t-tbody tr[data-status="paused"] .badge-paused {
-  color: #f2bd3f !important;
+  color: var(--dp-op-ink, #f2bd3f) !important;
 }
 #t-tbody tr[data-status="completed"] .badge-completed {
-  color: var(--dp-state-success) !important;
+  color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
 #t-tbody tr[data-status="error"] .badge-error {
-  color: #ff676f !important;
+  color: var(--dp-op-ink, #ff676f) !important;
 }
 
 /* Active transfer progress must read as live work rather than a hairline. */
@@ -1053,8 +1053,8 @@ button[onclick*="pauseT("] {
   color: #ffd35b !important;
   box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
 }
-body.light:where(:not([data-dp-palette])) #btn-pause-all,
-body.light:where(:not([data-dp-palette])) button[onclick*="pauseT("] {
+body.light #btn-pause-all,
+body.light button[onclick*="pauseT("] {
   background: linear-gradient(135deg, #fff3cf 0%, #f8dfa2 52%, #edca76 100%) !important;
   border-color: #d5a63e !important;
   color: #8b620b !important;
@@ -1071,9 +1071,9 @@ button[onclick*="resumeT("] {
   color: #9af0bf !important;
   box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
 }
-body.light:where(:not([data-dp-palette])) #btn-resume-all,
-body.light:where(:not([data-dp-palette])) #btn-resume-paused,
-body.light:where(:not([data-dp-palette])) button[onclick*="resumeT("] {
+body.light #btn-resume-all,
+body.light #btn-resume-paused,
+body.light button[onclick*="resumeT("] {
   background: linear-gradient(135deg, #e4faec 0%, #c9f2da 52%, #afe7c7 100%) !important;
   border-color: #83d3aa !important;
   color: #176d46 !important;
@@ -1141,7 +1141,7 @@ body.light #view-dashboard #btn-add-transfer {
 #topbar-actions #btn-pause-all.btn {
   background:
     linear-gradient(180deg, rgba(255,255,255,.075) 0%, transparent 34%),
-    linear-gradient(135deg, rgba(126,91,31,.94) 0%, rgba(91,68,29,.96) 54%, rgba(57,48,35,.98) 100%) var(--dp-operational-interior) !important;
+    linear-gradient(135deg, rgba(126,91,31,.94) 0%, rgba(91,68,29,.96) 54%, rgba(57,48,35,.98) 100%) !important;
   border-color: rgba(242,189,63,.68) !important;
   color: #ffd45d !important;
   box-shadow:
@@ -1150,7 +1150,7 @@ body.light #view-dashboard #btn-add-transfer {
     -5px 7px 14px -8px rgba(113,79,20,.42),
     0 5px 11px -8px rgba(79,56,18,.32) !important;
 }
-body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn {
+body.light #topbar-actions #btn-pause-all.btn {
   background:
     linear-gradient(180deg, rgba(255,255,255,.78) 0%, rgba(255,255,255,.10) 34%, transparent 44%),
     linear-gradient(135deg, #fff2cc 0%, #f7dda0 54%, #edc974 100%) !important;
@@ -1167,7 +1167,7 @@ body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn {
 #topbar-actions #btn-resume-paused.btn {
   background:
     linear-gradient(180deg, rgba(255,255,255,.07) 0%, transparent 34%),
-    linear-gradient(135deg, rgba(27,121,81,.91) 0%, rgba(20,88,66,.95) 54%, rgba(15,55,49,.98) 100%) var(--dp-operational-interior) !important;
+    linear-gradient(135deg, rgba(27,121,81,.91) 0%, rgba(20,88,66,.95) 54%, rgba(15,55,49,.98) 100%) !important;
   border-color: rgba(73,224,145,.48) !important;
   color: #9af0bf !important;
   box-shadow:
@@ -1176,18 +1176,14 @@ body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn {
     -5px 7px 14px -8px rgba(16,91,57,.42),
     0 5px 11px -8px rgba(12,63,42,.28) !important;
 }
-body.light:where(:not([data-dp-palette])) #topbar-actions #btn-resume-all.btn,
-body.light:where(:not([data-dp-palette])) #topbar-actions #btn-resume-paused.btn {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.82) 0%, rgba(255,255,255,.12) 35%, transparent 45%),
-    linear-gradient(135deg, #e7fbed 0%, #c9f1d9 54%, #afe6c6 100%) !important;
-  border-color: #79d0a2 !important;
-  color: #176d46 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.94),
-    inset 0 -1px rgba(26,125,79,.13),
-    -5px 7px 14px -8px rgba(30,121,78,.38),
-    0 5px 11px -8px rgba(30,104,72,.22) !important;
+body.light #topbar-actions #btn-resume-all.btn,
+body.light #topbar-actions #btn-resume-paused.btn {
+  --dp-op-hue: var(--dp-state-success);
+  background: var(--dp-op-surface) !important;
+  border-color: var(--dp-op-edge) !important;
+  color: var(--dp-op-ink) !important;
+  text-shadow: none !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.55), var(--dp-op-glow) !important;
 }
 
 #runtime-speed-badge {

@@ -992,7 +992,10 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     base = badges[badges.index(".dp-provider-chip {"):]
     base = base[:base.index("}")]
     assert "--dp-provider-accent: var(--dp-provider-identity, var(--dp-accent-purple-bright, var(--accent)));" in base
-    assert "color: var(--dp-identity-ink);" in base
+    # A light theme draws the label in the light operational material's ink
+    # of the same identity hue; otherwise the identity ink.
+    assert "--dp-op-hue: var(--dp-provider-accent);" in base
+    assert "color: var(--dp-op-ink, var(--dp-identity-ink));" in base
     # The ink is the identity's hue with only its lightness bounded (a floor
     # on dark, a cap on light), so the label stays readable on the badge face.
     assert "--dp-identity-ink: oklch(from var(--dp-provider-accent) max(l, 0.62) c h);" in badges

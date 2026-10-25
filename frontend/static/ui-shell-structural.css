@@ -179,6 +179,12 @@ body.light .logo-name span { color: var(--dp-chrome-brand-text); }
   height: 8px;
   box-shadow: 0 0 9px currentColor;
 }
+/* On a light panel the dot keeps its vivid fill and glow (its own state is
+   currentColor there, ui-shell.css) inside a 1px rim of the same hue,
+   deepened, so the mark keeps its edge against white. */
+body.light .conn-row .dot {
+  box-shadow: 0 0 0 1px oklch(from currentColor min(l, 0.48) c h), 0 0 9px currentColor;
+}
 #premium-row {
   margin-bottom: 5px;
   padding-bottom: 7px;

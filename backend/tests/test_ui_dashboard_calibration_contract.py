@@ -314,15 +314,16 @@ def test_shared_utility_controls_keep_light_pause_all_treatment() -> None:
     require(
         read(UTILITY),
         (
-            # Native DebridPulse Light's treatment; an alternative light
-            # palette draws DP Dark's (the operational experiment).
-            "body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn",
-            "rgba(255,251,236,.54)",
-            "rgba(250,234,186,.22)",
-            "rgba(207,158,55,.62)",
-            "color: #76560d !important",
+            # Every light theme draws Pause All in the light operational
+            # material (design-tokens.css) of its caution hue.
+            "body.light #topbar-actions #btn-pause-all.btn {",
+            "--dp-op-hue: var(--dp-state-caution);",
+            "background: var(--dp-op-surface) !important;",
+            "border-color: var(--dp-op-edge) !important;",
+            "color: var(--dp-op-ink) !important;",
             "text-shadow: none !important",
-            "0 3px 8px -6px rgba(137,99,24,.18)",
+            "body.light #topbar-actions #btn-pause-all.btn:hover",
+            "background: var(--dp-op-surface-hover) !important;",
         ),
         "light Pause All contract",
     )

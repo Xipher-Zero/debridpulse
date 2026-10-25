@@ -71,27 +71,22 @@ body.light #view-events .dp-activity-refresh:hover {
 }
 
 /* ── Light-theme Pause All integration ───────────────────────────────── */
-/* Pause remains a caution action, but should read like the other translucent
-   secondary controls rather than an opaque gold slab. The row-level pause
-   contract uses these exact light-theme values as well. */
-body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn {
-  background:
-    linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
-  border-color: rgba(207,158,55,.62) !important;
-  color: #76560d !important;
+/* Pause remains a caution action, drawn on a light theme in the light
+   operational material of its caution hue (design-tokens.css), as the row
+   Pause is. */
+body.light #topbar-actions #btn-pause-all.btn {
+  --dp-op-hue: var(--dp-state-caution);
+  background: var(--dp-op-surface) !important;
+  border-color: var(--dp-op-edge) !important;
+  color: var(--dp-op-ink) !important;
   text-shadow: none !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.72),
-    0 3px 8px -6px rgba(137,99,24,.18) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.55), var(--dp-op-glow) !important;
 }
-body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn:hover {
-  background:
-    linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
-  border-color: rgba(196,142,40,.72) !important;
-  color: #6d4e09 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.80),
-    0 3px 8px -6px rgba(137,99,24,.22) !important;
+body.light #topbar-actions #btn-pause-all.btn:hover {
+  background: var(--dp-op-surface-hover) !important;
+  border-color: var(--dp-op-hue) !important;
+  color: var(--dp-op-ink) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.6), var(--dp-op-glow-hover) !important;
 }
 
 

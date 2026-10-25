@@ -182,6 +182,11 @@ body {
 .dot.error  { background: var(--red); animation: blink 1.5s infinite; }
 .dot.check  { background: var(--yellow); animation: pulse 1.2s infinite; }
 .dot.warn   { background: var(--yellow); }
+/* A Provider Status dot glows in currentColor; on a light theme that is the
+   row's dark text, so there the glow is the dot's own state. */
+body.light .dot.ok { color: var(--dp-state-success-mark); }
+body.light .dot.error { color: var(--red); }
+body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 

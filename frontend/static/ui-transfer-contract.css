@@ -20,9 +20,10 @@
   font-size: 10.5px !important;
   line-height: 1 !important;
   font-weight: 600 !important;
-  border-color: color-mix(in srgb, var(--dp-badge-color) 22%, transparent) !important;
-  background: color-mix(in srgb, var(--dp-badge-color) 9%, var(--dp-operational-interior)) !important;
-  color: var(--dp-badge-color) !important;
+  --dp-op-hue: var(--dp-badge-color);
+  border-color: var(--dp-op-edge, color-mix(in srgb, var(--dp-badge-color) 22%, transparent)) !important;
+  background: var(--dp-op-surface, color-mix(in srgb, var(--dp-badge-color) 9%, transparent)) !important;
+  color: var(--dp-op-ink, var(--dp-badge-color)) !important;
 }
 
 :is(#dash-tbody, #t-tbody, #modal-body) .badge .dp-status-icon {
@@ -188,20 +189,21 @@
   color: #ffd35b !important;
   box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
 }
-body.light:where(:not([data-dp-palette])) :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
-body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-action--pause {
-  background: linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
-  border-color: rgba(207,158,55,.62) !important;
-  color: #76560d !important;
+body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
+body.light #view-torrents .dp-downloads-bulk-action--pause {
+  --dp-op-hue: var(--dp-state-caution);
+  background: var(--dp-op-surface) !important;
+  border-color: var(--dp-op-edge) !important;
+  color: var(--dp-op-ink) !important;
   text-shadow: none !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 3px 8px -6px rgba(137,99,24,.18) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.55), var(--dp-op-glow) !important;
 }
-body.light:where(:not([data-dp-palette])) :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]):hover,
-body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-action--pause:hover {
-  background: linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
-  border-color: rgba(196,142,40,.72) !important;
-  color: #6d4e09 !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.80), 0 3px 8px -6px rgba(137,99,24,.22) !important;
+body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]):hover,
+body.light #view-torrents .dp-downloads-bulk-action--pause:hover {
+  background: var(--dp-op-surface-hover) !important;
+  border-color: var(--dp-op-hue) !important;
+  color: var(--dp-op-ink) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.6), var(--dp-op-glow-hover) !important;
 }
 :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
 #view-torrents .dp-downloads-bulk-action--resume {
@@ -213,12 +215,14 @@ body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-acti
   color: #9af0bf !important;
   box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
 }
-body.light:where(:not([data-dp-palette])) :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
-body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-action--resume {
-  background: linear-gradient(135deg, #e4faec 0%, #c9f2da 52%, #afe7c7 100%) !important;
-  border-color: #83d3aa !important;
-  color: #176d46 !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 16px rgba(30, 121, 78, .10) !important;
+body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
+body.light #view-torrents .dp-downloads-bulk-action--resume {
+  --dp-op-hue: var(--dp-state-success);
+  background: var(--dp-op-surface) !important;
+  border-color: var(--dp-op-edge) !important;
+  color: var(--dp-op-ink) !important;
+  text-shadow: none !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.55), var(--dp-op-glow) !important;
 }
 
 /* Retry is an information/recovery action. Match the translucent semantic
@@ -226,10 +230,11 @@ body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-acti
    filled primary control. Theme-aware state tokens keep the blue family intact. */
 :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
 #view-torrents .dp-downloads-bulk-action--reset {
-  background: var(--dp-state-active-bg) !important;
-  border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important;
-  color: var(--dp-state-active) !important;
-  box-shadow: none !important;
+  --dp-op-hue: var(--dp-state-active);
+  background: var(--dp-op-surface, var(--dp-state-active-bg)) !important;
+  border-color: var(--dp-op-edge, color-mix(in srgb, var(--dp-state-active) 34%, transparent)) !important;
+  color: var(--dp-op-ink, var(--dp-state-active)) !important;
+  box-shadow: var(--dp-op-glow, none) !important;
 }
 
 /* ── Progress geometry ─────────────────────────────────────────────── */
@@ -269,10 +274,12 @@ body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-acti
   max-width: 100%;
   min-height: 20px;
   padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--dp-provider-accent) 34%, var(--dp-divider, var(--border)));
+  --dp-op-hue: var(--dp-provider-accent);
+  border: 1px solid var(--dp-op-edge, color-mix(in srgb, var(--dp-provider-accent) 34%, var(--dp-divider, var(--border))));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--dp-provider-accent) 9%, var(--dp-operational-interior));
-  color: var(--dp-identity-ink);
+  background: var(--dp-op-surface, color-mix(in srgb, var(--dp-provider-accent) 9%, transparent));
+  box-shadow: var(--dp-op-glow, none);
+  color: var(--dp-op-ink, var(--dp-identity-ink));
   font-size: 10px;
   font-weight: 650;
   line-height: 1.25;
@@ -289,15 +296,8 @@ body.light:where(:not([data-dp-palette])) #view-torrents .dp-downloads-bulk-acti
 .dp-source-magnet {
   --dp-identity-ink: oklch(from var(--dp-provider-accent) max(l, 0.62) c h);
 }
-:is(body.light:where(:not([data-dp-palette])), [data-theme="light"], .theme-light) .dp-provider-chip,
-:is(body.light, [data-theme="light"], .theme-light) .dp-source-magnet {
+:is(body.light, [data-theme="light"], .theme-light) :is(.dp-provider-chip, .dp-source-magnet) {
   --dp-identity-ink: oklch(from var(--dp-provider-accent) min(l, 0.48) c h);
-}
-/* An alternative light palette draws the chip on DP Dark's surface
-   (design-tokens.css), where 0.65 is the floor at which every identity
-   reads at >= 4.5:1 on its face. */
-body.light[data-dp-palette] .dp-provider-chip {
-  --dp-identity-ink: oklch(from var(--dp-provider-accent) max(l, 0.65) c h);
 }
 /* A protocol identity badge's glyph: inside the badge, left of its label,
    drawn in the label's ink. Only a protocol identity has one

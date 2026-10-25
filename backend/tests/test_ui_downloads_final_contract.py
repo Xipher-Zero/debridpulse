@@ -58,10 +58,10 @@ def test_downloads_rows_emit_final_status_and_action_language() -> None:
     assert "font-size: 0 !important" not in desktop
     assert "content: 'Retry'" not in desktop
     assert '[onclick*="retryT("]' in transfer
-    assert "background: var(--dp-state-active-bg) !important" in transfer
-    assert "border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important" in transfer
-    assert "color: var(--dp-state-active) !important" in transfer
-    assert "box-shadow: none !important" in transfer
+    assert "background: var(--dp-op-surface, var(--dp-state-active-bg)) !important" in transfer
+    assert "border-color: var(--dp-op-edge, color-mix(in srgb, var(--dp-state-active) 34%, transparent)) !important" in transfer
+    assert "color: var(--dp-op-ink, var(--dp-state-active)) !important" in transfer
+    assert "box-shadow: var(--dp-op-glow, none) !important" in transfer
     required_geometry = (
         "min-height: 25px !important", "padding: 0 9px !important",
         "border-radius: 6px !important", "font-size: 10.5px !important",

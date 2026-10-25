@@ -54,7 +54,8 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
         "--dp-badge-color: var(--dp-state-error)",
         ".badge-deleted",
         "--dp-badge-color: var(--dp-text-muted)",
-        "color: var(--dp-badge-color) !important",
+        # The light operational material's ink where a light theme defines it.
+        "color: var(--dp-op-ink, var(--dp-badge-color)) !important",
         "min-height: 25px !important",
         "border-radius: 6px !important",
     )
@@ -81,10 +82,12 @@ def test_transfer_actions_share_recent_activity_geometry() -> None:
         "[onclick*=\"resumeTorrent(\"]",
         "[onclick*=\"retryT(\"]",
         "[onclick*=\"retryTorrent(\"]",
-        "background: var(--dp-state-active-bg) !important",
-        "border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important",
-        "color: var(--dp-state-active) !important",
-        "box-shadow: none !important",
+        # Dark: the translucent active treatment; light: the material of its hue.
+        "--dp-op-hue: var(--dp-state-active);",
+        "background: var(--dp-op-surface, var(--dp-state-active-bg)) !important",
+        "border-color: var(--dp-op-edge, color-mix(in srgb, var(--dp-state-active) 34%, transparent)) !important",
+        "color: var(--dp-op-ink, var(--dp-state-active)) !important",
+        "box-shadow: var(--dp-op-glow, none) !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"shared transfer action contract is missing: {missing}"
