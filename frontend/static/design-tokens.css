@@ -1,7 +1,11 @@
 /* DebridPulse v1.0.11 design tokens.
    Visual target: approved dark/light mockups. These are semantic tokens, not page-local colors. */
 
-:root {
+/* [data-theme="dark"] mirrors the light block's [data-theme="light"]: an
+   element (the theme picker's DebridPulse swatch) can show the native dark
+   palette whatever palette the page around it uses. */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
 
   /* Application and surface hierarchy */
@@ -59,6 +63,10 @@
   --dp-state-paused: #a66cff;
   --dp-state-ready: #6f8dba;
   --dp-state-recoverable: #ffb52b;
+  /* The transfer badge of provider-side work (processing, extracting,
+     imported): the native accent's value, held as a state of its own so an
+     alternative palette's accent never recolours a status. */
+  --dp-state-processing-badge: #b45cff;
 
   /* Semantic tinted surfaces */
   --dp-state-success-bg: color-mix(in srgb, var(--dp-state-success) 11%, transparent);
@@ -203,6 +211,7 @@ body.light,
   --dp-state-paused: #7c3dd5;
   --dp-state-ready: #607397;
   --dp-state-recoverable: #d98a00;
+  --dp-state-processing-badge: #9637f5;
 
   --dp-nav-hover: rgba(132, 40, 237, .055);
   --dp-nav-active: linear-gradient(90deg, rgba(132, 40, 237, .14), rgba(35, 119, 244, .055));

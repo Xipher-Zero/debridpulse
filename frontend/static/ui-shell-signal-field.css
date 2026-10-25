@@ -16,8 +16,8 @@ body > #sidebar-version.dp-app-version {
 }
 
 body:not(.light) > #sidebar-version.dp-app-version {
-  color: #aeb5d1;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, .42), 0 0 8px rgba(124, 92, 246, .10);
+  color: var(--dp-chrome-version-text);
+  text-shadow: var(--dp-chrome-version-glow);
 }
 
 body.light > #sidebar-version.dp-app-version {
@@ -40,12 +40,12 @@ body.light > #sidebar-version.dp-app-version {
   transform: none !important;
   mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
-  filter: saturate(1.10) drop-shadow(0 0 10px rgba(124, 58, 237, .12));
+  filter: var(--dp-chrome-signal-filter);
 }
 
 body.light #sidebar::before {
   opacity: .34 !important;
-  filter: saturate(.92) drop-shadow(0 0 8px rgba(124, 58, 237, .055));
+  filter: var(--dp-chrome-signal-filter);
 }
 
 /* On the desktop the field keeps the full sidebar's geometry at every

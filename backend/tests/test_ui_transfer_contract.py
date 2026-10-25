@@ -42,7 +42,9 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
         "--dp-badge-color: var(--dp-state-active)",
         ".badge-processing",
         ".badge-extracting",
-        "--dp-badge-color: var(--dp-accent-purple-bright)",
+        # Provider-side work is a state of its own (design-tokens.css), not the
+        # decorative accent an alternative palette may recolour.
+        "--dp-badge-color: var(--dp-state-processing-badge)",
         ".badge-paused",
         ".badge-ready",
         ".badge-partial",
@@ -58,6 +60,10 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"transfer status contract is missing: {missing}"
+    # Its values are the native accent's, per mode, so DebridPulse renders as before.
+    tokens = (TRANSFER.parent / "design-tokens.css").read_text(encoding="utf-8")
+    assert "--dp-state-processing-badge: #b45cff;" in tokens
+    assert "--dp-state-processing-badge: #9637f5;" in tokens
 
 
 def test_transfer_actions_share_recent_activity_geometry() -> None:

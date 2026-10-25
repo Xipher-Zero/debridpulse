@@ -7,6 +7,8 @@ import json
 import re
 import xml.etree.ElementTree as ET
 
+from ui_chrome_tokens import require_token
+
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
@@ -134,9 +136,9 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> 
         ".sidebar-theme-control.topbar-theme-control",
         ".nav-item.active::after",
         "body.light #page-title",
-        "radial-gradient(920px 540px at 36% 4%",
     ):
         assert fragment in structural
+    require_token(structural, "--dp-chrome-canvas", "radial-gradient(920px 540px at 36% 4%")
     for fragment in (
         "/icons/dp/crown.svg?v=11",
         ".conn-row:has(#dot-aria2)",

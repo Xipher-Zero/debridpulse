@@ -38,7 +38,7 @@ def normalized(path: str) -> str:
 
 def test_first_paint_bootstrap_does_not_own_application_io_or_page_state() -> None:
     bootstrap = read("ui-theme-bootstrap.js")
-    assert "localStorage.getItem('theme')" in bootstrap
+    assert "localStorage.getItem(key)" in bootstrap and "read('theme')" in bootstrap
     for forbidden in (
         "fetch(", "/api/", "XMLHttpRequest", "EventSource", "MutationObserver",
         "loadDetailedStats", "loadSettings",

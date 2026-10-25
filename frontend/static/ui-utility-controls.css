@@ -22,9 +22,9 @@
    remains reserved for pause/caution semantics. */
 #view-dashboard #btn-recover-all,
 #view-events .dp-activity-refresh {
-  background: rgba(157,91,213,.028) !important;
-  border-color: rgba(183,116,228,.50) !important;
-  color: #dcbcf2 !important;
+  background: var(--dp-chrome-utility-surface) !important;
+  border-color: var(--dp-chrome-utility-edge) !important;
+  color: var(--dp-chrome-utility-text) !important;
 }
 #view-dashboard #btn-recover-all .dp-icon {
   filter:
@@ -42,9 +42,9 @@
 }
 body.light #view-dashboard #btn-recover-all,
 body.light #view-events .dp-activity-refresh {
-  background: rgba(151,87,203,.018) !important;
-  border-color: #c5a3dc !important;
-  color: #714790 !important;
+  background: var(--dp-chrome-utility-surface) !important;
+  border-color: var(--dp-chrome-utility-edge) !important;
+  color: var(--dp-chrome-utility-text) !important;
 }
 body.light #view-dashboard #btn-recover-all .dp-icon {
   filter:
@@ -59,15 +59,15 @@ body.light #view-events .dp-activity-refresh .dp-utility-icon {
 
 #view-dashboard #btn-recover-all:hover,
 #view-events .dp-activity-refresh:hover {
-  background: rgba(157,91,213,.055) !important;
-  border-color: rgba(190,125,234,.68) !important;
+  background: var(--dp-chrome-utility-surface-hover) !important;
+  border-color: var(--dp-chrome-utility-edge-hover) !important;
   filter: none !important;
   transform: none !important;
 }
 body.light #view-dashboard #btn-recover-all:hover,
 body.light #view-events .dp-activity-refresh:hover {
-  background: rgba(154,91,207,.055) !important;
-  border-color: #b98dd5 !important;
+  background: var(--dp-chrome-utility-surface-hover) !important;
+  border-color: var(--dp-chrome-utility-edge-hover) !important;
 }
 
 /* ── Light-theme Pause All integration ───────────────────────────────── */
@@ -104,9 +104,9 @@ body.light #topbar-actions #btn-pause-all.btn:hover {
   height: 18px !important;
   stroke-width: 2 !important;
   color: inherit !important;
-  filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
+  filter: var(--dp-chrome-utility-glow) !important;
 }
 body.light #view-dashboard #btn-recover-all .dp-utility-icon,
 body.light #view-events .dp-activity-refresh .dp-utility-icon {
-  filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
+  filter: var(--dp-chrome-utility-glow) !important;
 }

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from ui_chrome_tokens import require_token
+
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 
@@ -69,4 +71,4 @@ def test_theme_elevation_keeps_dark_and_light_provider_parity() -> None:
     assert "rgba(167, 139, 250, .06)" in css
     assert "body:not(.light) #sidebar .sidebar-footer" in css
     assert "body.light #sidebar .sidebar-footer" in css
-    assert "var(--dp-shadow-raised)" in css
+    require_token(css, "--dp-chrome-sidebar-panel-shadow", "var(--dp-shadow-raised)")

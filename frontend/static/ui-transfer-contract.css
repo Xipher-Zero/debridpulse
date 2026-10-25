@@ -44,7 +44,7 @@
 :is(#dash-tbody, #t-tbody, #modal-body) .badge-processing,
 :is(#dash-tbody, #t-tbody, #modal-body) .badge-extracting,
 :is(#dash-tbody, #t-tbody, #modal-body) .badge-imported {
-  --dp-badge-color: var(--dp-accent-purple-bright);
+  --dp-badge-color: var(--dp-state-processing-badge);
 }
 :is(#dash-tbody, #t-tbody, #modal-body) .badge-paused,
 :is(#dash-tbody, #t-tbody, #modal-body) .badge-ready,

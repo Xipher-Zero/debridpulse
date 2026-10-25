@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from ui_chrome_tokens import require_token
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -154,9 +156,13 @@ def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
     assert "#view-events .dp-activity-refresh" in controls
     assert "height: 36px !important;" in controls
     assert "border-radius: 9px !important;" in controls
-    assert "background: rgba(151,87,203,.018) !important;" in controls
-    assert "border-color: #c5a3dc !important;" in controls
-    assert "color: #714790 !important;" in controls
+    # The reviewed light recipe is the utility chrome tokens' native values.
+    assert "background: var(--dp-chrome-utility-surface) !important;" in controls
+    assert "border-color: var(--dp-chrome-utility-edge) !important;" in controls
+    assert "color: var(--dp-chrome-utility-text) !important;" in controls
+    require_token(controls, "--dp-chrome-utility-surface", "rgba(151,87,203,.018)")
+    require_token(controls, "--dp-chrome-utility-edge", "#c5a3dc")
+    require_token(controls, "--dp-chrome-utility-text", "#714790")
     assert ".dp-activity-refresh:hover" in controls
 
 

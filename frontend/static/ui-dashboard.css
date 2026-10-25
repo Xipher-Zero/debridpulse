@@ -378,12 +378,12 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   font-size: 27px;
   line-height: 1;
   font-weight: 750;
-  color: #fbfbff;
+  color: var(--dp-chrome-kpi-value);
 }
 #view-dashboard .dhs-val--sm { font-size: 23px; }
 #view-dashboard .dhs-label {
   margin-top: 7px;
-  color: #bec3dc;
+  color: var(--dp-chrome-kpi-label);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: .045em;
@@ -475,7 +475,7 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   gap: 12px;
   font-size: 16px;
   font-weight: 600;
-  color: #f4f2ff;
+  color: var(--dp-chrome-card-title);
 }
 #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
 #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
@@ -489,7 +489,7 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   min-width: 0;
 }
 .dp-card-subtitle {
-  color: #9ea4c2;
+  color: var(--dp-chrome-card-subtitle);
   font-size: 11.5px;
   line-height: 1.25;
   font-weight: 400;
@@ -518,7 +518,7 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
 }
 #view-dashboard .dp-dashboard-quick-add > div:last-child {
   padding: 13px 16px 15px !important;
-  border-top: 1px solid rgba(105, 119, 181, .12);
+  border-top: 1px solid var(--dp-chrome-card-divider);
 }
 #view-dashboard .direct-link-entry { gap: 13px; }
 #view-dashboard .direct-link-input {
@@ -558,7 +558,7 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
 }
 #view-dashboard #dash-activity-count {
   display: block !important;
-  color: #9ea4c2 !important;
+  color: var(--dp-chrome-card-subtitle) !important;
   font-size: 10.5px !important;
 }
 #view-dashboard .dash-activity-table-wrap { overflow: hidden auto; }
@@ -568,19 +568,19 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   padding: 0 14px;
   background: rgba(16, 21, 48, .88);
   border-bottom: 1px solid rgba(105, 119, 181, .14);
-  color: #9ca2bf;
+  color: var(--dp-chrome-table-head-text);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: .05em;
 }
-#view-dashboard .t-table tbody tr { border-bottom: 1px solid rgba(105, 119, 181, .11); }
+#view-dashboard .t-table tbody tr { border-bottom: 1px solid var(--dp-chrome-table-row-edge); }
 #view-dashboard .t-table td {
   height: 57px;
   padding: 8px 14px;
-  color: #d0d4e7;
+  color: var(--dp-chrome-table-text);
   font-size: 11.5px;
 }
-#view-dashboard .t-table tbody tr:hover { background: rgba(124, 58, 237, .035); }
+#view-dashboard .t-table tbody tr:hover { background: var(--dp-chrome-table-row-hover); }
 #view-dashboard .badge {
   min-height: 25px;
   padding: 0 9px;
@@ -630,17 +630,17 @@ body.light #view-dashboard .dp-dashboard-activity {
 }
 body.light #view-dashboard .dhs-val,
 body.light #view-dashboard .dp-dashboard-quick-add .card-title,
-body.light #view-dashboard .dp-dashboard-activity .card-title { color: #191c30; }
-body.light #view-dashboard .dhs-label { color: #666d89; }
+body.light #view-dashboard .dp-dashboard-activity .card-title { color: var(--dp-chrome-card-title); }
+body.light #view-dashboard .dhs-label { color: var(--dp-chrome-kpi-label); }
 body.light .dp-card-subtitle,
-body.light #view-dashboard #dash-activity-count { color: #777e98 !important; }
+body.light #view-dashboard #dash-activity-count { color: var(--dp-chrome-card-subtitle) !important; }
 body.light #view-dashboard .direct-link-input {
   background: #fbfcff;
   border-color: #d9dfed;
   color: #30354e;
 }
-body.light #view-dashboard .t-table thead th { background: #f5f7fc; color: #777e98; }
-body.light #view-dashboard .t-table td { color: #454b67; }
+body.light #view-dashboard .t-table thead th { background: #f5f7fc; color: var(--dp-chrome-table-head-text); }
+body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
 
 /* The six cards keep one row through the whole desktop: with the full
    sidebar (from 1560px) and on the compact rail down to 1390px, where the
@@ -700,7 +700,7 @@ body.light #view-dashboard .t-table td { color: #454b67; }
   position: absolute;
   z-index: 5;
   inset: 0;
-  border: 1px solid rgba(111, 125, 184, .26);
+  border: 1px solid var(--dp-panel-frame);
   border-bottom: 0;
   border-radius: inherit;
   -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
@@ -710,7 +710,7 @@ body.light #view-dashboard .t-table td { color: #454b67; }
 body.light #view-dashboard .dash-hero-stat::after,
 body.light #view-dashboard .dp-dashboard-quick-add::after,
 body.light #view-dashboard .dp-dashboard-activity::after {
-  border-color: rgba(161, 170, 203, .42);
+  border-color: var(--dp-panel-frame);
 }
 #view-dashboard .dash-hero-stat,
 #view-dashboard .dp-dashboard-quick-add,
@@ -723,28 +723,17 @@ body.light #view-dashboard .dp-dashboard-activity::after {
 body.light #view-dashboard .dash-hero-stat,
 body.light #view-dashboard .dp-dashboard-quick-add,
 body.light #view-dashboard .dp-dashboard-activity {
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.78),
-    -6px 8px 14px -8px rgba(35, 41, 66, .40),
-    0 5px 11px -8px rgba(41, 47, 72, .25) !important;
+  box-shadow: var(--dp-panel-shadow) !important;
 }
 #view-dashboard .dp-dashboard-quick-add .card-header,
 #view-dashboard .dp-dashboard-activity .card-header {
-  background: linear-gradient(90deg,
-    rgba(95, 48, 174, .26) 0%,
-    rgba(78, 43, 143, .15) 24%,
-    rgba(56, 39, 103, .065) 48%,
-    rgba(14, 19, 44, .00) 76%) !important;
-  border-bottom-color: rgba(113, 126, 184, .18) !important;
+  background: var(--dp-panel-header-surface) !important;
+  border-bottom-color: var(--dp-panel-header-border) !important;
 }
 body.light #view-dashboard .dp-dashboard-quick-add .card-header,
 body.light #view-dashboard .dp-dashboard-activity .card-header {
-  background: linear-gradient(90deg,
-    rgba(142, 92, 225, .14) 0%,
-    rgba(154, 112, 224, .085) 25%,
-    rgba(170, 143, 222, .038) 48%,
-    rgba(255,255,255,0) 76%) !important;
-  border-bottom-color: rgba(159, 168, 201, .34) !important;
+  background: var(--dp-panel-header-surface) !important;
+  border-bottom-color: var(--dp-panel-header-border) !important;
 }
 
 /* Empty Recent Activity is one continuous quiet surface. */
@@ -813,7 +802,7 @@ body.light #view-dashboard .dash-hero-stat {
       color-mix(in srgb, var(--c) 5.5%, transparent) 48%,
       color-mix(in srgb, var(--c) 2%, transparent) 65%,
       transparent 77%),
-    linear-gradient(180deg, #ffffff, var(--dp-surface-2)) !important;
+    linear-gradient(180deg, var(--dp-surface-1), var(--dp-surface-2)) !important;
 }
 
 #view-dashboard .dp-dashboard-quick-add,
@@ -850,12 +839,12 @@ body.light #view-dashboard .dash-hero-stat {
 }
 
 #view-dashboard .t-table thead th {
-  background: linear-gradient(180deg, #1d1930 0%, #171528 100%) !important;
-  border-bottom-color: rgba(137, 119, 174, .26) !important;
+  background: var(--dp-table-head-surface) !important;
+  border-bottom-color: var(--dp-table-head-border) !important;
 }
 body.light #view-dashboard .t-table thead th {
-  background: linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%) !important;
-  border-bottom-color: #dcd6e8 !important;
+  background: var(--dp-table-head-surface) !important;
+  border-bottom-color: var(--dp-table-head-border) !important;
 }
 
 #view-dashboard .dp-dashboard-activity .empty-icon {
@@ -997,13 +986,13 @@ body.light .nav-item.active::after {
 #t-tbody .prog {
   height: 6px !important;
   border-radius: 999px !important;
-  background: rgba(126, 136, 166, .20) !important;
+  background: var(--dp-chrome-progress-track) !important;
   overflow: visible !important;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.10) !important;
 }
 body.light #dash-tbody .prog,
 body.light #t-tbody .prog {
-  background: #d9deea !important;
+  background: var(--dp-chrome-progress-track) !important;
   box-shadow: inset 0 1px 2px rgba(58, 66, 94, .10) !important;
 }
 #dash-tbody .prog-fill,
@@ -1202,49 +1191,25 @@ body.light #topbar-actions #btn-resume-paused.btn {
 }
 
 #runtime-speed-badge {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%),
-    linear-gradient(145deg, rgba(18,23,52,.96), rgba(12,17,42,.94) 54%, rgba(9,13,34,.97)) !important;
-  border-color: rgba(123,132,184,.25) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.055),
-    inset 0 -1px rgba(2,5,17,.32),
-    -5px 7px 14px -9px rgba(0,0,15,.42),
-    0 5px 11px -8px rgba(0,0,12,.28) !important;
+  background: var(--dp-chrome-badge-surface) !important;
+  border-color: var(--dp-chrome-control-edge) !important;
+  box-shadow: var(--dp-chrome-badge-shadow) !important;
 }
 body.light #runtime-speed-badge {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.48) 32%, transparent 42%),
-    linear-gradient(145deg, #ffffff 0%, #fafafe 54%, #f2f1f8 100%) !important;
-  border-color: #d9d8e6 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,1),
-    inset 0 -1px rgba(84,72,116,.055),
-    -5px 7px 14px -9px rgba(61,57,88,.30),
-    0 5px 11px -8px rgba(65,62,90,.18) !important;
+  background: var(--dp-chrome-badge-surface) !important;
+  border-color: var(--dp-chrome-control-edge) !important;
+  box-shadow: var(--dp-chrome-badge-shadow) !important;
 }
 
 .theme-toggle {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%),
-    linear-gradient(145deg, rgba(18,23,52,.96), rgba(11,16,40,.97)) !important;
-  border-color: rgba(123,132,184,.25) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.055),
-    inset 0 -1px rgba(2,5,17,.32),
-    -4px 7px 13px -8px rgba(0,0,15,.40),
-    0 5px 10px -8px rgba(0,0,12,.28) !important;
+  background: var(--dp-chrome-toggle-surface) !important;
+  border-color: var(--dp-chrome-control-edge) !important;
+  box-shadow: var(--dp-chrome-toggle-shadow) !important;
 }
 body.light .theme-toggle {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.46) 34%, transparent 44%),
-    linear-gradient(145deg, #ffffff 0%, #fafafe 54%, #f1f0f7 100%) !important;
-  border-color: #d9d8e6 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,1),
-    inset 0 -1px rgba(84,72,116,.055),
-    -4px 7px 13px -8px rgba(61,57,88,.28),
-    0 5px 10px -8px rgba(65,62,90,.16) !important;
+  background: var(--dp-chrome-toggle-surface) !important;
+  border-color: var(--dp-chrome-control-edge) !important;
+  box-shadow: var(--dp-chrome-toggle-shadow) !important;
 }
 
 /* Speed cap hover is deliberately text-only. No surface, border, or color
@@ -1337,52 +1302,34 @@ body.light .nav-item.active::after {
   min-width: 22px !important;
   height: 22px !important;
   padding: 0 6px !important;
-  background: linear-gradient(145deg, rgba(145,84,225,.31), rgba(94,52,158,.24)) !important;
-  border: 1px solid rgba(181,120,247,.70) !important;
-  color: #e2c4ff !important;
+  background: var(--dp-chrome-count-surface) !important;
+  border: 1px solid var(--dp-chrome-count-edge) !important;
+  color: var(--dp-chrome-count-text) !important;
   font-size: 11px !important;
   font-weight: 800 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.08),
-    0 2px 7px rgba(96,47,157,.24) !important;
+  box-shadow: var(--dp-chrome-count-shadow) !important;
 }
 body.light #nb-active.nav-badge {
-  background: linear-gradient(145deg, #eadcff 0%, #d7bfff 100%) !important;
-  border-color: #a568e8 !important;
-  color: #6623a8 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.72),
-    0 2px 7px rgba(103,52,163,.20) !important;
+  background: var(--dp-chrome-count-surface) !important;
+  border-color: var(--dp-chrome-count-edge) !important;
+  color: var(--dp-chrome-count-text) !important;
+  box-shadow: var(--dp-chrome-count-shadow) !important;
 }
 
 /* ── Primary Add action ───────────────────────────────────────────────── */
 /* Still the primary CTA, but made from the same material language as the
    surrounding raised cards instead of being the page's largest saturated slab. */
 #view-dashboard #btn-add-transfer {
-  background:
-    radial-gradient(ellipse 125% 92% at 18% -10%,
-      rgba(255,255,255,.23) 0%, rgba(255,255,255,.075) 35%, transparent 61%),
-    linear-gradient(145deg, #8d48db 0%, #763fc9 52%, #6249bd 100%) !important;
-  border-color: rgba(160,94,221,.78) !important;
-  color: #ffffff !important;
+  background: var(--dp-primary-surface) !important;
+  border-color: var(--dp-primary-border) !important;
+  color: var(--dp-accent-contrast) !important;
   text-shadow: 0 1px 2px rgba(41,20,71,.34) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.26),
-    inset 0 -2px rgba(57,27,102,.18),
-    -5px 8px 15px -8px rgba(91,48,147,.46),
-    0 6px 12px -9px rgba(78,45,125,.34) !important;
+  box-shadow: var(--dp-primary-shadow) !important;
 }
 body.light #view-dashboard #btn-add-transfer {
-  background:
-    radial-gradient(ellipse 125% 92% at 18% -10%,
-      rgba(255,255,255,.34) 0%, rgba(255,255,255,.10) 35%, transparent 61%),
-    linear-gradient(145deg, #8950d4 0%, #7646c9 52%, #6551c3 100%) !important;
-  border-color: #9c68d8 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.48),
-    inset 0 -2px rgba(76,42,126,.14),
-    -5px 8px 15px -8px rgba(91,56,145,.38),
-    0 6px 12px -9px rgba(78,58,119,.28) !important;
+  background: var(--dp-primary-surface) !important;
+  border-color: var(--dp-primary-border) !important;
+  box-shadow: var(--dp-primary-shadow) !important;
 }
 #view-dashboard #btn-add-transfer:hover {
   filter: brightness(1.04) !important;
@@ -1449,17 +1396,11 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
 /* Sparse lists leave a large canvas. Give that canvas environmental light,
    not another decorative object, so the treatment still works with many rows. */
 #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
-  background:
-    radial-gradient(ellipse 88% 84% at 100% 100%,
-      rgba(133,78,216,.060) 0%, rgba(113,72,190,.026) 38%, transparent 74%),
-    linear-gradient(180deg, rgba(13,18,41,.04) 0%, rgba(7,11,28,.34) 100%) !important;
+  background: var(--dp-chrome-table-ambient) !important;
   box-shadow: inset 0 10px 18px -18px rgba(0,0,12,.54) !important;
 }
 body.light #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
-  background:
-    radial-gradient(ellipse 88% 84% at 100% 100%,
-      rgba(133,82,205,.060) 0%, rgba(122,88,186,.028) 38%, transparent 74%),
-    linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(242,243,249,.25) 100%) !important;
+  background: var(--dp-chrome-table-ambient) !important;
   box-shadow: inset 0 10px 18px -18px rgba(72,65,99,.36) !important;
 }
 #view-dashboard .dp-dashboard-activity .t-table,
@@ -1502,33 +1443,7 @@ body.light .nav-item.active::after {
   outline: 0 !important;
   border-radius: 0 !important;
   background-color: transparent !important;
-  background:
-    radial-gradient(circle at 98% 50%,
-      rgba(255,255,255,.99) 0 1.2px,
-      rgba(244,225,255,.96) 1.3px 2.4px,
-      rgba(205,133,255,.86) 2.5px 3.8px,
-      rgba(173,78,248,.48) 4px 5.2px,
-      transparent 7px),
-    conic-gradient(from 180deg at 98% 50%,
-      transparent 0deg 11deg,
-      rgba(199,126,255,.16) 12deg 15deg,
-      transparent 17deg 37deg,
-      rgba(180,91,249,.11) 39deg 43deg,
-      transparent 45deg 137deg,
-      rgba(190,106,255,.12) 139deg 143deg,
-      transparent 145deg 217deg,
-      rgba(184,95,250,.11) 219deg 223deg,
-      transparent 225deg 317deg,
-      rgba(192,112,255,.13) 319deg 323deg,
-      transparent 325deg 345deg,
-      rgba(205,135,255,.17) 347deg 350deg,
-      transparent 352deg 360deg),
-    radial-gradient(ellipse 100% 68% at 98% 50%,
-      rgba(171,79,245,.42) 0%,
-      rgba(157,69,233,.24) 24%,
-      rgba(145,67,220,.11) 46%,
-      rgba(137,70,207,.035) 66%,
-      transparent 80%) !important;
+  background: var(--dp-chrome-nav-bloom) !important;
   -webkit-mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
     #000 0%, #000 24%, rgba(0,0,0,.82) 43%, rgba(0,0,0,.38) 62%, transparent 82%) !important;
   mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
@@ -1941,18 +1856,10 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
 /* Sidebar hover now uses the same directional material language as the rest
    of the shell. It remains intentionally much quieter than the active row. */
 .nav-item:not(.active):hover {
-  background: linear-gradient(90deg,
-    rgba(136,76,228,.13) 0%,
-    rgba(132,79,218,.075) 42%,
-    rgba(128,86,205,.025) 76%,
-    transparent 100%) !important;
+  background: var(--dp-chrome-nav-hover-surface) !important;
 }
 body.light .nav-item:not(.active):hover {
-  background: linear-gradient(90deg,
-    rgba(143,91,222,.17) 0%,
-    rgba(157,119,224,.095) 43%,
-    rgba(174,151,226,.035) 77%,
-    transparent 100%) !important;
+  background: var(--dp-chrome-nav-hover-surface) !important;
 }
 
 /* ── Quick Add secondary utility controls ─────────────────────────────── */

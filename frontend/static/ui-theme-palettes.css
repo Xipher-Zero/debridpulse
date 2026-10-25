@@ -1,0 +1,553 @@
+/* DebridPulse alternative palettes.
+ *
+ * DebridPulse Dark and Light are the native palettes (design-tokens.css,
+ * ui-language-tokens.css) and are never restated here: with neither selected
+ * the body carries no data-dp-palette and every token keeps its original
+ * value. An alternative palette is chosen per mode (ui-theme-bootstrap.js)
+ * and only ever recolours decorative tokens: surfaces, text, borders and the
+ * interaction accent. Semantic state colours (--dp-state-*), progress state,
+ * provider and protocol identities (--dp-identity-*) and --dp-accent-cyan
+ * (Statistics' Network series) are never declared here.
+ *
+ * Each palette states its core tokens once, on the body that carries it and
+ * on its own swatch in the theme picker, so the swatch shows the applied
+ * values. The derived blocks below then rebuild every material, chrome and
+ * legacy alias from that core: tokens declared on :root or body.light with
+ * var() resolve where they are declared, so they are redeclared on the body.
+ *
+ * Values are taken from each project's published palette; a value marked
+ * "adapted" is a neighbouring tone chosen where the upstream palette has no
+ * equivalent role (a third surface, a muted text that stays readable).
+ */
+
+/* ── Dark palettes ─────────────────────────────────────────────────────── */
+
+/* Catppuccin Mocha (catppuccin/palette: crust, mantle, base, surface0-2,
+   overlay0/2, subtext1, text, mauve, lavender, blue, sapphire). */
+body[data-dp-palette="catppuccin-mocha"],
+.dp-theme-swatch[data-dp-palette="catppuccin-mocha"] {
+  /* Data panels (adapted): the native dark panels' luminance in Mocha's base hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #111120;
+  --dp-panel-end: #0b0b16;
+  --dp-bg-app: #11111b;
+  --dp-bg-app-alt: #181825;
+  --dp-bg-sidebar: #181825;
+  --dp-surface-1: #1e1e2e;
+  --dp-surface-2: #262637; /* adapted: between base and surface0 */
+  --dp-surface-3: #313244;
+  --dp-surface-input: #181825;
+  --dp-surface-overlay: rgba(30, 30, 46, .97);
+  --dp-text-primary: #cdd6f4;
+  --dp-text-secondary: #bac2de;
+  --dp-text-muted: #9399b2;
+  --dp-text-disabled: #6c7086;
+  --dp-border-subtle: #262637;
+  --dp-border-default: #313244;
+  --dp-border-strong: #45475a;
+  --dp-border-nested: #45475a;
+  --dp-divider: rgba(147, 153, 178, .16);
+  --dp-accent-purple: #cba6f7;
+  --dp-accent-purple-bright: #cba6f7;
+  --dp-accent-blue: #89b4fa;
+  --dp-accent-blue-bright: #74c7ec;
+  --dp-accent-rgb: 203, 166, 247;
+  --dp-accent-contrast: #11111b;
+}
+
+/* Dracula (draculatheme.com: background, current line, foreground, comment,
+   purple, pink, cyan; the darker UI backgrounds of the official editor
+   themes). */
+body[data-dp-palette="dracula"],
+.dp-theme-swatch[data-dp-palette="dracula"] {
+  /* Data panels (adapted): the native dark panels' luminance in Dracula's background hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #121319;
+  --dp-panel-end: #0d0e12;
+  --dp-bg-app: #191a21;
+  --dp-bg-app-alt: #21222c;
+  --dp-bg-sidebar: #21222c;
+  --dp-surface-1: #282a36;
+  --dp-surface-2: #2f3141; /* adapted */
+  --dp-surface-3: #44475a;
+  --dp-surface-input: #21222c;
+  --dp-surface-overlay: rgba(40, 42, 54, .97);
+  --dp-text-primary: #f8f8f2;
+  --dp-text-secondary: #d9dae6; /* adapted */
+  --dp-text-muted: #9aa3cc; /* adapted: a readable comment tone */
+  --dp-text-disabled: #6272a4;
+  --dp-border-subtle: #2f3141;
+  --dp-border-default: #44475a;
+  --dp-border-strong: #6272a4;
+  --dp-border-nested: #6272a4;
+  --dp-divider: rgba(98, 114, 164, .24);
+  --dp-accent-purple: #bd93f9;
+  --dp-accent-purple-bright: #bd93f9;
+  --dp-accent-blue: #ff79c6;
+  --dp-accent-blue-bright: #ff79c6;
+  --dp-accent-rgb: 189, 147, 249;
+  --dp-accent-contrast: #191a21;
+}
+
+/* Nord Dark (nordtheme.com: Polar Night nord0-3, Snow Storm nord4-6, Frost
+   nord7-10). */
+body[data-dp-palette="nord-dark"],
+.dp-theme-swatch[data-dp-palette="nord-dark"] {
+  /* Data panels (adapted): the native dark panels' luminance in Polar Night's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #10141b;
+  --dp-panel-end: #0b0e13;
+  --dp-bg-app: #242933; /* adapted: below nord0 for the canvas */
+  --dp-bg-app-alt: #2e3440;
+  --dp-bg-sidebar: #2e3440;
+  --dp-surface-1: #2e3440;
+  --dp-surface-2: #3b4252;
+  --dp-surface-3: #434c5e;
+  --dp-surface-input: #2b303b; /* adapted */
+  --dp-surface-overlay: rgba(46, 52, 64, .97);
+  --dp-text-primary: #eceff4;
+  --dp-text-secondary: #d8dee9;
+  --dp-text-muted: #a3adbf; /* adapted */
+  --dp-text-disabled: #6d7a93; /* adapted */
+  --dp-border-subtle: #3b4252;
+  --dp-border-default: #434c5e;
+  --dp-border-strong: #4c566a;
+  --dp-border-nested: #4c566a;
+  --dp-divider: rgba(216, 222, 233, .12);
+  --dp-accent-purple: #88c0d0;
+  --dp-accent-purple-bright: #88c0d0;
+  --dp-accent-blue: #81a1c1;
+  --dp-accent-blue-bright: #5e81ac;
+  --dp-accent-rgb: 136, 192, 208;
+  --dp-accent-contrast: #2e3440;
+}
+
+/* Gruvbox Dark (morhetz/gruvbox: bg0_h, bg0, bg0_s, bg1-2, fg0-4, bright
+   purple and blue; the yellow, orange and green accents are left to the
+   semantic state colours). */
+body[data-dp-palette="gruvbox-dark"],
+.dp-theme-swatch[data-dp-palette="gruvbox-dark"] {
+  /* Data panels (adapted): the native dark panels' luminance in bg0_h's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #151413;
+  --dp-panel-end: #0f0e0d;
+  --dp-bg-app: #1d2021;
+  --dp-bg-app-alt: #1d2021;
+  --dp-bg-sidebar: #1d2021;
+  --dp-surface-1: #282828;
+  --dp-surface-2: #32302f;
+  --dp-surface-3: #3c3836;
+  --dp-surface-input: #1d2021;
+  --dp-surface-overlay: rgba(40, 40, 40, .97);
+  --dp-text-primary: #ebdbb2;
+  --dp-text-secondary: #d5c4a1;
+  --dp-text-muted: #a89984;
+  --dp-text-disabled: #7c6f64;
+  --dp-border-subtle: #32302f;
+  --dp-border-default: #3c3836;
+  --dp-border-strong: #504945;
+  --dp-border-nested: #504945;
+  --dp-divider: rgba(168, 153, 132, .16);
+  --dp-accent-purple: #d3869b;
+  --dp-accent-purple-bright: #d3869b;
+  --dp-accent-blue: #83a598;
+  --dp-accent-blue-bright: #83a598;
+  --dp-accent-rgb: 211, 134, 155;
+  --dp-accent-contrast: #1d2021;
+}
+
+/* Solarized Dark (ethanschoonover.com/solarized: base03, base02, base01,
+   base0, base1, violet, blue). */
+body[data-dp-palette="solarized-dark"],
+.dp-theme-swatch[data-dp-palette="solarized-dark"] {
+  /* Data panels (adapted): the native dark panels' luminance in base03's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #00171e;
+  --dp-panel-end: #001116;
+  --dp-bg-app: #002129; /* adapted: below base03 for the canvas */
+  --dp-bg-app-alt: #002b36;
+  --dp-bg-sidebar: #002b36;
+  --dp-surface-1: #002b36;
+  --dp-surface-2: #073642;
+  --dp-surface-3: #0d404d; /* adapted */
+  --dp-surface-input: #00252e; /* adapted */
+  --dp-surface-overlay: rgba(0, 43, 54, .97);
+  --dp-text-primary: #eee8d5;
+  --dp-text-secondary: #93a1a1;
+  --dp-text-muted: #839496;
+  --dp-text-disabled: #586e75;
+  --dp-border-subtle: #073642;
+  --dp-border-default: #0d404d;
+  --dp-border-strong: #586e75;
+  --dp-border-nested: #586e75;
+  --dp-divider: rgba(147, 161, 161, .16);
+  --dp-accent-purple: #6c71c4;
+  --dp-accent-purple-bright: #8b8fd8; /* adapted: violet lifted for text */
+  --dp-accent-blue: #268bd2;
+  --dp-accent-blue-bright: #268bd2;
+  --dp-accent-rgb: 108, 113, 196;
+  --dp-accent-contrast: #fdf6e3;
+}
+
+/* Tokyo Night (folke/tokyonight.nvim "night": bg_dark, bg, bg_highlight,
+   fg, fg_dark, dark5, comment, magenta, blue, cyan). */
+body[data-dp-palette="tokyo-night"],
+.dp-theme-swatch[data-dp-palette="tokyo-night"] {
+  /* Data panels (adapted): the native dark panels' luminance in bg_dark's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #121219;
+  --dp-panel-end: #0d0d13;
+  --dp-bg-app: #16161e;
+  --dp-bg-app-alt: #16161e;
+  --dp-bg-sidebar: #16161e;
+  --dp-surface-1: #1a1b26;
+  --dp-surface-2: #1f2335;
+  --dp-surface-3: #292e42;
+  --dp-surface-input: #16161e;
+  --dp-surface-overlay: rgba(26, 27, 38, .97);
+  --dp-text-primary: #c0caf5;
+  --dp-text-secondary: #a9b1d6;
+  --dp-text-muted: #737aa2;
+  --dp-text-disabled: #565f89;
+  --dp-border-subtle: #1f2335;
+  --dp-border-default: #292e42;
+  --dp-border-strong: #3b4261;
+  --dp-border-nested: #3b4261;
+  --dp-divider: rgba(169, 177, 214, .12);
+  --dp-accent-purple: #bb9af7;
+  --dp-accent-purple-bright: #bb9af7;
+  --dp-accent-blue: #7aa2f7;
+  --dp-accent-blue-bright: #7dcfff;
+  --dp-accent-rgb: 187, 154, 247;
+  --dp-accent-contrast: #16161e;
+}
+
+/* ── Light palettes ────────────────────────────────────────────────────── */
+
+/* Catppuccin Latte (catppuccin/palette). */
+body[data-dp-palette="catppuccin-latte"],
+.dp-theme-swatch[data-dp-palette="catppuccin-latte"] {
+  /* Data panels (adapted): the native light panels' luminance in Latte's base hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #f7f8fb;
+  --dp-bg-app: #e6e9ef;
+  --dp-bg-app-alt: #eff1f5;
+  --dp-bg-sidebar: #e6e9ef;
+  --dp-surface-1: #eff1f5;
+  --dp-surface-2: #f5f6f9; /* adapted: base lifted for raised rows */
+  --dp-surface-3: #dce0e8;
+  --dp-surface-input: #f5f6f9;
+  --dp-surface-overlay: rgba(239, 241, 245, .98);
+  --dp-text-primary: #4c4f69;
+  --dp-text-secondary: #5c5f77;
+  --dp-text-muted: #6c6f85;
+  --dp-text-disabled: #9ca0b0;
+  --dp-border-subtle: #dce0e8;
+  --dp-border-default: #ccd0da;
+  --dp-border-strong: #bcc0cc;
+  --dp-border-nested: #bcc0cc;
+  --dp-divider: rgba(108, 111, 133, .14);
+  --dp-accent-purple: #8839ef;
+  --dp-accent-purple-bright: #8839ef;
+  --dp-accent-blue: #1e66f5;
+  --dp-accent-blue-bright: #209fb5;
+  --dp-accent-rgb: 136, 57, 239;
+  --dp-accent-contrast: #eff1f5;
+}
+
+/* Nord Light: Nord has no official light theme; this is Nord's Snow Storm
+   for surfaces, Polar Night for text and Frost for the accent. */
+body[data-dp-palette="nord-light"],
+.dp-theme-swatch[data-dp-palette="nord-light"] {
+  /* Data panels (adapted): the native light panels' luminance in Snow Storm's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #f6f8fb;
+  --dp-bg-app: #e5e9f0;
+  --dp-bg-app-alt: #eceff4;
+  --dp-bg-sidebar: #e5e9f0;
+  --dp-surface-1: #eceff4;
+  --dp-surface-2: #f2f4f8; /* adapted */
+  --dp-surface-3: #d8dee9;
+  --dp-surface-input: #f2f4f8;
+  --dp-surface-overlay: rgba(236, 239, 244, .98);
+  --dp-text-primary: #2e3440;
+  --dp-text-secondary: #3b4252;
+  --dp-text-muted: #4c566a;
+  --dp-text-disabled: #8691a6; /* adapted */
+  --dp-border-subtle: #d8dee9;
+  --dp-border-default: #c9d1dd; /* adapted */
+  --dp-border-strong: #aeb9ca; /* adapted */
+  --dp-border-nested: #aeb9ca;
+  --dp-divider: rgba(76, 86, 106, .14);
+  --dp-accent-purple: #5e81ac;
+  --dp-accent-purple-bright: #5e81ac;
+  --dp-accent-blue: #81a1c1;
+  --dp-accent-blue-bright: #88c0d0;
+  --dp-accent-rgb: 94, 129, 172;
+  --dp-accent-contrast: #eceff4;
+}
+
+/* Gruvbox Light (morhetz/gruvbox: bg0_h, bg0, bg0_s, bg1-3, fg0-4, faded
+   purple and blue). */
+body[data-dp-palette="gruvbox-light"],
+.dp-theme-swatch[data-dp-palette="gruvbox-light"] {
+  /* Data panels (adapted): the native light panels' luminance in bg0's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #fcf9ee;
+  --dp-bg-app: #f2e5bc;
+  --dp-bg-app-alt: #f9f5d7;
+  --dp-bg-sidebar: #f2e5bc;
+  --dp-surface-1: #fbf1c7;
+  --dp-surface-2: #f9f5d7;
+  --dp-surface-3: #ebdbb2;
+  --dp-surface-input: #f9f5d7;
+  --dp-surface-overlay: rgba(251, 241, 199, .98);
+  --dp-text-primary: #3c3836;
+  --dp-text-secondary: #504945;
+  --dp-text-muted: #665c54;
+  --dp-text-disabled: #a89984;
+  --dp-border-subtle: #ebdbb2;
+  --dp-border-default: #d5c4a1;
+  --dp-border-strong: #bdae93;
+  --dp-border-nested: #bdae93;
+  --dp-divider: rgba(102, 92, 84, .16);
+  --dp-accent-purple: #8f3f71;
+  --dp-accent-purple-bright: #8f3f71;
+  --dp-accent-blue: #076678;
+  --dp-accent-blue-bright: #076678;
+  --dp-accent-rgb: 143, 63, 113;
+  --dp-accent-contrast: #fbf1c7;
+}
+
+/* Solarized Light (base3, base2, base1, base01, base02, violet, blue). */
+body[data-dp-palette="solarized-light"],
+.dp-theme-swatch[data-dp-palette="solarized-light"] {
+  /* Data panels (adapted): the native light panels' luminance in base3's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #fdfaf1;
+  --dp-bg-app: #eee8d5;
+  --dp-bg-app-alt: #fdf6e3;
+  --dp-bg-sidebar: #eee8d5;
+  --dp-surface-1: #fdf6e3;
+  --dp-surface-2: #fefbf1; /* adapted */
+  --dp-surface-3: #eee8d5;
+  --dp-surface-input: #fefbf1;
+  --dp-surface-overlay: rgba(253, 246, 227, .98);
+  --dp-text-primary: #073642;
+  --dp-text-secondary: #586e75;
+  --dp-text-muted: #657b83;
+  --dp-text-disabled: #93a1a1;
+  --dp-border-subtle: #eee8d5;
+  --dp-border-default: #e2dbc6; /* adapted */
+  --dp-border-strong: #c9c2ab; /* adapted */
+  --dp-border-nested: #c9c2ab;
+  --dp-divider: rgba(88, 110, 117, .14);
+  --dp-accent-purple: #6c71c4;
+  --dp-accent-purple-bright: #6c71c4;
+  --dp-accent-blue: #268bd2;
+  --dp-accent-blue-bright: #268bd2;
+  --dp-accent-rgb: 108, 113, 196;
+  --dp-accent-contrast: #fdf6e3;
+}
+
+/* Tokyo Night Day (folke/tokyonight.nvim "day": bg, bg_dark,
+   bg_highlight, fg, fg_dark, comment, magenta, blue, cyan). */
+body[data-dp-palette="tokyo-night-day"],
+.dp-theme-swatch[data-dp-palette="tokyo-night-day"] {
+  /* Data panels (adapted): the native light panels' luminance in the day bg's hue, so
+     locked state and identity colours keep their native contrast. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #f6f7fb;
+  --dp-bg-app: #d0d5e3;
+  --dp-bg-app-alt: #e1e2e7;
+  --dp-bg-sidebar: #d0d5e3;
+  --dp-surface-1: #e1e2e7;
+  --dp-surface-2: #e9e9ed; /* adapted */
+  --dp-surface-3: #c4c8da;
+  --dp-surface-input: #e9e9ed;
+  --dp-surface-overlay: rgba(225, 226, 231, .98);
+  --dp-text-primary: #3760bf;
+  --dp-text-secondary: #6172b0;
+  --dp-text-muted: #6874a6; /* adapted: comment darkened to read */
+  --dp-text-disabled: #a8aecb;
+  --dp-border-subtle: #c4c8da;
+  --dp-border-default: #b7bcd2; /* adapted */
+  --dp-border-strong: #a8aecb;
+  --dp-border-nested: #a8aecb;
+  --dp-divider: rgba(97, 114, 176, .16);
+  --dp-accent-purple: #9854f1;
+  --dp-accent-purple-bright: #7847bd;
+  --dp-accent-blue: #2e7de9;
+  --dp-accent-blue-bright: #007197;
+  --dp-accent-rgb: 152, 84, 241;
+  --dp-accent-contrast: #ffffff;
+}
+
+/* ── Derived from the core, for every alternative palette ──────────────── */
+body[data-dp-palette] {
+  --dp-nav-hover: color-mix(in srgb, var(--dp-accent-purple) 8%, transparent);
+  --dp-nav-active: linear-gradient(90deg, color-mix(in srgb, var(--dp-accent-purple) 25%, transparent), color-mix(in srgb, var(--dp-accent-blue) 9%, transparent));
+  --dp-nav-active-rail: var(--dp-accent-purple-bright);
+  --dp-nav-active-text: var(--dp-accent-purple-bright);
+  --dp-focus-ring: 0 0 0 3px color-mix(in srgb, var(--dp-accent-purple) 30%, transparent);
+  --dp-selection-bg: color-mix(in srgb, var(--dp-accent-purple) 18%, transparent);
+  --dp-gradient-primary: linear-gradient(100deg, var(--dp-accent-purple) 0%, var(--dp-accent-blue) 100%);
+  --dp-gradient-primary-hover: linear-gradient(100deg, var(--dp-accent-purple-bright) 0%, var(--dp-accent-blue-bright) 100%);
+  --dp-gradient-brand: linear-gradient(90deg, var(--dp-accent-purple) 0%, var(--dp-accent-blue) 100%);
+  --dp-gradient-page: linear-gradient(180deg, var(--dp-bg-app-alt) 0%, var(--dp-bg-app) 100%);
+  --dp-glow-accent: 0 0 22px color-mix(in srgb, var(--dp-accent-purple) 18%, transparent);
+  --dp-progress-track: var(--dp-surface-3);
+
+  --bg: var(--dp-bg-app);
+  --bg2: var(--dp-bg-app-alt);
+  --surface: var(--dp-surface-1);
+  --surface2: var(--dp-surface-2);
+  --surface3: var(--dp-surface-3);
+  --border: var(--dp-border-default);
+  --border2: var(--dp-border-strong);
+  --accent: var(--dp-accent-purple-bright);
+  --accent2: var(--dp-accent-blue-bright);
+  --accent-rgb: var(--dp-accent-rgb);
+  --accent-contrast: var(--dp-accent-contrast);
+  --primary-gradient: var(--dp-gradient-primary);
+  --primary-gradient-hover: var(--dp-gradient-primary-hover);
+  --focus-ring: color-mix(in srgb, var(--dp-accent-purple) 30%, transparent);
+  --text: var(--dp-text-primary);
+  --text2: var(--dp-text-secondary);
+  --text3: var(--dp-text-muted);
+  --nav-hover: var(--dp-nav-hover);
+  --nav-active: color-mix(in srgb, var(--dp-accent-purple) 18%, transparent);
+  --panel-a: var(--dp-surface-2);
+  --panel-b: var(--dp-bg-app);
+  --panel-glow: color-mix(in srgb, var(--dp-accent-purple) 18%, transparent);
+  --shadow-soft: var(--dp-shadow-card);
+  --status-total: var(--dp-accent-purple-bright);
+  --status-downloaded: var(--dp-accent-blue-bright);
+  --purple: var(--dp-accent-purple-bright);
+
+  --dp-panel-surface: linear-gradient(180deg, var(--dp-panel-start), var(--dp-panel-end));
+  --dp-panel-surface-tall: linear-gradient(180deg, var(--dp-panel-start) 0%, var(--dp-panel-end) 320px, var(--dp-panel-end) 100%);
+  --dp-panel-frame: var(--dp-border-default);
+  --dp-panel-header-border: var(--dp-border-subtle);
+  --dp-panel-header-surface: linear-gradient(90deg, color-mix(in srgb, var(--dp-accent-purple) 16%, transparent) 0%, color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) 24%, color-mix(in srgb, var(--dp-accent-purple) 3%, transparent) 48%, transparent 76%);
+  --dp-field-surface: var(--dp-surface-input);
+  --dp-field-border: var(--dp-border-default);
+  --dp-field-text: var(--dp-text-primary);
+  --dp-table-head-surface: var(--dp-surface-2);
+  --dp-table-head-border: var(--dp-border-default);
+  --dp-table-row-border: var(--dp-border-subtle);
+  --dp-table-row-hover: color-mix(in srgb, var(--dp-accent-purple) 5%, transparent);
+  --dp-table-head-text: var(--dp-text-muted);
+  --dp-segment-surface: var(--dp-surface-1);
+  --dp-segment-border: var(--dp-border-default);
+  --dp-segment-divider: var(--dp-border-subtle);
+  --dp-segment-text: var(--dp-text-secondary);
+  --dp-segment-hover: color-mix(in srgb, var(--dp-accent-purple) 8%, transparent);
+  --dp-segment-hover-text: var(--dp-text-primary);
+  --dp-segment-active-border: var(--dp-accent-purple-bright);
+  --dp-segment-active-shadow: 0 0 0 1px var(--dp-segment-active-border);
+  --dp-primary-surface: linear-gradient(145deg, var(--dp-accent-purple-bright) 0%, var(--dp-accent-purple) 100%);
+  --dp-primary-border: var(--dp-accent-purple-bright);
+  --dp-secondary-surface: linear-gradient(145deg, var(--dp-surface-2), var(--dp-surface-1));
+  --dp-secondary-border: var(--dp-border-default);
+  --dp-secondary-text: var(--dp-text-secondary);
+
+  --dp-chrome-canvas: radial-gradient(920px 540px at 36% 4%, color-mix(in srgb, var(--dp-accent-purple) 6%, transparent), transparent 68%), var(--dp-bg-app);
+  --dp-chrome-sidebar-surface: linear-gradient(180deg, var(--dp-bg-sidebar) 0%, var(--dp-bg-app) 100%);
+  --dp-chrome-sidebar-edge: var(--dp-border-subtle);
+  --dp-chrome-logo-band: linear-gradient(90deg, color-mix(in srgb, var(--dp-accent-purple) 24%, transparent) 0%, transparent 84%) bottom / 100% 1px no-repeat, var(--dp-bg-sidebar);
+  --dp-chrome-brand-name: var(--dp-text-primary);
+  --dp-chrome-brand-text: var(--dp-accent-purple-bright);
+  --dp-chrome-brand-glow: 0 0 11px color-mix(in srgb, var(--dp-accent-purple) 25%, transparent);
+  --dp-chrome-nav-heading: var(--dp-text-muted);
+  --dp-chrome-nav-text: var(--dp-text-secondary);
+  --dp-chrome-nav-text-hover: var(--dp-text-primary);
+  --dp-chrome-nav-text-active: var(--dp-text-primary);
+  --dp-chrome-nav-hover-surface: linear-gradient(90deg, color-mix(in srgb, var(--dp-accent-purple) 13%, transparent) 0%, color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 60%, transparent 100%);
+  --dp-chrome-nav-active-surface: linear-gradient(90deg, color-mix(in srgb, var(--dp-accent-purple) 34%, transparent) 0%, color-mix(in srgb, var(--dp-accent-purple) 18%, transparent) 45%, color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 90%, transparent 100%);
+  --dp-chrome-nav-active-edge: inset 0 1px color-mix(in srgb, var(--dp-accent-purple) 14%, transparent), inset 0 -1px color-mix(in srgb, var(--dp-accent-purple) 10%, transparent);
+  --dp-chrome-nav-rail: linear-gradient(180deg, var(--dp-accent-purple-bright) 0%, var(--dp-accent-purple) 100%);
+  --dp-chrome-nav-rail-glow: 0 0 6px color-mix(in srgb, var(--dp-accent-purple-bright) 70%, transparent), 0 0 12px color-mix(in srgb, var(--dp-accent-purple) 35%, transparent);
+  --dp-chrome-nav-bloom: radial-gradient(ellipse 100% 68% at 98% 50%, color-mix(in srgb, var(--dp-accent-purple) 38%, transparent) 0%, color-mix(in srgb, var(--dp-accent-purple) 11%, transparent) 46%, transparent 80%);
+  --dp-chrome-nav-icon-active: var(--dp-accent-purple-bright);
+  --dp-chrome-nav-icon-glow: drop-shadow(0 0 4px color-mix(in srgb, var(--dp-accent-purple) 40%, transparent));
+  --dp-chrome-count-surface: color-mix(in srgb, var(--dp-accent-purple) 22%, transparent);
+  --dp-chrome-count-edge: color-mix(in srgb, var(--dp-accent-purple-bright) 70%, transparent);
+  --dp-chrome-count-text: var(--dp-text-primary);
+  --dp-chrome-count-shadow: none;
+  --dp-chrome-sidebar-panel: color-mix(in srgb, var(--dp-panel-start) 92%, transparent);
+  --dp-chrome-sidebar-panel-edge: var(--dp-border-default);
+  --dp-chrome-sidebar-text: var(--dp-text-secondary);
+  --dp-chrome-sidebar-divider: var(--dp-border-subtle);
+  --dp-chrome-handle-surface: var(--dp-surface-2);
+  --dp-chrome-handle-edge: var(--dp-border-default);
+  --dp-chrome-handle-text: var(--dp-text-secondary);
+  --dp-chrome-handle-text-hover: var(--dp-text-primary);
+  --dp-chrome-handle-surface-hover: var(--dp-surface-3);
+  --dp-chrome-version-text: var(--dp-text-muted);
+  --dp-chrome-version-glow: none;
+  --dp-chrome-signal-filter: grayscale(1);
+  --dp-chrome-title: var(--dp-text-primary);
+  --dp-chrome-subtitle: var(--dp-text-secondary);
+  --dp-chrome-topbar-surface: color-mix(in srgb, var(--dp-surface-1) 86%, transparent);
+  --dp-chrome-control-text: var(--dp-text-secondary);
+  --dp-chrome-control-edge: var(--dp-border-default);
+  --dp-chrome-badge-surface: linear-gradient(145deg, var(--dp-surface-2), var(--dp-surface-1));
+  --dp-chrome-toggle-surface: linear-gradient(145deg, var(--dp-surface-2), var(--dp-surface-1));
+  --dp-chrome-badge-shadow: var(--dp-shadow-control);
+  --dp-chrome-toggle-shadow: var(--dp-shadow-control);
+  --dp-chrome-utility-surface: color-mix(in srgb, var(--dp-accent-purple) 4%, transparent);
+  --dp-chrome-utility-edge: color-mix(in srgb, var(--dp-accent-purple-bright) 55%, transparent);
+  --dp-chrome-utility-text: var(--dp-accent-purple-bright);
+  --dp-chrome-utility-surface-hover: color-mix(in srgb, var(--dp-accent-purple) 9%, transparent);
+  --dp-chrome-utility-edge-hover: color-mix(in srgb, var(--dp-accent-purple-bright) 75%, transparent);
+  --dp-chrome-utility-glow: none;
+  --dp-chrome-kpi-value: var(--dp-text-primary);
+  --dp-chrome-kpi-label: var(--dp-text-secondary);
+  --dp-chrome-card-title: var(--dp-text-primary);
+  --dp-chrome-card-subtitle: var(--dp-text-muted);
+  --dp-chrome-card-divider: var(--dp-border-subtle);
+  --dp-chrome-card-shadow: var(--dp-panel-shadow);
+  --dp-chrome-table-head-text: var(--dp-text-muted);
+  --dp-chrome-table-head-plain: var(--dp-surface-2);
+  --dp-chrome-table-text: var(--dp-text-secondary);
+  --dp-chrome-table-row-edge: var(--dp-border-subtle);
+  --dp-chrome-table-row-hover: color-mix(in srgb, var(--dp-accent-purple) 5%, transparent);
+  --dp-chrome-table-ambient: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--dp-panel-end) 34%, transparent) 100%);
+  --dp-chrome-progress-track: var(--dp-surface-3);
+  --dp-chrome-input-surface: var(--dp-surface-input);
+  --dp-chrome-notice-region: var(--dp-surface-2);
+}
+
+/* Depth differs by mode: a dark palette darkens, a light one tints. */
+body:not(.light)[data-dp-palette] {
+  --dp-shadow-card: 0 12px 30px rgba(0, 0, 0, .28);
+  --dp-shadow-raised: 0 18px 46px rgba(0, 0, 0, .40);
+  --dp-shadow-control: 0 5px 16px rgba(0, 0, 0, .24);
+  --dp-panel-shadow: inset 0 1px rgba(255, 255, 255, .024), -6px 8px 14px -8px rgba(0, 0, 0, .66), 0 5px 11px -8px rgba(0, 0, 0, .46);
+  --dp-primary-shadow: 0 6px 12px -9px rgba(0, 0, 0, .5);
+  --dp-secondary-shadow: 0 5px 10px -8px rgba(0, 0, 0, .3);
+  --dp-segment-shadow: none;
+  --dp-segment-active-surface: linear-gradient(135deg, var(--dp-accent-purple) 0%, color-mix(in srgb, var(--dp-accent-purple) 82%, #000) 100%);
+  --dp-segment-active-text: var(--dp-accent-contrast);
+  --dp-chrome-sidebar-panel-shadow: 0 10px 28px rgba(0, 0, 0, .25);
+  --dp-chrome-scrim: color-mix(in srgb, var(--dp-bg-app) 74%, transparent);
+}
+
+body.light[data-dp-palette] {
+  --dp-shadow-card: 0 6px 18px color-mix(in srgb, var(--dp-text-primary) 8%, transparent);
+  --dp-shadow-raised: 0 14px 34px color-mix(in srgb, var(--dp-text-primary) 13%, transparent);
+  --dp-shadow-control: 0 3px 10px color-mix(in srgb, var(--dp-text-primary) 8%, transparent);
+  --dp-panel-shadow: inset 0 1px rgba(255, 255, 255, .5), -6px 8px 14px -8px color-mix(in srgb, var(--dp-text-primary) 30%, transparent), 0 5px 11px -8px color-mix(in srgb, var(--dp-text-primary) 20%, transparent);
+  --dp-primary-shadow: 0 6px 12px -9px color-mix(in srgb, var(--dp-accent-purple) 45%, transparent);
+  --dp-secondary-shadow: 0 5px 10px -8px color-mix(in srgb, var(--dp-text-primary) 18%, transparent);
+  --dp-segment-shadow: none;
+  --dp-segment-active-surface: color-mix(in srgb, var(--dp-accent-purple) 16%, var(--dp-surface-1));
+  --dp-segment-active-text: var(--dp-accent-purple);
+  --dp-chrome-sidebar-panel-shadow: var(--dp-shadow-raised);
+  --dp-chrome-scrim: color-mix(in srgb, var(--dp-text-primary) 28%, transparent);
+}

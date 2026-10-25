@@ -54,6 +54,7 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 | Toasts | shell target | `operator-title.js` presenter; `ui-toast-contract.js` public bridge | `ui-toast-contract.css` |
 | Shared modal | `#overlay`/`#modal`/`#modal-footer` in `index.html` | `app.js` (`DPModal`, `showDetail`, `closeModal`) | `ui-modal-contract.css` |
 | Informational tooltips | each render owner declares `data-tooltip="text"` on the element it describes (never `title`) | `ui-tooltip.js` (`DPTooltip`): the one presenter -- delegated hover/focus, one top-layer element, text only | `ui-components.css` (`.dp-tooltip`) |
+| Theme: mode and per-mode palette | static `#theme-toggle`, `#theme-picker-toggle` and the `#theme-picker` popover in `index.html` | `ui-theme-bootstrap.js` (`DPTheme`): the one theme state owner -- the mode (`localStorage` `theme`), the dark and the light palette (`dp-theme-palette-dark`, `dp-theme-palette-light`), each kept apart, applied at first paint as `body.light` and `body[data-dp-palette]` (absent for the native DebridPulse palettes), and announced as `debridpulse:theme-changed` (`detail.light`) after a palette applies; `app.js` `toggleTheme` changes the mode through it; `ui-theme-picker.js` presents only the active mode's palettes | `design-tokens.css`/`ui-language-tokens.css` (native values, including the shell `--dp-chrome-*` material), `ui-theme-palettes.css` (alternative palettes: decorative tokens only, never `--dp-state-*` or `--dp-identity-*`), `ui-theme-picker.css` |
 
 ## Downloads ownership (CANON-001 closure)
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ui_chrome_tokens import require_token
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
@@ -57,7 +59,8 @@ def test_dashboard_canonical_owner_keeps_reviewed_card_framing_and_empty_state()
     assert "border-color: transparent !important;" in css
     assert "border-bottom: 0;" in css
     assert "-6px 8px 14px -8px rgba(0,0,0,.66)" in css
-    assert "rgba(95, 48, 174, .26)" in css
+    # The reviewed header glow is the shared panel-header material's native value.
+    require_token(css, "--dp-panel-header-surface", "rgba(95, 48, 174, .26)")
     assert "#dash-tbody tr:not([data-torrent-id])" in css
     assert "background: transparent !important;" in css
 
@@ -72,12 +75,11 @@ def test_dashboard_canonical_owner_keeps_reviewed_surface_calibration() -> None:
         "ellipse 105% 88% at 1% -8%",
         "transparent 98%",
         "background-clip: padding-box !important",
-        "#1d1930",
-        "#f2eff8",
         "card-download.svg?v=11",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"Dashboard canonical surface contract is missing: {missing}"
+    require_token(css, "--dp-table-head-surface", "#1d1930", "#f2eff8")
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_statistics_owns_history_directly() -> None:

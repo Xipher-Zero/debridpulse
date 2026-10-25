@@ -2832,8 +2832,8 @@ document.addEventListener('pointerdown', event => {
 }, true);
 
 function toggleTheme() {
-  const isLight = document.body.classList.toggle('light');
-  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  const isLight = window.DPTheme.mode() !== 'light';
+  window.DPTheme.setMode(isLight);
   updateThemeToggle(isLight);
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 }
@@ -2898,8 +2898,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.detail?.view === 'dashboard') remeasureDashboardHeartbeat();
   });
   syncDashboardSparkPulses();
-  const isLight = localStorage.getItem('theme') === 'light';
-  document.body.classList.toggle('light', isLight);
+  // ui-theme-bootstrap.js applied the stored mode and its palette at first paint.
+  const isLight = window.DPTheme.mode() === 'light';
   updateThemeToggle(isLight);
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 });

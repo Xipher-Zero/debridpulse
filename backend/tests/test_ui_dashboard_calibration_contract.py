@@ -7,6 +7,8 @@ folded into ui-dashboard.css by the v1.0.11.1 canonicalization pass.
 
 from pathlib import Path
 
+from ui_chrome_tokens import require_token
+
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 STYLE = STATIC / "style.css"
@@ -138,11 +140,12 @@ def test_canonical_dashboard_keeps_sidebar_provider_and_badge_presentation() -> 
             "color-mix(in srgb, var(--dp-state-success-fill) 78%, transparent)",
             "ellipse 78% 46% at 52% 50%",
             "#nb-active.nav-badge",
-            "#eadcff",
-            "#6623a8",
         ),
         "sidebar and provider polish contract",
     )
+    # The count badge's reviewed light face and text are its chrome tokens' defaults.
+    require_token(dashboard_css(), "--dp-chrome-count-surface", "#eadcff")
+    require_token(dashboard_css(), "--dp-chrome-count-text", "#6623a8")
 
 
 def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
@@ -150,8 +153,6 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
         dashboard_css(),
         (
             "#btn-add-transfer",
-            "#8950d4",
-            "#6551c3",
             "height: 7px !important",
             # DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow
             # reduced by a relative 15% (.34 * 0.85 = .289).
@@ -159,10 +160,13 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
             "font-size: 16px !important",
             "font-weight: 800 !important",
             ".dash-activity-table-wrap",
-            "radial-gradient(ellipse 88% 84% at 100% 100%",
         ),
         "Dashboard depth contract",
     )
+    # The Add button is the shared primary material; the activity body's
+    # ambient light is its chrome token. Both keep their reviewed values.
+    require_token(dashboard_css(), "--dp-primary-surface", "#8950d4", "#6551c3")
+    require_token(dashboard_css(), "--dp-chrome-table-ambient", "radial-gradient(ellipse 88% 84% at 100% 100%")
 
 
 def test_canonical_dashboard_keeps_indeterminate_progress_stripes() -> None:
@@ -188,14 +192,13 @@ def test_canonical_dashboard_keeps_sidebar_starburst_without_count_badge_overlap
             "right: -2px !important",
             "width: 76px !important",
             "height: 54px !important",
-            "radial-gradient(circle at 98% 50%",
-            "conic-gradient(from 180deg at 98% 50%",
             "mask-image: radial-gradient(ellipse 100% 86% at 98% 50%",
             "border-radius: 0 !important",
             "box-shadow: none !important",
         ),
         "sidebar starburst contract",
     )
+    require_token(css, "--dp-chrome-nav-bloom", "radial-gradient(circle at 98% 50%", "conic-gradient(from 180deg at 98% 50%")
 
 
 def test_canonical_dashboard_keeps_provider_baseline_crown_and_metric_icon_lighting() -> None:
@@ -278,11 +281,10 @@ def test_canonical_dashboard_keeps_color_spacing_and_sidebar_hover_refinements()
             "--dp-dashboard-progress-track: calc(21cqw - 3.57px);",
             "width: var(--dp-dashboard-progress-track) !important",
             ".nav-item:not(.active):hover",
-            "rgba(136,76,228,.13)",
-            "rgba(143,91,222,.17)",
         ),
         "Dashboard color and spacing contract",
     )
+    require_token(dashboard_css(), "--dp-chrome-nav-hover-surface", "rgba(136,76,228,.13)", "rgba(143,91,222,.17)")
 
 
 def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
@@ -294,9 +296,6 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
             "height: 36px !important",
             "min-height: 36px !important",
             "box-shadow: none !important",
-            "rgba(157,91,213,.028)",
-            "#c5a3dc",
-            "#714790",
             "hue-rotate(215deg)",
             ".dp-utility-icon",
             "filter: none !important",
@@ -304,6 +303,9 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
         ),
         "shared utility-control contract",
     )
+    require_token(read(UTILITY), "--dp-chrome-utility-surface", "rgba(157,91,213,.028)")
+    require_token(read(UTILITY), "--dp-chrome-utility-edge", "#c5a3dc")
+    require_token(read(UTILITY), "--dp-chrome-utility-text", "#714790")
     # 1.0.14: the Downloads header Refresh control is retired with its material.
     assert "dp-downloads-refresh" not in read(UTILITY)
 

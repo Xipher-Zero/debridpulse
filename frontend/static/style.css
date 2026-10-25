@@ -10,6 +10,7 @@
  */
 @import url('/design-tokens.css?v=21');
 @import url('/ui-language-tokens.css?v=21');
+@import url('/ui-theme-palettes.css?v=1');
 @import url('/ui-foundation.css?v=21');
 @import url('/ui-components.css?v=20');
 @import url('/ui-dropdown-contract.css?v=21');
@@ -57,5 +58,6 @@
 @import url('/ui-settings-card-icons.css?v=4');
 @import url('/ui-settings-usenet-servers.css?v=1');
 @import url('/ui-shell-brand.css?v=3');
+@import url('/ui-theme-picker.css?v=1');
 @import url('/ui-toast-contract.css?v=2');
 @import url('/ui-motion.css?v=1');

@@ -428,7 +428,22 @@
     return dataset;
   }
 
-  // Repaint the chart's segments and the legend's swatches for the current theme.
+  // The chart's own frame -- grid lines and tick labels -- in the page's
+  // current palette (its series colours are completionColor's).
+  function paintChartFrame(scales) {
+    const themeStyles = getComputedStyle(document.body);
+    const gridColor = themeStyles.getPropertyValue('--border').trim();
+    const tickColor = themeStyles.getPropertyValue('--text3').trim();
+    ['x', 'y'].forEach(function (axis) {
+      const scale = scales[axis] || (scales[axis] = {});
+      scale.grid = Object.assign(scale.grid || {}, {color: gridColor});
+      scale.ticks = Object.assign(scale.ticks || {}, {color: tickColor});
+    });
+    return scales;
+  }
+
+  // Repaint the chart's segments, its frame and the legend's swatches for
+  // the current theme: the mode, or a palette chosen within it.
   function applyChartPalette() {
     document.querySelectorAll('#completions-legend .dp-stats-chart-legend-swatch').forEach(function (swatch) {
       swatch.style.background = completionColor(swatch.parentElement.dataset.dpRole);
@@ -437,6 +452,7 @@
     const datasets = chart && chart.data && chart.data.datasets;
     if (!datasets || !datasets.length) return;
     datasets.forEach(paintCompletionDataset);
+    paintChartFrame(chart.options.scales);
     if (typeof chart.update === 'function') chart.update('none');
   }
 
@@ -508,9 +524,6 @@
     if (!canvas || typeof Chart === 'undefined') return;
     if (live && canvas._ci) { updateCompletionChart(canvas._ci, daily); return; }
     if (canvas._ci) canvas._ci.destroy();
-    const themeStyles = getComputedStyle(document.body);
-    const gridColor = themeStyles.getPropertyValue('--border').trim();
-    const tickColor = themeStyles.getPropertyValue('--text3').trim();
     renderCompletionLegend();
     // One bar per bucket, the total, as it always was, carrying the buckets the
     // family stack is drawn from.
@@ -537,11 +550,11 @@
             callbacks: {label: function (context) { return completionTooltipLines(datasets[0].dpFamilies[context.dataIndex] || {}); }},
           },
         },
-        scales: {
-          x: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
+        scales: paintChartFrame({
+          x: {ticks: {font: {size: 10}, maxRotation: 45}},
           // Completions are counts: whole-number ticks, never a step below one.
-          y: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, precision: 0}, beginAtZero: true},
-        },
+          y: {ticks: {font: {size: 10}, precision: 0}, beginAtZero: true},
+        }),
       },
     });
     applyChartPalette();

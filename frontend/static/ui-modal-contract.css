@@ -72,11 +72,11 @@
    the material; this layer supplies only dialog geometry and scoped composition. */
 #overlay {
   padding: 24px;
-  background: rgba(5, 8, 20, .74);
+  background: var(--dp-chrome-scrim);
   backdrop-filter: blur(8px) saturate(.92);
 }
 body.light #overlay {
-  background: rgba(42, 34, 60, .28);
+  background: var(--dp-chrome-scrim);
   backdrop-filter: blur(8px) saturate(.88);
 }
 

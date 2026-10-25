@@ -76,7 +76,7 @@
   white-space: nowrap;
 }
 body.light .dp-storage-health-region {
-  background: #f8fafc;
+  background: var(--dp-chrome-notice-region);
 }
 body.light .dp-storage-warning {
   box-shadow: 0 5px 14px rgba(28, 44, 70, .06);

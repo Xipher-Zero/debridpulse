@@ -180,27 +180,18 @@ body:not(.light) {
 body:not(.light) #view-dashboard .dash-hero-stat,
 body:not(.light) #view-dashboard .dp-dashboard-quick-add,
 body:not(.light) #view-dashboard .dp-dashboard-activity {
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.022),
-    0 14px 32px rgba(84, 38, 131, .18),
-    0 4px 14px rgba(167, 139, 250, .06) !important;
+  box-shadow: var(--dp-chrome-card-shadow) !important;
 }
 
 /* Provider Status is an intentionally elevated shell card. Use positive-spread
    ambient shadows so the effect remains visible against both sidebar themes;
    earlier negative spreads collapsed almost entirely into the card edge. */
 body:not(.light) #sidebar .sidebar-footer {
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.02),
-    0 10px 28px rgba(84, 38, 131, .20),
-    0 0 16px rgba(167, 139, 250, .07) !important;
+  box-shadow: var(--dp-chrome-sidebar-panel-shadow) !important;
 }
 
 /* Light-theme elevation follows the established neutral blue-gray shadow token,
    not the dark theme's purple/lavender ambient color. */
 body.light #sidebar .sidebar-footer {
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.88),
-    var(--dp-shadow-raised),
-    0 4px 16px rgba(45, 61, 96, .08) !important;
+  box-shadow: var(--dp-chrome-sidebar-panel-shadow) !important;
 }

@@ -1,0 +1,146 @@
+/* DebridPulse theme picker (ui-theme-picker.js): a chevron in the strip to
+   the right of the mode toggle and the menu of the active mode's palettes.
+   The chevron is out of flow, so the toggle and every topbar control keep
+   their own boxes; below 780px there is no strip and no chevron. */
+.topbar-theme-control .dp-theme-picker-trigger {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 3px);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dp-radius-sm);
+  background: transparent;
+  color: var(--dp-chrome-control-text);
+  cursor: pointer;
+  transition: color .12s ease, background-color .12s ease;
+}
+.topbar-theme-control .dp-theme-picker-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+.topbar-theme-control .dp-theme-picker-trigger:hover,
+.topbar-theme-control .dp-theme-picker-trigger[aria-expanded="true"] {
+  color: var(--dp-text-primary);
+  background: color-mix(in srgb, var(--dp-text-primary) 8%, transparent);
+}
+.topbar-theme-control .dp-theme-picker-trigger:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: -2px;
+}
+@media (max-width: 779px) {
+  .topbar-theme-control .dp-theme-picker-trigger { display: none; }
+}
+
+/* The menu: a popover in the top layer, placed by the runtime. */
+.dp-theme-picker {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 264px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-md);
+  background: var(--dp-surface-overlay);
+  color: var(--dp-text-primary);
+  box-shadow: var(--dp-shadow-raised);
+  font-family: var(--dp-font-sans);
+}
+.dp-theme-picker:not(:popover-open) { display: none; }
+
+.dp-theme-picker-head {
+  padding: 6px 10px 9px;
+  border-bottom: 1px solid var(--dp-divider);
+}
+.dp-theme-picker-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.dp-theme-picker-note {
+  margin-top: 2px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.dp-theme-picker-list {
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+}
+.dp-theme-picker-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--dp-radius-sm);
+  background: transparent;
+  color: var(--dp-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: color .12s ease, background-color .12s ease;
+}
+.dp-theme-picker-option:hover,
+.dp-theme-picker-option:focus-visible {
+  color: var(--dp-text-primary);
+  background: color-mix(in srgb, var(--dp-accent-purple) 10%, transparent);
+}
+.dp-theme-picker-option:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: -2px;
+}
+.dp-theme-picker-option[aria-checked="true"] {
+  color: var(--dp-text-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--dp-accent-purple) 15%, transparent);
+}
+.dp-theme-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-theme-picker-check {
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+  color: var(--dp-accent-purple-bright);
+}
+.dp-theme-picker-check svg { width: 15px; height: 15px; }
+.dp-theme-picker-option[aria-checked="true"] .dp-theme-picker-check { visibility: visible; }
+
+/* A swatch is the palette's own tokens: the page background, a raised
+   surface, the accent and the second accent. */
+.dp-theme-swatch {
+  display: flex;
+  width: 52px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+  outline: 1px solid rgba(128, 128, 128, .45);
+  outline-offset: -1px;
+}
+.dp-theme-swatch > i { flex: 1 1 0; }
+.dp-theme-swatch > [data-role="background"] { background: var(--dp-bg-app); }
+.dp-theme-swatch > [data-role="surface"] { background: var(--dp-surface-3); }
+.dp-theme-swatch > [data-role="accent"] { background: var(--dp-accent-purple-bright); }
+.dp-theme-swatch > [data-role="tone"] { background: var(--dp-accent-blue-bright); }
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-theme-control .dp-theme-picker-trigger,
+  .dp-theme-picker-option { transition: none; }
+}

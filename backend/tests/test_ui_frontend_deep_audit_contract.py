@@ -86,7 +86,9 @@ def test_normal_ui_bootstrap_keeps_core_first_paint_static_and_bounded() -> None
     assert "/style.css" in html
     assert "style-v11.css" not in html
     assert "/ui-theme-bootstrap.js" in html
-    assert "localStorage.getItem('theme')" in bootstrap
+    # The stored mode is read through the bootstrap's guarded storage reader.
+    assert "localStorage.getItem(key)" in bootstrap
+    assert "read('theme') === 'light'" in bootstrap
     assert "document.body.classList.add('light')" in bootstrap
 
     for forbidden in ("MutationObserver", "fetch(", "/api/", "XMLHttpRequest", "EventSource"):
