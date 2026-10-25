@@ -7,7 +7,9 @@
  * and only ever recolours decorative tokens: surfaces, text, borders and the
  * interaction accent. Semantic state colours (--dp-state-*), progress state,
  * provider and protocol identities (--dp-identity-*) and --dp-accent-cyan
- * (Statistics' Network series) are never declared here.
+ * (Statistics' Network series) are never declared here; nor is the sidebar
+ * signal field's filter (--dp-chrome-signal-filter): that artwork is
+ * DebridPulse's own, and keeps its native colours and per-mode emphasis.
  *
  * Each palette states its core tokens once, on the body that carries it and
  * on its own swatch in the theme picker, so the swatch shows the applied
@@ -490,7 +492,6 @@ body[data-dp-palette] {
   --dp-chrome-handle-surface-hover: var(--dp-surface-3);
   --dp-chrome-version-text: var(--dp-text-muted);
   --dp-chrome-version-glow: none;
-  --dp-chrome-signal-filter: grayscale(1);
   --dp-chrome-title: var(--dp-text-primary);
   --dp-chrome-subtitle: var(--dp-text-secondary);
   --dp-chrome-topbar-surface: color-mix(in srgb, var(--dp-surface-1) 86%, transparent);
