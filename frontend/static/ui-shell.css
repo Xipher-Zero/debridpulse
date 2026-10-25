@@ -405,10 +405,12 @@ body.light #sidebar {
   border-right-color: var(--dp-border-default);
   box-shadow: 8px 0 26px rgba(45,61,96,.04);
 }
+/* The light header's surface is painted on the canvas (ui-shell-structural.css),
+   where it eases into the page across this bar's bottom edge. */
 body.light #topbar {
-  background: var(--dp-chrome-topbar-surface);
+  background: transparent;
   border-bottom-color: var(--dp-border-default);
-  box-shadow: 0 5px 18px rgba(45,61,96,.045);
+  box-shadow: none;
 }
 body.light .sidebar-footer {
   background: rgba(255,255,255,.82);

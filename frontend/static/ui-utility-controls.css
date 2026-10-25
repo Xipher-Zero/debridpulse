@@ -74,7 +74,7 @@ body.light #view-events .dp-activity-refresh:hover {
 /* Pause remains a caution action, but should read like the other translucent
    secondary controls rather than an opaque gold slab. The row-level pause
    contract uses these exact light-theme values as well. */
-body.light #topbar-actions #btn-pause-all.btn {
+body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn {
   background:
     linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
   border-color: rgba(207,158,55,.62) !important;
@@ -84,7 +84,7 @@ body.light #topbar-actions #btn-pause-all.btn {
     inset 0 1px rgba(255,255,255,.72),
     0 3px 8px -6px rgba(137,99,24,.18) !important;
 }
-body.light #topbar-actions #btn-pause-all.btn:hover {
+body.light:where(:not([data-dp-palette])) #topbar-actions #btn-pause-all.btn:hover {
   background:
     linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
   border-color: rgba(196,142,40,.72) !important;

@@ -663,8 +663,21 @@ body.light #page-title::after {
 body {
   background: var(--dp-chrome-canvas) !important;
 }
+/* The light header surface is the canvas's top layer, not a band of its own:
+   held behind the title row, then eased (smoothstep) into the page from
+   mid-header to beyond its bottom edge, so header and page meet without a
+   seam. Every palette's own header surface and canvas, behind the cards. */
 body.light {
-  background: var(--dp-chrome-canvas) !important;
+  background:
+    linear-gradient(180deg,
+      var(--dp-chrome-topbar-surface) 0,
+      var(--dp-chrome-topbar-surface) calc(var(--dp-shell-header) * .45),
+      color-mix(in srgb, var(--dp-chrome-topbar-surface) 90%, transparent) calc(var(--dp-shell-header) * .73),
+      color-mix(in srgb, var(--dp-chrome-topbar-surface) 65%, transparent) calc(var(--dp-shell-header) * 1.01),
+      color-mix(in srgb, var(--dp-chrome-topbar-surface) 35%, transparent) calc(var(--dp-shell-header) * 1.29),
+      color-mix(in srgb, var(--dp-chrome-topbar-surface) 10%, transparent) calc(var(--dp-shell-header) * 1.57),
+      transparent calc(var(--dp-shell-header) * 1.85)),
+    var(--dp-chrome-canvas) !important;
 }
 #main,
 #content {

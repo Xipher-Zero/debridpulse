@@ -378,6 +378,26 @@ test('Sidebar: the main view slides up or down by the displayed order; chrome st
   expect(await page.locator('.view.active').count()).toBe(1);
 });
 
+test('Sidebar logo: from another page it slides to the Dashboard as the Dashboard entry does; on the Dashboard nothing moves', async ({page}) => {
+  await boot(page);
+  await page.goto('/');
+  await entry(page, 'stats').click();
+  await expect(page.locator('#view-stats')).toHaveClass(/\bactive\b/);
+  await settled(page);
+
+  await clear(page);
+  await page.locator('#sidebar .logo').click();
+  await expect(page.locator('#view-dashboard')).toHaveClass(/\bactive\b/);
+  expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'backward', step: 'short'});
+  expect(await page.locator('#sidebar .nav-item.active').evaluateAll(items => items.map(item => item.dataset.view))).toEqual(['dashboard']);
+
+  await settled(page);
+  await clear(page);
+  await page.locator('#sidebar .logo').click();
+  await noSlide(page);
+  await expect(page.locator('#view-dashboard')).toHaveClass(/\bactive\b/);
+});
+
 test('Dashboard: the heartbeat route is read from settled cards on arrival; its clock and beats carry on', async ({page}) => {
   await boot(page);
   await page.goto('/');

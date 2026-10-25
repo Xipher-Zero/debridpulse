@@ -67,6 +67,9 @@
      imported): the native accent's value, held as a state of its own so an
      alternative palette's accent never recolours a status. */
   --dp-state-processing-badge: #b45cff;
+  /* What a translucent status badge or provider chip tints: the surface
+     beneath it, except in the operational experiment below. */
+  --dp-operational-interior: transparent;
 
   /* Semantic tinted surfaces */
   --dp-state-success-bg: color-mix(in srgb, var(--dp-state-success) 11%, transparent);
@@ -261,4 +264,36 @@ body.light,
   --nav-hover: #e7edf5;
   --nav-active: rgba(49, 95, 174, .11);
   --shadow-soft: 0 8px 24px rgba(28, 44, 70, .08);
+}
+
+/* Operational treatment of the alternative light palettes: the backed
+   operational elements -- status badges, provider chips, Provider Status dots,
+   the topbar Pause / Resume controls and Retry -- draw state with DP Dark's
+   own values over DP Dark's surface (--dp-operational-interior), and each of
+   their light-only overrides reads body.light:where(:not([data-dp-palette])).
+   Every other reader of a state colour -- a bare value, percentage or
+   statistic drawn on the palette's light surface -- keeps the light value.
+   Native DebridPulse Light is unchanged. */
+body.light[data-dp-palette] :is(
+  :is(#dash-tbody, #t-tbody, #modal-body) .badge,
+  .dp-provider-chip,
+  #provider-status-list .dot,
+  #topbar-actions > .btn,
+  :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
+  #view-torrents .dp-downloads-bulk-action--reset
+) {
+  --dp-state-success: #00E676;
+  --dp-state-success-mark: #00E676;
+  --green: var(--dp-state-success);
+  --dp-state-active: #3b89ff;
+  --dp-state-processing: #ffb52b;
+  --dp-state-caution: #ffc13d;
+  --dp-state-error: #ff5264;
+  --dp-state-connectivity: #16d6ff;
+  --dp-state-paused: #a66cff;
+  --dp-state-ready: #6f8dba;
+  --dp-state-recoverable: #ffb52b;
+  --dp-state-processing-badge: #b45cff;
+  --dp-operational-interior: #0b1224;
+  --dp-state-active-bg: color-mix(in srgb, var(--dp-state-active) 11%, var(--dp-operational-interior));
 }
