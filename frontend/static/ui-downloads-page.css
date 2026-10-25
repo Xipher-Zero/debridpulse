@@ -73,7 +73,7 @@
   min-width: 0;
 }
 
-#view-torrents .dp-downloads-heading {
+#view-torrents :is(.dp-downloads-heading, .dp-downloads-count) {
   color: var(--dp-text-primary);
   font-size: 16px;
   line-height: 1.2;
@@ -81,21 +81,87 @@
   letter-spacing: -.01em;
 }
 
-#view-torrents .dp-downloads-subtitle {
+#view-torrents :is(.dp-downloads-subtitle, .dp-downloads-subtitle-short) {
   color: var(--dp-text-muted);
   font-size: 10.5px;
   line-height: 1.25;
   font-weight: 400;
 }
 
+/* The shorter presentations of the tracked count (ui-downloads.js writes all
+   four) show only where the header is too narrow for the full hint. */
+#view-torrents :is(.dp-downloads-subtitle-short, .dp-downloads-count) {
+  display: none;
+}
+
 /* ── Header control placement ────────────────────────────────────────── */
+/* The filter rail never yields width: the identity beside it does. */
 #view-torrents .filter-tabs {
   margin-left: auto;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 
 #view-torrents .filter-tabs .ftab {
   min-width: 64px;
+}
+
+/* Desktop and tablet (780px and up): one header row. The seven filters keep
+   their full width and the card's identity yields to them, in four steps
+   chosen by the header's own content width (measured in Chromium, with the
+   widest five-digit count; see the 1.0.14 header packet):
+     860px and wider  On the Books + "N downloads tracked. Most of them behaved."
+     736px to 860px   On the Books + "N downloads tracked"
+     712px to 736px   On the Books + "N downloads"
+     below 712px      the number alone, in the title's place
+   Each hidden line leaves the row but not the title: the full hint stays its
+   text, and DP's tooltip says it while the hint is not shown. */
+@media (min-width: 780px) {
+  #view-torrents > .card > .card-header {
+    container: dp-downloads-header / inline-size;
+  }
+
+  #view-torrents #torrent-card-title.dp-downloads-card-title {
+    white-space: nowrap;
+  }
+
+  @container dp-downloads-header (width < 860px) {
+    #view-torrents .dp-downloads-subtitle {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+  @container dp-downloads-header (736px <= width < 860px) {
+    #view-torrents [data-dp-copy="tracked"] { display: block; }
+  }
+  @container dp-downloads-header (712px <= width < 736px) {
+    #view-torrents [data-dp-copy="downloads"] { display: block; }
+  }
+  @container dp-downloads-header (width < 712px) {
+    #view-torrents .dp-downloads-heading {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #view-torrents .dp-downloads-count {
+      display: block;
+      font-size: 13px;
+    }
+    /* The number alone holds every count through six digits in the room the
+       filters leave at 780px: the same artwork and glow at 30px, 6px from it. */
+    #view-torrents #torrent-card-title.dp-downloads-card-title {
+      gap: 6px;
+    }
+    #view-torrents .dp-downloads-title-icon {
+      --dp-feature-icon-size: 30px;
+    }
+  }
 }
 
 /* ── Contextual multi-selection toolbar ─────────────────────────────── */
@@ -171,6 +237,36 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Desktop and tablet (780px and up): where the toolbar is narrower than its
+   full labels need (with every action shown, measured in Chromium; see the
+   1.0.14 header packet), each action shows its glyph alone, in the same
+   button, and Clear Selections reads "Clear". A label leaves the row but
+   stays the button's name, and DP's tooltip says the action. */
+@media (min-width: 780px) {
+  #view-torrents #bulk-bar.dp-downloads-bulk-card {
+    container: dp-downloads-bulk / inline-size;
+  }
+
+  @container dp-downloads-bulk (width < 794px) {
+    #view-torrents :is(.dp-downloads-bulk-actions [data-dp-icon-label], .dp-downloads-bulk-clear-rest) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #view-torrents .dp-downloads-bulk-actions .dp-downloads-bulk-action {
+      position: relative;
+      width: 36px;
+      min-width: 36px;
+      padding: 0 !important;
+      justify-content: center;
+    }
+  }
 }
 
 /* ── Search band ─────────────────────────────────────────────────────── */

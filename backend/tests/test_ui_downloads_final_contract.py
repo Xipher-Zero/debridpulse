@@ -120,10 +120,12 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
                     "(min-width: 1180px) and (width < 1390px)", "(min-width: 901px) and (width < 1390px)"):
         assert retired not in css
 
-    def block(query):
-        return css.split(query + " {", 1)[1].split("\n}", 1)[0]
+    def block(query, owner=""):
+        # The block for ``query`` that names ``owner`` (the header and the
+        # selection toolbar have their own 780px blocks).
+        return next(part.split("\n}", 1)[0] for part in css.split(query + " {")[1:] if owner in part.split("\n}", 1)[0])
 
-    full = block("@media (min-width: 780px)")
+    full = block("@media (min-width: 780px)", "dp-downloads-table")
     assert "container: dp-downloads-table / inline-size;" in full
     assert "--dp-downloads-status-track: 180px;" in full and "--dp-downloads-date-track: 178px;" in full
     assert "--dp-downloads-size-track: max(84px, 7cqw);" in full

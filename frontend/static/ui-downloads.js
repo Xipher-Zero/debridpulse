@@ -334,14 +334,37 @@ function downloadPaginationSummary(total, from, to) {
   if (!language) return total === 1 ? '1 Download' : total + ' Downloads';
   return total <= 0 ? language[0] : total === 1 ? language[1] : language[2](total);
 }
+/* One count, four presentations: the full hint, "N downloads tracked",
+ * "N downloads", and the number alone in the title's place. The header's own
+ * width shows one of them (ui-downloads-page.css); the full wording stays the
+ * title's name, and its DP tooltip while the full hint is not shown. */
 function updateDownloadsTrackedCopy(total) {
   const count = Math.max(0, Number(total) || 0);
   const copy = count === 1 ? '1 download tracked. It behaved.' : count + ' downloads tracked. Most of them behaved.';
+  const downloads = count === 1 ? '1 download' : count + ' downloads';
   const title = document.getElementById('torrent-card-title');
-  const subtitle = title?.querySelector('.dp-downloads-subtitle');
-  if (subtitle) subtitle.textContent = copy;
-  if (title) title.setAttribute('aria-label', 'On the Books. ' + copy);
+  if (!title) return;
+  const text = {'.dp-downloads-subtitle': copy, '[data-dp-copy="tracked"]': downloads + ' tracked',
+    '[data-dp-copy="downloads"]': downloads, '.dp-downloads-count': String(count)};
+  for (const [selector, value] of Object.entries(text)) {
+    const node = title.querySelector(selector);
+    if (node) node.textContent = value;
+  }
+  title.setAttribute('aria-label', 'On the Books. ' + copy);
+  title.setAttribute('data-tooltip', 'On the Books. ' + copy);
 }
+/* The title is a tab stop from 780px up, where a reduced header shows its full
+ * wording in DP's tooltip on keyboard focus. Mobile keeps its own tab order:
+ * no stop on the title. */
+const titleFocusMedia = window.matchMedia(DESKTOP_QUERY);
+function syncTitleFocus() {
+  const title = document.getElementById('torrent-card-title');
+  if (!title) return;
+  if (titleFocusMedia.matches) title.setAttribute('tabindex', '0');
+  else title.removeAttribute('tabindex');
+}
+titleFocusMedia.addEventListener('change', syncTitleFocus);
+syncTitleFocus();
 function downloadEmptyMessage() {
   if (searchControl().accepted()) return 'No downloads match your search.';
   if (activeDownloadFilterStatus()) return 'No downloads match your current filters.';
