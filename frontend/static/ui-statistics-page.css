@@ -67,16 +67,9 @@ body.light #view-stats .dp-statistics-title-icon {
   font-weight: 400;
 }
 
-#view-stats .dp-stats-period-label {
-  margin-left: auto;
-  color: var(--dp-text-muted) !important;
-  font-size: 11px !important;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 #view-stats #stats-period-tabs {
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 /* ── Bounded Statistics body ──────────────────────────────────────────── */
@@ -330,14 +323,6 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 }
 
 @media (max-width: 1439px) {
-  #view-stats #detail-stat-cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  #view-stats .dp-stats-history-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   #view-stats .dp-stats-breakdown-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -349,16 +334,11 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
     flex-wrap: wrap;
   }
 
-  #view-stats .dp-stats-period-label {
+  #view-stats #stats-period-tabs {
+    max-width: 100%;
     margin-left: 0;
   }
 
-  #view-stats #stats-period-tabs {
-    max-width: 100%;
-  }
-
-  #view-stats #detail-stat-cards,
-  #view-stats .dp-stats-history-grid,
   #view-stats .dp-stats-breakdown-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -373,8 +353,6 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 }
 
 @media (max-width: 640px) {
-  #view-stats #detail-stat-cards,
-  #view-stats .dp-stats-history-grid,
   #view-stats .dp-stats-breakdown-grid {
     grid-template-columns: 1fr;
   }
@@ -510,23 +488,30 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1439px) {
-  #view-stats #detail-stat-cards,
-  #view-stats .dp-stats-history-grid {
+/* KPI rows: both rows show the same number of cards, one column each --
+   five, four, three, then two at the bottom of the tablet range (see the
+   composition block after the KPI cards for which cards and why these
+   widths). */
+@media (max-width: 1879px) {
+  #view-stats #detail-stat-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1189px) {
+  #view-stats #detail-stat-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 899px) {
-  #view-stats #detail-stat-cards,
-  #view-stats .dp-stats-history-grid {
+@media (max-width: 909px) {
+  #view-stats #detail-stat-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  #view-stats #detail-stat-cards,
-  #view-stats .dp-stats-history-grid {
+  #view-stats #detail-stat-cards {
     grid-template-columns: 1fr;
   }
 }
@@ -670,14 +655,20 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1439px) {
+@media (max-width: 1879px) {
   #view-stats .dp-stats-history-grid {
     width: 100% !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1189px) {
+  #view-stats .dp-stats-history-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 909px) {
   #view-stats .dp-stats-history-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
@@ -842,7 +833,7 @@ body.light #view-stats .dp-stats-chart-title-icon {
 
 /* Shared KPI vertical anchors. */
 #view-stats #detail-stat-cards :is(.metric-card, .stat-card) {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 1fr !important;
   grid-template-rows: 18px 48px minmax(28px, auto) !important;
   align-content: start !important;
@@ -873,7 +864,7 @@ body.light #view-stats .dp-stats-chart-title-icon {
 }
 
 #view-stats .dp-stats-history-grid .dash-kpi {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 1fr !important;
   grid-template-rows: 18px 28px minmax(24px, auto) !important;
   align-content: start !important;
@@ -902,6 +893,42 @@ body.light #view-stats .dp-stats-chart-title-icon {
   grid-row: 3 !important;
   align-self: start !important;
   margin: 2px 0 0 !important;
+}
+
+/* KPI composition: as the content narrows, both rows drop to four, three and
+   then two cards together, always in their own order, and keep the cards
+   that matter most:
+     5  every card (1880px and wider);
+     4  without In Progress and Lifetime Success Rate (1190-1879px);
+     3  also without Success Rate and Last 24 Hours (910-1189px);
+     2  also without Downloads Added and Mean Download Time (780-909px):
+        Downloads Completed and Total Data Downloaded; Last 7 Days and Mean
+        Download Size.
+   Each width is where the measured longest label of the tightest card
+   (Lifetime Success Rate, then Mean Download Time, beside their icons) still
+   clears its icon and card edge by 8px or more, with the longest realistic
+   values in the real fonts. Below 780px the mobile presentation keeps every
+   card, as before. A hidden card is display:none: no slot, no focus stop;
+   its value is still kept current. */
+@media (min-width: 780px) and (max-width: 1879px) {
+  #view-stats #detail-stat-cards > [data-dp-stats-metric="progress"],
+  #view-stats .dp-stats-history-grid > .dp-stats-kpi-success {
+    display: none;
+  }
+}
+
+@media (min-width: 780px) and (max-width: 1189px) {
+  #view-stats #detail-stat-cards > [data-dp-stats-metric="success"],
+  #view-stats .dp-stats-history-grid > .dp-stats-kpi-day {
+    display: none;
+  }
+}
+
+@media (min-width: 780px) and (max-width: 909px) {
+  #view-stats #detail-stat-cards > [data-dp-stats-metric="downloads"],
+  #view-stats .dp-stats-history-grid > .dp-stats-kpi-duration {
+    display: none;
+  }
 }
 
 /* ── Label badge / trend chart / priority text (DP 1.0.12 canonical
