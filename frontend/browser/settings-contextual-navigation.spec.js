@@ -142,7 +142,7 @@ function header(page, frame = 0) {
     const fadeOf = side => {
       const tab = tabNodes.find(node => node.dataset.navCut === side);
       return tab && getComputedStyle(tab).maskImage !== 'none'
-        ? parseFloat(tab.style.getPropertyValue('--dp-settings-nav-cut-fade')) || 0 : 0;
+        ? parseFloat(tab.style.getPropertyValue('--dp-section-nav-cut-fade')) || 0 : 0;
     };
     return {
       width: innerWidth, height: headerBox.height, copyLeft: copy.left - headerBox.left, copyTop: copy.top - headerBox.top,

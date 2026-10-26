@@ -28,10 +28,14 @@
   }
 }
 
-/* One row, as Settings: the identity copy, then the complete tab strip at
-   its own width, moving beneath the copy -- still at its own width -- only
-   when the two genuinely do not fit side by side; ui-help-chrome.css centres
-   it while there is room to. */
+/* Desktop and tablet (780px and wider): one row, as Settings. The
+   navigation -- the complete tab strip, or the compact navigator when the
+   strip and the copy do not fit side by side -- keeps the strip's own place:
+   centred in the whole header while the copy fits beside it, otherwise right
+   after the copy (ui-help-chrome.css). The shared section navigator
+   (ui-section-nav.js, ui-section-nav.css) decides which and draws the
+   compact one. Handheld (below 780px): the header wraps and the complete
+   strip, the header's width, scrolls beneath the copy. */
 #view-help .dp-help-master-header {
   flex: 0 0 auto;
   min-height: 76px;
@@ -70,13 +74,17 @@
 }
 
 #view-help .dp-help-tabs {
-  flex: 0 0 auto;
-  min-width: 0;
   scrollbar-width: thin;
 }
 
 #view-help .dp-help-tab {
   min-width: max-content;
+}
+
+@media (min-width: 780px) {
+  #view-help .dp-help-master-header {
+    flex-wrap: nowrap;
+  }
 }
 
 #view-help .dp-help-master-body {
@@ -423,19 +431,6 @@
     overflow: visible;
   }
 
-  #view-help .dp-help-master-header {
-    min-height: 0;
-    align-items: stretch;
-  }
-
-  #view-help .dp-help-header-copy {
-    min-width: 0;
-  }
-
-  #view-help .dp-help-tabs {
-    width: 100%;
-  }
-
   #view-help .dp-help-master-body,
   #view-help .dp-help-scroll {
     overflow: visible;
@@ -447,6 +442,20 @@
 }
 
 @media (max-width: 779px) {
+  #view-help .dp-help-master-header {
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  #view-help .dp-help-header-copy {
+    min-width: 0;
+  }
+
+  /* The complete strip, the header's width, on its own line. */
+  #view-help :is(.dp-help-nav, .dp-help-nav-control, .dp-help-tabs) {
+    width: 100%;
+  }
+
   #view-help .dp-help-header-title {
     white-space: normal;
   }

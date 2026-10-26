@@ -17,8 +17,9 @@ const COMPACT = 1559;
 const RAIL = 72;
 const FULL = 240;
 
-/* The Settings master header, from geometry alone (installed with every page
- * this suite opens). Desktop and tablet: one row. The complete strip (each
+/* The Settings or Help master header, from geometry alone (installed with
+ * every page this suite opens; both have the same section navigator,
+ * ui-section-nav.js). Desktop and tablet: one row. The complete strip (each
  * tab at its own width; the strip's 3px padding and 1px border) whenever the
  * copy, the 16px row gap and the strip fit the header with 4px to spare,
  * else the compact navigator, shown by its First / Last actions. Either way
@@ -26,28 +27,28 @@ const FULL = 240;
  * the row gap toward the copy's side) while the copy fits in the half beside
  * it, otherwise right after the copy, the row gap apart. `borderline` marks
  * a fit within 1px of that line, where either is accepted. */
-function settingsHeader() {
+function sectionHeader(view = 'settings') {
   const rect = node => node.getBoundingClientRect();
-  const root = document.getElementById('view-settings');
-  const headerNode = root.querySelector('.dp-settings-master-header');
+  const root = document.getElementById(`view-${view}`);
+  const headerNode = root.querySelector(`.dp-${view}-master-header`);
   const style = getComputedStyle(headerNode);
   const box = rect(headerNode);
   const inner = {left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight)};
   const gap = parseFloat(style.columnGap);
   const parts = node => [...node.children].reduce((sum, child) => sum + rect(child).width, 0)
     + (parseFloat(getComputedStyle(node).columnGap) || 0) * (node.children.length - 1);
-  const copyNode = root.querySelector('.dp-settings-header-copy');
+  const copyNode = root.querySelector(`.dp-${view}-header-copy`);
   const copy = rect(copyNode);
-  const strip = root.querySelector('.dp-settings-tabs');
+  const strip = root.querySelector(`.dp-${view}-tabs`);
   const s = rect(strip);
-  const controlNode = root.querySelector('.dp-settings-nav-control');
+  const controlNode = root.querySelector(`.dp-${view}-nav-control`);
   const control = rect(controlNode);
   const tabNodes = [...strip.querySelectorAll('[data-tab]')];
   const tabs = tabNodes.map(rect);
   // (Tabs keep their own widths in both presentations.)
   const copyOwn = parts(copyNode);
   const margin = inner.right - inner.left - (copyOwn + gap + tabs.reduce((sum, tab) => sum + tab.width, 0) + 8 + 4);
-  const compact = [...root.querySelectorAll('.dp-settings-nav-end')].some(node => getComputedStyle(node).display !== 'none');
+  const compact = [...root.querySelectorAll(`.dp-${view}-nav-end`)].some(node => getComputedStyle(node).display !== 'none');
   const current = rect(strip.querySelector('[aria-selected="true"]'));
   const whole = compact
     ? current.left >= s.left - 0.5 && current.right <= s.right + 0.5
@@ -67,8 +68,8 @@ function settingsHeader() {
       && Math.round(box.height) > parseFloat(style.minHeight) + 0.5};
 }
 
-// What is wrong with one Settings header reading (empty when it is right).
-const settingsProblems = h => [
+// What is wrong with one Settings or Help header reading (empty when it is right).
+const headerProblems = h => [
   ...(h.second ? ['second row'] : []),
   ...(h.inside ? [] : ['outside its room or clipped']),
   ...(h.extraLine ? ['extra line'] : []),
@@ -80,7 +81,7 @@ const settingsProblems = h => [
 async function open(page, width, {height = 1000} = {}) {
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.addInitScript(`window.__dpSettingsHeader = ${settingsHeader.toString()};`);
+  await page.addInitScript(`window.__dpSectionHeader = ${sectionHeader.toString()};`);
   await page.setViewportSize({width, height});
   await page.goto('/');
   await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeVisible();
@@ -188,13 +189,11 @@ test('negative control: the rail check fails when a section heading or Provider 
  * change is over (its width settled and its reflow mark gone): the window
  * width, the sidebar's drawn width and mark, how far its edge passes over the
  * page and over the page's content (the page's clear inset is #content's
- * leading padding), and -- on Settings or Help -- whether the tab strip is on
- * a second row, the header's own genuine-fit rule, and whether every tab is
- * inside the header. Settings decides its navigation when the page's width
- * has changed (its ResizeObserver, after a frame's animation callbacks), so
- * its header is also read by an observer created after the page's own --
- * the state that frame paints -- into window.__dpHeaders
- * (paintedSettingsProblems). */
+ * leading padding), and -- on Settings or Help -- whether the navigation is
+ * on a second row. Each decides its navigation when the page's width has
+ * changed (its ResizeObserver, after a frame's animation callbacks), so its
+ * header is also read by an observer created after the page's own -- the
+ * state that frame paints -- into window.__dpHeaders (paintedProblems). */
 async function framesDuring(page, view, act) {
   await page.evaluate(view => {
     const rect = node => node.getBoundingClientRect();
@@ -202,9 +201,9 @@ async function framesDuring(page, view, act) {
     window.__dpHeaders = [];
     window.__dpStop = false;
     window.__dpHeaderObserver?.disconnect();
-    if (view === 'settings') {
-      window.__dpHeaderObserver = new ResizeObserver(() => window.__dpHeaders.push(window.__dpSettingsHeader()));
-      window.__dpHeaderObserver.observe(document.querySelector('#view-settings .dp-settings-master-header'));
+    if (view) {
+      window.__dpHeaderObserver = new ResizeObserver(() => window.__dpHeaders.push(window.__dpSectionHeader(view)));
+      window.__dpHeaderObserver.observe(document.querySelector(`#view-${view} .dp-${view}-master-header`));
     }
     const sample = () => {
       const sidebarNode = document.getElementById('sidebar');
@@ -216,33 +215,10 @@ async function framesDuring(page, view, act) {
         overlap: sidebar.right - main.left, contentCovered: sidebar.right - (rect(content).left + inset),
         mark: sidebarNode.classList.contains('sidebar-reflowing') ? sidebarNode.dataset.sidebarReflow || 'unnamed' : '',
         labelOpacity: Number(getComputedStyle(sidebarNode.querySelector('.nav-label')).opacity)};
-      if (view === 'settings') {
-        const h = window.__dpSettingsHeader();
+      if (view) {
+        const h = window.__dpSectionHeader(view);
         Object.assign(frame, {second: h.second,
-          copyCovered: sidebar.right - document.querySelector('#view-settings .dp-settings-header-copy').getBoundingClientRect().left});
-      } else if (view) {
-        const root = document.getElementById(`view-${view}`);
-        const header = root.querySelector(`.dp-${view}-master-header`);
-        const style = getComputedStyle(header);
-        const box = rect(header);
-        const inner = {left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight)};
-        const copyNode = root.querySelector(`.dp-${view}-header-copy`);
-        const copy = rect(copyNode);
-        const strip = root.querySelector(`.dp-${view}-tabs`);
-        const s = rect(strip);
-        const tabs = [...strip.querySelectorAll('[data-tab]')].map(rect);
-        const stripStyle = getComputedStyle(strip);
-        const natural = [...copyNode.children].reduce((sum, child) => sum + rect(child).width, 0)
-          + parseFloat(getComputedStyle(copyNode).columnGap) * (copyNode.children.length - 1);
-        const stripNatural = tabs.reduce((sum, tab) => sum + tab.width, 0) + parseFloat(stripStyle.columnGap || 0) * (tabs.length - 1)
-          + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + parseFloat(stripStyle[key]), 0);
-        Object.assign(frame, {
-          second: s.top > copy.bottom - 4,
-          fits: natural + parseFloat(style.columnGap) + stripNatural <= inner.right - inner.left + 0.5,
-          inside: s.left >= inner.left - 0.5 && s.right <= inner.right + 0.5
-            && tabs.every(tab => tab.left >= s.left - 0.5 && tab.right <= s.right + 0.5 && Math.abs(tab.top - tabs[0].top) < 1),
-          copyCovered: sidebar.right - copy.left,
-        });
+          copyCovered: sidebar.right - document.querySelector(`#view-${view} .dp-${view}-header-copy`).getBoundingClientRect().left});
       }
       window.__dpFrames.push(frame);
       if (!window.__dpStop) requestAnimationFrame(sample);
@@ -269,13 +245,13 @@ const restRow = (page, view) => page.evaluate(view => {
     > root.querySelector(`.dp-${view}-header-copy`).getBoundingClientRect().bottom - 4;
 }, view);
 
-// Every Settings header the last framesDuring painted: what was wrong, by width.
-const paintedSettingsProblems = page => page.evaluate(settingsProblems => {
-  const problems = eval(settingsProblems);
+// Every header the last framesDuring painted: what was wrong, by width.
+const paintedProblems = page => page.evaluate(headerProblems => {
+  const problems = eval(headerProblems);
   const headers = window.__dpHeaders;
   if (!headers.length) return ['no header was read'];
   return [...new Set(headers.flatMap(h => problems(h).map(problem => `${problem} at ${h.vw}`)))];
-}, `(${settingsProblems.toString()})`);
+}, `(${headerProblems.toString()})`);
 
 const changes = values => values.reduce((count, value, i) => count + (i && value !== values[i - 1] ? 1 : 0), 0);
 
@@ -346,10 +322,9 @@ for (const view of ['settings', 'help']) {
         expect(frame.sidebar, label).toBe(frame.vw >= EXPANDED ? FULL : RAIL);
         expect(frame.overlap, label).toBeLessThanOrEqual(0.5);
         expect(frame.copyCovered, label).toBeLessThanOrEqual(0);
-        if (view === 'help') expect(frame.inside, label).toBe(true);
         expect(frame.second, `${label} at ${frame.vw}`).toBe(rest[frame.vw]);
       }
-      if (view === 'settings') expect(await paintedSettingsProblems(page), label).toEqual([]);
+      expect(await paintedProblems(page), label).toEqual([]);
       expect(after.some(frame => frame.mark === 'immediate'), label).toBe(true);
       expect(changes([rest[from], ...frames.map(frame => frame.second), rest[to]]), label).toBe(rest[from] === rest[to] ? 0 : 1);
       expect(await restRow(page, view), label).toBe(rest[to]);
@@ -394,7 +369,7 @@ test('an abrupt change while the sidebar is moving settles at once in either dir
       expect(frame.contentCovered, label).toBeLessThanOrEqual(0.5);
       expect(frame.second, label).toBe(false);
     }
-    expect(await paintedSettingsProblems(page), label).toEqual([]);
+    expect(await paintedProblems(page), label).toEqual([]);
     expect(await page.evaluate(() => {
       const sidebar = document.getElementById('sidebar');
       return {mark: sidebar.className.includes('sidebar-reflowing'), data: sidebar.dataset.sidebarReflow ?? null,
@@ -404,8 +379,8 @@ test('an abrupt change while the sidebar is moving settles at once in either dir
 });
 
 /* Continuous drags at 8 and 16px a frame, both directions, Settings and
- * Help: the accepted motion. The header follows its own genuine fit in every
- * frame (no premature second row), every tab stays inside it, the page never
+ * Help: the accepted motion. The header keeps its one row in every frame
+ * and the navigation it paints is right for its width, the page never
  * has less room than at 1560px, and the moving edge passes over the page by
  * no more than the window has lost below 1560px. (How far that reaches into
  * the header depends on the drag's real speed, which a headless browser's
@@ -422,10 +397,9 @@ for (const view of ['settings', 'help']) {
         const frames = await framesDuring(page, view, () => drag(page, from, to, step));
         expect(frames.filter(frame => frame.mark === 'immediate'), label).toEqual([]);
         expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1), label).toBe(true);
-        if (view === 'settings') expect(await paintedSettingsProblems(page), label).toEqual([]);
+        expect(await paintedProblems(page), label).toEqual([]);
         for (const frame of frames) {
-          expect(frame.second, `${label} at ${frame.vw}`).toBe(view === 'settings' ? false : !frame.fits);
-          if (view === 'help') expect(frame.inside, label).toBe(true);
+          expect(frame.second, `${label} at ${frame.vw}`).toBe(false);
           expect(frame.mainWidth, label).toBeGreaterThanOrEqual(EXPANDED - FULL - 0.5);
           expect(frame.overlap, label).toBeLessThanOrEqual(Math.max(0, EXPANDED - frame.vw) + 0.5);
         }
@@ -568,54 +542,16 @@ test('every page keeps its desktop content on both sides of the boundary', async
   }
 });
 
-/* The master header's identity copy and its tab strip. The strip is never
- * stretched, never scrolls and never loses a tab; whenever the copy at its own
- * width, the row gap and the strip at its own width fit the header, they are
- * one row (every tab on one line, the strip level with the copy, after it,
- * inside the header). Only when they genuinely do not fit -- which depends on
- * the fonts the browser has: this suite blocks the web fonts, whose real
- * metrics fit through the whole desktop (the Gate 9 packet measures them) --
- * may the strip sit beneath the copy, still at its own width. Returns
- * {fits, problems}. */
+/* The master header's identity copy and its navigation, Settings or Help:
+ * one row, the complete strip whenever the copy, the row gap and the strip
+ * fit (the fonts this browser has decide that: this suite blocks the web
+ * fonts), else the compact navigator, in the strip's own place either way
+ * (headerProblems). Returns {fits, problems}. */
 function header(page, view) {
-  if (view === 'settings') {
-    return page.evaluate(settingsProblems => {
-      const h = window.__dpSettingsHeader();
-      return {fits: h.fits, problems: eval(settingsProblems)(h)};
-    }, `(${settingsProblems.toString()})`);
-  }
-  return page.evaluate(view => {
-    const root = document.getElementById(`view-${view}`);
-    const headerNode = root.querySelector(`.dp-${view}-master-header`);
-    const box = headerNode.getBoundingClientRect();
-    const style = getComputedStyle(headerNode);
-    const inner = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const copyNode = root.querySelector(`.dp-${view}-header-copy`);
-    const copy = copyNode.getBoundingClientRect();
-    const natural = [...copyNode.children].reduce((sum, child) => sum + child.getBoundingClientRect().width, 0)
-      + parseFloat(getComputedStyle(copyNode).columnGap) * (copyNode.children.length - 1);
-    const strip = root.querySelector(`.dp-${view}-tabs`);
-    const s = strip.getBoundingClientRect();
-    const tabs = [...strip.querySelectorAll('[data-tab]')].map(tab => tab.getBoundingClientRect());
-    const own = tabs.reduce((sum, tab) => sum + tab.width, 0);
-    const stripStyle = getComputedStyle(strip);
-    const stripNatural = own + parseFloat(stripStyle.columnGap || 0) * (tabs.length - 1)
-      + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + parseFloat(stripStyle[key]), 0);
-    const fits = natural + parseFloat(style.columnGap) + stripNatural <= inner + 0.5;
-    const problems = [];
-    if (new Set(tabs.map(tab => Math.round(tab.top))).size !== 1) problems.push('tabs wrap');
-    if (s.right > box.right + 0.5 || tabs.some(tab => tab.left < s.left - 0.5 || tab.right > s.right + 0.5)) problems.push('clipped');
-    if (strip.scrollWidth > strip.clientWidth + 1) problems.push('strip scrolls');
-    if (s.width > own + 40) problems.push('strip stretched');
-    const level = Math.abs((s.top + s.bottom) / 2 - (copy.top + copy.bottom) / 2) <= 12;
-    if (fits && !level) problems.push('second row');
-    if (fits && s.left < copy.right) problems.push('tabs not beside the copy');
-    if (!fits && level) problems.push('overflowing row');
-    if (fits && Math.round(box.height) > Math.round(Math.max(copy.height, s.height)
-      + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 1)
-      && Math.round(box.height) > parseFloat(style.minHeight) + 0.5) problems.push('extra line');
-    return {fits, problems};
-  }, view);
+  return page.evaluate(([view, headerProblems]) => {
+    const h = window.__dpSectionHeader(view);
+    return {fits: h.fits, problems: eval(headerProblems)(h)};
+  }, [view, `(${headerProblems.toString()})`]);
 }
 
 for (const view of ['settings', 'help']) {

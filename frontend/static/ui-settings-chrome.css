@@ -14,7 +14,7 @@
    (ui-settings-page.css owns the row itself). The space takes no room of its
    own -- its negative margin gives back the gap before it -- so it never
    decides whether the strip fits, nor starts a line of its own. The compact
-   navigator takes exactly the strip's place. */
+   navigator (ui-section-nav.css) takes exactly the strip's place. */
 #view-settings .dp-settings-master-header::after {
   content: '';
   flex: 1 1 0;
@@ -55,6 +55,15 @@
   position: relative;
   gap: 7px;
   padding-inline: 10px;
+}
+
+/* Where the compact navigator could not otherwise hold an end section and
+   its neighbour whole, the tabs give up some side padding
+   (--dp-section-nav-trim, ui-section-nav.js's). */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab {
+    padding-inline: calc(10px - var(--dp-section-nav-trim, 0px));
+  }
 }
 
 /* The dark-theme selected state is intentionally bright on a dark accent
@@ -99,89 +108,6 @@ body.light #view-settings .dp-settings-tab-glyph {
     drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-tab-color) 94%, transparent))
     drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-tab-color) 68%, transparent))
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-tab-color) 34%, transparent));
-}
-
-/* ── Compact section navigator ───────────────────────────────────────── */
-/* One segmented control: the strip's own surface moves to the control that
-   also holds First and Last, which are segments of it, divided like tabs.
-   Where sections continue beyond the window, the section its edge cuts
-   (data-nav-cut) fades outwards from that edge (--dp-settings-nav-cut-edge
-   and -fade, the page runtime's); its hit area stays whole. A sliver too
-   small to recognise is not shown. Where the window could not otherwise
-   hold an end section and its neighbour whole, the tabs give up some side
-   padding (--dp-settings-nav-trim, the page runtime's). */
-@media (min-width: 780px) {
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-control {
-    padding: 0 3px;
-    border: 1px solid var(--dp-segment-border);
-    border-radius: 9px;
-    background: var(--dp-segment-surface);
-    box-shadow: var(--dp-segment-shadow);
-  }
-
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs {
-    padding-block: 3px;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-  }
-
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab {
-    padding-inline: calc(10px - var(--dp-settings-nav-trim, 0px));
-  }
-
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='sliver'] {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='start'] {
-    mask-image: linear-gradient(to right, transparent var(--dp-settings-nav-cut-edge),
-      #000 calc(var(--dp-settings-nav-cut-edge) + var(--dp-settings-nav-cut-fade)));
-  }
-
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='end'] {
-    mask-image: linear-gradient(to left, transparent var(--dp-settings-nav-cut-edge),
-      #000 calc(var(--dp-settings-nav-cut-edge) + var(--dp-settings-nav-cut-fade)));
-  }
-
-  #view-settings .dp-settings-nav-end {
-    appearance: none;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--dp-segment-text);
-    cursor: pointer;
-    transition: color .14s ease, background .14s ease;
-  }
-
-  #view-settings .dp-settings-nav-end[data-settings-end='first'] {
-    border-right: 1px solid var(--dp-segment-divider);
-  }
-
-  #view-settings .dp-settings-nav-end[data-settings-end='last'] {
-    border-left: 1px solid var(--dp-segment-divider);
-  }
-
-  #view-settings .dp-settings-nav-end:hover {
-    background: var(--dp-segment-hover);
-    color: var(--dp-segment-hover-text);
-  }
-
-  #view-settings .dp-settings-nav-end:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 82%, white 18%);
-    outline-offset: -2px;
-  }
-
-  body.light #view-settings .dp-settings-nav-end:focus-visible {
-    outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
-  }
-
-  #view-settings .dp-settings-nav-end svg {
-    width: 15px;
-    height: 15px;
-  }
 }
 
 /* The Settings family colours (the same datums as each family's card icons,

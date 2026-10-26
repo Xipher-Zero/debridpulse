@@ -21,6 +21,15 @@
   const state = { activeTab: 'quickstart' };
   const root = () => document.getElementById('view-help');
 
+  /* The header's one row (desktop and tablet, 780px and wider): the
+   * complete strip or the compact navigator, measured and placed by the
+   * shared section navigator (ui-section-nav.js), as in Settings. Below
+   * 780px the handheld header keeps its own wrapping strip. */
+  const navigation = window.DPSectionNav.create({
+    nav: () => root()?.querySelector('.dp-help-nav'),
+    copy: '.dp-help-header-copy',
+  });
+
   function step(number, title, copy) {
     return `
       <article class="dp-help-step">
@@ -755,17 +764,26 @@
     showTabPanel();
   }
 
-  function selectTabControl(name, focus = false) {
-    if (!TABS.some(([id]) => id === name)) name = 'quickstart';
+  // A tab name, or Quick Start when it names no tab.
+  const tabName = name => (TABS.some(([id]) => id === name) ? name : 'quickstart');
+
+  /* Select a tab at once; `motion` ({direction, distance}, the choice's own)
+   * slides the compact navigator's window when the selection moves it. */
+  function selectTabControl(name, focus = false, motion = null) {
+    name = tabName(name);
     state.activeTab = name;
 
+    let selected = null;
     root()?.querySelectorAll('.dp-help-tab').forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? 0 : -1;
-      if (active && focus) tab.focus();
+      if (active) selected = tab;
     });
+    navigation.place(motion);
+    // (Where the navigator places its own window, focus never scrolls it.)
+    if (focus) selected?.focus({preventScroll: navigation.placing()});
   }
 
   // The panel of the tab selected NOW (a later choice made meanwhile wins).
@@ -781,14 +799,16 @@
   }
 
   /* The operator chose a section: the strip changes at once and the panel
-   * slides across from the one on screen, by the tabs' displayed order. */
+   * slides across, by the tabs' displayed order. */
   function chooseTab(name, focus = false) {
     const view = root();
     const order = Array.from(view?.querySelectorAll('.dp-help-tab') || []).map(tab => tab.dataset.tab);
-    const shown = view?.querySelector('.dp-help-panel:not([hidden])')?.dataset.panel;
-    selectTabControl(name, focus);
-    const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
+    // From the section chosen last -- what a slide still under way will
+    // show -- so a quick return turns back.
+    const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
     const step = from >= 0 && to >= 0 ? to - from : 0;
+    // The compact navigator's window, when it moves, slides the same way.
+    selectTabControl(name, focus, {direction: Math.sign(step), distance: Math.abs(step)});
     if (window.DPMotion) window.DPMotion.slide({element: view?.querySelector('.dp-help-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
@@ -826,6 +846,10 @@
     if (view.dataset.dpHelpEventsBound === '1') return;
     view.dataset.dpHelpEventsBound = '1';
 
+    // The page's width changed (window, sidebar, or the page shown again):
+    // the header's navigation compares its measured widths with the new room.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => navigation.fit()).observe(view);
+
     view.addEventListener('click', event => {
       const summary = event.target.closest('.dp-help-accordion > summary');
       if (summary && canAnimateDisclosure()) {
@@ -834,8 +858,17 @@
         return;
       }
       const tab = event.target.closest('.dp-help-tab');
-      if (!tab) return;
-      chooseTab(tab.dataset.tab);
+      if (tab) {
+        chooseTab(tab.dataset.tab);
+        return;
+      }
+      // First / Last: the first or last tab, through the same choice; focus
+      // follows to that tab, since the action is hidden once it is there.
+      const travel = event.target.closest('.dp-help-nav-end');
+      if (!travel) return;
+      const tabs = Array.from(view.querySelectorAll('.dp-help-tab'));
+      const target = travel.dataset.helpEnd === 'first' ? tabs[0] : tabs.at(-1);
+      if (target) chooseTab(target.dataset.tab, document.activeElement === travel);
     });
 
     view.addEventListener('keydown', event => {
@@ -873,6 +906,13 @@
           <span class="dp-help-tab-label">${label}</span>
         </button>`;
     }).join('');
+    // The compact navigator's two travel actions: actions, not tabs, each
+    // naming the section it reaches.
+    const travel = (end, glyph, index) => `
+      <button class="dp-help-nav-end dp-section-nav-end" type="button" data-help-end="${end}"
+              aria-label="${end === 'first' ? 'First' : 'Last'} section: ${TABS.at(index)[1]}">
+        ${window.DPIcons?.svg?.(glyph) || ''}
+      </button>`;
 
     view.innerHTML = `
       <section class="dp-card dp-help-master-card dp-list-workspace-surface" aria-label="Help & Documentation">
@@ -884,7 +924,13 @@
               <div class="dp-help-header-subtitle">When intuition fails.</div>
             </div>
           </div>
-          <div class="dp-tabs dp-help-tabs" role="tablist" aria-label="Help sections">${tabs}</div>
+          <div class="dp-help-nav dp-section-nav">
+            <div class="dp-help-nav-control dp-section-nav-control">
+              ${travel('first', 'chevronFirst', 0)}
+              <div class="dp-tabs dp-help-tabs dp-section-nav-strip" role="tablist" aria-label="Help sections">${tabs}</div>
+              ${travel('last', 'chevronLast', -1)}
+            </div>
+          </div>
         </header>
         <div class="dp-help-master-body">
           <div class="dp-help-scroll">
@@ -905,6 +951,7 @@
     view.dataset.dpHelpRendered = '1';
     bindEvents(view);
     activateTab(state.activeTab);
+    navigation.fit({measure: true});
     document.dispatchEvent(new CustomEvent('debridpulse:help-rendered', {detail: {view: 'help'}}));
   }
 
@@ -913,6 +960,9 @@
     state.activeTab = 'quickstart';
     render();
   }
+
+  // Fonts that finish loading change the tabs' and the copy's own widths.
+  document.fonts?.addEventListener?.('loadingdone', () => navigation.fit({measure: true}));
 
   // app.js owns generic navigation and calls this canonical Help entry point.
   window.loadHelp = load;

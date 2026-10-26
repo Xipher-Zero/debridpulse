@@ -22,7 +22,8 @@ async function boot(page, {width = 1440, height = 900} = {}) {
     // Which surface a scoped slide moves (ui-motion.js marks it while it runs).
     const scopeOf = el => el.id === 'content' ? 'main' : el.id === 'event-list' ? 'activity'
       : el.classList.contains('dp-downloads-table-wrap') ? 'downloads' : el.classList.contains('dp-settings-scroll') ? 'settings'
-      : el.classList.contains('dp-help-scroll') ? 'help' : el.classList.contains('dp-settings-tabs') ? 'settings-nav' : el.className;
+      : el.classList.contains('dp-help-scroll') ? 'help' : el.classList.contains('dp-settings-tabs') ? 'settings-nav'
+      : el.classList.contains('dp-help-tabs') ? 'help-nav' : el.className;
     const style = (el, pseudo, key) => { try { return getComputedStyle(el, pseudo)[key]; } catch (_) { return null; } };
     // Every moving surface (a Settings choice can move its panel and its
     // compact navigator's window together).
@@ -62,11 +63,11 @@ const settled = page => page.waitForFunction(() => !document.querySelector('.dp-
 /* The slide that just ran: its scope, direction, step, timing and how far its
  * old and new content travelled (largest displacement seen on each axis). The
  * page's content slide unless `scope` names another surface (the Settings
- * navigator's window is 'settings-nav'). */
+ * navigator's window is 'settings-nav', Help's 'help-nav'). */
 async function lastSlide(page, scope = null) {
   await settled(page);
   const frames = await page.evaluate(() => window.__frames);
-  scope ??= frames.filter(frame => frame.scope !== 'settings-nav').at(-1)?.scope;
+  scope ??= frames.filter(frame => !['settings-nav', 'help-nav'].includes(frame.scope)).at(-1)?.scope;
   if (!frames.some(frame => frame.scope === scope)) return null;
   const mine = frames.filter(frame => frame.scope === scope);
   const extreme = (key, axis) => mine.map(frame => shift(frame[key])[axis]).reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);

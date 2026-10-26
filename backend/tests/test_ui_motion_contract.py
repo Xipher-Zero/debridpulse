@@ -65,21 +65,24 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
     assert activity.count("window.DPMotion.slide(") == 1
     # Only the pager's four actions turn a page (go), and only a turn slides.
     assert activity.count("go({kind:") == 4 and activity.count("beginTurn(") == 2
+    # The compact section navigator's window (ui-section-nav.js, shared by
+    # Settings and Help) is the one other slide: moved by the same choice
+    # (chooseTab's own direction and distance) and only when that choice
+    # moves it.
+    navigator = read("ui-section-nav.js")
+    assert navigator.count("window.DPMotion.slide(") == 1
+    place = navigator[navigator.index("function placeNavigation(motion = null) {"):]
+    place = place[:place.index("\n    }\n")]
+    assert "window.DPMotion.slide(" in place and "motion?.direction" in place
     for owner in ("ui-settings-page.js", "ui-help-page.js"):
         source = read(owner)
-        # Settings' second slide is its compact navigator's window, moved by
-        # the same choice (chooseTab's own direction and distance) and only
-        # when that choice moves it.
-        slides = 2 if owner == "ui-settings-page.js" else 1
-        assert source.count("window.DPMotion.slide(") == slides, owner
-        if slides == 2:
-            place = source[source.index("function placeNavigation(motion = null) {"):]
-            place = place[:place.index("\n  }\n")]
-            assert "window.DPMotion.slide(" in place and "motion?.direction" in place
-            assert source.count("placeNavigation(motion)") == 1
+        # Each page's own slide is its panel's.
+        assert source.count("window.DPMotion.slide(") == 1, owner
+        assert source.count("navigation.place(motion)") == 1, owner
         choose = source[source.index("function chooseTab("):]
         choose = choose[:choose.index("\n  }\n")]
         assert "selectTabControl(name" in choose and "showTabPanel" in choose, owner
+        assert "{direction: Math.sign(step), distance: Math.abs(step)}" in choose, owner
         # Render and restore activate in place.
         assert "activateTab(state.activeTab);" in source, owner
 

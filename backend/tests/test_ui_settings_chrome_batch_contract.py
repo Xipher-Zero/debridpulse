@@ -69,7 +69,8 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
 
     # 780px and wider the row never wraps, and the compact navigator keeps the
     # strip's own place: no layout of its own for the copy, the navigation or
-    # the trailing space.
+    # the trailing space. The navigation's geometry and chrome are the shared
+    # section navigator's (ui-section-nav.css, Settings' and Help's).
     desktop = page[page.index("@media (min-width: 780px) {\n  #view-settings .dp-settings-master-header {"):]
     desktop = desktop[:desktop.index("\n}\n")]
     assert "flex-wrap: nowrap;" in desktop
@@ -77,53 +78,69 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert f"{compact} .dp-settings-header-copy" not in page
     assert f"{compact} .dp-settings-nav {{" not in page
     assert f"{compact}::after" not in chrome
-    window = desktop[desktop.index(f"{compact} .dp-settings-tabs {{"):]
+    # No Settings copy of the navigator's rules remains.
+    assert ".dp-settings-nav" not in page and ".dp-settings-nav" not in chrome
+    assert "data-nav-cut" not in chrome and "data-nav-at" not in page
+    nav_css = read(STATIC / "ui-section-nav.css")
+    assert "@import url('/ui-section-nav.css?v=1');" in read(STYLE)
+    shared = "[data-presentation='compact'] > .dp-section-nav"
+    assert "header-copy" not in nav_css and "::after" not in nav_css and "#view-" not in nav_css
+    assert f"{shared} {{" not in nav_css
+    window = nav_css[nav_css.index(f"{shared} .dp-section-nav-strip {{"):]
     window = window[:window.index("}")]
-    assert "width: calc(var(--dp-settings-nav-window) + 2 * var(--dp-settings-nav-slot));" in window
-    assert "overflow: hidden;" in window and "clip-path: inset(0 var(--dp-settings-nav-slot));" in window
+    assert "width: calc(var(--dp-section-nav-window) + 2 * var(--dp-section-nav-slot));" in window
+    assert "overflow: hidden;" in window and "clip-path: inset(0 var(--dp-section-nav-slot));" in window
     # First and Last stand over the strip's ends (one grid cell), and at
     # their own end are gone, taking no room: the window, clipped by the
     # same committed state, takes their place; the control never resizes.
-    assert f"{compact} .dp-settings-nav-control > * {{\n    grid-area: 1 / 1;" in desktop
-    assert f"{compact} [data-nav-at='first'] > .dp-settings-tabs {{\n    clip-path: inset(0 var(--dp-settings-nav-slot) 0 0);" in desktop
-    assert f"{compact} [data-nav-at='last'] > .dp-settings-tabs {{\n    clip-path: inset(0 0 0 var(--dp-settings-nav-slot));" in desktop
-    gone = desktop[desktop.index(f"{compact} :is([data-nav-at='first'], [data-nav-at='only'])"):].split("}", 1)[0]
-    assert "display: none;" in gone and "visibility: hidden" not in desktop
-    assert ":has(.stab:first-child[aria-selected='true'])" not in desktop
-    nav = page[page.index("#view-settings .dp-settings-nav {"):]
+    assert f"{shared} .dp-section-nav-control > * {{\n    grid-area: 1 / 1;" in nav_css
+    assert f"{shared} [data-nav-at='first'] > .dp-section-nav-strip {{\n    clip-path: inset(0 var(--dp-section-nav-slot) 0 0);" in nav_css
+    assert f"{shared} [data-nav-at='last'] > .dp-section-nav-strip {{\n    clip-path: inset(0 0 0 var(--dp-section-nav-slot));" in nav_css
+    gone = nav_css[nav_css.index(f"{shared} :is([data-nav-at='first'], [data-nav-at='only'])"):].split("}", 1)[0]
+    assert "display: none;" in gone and "visibility: hidden" not in nav_css
+    assert ":has(" not in nav_css
+    nav = nav_css[nav_css.index(".dp-section-nav {"):]
     assert "justify-content: center;" in nav[:nav.index("}")]
     # The window's own element is DPMotion's slide surface, which cannot carry
     # a mask: the outward fade belongs to the section an edge cuts.
-    assert "mask-image" not in chrome[chrome.index(f"{compact} .dp-settings-tabs {{"):].split("}", 1)[0]
-    assert f"{compact} .stab[data-nav-cut='start']" in chrome and f"{compact} .stab[data-nav-cut='end']" in chrome
+    assert "mask-image" not in window
+    assert f"{shared} [role='tab'][data-nav-cut='start']" in nav_css and f"{shared} [role='tab'][data-nav-cut='end']" in nav_css
     # A sliver too small to be a position is not shown; the compact tabs give
     # up side padding only by the runtime's measured trim (none by default).
-    sliver = chrome[chrome.index(f"{compact} .stab[data-nav-cut='sliver'] {{"):].split("}", 1)[0]
+    sliver = nav_css[nav_css.index(f"{shared} [role='tab'][data-nav-cut='sliver'] {{"):].split("}", 1)[0]
     assert "opacity: 0;" in sliver and "pointer-events: none;" in sliver
     trim = chrome[chrome.index(f"{compact} .dp-settings-tabs .stab {{"):].split("}", 1)[0]
-    assert "padding-inline: calc(10px - var(--dp-settings-nav-trim, 0px));" in trim
+    assert "padding-inline: calc(10px - var(--dp-section-nav-trim, 0px));" in trim
 
-    # Complete strip or compact navigator, decided by the page runtime from
-    # the rendered tabs and copy (no assumed tab count, no fixed breakpoint
-    # besides the handheld edge); the compact one is a bounded window onto the
-    # same tabs with the pager's own First / Last glyphs, opens tabs through
-    # chooseTab, and slides only through DPMotion when a choice moves it.
+    # Complete strip or compact navigator, decided by the shared navigator
+    # from the rendered tabs and copy (no assumed tab count, no fixed
+    # breakpoint besides the handheld edge); the compact one is a bounded
+    # window onto the same tabs with the pager's own First / Last glyphs,
+    # opens tabs through chooseTab, and slides only through DPMotion when a
+    # choice moves it. Settings keeps no copy of those mechanics.
     runtime = read(RUNTIME)
-    fit = runtime[runtime.index("function fitNavigation("):runtime.index("function navWindow(")]
+    mechanics = read(STATIC / "ui-section-nav.js")
+    for moved in ("function fitNavigation(", "function navWindow(", "function navLayout(", "function placeNavigation(", "NAV_TRIM", "navFit"):
+        assert moved not in runtime, moved
+    assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-settings-nav'),\n    copy: '.dp-settings-header-copy',\n  });" in runtime
+    fit = mechanics[mechanics.index("function fitNavigation("):mechanics.index("function navWindow(")]
     assert "getBoundingClientRect().width" in fit and "NAV_SPARE" in fit
     assert "navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact'" in fit
-    assert "const NAV_SPARE = 4;" in runtime
-    assert "const NAV_TRIM = 5;" in runtime and "navFit.trim = navTrim(navFit.window);" in fit
-    assert "nav.style.removeProperty('--dp-settings-nav-trim');" in fit
-    assert "window.matchMedia('(min-width: 780px)')" in runtime
+    # The copy is measured at every fit (a page may change it with its width).
+    assert "navFit.copy = copyWidth(header);" in fit
+    assert "const NAV_SPARE = 4;" in mechanics
+    assert "const NAV_TRIM = 5;" in mechanics and "navFit.trim = navTrim(navFit.window);" in fit
+    assert "nav.style.removeProperty('--dp-section-nav-trim');" in fit
+    assert "window.matchMedia('(min-width: 780px)')" in mechanics
     assert "'chevronFirst'" in runtime and "'chevronLast'" in runtime
     assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
     assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
     assert "chooseTab(target.dataset.tab);" in travel[:travel.index("return;\n      }")]
-    assert "addEventListener?.('loadingdone'" in runtime and "new ResizeObserver(() => fitNavigation())" in runtime
-    place = runtime[runtime.index("function placeNavigation("):]
-    place = place[:place.index("\n  }\n")]
+    assert "addEventListener?.('loadingdone', () => navigation.fit({measure: true}))" in runtime
+    assert "new ResizeObserver(() => navigation.fit())" in runtime
+    place = mechanics[mechanics.index("function placeNavigation("):]
+    place = place[:place.index("\n    }\n")]
     assert "window.DPMotion.slide({element: strip, axis: 'x'" in place and "motion?.direction" in place
     assert "tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;" in place
     # The window slides the way the choice goes (the panel's own direction),
@@ -132,6 +149,7 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
     assert "const placed = navFit.left ?? strip.scrollLeft;" in place and "control.dataset.navAt = at;" in place
     assert "const room = navRoom(navFit.window, index);" in place
+    assert "navigation.place(motion);" in runtime
     choose = runtime[runtime.index("function chooseTab("):]
     choose = choose[:choose.index("\n  }\n")]
     assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});" in choose

@@ -7,7 +7,8 @@
 /* ── Settings master-header geometry ────────────────────────────────── */
 /* As Settings: a trailing space that grows exactly as the copy does centres
    the tab strip while the copy fits beside it, then yields first, so the
-   strip keeps its full width (ui-help-page.css owns the row itself). */
+   strip keeps its full width (ui-help-page.css owns the row itself). The
+   compact navigator (ui-section-nav.css) takes exactly the strip's place. */
 #view-help .dp-help-master-header::after {
   content: '';
   flex: 1 1 0;
@@ -27,12 +28,6 @@
   line-height: 1.35;
 }
 
-#view-help .dp-help-tabs {
-  width: max-content;
-  max-width: 100%;
-  margin: 0;
-}
-
 /* ── Settings section-selector geometry and emphasis ────────────────── */
 #view-help .dp-help-tab {
   --dp-help-tab-color: var(--dp-accent-purple-bright);
@@ -44,6 +39,15 @@
   padding-inline: 10px;
   border: 0;
   font: inherit;
+}
+
+/* Where the compact navigator could not otherwise hold an end section and
+   its neighbour whole, the tabs give up some side padding
+   (--dp-section-nav-trim, ui-section-nav.js's). */
+@media (min-width: 780px) {
+  #view-help .dp-help-master-header[data-presentation='compact'] .dp-help-tab {
+    padding-inline: calc(10px - var(--dp-section-nav-trim, 0px));
+  }
 }
 
 #view-help .dp-help-tab-chip {
