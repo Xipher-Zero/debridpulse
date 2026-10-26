@@ -120,7 +120,7 @@ body.light #view-settings .dp-settings-tab-glyph {
   }
 
   #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs {
-    padding: 3px 0;
+    padding-block: 3px;
     border: 0;
     border-radius: 0;
     background: none;

@@ -79,7 +79,17 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert f"{compact}::after" not in chrome
     window = desktop[desktop.index(f"{compact} .dp-settings-tabs {{"):]
     window = window[:window.index("}")]
-    assert "width: var(--dp-settings-nav-window);" in window and "overflow: hidden;" in window
+    assert "width: calc(var(--dp-settings-nav-window) + 2 * var(--dp-settings-nav-slot));" in window
+    assert "overflow: hidden;" in window and "clip-path: inset(0 var(--dp-settings-nav-slot));" in window
+    # First and Last stand over the strip's ends (one grid cell), and at
+    # their own end are gone, taking no room: the window, clipped by the
+    # same committed state, takes their place; the control never resizes.
+    assert f"{compact} .dp-settings-nav-control > * {{\n    grid-area: 1 / 1;" in desktop
+    assert f"{compact} [data-nav-at='first'] > .dp-settings-tabs {{\n    clip-path: inset(0 var(--dp-settings-nav-slot) 0 0);" in desktop
+    assert f"{compact} [data-nav-at='last'] > .dp-settings-tabs {{\n    clip-path: inset(0 0 0 var(--dp-settings-nav-slot));" in desktop
+    gone = desktop[desktop.index(f"{compact} :is([data-nav-at='first'], [data-nav-at='only'])"):].split("}", 1)[0]
+    assert "display: none;" in gone and "visibility: hidden" not in desktop
+    assert ":has(.stab:first-child[aria-selected='true'])" not in desktop
     nav = page[page.index("#view-settings .dp-settings-nav {"):]
     assert "justify-content: center;" in nav[:nav.index("}")]
     # The window's own element is DPMotion's slide surface, which cannot carry
@@ -116,9 +126,16 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     place = place[:place.index("\n  }\n")]
     assert "window.DPMotion.slide({element: strip, axis: 'x'" in place and "motion?.direction" in place
     assert "tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;" in place
+    # The window slides the way the choice goes (the panel's own direction),
+    # compared with where it was last placed, never with a scroll offset a
+    # pending slide has yet to draw; the end state is written with it.
+    assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
+    assert "const placed = navFit.left ?? strip.scrollLeft;" in place and "control.dataset.navAt = at;" in place
+    assert "const room = navRoom(navFit.window, index);" in place
     choose = runtime[runtime.index("function chooseTab("):]
     choose = choose[:choose.index("\n  }\n")]
     assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});" in choose
+    assert "order.indexOf(state.activeTab)" in choose and ":not([hidden])" not in choose
 
     # The explicit query generation prevents a browser-cached synthetic glyph
     # from masking the supplied Settings asset after a staging image update.

@@ -12,10 +12,14 @@ const { test, expect } = require('@playwright/test');
  * at the list's first or last section it starts or ends there, between them
  * the selection is as centred as the cuts allow, an edge where sections
  * continue cuts one and fades outwards, and it slides (DPMotion) only when a
- * choice moves it. A part of a section too small to be a position is not
+ * choice moves it, the way the choice goes, as the panel does. First and
+ * Last are gone at their own end, taking no room: the window grows into
+ * their place while the control stays where it is. A part of a section too small to be a position is not
  * shown; at the 780px floor the first or last section may show with its
- * neighbour alone, both whole (the tabs giving up some side padding if they
- * must). Below 780px the handheld header keeps its wrapping strip.
+ * neighbour alone: the selection always whole, the neighbour whole where
+ * the two fit (the tabs giving up some side padding if they must),
+ * otherwise cut at the window's edge, faded and still a target. Below 780px
+ * the handheld header keeps its wrapping strip.
  *
  * Fit, placement and feasibility are computed here from the rendered tabs'
  * and copy's own widths -- whatever fonts this browser drew -- never read
@@ -50,8 +54,18 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
   /* Every frame in which the compact navigator's window is sliding (DPMotion
    * marks the strip while it runs): its direction and step, and where the
    * navigator's control and the header stand. */
+  /* And in every frame: a First or Last that is shown stands over the
+   * window's end, one that is gone has left its place to the window --
+   * never both, never neither (__dpEnds counts the frames that break it). */
   await page.addInitScript(() => {
     window.__dpNav = [];
+    window.__dpEnds = [];
+    // Where the destination's own snapshot stands now: + arriving from the
+    // right (forward), - from the left (backward), 0 none.
+    const arriving = node => {
+      const match = node && /matrix\(([^)]+)\)/.exec(getComputedStyle(node, '::view-transition-new(root)').transform);
+      return match ? Math.sign(Math.round(+match[1].split(',')[4])) : 0;
+    };
     const tick = () => {
       const strip = document.querySelector('#view-settings .dp-settings-tabs.dp-motion-surface');
       if (strip) {
@@ -59,7 +73,18 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
         const header = strip.closest('.dp-settings-master-header').getBoundingClientRect();
         window.__dpNav.push({direction: strip.dataset.dpMotionDirection, step: strip.dataset.dpMotionStep,
           control: [control.left, control.top, control.width, control.height], header: [header.left, header.top, header.width, header.height],
-          moving: document.getAnimations().some(a => a.effect?.target === strip && /\(root\)$/.test(a.effect?.pseudoElement || ''))});
+          moving: document.getAnimations().some(a => a.effect?.target === strip && /\(root\)$/.test(a.effect?.pseudoElement || '')),
+          strip: arriving(strip), panel: arriving(document.querySelector('#view-settings .dp-settings-scroll.dp-motion-surface'))});
+      }
+      const compact = document.querySelector('#view-settings .dp-settings-master-header[data-presentation="compact"] .dp-settings-tabs');
+      if (compact) {
+        const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(compact).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
+        const [top, right = top, , left = right] = inset;
+        for (const [end, clip] of [['first', left], ['last', right]]) {
+          const node = compact.parentElement.querySelector(`.dp-settings-nav-end[data-settings-end="${end}"]`);
+          const there = getComputedStyle(node).display !== 'none';
+          if (there !== clip > 0 || (there && Math.abs(node.getBoundingClientRect().width - clip) > 0.5)) window.__dpEnds.push(`${end}: ${there ? 'shown' : 'gone'}, clip ${clip}`);
+        }
       }
       requestAnimationFrame(tick);
     };
@@ -83,8 +108,8 @@ function header(page, frame = 0) {
     const root = document.getElementById('view-settings');
     const headerNode = root.querySelector('.dp-settings-master-header');
     const style = getComputedStyle(headerNode);
-    const box = rect(headerNode);
-    const inner = {left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight)};
+    const headerBox = rect(headerNode);
+    const inner = {left: headerBox.left + parseFloat(style.paddingLeft), right: headerBox.right - parseFloat(style.paddingRight)};
     const gap = parseFloat(style.columnGap);
     const parts = node => [...node.children].reduce((sum, kid) => sum + rect(kid).width, 0)
       + (parseFloat(getComputedStyle(node).columnGap) || 0) * (node.children.length - 1);
@@ -92,7 +117,11 @@ function header(page, frame = 0) {
     const copy = rect(copyNode);
     const copyOwn = parts(copyNode);
     const strip = root.querySelector('.dp-settings-tabs');
-    const s = rect(strip);
+    const box = rect(strip);
+    // The window: the strip clipped to it (compact), or the strip.
+    const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(strip).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
+    const [clipTop, clipRight = clipTop, , clipLeft = clipRight] = inset;
+    const s = {left: box.left + clipLeft, right: box.right - clipRight, width: box.width - clipLeft - clipRight};
     const tabNodes = [...strip.querySelectorAll('[data-tab]')];
     const tabs = tabNodes.map(rect);
     const stripNatural = tabs.reduce((sum, tab) => sum + tab.width, 0);
@@ -116,10 +145,10 @@ function header(page, frame = 0) {
         ? parseFloat(tab.style.getPropertyValue('--dp-settings-nav-cut-fade')) || 0 : 0;
     };
     return {
-      width: innerWidth, height: box.height, copyLeft: copy.left - box.left, copyTop: copy.top - box.top,
+      width: innerWidth, height: headerBox.height, copyLeft: copy.left - headerBox.left, copyTop: copy.top - headerBox.top,
       level: Math.abs((control.top + control.bottom) / 2 - (copy.top + copy.bottom) / 2),
       inside: control.left >= copy.left + copyOwn + gap - 0.5 && control.right <= inner.right + 0.5
-        && control.top >= box.top && control.bottom <= box.bottom,
+        && control.top >= headerBox.top && control.bottom <= headerBox.bottom,
       // The strip's own place: centred (plus half the gap), else right after the copy.
       centred,
       placeOffset: centred ? (control.left + control.right) / 2 - ((inner.left + inner.right) / 2 + gap / 2)
@@ -142,9 +171,14 @@ function header(page, frame = 0) {
       fontSizes: tabNodes.map(tab => getComputedStyle(tab.querySelector('.dp-settings-tab-label')).fontSize),
       labelsWhole: tabNodes.map(tab => { const l = tab.querySelector('.dp-settings-tab-label'); return l.scrollWidth <= l.clientWidth + 0.5; }),
       cuts: tabNodes.map(tab => tab.dataset.navCut || ''),
-      ends: ends.map(node => ({width: rect(node).width, height: rect(node).height, visibility: getComputedStyle(node).visibility})),
+      faded: tabNodes.map(tab => getComputedStyle(tab).maskImage !== 'none'),
+      ends: ends.map(node => ({width: rect(node).width, height: rect(node).height, left: rect(node).left, right: rect(node).right,
+        shown: getComputedStyle(node).display !== 'none'})),
       positions: shown.filter((part, k) => part >= TARGET || k === index).length,
-      atStart: c.left - s.left, atEnd: s.right - c.right, edge: tabs[0].left - (s.left - strip.scrollLeft),
+      atStart: c.left - s.left, atEnd: s.right - c.right,
+      edge: tabs[0].left - (box.left + parseFloat(getComputedStyle(strip).paddingLeft) - strip.scrollLeft),
+      // The strip (the whole control's width) and where the window lies in it.
+      strip: {left: box.left, right: box.right, width: box.width}, clip: [clipLeft, clipRight],
       // The outward fade of the section each edge cuts (none where the list ends).
       fadeStart: fadeOf('start'), fadeEnd: fadeOf('end'),
       mask: tabNodes.filter(tab => tab.dataset.navCut).map(tab => getComputedStyle(tab).maskImage).join(' '),
@@ -175,6 +209,67 @@ function problems(h, reference) {
     if (h.shown.some(part => part > 0.5 && part < TARGET)) out.push('a sliver shown');
   }
   return out;
+}
+
+/* A section the window cuts is never presented as whole: it is marked cut
+ * and fades (or, under TARGET, is not shown at all). */
+function expectNoHiddenCut(h, at) {
+  h.shown.forEach((part, j) => {
+    if (part <= 0.5 || part >= h.widths[j] - 0.5) return;
+    expect(h.cuts[j], `${h.order[j]} cut (${part.toFixed(1)}/${h.widths[j].toFixed(1)}px), ${at}`).not.toBe('');
+    expect(h.faded[j], `${h.order[j]} cut and faded, ${at}`).toBe(true);
+  });
+}
+
+/* The first or last section selected: the selection comes first. It is
+ * whole, unfaded, at the list's end; its neighbour gives up only what the
+ * selection leaves no room for -- whole wherever the two fit, otherwise cut
+ * at the window's edge, faded, at least TARGET, still named and a target
+ * for its own section. More sections only where TARGET of one fits; a
+ * smaller part is neither shown nor a target. Returns what the neighbour
+ * shows. */
+async function expectEndpoint(page, h, at, reference) {
+  const n = h.order.length;
+  const first = h.index === 0;
+  const [near, far, next] = first ? [0, 1, 2] : [n - 1, n - 2, n - 3];
+  const hitAt = j => page.evaluate(j => {
+    const strip = document.querySelector('#view-settings .dp-settings-tabs');
+    const t = strip.querySelectorAll('[data-tab]')[j].getBoundingClientRect();
+    const box = strip.getBoundingClientRect();
+    const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(strip).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
+    const [top, right = top, , left = right] = inset;
+    const x = (Math.max(t.left, box.left + left) + Math.min(t.right, box.right - right)) / 2;
+    return document.elementFromPoint(x, (t.top + t.bottom) / 2)?.closest('[data-tab]')?.dataset.tab ?? null;
+  }, j);
+  expect(Math.abs(h.shown[near] - h.widths[near]), `${h.order[near]} whole, ${at}`).toBeLessThanOrEqual(0.5);
+  expect(h.cuts[near], `${h.order[near]} unfaded, ${at}`).toBe('');
+  expect(h.faded[near], `${h.order[near]} unfaded, ${at}`).toBe(false);
+  expect(h.labelWhole, `${h.order[near]} label whole, ${at}`).toBe(true);
+  expect(Math.abs((first ? h.atStart : h.atEnd) - h.edge), at).toBeLessThanOrEqual(1);
+  const left = h.window - h.edge - h.widths[near];
+  expect(Math.abs(h.shown[far] - Math.min(h.widths[far], left)),
+    `${h.order[far]} gives up only what ${h.order[near]} needs, ${at}`).toBeLessThanOrEqual(0.5);
+  // Named in full and reachable whatever it shows.
+  await expect(page.getByRole('tab', {name: reference.labels[far], exact: true}), at).toHaveCount(1);
+  if (left >= h.widths[far] - 0.5) {
+    expect(h.cuts[far], `${h.order[far]} whole and unfaded, ${at}`).toBe('');
+    const room = left - h.widths[far];
+    if (room >= TARGET) expect(h.positions, at).toBeGreaterThanOrEqual(3);
+    else {
+      expect(h.positions, at).toBe(2);
+      expect(h.shown[next], at).toBe(0);
+      // Not shown, and not a target for its section either.
+      if (h.hidden[next] > 0) expect(await hitAt(next), at).not.toBe(h.order[next]);
+    }
+  } else {
+    expect(h.shown[far], `${h.order[far]} a preview, ${at}`).toBeGreaterThanOrEqual(TARGET);
+    expect(h.cuts[far], `${h.order[far]} cut at the window's edge, ${at}`).toBe(first ? 'end' : 'start');
+    expect(h.faded[far], `${h.order[far]} faded, ${at}`).toBe(true);
+    expect(await hitAt(far), `${h.order[far]} a target, ${at}`).toBe(h.order[far]);
+    expect(h.positions, at).toBe(2);
+    expect(h.shown[next] + h.hidden[next], at).toBe(0);
+  }
+  return h.shown[far];
 }
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
@@ -316,8 +411,8 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   expect(h.fadeStart).toBe(0);
   expect(h.fadeEnd).toBeGreaterThanOrEqual(TARGET);
   expect(h.mask).toContain('linear-gradient');
-  await expect(first).toHaveCSS('visibility', 'hidden');
-  await expect(last).toHaveCSS('visibility', 'visible');
+  await expect(first).toHaveCSS('display', 'none');
+  await expect(last).toBeVisible();
   await expect(last).toHaveAccessibleName(`Last section: ${await page.locator(`#view-settings [data-tab="${order.at(-1)}"]`).textContent().then(t => t.trim())}`);
   await first.evaluate(node => node.focus());
   await expect(first).not.toBeFocused();   // a hidden action takes no focus
@@ -332,8 +427,8 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   expect(h.fadeEnd).toBeGreaterThanOrEqual(TARGET);
   expect(h.atStart).toBeGreaterThan(h.edge);
   expect(h.atEnd).toBeGreaterThan(h.edge);
-  await expect(first).toHaveCSS('visibility', 'visible');
-  await expect(last).toHaveCSS('visibility', 'visible');
+  await expect(first).toBeVisible();
+  await expect(last).toBeVisible();
 
   // The last section: the window ends with it; no Last; the near edge fades.
   await last.focus();
@@ -344,8 +439,13 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   h = await header(page);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
   expect(h.fadeEnd).toBe(0);
-  expect(h.fadeStart).toBeGreaterThanOrEqual(TARGET);
-  await expect(last).toHaveCSS('visibility', 'hidden');
+  // The near edge fades where it cuts a section; where it falls (within
+  // less than TARGET) on a section boundary, that part is not shown.
+  const before = h.shown.findIndex(part => part > 0);
+  if (h.fadeStart) expect(h.fadeStart).toBeGreaterThanOrEqual(TARGET);
+  else expect(Math.abs(h.shown[before] - h.widths[before]), 'the first section shown is whole').toBeLessThanOrEqual(0.5);
+  expect(h.shown.filter(part => part > 0.5 && part < TARGET)).toEqual([]);
+  await expect(last).toHaveCSS('display', 'none');
   // The navigator does not move or resize, wherever the selection is.
   for (const key of ['left', 'right']) expect(Math.abs(h.control[key] - control[key])).toBeLessThanOrEqual(0.5);
   await first.click();
@@ -382,7 +482,7 @@ test('the window is bounded: it starts at the first section, ends at the last, c
 });
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
-  test(`at the 780px floor with ${fonts} the last section shows whole with its whole neighbour and no sliver; nearby widths and the other sections keep three positions`, async ({page}) => {
+  test(`at the 780px floor with ${fonts} the end section shows whole, its neighbour whole where both fit and otherwise cut, faded and a target, and no sliver; nearby widths and the other sections keep three positions`, async ({page}) => {
     await openSettings(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const reference = await header(page);
     expect(reference.compact).toBe(false);
@@ -409,50 +509,28 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
         expect(h.labelsWhole.every(Boolean), at).toBe(true);
         await expect(page.locator('#view-settings .dp-settings-tabs [tabindex="0"]')).toHaveCount(1);
         await expect(page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[k]}"]`)).toHaveAttribute('tabindex', '0');
-        // First and Last keep their size; each hides (its place kept) only at its own end.
-        for (const end of h.ends) {
+        // First and Last keep their size; each is gone (no room) only at its own end.
+        for (const end of h.ends.filter(end => end.shown)) {
           expect(end.width, at).toBeGreaterThanOrEqual(32);
           expect(end.height, at).toBeGreaterThanOrEqual(32);
         }
-        expect(h.ends.map(end => end.visibility), at).toEqual([k === 0 ? 'hidden' : 'visible', k === n - 1 ? 'hidden' : 'visible']);
+        expect(h.ends.map(end => end.shown), at).toEqual([k !== 0, k !== n - 1]);
         // Side padding: the complete strip's unless an end section and its
-        // whole neighbour would not otherwise fit, and then at least 5px.
+        // whole neighbour would not otherwise fit the end section's own room
+        // (the control's window and the place of the action gone there), and
+        // then at least 5px.
+        const slot = Math.max(...h.ends.map(end => end.width));
         const pairs = Math.max(natural[0] + natural[1], natural[n - 2] + natural[n - 1]) + h.edge;
         for (const padding of h.padding) {
-          if (pairs + 0.5 <= h.window) expect(padding, at).toBe(reference.padding[0]);
+          if (pairs + 0.5 <= h.strip.width - slot) expect(padding, at).toBe(reference.padding[0]);
           else expect(padding, at).toBeGreaterThanOrEqual(5);
         }
-        if (k === 0 || k === n - 1) {
-          // The end section and its neighbour whole, unfaded, at the list's end.
-          const pair = k === 0 ? [0, 1] : [n - 2, n - 1];
-          for (const j of pair) {
-            expect(Math.abs(h.shown[j] - h.widths[j]), `${order[j]} whole, ${at}`).toBeLessThanOrEqual(0.5);
-            expect(h.cuts[j], `${order[j]} unfaded, ${at}`).toBe('');
-          }
-          expect(Math.abs((k === 0 ? h.atStart : h.atEnd) - h.edge), at).toBeLessThanOrEqual(1);
-          // A third section only where at least TARGET of it fits; none at 780px.
-          const room = h.window - h.edge - h.widths[pair[0]] - h.widths[pair[1]];
-          expect(h.positions, at).toBe(room >= TARGET ? 3 : 2);
-          if (room < TARGET) {
-            const sliver = k === 0 ? 2 : n - 3;
-            expect(h.shown[sliver], at).toBe(0);
-            if (h.hidden[sliver] > 0) {
-              // Not shown, and not a target for its section either.
-              const hit = await page.evaluate(j => {
-                const strip = document.querySelector('#view-settings .dp-settings-tabs');
-                const t = strip.querySelectorAll('[data-tab]')[j].getBoundingClientRect(), s = strip.getBoundingClientRect();
-                const x = (Math.max(t.left, s.left) + Math.min(t.right, s.right)) / 2;
-                return document.elementFromPoint(x, (t.top + t.bottom) / 2)?.closest('[data-tab]')?.dataset.tab ?? null;
-              }, sliver);
-              expect(hit, at).not.toBe(order[sliver]);
-            }
-          }
-        } else {
-          expect(h.positions, at).toBeGreaterThanOrEqual(3);
-        }
+        expectNoHiddenCut(h, at);
+        if (k === 0 || k === n - 1) await expectEndpoint(page, h, at, reference);
+        else expect(h.positions, at).toBeGreaterThanOrEqual(3);
         if (width === 780 && k === n - 1) {
           test.info().annotations.push({type: `780px endpoint (${fonts})`, description:
-            `window ${h.window.toFixed(1)}px; ${order[n - 2]} ${h.widths[n - 2].toFixed(1)}px + ${order[n - 1]} ${h.widths[n - 1].toFixed(1)}px whole; side padding ${h.padding[0]}px (complete strip ${reference.padding[0]}px); ${h.positions} positions`});
+            `window ${h.window.toFixed(1)}px; ${order[n - 1]} ${h.shown[n - 1].toFixed(1)}/${h.widths[n - 1].toFixed(1)}px; ${order[n - 2]} ${h.shown[n - 2].toFixed(1)}/${h.widths[n - 2].toFixed(1)}px${h.cuts[n - 2] ? ' (cut, faded)' : ''}; side padding ${h.padding[0]}px (complete strip ${reference.padding[0]}px); ${h.positions} positions`});
           for (const theme of ['dark', 'light']) {
             await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
             await settle(page);
@@ -467,6 +545,139 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
   });
 }
 
+/* Where the fonts drawn leave the last section and its neighbour too wide
+ * for its room even with the padding trim -- the hosted Browser Runtime's
+ * fallback font (DejaVu Sans 2.37) at 780px: room 353px, Notifications
+ * 163.7px and Data & Maintenance 232.6px at their own padding, 4px kept at
+ * the end, 47.3px short, 27.3px after the 5px trim. Where the pair fits (a
+ * local fallback font: 14.4px to spare), the same shortfall is
+ * recreated on any host: the labels are spaced out (the tabs' widths are
+ * all a font changes here) until the pair is at least that short, and the
+ * page re-measures as it does when fonts finish loading. */
+const HOSTED_SHORT = 47.4;
+test('at the 780px floor, where the end pair cannot fit even trimmed (the hosted fallback font, recreated), the selected section stays whole and its neighbour gives up only the rest: cut, faded, named and a target', async ({page}) => {
+  await openSettings(page, 1920, {fallbackFonts: true});
+  const reference = await header(page);
+  const order = reference.order;
+  const n = order.length;
+  await resize(page, 780);
+  // The pair at its own padding against the last section's own room.
+  const short = h => h.widths[n - 2] + h.widths[n - 1] + 4 * (reference.padding[0] - h.padding[0]) + h.edge - h.window;
+  const chars = reference.labels[n - 2].length + reference.labels[n - 1].length;
+  let spacing = 0;
+  let h;
+  for (;;) {
+    await page.evaluate(spacing => {
+      let style = document.getElementById('dp-test-hosted-metrics');
+      if (!style) document.head.append(style = Object.assign(document.createElement('style'), {id: 'dp-test-hosted-metrics'}));
+      style.textContent = `#view-settings .dp-settings-tab-label { letter-spacing: ${spacing}px; }`;
+      document.fonts.dispatchEvent(new Event('loadingdone'));
+    }, spacing);
+    await settle(page);
+    await choose(page, order[n - 1]);
+    h = await header(page);
+    if (short(h) >= HOSTED_SHORT) break;
+    spacing += Math.max(0.05, (HOSTED_SHORT - short(h)) / chars);
+    expect(spacing, 'the recreated shortfall').toBeLessThan(10);
+  }
+  const at = `${order[n - 1]} at 780px, ${short(h).toFixed(1)}px short`;
+  expect(h.compact, at).toBe(true);
+  expect(problems(h, reference), at).toEqual([]);
+  // The trim cannot make the pair whole: the neighbour must give way.
+  expect(h.widths[n - 2] + h.widths[n - 1] + h.edge - h.window, at).toBeGreaterThan(0.5);
+  for (const padding of h.padding) expect(padding, at).toBeGreaterThanOrEqual(5);
+  expectNoHiddenCut(h, at);
+  const shown = await expectEndpoint(page, h, at, reference);
+  expect(shown, at).toBeLessThan(h.widths[n - 2] - 0.5);
+  // Every other section keeps its accepted presentation at these widths.
+  const control = h.control;
+  for (let k = 0; k < n - 1; k += 1) {
+    await choose(page, order[k]);
+    const other = await header(page);
+    const where = `${order[k]} at 780px (recreated)`;
+    expect(problems(other, reference), where).toEqual([]);
+    expectNoHiddenCut(other, where);
+    for (const key of ['left', 'right']) expect(Math.abs(other.control[key] - control[key]), where).toBeLessThanOrEqual(0.5);
+    expect(other.ends.map(end => end.shown), where).toEqual([k !== 0, true]);
+    if (k === 0) await expectEndpoint(page, other, where, reference);
+  }
+  // The preview opens its section, the window sliding back the way the
+  // panel does; the neighbour, now selected, is whole.
+  await choose(page, order[n - 1]);
+  await page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[n - 2]}"]`).click();
+  await expect(selected(page)).toHaveAttribute('data-tab', order[n - 2]);
+  await settle(page);
+  expect((await header(page)).currentWhole).toBe(true);
+  await choose(page, order[n - 1]);
+  test.info().annotations.push({type: '780px endpoint (hosted fallback metrics, recreated)', description:
+    `labels spaced ${spacing.toFixed(2)}px; window ${h.window.toFixed(1)}px; ${order[n - 1]} ${h.shown[n - 1].toFixed(1)}/${h.widths[n - 1].toFixed(1)}px whole; ${order[n - 2]} ${shown.toFixed(1)}/${h.widths[n - 2].toFixed(1)}px cut and faded; ${short(h).toFixed(1)}px short at full padding, side padding ${h.padding[0]}px`});
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
+    await settle(page);
+    await page.locator('#view-settings .dp-settings-master-header').screenshot({
+      path: `test-results/checkpoint-settings-navigator-780-endpoint-hosted-${theme}.png`});
+  }
+  await page.evaluate(() => document.body.classList.remove('light'));
+});
+
+for (const fonts of ['web fonts', 'fallback fonts']) {
+  test(`with ${fonts}, a First or Last that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
+    await openSettings(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
+    const order = (await header(page)).order;
+    const n = order.length;
+    for (const width of [780, 900, 1100, 1300]) {
+      await resize(page, width);
+      const at = k => `${order[k]} at ${width}px`;
+      // Between the ends: both actions, each over one end of the strip, the
+      // window between them.
+      await choose(page, order[Math.floor(n / 2)]);
+      const inner = await header(page);
+      expect(inner.compact, `${width}px`).toBe(true);
+      const [first, last] = inner.ends;
+      expect(first.shown && last.shown, `${width}px`).toBe(true);
+      const slot = first.width;
+      expect(Math.abs(first.left - inner.strip.left), `${width}px`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(last.right - inner.strip.right), `${width}px`).toBeLessThanOrEqual(0.5);
+      expect(first.right, `${width}px`).toBeLessThanOrEqual(inner.strip.left + inner.clip[0] + 0.5);
+      expect(last.left, `${width}px`).toBeGreaterThanOrEqual(inner.strip.right - inner.clip[1] - 0.5);
+      expect(Math.abs(inner.window - (inner.strip.width - 2 * slot)), `${width}px`).toBeLessThanOrEqual(0.5);
+      for (const k of [0, n - 1]) {
+        await choose(page, order[k]);
+        const h = await header(page);
+        const gone = k === 0 ? 0 : 1;
+        // The action is gone -- no box, no room -- the other one stays.
+        expect(h.ends[gone].shown, at(k)).toBe(false);
+        expect(h.ends[gone].width, at(k)).toBe(0);
+        expect(h.ends[1 - gone].shown, at(k)).toBe(true);
+        expect(h.ends[1 - gone].width, at(k)).toBe(slot);
+        // The control stays; the window takes the action's place.
+        for (const key of ['left', 'right', 'width']) expect(Math.abs(h.control[key] - inner.control[key]), at(k)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(h.window - (inner.window + slot)), at(k)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs((k === 0 ? h.strip.left - (h.strip.left + h.clip[0]) : h.strip.right - h.clip[1] - h.strip.right)), at(k)).toBeLessThanOrEqual(0.5);
+        // The end section at the window's very end, the list filling the rest.
+        expect(Math.abs((k === 0 ? h.atStart : h.atEnd) - h.edge), at(k)).toBeLessThanOrEqual(1);
+        const shown = h.shown.reduce((sum, part) => sum + part, 0) + h.hidden.reduce((sum, part) => sum + part, 0);
+        expect(Math.abs(shown + h.edge - h.window), at(k)).toBeLessThanOrEqual(1);
+        // What the reclaimed place shows is the end section itself, and it opens it.
+        const hit = await page.evaluate(([x, k]) => {
+          const tab = document.querySelectorAll('#view-settings .dp-settings-tabs [data-tab]')[k].getBoundingClientRect();
+          return document.elementFromPoint(x, (tab.top + tab.bottom) / 2)?.closest('[data-tab]')?.dataset.tab;
+        }, [k === 0 ? h.strip.left + h.edge + slot / 2 : h.strip.right - h.edge - slot / 2, k]);
+        expect(hit, at(k)).toBe(order[k]);
+        expect(problems(h, inner), at(k)).toEqual([]);
+      }
+      if (width === 780 || width === 1100) {
+        for (const k of [0, Math.floor(n / 2), n - 1]) {
+          await choose(page, order[k]);
+          await page.locator('#view-settings .dp-settings-master-header').screenshot({
+            path: `test-results/checkpoint-settings-navigator-reclaim-${fonts.split(' ')[0]}-${width}-${order[k]}.png`});
+        }
+      }
+    }
+    expect(await page.evaluate(() => window.__dpEnds)).toEqual([]);
+  });
+}
+
 /* Whether the window moved for the last choice, and how it slid. */
 async function slideOf(page, act) {
   await page.evaluate(() => { window.__dpNav = []; });
@@ -477,12 +688,19 @@ async function slideOf(page, act) {
   const frames = await page.evaluate(() => window.__dpNav);
   return {moved: after - before, frames, directions: [...new Set(frames.map(frame => frame.direction))],
     moving: frames.filter(frame => frame.moving).length,
+    // The way the strip's and the panel's arriving snapshots actually move.
+    strip: [...new Set(frames.map(frame => frame.strip).filter(Boolean))],
+    panel: [...new Set(frames.map(frame => frame.panel).filter(Boolean))],
     controls: new Set(frames.map(frame => frame.control.join())).size, headers: new Set(frames.map(frame => frame.header.join())).size};
 }
 
 const expectSlide = (slide, direction, label) => {
-  expect(Math.sign(slide.moved), label).toBe(direction === 'forward' ? 1 : -1);
+  expect(slide.moved, label).not.toBe(0);
   expect(slide.directions, label).toEqual([direction]);
+  // Seen, not only asked for: the strip's destination arrives from the
+  // right going forward, from the left going back -- as the panel's does.
+  expect(slide.strip, label).toEqual([direction === 'forward' ? 1 : -1]);
+  expect(slide.panel, label).toEqual(slide.strip);
   expect(slide.moving, label).toBeGreaterThanOrEqual(3);       // drawn over several frames
   expect(slide.controls, label).toBe(1);                        // the control and the header stay where they are
   expect(slide.headers, label).toBe(1);
@@ -492,14 +710,29 @@ test('the window slides only when a choice moves it, the same way as the panel: 
   await openSettings(page, 1100);
   const order = (await header(page)).order;
 
-  // In the window: the selection changes, the window stays, nothing slides.
+  // Between the sections' ends (where First and Last both stay), a choice
+  // of a whole section the window already shows: where the window stays,
+  // nothing slides; where it moves, it slides the way the choice goes.
+  let h;
+  let slide;
+  let stayed = 0;
+  for (const width of [1388, 1100]) {
+    await resize(page, width);
+    for (let a = 1; a < order.length - 1 && !stayed; a += 1) {
+      await choose(page, order[a]);
+      h = await header(page);
+      const whole = h.shown.map((part, k) => k).filter(k => k !== a && k > 0 && k < order.length - 1 && h.shown[k] >= h.widths[k] - 0.5);
+      for (const b of whole.slice(0, 2)) {
+        slide = await slideOf(page, () => choose(page, order[b]));
+        if (slide.moved) expectSlide(slide, b > a ? 'forward' : 'backward', `${order[a]} to ${order[b]} at ${width}px`);
+        else { expect(slide.frames, `${order[a]} to ${order[b]} at ${width}px`).toEqual([]); stayed += 1; }
+        await choose(page, order[a]);
+      }
+    }
+  }
+  expect(stayed, 'choices the window already holds').toBeGreaterThan(0);
+  await resize(page, 1100);
   await choose(page, order[0]);
-  let h = await header(page);
-  const inside = h.shown.findIndex((part, k) => k > 0 && part >= h.widths[k] - 0.5);
-  expect(inside).toBeGreaterThan(0);
-  let slide = await slideOf(page, () => choose(page, order[inside]));
-  expect(slide.moved).toBe(0);
-  expect(slide.frames).toEqual([]);
 
   // A section cut at the edge: the window moves forward, and slides.
   h = await header(page);
@@ -530,6 +763,34 @@ test('the window slides only when a choice moves it, the same way as the panel: 
   expect(slid).toBeGreaterThan(0);
   h = await header(page);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
+
+  // And back, one section at a time: each move that shifts the window --
+  // leaving the end arrangement, and into the start one, where the window
+  // grows into First's place -- slides backward, as the panel does.
+  slid = 0;
+  for (let k = order.length - 2; k >= 0; k -= 1) {
+    slide = await slideOf(page, () => choose(page, order[k]));
+    if (slide.moved) { expectSlide(slide, 'backward', order[k]); slid += 1; }
+    else expect(slide.frames, order[k]).toEqual([]);
+  }
+  expect(slid).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__dpEnds)).toEqual([]);
+
+  // A quick return: forward and straight back, in one task -- the window
+  // and the panel turn back with it, never finishing the forward turn.
+  await choose(page, order[3]);
+  await selected(page).focus();
+  const placed = await page.evaluate(() => document.querySelector('#view-settings .dp-settings-tabs').scrollLeft);
+  slide = await slideOf(page, () => page.evaluate(() => {
+    const press = key => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+    press('ArrowRight');
+    press('ArrowLeft');
+  }));
+  await expect(selected(page)).toHaveAttribute('data-tab', order[3]);
+  await expect(page.locator(`#view-settings [data-panel]:not([hidden])`)).toHaveAttribute('data-panel', order[3]);
+  expect(await page.evaluate(() => document.querySelector('#view-settings .dp-settings-tabs').scrollLeft)).toBe(placed);
+  expect(slide.strip.filter(way => way > 0), 'no forward turn of the window').toEqual([]);
+  expect(slide.panel.filter(way => way > 0), 'no forward turn of the panel').toEqual([]);
 
   // Rapid choices, interrupting each other: the last one wins, settled.
   await selected(page).focus();

@@ -123,13 +123,44 @@
   }
 
   /* Compact: [First][a window onto the same strip][Last] in one control, in
-     the strip's own place. The window's width (--dp-settings-nav-window)
-     and its scroll position are the page runtime's: as many sections as fit
-     the navigator centred in the header, the selected one whole, the window
-     at the list's first or last section when the selection is near it. */
+     the strip's own place. The strip spans the control -- the window and,
+     one slot (--dp-settings-nav-slot) each, the places of First and Last,
+     which stand over its ends -- so the control never moves or resizes as
+     they come and go. The strip is clipped to the window: between First and
+     Last, or, at the first or last section (data-nav-at), up to the end
+     whose action is gone, the window taking its place. The window's width
+     (--dp-settings-nav-window), the end it is at and its scroll position
+     are the page runtime's: as many sections as fit the navigator centred
+     in the header, the selected one whole, the window at the list's first
+     or last section when the selection is near it. One slot of padding at
+     either end of the list lets the window start before it or end after it
+     while First or Last is there. */
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-control {
+    display: grid;
+    align-items: center;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-control > * {
+    grid-area: 1 / 1;
+  }
+
   #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs {
-    width: var(--dp-settings-nav-window);
+    width: calc(var(--dp-settings-nav-window) + 2 * var(--dp-settings-nav-slot));
+    padding-inline: var(--dp-settings-nav-slot);
     overflow: hidden;
+    clip-path: inset(0 var(--dp-settings-nav-slot));
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] [data-nav-at='first'] > .dp-settings-tabs {
+    clip-path: inset(0 var(--dp-settings-nav-slot) 0 0);
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] [data-nav-at='last'] > .dp-settings-tabs {
+    clip-path: inset(0 0 0 var(--dp-settings-nav-slot));
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] [data-nav-at='only'] > .dp-settings-tabs {
+    clip-path: none;
   }
 
   /* Room for the selected tab's focus ring at either end of the list. */
@@ -142,7 +173,9 @@
   }
 
   #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-end {
-    flex: 0 0 auto;
+    position: relative;
+    z-index: 1;
+    justify-self: start;
     width: 32px;
     height: 32px;
     display: grid;
@@ -150,11 +183,15 @@
     padding: 0;
   }
 
-  /* At the first tab there is no First, at the last no Last; their places
-     stay, so the window does not move. */
-  #view-settings .dp-settings-master-header[data-presentation='compact']:has(.stab:first-child[aria-selected='true']) .dp-settings-nav-end[data-settings-end='first'],
-  #view-settings .dp-settings-master-header[data-presentation='compact']:has(.stab:last-child[aria-selected='true']) .dp-settings-nav-end[data-settings-end='last'] {
-    visibility: hidden;
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-end[data-settings-end='last'] {
+    justify-self: end;
+  }
+
+  /* At the first section there is no First, at the last no Last, and
+     neither takes any room. */
+  #view-settings .dp-settings-master-header[data-presentation='compact'] :is([data-nav-at='first'], [data-nav-at='only']) > .dp-settings-nav-end[data-settings-end='first'],
+  #view-settings .dp-settings-master-header[data-presentation='compact'] :is([data-nav-at='last'], [data-nav-at='only']) > .dp-settings-nav-end[data-settings-end='last'] {
+    display: none;
   }
 }
 
