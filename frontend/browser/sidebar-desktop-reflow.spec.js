@@ -666,6 +666,35 @@ test('the handle opens the same sidebar above the page without moving the page, 
   await expect(handle).toHaveAttribute('aria-expanded', 'false');
 });
 
+test('only the open overlay floats: a soft two-part shadow falls to the right into the page, and every other sidebar keeps its own', async ({page}) => {
+  const shadow = () => page.locator('#sidebar').evaluate(node => getComputedStyle(node).boxShadow);
+  // Each layer as [x, y, blur, spread] in px.
+  const layers = value => value === 'none' ? [] : value.split(/,(?![^(]*\))/).map(layer =>
+    layer.replace(/rgba?\([^)]*\)/, '').trim().split(/\s+/).map(parseFloat));
+  for (const light of [false, true]) {
+    await open(page, 1440);
+    if (light) await page.evaluate(() => window.toggleTheme());
+    await settledShell(page);
+    const closed = await shadow();
+    await page.locator('#sidebar-handle').click();
+    await settledShell(page);
+    const floating = layers(await shadow());
+    // A concentrated separation at the edge and a wide, gradual falloff, both to the right only.
+    expect(floating, `${light ? 'light' : 'dark'} overlay shadow`).toHaveLength(2);
+    const [near, wide] = floating;
+    expect(near[0] > 0 && near[0] <= 6 && near[1] === 0 && near[2] <= 12).toBe(true);
+    expect(wide[0] > near[0] && wide[1] === 0 && wide[2] >= 48 && wide[2] > near[2]).toBe(true);
+    // Closed again: exactly the shadow it had, nothing left behind.
+    await page.locator('#sidebar-handle').click();
+    await settledShell(page);
+    expect(await shadow()).toBe(closed);
+    // The persistent sidebar has no overlay state and keeps the docked shadow.
+    await resize(page, EXPANDED);
+    expect(await page.locator('#sidebar').evaluate(node => node.classList.contains('sidebar-overlay-open'))).toBe(false);
+    expect(await shadow()).toBe(closed);
+  }
+});
+
 test('leaving the compact range clears the overlay: narrow, wide, narrow leaves one closed sidebar', async ({page}) => {
   await open(page, 1440);
   await page.locator('#sidebar-handle').click();
