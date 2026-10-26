@@ -3,8 +3,12 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.14 Statistics KPI composition. As the page narrows, both KPI rows
  * drop from five to four, three and two cards together, each keeping its own
  * order and the cards that matter most; at 780px, the bottom of the tablet
- * range, two cards each. Below 780px the mobile presentation keeps every
- * card. The period selector has no visible "Period:" label and keeps its
+ * range, two cards each. Throughout, the established hierarchy holds: the
+ * primary row spans the content, the secondary row is the smaller band
+ * centred beneath it (83.333% of the primary row's width, as in the original
+ * design). Five cards show wherever the original five-card layout fits -- down
+ * to where a secondary title would start to run into its icon. Below 780px the
+ * mobile presentation keeps every card. The period selector has no visible "Period:" label and keeps its
  * accessible name. The page's own computed layout is read; the statistics are
  * the server's, made long on purpose (the longest realistic labels and
  * values), so the widths are exercised with what they must hold. */
@@ -51,33 +55,65 @@ const layout = page => page.evaluate(() => {
     return {ids: visible.map(id),
       lines: new Set(visible.map(card => Math.round(card.getBoundingClientRect().top))).size,
       columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
-      // Every visible card's label and value on one line, inside the card, clear of its icon.
+      // Every visible card's label and value on one line and inside the card.
       whole: visible.every(card => {
         const box = card.getBoundingClientRect();
-        const icon = card.querySelector('.dp-kpi-icon')?.getBoundingClientRect();
         return [...card.querySelectorAll('.metric-label, .metric-value, .dash-kpi-lbl, .dash-kpi-val')].every(text => {
           const range = document.createRange(); range.selectNodeContents(text);
           const r = range.getBoundingClientRect();
-          const clearOfIcon = !icon || r.bottom <= icon.top || r.top >= icon.bottom || r.left >= icon.right;
-          return r.left >= box.left && r.right <= box.right && text.scrollWidth <= text.clientWidth + 1 && range.getClientRects().length === 1 && clearOfIcon;
+          return r.left >= box.left && r.right <= box.right && text.scrollWidth <= text.clientWidth + 1 && range.getClientRects().length === 1;
         });
-      })};
+      }),
+      // The smallest space between a title or value and the icon beside it (px).
+      iconClearance: Math.min(Infinity, ...visible.flatMap(card => {
+        const icon = card.querySelector('.dp-kpi-icon')?.getBoundingClientRect();
+        if (!icon) return [];
+        return [...card.querySelectorAll('.dash-kpi-lbl, .dash-kpi-val')].map(text => {
+          const range = document.createRange(); range.selectNodeContents(text);
+          const r = range.getBoundingClientRect();
+          return r.bottom <= icon.top || r.top >= icon.bottom ? Infinity : r.left - icon.right;
+        });
+      }))};
   };
+  // The rows' rendered spans: the secondary band against the primary row.
+  const span = grid => {
+    const cards = [...grid.children].filter(card => card.matches('.metric-card, .dash-kpi') && shown(card)).map(card => card.getBoundingClientRect());
+    return {left: Math.min(...cards.map(c => c.left)), right: Math.max(...cards.map(c => c.right)),
+      narrowest: Math.min(...cards.map(c => c.width)), widest: Math.max(...cards.map(c => c.width))};
+  };
+  const [primary, secondary] = [span(document.getElementById('detail-stat-cards')), span(document.querySelector('.dp-stats-history-grid'))];
   return {
+    hierarchy: {
+      spanRatio: (secondary.right - secondary.left) / (primary.right - primary.left),
+      centreOffset: Math.abs((secondary.left + secondary.right) / 2 - (primary.left + primary.right) / 2),
+      cardRatio: secondary.widest / primary.narrowest},
     top: row(document.getElementById('detail-stat-cards'), card => card.dataset.dpStatsMetric),
     second: row(document.querySelector('.dp-stats-history-grid'), card => [...card.classList].find(name => name.startsWith('dp-stats-kpi-'))),
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
 });
 
-// Each composition's own widths, either side of every change and at 780px.
-for (const [width, cards] of [[1920, 5], [1880, 5], [1878, 4], [1440, 4], [1190, 4], [1188, 3], [910, 3], [908, 2], [780, 2]]) {
-  test(`at ${width}px both KPI rows show the same ${cards} cards in their own order, whole and inside the page`, async ({page}) => {
+// Each composition's own widths: the established desktop (1834px: the operator's
+// reference), 1680 and 1600px, either side of every change, and 780px. Every change
+// keeps the tightest secondary title at least 3px clear of its icon.
+for (const [width, cards] of [[1920, 5], [1834, 5], [1816, 5], [1814, 4], [1680, 4], [1600, 4], [1340, 4], [1338, 3],
+  [1026, 3], [1024, 2], [780, 2]]) {
+  test(`at ${width}px both KPI rows show the same ${cards} cards in their own order, whole, inside the page and in the established hierarchy`, async ({page}) => {
     await boot(page, width);
     const shown = await layout(page);
-    expect(shown.top).toEqual({ids: COMPOSITION[cards].top, lines: 1, columns: cards, whole: true});
-    expect(shown.second).toEqual({ids: COMPOSITION[cards].second, lines: 1, columns: cards, whole: true});
+    const {iconClearance, ...second} = shown.second;
+    expect(shown.top).toMatchObject({ids: COMPOSITION[cards].top, lines: 1, columns: cards, whole: true});
+    expect(second).toEqual({ids: COMPOSITION[cards].second, lines: 1, columns: cards, whole: true});
     expect(shown.overflow).toBe(0);
+    // A positive clearance between each secondary title and its icon (3px at each change
+    // in Chromium; 2.5px leaves room for subpixel rounding, never for an overlap).
+    expect(iconClearance).toBeGreaterThanOrEqual(2.5);
+    // The secondary row is the original band: 83.333% of the primary row's span, centred
+    // beneath it, its cards narrower than the primary cards.
+    expect(shown.hierarchy.spanRatio).toBeGreaterThan(0.828);
+    expect(shown.hierarchy.spanRatio).toBeLessThan(0.839);
+    expect(shown.hierarchy.centreOffset).toBeLessThan(1);
+    expect(shown.hierarchy.cardRatio).toBeLessThan(0.86);
   });
 }
 

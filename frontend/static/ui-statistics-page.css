@@ -490,21 +490,21 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 
 /* KPI rows: both rows show the same number of cards, one column each --
    five, four, three, then two at the bottom of the tablet range (see the
-   composition block after the KPI cards for which cards and why these
-   widths). */
-@media (max-width: 1879px) {
+   composition block after the KPI cards for which cards, why these widths,
+   and the secondary row's band). */
+@media (max-width: 1815px) {
   #view-stats #detail-stat-cards {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 1189px) {
+@media (max-width: 1339px) {
   #view-stats #detail-stat-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 909px) {
+@media (max-width: 1025px) {
   #view-stats #detail-stat-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -655,22 +655,27 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1879px) {
+@media (max-width: 1815px) {
   #view-stats .dp-stats-history-grid {
-    width: 100% !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
 }
 
-@media (max-width: 1189px) {
+@media (max-width: 1339px) {
   #view-stats .dp-stats-history-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 
-@media (max-width: 909px) {
+@media (max-width: 1025px) {
   #view-stats .dp-stats-history-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 779px) {
+  #view-stats .dp-stats-history-grid {
+    width: 100% !important;
   }
 }
 
@@ -898,33 +903,35 @@ body.light #view-stats .dp-stats-chart-title-icon {
 /* KPI composition: as the content narrows, both rows drop to four, three and
    then two cards together, always in their own order, and keep the cards
    that matter most:
-     5  every card (1880px and wider);
-     4  without In Progress and Lifetime Success Rate (1190-1879px);
-     3  also without Success Rate and Last 24 Hours (910-1189px);
-     2  also without Downloads Added and Mean Download Time (780-909px):
+     5  every card (1816px and wider);
+     4  without In Progress and Lifetime Success Rate (1340-1815px);
+     3  also without Success Rate and Last 24 Hours (1026-1339px);
+     2  also without Downloads Added and Mean Download Time (780-1025px):
         Downloads Completed and Total Data Downloaded; Last 7 Days and Mean
         Download Size.
-   Each width is where the measured longest label of the tightest card
-   (Lifetime Success Rate, then Mean Download Time, beside their icons) still
-   clears its icon and card edge by 8px or more, with the longest realistic
-   values in the real fonts. Below 780px the mobile presentation keeps every
-   card, as before. A hidden card is display:none: no slot, no focus stop;
-   its value is still kept current. */
-@media (min-width: 780px) and (max-width: 1879px) {
+   The secondary row stays the smaller, centred band beneath the primary row
+   (83.333% of its width) at every stage. Each width keeps the tightest
+   secondary title (Lifetime Success Rate, then Mean Download Time) at least
+   3px clear of its icon, measured in the real fonts with the longest
+   realistic values, so font rendering has a little room before a title would
+   run into its icon. Below 780px the mobile presentation keeps every card, as
+   before. A hidden card is display:none: no slot, no focus stop; its value is
+   still kept current. */
+@media (min-width: 780px) and (max-width: 1815px) {
   #view-stats #detail-stat-cards > [data-dp-stats-metric="progress"],
   #view-stats .dp-stats-history-grid > .dp-stats-kpi-success {
     display: none;
   }
 }
 
-@media (min-width: 780px) and (max-width: 1189px) {
+@media (min-width: 780px) and (max-width: 1339px) {
   #view-stats #detail-stat-cards > [data-dp-stats-metric="success"],
   #view-stats .dp-stats-history-grid > .dp-stats-kpi-day {
     display: none;
   }
 }
 
-@media (min-width: 780px) and (max-width: 909px) {
+@media (min-width: 780px) and (max-width: 1025px) {
   #view-stats #detail-stat-cards > [data-dp-stats-metric="downloads"],
   #view-stats .dp-stats-history-grid > .dp-stats-kpi-duration {
     display: none;
