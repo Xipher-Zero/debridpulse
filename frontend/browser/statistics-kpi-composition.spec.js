@@ -135,7 +135,8 @@ test('a hidden KPI keeps its value current, and no card holds a focus stop', asy
 });
 
 test('the period selector has no visible "Period:" label and keeps its name, place and choices', async ({page}) => {
-  for (const width of [1920, 1190, 780, 390]) {
+  // 900/899px: either side of the global header's change, which must not move it; 500px: wrapped below the title.
+  for (const width of [1920, 1190, 900, 899, 780, 500, 390]) {
     await boot(page, width);
     const header = page.locator('#view-stats > .dp-stats-master-header');
     await expect(header).not.toContainText('Period:');
@@ -147,6 +148,12 @@ test('the period selector has no visible "Period:" label and keeps its name, pla
     // Inside the header, which holds it.
     const [h, t] = await Promise.all([header.boundingBox(), tabs.boundingBox()]);
     expect(t.x >= h.x && t.x + t.width <= h.x + h.width + 0.5 && t.y >= h.y && t.y + t.height <= h.y + h.height + 0.5).toBe(true);
+    // Right-aligned in the header at every width, on the title's line or its own.
+    const contentRight = await header.evaluate(node => {
+      const style = getComputedStyle(node);
+      return node.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+    });
+    expect(Math.abs(contentRight - (t.x + t.width)), `${width}px`).toBeLessThanOrEqual(0.5);
   }
   // A choice still selects its period and updates the figures.
   await page.locator('#stats-period-tabs .ftab[data-period="7d"]').click();
