@@ -19,13 +19,13 @@ const FULL = 240;
 
 /* The Settings master header, from geometry alone (installed with every page
  * this suite opens). Desktop and tablet: one row. The complete strip (each
- * tab's chip, gap, label, padding and border; the strip's 3px padding and
- * 1px border) keeps its place centred in the whole header -- half the row
- * gap toward the copy's side -- and is shown only while that place leaves
- * the copy its own width with 4px to spare; else the compact navigator,
- * shown by its First / Last actions, centred in the room after the copy.
- * `borderline` marks a fit within 1px of that line, where either is
- * accepted. */
+ * tab at its own width; the strip's 3px padding and 1px border) whenever the
+ * copy, the 16px row gap and the strip fit the header with 4px to spare,
+ * else the compact navigator, shown by its First / Last actions. Either way
+ * the navigation keeps the strip's own place: centred in the header (half
+ * the row gap toward the copy's side) while the copy fits in the half beside
+ * it, otherwise right after the copy, the row gap apart. `borderline` marks
+ * a fit within 1px of that line, where either is accepted. */
 function settingsHeader() {
   const rect = node => node.getBoundingClientRect();
   const root = document.getElementById('view-settings');
@@ -44,12 +44,9 @@ function settingsHeader() {
   const control = rect(controlNode);
   const tabNodes = [...strip.querySelectorAll('[data-tab]')];
   const tabs = tabNodes.map(rect);
-  const natural = tab => {
-    const st = getComputedStyle(tab);
-    return parts(tab.querySelector('.dp-settings-tab-face'))
-      + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + parseFloat(st[key]), 0);
-  };
-  const margin = (inner.right - inner.left - tabNodes.reduce((sum, tab) => sum + natural(tab), 0) - 8 - gap) / 2 - (parts(copyNode) + 4);
+  // (Tabs keep their own widths in both presentations.)
+  const copyOwn = parts(copyNode);
+  const margin = inner.right - inner.left - (copyOwn + gap + tabs.reduce((sum, tab) => sum + tab.width, 0) + 8 + 4);
   const compact = [...root.querySelectorAll('.dp-settings-nav-end')].some(node => getComputedStyle(node).display !== 'none');
   const current = rect(strip.querySelector('[aria-selected="true"]'));
   const whole = compact
@@ -59,10 +56,11 @@ function settingsHeader() {
   return {vw: innerWidth, compact, fits: margin >= 0, borderline: Math.abs(margin) < 1,
     second: control.top > copy.bottom - 4,
     inside: control.left >= copy.right + gap - 0.5 && control.right <= inner.right + 0.5 && whole,
-    // Off its place: the complete strip from the header's centre (plus half
-    // the gap), the compact navigator from the centre of its room.
-    offCentre: compact ? (control.left + control.right) / 2 - (copy.right + gap + inner.right) / 2
-      : (control.left + control.right) / 2 - (inner.left + inner.right + gap) / 2,
+    // Off its place: centred (plus half the gap) while the copy fits in the
+    // half beside it, else right after the copy.
+    offCentre: (inner.right - inner.left - control.width - gap) / 2 >= copyOwn
+      ? (control.left + control.right) / 2 - (inner.left + inner.right + gap) / 2
+      : control.left - (copy.left + copyOwn + gap),
     stretched: !compact && s.width > tabs.reduce((sum, tab) => sum + tab.width, 0) + 40,
     extraLine: Math.round(box.height) > Math.round(Math.max(copy.height, control.height)
       + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 1)

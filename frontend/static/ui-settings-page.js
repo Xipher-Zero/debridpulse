@@ -5113,12 +5113,10 @@
               data-tab="${html(id)}" role="tab"
               aria-selected="${state.activeTab === id ? 'true' : 'false'}"
               tabindex="${state.activeTab === id ? '0' : '-1'}">
-        <span class="dp-settings-tab-face">
-          <span class="dp-settings-tab-chip" aria-hidden="true">
-            <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
-          </span>
-          <span class="dp-settings-tab-label">${html(label)}</span>
+        <span class="dp-settings-tab-chip" aria-hidden="true">
+          <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
         </span>
+        <span class="dp-settings-tab-label">${html(label)}</span>
       </button>
     `).join('');
     // The compact navigator's two travel actions: actions, not tabs, each
@@ -5179,8 +5177,13 @@
     showTabPanel();
   }
 
-  function selectTabControl(name) {
-    if (!TABS.some(([id]) => id === name)) name = 'sources';
+  // A tab name, or Services when it names no tab.
+  const tabName = name => (TABS.some(([id]) => id === name) ? name : 'sources');
+
+  /* Select a tab at once; `motion` ({direction, distance}, the choice's own)
+   * slides the compact navigator's window when the selection moves it. */
+  function selectTabControl(name, motion = null) {
+    name = tabName(name);
     state.activeTab = name;
 
     root()?.querySelectorAll('[data-tab]').forEach(tab => {
@@ -5189,23 +5192,33 @@
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? '0' : '-1';
     });
-    placeNavigation();
+    placeNavigation(motion);
   }
 
-  /* The header's one row (desktop and tablet, 780px and wider). The complete
-   * strip keeps its place centred in the whole header, and is shown only
-   * while that place leaves the copy its own width with NAV_SPARE to spare;
-   * otherwise the compact navigator -- the same tabs, the current one centred
-   * in a slot as wide as the widest tab, a faded part of each neighbour
-   * beside it, and First / Last at the ends -- centred in the room after the
-   * copy. Which one fits is decided here, in this browser, from the rendered
-   * tabs and copy: the tab set and the fonts are whatever this page actually
-   * drew, never an assumed seven tabs or a fixed breakpoint. The natural
-   * widths are measured when the header is drawn and when fonts finish
-   * loading; a change of the page's width only compares them with the new
-   * header. Below 780px the handheld header keeps its own wrapping strip and
-   * is not touched. */
+  /* The header's one row (desktop and tablet, 780px and wider). The
+   * navigation keeps the complete strip's own place -- centred in the whole
+   * header while the copy fits beside it, otherwise right after the copy --
+   * and is the complete strip whenever the copy, the row gap and the strip
+   * fit the header with NAV_SPARE to spare. Otherwise it is the compact
+   * navigator: First, a window onto the same strip, and Last. The window is
+   * as wide as the navigator can be while still centred in the header, and
+   * wider (the navigator moving right, never past the copy) only while some
+   * section would otherwise have fewer than three positions (navWindow);
+   * navLayout() places the selected section in it. Where even the widest
+   * window cannot hold the first or last section with its neighbour whole,
+   * the tabs give up to NAV_TRIM of their side padding (navTrim) so that it
+   * can.
+   *
+   * Everything is decided here, in this browser, from the rendered tabs,
+   * copy and controls: the tab set and the fonts are whatever this page
+   * actually drew, never an assumed tab count or a breakpoint. The widths
+   * are measured when the header is drawn and when fonts finish loading; a
+   * change of the page's width only recomputes from them. Below 780px the
+   * handheld header keeps its own wrapping strip and is not touched. */
   const NAV_SPARE = 4;
+  const NAV_FADE = 0.3;      // the outer share of that part which fades
+  const NAV_TARGET = 24;     // the least part of a section that is a position
+  const NAV_TRIM = 5;        // the most side padding a compact tab gives up
   const navDesktop = window.matchMedia('(min-width: 780px)');
   let navFit = null;
 
@@ -5222,47 +5235,167 @@
       const style = getComputedStyle(strip);
       const frame = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
         .reduce((sum, key) => sum + parseFloat(style[key]), 0);
-      navFit = {
-        nav,
-        strip: widths.reduce((sum, width) => sum + width, 0) + frame,
-        // The copy's own width: its parts (in the complete presentation the
-        // copy's box also takes the space that centres the strip).
-        copy: Array.from(header.querySelector('.dp-settings-header-copy').children)
-          .reduce((sum, part, index) => sum + part.getBoundingClientRect().width
-            + (index ? parseFloat(getComputedStyle(part.parentElement).columnGap) || 0 : 0), 0),
-      };
-      tabs.forEach((tab, index) => tab.style.setProperty('--dp-settings-tab-natural', `${widths[index]}px`));
-      // The centre slot and the side slots at 70% of it, in whole pixels (the
-      // strip's scroll position is a whole pixel too).
-      const current = Math.ceil(Math.max(0, ...widths));
-      nav.style.setProperty('--dp-settings-nav-current', `${current}px`);
-      nav.style.setProperty('--dp-settings-nav-side', `${Math.round(current * 0.7)}px`);
+      // The copy's own width: its parts (its box also takes the space that
+      // centres the navigation).
+      const copy = Array.from(header.querySelector('.dp-settings-header-copy').children)
+        .reduce((sum, part, index) => sum + part.getBoundingClientRect().width
+          + (index ? parseFloat(getComputedStyle(part.parentElement).columnGap) || 0 : 0), 0);
+      // The compact control's own parts: First, Last, its padding and border,
+      // and the room kept at either end of the list.
+      header.dataset.presentation = 'compact';
+      const chrome = nav.querySelector('.dp-settings-nav-control').getBoundingClientRect().width
+        - strip.getBoundingClientRect().width;
+      const edge = parseFloat(getComputedStyle(tabs[0]).marginInlineStart) || 0;
+      navFit = {nav, natural: widths, widths, strip: widths.reduce((sum, width) => sum + width, 0) + frame, copy, chrome, edge, window: 0, trim: 0};
     }
-    // Centred in the header, the strip leaves half of the rest, less the row
-    // gap before it, on each side: the copy's side must hold the copy with
-    // NAV_SPARE to spare, or the strip would be pushed off its place.
     const style = getComputedStyle(header);
     const width = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const side = (width - navFit.strip - parseFloat(style.columnGap)) / 2;
-    const presentation = side >= navFit.copy + NAV_SPARE ? 'full' : 'compact';
+    const gap = parseFloat(style.columnGap);
+    const presentation = navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact';
+    if (presentation === 'compact') {
+      navFit.widths = navFit.natural;
+      navFit.window = navWindow(width, gap);
+      navFit.trim = navTrim(navFit.window);
+      navFit.widths = navFit.natural.map(each => each - 2 * navFit.trim);
+      nav.style.setProperty('--dp-settings-nav-window', `${navFit.window}px`);
+    }
+    if (presentation === 'compact' && navFit.trim) nav.style.setProperty('--dp-settings-nav-trim', `${navFit.trim}px`);
+    else nav.style.removeProperty('--dp-settings-nav-trim');
     if (header.dataset.presentation !== presentation) header.dataset.presentation = presentation;
     placeNavigation();
     // A focused control the new presentation no longer shows hands focus to
     // the selected tab, never to a hidden control.
     const focused = document.activeElement;
-    if (nav.contains(focused) && !shown(focused)) strip.querySelector('[aria-selected="true"]')?.focus();
+    if (nav.contains(focused) && !shown(focused)) strip.querySelector('[aria-selected="true"]')?.focus({preventScroll: true});
   }
 
-  // The compact strip scrolls (never by the user) so that the selected tab
-  // sits in the centre slot.
-  function placeNavigation() {
+  /* The compact window's width for a header this wide: the widest, up to
+   * the width that keeps the navigator centred in the header, at which every
+   * section has a layout (navLayout) of at least three positions; wider --
+   * the navigator moving right, never past the copy -- only when there is
+   * none. Arithmetic over the measured widths only. */
+  function navWindow(width, gap) {
+    const {widths, copy, chrome, edge} = navFit;
+    const widest = Math.max(...widths);
+    const most = Math.max(widest, Math.floor(Math.min(width - copy - gap - NAV_SPARE - chrome,
+      widths.reduce((sum, each) => sum + each, 2 * edge) - 1)));
+    const centred = Math.min(most, Math.max(widest, Math.floor(width - gap - 2 * (copy + NAV_SPARE) - chrome)));
+    const need = Math.min(3, widths.length);
+    const enough = window => widths.every((_, index) => (navLayout(window, index)?.positions ?? 0) >= need);
+    for (let window = centred; window >= widest; window -= 1) if (enough(window)) return window;
+    for (let window = centred + 1; window <= most; window += 1) if (enough(window)) return window;
+    return most;
+  }
+
+  /* The side padding each tab gives up so that a window this wide holds
+   * the first and the last section each with its neighbour whole (and the
+   * room kept at that end): none while it already does, else the least
+   * (in half pixels, the two tabs giving it up on both sides) up to
+   * NAV_TRIM. Half a pixel more than exact: the window scrolls in whole
+   * pixels. */
+  function navTrim(window) {
+    const {natural: widths, edge} = navFit;
+    if (widths.length < 2) return 0;
+    const pair = Math.max(widths[0] + widths[1], widths.at(-2) + widths.at(-1)) + edge + 0.5;
+    return Math.min(NAV_TRIM, Math.max(0, Math.ceil((pair - window) / 4 * 2) / 2));
+  }
+
+  /* Where a window this wide stands on the strip with this section
+   * selected. The selected section is whole; a window edge where sections
+   * continue cuts one section, showing NAV_CUT of it, and fades. The window starts at the list's first
+   * section, ends at its last, or lies between with a section cut at each
+   * edge; of the possible layouts, the one centring the selection best, then
+   * the one with more sections. null when there is none. */
+  const NAV_CUT = [0.3, 0.9];
+  function navLayout(window, index) {
+    const {widths, edge} = navFit;
+    const count = widths.length;
+    const at = [];
+    let end = edge;
+    for (const each of widths) { at.push(end); end += each; }
+    const total = end + edge;
+    if (window >= total) return {left: 0, positions: count};
+    const ideal = at[index] + widths[index] / 2 - window / 2;
+    let best = null;
+    for (let from = 0; from <= index; from += 1) {
+      for (let to = index; to < count; to += 1) {
+        if ((from === index && from > 0) || (to === index && to < count - 1) || (from === 0 && to === count - 1)) continue;
+        let left;
+        if (from === 0) {
+          left = 0;
+          const part = window - at[to];
+          if (part < NAV_CUT[0] * widths[to] || part > NAV_CUT[1] * widths[to]) continue;
+        } else if (to === count - 1) {
+          left = total - window;
+          const part = at[from] + widths[from] - left;
+          if (part < NAV_CUT[0] * widths[from] || part > NAV_CUT[1] * widths[from]) continue;
+        } else {
+          // Each cut shows NAV_CUT of its section: an interval of window
+          // positions per edge; the selection as centred as they allow.
+          const low = Math.max(at[from] + widths[from] * (1 - NAV_CUT[1]), at[to] - window + NAV_CUT[0] * widths[to]);
+          const high = Math.min(at[from] + widths[from] * (1 - NAV_CUT[0]), at[to] - window + NAV_CUT[1] * widths[to]);
+          if (low > high) continue;
+          left = Math.min(Math.max(ideal, low), high);
+        }
+        const candidate = {left, positions: to - from + 1, off: Math.abs(left - ideal)};
+        if (!best || candidate.off < best.off - 0.5
+          || (candidate.off <= best.off + 0.5 && candidate.positions > best.positions)) best = candidate;
+      }
+    }
+    return best;
+  }
+
+  function navFallback(window, index) {
+    const {widths, edge} = navFit;
+    const total = widths.reduce((sum, each) => sum + each, 2 * edge);
+    const at = widths.slice(0, index).reduce((sum, each) => sum + each, edge);
+    return {left: Math.min(Math.max(at + widths[index] / 2 - window / 2, 0), Math.max(0, total - window))};
+  }
+
+  /* The compact strip scrolls (never by the user) to where navLayout places
+   * the selected section, and fades where sections continue. A selection
+   * that moves the window (`motion`, see selectTabControl) slides it, by
+   * DPMotion's own slide of the strip alone; one that leaves the window
+   * where it is, a resize or a refit moves nothing. */
+  function placeNavigation(motion = null) {
     const strip = root()?.querySelector('.dp-settings-master-header[data-presentation="compact"] .dp-settings-tabs');
-    const tab = strip?.querySelector('[aria-selected="true"]');
-    if (!tab || !navDesktop.matches) return;
-    // (The compact strip has no border: its box is its window.)
-    const box = strip.getBoundingClientRect(), own = tab.getBoundingClientRect();
-    const target = Math.round(strip.scrollLeft + (own.left + own.right) / 2 - (box.left + box.right) / 2);
-    if (target !== strip.scrollLeft) strip.scrollLeft = target;
+    if (!strip || navFit?.nav !== strip.closest('.dp-settings-nav') || !navDesktop.matches) return;
+    const index = Array.from(strip.querySelectorAll('[data-tab]'))
+      .findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+    if (index < 0) return;
+    // (Without a layout -- only when no window width gives every section one
+    // -- the selection as centred as the list's ends allow.)
+    const layout = navLayout(navFit.window, index) || navFallback(navFit.window, index);
+    const target = Math.round(layout.left);
+    if (strip.scrollLeft !== target && motion?.direction && window.DPMotion) {
+      window.DPMotion.slide({element: strip, axis: 'x', direction: Math.sign(target - strip.scrollLeft),
+        distance: motion.distance}, () => placeNavigation());
+      return;
+    }
+    if (strip.scrollLeft !== target) strip.scrollLeft = target;
+    // The section each window edge cuts where sections continue fades
+    // outwards from that edge, over NAV_FADE of what it shows (NAV_TARGET at
+    // least); a part smaller than NAV_TARGET -- only where no layout fits
+    // (navFallback) -- is not shown at all. On the tab itself: the strip is
+    // DPMotion's slide surface, which cannot carry a mask of its own.
+    const tabs = Array.from(strip.querySelectorAll('[data-tab]'));
+    const {widths, edge} = navFit;
+    let at = edge;
+    tabs.forEach((tab, k) => {
+      const part = Math.min(at + widths[k], target + navFit.window) - Math.max(at, target);
+      const cut = part > 0 && at < target - 0.5 ? 'start'
+        : part > 0 && at + widths[k] > target + navFit.window + 0.5 ? 'end' : '';
+      at += widths[k];
+      if (!cut) {
+        delete tab.dataset.navCut;
+        tab.style.removeProperty('--dp-settings-nav-cut-edge');
+        tab.style.removeProperty('--dp-settings-nav-cut-fade');
+        return;
+      }
+      tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;
+      tab.style.setProperty('--dp-settings-nav-cut-edge', `${widths[k] - part}px`);
+      tab.style.setProperty('--dp-settings-nav-cut-fade', `${Math.min(part, Math.max(NAV_FADE * part, NAV_TARGET))}px`);
+    });
   }
 
   const shown = node => node.checkVisibility?.({visibilityProperty: true})
@@ -5280,9 +5413,10 @@
   function chooseTab(name) {
     const order = Array.from(root()?.querySelectorAll('.dp-settings-tabs [data-tab]') || []).map(tab => tab.dataset.tab);
     const shown = root()?.querySelector('[data-panel]:not([hidden])')?.dataset.panel;
-    selectTabControl(name);
-    const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
+    const from = order.indexOf(shown), to = order.indexOf(tabName(name));
     const step = from >= 0 && to >= 0 ? to - from : 0;
+    // The compact navigator's window, when it moves, slides the same way.
+    selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});
     if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
@@ -5516,7 +5650,8 @@
       else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
       const next = buttons[index];
       chooseTab(next.dataset.tab);
-      next.focus();
+      // (The navigator positions its own window; focus never scrolls it.)
+      next.focus({preventScroll: true});
     });
 
     view.addEventListener('input', event => {
@@ -5566,7 +5701,7 @@
         if (!target) return;
         const focused = document.activeElement === travel;
         chooseTab(target.dataset.tab);
-        if (focused) target.focus();
+        if (focused) target.focus({preventScroll: true});
         return;
       }
 

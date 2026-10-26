@@ -7,14 +7,14 @@
  */
 
 /* ── Master header identity and true-centered navigation ─────────────── */
-/* A trailing space that grows exactly as the copy does centres the complete
-   tab strip in the header (to within half the row gap: the copy's side also
-   holds the gap before the strip); the page runtime shows the complete strip
-   only while the copy fits beside it there (ui-settings-page.css owns the
-   row itself). The space takes no room of its own -- its negative margin
-   gives back the gap before it -- so it never decides whether the strip
-   fits, nor starts a line of its own. The compact navigator is centred in
-   the room after the copy instead, and has no such space. */
+/* A trailing space that grows exactly as the copy does centres the tab strip
+   in the header while the copy fits beside it (to within half the row gap:
+   the copy's side also holds the gap before the strip); when the copy does
+   not fit, the space yields first and the strip keeps its full width
+   (ui-settings-page.css owns the row itself). The space takes no room of its
+   own -- its negative margin gives back the gap before it -- so it never
+   decides whether the strip fits, nor starts a line of its own. The compact
+   navigator takes exactly the strip's place. */
 #view-settings .dp-settings-master-header::after {
   content: '';
   flex: 1 1 0;
@@ -104,14 +104,13 @@ body.light #view-settings .dp-settings-tab-glyph {
 /* ── Compact section navigator ───────────────────────────────────────── */
 /* One segmented control: the strip's own surface moves to the control that
    also holds First and Last, which are segments of it, divided like tabs.
-   The neighbouring tabs fade outwards -- the rendered tab (chip, glyph and
-   label), not just its text -- while the tab itself, its hit area and its
-   focus ring stay whole. */
+   Where sections continue beyond the window, the section its edge cuts
+   (data-nav-cut) fades outwards from that edge (--dp-settings-nav-cut-edge
+   and -fade, the page runtime's); its hit area stays whole. A sliver too
+   small to recognise is not shown. Where the window could not otherwise
+   hold an end section and its neighbour whole, the tabs give up some side
+   padding (--dp-settings-nav-trim, the page runtime's). */
 @media (min-width: 780px) {
-  #view-settings .dp-settings-master-header[data-presentation='compact']::after {
-    content: none;
-  }
-
   #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-control {
     padding: 0 3px;
     border: 1px solid var(--dp-segment-border);
@@ -128,12 +127,23 @@ body.light #view-settings .dp-settings-tab-glyph {
     box-shadow: none;
   }
 
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab:has(+ .stab[aria-selected='true']) .dp-settings-tab-face {
-    mask-image: linear-gradient(to right, transparent, #000 30%);
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab {
+    padding-inline: calc(10px - var(--dp-settings-nav-trim, 0px));
   }
 
-  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[aria-selected='true'] + .stab .dp-settings-tab-face {
-    mask-image: linear-gradient(to left, transparent, #000 30%);
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='sliver'] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='start'] {
+    mask-image: linear-gradient(to right, transparent var(--dp-settings-nav-cut-edge),
+      #000 calc(var(--dp-settings-nav-cut-edge) + var(--dp-settings-nav-cut-fade)));
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[data-nav-cut='end'] {
+    mask-image: linear-gradient(to left, transparent var(--dp-settings-nav-cut-edge),
+      #000 calc(var(--dp-settings-nav-cut-edge) + var(--dp-settings-nav-cut-fade)));
   }
 
   #view-settings .dp-settings-nav-end {

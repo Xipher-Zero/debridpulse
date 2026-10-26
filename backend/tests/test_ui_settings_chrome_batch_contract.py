@@ -67,39 +67,58 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     copy = copy[:copy.index("}")]
     assert "flex: 1 1 0;" in copy and "min-width: max-content;" in copy
 
-    # 780px and wider the row never wraps. Only the compact navigator leaves
-    # that centring: the copy at its own width, the navigator centred in the
-    # room after it, and no trailing space.
+    # 780px and wider the row never wraps, and the compact navigator keeps the
+    # strip's own place: no layout of its own for the copy, the navigation or
+    # the trailing space.
     desktop = page[page.index("@media (min-width: 780px) {\n  #view-settings .dp-settings-master-header {"):]
     desktop = desktop[:desktop.index("\n}\n")]
     assert "flex-wrap: nowrap;" in desktop
     compact = "#view-settings .dp-settings-master-header[data-presentation='compact']"
-    copy = desktop[desktop.index(f"{compact} .dp-settings-header-copy {{"):]
-    assert "flex: 0 0 auto;" in copy[:copy.index("}")]
-    region = desktop[desktop.index(f"{compact} .dp-settings-nav {{"):]
-    assert "flex: 1 1 0;" in region[:region.index("}")]
+    assert f"{compact} .dp-settings-header-copy" not in page
+    assert f"{compact} .dp-settings-nav {{" not in page
+    assert f"{compact}::after" not in chrome
+    window = desktop[desktop.index(f"{compact} .dp-settings-tabs {{"):]
+    window = window[:window.index("}")]
+    assert "width: var(--dp-settings-nav-window);" in window and "overflow: hidden;" in window
     nav = page[page.index("#view-settings .dp-settings-nav {"):]
     assert "justify-content: center;" in nav[:nav.index("}")]
-    no_space = chrome[chrome.index(f"{compact}::after {{"):]
-    assert "content: none;" in no_space[:no_space.index("}")]
+    # The window's own element is DPMotion's slide surface, which cannot carry
+    # a mask: the outward fade belongs to the section an edge cuts.
+    assert "mask-image" not in chrome[chrome.index(f"{compact} .dp-settings-tabs {{"):].split("}", 1)[0]
+    assert f"{compact} .stab[data-nav-cut='start']" in chrome and f"{compact} .stab[data-nav-cut='end']" in chrome
+    # A sliver too small to be a position is not shown; the compact tabs give
+    # up side padding only by the runtime's measured trim (none by default).
+    sliver = chrome[chrome.index(f"{compact} .stab[data-nav-cut='sliver'] {{"):].split("}", 1)[0]
+    assert "opacity: 0;" in sliver and "pointer-events: none;" in sliver
+    trim = chrome[chrome.index(f"{compact} .dp-settings-tabs .stab {{"):].split("}", 1)[0]
+    assert "padding-inline: calc(10px - var(--dp-settings-nav-trim, 0px));" in trim
 
     # Complete strip or compact navigator, decided by the page runtime from
     # the rendered tabs and copy (no assumed tab count, no fixed breakpoint
-    # besides the handheld edge); the compact one reuses the same tabs and
-    # the pager's own First / Last glyphs, and opens tabs through chooseTab.
+    # besides the handheld edge); the compact one is a bounded window onto the
+    # same tabs with the pager's own First / Last glyphs, opens tabs through
+    # chooseTab, and slides only through DPMotion when a choice moves it.
     runtime = read(RUNTIME)
-    fit = runtime[runtime.index("function fitNavigation("):runtime.index("function placeNavigation(")]
+    fit = runtime[runtime.index("function fitNavigation("):runtime.index("function navWindow(")]
     assert "getBoundingClientRect().width" in fit and "NAV_SPARE" in fit
-    # The complete strip only where its centred place leaves the copy room.
-    assert "const side = (width - navFit.strip - parseFloat(style.columnGap)) / 2;" in fit
-    assert "side >= navFit.copy + NAV_SPARE ? 'full' : 'compact'" in fit
+    assert "navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact'" in fit
     assert "const NAV_SPARE = 4;" in runtime
+    assert "const NAV_TRIM = 5;" in runtime and "navFit.trim = navTrim(navFit.window);" in fit
+    assert "nav.style.removeProperty('--dp-settings-nav-trim');" in fit
     assert "window.matchMedia('(min-width: 780px)')" in runtime
     assert "'chevronFirst'" in runtime and "'chevronLast'" in runtime
     assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
+    assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
     assert "chooseTab(target.dataset.tab);" in travel[:travel.index("return;\n      }")]
     assert "addEventListener?.('loadingdone'" in runtime and "new ResizeObserver(() => fitNavigation())" in runtime
+    place = runtime[runtime.index("function placeNavigation("):]
+    place = place[:place.index("\n  }\n")]
+    assert "window.DPMotion.slide({element: strip, axis: 'x'" in place and "motion?.direction" in place
+    assert "tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;" in place
+    choose = runtime[runtime.index("function chooseTab("):]
+    choose = choose[:choose.index("\n  }\n")]
+    assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});" in choose
 
     # The explicit query generation prevents a browser-cached synthetic glyph
     # from masking the supplied Settings asset after a staging image update.

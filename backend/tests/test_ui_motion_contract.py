@@ -67,7 +67,16 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
     assert activity.count("go({kind:") == 4 and activity.count("beginTurn(") == 2
     for owner in ("ui-settings-page.js", "ui-help-page.js"):
         source = read(owner)
-        assert source.count("window.DPMotion.slide(") == 1, owner
+        # Settings' second slide is its compact navigator's window, moved by
+        # the same choice (chooseTab's own direction and distance) and only
+        # when that choice moves it.
+        slides = 2 if owner == "ui-settings-page.js" else 1
+        assert source.count("window.DPMotion.slide(") == slides, owner
+        if slides == 2:
+            place = source[source.index("function placeNavigation(motion = null) {"):]
+            place = place[:place.index("\n  }\n")]
+            assert "window.DPMotion.slide(" in place and "motion?.direction" in place
+            assert source.count("placeNavigation(motion)") == 1
         choose = source[source.index("function chooseTab("):]
         choose = choose[:choose.index("\n  }\n")]
         assert "selectTabControl(name" in choose and "showTabPanel" in choose, owner

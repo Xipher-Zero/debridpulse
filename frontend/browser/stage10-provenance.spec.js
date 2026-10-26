@@ -59,7 +59,9 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);
   const headerCopy = await page.locator('.dp-settings-header-copy').boundingBox();
   const tabsBox = await page.locator('.dp-settings-tabs').boundingBox();
-  expect(headerCopy.y + headerCopy.height).toBeLessThanOrEqual(tabsBox.y + 1);
+  // One header row (780px and wider): the tab navigation level with the copy, after it.
+  expect(Math.abs((tabsBox.y + tabsBox.height / 2) - (headerCopy.y + headerCopy.height / 2))).toBeLessThanOrEqual(1);
+  expect(tabsBox.x).toBeGreaterThanOrEqual(headerCopy.x + 16);
   await page.screenshot({path:'test-results/checkpoint-settings-dark-desktop.png', fullPage:true});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
