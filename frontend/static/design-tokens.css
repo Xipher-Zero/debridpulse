@@ -297,6 +297,12 @@ body.light :is(
   --dp-op-surface:
     radial-gradient(130% 160% at 18% 0%, color-mix(in oklab, var(--dp-op-hue) 46%, transparent) 0%, transparent 72%),
     linear-gradient(135deg, color-mix(in oklab, var(--dp-op-hue) 30%, transparent) 0%, color-mix(in oklab, var(--dp-op-hue) 16%, transparent) 100%);
+  /* A status badge's backing: the same composition of its own state hue, a
+     little quieter (each wash at 0.90 of the shared one). Only the badge
+     reads it; chips and controls keep --dp-op-surface. */
+  --dp-op-badge-surface:
+    radial-gradient(130% 160% at 18% 0%, color-mix(in oklab, var(--dp-op-hue) 41.4%, transparent) 0%, transparent 72%),
+    linear-gradient(135deg, color-mix(in oklab, var(--dp-op-hue) 27%, transparent) 0%, color-mix(in oklab, var(--dp-op-hue) 14.4%, transparent) 100%);
   --dp-op-edge: color-mix(in oklab, var(--dp-op-hue) 82%, transparent);
   /* Label ink: the same hue and chroma, deepened only in lightness. */
   --dp-op-ink: oklch(from var(--dp-op-hue) min(l, 0.30) c h);

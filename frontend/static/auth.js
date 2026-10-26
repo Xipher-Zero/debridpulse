@@ -433,6 +433,16 @@
 
   composeAuthorized();
 
+  // The signed-in account's own appearance. DPTheme (ui-theme-bootstrap.js)
+  // owns the choices; this owner only carries them to and from the account's
+  // record. While sign-in is off DPTheme keeps them in the browser and takes
+  // no record.
+  window.DPTheme?.connect({
+    save: changes => sendJson('PATCH', '/api/account/appearance', changes).then(failure => !failure),
+    read: () => debridPulseFetch('/api/account/appearance', {headers: {'Accept': 'application/json'}})
+      .then(response => (response.ok ? response.json() : null)),
+  });
+
   refreshSession().catch(() => {});
   window.setInterval(() => refreshSession({force: true}).catch(() => {}), 60000);
   // The live pulse (re)connected. An account_changed is announced only to the

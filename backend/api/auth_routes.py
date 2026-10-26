@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import secrets
@@ -56,9 +58,11 @@ from auth.throttle import login_challenge_rate_limiter, oidc_start_rate_limiter
 from auth.transitions import authentication_configuration_lock
 from core.config import display_timezone, get_settings
 from core.version import read_version
+from services import account_appearance
 
 
 router = APIRouter()
+logger = logging.getLogger("debridpulse.auth")
 
 
 # The login page remains server-rendered and self-contained. The only executable
@@ -569,6 +573,51 @@ async def application_javascript_bundle(request: Request):
     )
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+# How long the first-paint script waits for an account's appearance before it
+# paints the native one instead (and the interface asks again later).
+_APPEARANCE_READ_SECONDS = 0.5
+
+
+async def _appearance(principal: Principal) -> dict:
+    """Where this page's theme choices live, decided before its first paint.
+
+    ``browser``: interactive sign-in is off, the request acts as the
+    standalone principal and the interface keeps its choices in this browser.
+    ``account``: the signed-in account's own record, never the browser's;
+    ``preferences`` is null when it could not be read in time, and the page
+    then paints the native appearance without reading any browser choice."""
+    if not principal.authenticated and not interactive_auth_enabled(get_settings()):
+        return {"authority": "browser"}
+    preferences = None
+    if principal.authenticated and principal.account_id:
+        try:
+            preferences = await asyncio.wait_for(
+                account_appearance.load(principal.account_id), _APPEARANCE_READ_SECONDS)
+        except Exception as exc:
+            logger.warning("Account appearance unavailable at first paint: %s", type(exc).__name__)
+    return {"authority": "account", "account_id": principal.account_id or None, "preferences": preferences}
+
+
+@router.get("/ui-theme-bootstrap.js", include_in_schema=False)
+async def theme_bootstrap_script(request: Request):
+    """Serve the first-paint theme owner with this page's appearance.
+
+    The parser-blocking script starts with the caller's appearance
+    (``_appearance``), so the first paint already has the account's mode and
+    palette -- no native-dark frame for a Light account, and no other
+    account's or browser's choice. It is per-request and never stored."""
+    principal = getattr(request.state, "principal", Principal.anonymous())
+    appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
+    script = _static_asset("ui-theme-bootstrap.js").read_text(encoding="utf-8")
+    response = Response(
+        content=f"window.debridPulseAppearance=Object.freeze({appearance});\n{script}",
+        media_type="application/javascript",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, next: str = "/"):

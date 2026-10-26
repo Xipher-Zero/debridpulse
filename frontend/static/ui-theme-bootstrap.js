@@ -1,15 +1,30 @@
 /* DebridPulse first-paint theme bootstrap and the one theme state owner.
  *
- * Three browser-local choices, each kept apart from the others: the mode
- * (localStorage `theme`, as it always was), the dark palette and the light
- * palette. Choosing a palette changes only the active mode's palette; the
- * mode toggle (app.js toggleTheme) restores the other mode's own choice.
- * Nothing here ever chooses one mode's palette from the other's.
+ * Three choices, each kept apart from the others: the mode, the dark palette
+ * and the light palette. Choosing a palette changes only the active mode's
+ * palette; the mode toggle (app.js toggleTheme) restores the other mode's own
+ * choice. Nothing here ever chooses one mode's palette from the other's.
+ *
+ * Where the choices live is the server's decision for this page, prepended to
+ * this script before it runs (window.debridPulseAppearance, served by
+ * /ui-theme-bootstrap.js), so the first paint already has them:
+ *   - 'browser': interactive sign-in is off. This browser's localStorage
+ *     (`theme`, `dp-theme-palette-dark`, `dp-theme-palette-light`) holds them,
+ *     as it always did.
+ *   - 'account': the signed-in account's own record on the server. The
+ *     browser's keys are never read or written; a choice is applied at once
+ *     and saved to the account. When the record could not be read for this
+ *     page, the native appearance is shown and the record is asked for again
+ *     when the session is next confirmed. This owner makes no request itself:
+ *     auth.js, the owner of the authenticated request path, connects the
+ *     account's record (DPTheme.connect).
+ * Anything else is an account whose appearance is unknown: the native
+ * appearance, never a browser choice.
  *
  * DebridPulse Dark and Light are the native palettes: with them the body
  * carries no data-dp-palette and every token keeps its original value
- * (ui-theme-palettes.css declares only the alternatives). A missing, unknown
- * or unreadable stored choice is the native palette of that mode.
+ * (ui-theme-palettes.css declares only the alternatives). A missing or unknown
+ * choice is the native palette of that mode.
  */
 (function () {
   'use strict';
@@ -35,6 +50,9 @@
   });
   const KEYS = Object.freeze({dark: 'dp-theme-palette-dark', light: 'dp-theme-palette-light'});
 
+  const source = window.debridPulseAppearance || {};
+  const browser = source.authority === 'browser';
+
   function read(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
   }
@@ -45,12 +63,16 @@
     return CATALOG[mode].some(function (item) { return item.id === id; });
   }
 
-  // The choices in force: read once, then kept here, so a browser that cannot
-  // store them still applies them for this page.
+  // The choices in force, kept here, so a browser that cannot store them
+  // still applies them for this page.
+  const stored = browser
+    ? {dark_palette: read(KEYS.dark), light_palette: read(KEYS.light)}
+    : (source.preferences || {});
+  const light = browser ? read('theme') === 'light' : stored.mode === 'light';
   const chosen = {};
   ['dark', 'light'].forEach(function (mode) {
-    const stored = read(KEYS[mode]);
-    chosen[mode] = known(mode, stored) ? stored : CATALOG[mode][0].id;
+    const id = stored[mode + '_palette'];
+    chosen[mode] = known(mode, id) ? id : CATALOG[mode][0].id;
   });
 
   function mode() {
@@ -62,6 +84,88 @@
     if (chosen[active] === CATALOG[active][0].id) document.body.removeAttribute('data-dp-palette');
     else document.body.setAttribute('data-dp-palette', chosen[active]);
   }
+  function changed(light) {
+    document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light: light}}));
+  }
+
+  // ── the account's record ─────────────────────────────────────────────────
+  // Whether this page holds the account's record, and which choices were made
+  // here since it loaded: a record read later never overrides those.
+  let resolved = browser || !!source.preferences;
+  const madeHere = new Set();
+  // Choices not yet acknowledged by the server, saved one request at a time,
+  // so a later choice is never overtaken by an earlier one. A failed save
+  // keeps them for the next choice or the next session confirmation; it is
+  // reported once until a save succeeds again.
+  const unsaved = {};
+  let saving = false;
+  let failing = false;
+  let reading = false;
+  // The account's record ({save(changes) -> Promise<ok>, read() -> Promise<record|null>}).
+  let store = null;
+
+  function notify(text, kind) {
+    try { window.toast(text, kind); } catch (_) {}
+  }
+
+  function save() {
+    if (saving || !store || !Object.keys(unsaved).length) return;
+    const body = Object.assign({}, unsaved);
+    Object.keys(body).forEach(function (field) { delete unsaved[field]; });
+    saving = true;
+    store.save(body).then(function (ok) { return ok === true; }, function () { return false; }).then(function (ok) {
+      saving = false;
+      if (!ok) {
+        Object.keys(body).forEach(function (field) { if (!(field in unsaved)) unsaved[field] = body[field]; });
+        if (!failing) notify('Theme applied here, but not saved to your account.', 'error');
+        failing = true;
+        return;
+      }
+      if (failing && !Object.keys(unsaved).length) notify('Theme saved to your account.', 'success');
+      failing = false;
+      save();
+    });
+  }
+
+  function keep(field, value) {
+    madeHere.add(field);
+    if (browser) {
+      write(field === 'mode' ? 'theme' : KEYS[field.replace('_palette', '')], value);
+      return;
+    }
+    unsaved[field] = value;
+    save();
+  }
+
+  // The record this page could not read at first paint, read now. It is
+  // applied only to this page's own account, and only for the choices not
+  // made here since; mode and palette change together, then consumers are
+  // told once.
+  function resolve() {
+    if (resolved || reading || !store) return;
+    reading = true;
+    store.read().catch(function () { return null; }).then(function (record) {
+      reading = false;
+      if (resolved || !record || !source.account_id || record.account_id !== source.account_id) return;
+      resolved = true;
+      const before = mode() + ' ' + chosen[mode()];
+      ['dark', 'light'].forEach(function (which) {
+        const id = record[which + '_palette'];
+        if (!madeHere.has(which + '_palette') && known(which, id)) chosen[which] = id;
+      });
+      if (!madeHere.has('mode')) document.body.classList.toggle('light', record.mode === 'light');
+      paint();
+      if (mode() + ' ' + chosen[mode()] !== before) changed(mode() === 'light');
+    });
+  }
+
+  if (!browser) {
+    // auth.js confirms the session at load, periodically and on reconnect.
+    document.addEventListener('debridpulse:session-changed', function () {
+      resolve();
+      save();
+    });
+  }
 
   window.DPTheme = Object.freeze({
     catalog: CATALOG,
@@ -71,21 +175,29 @@
     // the same frame.
     setMode: function (light) {
       document.body.classList.toggle('light', !!light);
-      write('theme', light ? 'light' : 'dark');
       paint();
+      keep('mode', light ? 'light' : 'dark');
+    },
+    // auth.js hands over the account's record once; the browser authority
+    // never takes one.
+    connect: function (next) {
+      if (browser || store || !next) return;
+      store = next;
+      resolve();
+      save();
     },
     // A palette of the active mode, applied before consumers are told.
     choose: function (id) {
       const active = mode();
       if (!known(active, id) || chosen[active] === id) return false;
       chosen[active] = id;
-      write(KEYS[active], id);
       paint();
-      document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light: active === 'light'}}));
+      keep(active + '_palette', id);
+      changed(active === 'light');
       return true;
     },
   });
 
-  if (read('theme') === 'light') document.body.classList.add('light');
+  if (light) document.body.classList.add('light');
   paint();
 })();

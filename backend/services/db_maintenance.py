@@ -69,16 +69,18 @@ TABLES = [
     "schema_migrations",
     # Accounts are identity configuration, not transfer state or history: the
     # wipe keeps every account, credential and OIDC binding, and each User's
-    # own notification configuration (``auth.accounts``).
+    # own notification configuration and each account's own appearance
+    # (``auth.accounts``).
     "accounts",
     "account_local_credentials",
     "account_oidc_bindings",
     "account_tokens",
     "account_notifications",
+    "account_appearance",
 ]
 _KEPT = frozenset({"transfer_controls", "schema_migrations", "event_journal_index",
                    "accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens",
-                   "account_notifications"})
+                   "account_notifications", "account_appearance"})
 
 
 async def wipe_database(*, verified_quiesced: bool = False) -> dict:

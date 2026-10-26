@@ -106,7 +106,10 @@ _COPY_CHUNK = 1024 * 1024
 # * the v1.0.13 schema immediately before execution attempts carried the
 #   sources their executor reported (4d7c8e45), which it extends with the one
 #   nullable ``execution_attempts.contributors`` column -- NULL ("not
-#   reported") for every attempt it holds; nothing is reconstructed.
+#   reported") for every attempt it holds; nothing is reconstructed;
+# * the released v1.0.13 schema (34d4e8b2, unchanged on 1.0.14 until account
+#   appearance), which it extends with the one ``account_appearance`` table,
+#   empty: every account it holds has the native appearance.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -116,6 +119,7 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:f8ab9e86390112da984d23b5b49e45c067004b6ef5e35139b1ecf323765b37b1",
     "sha256:353e5b5844c34ab95a18293e0028bfb5d6a26e1939187ff9077e4983b49b1b1f",
     "sha256:c12ccc8158d94390c994fd49ef8a86a4ed4d895839fcf062b8379eae58f44f0e",
+    "sha256:937ed58caa1cc42c91d6e47e917e020f8025f27e7ec596aef13d4cc456e76ac6",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

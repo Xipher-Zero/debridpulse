@@ -22,7 +22,7 @@
   font-weight: 600 !important;
   --dp-op-hue: var(--dp-badge-color);
   border-color: var(--dp-op-edge, color-mix(in srgb, var(--dp-badge-color) 22%, transparent)) !important;
-  background: var(--dp-op-surface, color-mix(in srgb, var(--dp-badge-color) 9%, transparent)) !important;
+  background: var(--dp-op-badge-surface, color-mix(in srgb, var(--dp-badge-color) 9%, transparent)) !important;
   color: var(--dp-op-ink, var(--dp-badge-color)) !important;
 }
 

@@ -21,6 +21,7 @@ from auth.accounts import AccountRefused, Role
 from auth.permissions import Capability, demand_owner, permits
 from auth.throttle import personal_notification_test_rate_limiter
 from core.logging_utils import sanitize_exception
+from services import account_appearance
 from services import account_notifications
 from services import notification_service
 
@@ -251,6 +252,32 @@ async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
+
+
+# ── the signed-in account's own appearance ─────────────────────────────────
+# Classified ``interface``: every human role (Admin, User, ReadOnly User), and
+# no Integration. The account is ALWAYS the authenticated principal's: no route
+# here takes an account ID, and the body model refuses any other key. While
+# sign-in is off there is no account to own an appearance: the standalone
+# principal is refused, and the interface keeps its choices in the browser.
+
+def _appearance_owner(request: Request) -> str:
+    principal = request.state.principal
+    if not principal.authenticated or not principal.account_id:
+        raise HTTPException(status_code=409, detail="Appearance is kept in this browser while sign-in is off")
+    return str(principal.account_id)
+
+
+@router.get("/account/appearance")
+async def own_appearance(request: Request):
+    account_id = _appearance_owner(request)
+    return {"account_id": account_id, **await account_appearance.load(account_id)}
+
+
+@router.patch("/account/appearance")
+async def update_own_appearance(body: account_appearance.AppearanceUpdate, request: Request):
+    account_id = _appearance_owner(request)
+    return {"account_id": account_id, **await account_appearance.update(account_id, body)}
 
 
 # ── the signed-in User's own notifications ──────────────────────────────────

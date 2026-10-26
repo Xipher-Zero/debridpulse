@@ -2834,9 +2834,11 @@ document.addEventListener('pointerdown', event => {
 function toggleTheme() {
   const isLight = window.DPTheme.mode() !== 'light';
   window.DPTheme.setMode(isLight);
-  updateThemeToggle(isLight);
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 }
+// The toggle's glyph follows every effective theme change: this toggle, a
+// palette choice, and an account's appearance read after first paint.
+document.addEventListener('debridpulse:theme-changed', event => updateThemeToggle(!!event.detail?.light));
 
 function updateThemeToggle(isLight) {
   const btn = document.getElementById('theme-toggle');
@@ -2900,7 +2902,6 @@ document.addEventListener('DOMContentLoaded', () => {
   syncDashboardSparkPulses();
   // ui-theme-bootstrap.js applied the stored mode and its palette at first paint.
   const isLight = window.DPTheme.mode() === 'light';
-  updateThemeToggle(isLight);
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 });
 

@@ -125,9 +125,20 @@ SCHEMA = (
         last_report_at REAL,
         updated_at TEXT NOT NULL
     )""",
+    # A human account's own appearance (``services.account_appearance``): its
+    # interface mode and the palette it chose for each mode, keyed by the
+    # durable account ID. It belongs to exactly that account: Remove and Merge
+    # retire it with the account, and nothing inherits it.
+    """CREATE TABLE IF NOT EXISTS account_appearance (
+        account_id TEXT PRIMARY KEY REFERENCES accounts(id),
+        mode TEXT NOT NULL CHECK (mode IN ('dark','light')),
+        dark_palette TEXT NOT NULL,
+        light_palette TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""",
 )
 TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens",
-          "account_notifications")
+          "account_notifications", "account_appearance")
 TOKEN_PREFIX = "dp_"
 _TOKEN_RANDOM_BYTES = 32
 
@@ -855,6 +866,7 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
         await db.execute("UPDATE account_tokens SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
                          (_now(), account.id))
         await db.execute("DELETE FROM account_notifications WHERE account_id=?", (account.id,))
+        await db.execute("DELETE FROM account_appearance WHERE account_id=?", (account.id,))
         return await _withdraw_owned_demand(db, account.id, "account_deleted")
 
 
@@ -897,9 +909,10 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
                 await db.execute(
                     "UPDATE account_local_credentials SET account_id=? WHERE account_id=?", (target.id, source_id))
             await db.execute("UPDATE account_oidc_bindings SET account_id=? WHERE account_id=?", (target.id, source_id))
-            # A folded account's notification destinations are its own: they
-            # are retired, never merged into the survivor's configuration.
+            # A folded account's notification destinations and appearance are
+            # its own: they are retired, never merged into the survivor's.
             await db.execute("DELETE FROM account_notifications WHERE account_id=?", (source_id,))
+            await db.execute("DELETE FROM account_appearance WHERE account_id=?", (source_id,))
             await db.execute(
                 "UPDATE accounts SET enabled=0, merged_into=?, deleted_at=? WHERE id=?", (target.id, now, source_id))
 

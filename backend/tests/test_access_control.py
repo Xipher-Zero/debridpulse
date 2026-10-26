@@ -68,9 +68,11 @@ def test_the_role_matrix_over_every_registered_action():
     for route in _routes():
         capability = ACTIONS[action_name(route.endpoint)]
         path = route.path_format
-        # ReadOnly never mutates anything but its own session.
+        # ReadOnly never mutates anything but its own session -- and its own
+        # appearance, a human account's private visual choice.
         if route.methods & mutating and permits(readonly, capability):
-            assert capability in {Capability.PUBLIC, Capability.SESSION}, path
+            assert capability in {Capability.PUBLIC, Capability.SESSION} or (
+                path == "/account/appearance" and capability is Capability.INTERFACE), path
         # High-risk families are Admin only.
         if any(part in path for part in ("/admin/", "/backups", "/executor-work", "/aria2", "/accounts",
                                          "/auth/config", "/trace", "/integrations/", "/settings",

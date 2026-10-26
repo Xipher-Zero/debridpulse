@@ -105,6 +105,7 @@ ACTIONS: dict[str, Capability] = {
     "api.auth_routes.oidc_callback": _P,
     "api.auth_config_routes.pending_aware_oidc_callback": _P,
     "api.auth_routes.application_javascript_bundle": _I,
+    "api.auth_routes.theme_bootstrap_script": _I,
     "api.auth_routes.auth_session_status": _S,
     "api.auth_routes.logout": _S,
     "api.account_routes.change_own_password": _S,
@@ -112,6 +113,9 @@ ACTIONS: dict[str, Capability] = {
     "api.account_routes.own_account": _S,
     "api.account_routes.change_own_actual_name": _S,
     "api.account_routes.record_own_email": _S,
+    # The signed-in human account's own appearance (never another's).
+    "api.account_routes.own_appearance": _I,
+    "api.account_routes.update_own_appearance": _I,
     # A User's own notification configuration (never the global one).
     "api.account_routes.own_notifications": _NS,
     "api.account_routes.update_own_notifications": _NS,

@@ -1265,6 +1265,62 @@ async def test_the_pinned_pre_contributors_backup_keeps_its_attempts_with_no_rep
     assert await app.state.application.repository.execution_contributors(historical[0][1]) is None
 
 
+# Written by the released v1.0.13 build (34d4e8b2) with its own backup service,
+# the schema 1.0.14 kept until account appearance: a password Admin (operator /
+# pre-appearance-secret), a User (reader) with their own notification
+# configuration and a ReadOnly User (viewer).
+PRE_APPEARANCE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-34d4e8b2.zip"
+
+
+async def test_the_released_1013_backup_restores_every_account_with_the_native_appearance(served):
+    """Upgraded on the private staged copy only through the canonical
+    bootstrap: every account, credential and notification configuration comes
+    back as recorded, the new ``account_appearance`` table arrives empty, and
+    each restored account then has -- and may change -- its own appearance."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from services import account_appearance, account_notifications
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_APPEARANCE_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "account_appearance" not in {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        people = {row[0]: row[1:] for row in conn.execute(
+            "SELECT display_name, role, origin, id FROM accounts WHERE protected IS NULL")}
+        assert {name: facts[:2] for name, facts in people.items()} == {
+            "Operator": ("admin", "local"), "Reader": ("user", "local"), "Viewer": ("readonly", "local")}
+        assert conn.execute("SELECT count(*) FROM account_appearance").fetchone() == (0,)
+    finally:
+        conn.close()
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.role is accounts.Role.ADMIN and verify_password(password_hash, "pre-appearance-secret")
+    reader_id = people["Reader"][2]
+    assert (await account_notifications.load(reader_id)).discord_username == "Reader Bot"
+    for _name, (_role, _origin, account_id) in people.items():
+        assert await account_appearance.load(account_id) == account_appearance.DEFAULT
+    saved = await account_appearance.update(reader_id, account_appearance.AppearanceUpdate(
+        mode="light", light_palette="nord-light"))
+    assert saved == {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "nord-light"}
+    assert await account_appearance.load(people["Viewer"][2]) == account_appearance.DEFAULT
+
+
 async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):
     """Only the exact pinned predecessor is upgradable: the same backup with a
     schema one column away is an unsupported version, refused before
