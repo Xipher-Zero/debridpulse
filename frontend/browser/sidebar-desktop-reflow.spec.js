@@ -17,9 +17,72 @@ const COMPACT = 1559;
 const RAIL = 72;
 const FULL = 240;
 
+/* The Settings master header, from geometry alone (installed with every page
+ * this suite opens). Desktop and tablet: one row. The complete strip (each
+ * tab's chip, gap, label, padding and border; the strip's 3px padding and
+ * 1px border) keeps its place centred in the whole header -- half the row
+ * gap toward the copy's side -- and is shown only while that place leaves
+ * the copy its own width with 4px to spare; else the compact navigator,
+ * shown by its First / Last actions, centred in the room after the copy.
+ * `borderline` marks a fit within 1px of that line, where either is
+ * accepted. */
+function settingsHeader() {
+  const rect = node => node.getBoundingClientRect();
+  const root = document.getElementById('view-settings');
+  const headerNode = root.querySelector('.dp-settings-master-header');
+  const style = getComputedStyle(headerNode);
+  const box = rect(headerNode);
+  const inner = {left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight)};
+  const gap = parseFloat(style.columnGap);
+  const parts = node => [...node.children].reduce((sum, child) => sum + rect(child).width, 0)
+    + (parseFloat(getComputedStyle(node).columnGap) || 0) * (node.children.length - 1);
+  const copyNode = root.querySelector('.dp-settings-header-copy');
+  const copy = rect(copyNode);
+  const strip = root.querySelector('.dp-settings-tabs');
+  const s = rect(strip);
+  const controlNode = root.querySelector('.dp-settings-nav-control');
+  const control = rect(controlNode);
+  const tabNodes = [...strip.querySelectorAll('[data-tab]')];
+  const tabs = tabNodes.map(rect);
+  const natural = tab => {
+    const st = getComputedStyle(tab);
+    return parts(tab.querySelector('.dp-settings-tab-face'))
+      + ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, key) => sum + parseFloat(st[key]), 0);
+  };
+  const margin = (inner.right - inner.left - tabNodes.reduce((sum, tab) => sum + natural(tab), 0) - 8 - gap) / 2 - (parts(copyNode) + 4);
+  const compact = [...root.querySelectorAll('.dp-settings-nav-end')].some(node => getComputedStyle(node).display !== 'none');
+  const current = rect(strip.querySelector('[aria-selected="true"]'));
+  const whole = compact
+    ? current.left >= s.left - 0.5 && current.right <= s.right + 0.5
+    : tabs.every(tab => tab.left >= s.left - 0.5 && tab.right <= s.right + 0.5 && Math.abs(tab.top - tabs[0].top) < 1)
+      && strip.scrollWidth <= strip.clientWidth + 1;
+  return {vw: innerWidth, compact, fits: margin >= 0, borderline: Math.abs(margin) < 1,
+    second: control.top > copy.bottom - 4,
+    inside: control.left >= copy.right + gap - 0.5 && control.right <= inner.right + 0.5 && whole,
+    // Off its place: the complete strip from the header's centre (plus half
+    // the gap), the compact navigator from the centre of its room.
+    offCentre: compact ? (control.left + control.right) / 2 - (copy.right + gap + inner.right) / 2
+      : (control.left + control.right) / 2 - (inner.left + inner.right + gap) / 2,
+    stretched: !compact && s.width > tabs.reduce((sum, tab) => sum + tab.width, 0) + 40,
+    extraLine: Math.round(box.height) > Math.round(Math.max(copy.height, control.height)
+      + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) + 1)
+      && Math.round(box.height) > parseFloat(style.minHeight) + 0.5};
+}
+
+// What is wrong with one Settings header reading (empty when it is right).
+const settingsProblems = h => [
+  ...(h.second ? ['second row'] : []),
+  ...(h.inside ? [] : ['outside its room or clipped']),
+  ...(h.extraLine ? ['extra line'] : []),
+  ...(h.stretched ? ['strip stretched'] : []),
+  ...(Math.abs(h.offCentre) > 1 ? ['off its centred place'] : []),
+  ...(!h.borderline && h.compact === h.fits ? [h.compact ? 'compact although the strip fits' : 'complete strip although it does not fit'] : []),
+];
+
 async function open(page, width, {height = 1000} = {}) {
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  await page.addInitScript(`window.__dpSettingsHeader = ${settingsHeader.toString()};`);
   await page.setViewportSize({width, height});
   await page.goto('/');
   await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeVisible();
@@ -32,6 +95,9 @@ const settledShell = page => page.waitForFunction(() =>
 async function resize(page, width, height = 1000) {
   await page.setViewportSize({width, height});
   await settledShell(page);
+  // Two frames drawn at the new width: what the page paints there (Settings
+  // chooses its navigation in the frame's ResizeObserver step).
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 const box = (page, selector) => page.locator(selector).first().evaluate(node => {
@@ -126,12 +192,22 @@ test('negative control: the rail check fails when a section heading or Provider 
  * page and over the page's content (the page's clear inset is #content's
  * leading padding), and -- on Settings or Help -- whether the tab strip is on
  * a second row, the header's own genuine-fit rule, and whether every tab is
- * inside the header. */
+ * inside the header. Settings decides its navigation when the page's width
+ * has changed (its ResizeObserver, after a frame's animation callbacks), so
+ * its header is also read by an observer created after the page's own --
+ * the state that frame paints -- into window.__dpHeaders
+ * (paintedSettingsProblems). */
 async function framesDuring(page, view, act) {
   await page.evaluate(view => {
     const rect = node => node.getBoundingClientRect();
     window.__dpFrames = [];
+    window.__dpHeaders = [];
     window.__dpStop = false;
+    window.__dpHeaderObserver?.disconnect();
+    if (view === 'settings') {
+      window.__dpHeaderObserver = new ResizeObserver(() => window.__dpHeaders.push(window.__dpSettingsHeader()));
+      window.__dpHeaderObserver.observe(document.querySelector('#view-settings .dp-settings-master-header'));
+    }
     const sample = () => {
       const sidebarNode = document.getElementById('sidebar');
       const sidebar = rect(sidebarNode);
@@ -142,7 +218,11 @@ async function framesDuring(page, view, act) {
         overlap: sidebar.right - main.left, contentCovered: sidebar.right - (rect(content).left + inset),
         mark: sidebarNode.classList.contains('sidebar-reflowing') ? sidebarNode.dataset.sidebarReflow || 'unnamed' : '',
         labelOpacity: Number(getComputedStyle(sidebarNode.querySelector('.nav-label')).opacity)};
-      if (view) {
+      if (view === 'settings') {
+        const h = window.__dpSettingsHeader();
+        Object.assign(frame, {second: h.second,
+          copyCovered: sidebar.right - document.querySelector('#view-settings .dp-settings-header-copy').getBoundingClientRect().left});
+      } else if (view) {
         const root = document.getElementById(`view-${view}`);
         const header = root.querySelector(`.dp-${view}-master-header`);
         const style = getComputedStyle(header);
@@ -179,6 +259,7 @@ async function framesDuring(page, view, act) {
   });
   return page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
     window.__dpStop = true;
+    window.__dpHeaderObserver?.disconnect();
     resolve(window.__dpFrames);
   }))));
 }
@@ -189,6 +270,14 @@ const restRow = (page, view) => page.evaluate(view => {
   return root.querySelector(`.dp-${view}-tabs`).getBoundingClientRect().top
     > root.querySelector(`.dp-${view}-header-copy`).getBoundingClientRect().bottom - 4;
 }, view);
+
+// Every Settings header the last framesDuring painted: what was wrong, by width.
+const paintedSettingsProblems = page => page.evaluate(settingsProblems => {
+  const problems = eval(settingsProblems);
+  const headers = window.__dpHeaders;
+  if (!headers.length) return ['no header was read'];
+  return [...new Set(headers.flatMap(h => problems(h).map(problem => `${problem} at ${h.vw}`)))];
+}, `(${settingsProblems.toString()})`);
 
 const changes = values => values.reduce((count, value, i) => count + (i && value !== values[i - 1] ? 1 : 0), 0);
 
@@ -259,9 +348,10 @@ for (const view of ['settings', 'help']) {
         expect(frame.sidebar, label).toBe(frame.vw >= EXPANDED ? FULL : RAIL);
         expect(frame.overlap, label).toBeLessThanOrEqual(0.5);
         expect(frame.copyCovered, label).toBeLessThanOrEqual(0);
-        expect(frame.inside, label).toBe(true);
+        if (view === 'help') expect(frame.inside, label).toBe(true);
         expect(frame.second, `${label} at ${frame.vw}`).toBe(rest[frame.vw]);
       }
+      if (view === 'settings') expect(await paintedSettingsProblems(page), label).toEqual([]);
       expect(after.some(frame => frame.mark === 'immediate'), label).toBe(true);
       expect(changes([rest[from], ...frames.map(frame => frame.second), rest[to]]), label).toBe(rest[from] === rest[to] ? 0 : 1);
       expect(await restRow(page, view), label).toBe(rest[to]);
@@ -304,8 +394,9 @@ test('an abrupt change while the sidebar is moving settles at once in either dir
     for (const frame of settled) expect(frame.sidebar, label).toBe(then >= EXPANDED ? FULL : RAIL);
     for (const frame of frames) {
       expect(frame.contentCovered, label).toBeLessThanOrEqual(0.5);
-      expect(frame.inside, label).toBe(true);
+      expect(frame.second, label).toBe(false);
     }
+    expect(await paintedSettingsProblems(page), label).toEqual([]);
     expect(await page.evaluate(() => {
       const sidebar = document.getElementById('sidebar');
       return {mark: sidebar.className.includes('sidebar-reflowing'), data: sidebar.dataset.sidebarReflow ?? null,
@@ -333,9 +424,10 @@ for (const view of ['settings', 'help']) {
         const frames = await framesDuring(page, view, () => drag(page, from, to, step));
         expect(frames.filter(frame => frame.mark === 'immediate'), label).toEqual([]);
         expect(frames.some(frame => frame.sidebar > RAIL + 1 && frame.sidebar < FULL - 1), label).toBe(true);
+        if (view === 'settings') expect(await paintedSettingsProblems(page), label).toEqual([]);
         for (const frame of frames) {
-          expect(frame.second, `${label} at ${frame.vw}`).toBe(!frame.fits);
-          expect(frame.inside, label).toBe(true);
+          expect(frame.second, `${label} at ${frame.vw}`).toBe(view === 'settings' ? false : !frame.fits);
+          if (view === 'help') expect(frame.inside, label).toBe(true);
           expect(frame.mainWidth, label).toBeGreaterThanOrEqual(EXPANDED - FULL - 0.5);
           expect(frame.overlap, label).toBeLessThanOrEqual(Math.max(0, EXPANDED - frame.vw) + 0.5);
         }
@@ -488,6 +580,12 @@ test('every page keeps its desktop content on both sides of the boundary', async
  * may the strip sit beneath the copy, still at its own width. Returns
  * {fits, problems}. */
 function header(page, view) {
+  if (view === 'settings') {
+    return page.evaluate(settingsProblems => {
+      const h = window.__dpSettingsHeader();
+      return {fits: h.fits, problems: eval(settingsProblems)(h)};
+    }, `(${settingsProblems.toString()})`);
+  }
   return page.evaluate(view => {
     const root = document.getElementById(`view-${view}`);
     const headerNode = root.querySelector(`.dp-${view}-master-header`);
@@ -572,7 +670,7 @@ test('negative control: the header check fails when the premature second row ret
   expect(await header(page, 'settings')).toEqual({fits: true, problems: []});
   // The former <=1699px rule: one column, the strip stretched beneath the copy.
   await page.addStyleTag({content: `#view-settings .dp-settings-master-header { display: grid; grid-template-columns: minmax(0, 1fr); }
-    #view-settings .dp-settings-tabs { width: 100%; }`});
+    #view-settings :is(.dp-settings-nav-control, .dp-settings-tabs) { width: 100%; }`});
   const {problems} = await header(page, 'settings');
   expect(problems).toContain('second row');
   expect(problems).toContain('strip stretched');

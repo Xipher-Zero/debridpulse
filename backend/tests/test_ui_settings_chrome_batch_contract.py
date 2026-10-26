@@ -67,6 +67,40 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     copy = copy[:copy.index("}")]
     assert "flex: 1 1 0;" in copy and "min-width: max-content;" in copy
 
+    # 780px and wider the row never wraps. Only the compact navigator leaves
+    # that centring: the copy at its own width, the navigator centred in the
+    # room after it, and no trailing space.
+    desktop = page[page.index("@media (min-width: 780px) {\n  #view-settings .dp-settings-master-header {"):]
+    desktop = desktop[:desktop.index("\n}\n")]
+    assert "flex-wrap: nowrap;" in desktop
+    compact = "#view-settings .dp-settings-master-header[data-presentation='compact']"
+    copy = desktop[desktop.index(f"{compact} .dp-settings-header-copy {{"):]
+    assert "flex: 0 0 auto;" in copy[:copy.index("}")]
+    region = desktop[desktop.index(f"{compact} .dp-settings-nav {{"):]
+    assert "flex: 1 1 0;" in region[:region.index("}")]
+    nav = page[page.index("#view-settings .dp-settings-nav {"):]
+    assert "justify-content: center;" in nav[:nav.index("}")]
+    no_space = chrome[chrome.index(f"{compact}::after {{"):]
+    assert "content: none;" in no_space[:no_space.index("}")]
+
+    # Complete strip or compact navigator, decided by the page runtime from
+    # the rendered tabs and copy (no assumed tab count, no fixed breakpoint
+    # besides the handheld edge); the compact one reuses the same tabs and
+    # the pager's own First / Last glyphs, and opens tabs through chooseTab.
+    runtime = read(RUNTIME)
+    fit = runtime[runtime.index("function fitNavigation("):runtime.index("function placeNavigation(")]
+    assert "getBoundingClientRect().width" in fit and "NAV_SPARE" in fit
+    # The complete strip only where its centred place leaves the copy room.
+    assert "const side = (width - navFit.strip - parseFloat(style.columnGap)) / 2;" in fit
+    assert "side >= navFit.copy + NAV_SPARE ? 'full' : 'compact'" in fit
+    assert "const NAV_SPARE = 4;" in runtime
+    assert "window.matchMedia('(min-width: 780px)')" in runtime
+    assert "'chevronFirst'" in runtime and "'chevronLast'" in runtime
+    assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
+    travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
+    assert "chooseTab(target.dataset.tab);" in travel[:travel.index("return;\n      }")]
+    assert "addEventListener?.('loadingdone'" in runtime and "new ResizeObserver(() => fitNavigation())" in runtime
+
     # The explicit query generation prevents a browser-cached synthetic glyph
     # from masking the supplied Settings asset after a staging image update.
     assert "url('/icons/dp/settings-header.svg?v=2')" in chrome

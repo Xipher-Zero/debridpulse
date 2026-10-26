@@ -7,13 +7,14 @@
  */
 
 /* ── Master header identity and true-centered navigation ─────────────── */
-/* A trailing space that grows exactly as the copy does centres the tab strip
-   in the header while the copy fits beside it (to within half the row gap:
-   the copy's side also holds the gap before the strip); when the copy does
-   not fit, the space yields first and the strip keeps its full width
-   (ui-settings-page.css owns the row itself). The space takes no room of its
-   own -- its negative margin gives back the gap before it -- so it never
-   decides whether the strip fits, nor starts a line of its own. */
+/* A trailing space that grows exactly as the copy does centres the complete
+   tab strip in the header (to within half the row gap: the copy's side also
+   holds the gap before the strip); the page runtime shows the complete strip
+   only while the copy fits beside it there (ui-settings-page.css owns the
+   row itself). The space takes no room of its own -- its negative margin
+   gives back the gap before it -- so it never decides whether the strip
+   fits, nor starts a line of its own. The compact navigator is centred in
+   the room after the copy instead, and has no such space. */
 #view-settings .dp-settings-master-header::after {
   content: '';
   flex: 1 1 0;
@@ -98,6 +99,79 @@ body.light #view-settings .dp-settings-tab-glyph {
     drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-tab-color) 94%, transparent))
     drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-tab-color) 68%, transparent))
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-tab-color) 34%, transparent));
+}
+
+/* ── Compact section navigator ───────────────────────────────────────── */
+/* One segmented control: the strip's own surface moves to the control that
+   also holds First and Last, which are segments of it, divided like tabs.
+   The neighbouring tabs fade outwards -- the rendered tab (chip, glyph and
+   label), not just its text -- while the tab itself, its hit area and its
+   focus ring stay whole. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-master-header[data-presentation='compact']::after {
+    content: none;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-control {
+    padding: 0 3px;
+    border: 1px solid var(--dp-segment-border);
+    border-radius: 9px;
+    background: var(--dp-segment-surface);
+    box-shadow: var(--dp-segment-shadow);
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs {
+    padding: 3px 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab:has(+ .stab[aria-selected='true']) .dp-settings-tab-face {
+    mask-image: linear-gradient(to right, transparent, #000 30%);
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[aria-selected='true'] + .stab .dp-settings-tab-face {
+    mask-image: linear-gradient(to left, transparent, #000 30%);
+  }
+
+  #view-settings .dp-settings-nav-end {
+    appearance: none;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--dp-segment-text);
+    cursor: pointer;
+    transition: color .14s ease, background .14s ease;
+  }
+
+  #view-settings .dp-settings-nav-end[data-settings-end='first'] {
+    border-right: 1px solid var(--dp-segment-divider);
+  }
+
+  #view-settings .dp-settings-nav-end[data-settings-end='last'] {
+    border-left: 1px solid var(--dp-segment-divider);
+  }
+
+  #view-settings .dp-settings-nav-end:hover {
+    background: var(--dp-segment-hover);
+    color: var(--dp-segment-hover-text);
+  }
+
+  #view-settings .dp-settings-nav-end:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 82%, white 18%);
+    outline-offset: -2px;
+  }
+
+  body.light #view-settings .dp-settings-nav-end:focus-visible {
+    outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
+  }
+
+  #view-settings .dp-settings-nav-end svg {
+    width: 15px;
+    height: 15px;
+  }
 }
 
 /* The Settings family colours (the same datums as each family's card icons,

@@ -32,11 +32,14 @@
 }
 
 /* ── Master header ───────────────────────────────────────────────────── */
-/* One row: the identity copy, then the complete tab strip at its own width.
-   The strip moves beneath the copy -- still at its own width -- only when
-   the two genuinely do not fit side by side (below the desktop range), never
-   at a fixed breakpoint; ui-settings-chrome.css centres it while there is
-   room to. */
+/* Desktop and tablet (780px and wider): one row. The complete tab strip
+   keeps its place centred in the whole header (ui-settings-chrome.css), and
+   is shown only while that place leaves the copy its own width with room to
+   spare; otherwise the compact navigator -- the same tabs -- is centred in
+   the room between the copy and the card's right edge. The page runtime
+   (fitNavigation) decides which. Handheld (below 780px): the header wraps
+   and the complete strip, at most the header's width, scrolls beneath the
+   copy. */
 #view-settings .dp-settings-master-header {
   flex: 0 0 auto;
   min-height: 76px;
@@ -82,10 +85,24 @@
   line-height: 1.35;
 }
 
-#view-settings .dp-settings-tabs {
+#view-settings .dp-settings-nav {
   flex: 0 0 auto;
-  width: max-content;
+  min-width: 0;
   max-width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+#view-settings .dp-settings-nav-control {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+#view-settings .dp-settings-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
 }
 
@@ -95,6 +112,99 @@
   flex: 0 0 auto;
   border: 0;
   font: inherit;
+}
+
+#view-settings .dp-settings-tab-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+#view-settings .dp-settings-tab-face > * {
+  flex: 0 0 auto;
+}
+
+#view-settings .dp-settings-nav-end {
+  display: none;
+}
+
+@media (min-width: 780px) {
+  #view-settings .dp-settings-master-header {
+    flex-wrap: nowrap;
+  }
+
+  /* Compact: the copy at its own width, the navigator centred in the rest. */
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-header-copy {
+    flex: 0 0 auto;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav {
+    flex: 1 1 0;
+  }
+
+  /* Compact: [First][previous | CURRENT | next][Last] in one control. The
+     strip is a fixed window three slots wide -- the centre slot as wide as
+     the widest tab (--dp-settings-nav-current, measured), each side slot
+     up to 70% of it (--dp-settings-nav-side) and giving way equally when the
+     room is short -- and
+     every tab is that wide. The page runtime scrolls it so the selected tab
+     fills the centre slot; the tabs further out stay outside the window. */
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs {
+    container-type: inline-size;
+    width: calc(var(--dp-settings-nav-current) + 2 * var(--dp-settings-nav-side));
+    min-width: var(--dp-settings-nav-current);
+    overflow: hidden;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab {
+    flex: 0 0 var(--dp-settings-nav-current);
+    width: var(--dp-settings-nav-current);
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab:first-child {
+    margin-inline-start: var(--dp-settings-nav-side);
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab:last-child {
+    margin-inline-end: var(--dp-settings-nav-side);
+  }
+
+  /* A neighbour shows the part of itself next to the current tab: about 70%
+     of its own width, never more than its side slot (the window's width
+     beyond the centre slot, halved). */
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab:has(+ .stab[aria-selected='true']) {
+    justify-content: flex-end;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab[aria-selected='true'] + .stab {
+    justify-content: flex-start;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] :is(.stab:has(+ .stab[aria-selected='true']), .stab[aria-selected='true'] + .stab) .dp-settings-tab-face {
+    max-width: calc(min(var(--dp-settings-tab-natural) * .7, (100cqw - var(--dp-settings-nav-current)) / 2) - 10px);
+    overflow: hidden;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .stab:has(+ .stab[aria-selected='true']) .dp-settings-tab-face {
+    justify-content: flex-end;
+  }
+
+  #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-nav-end {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+
+  /* At the first tab there is no First and no previous neighbour, at the
+     last no Last and no next; their places stay, so the current tab does
+     not move. */
+  #view-settings .dp-settings-master-header[data-presentation='compact']:has(.stab:first-child[aria-selected='true']) .dp-settings-nav-end[data-settings-end='first'],
+  #view-settings .dp-settings-master-header[data-presentation='compact']:has(.stab:last-child[aria-selected='true']) .dp-settings-nav-end[data-settings-end='last'] {
+    visibility: hidden;
+  }
 }
 
 /* ── Master body / sole scroll owner ────────────────────────────────── */

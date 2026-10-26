@@ -5113,12 +5113,21 @@
               data-tab="${html(id)}" role="tab"
               aria-selected="${state.activeTab === id ? 'true' : 'false'}"
               tabindex="${state.activeTab === id ? '0' : '-1'}">
-        <span class="dp-settings-tab-chip" aria-hidden="true">
-          <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
+        <span class="dp-settings-tab-face">
+          <span class="dp-settings-tab-chip" aria-hidden="true">
+            <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
+          </span>
+          <span class="dp-settings-tab-label">${html(label)}</span>
         </span>
-        <span class="dp-settings-tab-label">${html(label)}</span>
       </button>
     `).join('');
+    // The compact navigator's two travel actions: actions, not tabs, each
+    // naming the section it reaches.
+    const travel = (end, glyph, index) => `
+      <button class="dp-settings-nav-end" type="button" data-settings-end="${end}"
+              aria-label="${end === 'first' ? 'First' : 'Last'} section: ${html(TABS.at(index)[1])}">
+        ${window.DPIcons?.svg?.(glyph) || ''}
+      </button>`;
 
     view.innerHTML = `
       <section class="card dp-settings-master-card" aria-label="Settings">
@@ -5130,7 +5139,13 @@
               <div class="dp-settings-header-subtitle">Your rules, your defaults.</div>
             </div>
           </div>
-          <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+          <div class="dp-settings-nav">
+            <div class="dp-settings-nav-control">
+              ${travel('first', 'chevronFirst', 0)}
+              <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+              ${travel('last', 'chevronLast', -1)}
+            </div>
+          </div>
         </div>
 
         <div class="dp-settings-master-body">
@@ -5149,6 +5164,7 @@
       </section>`;
 
     activateTab(state.activeTab);
+    fitNavigation({measure: true});
     fitServicesRows();
     bindEvents(view);
     updateOidcCallbackPreview();
@@ -5173,7 +5189,84 @@
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? '0' : '-1';
     });
+    placeNavigation();
   }
+
+  /* The header's one row (desktop and tablet, 780px and wider). The complete
+   * strip keeps its place centred in the whole header, and is shown only
+   * while that place leaves the copy its own width with NAV_SPARE to spare;
+   * otherwise the compact navigator -- the same tabs, the current one centred
+   * in a slot as wide as the widest tab, a faded part of each neighbour
+   * beside it, and First / Last at the ends -- centred in the room after the
+   * copy. Which one fits is decided here, in this browser, from the rendered
+   * tabs and copy: the tab set and the fonts are whatever this page actually
+   * drew, never an assumed seven tabs or a fixed breakpoint. The natural
+   * widths are measured when the header is drawn and when fonts finish
+   * loading; a change of the page's width only compares them with the new
+   * header. Below 780px the handheld header keeps its own wrapping strip and
+   * is not touched. */
+  const NAV_SPARE = 4;
+  const navDesktop = window.matchMedia('(min-width: 780px)');
+  let navFit = null;
+
+  function fitNavigation({measure = false} = {}) {
+    if (measure) navFit = null;
+    const nav = root()?.querySelector('.dp-settings-nav');
+    const header = nav?.closest('.dp-settings-master-header');
+    if (!nav || !header.clientWidth || !navDesktop.matches) return;
+    const strip = nav.querySelector('.dp-settings-tabs');
+    const tabs = Array.from(strip.querySelectorAll('[data-tab]'));
+    if (navFit?.nav !== nav) {
+      header.dataset.presentation = 'full';
+      const widths = tabs.map(tab => tab.getBoundingClientRect().width);
+      const style = getComputedStyle(strip);
+      const frame = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
+        .reduce((sum, key) => sum + parseFloat(style[key]), 0);
+      navFit = {
+        nav,
+        strip: widths.reduce((sum, width) => sum + width, 0) + frame,
+        // The copy's own width: its parts (in the complete presentation the
+        // copy's box also takes the space that centres the strip).
+        copy: Array.from(header.querySelector('.dp-settings-header-copy').children)
+          .reduce((sum, part, index) => sum + part.getBoundingClientRect().width
+            + (index ? parseFloat(getComputedStyle(part.parentElement).columnGap) || 0 : 0), 0),
+      };
+      tabs.forEach((tab, index) => tab.style.setProperty('--dp-settings-tab-natural', `${widths[index]}px`));
+      // The centre slot and the side slots at 70% of it, in whole pixels (the
+      // strip's scroll position is a whole pixel too).
+      const current = Math.ceil(Math.max(0, ...widths));
+      nav.style.setProperty('--dp-settings-nav-current', `${current}px`);
+      nav.style.setProperty('--dp-settings-nav-side', `${Math.round(current * 0.7)}px`);
+    }
+    // Centred in the header, the strip leaves half of the rest, less the row
+    // gap before it, on each side: the copy's side must hold the copy with
+    // NAV_SPARE to spare, or the strip would be pushed off its place.
+    const style = getComputedStyle(header);
+    const width = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const side = (width - navFit.strip - parseFloat(style.columnGap)) / 2;
+    const presentation = side >= navFit.copy + NAV_SPARE ? 'full' : 'compact';
+    if (header.dataset.presentation !== presentation) header.dataset.presentation = presentation;
+    placeNavigation();
+    // A focused control the new presentation no longer shows hands focus to
+    // the selected tab, never to a hidden control.
+    const focused = document.activeElement;
+    if (nav.contains(focused) && !shown(focused)) strip.querySelector('[aria-selected="true"]')?.focus();
+  }
+
+  // The compact strip scrolls (never by the user) so that the selected tab
+  // sits in the centre slot.
+  function placeNavigation() {
+    const strip = root()?.querySelector('.dp-settings-master-header[data-presentation="compact"] .dp-settings-tabs');
+    const tab = strip?.querySelector('[aria-selected="true"]');
+    if (!tab || !navDesktop.matches) return;
+    // (The compact strip has no border: its box is its window.)
+    const box = strip.getBoundingClientRect(), own = tab.getBoundingClientRect();
+    const target = Math.round(strip.scrollLeft + (own.left + own.right) / 2 - (box.left + box.right) / 2);
+    if (target !== strip.scrollLeft) strip.scrollLeft = target;
+  }
+
+  const shown = node => node.checkVisibility?.({visibilityProperty: true})
+    ?? (node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden');
 
   // The panel of the tab selected NOW (a later choice made meanwhile wins).
   function showTabPanel() {
@@ -5408,6 +5501,10 @@
     if (view.dataset.dpSettingsEventsBound === '1') return;
     view.dataset.dpSettingsEventsBound = '1';
 
+    // The page's width changed (window, sidebar, or the page shown again):
+    // the header's navigation compares its measured widths with the new room.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitNavigation()).observe(view);
+
     view.addEventListener('keydown', event => {
       const current = event.target.closest('.dp-settings-tabs [data-tab]');
       if (!current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -5458,6 +5555,18 @@
       const tab = event.target.closest('.dp-settings-tabs [data-tab]');
       if (tab) {
         chooseTab(tab.dataset.tab);
+        return;
+      }
+      // First / Last: the first or last tab, through the same choice; focus
+      // follows to that tab, since the action is hidden once it is there.
+      const travel = event.target.closest('.dp-settings-nav-end');
+      if (travel) {
+        const tabs = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]'));
+        const target = travel.dataset.settingsEnd === 'first' ? tabs[0] : tabs.at(-1);
+        if (!target) return;
+        const focused = document.activeElement === travel;
+        chooseTab(target.dataset.tab);
+        if (focused) target.focus();
         return;
       }
 
@@ -6602,6 +6711,9 @@
     if (card) renderIntegrationState(card, identity);
     try { window.DPProviderStatus?.refresh(); } catch (_) {}
   });
+
+  // Fonts that finish loading change the tabs' and the copy's own widths.
+  document.fonts?.addEventListener?.('loadingdone', () => fitNavigation({measure: true}));
 
   registerCommitScopes();
   window.DPSettingsPage = Object.freeze({load});
