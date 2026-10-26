@@ -160,3 +160,34 @@ test('the period selector has no visible "Period:" label and keeps its name, pla
   await expect(page.locator('#stats-period-tabs .ftab[data-period="7d"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#detail-stat-cards [data-dp-stats-metric="completed"] .metric-sub')).toHaveText('Downloads completed during the last 7 days.');
 });
+
+// The global header changes at 900px; Statistics keeps one workspace from the desktop down to
+// the tablet floor: the card fills the content and its body scrolls, the header stays centred
+// with the selector right-aligned, and the chart keeps one sizing policy.
+test('Statistics keeps one workspace from 902px down to 780px, whatever the global header does at 900px', async ({page}) => {
+  await boot(page, 902);
+  const workspace = () => page.evaluate(() => {
+    const card = document.getElementById('view-stats'), header = card.querySelector('.dp-stats-master-header');
+    const body = card.querySelector('.dp-stats-master-body'), content = document.getElementById('content');
+    const tabs = document.getElementById('stats-period-tabs').getBoundingClientRect(), h = header.getBoundingClientRect();
+    const chart = card.querySelector('.dp-stats-chart');
+    return {
+      cardFillsContent: Math.abs(card.getBoundingClientRect().bottom - content.getBoundingClientRect().bottom) <= 24 && getComputedStyle(card).display === 'flex',
+      scrolls: [getComputedStyle(content).overflowY, getComputedStyle(body).overflowY],
+      header: [Math.round(h.height), getComputedStyle(header).alignItems, Math.round(tabs.top - h.top)],
+      chart: [getComputedStyle(chart).minHeight, Math.round(chart.getBoundingClientRect().height)],
+    };
+  });
+  const reference = await workspace();
+  expect(reference.cardFillsContent).toBe(true);
+  expect(reference.scrolls).toEqual(['hidden', 'auto']);
+  for (const width of [901, 900, 899, 850, 780]) {
+    await page.setViewportSize({width, height: 1000});
+    await page.waitForFunction(() => document.getAnimations().every(animation => !(animation instanceof CSSTransition) || animation.playState !== "running"));
+    expect(await workspace(), `${width}px`).toEqual(reference);
+  }
+  // Below the tablet floor the mobile page keeps scrolling as before.
+  await page.setViewportSize({width: 779, height: 1000});
+  await page.waitForFunction(() => document.getAnimations().every(animation => !(animation instanceof CSSTransition) || animation.playState !== "running"));
+  expect((await workspace()).scrolls).toEqual(['auto', 'visible']);
+});

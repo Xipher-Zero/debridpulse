@@ -307,8 +307,11 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   padding: 9px 14px 3px;
 }
 
-/* ── Full-height desktop workspace ───────────────────────────────────── */
-@media (min-width: 901px) {
+/* ── Full-height desktop and tablet workspace ────────────────────────── */
+/* One workspace from the widest desktop down to the tablet floor (780px):
+   the master card fills the content height and its body scrolls. The global
+   header changes at 900px on its own; Statistics does not change with it. */
+@media (min-width: 780px) {
   #content:has(#view-stats.active) {
     overflow-y: hidden;
   }
@@ -328,7 +331,8 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   }
 }
 
-@media (max-width: 899px) {
+/* Mobile: the page scrolls, the header may wrap, and the chart keeps a taller floor. */
+@media (max-width: 779px) {
   #view-stats > .dp-stats-master-header {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -336,10 +340,6 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 
   #view-stats #stats-period-tabs {
     max-width: 100%;
-  }
-
-  #view-stats .dp-stats-breakdown-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #view-stats > .dp-stats-master-body {
