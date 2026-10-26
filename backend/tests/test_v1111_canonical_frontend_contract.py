@@ -270,7 +270,7 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
     ):
         assert fragment in source
     for fragment in (
-        "By the Numbers", "Because vibes are not a performance metric.",
+        "By the Numbers", "Vibes are not a performance metric.",
         "dp-statistics-master", "dp-stats-master-header", "dp-stats-master-body",
         "dp-stats-breakdown-grid", "Completed downloads in the last 7 days.",
     ):
