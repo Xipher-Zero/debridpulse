@@ -581,7 +581,8 @@ _APPEARANCE_READ_SECONDS = 0.5
 
 
 async def _appearance(principal: Principal) -> dict:
-    """Where this page's theme choices live, decided before its first paint.
+    """Where this page's theme choices live, decided before its first paint,
+    with the one palette catalog (``services.account_appearance.CATALOG``).
 
     ``browser``: interactive sign-in is off, the request acts as the
     standalone principal and the interface keeps its choices in this browser.
@@ -589,7 +590,7 @@ async def _appearance(principal: Principal) -> dict:
     ``preferences`` is null when it could not be read in time, and the page
     then paints the native appearance without reading any browser choice."""
     if not principal.authenticated and not interactive_auth_enabled(get_settings()):
-        return {"authority": "browser"}
+        return {"authority": "browser", "catalog": account_appearance.catalog()}
     preferences = None
     if principal.authenticated and principal.account_id:
         try:
@@ -597,7 +598,8 @@ async def _appearance(principal: Principal) -> dict:
                 account_appearance.load(principal.account_id), _APPEARANCE_READ_SECONDS)
         except Exception as exc:
             logger.warning("Account appearance unavailable at first paint: %s", type(exc).__name__)
-    return {"authority": "account", "account_id": principal.account_id or None, "preferences": preferences}
+    return {"authority": "account", "account_id": principal.account_id or None, "preferences": preferences,
+            "catalog": account_appearance.catalog()}
 
 
 @router.get("/ui-theme-bootstrap.js", include_in_schema=False)

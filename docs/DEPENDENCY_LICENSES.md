@@ -400,6 +400,31 @@ name and link; neither collection names the individual creator of these two
 icons. These licences cover only the collections' own contribution: the MEGA and Real-Debrid marks belong to their owners and are
 not licensed by them.
 
+## Colour palettes
+
+The alternative interface palettes (`frontend/static/ui-theme-palettes.css`;
+catalog in `backend/services/account_appearance.py`) are DebridPulse's own
+mappings of colour values published by the projects below onto DebridPulse's
+design tokens. Only colour values are used, several adapted for legibility
+(each marked in the stylesheet); no theme file, code, artwork, logo or font of
+these projects is copied into the repository or the image. They are credited
+here with their licences as recorded at the source:
+
+| Palette(s) | Source | Licence |
+|---|---|---|
+| Catppuccin Mocha, Catppuccin Latte | <https://github.com/catppuccin/palette> | MIT |
+| Dracula | <https://github.com/dracula/dracula-theme> | MIT |
+| Gruvbox Dark, Gruvbox Light | <https://github.com/morhetz/gruvbox> | MIT/X11 (stated in its README) |
+| Nord Light (Nord's Snow Storm, Polar Night and Frost; Nord has no official light theme) | <https://github.com/nordtheme/nord> | MIT |
+| Everforest Dark, Everforest Light | <https://github.com/sainnhe/everforest> (`autoload/everforest.vim`, medium contrast) | MIT |
+| Rosé Pine, Rosé Pine Dawn | <https://github.com/rose-pine/rose-pine-palette> (`palette.json`, main and dawn) | MIT |
+| Kanagawa Wave | <https://github.com/rebelot/kanagawa.nvim> (`lua/kanagawa/colors.lua`, wave theme) | MIT |
+| Ayu Mirage, Ayu Light | <https://github.com/ayu-theme/ayu-colors> (`themes/mirage.yaml`, `themes/light.yaml`) | MIT |
+| SynthWave '84 | <https://github.com/robb0wen/synthwave-vscode> (colour values only; its glow extension is not used) | MIT |
+| Oxocarbon Dark, Oxocarbon Light | <https://github.com/nyoom-engineering/oxocarbon.nvim> (`lua/oxocarbon/init.lua`), with the IBM Carbon grays of <https://github.com/nyoom-engineering/base16-oxocarbon> for the light surfaces | MIT (oxocarbon.nvim; base16-oxocarbon states no licence) |
+| Flexoki Light | <https://stephango.com/flexoki>, <https://github.com/kepano/flexoki> | MIT |
+| Bluloco Light | <https://github.com/uloco/theme-bluloco-light> (`themes/bluloco-light-color-theme.json`, `colors.json`) | LGPL-3.0 (the theme package; only its colour values are used) |
+
 ## Browser-loaded resources
 
 These font resources are requested by the browser from third-party CDNs and are not

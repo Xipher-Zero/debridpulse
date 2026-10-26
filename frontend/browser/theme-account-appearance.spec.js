@@ -15,7 +15,7 @@ const ADMIN = {username: 'browser', password: 'browser-secret'};
 const run = Date.now().toString(36);
 const KEYS = ['theme', 'dp-theme-palette-dark', 'dp-theme-palette-light'];
 // What a sign-in-off session left in this browser profile.
-const BROWSER_CHOICES = [['theme', 'light'], ['dp-theme-palette-dark', 'nord-dark'], ['dp-theme-palette-light', 'catppuccin-latte']];
+const BROWSER_CHOICES = [['theme', 'light'], ['dp-theme-palette-dark', 'gruvbox-dark'], ['dp-theme-palette-light', 'catppuccin-latte']];
 
 const adminSession = require('./acl-admin-session');
 
@@ -122,13 +122,17 @@ test('each signed-in account keeps its own mode and palettes across browsers, ne
   const b = await signIn(browser, bob);
   state = await shown(b.page);
   expect(state).toMatchObject({mode: 'dark', dark: 'debridpulse-dark', light: 'debridpulse-light', first: {light: false}, reads: []});
-  await b.page.evaluate(() => window.DPTheme.choose('tokyo-night'));
-  await saved(b.page, {mode: 'dark', dark_palette: 'tokyo-night', light_palette: 'debridpulse-light'});
+  await b.page.evaluate(() => window.DPTheme.choose('kanagawa-wave'));
+  await saved(b.page, {mode: 'dark', dark_palette: 'kanagawa-wave', light_palette: 'debridpulse-light'});
   await saved(a.page, {mode: 'light', dark_palette: 'dracula', light_palette: 'nord-light'});
 
   // The self-scoped API refuses another account's selector and unknown values.
   expect((await api(b.page, 'PATCH', '/account/appearance', {account_id: alice.id, mode: 'light'})).status).toBe(422);
   expect((await api(b.page, 'PATCH', '/account/appearance', {dark_palette: 'nord-light'})).status).toBe(422);
+  // A retired palette is no longer a choice, and the picker never offers one.
+  expect((await api(b.page, 'PATCH', '/account/appearance', {dark_palette: 'tokyo-night'})).status).toBe(422);
+  expect((await api(b.page, 'PATCH', '/account/appearance', {light_palette: 'solarized-light'})).status).toBe(422);
+  expect(await b.page.evaluate(() => window.DPTheme.choose('tokyo-night'))).toBe(false);
   await saved(a.page, {mode: 'light', dark_palette: 'dracula', light_palette: 'nord-light'});
 
   // A reload of Alice's page: hers again, at first paint.

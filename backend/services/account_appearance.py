@@ -7,9 +7,12 @@ and the palette chosen for Light mode. Choosing one never sets or constrains
 another. An account without a record has the native appearance: Dark mode,
 DebridPulse Dark, and DebridPulse Light for Light mode.
 
-The palette IDs are the interface's catalog (``ui-theme-bootstrap.js``,
-``window.DPTheme.catalog``); this module is the server's authority on which
-of them a record may hold.
+The catalog -- each mode's palettes, in picker order, with their labels -- is
+``CATALOG`` here, the one authority: the interface receives it with its
+first-paint script (``api.auth_routes.theme_bootstrap_script``) and this
+module accepts exactly its IDs. The first palette of each mode is its native
+DebridPulse palette. A stored ID the catalog no longer holds (a retired
+palette) reads as that mode's native palette and is never rewritten by a read.
 
 While interactive sign-in is off there is no account to own an appearance:
 the installation's one standalone principal never reads or writes here, and
@@ -23,13 +26,43 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+CATALOG = {
+    "dark": (
+        ("debridpulse-dark", "DebridPulse (Default)"),
+        ("catppuccin-mocha", "Catppuccin Mocha"),
+        ("dracula", "Dracula"),
+        ("gruvbox-dark", "Gruvbox Dark"),
+        ("everforest-dark", "Everforest Dark"),
+        ("rose-pine", "Rosé Pine"),
+        ("kanagawa-wave", "Kanagawa Wave"),
+        ("ayu-mirage", "Ayu Mirage"),
+        ("synthwave-84", "SynthWave '84"),
+        ("oxocarbon-dark", "Oxocarbon Dark"),
+    ),
+    "light": (
+        ("debridpulse-light", "DebridPulse (Default)"),
+        ("catppuccin-latte", "Catppuccin Latte"),
+        ("nord-light", "Nord Light"),
+        ("gruvbox-light", "Gruvbox Light"),
+        ("rose-pine-dawn", "Rosé Pine Dawn"),
+        ("everforest-light", "Everforest Light"),
+        ("ayu-light", "Ayu Light"),
+        ("flexoki-light", "Flexoki Light"),
+        ("oxocarbon-light", "Oxocarbon Light"),
+        ("bluloco-light", "Bluloco Light"),
+    ),
+}
+PALETTES = {mode: tuple(palette for palette, _label in entries) for mode, entries in CATALOG.items()}
 Mode = Literal["dark", "light"]
-DarkPalette = Literal["debridpulse-dark", "catppuccin-mocha", "dracula", "nord-dark", "gruvbox-dark",
-                      "solarized-dark", "tokyo-night"]
-LightPalette = Literal["debridpulse-light", "catppuccin-latte", "nord-light", "gruvbox-light",
-                       "solarized-light", "tokyo-night-day"]
-PALETTES = {"dark": get_args(DarkPalette), "light": get_args(LightPalette)}
+DarkPalette = Literal[PALETTES["dark"]]
+LightPalette = Literal[PALETTES["light"]]
 DEFAULT = {"mode": "dark", "dark_palette": PALETTES["dark"][0], "light_palette": PALETTES["light"][0]}
+
+
+def catalog() -> dict:
+    """The catalog as the interface receives it."""
+    return {mode: [{"id": palette, "label": label} for palette, label in entries]
+            for mode, entries in CATALOG.items()}
 
 
 class AppearanceUpdate(BaseModel):

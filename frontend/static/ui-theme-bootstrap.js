@@ -24,34 +24,29 @@
  * DebridPulse Dark and Light are the native palettes: with them the body
  * carries no data-dp-palette and every token keeps its original value
  * (ui-theme-palettes.css declares only the alternatives). A missing or unknown
- * choice is the native palette of that mode.
+ * choice -- a retired palette included -- is the native palette of that mode,
+ * for that mode only, and is never written back: only a choice is saved.
  */
 (function () {
   'use strict';
-  const palette = (id, label) => Object.freeze({id: id, label: label});
-  const CATALOG = Object.freeze({
-    dark: Object.freeze([
-      palette('debridpulse-dark', 'DebridPulse (Default)'),
-      palette('catppuccin-mocha', 'Catppuccin Mocha'),
-      palette('dracula', 'Dracula'),
-      palette('nord-dark', 'Nord Dark'),
-      palette('gruvbox-dark', 'Gruvbox Dark'),
-      palette('solarized-dark', 'Solarized Dark'),
-      palette('tokyo-night', 'Tokyo Night'),
-    ]),
-    light: Object.freeze([
-      palette('debridpulse-light', 'DebridPulse (Default)'),
-      palette('catppuccin-latte', 'Catppuccin Latte'),
-      palette('nord-light', 'Nord Light'),
-      palette('gruvbox-light', 'Gruvbox Light'),
-      palette('solarized-light', 'Solarized Light'),
-      palette('tokyo-night-day', 'Tokyo Night Day'),
-    ]),
-  });
   const KEYS = Object.freeze({dark: 'dp-theme-palette-dark', light: 'dp-theme-palette-light'});
 
   const source = window.debridPulseAppearance || {};
   const browser = source.authority === 'browser';
+
+  // The one palette catalog, each mode's palettes in picker order with the
+  // native one first, served with this script from the server's authority
+  // (services/account_appearance.py CATALOG), which accepts exactly these IDs.
+  // Without it only the native palettes -- the absence of a palette -- exist.
+  const NATIVE = {dark: 'debridpulse-dark', light: 'debridpulse-light'};
+  const CATALOG = Object.freeze(['dark', 'light'].reduce(function (catalog, mode) {
+    const served = Array.isArray(source.catalog && source.catalog[mode]) ? source.catalog[mode] : [];
+    const entries = served.length ? served : [{id: NATIVE[mode], label: 'DebridPulse (Default)'}];
+    catalog[mode] = Object.freeze(entries.map(function (item) {
+      return Object.freeze({id: String(item.id), label: String(item.label)});
+    }));
+    return catalog;
+  }, {}));
 
   function read(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }

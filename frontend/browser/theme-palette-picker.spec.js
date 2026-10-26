@@ -7,8 +7,12 @@ const { test, expect } = require('@playwright/test');
  * the page's own computed style or storage; nothing is written to the shared
  * backend. */
 
-const DARK = ['DebridPulse (Default)', 'Catppuccin Mocha', 'Dracula', 'Nord Dark', 'Gruvbox Dark', 'Solarized Dark', 'Tokyo Night'];
-const LIGHT = ['DebridPulse (Default)', 'Catppuccin Latte', 'Nord Light', 'Gruvbox Light', 'Solarized Light', 'Tokyo Night Day'];
+const DARK = ['DebridPulse (Default)', 'Catppuccin Mocha', 'Dracula', 'Gruvbox Dark', 'Everforest Dark', 'Rosé Pine',
+  'Kanagawa Wave', 'Ayu Mirage', "SynthWave '84", 'Oxocarbon Dark'];
+const LIGHT = ['DebridPulse (Default)', 'Catppuccin Latte', 'Nord Light', 'Gruvbox Light', 'Rosé Pine Dawn', 'Everforest Light',
+  'Ayu Light', 'Flexoki Light', 'Oxocarbon Light', 'Bluloco Light'];
+// Retired in 1.0.14's catalog diversification: never offered, never accepted.
+const RETIRED = {dark: ['nord-dark', 'solarized-dark', 'tokyo-night'], light: ['solarized-light', 'tokyo-night-day']};
 
 const noFonts = page => page.route(/fonts\.(googleapis|gstatic)\.com/, route => route.abort());
 const token = (page, name) => page.evaluate(n => getComputedStyle(document.body).getPropertyValue(n).trim(), name);
@@ -70,10 +74,10 @@ test('the picker lists only the active mode; each mode keeps its own palette thr
   menu = await openPicker(page);
   expect(menu).toMatchObject({heading: 'Light themes', note: 'Changes light appearance only', labels: LIGHT, checked: ['DebridPulse (Default)']});
   await page.keyboard.press('Escape');
-  await choose(page, 'Solarized Light');
-  expect(await state(page)).toMatchObject({light: true, palette: 'solarized-light', darkChoice: 'catppuccin-mocha', lightChoice: 'solarized-light'});
+  await choose(page, 'Flexoki Light');
+  expect(await state(page)).toMatchObject({light: true, palette: 'flexoki-light', darkChoice: 'catppuccin-mocha', lightChoice: 'flexoki-light'});
 
-  for (const [light, palette] of [[false, 'catppuccin-mocha'], [true, 'solarized-light'], [false, 'catppuccin-mocha']]) {
+  for (const [light, palette] of [[false, 'catppuccin-mocha'], [true, 'flexoki-light'], [false, 'catppuccin-mocha']]) {
     await page.click('#theme-toggle');
     expect(await state(page)).toMatchObject({light, palette});
   }
@@ -82,7 +86,7 @@ test('the picker lists only the active mode; each mode keeps its own palette thr
   expect((await openPicker(page)).checked).toEqual(['Catppuccin Mocha']);
   await page.keyboard.press('Escape');
   await page.click('#theme-toggle');
-  expect(await state(page)).toMatchObject({light: true, palette: 'solarized-light'});
+  expect(await state(page)).toMatchObject({light: true, palette: 'flexoki-light'});
 });
 
 test('a browser with only theme=light, stale palette names or no storage at all gets the native palettes', async ({page, context}) => {
@@ -116,12 +120,82 @@ test('a browser with only theme=light, stale palette names or no storage at all 
   expect(errors).toEqual([]);
 });
 
+test('a retired palette stored in this browser is its own mode\'s native palette, keeps the other mode\'s choice and is never rewritten', async ({page, context}) => {
+  await noFonts(page);
+  // Dark holds a retired palette, Light a current one.
+  await page.addInitScript(([dark]) => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem('theme', 'dark');
+    localStorage.setItem('dp-theme-palette-dark', dark);
+    localStorage.setItem('dp-theme-palette-light', 'flexoki-light');
+  }, [RETIRED.dark[2]]);
+  await page.goto('/');
+  expect(await state(page)).toMatchObject({light: false, palette: null, darkChoice: 'tokyo-night', lightChoice: 'flexoki-light'});
+  expect(await token(page, '--dp-bg-app')).toBe('#050814');
+  const menu = await openPicker(page);
+  expect(menu.checked).toEqual(['DebridPulse (Default)']);
+  for (const retired of [...RETIRED.dark, ...RETIRED.light]) await expect(page.locator(`#theme-picker [data-palette="${retired}"]`)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.click('#theme-toggle');
+  // The other mode's own choice, untouched; the stored retired name is not rewritten.
+  expect(await state(page)).toMatchObject({light: true, palette: 'flexoki-light', darkChoice: 'tokyo-night', lightChoice: 'flexoki-light'});
+  await page.reload();
+  expect(await state(page)).toMatchObject({light: true, palette: 'flexoki-light', darkChoice: 'tokyo-night'});
+
+  // The same for Light: a retired light palette beside a current dark one.
+  const other = await context.newPage();
+  await noFonts(other);
+  await other.addInitScript(([light]) => {
+    if (sessionStorage.getItem('seeded-light')) return;
+    sessionStorage.setItem('seeded-light', '1');
+    localStorage.setItem('theme', 'light');
+    localStorage.setItem('dp-theme-palette-light', light);
+    localStorage.setItem('dp-theme-palette-dark', 'kanagawa-wave');
+  }, [RETIRED.light[0]]);
+  await other.goto('/');
+  expect(await state(other)).toMatchObject({light: true, palette: null, lightChoice: 'solarized-light', darkChoice: 'kanagawa-wave'});
+  expect(await token(other, '--dp-bg-app')).toBe('#f4f7fc');
+  await other.click('#theme-toggle');
+  expect(await state(other)).toMatchObject({light: false, palette: 'kanagawa-wave', lightChoice: 'solarized-light'});
+  // Choosing replaces it, as any choice does.
+  await other.click('#theme-toggle');
+  await choose(other, 'Bluloco Light');
+  expect(await state(other)).toMatchObject({light: true, palette: 'bluloco-light', lightChoice: 'bluloco-light', darkChoice: 'kanagawa-wave'});
+});
+
+test('ten palettes per mode fit the menu at the narrowest desktop width without moving the topbar', async ({page}) => {
+  await noFonts(page);
+  await page.setViewportSize({width: 780, height: 600});
+  await page.goto('/');
+  const fixed = () => page.evaluate(() => ['#theme-toggle', '#theme-picker-toggle', '#runtime-speed-badge', '#topbar-actions']
+    .map(selector => { const box = document.querySelector(selector).getBoundingClientRect(); return [selector, box.x, box.y, box.width, box.height]; }));
+  const before = await fixed();
+  for (const mode of ['dark', 'light']) {
+    const menu = await openPicker(page);
+    expect(menu.labels).toEqual(mode === 'dark' ? DARK : LIGHT);
+    const fit = await page.evaluate(() => {
+      const panel = document.getElementById('theme-picker').getBoundingClientRect();
+      const list = [...document.querySelectorAll('#theme-picker [role="menuitemradio"]')];
+      list[list.length - 1].scrollIntoView({block: 'nearest'});
+      const last = list[list.length - 1].getBoundingClientRect();
+      const names = list.map(row => { const name = row.querySelector('.dp-theme-picker-name'); return name.scrollWidth <= name.clientWidth + 1; });
+      return {inside: panel.top >= 0 && panel.bottom <= innerHeight && panel.left >= 0 && panel.right <= innerWidth,
+        lastVisible: last.top >= panel.top - 1 && last.bottom <= panel.bottom + 1, namesWhole: names.every(Boolean)};
+    });
+    expect(fit).toEqual({inside: true, lastVisible: true, namesWhole: true});
+    expect(await fixed()).toEqual(before);
+    await page.keyboard.press('Escape');
+    if (mode === 'dark') { await page.click('#theme-toggle'); await settled(page); }
+  }
+});
+
 test('DebridPulse (Default) puts back the exact native palette in each mode', async ({page}) => {
   await noFonts(page);
   await page.goto('/');
   const paint = () => page.evaluate(() => ['body', '#sidebar', '.nav-item.active', '#theme-toggle', '#runtime-speed-badge', '#page-title', '.dash-hero-stat', '#dash-activity-card']
     .map(selector => { const style = getComputedStyle(document.querySelector(selector)); return [selector, style.backgroundColor, style.backgroundImage, style.color, style.borderTopColor, style.boxShadow]; }));
-  for (const [mode, other] of [['dark', 'Tokyo Night'], ['light', 'Gruvbox Light']]) {
+  for (const [mode, other] of [['dark', "SynthWave '84"], ['light', 'Gruvbox Light']]) {
     const native = await paint();
     await choose(page, other);
     expect(await paint()).not.toEqual(native);

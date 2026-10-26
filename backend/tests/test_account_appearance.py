@@ -86,7 +86,10 @@ def _projection(script: str) -> dict:
     match = re.fullmatch(r"window\.debridPulseAppearance=Object\.freeze\((.*)\);", head)
     assert match, head
     assert rest == BOOTSTRAP.read_text(encoding="utf-8")         # the owner itself, unchanged
-    return json.loads(match.group(1))
+    projection = json.loads(match.group(1))
+    # Every page receives the one catalog, whichever authority holds its choices.
+    assert projection.pop("catalog") == account_appearance.catalog()
+    return projection
 
 
 # ── the self-scoped API ─────────────────────────────────────────────────────
@@ -184,13 +187,13 @@ async def _rows():
 
 async def test_the_first_paint_script_carries_only_the_signed_in_accounts_own_record(live):
     client, as_ = live.client, live.as_
-    await client.patch(OWN, headers=as_("alice"), json={"mode": "light", "light_palette": "tokyo-night-day"})
+    await client.patch(OWN, headers=as_("alice"), json={"mode": "light", "light_palette": "flexoki-light"})
     alice = await client.get(SCRIPT, headers=as_("alice"))
     assert alice.status_code == 200 and alice.headers["cache-control"] == "no-store"
     assert alice.headers["content-type"].startswith("application/javascript")
     assert _projection(alice.text) == {
         "authority": "account", "account_id": live.people["alice"].id,
-        "preferences": {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "tokyo-night-day"}}
+        "preferences": {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "flexoki-light"}}
     assert _projection((await client.get(SCRIPT, headers=as_("bob"))).text) == {
         "authority": "account", "account_id": live.people["bob"].id, "preferences": NATIVE}
     # Signed out under sign-in: no script, no appearance, no browser authority.
@@ -224,11 +227,11 @@ async def test_remove_and_merge_retire_a_record_and_disabling_keeps_it(live):
     # only accounts without a second local credential).
     bob = (await accounts.resolve_oidc("https://id.example", "bob-subject", {"name": "Bob"},
                                        default_role="user")).id
-    for account_id, palette in ((alice, "dracula"), (bob, "nord-dark"), (reader, "tokyo-night")):
+    for account_id, palette in ((alice, "dracula"), (bob, "everforest-dark"), (reader, "kanagawa-wave")):
         await account_appearance.update(account_id, account_appearance.AppearanceUpdate(dark_palette=palette))
 
     await accounts.set_enabled(DEFAULT_ADMIN_ID, reader, False)
-    assert (await account_appearance.load(reader))["dark_palette"] == "tokyo-night"
+    assert (await account_appearance.load(reader))["dark_palette"] == "kanagawa-wave"
     await accounts.set_enabled(DEFAULT_ADMIN_ID, reader, True)
 
     await accounts.merge_accounts(DEFAULT_ADMIN_ID, [bob], alice)
@@ -239,8 +242,84 @@ async def test_remove_and_merge_retire_a_record_and_disabling_keeps_it(live):
 
 # ── one catalog ─────────────────────────────────────────────────────────────
 
-async def test_the_server_accepts_exactly_the_interfaces_palettes():
+# The locked 1.0.14 catalog: ten palettes per mode, the native one first.
+LOCKED = {
+    "dark": [("debridpulse-dark", "DebridPulse (Default)"), ("catppuccin-mocha", "Catppuccin Mocha"),
+             ("dracula", "Dracula"), ("gruvbox-dark", "Gruvbox Dark"), ("everforest-dark", "Everforest Dark"),
+             ("rose-pine", "Rosé Pine"), ("kanagawa-wave", "Kanagawa Wave"), ("ayu-mirage", "Ayu Mirage"),
+             ("synthwave-84", "SynthWave '84"), ("oxocarbon-dark", "Oxocarbon Dark")],
+    "light": [("debridpulse-light", "DebridPulse (Default)"), ("catppuccin-latte", "Catppuccin Latte"),
+              ("nord-light", "Nord Light"), ("gruvbox-light", "Gruvbox Light"), ("rose-pine-dawn", "Rosé Pine Dawn"),
+              ("everforest-light", "Everforest Light"), ("ayu-light", "Ayu Light"), ("flexoki-light", "Flexoki Light"),
+              ("oxocarbon-light", "Oxocarbon Light"), ("bluloco-light", "Bluloco Light")],
+}
+RETIRED = {"dark_palette": ("nord-dark", "solarized-dark", "tokyo-night"),
+           "light_palette": ("solarized-light", "tokyo-night-day")}
+PALETTES_CSS = BOOTSTRAP.with_name("ui-theme-palettes.css")
+
+
+async def test_the_catalog_is_the_locked_ten_per_mode_with_one_authority():
+    assert {mode: list(entries) for mode, entries in account_appearance.CATALOG.items()} == LOCKED
+    # The interface holds no catalog of its own: only the two native IDs (the
+    # absence of a palette) are named in its theme owner.
     source = BOOTSTRAP.read_text(encoding="utf-8")
-    for mode in ("dark", "light"):
-        block = re.search(mode + r": Object\.freeze\(\[(.*?)\]\)", source, re.S).group(1)
-        assert tuple(re.findall(r"palette\('([a-z-]+)'", block)) == account_appearance.PALETTES[mode]
+    alternatives = {palette for mode in LOCKED for palette, _label in LOCKED[mode][1:]}
+    retired = {palette for ids in RETIRED.values() for palette in ids}
+    assert not [palette for palette in alternatives | retired if f"'{palette}'" in source]
+    # A palette block exists for exactly each alternative the catalog lists.
+    declared = set(re.findall(r'^body\[data-dp-palette="([a-z0-9-]+)"\]', PALETTES_CSS.read_text(encoding="utf-8"), re.M))
+    assert declared == alternatives
+
+
+@pytest.mark.parametrize("field,palette", [(field, palette) for field, ids in RETIRED.items() for palette in ids])
+async def test_a_retired_palette_is_refused_as_a_new_choice(live, field, palette):
+    client, as_ = live.client, live.as_
+    await client.patch(OWN, headers=as_("alice"), json={"dark_palette": "kanagawa-wave", "light_palette": "flexoki-light"})
+    refused = await client.patch(OWN, headers=as_("alice"), json={field: palette})
+    assert refused.status_code == 422, refused.text
+    assert await account_appearance.load(live.people["alice"].id) == {
+        "mode": "dark", "dark_palette": "kanagawa-wave", "light_palette": "flexoki-light"}
+
+
+async def _stored(account_id):
+    async with database.get_db() as db:
+        return await db.fetchone(
+            "SELECT mode, dark_palette, light_palette, updated_at FROM account_appearance WHERE account_id=?",
+            (account_id,))
+
+
+@pytest.mark.parametrize("stored,effective", [
+    # A retired Dark palette beside a current Light one, and the reverse.
+    ({"mode": "light", "dark_palette": "tokyo-night", "light_palette": "flexoki-light"},
+     {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "flexoki-light"}),
+    ({"mode": "dark", "dark_palette": "rose-pine", "light_palette": "tokyo-night-day"},
+     {"mode": "dark", "dark_palette": "rose-pine", "light_palette": "debridpulse-light"}),
+    ({"mode": "dark", "dark_palette": "solarized-dark", "light_palette": "solarized-light"},
+     {"mode": "dark", "dark_palette": "debridpulse-dark", "light_palette": "debridpulse-light"}),
+])
+async def test_a_stored_retired_palette_reads_as_its_modes_native_one_and_is_never_rewritten(live, stored, effective):
+    """A record saved before the catalog changed: each retired choice is its
+    own mode's native palette wherever it is read -- the store, the API, the
+    first-paint projection -- the other mode's choice is kept, and no read
+    writes anything back."""
+    client, as_ = live.client, live.as_
+    alice = live.people["alice"].id
+    async with database.get_db() as db:
+        await db.execute("INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,updated_at) "
+                         "VALUES(?,?,?,?,?)", (alice, stored["mode"], stored["dark_palette"], stored["light_palette"],
+                                               "2026-10-25T00:00:00Z"))
+        await db.commit()
+    before = await _stored(alice)
+
+    assert await account_appearance.load(alice) == effective
+    assert (await client.get(OWN, headers=as_("alice"))).json() == {"account_id": alice, **effective}
+    assert _projection((await client.get(SCRIPT, headers=as_("alice"))).text)["preferences"] == effective
+    assert await _stored(alice) == before                       # nothing written back by any read
+
+    # Only an explicit choice writes: it saves the named choice with the
+    # record as the account sees it (a retired choice there is its native one).
+    saved = (await client.patch(OWN, headers=as_("alice"), json={"mode": "light"})).json()
+    assert saved == {"account_id": alice, **effective, "mode": "light"}
+    row = await _stored(alice)
+    assert (row["mode"], row["dark_palette"], row["light_palette"]) == (
+        "light", effective["dark_palette"], effective["light_palette"])
