@@ -124,3 +124,30 @@ def test_one_observer_at_most_and_a_reachable_scrollable_tooltip() -> None:
     assert "if (target === host && crossing(event)) { bridging = true; return; }" in owner
     assert "if (bridging && !crossing(event)) hide();" in owner
     assert "if (!target || !tip?.classList.contains('is-scrollable')) return false;" in owner
+
+
+def test_a_dwell_element_waits_for_a_resting_pointer_and_never_takes_the_warm_path() -> None:
+    """The compact navigators' section index (and only an element that asks
+    for it): shown after the pointer has rested over it, never through the
+    hover delay or the warm path; ordinary tooltips keep both."""
+    owner = read("ui-tooltip.js")
+    assert "const DELAY_MS = 450;" in owner and "const WARM_MS = 300;" in owner   # ordinary timing unchanged
+    assert "const JITTER = 4;" in owner
+    assert "const dwellOf = host => Number(host?.getAttribute('data-tooltip-dwell')) || 0;" in owner
+    over = owner[owner.index("document.addEventListener('pointerover'"):owner.index("document.addEventListener('pointerout'")]
+    # A dwell element returns before hover(): no delay timer, no warm path.
+    assert over.index("if (host && dwellOf(host)) {") < over.index("if (host) hover(host);")
+    assert "return;\n    }\n    if (host) hover(host);" in over
+    # Moving off the rest restarts it; a use settles before it restarts;
+    # leaving ends it; the owner's own busy marker is waited for.
+    assert "Math.hypot(event.clientX - dwell.x, event.clientY - dwell.y) > JITTER" in owner
+    assert "settle(host, event.clientX, event.clientY);" in owner
+    assert "if (dwell?.host === host) stopDwell();" in owner
+    assert "host.hasAttribute('data-tooltip-busy')" in owner and "document.addEventListener('dp-tooltip-ready'" in owner
+    nav = read("ui-section-nav.js")
+    assert "const INDEX_DWELL_MS = 2000;" in nav and "control.dataset.tooltipDwell = String(INDEX_DWELL_MS);" in nav
+    assert "control.dataset.tooltipBusy = '';" in nav and "new Event('dp-tooltip-ready', {bubbles: true})" in nav
+    # The mark belongs to the slide that set it, not to the fit a re-measure
+    # replaces: its own completion clears it unless a newer slide holds it.
+    assert "const mine = busy = {slide, control};" in nav and "if (busy !== mine) return;" in nav
+    assert "navFit?.slide !== slide" not in nav

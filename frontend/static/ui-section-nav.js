@@ -55,6 +55,7 @@
   const NAV_TARGET = 24;     // the least part of a section that is a position
   const NAV_TRIM = 5;        // the most side padding a compact tab gives up
   const NAV_CUT = [0.3, 0.9];
+  const INDEX_DWELL_MS = 2000;   // the pointer at rest this long before the section index shows
   const navDesktop = window.matchMedia('(min-width: 780px)');
 
   const shown = node => node.checkVisibility?.({visibilityProperty: true})
@@ -62,17 +63,21 @@
 
   /* The compact navigator, as a whole, describes every section and which is
    * current: the one tooltip owner (ui-tooltip.js) shows it as an index read
-   * from the tablist's own tabs (data-tooltip-index) on hover or on focus
-   * within the control; data-tooltip says it as text and changes with the
-   * selection. The complete strip shows every section and has none. */
+   * from the tablist's own tabs (data-tooltip-index) once the pointer has
+   * rested over the control (data-tooltip-dwell), or on focus within it;
+   * data-tooltip says it as text and changes with the selection. The
+   * complete strip shows every section and has none. */
   function describe(nav, tabs, index) {
     const control = nav.querySelector('.dp-section-nav-control');
     if (index < 0) {
       control.removeAttribute('data-tooltip');
       control.removeAttribute('data-tooltip-index');
+      control.removeAttribute('data-tooltip-dwell');
       return;
     }
     control.dataset.tooltipIndex = '[role="tablist"]';
+    // For the pointer, only after a deliberate pause over it (ui-tooltip.js).
+    control.dataset.tooltipDwell = String(INDEX_DWELL_MS);
     control.dataset.tooltip = `Current section: ${tabs[index].textContent.trim().replace(/\s+/g, ' ')}, ${index + 1} of ${tabs.length}`;
   }
 
@@ -80,6 +85,10 @@
    * render it again); `copy` selects the header's identity copy. */
   function create({nav: locate, copy: copySelector}) {
     let navFit = null;
+    // The slide that holds the control's busy mark, and that control: kept
+    // apart from navFit, which a re-measure replaces while a slide may still
+    // be running (the slide, not the fit, says when it is over).
+    let busy = null;
 
     // The copy's own width: its parts (its box also takes the space that
     // centres the navigation).
@@ -314,8 +323,23 @@
       navFit.left = target;
       navFit.index = index;
       if ((navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
-        navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
+        const slide = navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
           distance: motion.distance}, drawNavigation);
+        // Busy while the window slides: the section index waits for it
+        // (ui-tooltip.js data-tooltip-dwell). The latest slide holds the
+        // mark; its own completion -- finished, skipped or superseded --
+        // clears it and says the navigator is ready, whatever has re-measured
+        // meanwhile. A control rendered anew leaves no mark on the old one.
+        const control = strip.parentElement;
+        if (busy && busy.control !== control) delete busy.control.dataset.tooltipBusy;
+        const mine = busy = {slide, control};
+        control.dataset.tooltipBusy = '';
+        slide.settled.then(() => {
+          if (busy !== mine) return;
+          busy = null;
+          delete control.dataset.tooltipBusy;
+          control.dispatchEvent(new Event('dp-tooltip-ready', {bubbles: true}));
+        });
         return;
       }
       navFit.slide?.skip();

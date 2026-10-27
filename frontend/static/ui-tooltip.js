@@ -26,12 +26,24 @@
  * current one emphasised, read from that tablist's own tabs and selection
  * whenever it is shown or its data-tooltip changes; it is shown on keyboard
  * focus anywhere within the element, and the element's own scrolling (the
- * navigator's window) leaves it where it is. */
+ * navigator's window) leaves it where it is.
+ *
+ * A described element may ask for a stationary dwell instead of the hover
+ * delay (data-tooltip-dwell, milliseconds: the compact navigators' index).
+ * Its tooltip is shown only once the pointer has rested over it -- moved no
+ * more than JITTER -- for that long, with nothing inside it still moving;
+ * never through the warm path. Moving off that rest, pressing within it
+ * (choosing a section, First, Last) or anything moving inside it starts the
+ * dwell again, so the tooltip appears only after a deliberate pause after the
+ * last use; leaving it ends the dwell. Moving within it -- or the element's
+ * content moving beneath a still pointer -- is not entering it. Keyboard
+ * focus is unchanged: prompt. */
 (function () {
   'use strict';
 
   const DELAY_MS = 450;
   const WARM_MS = 300;              // within this of the last tooltip, the next shows at once
+  const JITTER = 4;                 // px a resting pointer may drift and still be at rest
   const GAP = 8;                    // px between the element and its tooltip
   const MARGIN = 8;                 // px kept clear of the viewport's edges
   const ID = 'dp-tooltip';
@@ -45,6 +57,7 @@
   let watch = null;                 // while shown: the element leaving the document hides it
   let bridging = false;             // the pointer is crossing between an element and its scrollable tooltip
   let shownText = '';               // the data-tooltip the shown tooltip presents
+  let dwell = null;                 // {host, x, y, timer}: the pointer resting over a dwell element
 
   const textOf = element => String(element?.getAttribute('data-tooltip') || '').trim();
   const describedBy = element => (element.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
@@ -241,6 +254,55 @@
     return host && textOf(host) ? host : null;
   }
 
+  const dwellOf = host => Number(host?.getAttribute('data-tooltip-dwell')) || 0;
+
+  // What is still moving inside an element -- a navigator's window sliding
+  // included, whose motion runs on its own view-transition pseudo-elements
+  // (which an element's own getAnimations() does not list).
+  const moving = host => document.getAnimations().filter(animation => animation.playState === 'running'
+    && animation.effect?.getTiming().iterations !== Infinity && animation.effect?.target instanceof Node && host.contains(animation.effect.target));
+
+  /* The pointer at rest at (x, y) over a dwell element: (re)start its dwell.
+   * When it runs out with something inside still moving, the dwell starts
+   * again once that has finished. */
+  function rest(host, x, y) {
+    clearTimeout(dwell?.timer);
+    dwell = {host, x, y, timer: setTimeout(() => {
+      if (dwell?.host !== host || !host.isConnected) return;
+      if (host.hasAttribute('data-tooltip-busy') || moving(host).length) return settle(host, dwell.x, dwell.y);
+      dwell.timer = null;
+      show(host);
+    }, dwellOf(host))};
+  }
+
+  /* After a use of a dwell element, or while it is moving: the dwell begins
+   * only once the element is settled -- looked at once the use's own
+   * handlers have run. An owner that marks the element busy
+   * (data-tooltip-busy: a navigator's window still sliding) says when it is
+   * done (a bubbling dp-tooltip-ready); anything else moving in it is waited
+   * for. The pointer's rest is followed meanwhile. */
+  function settle(host, x, y) {
+    clearTimeout(dwell?.timer);
+    const mine = dwell = {host, x, y, timer: null, settling: true};
+    mine.timer = setTimeout(() => {
+      if (dwell !== mine) return;
+      mine.timer = null;
+      if (host.hasAttribute('data-tooltip-busy')) return;          // dp-tooltip-ready resumes it
+      Promise.all(moving(host).map(animation => animation.finished.catch(() => {})))
+        .then(() => { if (dwell === mine) rest(host, mine.x, mine.y); });
+    }, 0);
+  }
+
+  document.addEventListener('dp-tooltip-ready', event => {
+    if (!dwell?.settling || dwell.timer || !(event.target instanceof Node) || !dwell.host.contains(event.target)) return;
+    settle(dwell.host, dwell.x, dwell.y);
+  });
+
+  function stopDwell() {
+    clearTimeout(dwell?.timer);
+    dwell = null;
+  }
+
   function hover(host) {
     if (host === target || host === pending?.element || host === dismissed) return;
     const warm = target || performance.now() - lastHidden < WARM_MS;
@@ -253,6 +315,14 @@
     if (event.pointerType === 'touch') return;             // no hover tooltips on touch
     if (bridging && (tip?.contains(event.target) || target?.contains(event.target))) bridging = false;
     const host = hostOf(event.target);
+    if (host && dwellOf(host)) {
+      // Entering it starts its dwell; moving within it, or its content moving
+      // beneath the pointer, is not entering it.
+      if (pending) cancel();
+      const from = event.relatedTarget;
+      if (dwell?.host !== host && !(from instanceof Node && host.contains(from)) && host !== dismissed) rest(host, event.clientX, event.clientY);
+      return;
+    }
     if (host) hover(host);
     else if (!(tip && tip.contains(event.target))) { if (pending) cancel(); }
   }, true);
@@ -264,10 +334,17 @@
     if (target === host && crossing(event)) { bridging = true; return; }   // on the way to its tooltip
     if (dismissed === host) dismissed = null;
     if (pending?.element === host) cancel();
+    if (dwell?.host === host) stopDwell();
     if (target === host) hide();
   }, true);
   document.addEventListener('pointermove', event => {
     if (bridging && !crossing(event)) hide();
+    // Off its rest: a shown dwell tooltip goes, and the dwell starts again.
+    if (dwell && event.pointerType !== 'touch' && Math.hypot(event.clientX - dwell.x, event.clientY - dwell.y) > JITTER) {
+      if (dwell.settling) { dwell.x = event.clientX; dwell.y = event.clientY; return; }
+      if (target === dwell.host) hide();
+      rest(dwell.host, event.clientX, event.clientY);
+    }
   }, true);
   document.addEventListener('focusin', event => {
     const host = hostOf(event.target);
@@ -289,15 +366,29 @@
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !target) return;
     dismissed = target;
+    if (dwell?.host === target) stopDwell();
     hide();
   }, true);
   const dismiss = event => {
     const host = hostOf(event.target);
+    // Using a dwell element (a section, First, Last): its tooltip goes, and
+    // only a fresh rest after this use brings it back.
+    if (host && dwellOf(host) && event.pointerType !== 'touch') {
+      hide();
+      settle(host, event.clientX, event.clientY);
+      return;
+    }
     if (host) dismissed = host;
     if (!(tip && tip.contains(event.target))) hide();
   };
   document.addEventListener('pointerdown', dismiss, true);
   document.addEventListener('contextmenu', dismiss, true);
+  // The use itself (a click lands after the press): the dwell settles again
+  // from here.
+  document.addEventListener('click', event => {
+    const host = hostOf(event.target);
+    if (host && dwellOf(host) && dwell?.host === host) settle(host, dwell.x, dwell.y);
+  }, true);
   // Scrolling hides it -- but not the described element's own (a navigator's
   // window moving), which leaves the element where it is.
   document.addEventListener('scroll', event => {
@@ -307,6 +398,10 @@
   window.addEventListener('resize', hide);
   window.addEventListener('blur', hide);
   document.addEventListener('debridpulse:navigation', hide);
+  // The same edges end a dwell still waiting.
+  window.addEventListener('resize', stopDwell);
+  window.addEventListener('blur', stopDwell);
+  document.addEventListener('debridpulse:navigation', stopDwell);
 
   window.DPTooltip = Object.freeze({hide});
 })();
