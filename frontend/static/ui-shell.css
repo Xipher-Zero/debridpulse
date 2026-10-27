@@ -22,7 +22,6 @@ body {
     radial-gradient(circle at 18% 8%, rgba(var(--dp-accent-rgb), .12), transparent 28%),
     linear-gradient(180deg, color-mix(in srgb, var(--dp-bg-sidebar) 94%, var(--dp-accent-purple) 6%), var(--dp-bg-sidebar));
   border-right: 1px solid var(--dp-border-subtle);
-  box-shadow: inset -1px 0 0 rgba(255,255,255,.018), 8px 0 30px rgba(0,0,8,.12);
 }
 #sidebar nav {
   flex: 1;
@@ -408,7 +407,6 @@ body.light #sidebar {
     radial-gradient(circle at 16% 8%, rgba(var(--dp-accent-rgb), .055), transparent 28%),
     linear-gradient(180deg, #ffffff, var(--dp-bg-sidebar));
   border-right-color: var(--dp-border-default);
-  box-shadow: 8px 0 26px rgba(45,61,96,.04);
 }
 /* The light header's surface is painted on the canvas (ui-shell-structural.css),
    where it eases into the page across this bar's bottom edge. */

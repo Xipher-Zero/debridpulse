@@ -18,7 +18,15 @@
  * pointer through to what lies beneath. This owns presentation only: it renders
  * nothing else and changes no element but its own and the described element's
  * aria-describedby while shown. An element whose tooltip repeats a label it
- * shows (data-tooltip-label) gets it only while that label is not shown. */
+ * shows (data-tooltip-label) gets it only while that label is not shown.
+ *
+ * A section index (data-tooltip-index, the selector of a tablist inside the
+ * described element -- the compact Settings and Help navigators) shows the
+ * current section, its place and the count over every section in order, the
+ * current one emphasised, read from that tablist's own tabs and selection
+ * whenever it is shown or its data-tooltip changes; it is shown on keyboard
+ * focus anywhere within the element, and the element's own scrolling (the
+ * navigator's window) leaves it where it is. */
 (function () {
   'use strict';
 
@@ -36,6 +44,7 @@
   let lastHidden = 0;
   let watch = null;                 // while shown: the element leaving the document hides it
   let bridging = false;             // the pointer is crossing between an element and its scrollable tooltip
+  let shownText = '';               // the data-tooltip the shown tooltip presents
 
   const textOf = element => String(element?.getAttribute('data-tooltip') || '').trim();
   const describedBy = element => (element.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
@@ -108,6 +117,46 @@
     tip.style.top = `${Math.round(Math.max(MARGIN, top))}px`;
   }
 
+  /* A section index from the tablist `data-tooltip-index` names inside the
+   * element: "Current section", the current section, "N of M"; then every
+   * section in its order, a middot between, the current one emphasised. Text
+   * nodes only. Each section stays whole: a line may break only after a
+   * middot. False (plain text instead) when there is no selected tab. */
+  function renderIndex(host) {
+    const list = host.querySelector(host.getAttribute('data-tooltip-index'));
+    const tabs = list ? Array.from(list.querySelectorAll('[role="tab"]')) : [];
+    const current = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+    if (current < 0) return false;
+    const label = tab => tab.textContent.trim().replace(/\s+/g, ' ');
+    const node = (tag, className, text) => {
+      const part = document.createElement(tag);
+      if (className) part.className = className;
+      part.textContent = text;
+      return part;
+    };
+    const head = document.createElement('div');
+    head.className = 'dp-tooltip-index-head';
+    head.append(node('span', 'dp-tooltip-index-eyebrow', 'Current section'), ' ',
+      node('strong', 'dp-tooltip-index-current', label(tabs[current])), ' ',
+      node('span', 'dp-tooltip-index-count', `${current + 1} of ${tabs.length}`));
+    const all = document.createElement('div');
+    all.className = 'dp-tooltip-index-list';
+    tabs.forEach((tab, k) => {
+      if (k) all.append('\u00a0\u00b7 ');
+      all.append(node(k === current ? 'strong' : 'span', k === current ? 'dp-tooltip-index-current' : '', label(tab)));
+    });
+    tip.replaceChildren(head, all);
+    return true;
+  }
+
+  // The tooltip's content: a section index, or the element's text.
+  function fill(host, text) {
+    shownText = text;
+    const index = host.hasAttribute('data-tooltip-index') && renderIndex(host);
+    if (!index) tip.textContent = text;
+    tip.classList.toggle('is-index', index);
+  }
+
   function show(host) {
     cancel();
     const text = textOf(host);
@@ -115,7 +164,7 @@
     if (target && target !== host) release();
     element();
     target = host;
-    tip.textContent = text;
+    fill(host, text);
     tip.hidden = false;
     if (tip.popover && !tip.matches(':popover-open')) tip.showPopover();
     place(host);
@@ -135,7 +184,7 @@
       if (!target) return;
       const now = textOf(target);
       if (!target.isConnected || !now) return hide();
-      if (now !== tip.textContent) { tip.textContent = now; place(target); }
+      if (now !== shownText) { fill(target, now); place(target); }
     });
     watch.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['data-tooltip']});
   }
@@ -222,9 +271,9 @@
   }, true);
   document.addEventListener('focusin', event => {
     const host = hostOf(event.target);
-    if (!host || host !== event.target) return;
+    if (!host || (host !== event.target && !host.hasAttribute('data-tooltip-index'))) return;
     let keyboard = true;
-    try { keyboard = host.matches(':focus-visible'); } catch (_) {}
+    try { keyboard = event.target.matches(':focus-visible'); } catch (_) {}
     if (keyboard && host !== dismissed) show(host);
   }, true);
   // Focus leaving the element: its blur, heard in the capture phase (the
@@ -249,7 +298,12 @@
   };
   document.addEventListener('pointerdown', dismiss, true);
   document.addEventListener('contextmenu', dismiss, true);
-  document.addEventListener('scroll', event => { if (target && !(tip && tip.contains(event.target))) hide(); }, true);
+  // Scrolling hides it -- but not the described element's own (a navigator's
+  // window moving), which leaves the element where it is.
+  document.addEventListener('scroll', event => {
+    if (!target || (tip && tip.contains(event.target)) || (event.target instanceof Element && target.contains(event.target))) return;
+    hide();
+  }, true);
   window.addEventListener('resize', hide);
   window.addEventListener('blur', hide);
   document.addEventListener('debridpulse:navigation', hide);

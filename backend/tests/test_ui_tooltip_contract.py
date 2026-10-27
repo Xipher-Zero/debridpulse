@@ -58,7 +58,17 @@ def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() ->
     assert owner.count("setAttribute('aria-describedby'") == 2 and owner.count("removeAttribute('aria-describedby')") == 1
     # Touch gets no hover tooltip; keyboard focus shows it; Escape is not swallowed.
     assert "if (event.pointerType === 'touch') return;" in owner
-    assert "host.matches(':focus-visible')" in owner
+    # (The focused element itself: a section index is also shown for focus
+    # within the element it describes.)
+    assert "keyboard = event.target.matches(':focus-visible');" in owner
+    assert "if (!host || (host !== event.target && !host.hasAttribute('data-tooltip-index'))) return;" in owner
+    # A section index is built of text nodes from the tablist's own tabs and
+    # selection, never markup, and the element's own scrolling leaves it be.
+    index = owner[owner.index("function renderIndex(host) {"):owner.index("function fill(host, text) {")]
+    assert "host.querySelector(host.getAttribute('data-tooltip-index'))" in index
+    assert "tab.getAttribute('aria-selected') === 'true'" in index and "part.textContent = text;" in index
+    assert "tip.replaceChildren(head, all);" in index
+    assert "(event.target instanceof Element && target.contains(event.target))) return;" in owner
     assert "stopPropagation" not in owner and "preventDefault" not in owner
     # Hidden on every lifecycle edge, and while shown its element leaving the document hides it.
     for edge in ("document.addEventListener('pointerdown', dismiss, true);", "document.addEventListener('contextmenu', dismiss, true);",

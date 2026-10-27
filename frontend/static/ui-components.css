@@ -420,6 +420,17 @@ textarea.dp-field {
 .dp-tooltip.is-shown { opacity: 1; }
 @starting-style { .dp-tooltip.is-shown { opacity: 0; } }
 .dp-tooltip.is-scrollable { overflow: auto; overscroll-behavior: contain; pointer-events: auto; }
+/* A section index (ui-tooltip.js, data-tooltip-index): the current section,
+   its place and the count, then every section in order on one line wherever
+   the viewport holds it, otherwise wrapping between whole sections (after a
+   middot), never narrower than the viewport allows nor smaller. */
+.dp-tooltip.is-index { max-width: calc(100vw - 16px); padding: 7px 10px; white-space: normal; overflow-wrap: normal; }
+.dp-tooltip-index-head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--dp-border-default); }
+.dp-tooltip-index-eyebrow { color: var(--dp-text-muted); font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.dp-tooltip-index-count { color: var(--dp-text-muted); }
+.dp-tooltip-index-list { color: var(--dp-text-secondary); }
+.dp-tooltip-index-list > * { white-space: nowrap; }
+.dp-tooltip-index-current { color: var(--dp-text-primary); font-weight: 650; }
 
 /* ── Context menu ──────────────────────────────────────────────────── */
 /* The one application menu (app.js dpOpenContextMenu: Downloads' Move to Top,

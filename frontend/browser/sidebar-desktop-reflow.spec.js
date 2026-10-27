@@ -213,6 +213,7 @@ async function framesDuring(page, view, act) {
       const inset = parseFloat(getComputedStyle(content).paddingLeft);
       const frame = {vw: innerWidth, sidebar: sidebar.width, mainLeft: main.left, mainWidth: main.width,
         overlap: sidebar.right - main.left, contentCovered: sidebar.right - (rect(content).left + inset),
+        shadow: getComputedStyle(sidebarNode).boxShadow,
         mark: sidebarNode.classList.contains('sidebar-reflowing') ? sidebarNode.dataset.sidebarReflow || 'unnamed' : '',
         labelOpacity: Number(getComputedStyle(sidebarNode.querySelector('.nav-label')).opacity)};
       if (view) {
@@ -698,7 +699,7 @@ test('the handle opens the same sidebar above the page without moving the page, 
   await expect(handle).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('only the open overlay floats: a soft two-part shadow falls to the right into the page, and every other sidebar keeps its own', async ({page}) => {
+test('only the open overlay floats: a soft two-part shadow falls to the right into the page, over the sidebar\'s own separation, and every other sidebar keeps its own', async ({page}) => {
   const shadow = () => page.locator('#sidebar').evaluate(node => getComputedStyle(node).boxShadow);
   // Each layer as [x, y, blur, spread] in px.
   const layers = value => value === 'none' ? [] : value.split(/,(?![^(]*\))/).map(layer =>
@@ -710,9 +711,13 @@ test('only the open overlay floats: a soft two-part shadow falls to the right in
     const closed = await shadow();
     await page.locator('#sidebar-handle').click();
     await settledShell(page);
-    const floating = layers(await shadow());
-    // A concentrated separation at the edge and a wide, gradual falloff, both to the right only.
-    expect(floating, `${light ? 'light' : 'dark'} overlay shadow`).toHaveLength(2);
+    const raised = await shadow();
+    const floating = layers(raised);
+    // A concentrated separation at the edge and a wide, gradual falloff, both
+    // to the right only -- over the sidebar's own separation, kept beneath.
+    expect(layers(closed).length, `${light ? 'light' : 'dark'} docked separation`).toBeGreaterThan(0);
+    expect(floating, `${light ? 'light' : 'dark'} overlay shadow`).toHaveLength(2 + layers(closed).length);
+    expect(raised.endsWith(`, ${closed}`), `${light ? 'light' : 'dark'}: the separation beneath the elevation`).toBe(true);
     const [near, wide] = floating;
     expect(near[0] > 0 && near[0] <= 6 && near[1] === 0 && near[2] <= 12).toBe(true);
     expect(wide[0] > near[0] && wide[1] === 0 && wide[2] >= 48 && wide[2] > near[2]).toBe(true);
@@ -724,6 +729,56 @@ test('only the open overlay floats: a soft two-part shadow falls to the right in
     await resize(page, EXPANDED);
     expect(await page.locator('#sidebar').evaluate(node => node.classList.contains('sidebar-overlay-open'))).toBe(false);
     expect(await shadow()).toBe(closed);
+  }
+});
+
+/* The sidebar's separation from the page: one restrained shadow along its
+ * right edge in every desktop and tablet presentation -- the full sidebar,
+ * the rail, beneath the overlay's own elevation -- the same on both sides of
+ * 1560px, so it is drawn in every frame of the change, never dropped; the
+ * handheld drawer keeps its own. Dark and light. */
+test('the sidebar keeps its separation shadow in every presentation and every frame across 1560px; the handheld drawer keeps its own', async ({page}) => {
+  const shadow = () => page.locator('#sidebar').evaluate(node => getComputedStyle(node).boxShadow);
+  // Each layer as [x, y, blur, spread] in px.
+  const layers = value => value === 'none' ? [] : value.split(/,(?![^(]*\))/).map(layer =>
+    layer.replace(/rgba?\([^)]*\)/, '').trim().split(/\s+/).map(parseFloat));
+  for (const light of [false, true]) {
+    const theme = light ? 'light' : 'dark';
+    await open(page, 1600);
+    if (light) await page.evaluate(() => window.toggleTheme());
+    await settledShell(page);
+    // Docked, full width: a separation to the right only.
+    const separation = await shadow();
+    const parts = layers(separation);
+    expect(parts.length, `${theme} docked`).toBeGreaterThan(0);
+    expect(parts.every(([x, y, blur]) => x > 0 && y === 0 && blur > 0), `${theme} docked: to the right`).toBe(true);
+    // The persistent change both ways, dragged and abrupt: drawn in every frame.
+    for (const act of [() => drag(page, 1600, 1480, 8), () => drag(page, 1480, 1600, 8),
+      () => page.setViewportSize({width: 1440, height: 1000}), () => page.setViewportSize({width: 1600, height: 1000})]) {
+      const frames = await framesDuring(page, null, act);
+      expect(frames.length, theme).toBeGreaterThan(3);
+      expect([...new Set(frames.map(frame => frame.shadow))], `${theme}: the separation in every frame`).toEqual([separation]);
+    }
+    // The rail, the overlay over it, and the rail again.
+    await resize(page, 1440);
+    expect(await shadow(), `${theme} rail`).toBe(separation);
+    await page.locator('#sidebar-handle').click();
+    await settledShell(page);
+    expect((await shadow()).endsWith(`, ${separation}`), `${theme} overlay`).toBe(true);
+    await page.locator('#sidebar-handle').click();
+    await settledShell(page);
+    expect(await shadow(), `${theme} rail again`).toBe(separation);
+    for (const width of [1600, 1440]) {
+      await resize(page, width);
+      await page.screenshot({path: `test-results/checkpoint-sidebar-separation-${theme}-${width}.png`, clip: {x: 0, y: 100, width: 320, height: 260}});
+    }
+    // Handheld: the closed drawer casts nothing into the page; the open one its own.
+    await resize(page, 600);
+    expect(await shadow(), `${theme} drawer closed`).toBe('none');
+    await page.evaluate(() => window.toggleSidebar());
+    await settledShell(page);
+    expect(await shadow(), `${theme} drawer open`).toBe('rgba(0, 0, 0, 0.5) 4px 0px 24px 0px');
+    await page.evaluate(() => window.closeSidebar());
   }
 });
 

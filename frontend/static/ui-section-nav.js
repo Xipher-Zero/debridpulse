@@ -60,6 +60,22 @@
   const shown = node => node.checkVisibility?.({visibilityProperty: true})
     ?? (node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden');
 
+  /* The compact navigator, as a whole, describes every section and which is
+   * current: the one tooltip owner (ui-tooltip.js) shows it as an index read
+   * from the tablist's own tabs (data-tooltip-index) on hover or on focus
+   * within the control; data-tooltip says it as text and changes with the
+   * selection. The complete strip shows every section and has none. */
+  function describe(nav, tabs, index) {
+    const control = nav.querySelector('.dp-section-nav-control');
+    if (index < 0) {
+      control.removeAttribute('data-tooltip');
+      control.removeAttribute('data-tooltip-index');
+      return;
+    }
+    control.dataset.tooltipIndex = '[role="tablist"]';
+    control.dataset.tooltip = `Current section: ${tabs[index].textContent.trim().replace(/\s+/g, ' ')}, ${index + 1} of ${tabs.length}`;
+  }
+
   /* One header's navigator. `nav` finds its .dp-section-nav (the page may
    * render it again); `copy` selects the header's identity copy. */
   function create({nav: locate, copy: copySelector}) {
@@ -75,6 +91,7 @@
       if (measure) navFit = null;
       const nav = locate();
       const header = nav?.parentElement;
+      if (nav && !navDesktop.matches) describe(nav, [], -1);
       if (!nav || !header.clientWidth || !navDesktop.matches) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
@@ -113,6 +130,7 @@
       if (presentation === 'compact' && navFit.trim) nav.style.setProperty('--dp-section-nav-trim', `${navFit.trim}px`);
       else nav.style.removeProperty('--dp-section-nav-trim');
       if (header.dataset.presentation !== presentation) header.dataset.presentation = presentation;
+      if (presentation !== 'compact') describe(nav, [], -1);
       // A refit that leaves the compact window as it is (the page's height
       // changed, say) leaves its placement -- and a slide under way -- alone.
       if (presentation !== 'compact' || drawn !== `${navFit.window} ${navFit.trim}`) placeNavigation();
@@ -281,8 +299,10 @@
       const nav = locate();
       if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navDesktop.matches) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
-      const index = Array.from(strip.querySelectorAll('[role="tab"]')).findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+      const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
+      const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
       if (index < 0) return;
+      describe(nav, tabs, index);
       const room = navRoom(navFit.window, index);
       // (Without a layout -- only when no window width gives every section one
       // -- the selection as centred as the list's ends allow.)

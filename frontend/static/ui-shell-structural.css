@@ -24,6 +24,11 @@ body {
   min-width: var(--dp-shell-sidebar);
   background: var(--dp-chrome-sidebar-surface);
   border-right: 1px solid rgba(116, 130, 194, .15);
+  /* The sidebar's one separation from the page, along its right edge, in
+     every desktop and tablet presentation (docked, the rail and, beneath its
+     own elevation, the overlay): restrained, a close edge and a soft falloff.
+     The handheld drawer has its own (ui-shell.css #sidebar.open). */
+  --dp-sidebar-separation: 1px 0 2px rgba(0, 0, 10, .34), 6px 0 22px rgba(0, 0, 10, .30);
   box-shadow: none;
   overflow: hidden;
 }
@@ -340,6 +345,7 @@ body.light {
     #f3f5fb;
 }
 body.light #sidebar {
+  --dp-sidebar-separation: 1px 0 2px rgba(45, 61, 96, .07), 6px 0 20px rgba(45, 61, 96, .11);
   background: var(--dp-chrome-sidebar-surface);
   border-right-color: #dde1ef;
 }
@@ -406,6 +412,7 @@ body.light .theme-toggle {
      the sidebar's width -- the page follows only the persistent one. Labels
      fade out before the edge reaches them, and fade in once it has passed. */
   #sidebar {
+    box-shadow: var(--dp-sidebar-separation);
     transition:
       width var(--dp-motion-expand) var(--dp-motion-ease),
       min-width var(--dp-motion-expand) var(--dp-motion-ease),
@@ -483,19 +490,22 @@ body.light .theme-toggle {
   /* The temporary overlay: the full sidebar above the page, its row share
      still the rail's. It floats: a concentrated shadow just past its edge
      separates it from the page, and a wide soft one falls off into the page
-     it covers. Only this state has it; the docked sidebar keeps its own. */
+     it covers, over the sidebar's own separation. Only this state has the
+     elevation; closing it leaves the separation as it was. */
   #sidebar.sidebar-overlay-open {
     width: var(--dp-shell-sidebar-full);
     min-width: var(--dp-shell-sidebar-full);
     margin-right: calc(var(--dp-shell-rail) - var(--dp-shell-sidebar-full));
     box-shadow:
       4px 0 10px -2px rgba(0, 0, 10, .62),
-      22px 0 72px rgba(0, 0, 10, .55);
+      22px 0 72px rgba(0, 0, 10, .55),
+      var(--dp-sidebar-separation);
   }
   body.light #sidebar.sidebar-overlay-open {
     box-shadow:
       3px 0 8px -1px rgba(45, 61, 96, .22),
-      20px 0 64px rgba(45, 61, 96, .20);
+      20px 0 64px rgba(45, 61, 96, .20),
+      var(--dp-sidebar-separation);
   }
 
   /* The handle: centred on the sidebar's right edge, it follows that edge
