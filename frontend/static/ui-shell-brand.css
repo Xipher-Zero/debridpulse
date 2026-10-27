@@ -16,15 +16,20 @@
   white-space: nowrap;
 }
 
-body > #sidebar-version.dp-app-version {
-  position: fixed !important;
-  right: max(
-    var(--dp-shell-x),
-    calc((100vw - var(--dp-shell-sidebar) - var(--dp-content-max-width)) / 2)
-  ) !important;
-  bottom: 7px !important;
-  z-index: 520;
-  margin: 0 !important;
+/* The one version datum, after the views in #content: as wide as the active
+   view (the page's master surface, which every view fills) and right-aligned
+   with it, so it stands just below that surface's bottom-right corner,
+   wherever the surface ends -- never pinned to the window. It takes no
+   height of its own and its text lies in the content's bottom gutter
+   (layout containment keeps it out of the content's scrollable overflow),
+   so no page grows, shrinks or scrolls for it. */
+#content > #sidebar-version.dp-app-version {
+  display: block;
+  width: min(100%, var(--dp-content-max-width));
+  height: 0;
+  margin: 0 auto !important;
+  contain: layout;
+  transform: translateY(8px);
   padding: 2px 6px;
   border: 1px solid rgba(121, 132, 181, .20);
   border-radius: 4px;
@@ -41,7 +46,7 @@ body > #sidebar-version.dp-app-version {
   box-shadow: 0 2px 8px rgba(0, 0, 12, .12);
   pointer-events: none;
 }
-body.light > #sidebar-version.dp-app-version {
+body.light #content > #sidebar-version.dp-app-version {
   border-color: rgba(113, 124, 166, .18);
   background: rgba(255, 255, 255, .78);
   color: var(--dp-chrome-version-text);
@@ -61,10 +66,6 @@ body.light #sidebar .logo-icon {
   #sidebar .logo-name {
     font-size: 19px;
   }
-
-  body > #sidebar-version.dp-app-version {
-    right: var(--dp-shell-x) !important;
-  }
 }
 
 @media (max-width: 779px) {
@@ -72,9 +73,7 @@ body.light #sidebar .logo-icon {
     display: flex;
   }
 
-  body > #sidebar-version.dp-app-version {
-    right: 14px !important;
-    bottom: 5px !important;
+  #content > #sidebar-version.dp-app-version {
     font-size: 8px;
   }
 }

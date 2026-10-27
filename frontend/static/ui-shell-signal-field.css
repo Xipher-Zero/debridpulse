@@ -5,7 +5,7 @@
  */
 
 /* ── Global version datum: value only ────────────────────────────────── */
-body > #sidebar-version.dp-app-version {
+#content > #sidebar-version.dp-app-version {
   padding: 0 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -15,12 +15,12 @@ body > #sidebar-version.dp-app-version {
   line-height: 1 !important;
 }
 
-body:not(.light) > #sidebar-version.dp-app-version {
+body:not(.light) #content > #sidebar-version.dp-app-version {
   color: var(--dp-chrome-version-text);
   text-shadow: var(--dp-chrome-version-glow);
 }
 
-body.light > #sidebar-version.dp-app-version {
+body.light #content > #sidebar-version.dp-app-version {
   color: #697491;
   text-shadow: 0 1px 2px rgba(255, 255, 255, .95), 0 0 5px rgba(66, 78, 120, .08);
 }
