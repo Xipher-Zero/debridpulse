@@ -61,13 +61,14 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
     await expect(card(page).locator(':scope > .card-body')).toBeVisible();
   });
 
-  test('the rail reads state, then Test, then Enable/toggle', async ({page}) => {
+  test('the rail reads state, then Help, then Test, then Enable/toggle', async ({page}) => {
     // Semantic order, read off the rendered DOM.
     const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
       child.matches('.dp-settings-provider-config-status') ? 'state'
+        : child.matches('.dp-settings-help-chip') ? 'help'
         : child.matches('.dp-settings-header-action') ? 'action'
         : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
-    expect(order).toEqual(['state', 'action', 'enable']);
+    expect(order).toEqual(['state', 'help', 'action', 'enable']);
     // Visual order, left to right, on one shared centreline.
     const [s, t, e] = [await boxOf(status(page)), await boxOf(testButton(page)),
                        await boxOf(enable(page))];
@@ -259,9 +260,10 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
     // Reflow is allowed; losing the order, or overflowing, is not.
     const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
       child.matches('.dp-settings-provider-config-status') ? 'state'
+        : child.matches('.dp-settings-help-chip') ? 'help'
         : child.matches('.dp-settings-header-action') ? 'action'
         : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
-    expect(order).toEqual(['state', 'action', 'enable']);
+    expect(order).toEqual(['state', 'help', 'action', 'enable']);
     expect(await page.evaluate(() =>
       document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBeTruthy();
     await page.setViewportSize({width: 1440, height: 1000});

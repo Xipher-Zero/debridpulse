@@ -265,6 +265,34 @@
   gap: 12px;
 }
 
+/* Services' governing and premium-provider headers (dp-settings-card-header
+   --hinted): one row from 780px, each region in its own track -- the
+   identity at the leading edge, the one-line purpose hint on the header's
+   own midpoint, the rail at the trailing edge -- so the hint, shown or not,
+   never moves the identity or the rail, and never takes a second row. The
+   page runtime (fitServicesHints) takes the hint out of the layout wherever
+   it would not fit there (data-hint="hidden"); its help chip then says it. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-card-header--hinted > .dp-settings-card-title-group { grid-area: 1 / 1; }
+  #view-settings .dp-settings-card-header--hinted > .dp-settings-card-header-center { grid-area: 1 / 2; }
+  #view-settings .dp-settings-card-header--hinted > .dp-settings-card-header-controls { grid-area: 1 / 3; }
+
+  /* With no hint there is no midpoint to keep: the rail takes its own width
+     at the trailing edge (never half the header, where it would wrap), and
+     the identity the rest from the leading edge. */
+  #view-settings .dp-settings-card-header--hinted[data-hint='hidden'] {
+    grid-template-columns: minmax(0, 1fr) 0 auto;
+  }
+}
+
+#view-settings .dp-settings-card-header--hinted .dp-settings-provider-header-copy {
+  white-space: nowrap;
+}
+
+#view-settings .dp-settings-card-header--hinted[data-hint='hidden'] > .dp-settings-card-header-center {
+  display: none;
+}
+
 /* The status sits WITH its rail, so it is not the centred provider variant. */
 #view-settings .dp-settings-card-header-controls > .dp-settings-provider-config-status {
   justify-self: auto;
@@ -1354,7 +1382,7 @@
     grid-row: 1;
   }
 
-  #view-settings .dp-settings-card-header-center {
+  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1;
     grid-row: 2;
     padding-top: 2px;
@@ -1434,7 +1462,7 @@
   }
 
   #view-settings .dp-settings-download-engine-card > .card-header > .card-title,
-  #view-settings .dp-settings-card-header-center {
+  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1;
   }
 
@@ -1442,7 +1470,7 @@
     grid-row: 1;
   }
 
-  #view-settings .dp-settings-card-header-center {
+  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-row: 2;
     text-align: left;
   }
@@ -1592,7 +1620,8 @@
 @media (max-width:779px) {
   #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
   /* Narrow: the copy wraps beneath the title group and the controls, still
-     inside the same canonical header. The title group keeps its own width and
+     inside the same canonical header (a Services hint never does: it is
+     carried by its help chip there). The title group keeps its own width and
      the rail takes the rest, wrapping within it -- a rail wider than the room
      left wraps onto a second line instead of covering the title. */
   #view-settings .card-header.dp-settings-card-header {
@@ -1602,7 +1631,7 @@
   }
   #view-settings .dp-settings-card-header > .dp-settings-card-title-group { grid-column: 1; grid-row: 1; }
   #view-settings .dp-settings-card-header > .dp-settings-card-header-controls { grid-column: 2; grid-row: 1; }
-  #view-settings .dp-settings-card-header > .dp-settings-card-header-center {
+  #view-settings .dp-settings-card-header:where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left;
   }
 }

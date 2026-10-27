@@ -171,13 +171,16 @@ def test_every_settings_card_declares_exactly_one_help_topic():
     for builder in ("function sourceProtocolBox(", "function executorTuningCard("):
         body = PAGE.split(builder, 1)[1].split("\n  }\n", 1)[0]
         assert "helpChip" not in body and "help:" not in body, builder
-    # Provider cards carry none either -- except Usenet, the one explicit
-    # exception, which names its own topic.
+    # Every premium provider card names its OWN topic -- six distinct ones,
+    # never the group's -- and names it once.
     providers = re.findall(r"providerCard\('([a-z]+)'", PAGE)
     assert set(providers) == {"alldebrid", "realdebrid", "torbox", "usenet", "debridlink", "premiumize"}
-    usenet = PAGE.split("const usenetCard = providerCard('usenet'", 1)[1].split("});", 1)[0]
-    assert "help: 'usenet'," in usenet
-    assert PAGE.count("help: 'usenet'") == 1
+    for identity in providers:
+        start = PAGE.index(f"providerCard('{identity}'")
+        options = PAGE[start:PAGE.index("\n    });", start)]
+        assert re.findall(r"help: '([a-z-]+)'", options) == [identity], identity
+        assert PAGE.count(f"help: '{identity}'") == 1, identity
+    assert set(providers) <= _topics()
 
 
 def test_every_referenced_topic_exists_and_none_is_orphaned():
@@ -186,7 +189,9 @@ def test_every_referenced_topic_exists_and_none_is_orphaned():
         referenced |= {left, right}
     referenced |= set(re.findall(r"helpChip\('([a-z-]+)'", PAGE))
     assert referenced == _topics()
-    assert len(referenced) == 21
+    # 21, and one topic for each of the five premium services that had none.
+    assert {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox"} <= referenced
+    assert len(referenced) == 26
 
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():
@@ -351,3 +356,102 @@ def test_the_usenet_help_states_what_the_integration_does():
     # servers or services, and the bundled service is never named.
     for unproven in ("missing article", "backup server", "fill server", "failover"):
         assert unproven not in text.lower(), unproven
+
+
+# ── Services: the five premium provider topics and the header hints ─────────
+
+def _provider_options():
+    from providers.alldebrid.definition import AllDebridOptions
+    from providers.debridlink.definition import DebridLinkOptions
+    from providers.premiumize.definition import PremiumizeOptions
+    from providers.realdebrid.definition import RealDebridOptions
+    from providers.torbox.definition import TorBoxOptions
+    return {"alldebrid": AllDebridOptions(), "debridlink": DebridLinkOptions(), "premiumize": PremiumizeOptions(),
+            "realdebrid": RealDebridOptions(), "torbox": TorBoxOptions()}
+
+
+@pytest.mark.parametrize("identity", ["alldebrid", "debridlink", "premiumize", "realdebrid", "torbox"])
+def test_each_provider_topic_states_its_own_defaults_from_its_own_options_model(identity):
+    """Every default a provider topic names is that provider's own schema
+    default -- Prepare Backup Torrents has no one default across providers."""
+    options = _provider_options()[identity]
+    text = _topic(identity)
+    backup = "on" if options.prepare_backup_torrents else "off"
+    assert f"Prepare Backup Torrents ({backup} by default" in text
+    assert ("on by default" if backup == "off" else "off by default, unlike") not in text.split("Prepare Backup Torrents", 1)[1][:20]
+    if hasattr(options, "use_before_usenet"):
+        label = {"premiumize": "Use Premiumize Before Usenet", "torbox": "Use TorBox Before Usenet"}[identity]
+        assert f"{label} ({'on' if options.use_before_usenet else 'off'} by default)" in text
+    if hasattr(options, "rate_limit_per_minute"):
+        assert f"API Calls per Minute ({options.rate_limit_per_minute} by default)" in text
+    else:
+        assert "there is no API Calls per Minute setting" in text
+    if hasattr(options, "request_timeout_seconds"):
+        assert f"Request Timeout ({options.request_timeout_seconds} seconds by default)" in text
+        upload = getattr(options, "upload_timeout_seconds", None) or options.torrent_upload_timeout_seconds
+        assert f"Upload Timeout ({upload} seconds)" in text
+        assert f"Supported Host Refresh Interval ({options.host_refresh_interval_hours} hours)" in text
+    # The topic is about THIS provider, and saves/promises nothing it does not.
+    assert f"title: '{ {'alldebrid': 'AllDebrid', 'debridlink': 'Debrid-Link', 'premiumize': 'Premiumize', 'realdebrid': 'Real-Debrid', 'torbox': 'TorBox'}[identity] }'," in text
+    assert "$" not in text and "price" not in text.lower() and "guarantee" not in text.lower()
+
+
+def test_provider_limits_named_in_help_are_the_enforced_ones():
+    from providers.alldebrid.account import ACTIVE_MAGNET_MAXIMUM
+    from providers.realdebrid.rate_limit import SERVICE_LIMIT_PER_MINUTE as REAL_DEBRID_LIMIT
+    from providers.torbox.rate_limit import SERVICE_LIMIT_PER_MINUTE as TORBOX_LIMIT
+    assert f"documented maximum of {ACTIVE_MAGNET_MAXIMUM} active magnets" in _topic("alldebrid")
+    assert f"Real-Debrid documents a maximum of {REAL_DEBRID_LIMIT}" in _topic("realdebrid")
+    assert f"TorBox documents a maximum of {TORBOX_LIMIT}" in _topic("torbox")
+
+
+def test_plan_dependent_claims_are_qualified_and_torbox_promises_no_usenet():
+    torbox, premiumize = _topic("torbox"), _topic("premiumize")
+    # Documented-only plan facts say so; NZBs are never promised.
+    assert "per TorBox’s documentation that is the Pro plan" in torbox
+    assert "NZBs only where your plan includes Usenet" in torbox
+    assert "Whether a particular NZB succeeds is TorBox’s decision for your account." in torbox
+    assert "TorBox is separate from your Usenet service" in torbox
+    for promise in ("supports Usenet", "TorBox Usenet works", "will download NZBs"):
+        assert promise not in torbox
+    assert "as Premiumize documents them for premium accounts" in premiumize
+    assert "What a free or expired account can do through Premiumize’s API is not documented" in premiumize
+    assert "Debrid-Link does not document seedbox use for free accounts" in _topic("debridlink")
+    assert "Per AllDebrid’s documentation, magnets and .torrent files need a premium account." in _topic("alldebrid")
+    assert "Per Real-Debrid’s documentation, torrents need a premium account." in _topic("realdebrid")
+    # The Usenet topic qualifies the same claim.
+    assert "TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation." in _topic("usenet")
+    # Test is described as it is implemented: it saves nothing.
+    for identity in ("alldebrid", "debridlink", "premiumize"):
+        assert "or the saved key when the field is empty" in _topic(identity) and "It saves nothing" in _topic(identity)
+
+
+def test_the_eight_services_headers_carry_one_line_hints_and_the_tiles_none():
+    hints = {
+        "Usenet": "Download NZB content from configured Usenet news servers.",
+        "AllDebrid": "Resolve supported links and torrents through your AllDebrid account.",
+        "Debrid-Link": "Resolve supported links and torrents through your Debrid-Link account.",
+        "Premiumize": "Resolve supported links and torrents through your Premiumize account; NZBs where your plan allows.",
+        "Real-Debrid": "Resolve supported links and torrents through your Real-Debrid account.",
+        "TorBox": "Resolve supported links and torrents through your TorBox account; NZBs where your plan allows.",
+    }
+    for text in hints.values():
+        assert PAGE.count(f"headerCopy: '{text}'") == 1, text
+    assert "links, torrents, and NZBs through your" not in PAGE
+    assert "hint: 'Connect your Usenet servers and the debrid services you have accounts with.'," in PAGE
+    assert "hint: 'Download directly from network sources; no premium account needed.'," in PAGE
+    # Every provider header and both group headers are the hinted grammar; a
+    # protocol tile is not a card header and gets none of it.
+    card = PAGE.split("function providerCard(", 1)[1].split("\n  }\n", 1)[0]
+    assert "dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}" in card
+    group = PAGE.split("function groupCard(", 1)[1].split("\n  }\n", 1)[0]
+    assert "${hinted ? ' dp-settings-card-header--hinted' : ''}" in group
+    tile = PAGE.split("function sourceProtocolBox(", 1)[1].split("\n  }\n", 1)[0]
+    for absent in ("helpChip", "data-tooltip", "hinted", "header-copy", "data-settings-help"):
+        assert absent not in tile, absent
+    # The hint is measured, not a breakpoint: one fit owner, kept current.
+    fit = PAGE.split("function fitServicesHints() {", 1)[1].split("\n  }\n", 1)[0]
+    assert "chip.dataset.tooltip = fits ? chip.getAttribute('aria-label') : hint.textContent.trim();" in fit
+    assert "tracks === 3 && (width - hint.getBoundingClientRect().width) / 2 >= side + gap" in fit
+    assert "new ResizeObserver(() => servicesHintFit())" in fit
+    assert "servicesHintFit?.();" in PAGE

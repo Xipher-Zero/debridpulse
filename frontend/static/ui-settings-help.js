@@ -53,6 +53,7 @@
         ]},
         {heading: 'On each card', list: [
           'Enable decides whether the service takes part in new downloads. Turning it off keeps its saved credentials and settings.',
+          'Help on each card explains that service: how it connects, what your account with it can do, and its own settings.',
           'The credentials are stored on the server and are never shown again after saving; leave a secret field blank to keep the stored value.',
           'Test checks the saved configuration against the service. The status beside it reports Unconfigured (enabled but nothing usable is saved), Unverified (saved but not yet proven by a test), or Verified (the current saved configuration passed a test).',
           'Additional Settings hold that service’s own limits and options; they apply to that service only. Provider Poll Interval, Full Sync Interval, Resolution Failure Retries, and Retry Delay are configured under Downloads → Download Behavior & Limits → Advanced Settings. Full Sync applies to eligible premium services; resolution retries also cover Network Sources.',
@@ -87,8 +88,135 @@
           'Behavior shared by every server is under Downloads, Transfer Method Settings, Usenet: the article cache, Direct Write, how many times one article is retried on a server before that server is given up for it (not the download retry count), and how long DebridPulse waits for its Usenet service to answer.',
         ]},
         {heading: 'NZBs and premium services', list: [
-          'TorBox and Premiumize can also take NZBs. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
+          'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
           'If the first service in that order cannot resolve the NZB, the next one is tried.',
+        ]},
+      ],
+    },
+    alldebrid: {
+      title: 'AllDebrid',
+      sections: [
+        {text: [
+          'AllDebrid is a debrid service: it fetches hoster links, magnets, and .torrent files on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse uses your own AllDebrid account through its API key. AllDebrid is off until you enable it.',
+        ]},
+        {heading: 'Connecting', list: [
+          'Paste the API key from your AllDebrid account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
+          'Test checks the key in the field, or the saved key when the field is empty, against AllDebrid. It saves nothing and changes nothing on AllDebrid; the status reads Verified only once the saved key has passed.',
+        ]},
+        {heading: 'What your account can do', list: [
+          'Per AllDebrid’s documentation, magnets and .torrent files need a premium account. When AllDebrid reports that your account is not premium, or its premium time has ended, DebridPulse stops sending it torrents.',
+          'Hoster links work for the hosts AllDebrid lists for your account; per its documentation, a free account can use only the hosts it marks as free.',
+        ]},
+        {heading: 'Additional Settings', list: [
+          'Prepare Backup Torrents (on by default): AllDebrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of AllDebrid’s active magnet slots, and new work takes a slot back when it needs one.',
+          'Maximum Active Torrents: left empty, DebridPulse follows AllDebrid’s documented maximum of 30 active magnets. A lower number keeps fewer active; it never goes above 30.',
+          'API Calls per Minute (60 by default): how many requests DebridPulse sends to AllDebrid each minute. 0 means no local limit.',
+        ]},
+        {heading: 'Shared settings', text: [
+          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        ]},
+      ],
+    },
+    debridlink: {
+      title: 'Debrid-Link',
+      sections: [
+        {text: [
+          'Debrid-Link is a debrid service: it fetches hoster links, and magnets and .torrent files through your Debrid-Link seedbox, and DebridPulse then downloads the result to your storage. DebridPulse uses your own Debrid-Link account through its API key. Debrid-Link is off until you enable it.',
+        ]},
+        {heading: 'Connecting', list: [
+          'Paste the API key from your Debrid-Link account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
+          'Test checks the key in the field, or the saved key when the field is empty, against Debrid-Link. It saves nothing and changes nothing on Debrid-Link; the status reads Verified only once the saved key has passed.',
+        ]},
+        {heading: 'What your account can do', list: [
+          'With a premium Debrid-Link account, DebridPulse sends it hoster links, magnets, and .torrent files.',
+          'A free account can use hoster links only for the hosts Debrid-Link marks as usable without premium. Debrid-Link does not document seedbox use for free accounts, so DebridPulse sends them no torrents. Other paid account types are given hoster links; what else they include is not documented.',
+          'Limits Debrid-Link applies to your account, such as its link, data, or torrent allowances, are respected as Debrid-Link reports them; DebridPulse retries later or uses another service.',
+        ]},
+        {heading: 'Additional Settings', list: [
+          'Prepare Backup Torrents (on by default): Debrid-Link may also add a torrent to your seedbox as a backup source while another service delivers it.',
+          'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Debrid-Link. Debrid-Link documents no request-rate limit, so there is no API Calls per Minute setting.',
+        ]},
+        {heading: 'Shared settings', text: [
+          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        ]},
+      ],
+    },
+    premiumize: {
+      title: 'Premiumize',
+      sections: [
+        {text: [
+          'Premiumize is a debrid service: it fetches hoster links, magnets, .torrent files, and NZBs into your Premiumize cloud, and DebridPulse then downloads the result to your storage. DebridPulse uses your own Premiumize account through its API key. Premiumize is off until you enable it.',
+        ]},
+        {heading: 'Connecting', list: [
+          'Paste the API key from your Premiumize account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
+          'Test checks the key in the field, or the saved key when the field is empty, against Premiumize. It saves nothing and changes nothing on Premiumize; the status reads Verified only once the saved key has passed.',
+        ]},
+        {heading: 'What your account can do', list: [
+          'While your Premiumize premium time is current, DebridPulse may send it hoster links, magnets, .torrent files, and NZBs, as Premiumize documents them for premium accounts.',
+          'What a free or expired account can do through Premiumize’s API is not documented, so DebridPulse sends it no new work; the account stays connected.',
+          'Premiumize refuses work it cannot take now (its fair-use limit, booster points, or active jobs). DebridPulse treats that as temporary: it retries later or uses another service.',
+        ]},
+        {heading: 'Additional Settings', list: [
+          'Use Premiumize Before Usenet (off by default): tries Premiumize before your Usenet service for NZBs. It needs an active Premiumize premium account; your Usenet service stays available either way.',
+          'Prepare Backup Torrents (on by default): Premiumize may also add a torrent to your cloud as a backup source while another service delivers it. A backup uses your account’s resources.',
+          'Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Premiumize. Premiumize documents no request-rate limit, so there is no API Calls per Minute setting.',
+        ]},
+        {heading: 'Shared settings', text: [
+          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        ]},
+      ],
+    },
+    realdebrid: {
+      title: 'Real-Debrid',
+      sections: [
+        {text: [
+          'Real-Debrid is a debrid service: it fetches hoster links, magnets, and .torrent files on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse connects to your own Real-Debrid account through Real-Debrid’s device authorization; there is no key to type. Real-Debrid is off until you enable it.',
+        ]},
+        {heading: 'Connecting', list: [
+          'Connect Real-Debrid shows a code. Enter it on Real-Debrid’s own page in your browser; DebridPulse finishes the connection by itself once you approve it. The authorization is stored on the server.',
+          'Test checks the stored authorization against Real-Debrid and saves nothing.',
+          'Disconnect forgets the stored authorization at once and asks Real-Debrid to retire it.',
+        ]},
+        {heading: 'What your account can do', list: [
+          'Per Real-Debrid’s documentation, torrents need a premium account. When Real-Debrid reports that your account is free, or its premium time has ended, DebridPulse stops sending it torrents.',
+          'A free account may still be able to use some hosters; Real-Debrid decides that per hoster.',
+        ]},
+        {heading: 'Additional Settings', list: [
+          'Prepare Backup Torrents (on by default): Real-Debrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of your account’s active torrent slots, and new work takes a slot back when it needs one.',
+          'Maximum Active Torrents: left empty, DebridPulse follows your account’s current Real-Debrid limit. A lower number keeps fewer active; it never goes above your limit.',
+          'API Calls per Minute (240 by default): how many requests DebridPulse sends to Real-Debrid each minute; Real-Debrid documents a maximum of 250.',
+          'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Real-Debrid.',
+        ]},
+        {heading: 'Shared settings', text: [
+          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        ]},
+      ],
+    },
+    torbox: {
+      title: 'TorBox',
+      sections: [
+        {text: [
+          'TorBox is a debrid service: it fetches torrents and web downloads on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse connects to your own TorBox account through TorBox’s device authorization; there is no key to type. TorBox is off until you enable it.',
+        ]},
+        {heading: 'Connecting', list: [
+          'Connect TorBox shows a code. Enter it on TorBox’s own page in your browser; DebridPulse finishes the connection by itself once you approve it. The token is stored on the server.',
+          'Test checks the stored token against TorBox and saves nothing.',
+          'Disconnect forgets the stored token at once. TorBox offers no way for DebridPulse to revoke it; you can reset it on TorBox’s own site.',
+        ]},
+        {heading: 'What your plan can do', list: [
+          'DebridPulse follows your TorBox plan as TorBox documents it: Essential and Standard plans for torrents and web downloads.',
+          'NZBs only where your plan includes Usenet; per TorBox’s documentation that is the Pro plan. Whether a particular NZB succeeds is TorBox’s decision for your account.',
+          'DebridPulse sends no new work to a Free account: TorBox refused the torrent request DebridPulse makes on one. If TorBox refuses a feature as not part of your plan, DebridPulse stops offering that feature to it.',
+          'TorBox is separate from your Usenet service: turning TorBox on or off never changes your news servers.',
+        ]},
+        {heading: 'Additional Settings', list: [
+          'Prepare Backup Torrents (off by default, unlike the other debrid services, because TorBox’s create limits and active slots are tighter): when on, TorBox may also add a torrent as a backup source while another service delivers it, and new work takes a slot back when it needs one.',
+          'Maximum Active Torrents: left empty, DebridPulse follows your plan’s active-slot count as TorBox documents it. A lower number keeps fewer active.',
+          'Use TorBox Before Usenet (off by default): tries TorBox before your Usenet service for NZBs. It needs a plan that includes Usenet; your Usenet service stays available either way.',
+          'API Calls per Minute (240 by default): TorBox documents a maximum of 300. Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to TorBox.',
+        ]},
+        {heading: 'Shared settings', text: [
+          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
         ]},
       ],
     },

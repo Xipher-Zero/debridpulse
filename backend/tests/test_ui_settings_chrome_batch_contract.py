@@ -137,7 +137,7 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
     assert "chooseTab(target.dataset.tab, 'end');" in travel[:travel.index("return;\n      }")]
-    assert "addEventListener?.('loadingdone', () => navigation.fit({measure: true}))" in runtime
+    assert "addEventListener?.('loadingdone', () => {\n    navigation.fit({measure: true});" in runtime
     assert "new ResizeObserver(() => navigation.fit())" in runtime
     place = mechanics[mechanics.index("function placeNavigation("):]
     place = place[:place.index("\n    }\n")]

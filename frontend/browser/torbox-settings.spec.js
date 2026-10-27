@@ -84,7 +84,7 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await expect(logo).toHaveAttribute('src', '/icons/providers/torbox.svg');
   expect(await logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(card.locator('.dp-settings-provider-header-copy'))
-    .toHaveText('Resolve supported links, torrents, and NZBs through your TorBox account.');
+    .toHaveText('Resolve supported links and torrents through your TorBox account; NZBs where your plan allows.');
   await expect(card.locator('.dp-settings-card-header [data-action="test-torbox"]')).toBeVisible();
   await expect(card.locator('[data-integration-enabled="torbox"]')).not.toBeChecked();
 

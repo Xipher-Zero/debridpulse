@@ -355,7 +355,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     text-align: left;
   }
 
-  #view-settings .dp-settings-card-header-controls,
+  /* (Not Services' governing and premium-provider headers, whose rail stays
+     at the trailing edge: ui-settings-page.css, dp-settings-card-header--hinted.) */
+  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-controls,
   #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
     justify-content: flex-start;

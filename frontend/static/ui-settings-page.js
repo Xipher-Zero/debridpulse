@@ -486,6 +486,59 @@
     }
   }
 
+  /* Services' governing and premium-provider headers: each one-line
+   * purpose hint is shown only where it fits on the header's own midpoint,
+   * on one line, clear of the identity on the left and the rail on the right
+   * by the header's own column gap -- MEASURED from the rendered header,
+   * identity, rail and hint in the fonts drawn, never a width breakpoint.
+   * Where it does not (or the header is the handheld two-column one), it is
+   * taken out of the layout entirely (data-hint="hidden") and the card's help
+   * chip says it instead; where it fits again the chip says "Help: <card>"
+   * again. The identity and the rail keep their own tracks either way
+   * (ui-settings-page.css), so neither moves when the hint comes or goes.
+   * Kept current as headers, identities or rails change size, and when fonts
+   * finish loading. */
+  let servicesHintObserver = null;
+  let servicesHintFit = null;
+
+  function fitServicesHints() {
+    servicesHintObserver?.disconnect();
+    servicesHintObserver = null;
+    const headers = Array.from(root()?.querySelectorAll('[data-panel="sources"] .dp-settings-card-header--hinted') || []);
+    const parts = headers.map(header => ({header,
+      title: header.querySelector(':scope > .dp-settings-card-title-group'),
+      rail: header.querySelector(':scope > .dp-settings-card-header-controls'),
+      hint: header.querySelector(':scope > .dp-settings-card-header-center > .dp-settings-provider-header-copy'),
+      chip: header.querySelector(':scope > .dp-settings-card-header-controls > .dp-settings-help-chip')}))
+      .filter(part => part.title && part.rail && part.hint);
+    servicesHintFit = () => {
+      // The identity and the rail at their own widths, the hint out of the row.
+      parts.forEach(({header}) => { header.dataset.hint = 'hidden'; });
+      const room = parts.map(({header, title, rail}) => {
+        const style = getComputedStyle(header);
+        const box = header.getBoundingClientRect();
+        const left = box.left + header.clientLeft + parseFloat(style.paddingLeft);
+        const right = box.left + header.clientLeft + header.clientWidth - parseFloat(style.paddingRight);
+        return {width: right - left, gap: parseFloat(style.columnGap) || 0,
+          tracks: style.gridTemplateColumns.split(' ').filter(Boolean).length,
+          side: Math.max(title.getBoundingClientRect().right - left, right - rail.getBoundingClientRect().left)};
+      });
+      // The hint at its own one-line width.
+      parts.forEach(({header}) => { header.dataset.hint = 'shown'; });
+      parts.forEach(({hint, chip}, index) => {
+        const {width, gap, tracks, side} = room[index];
+        const fits = tracks === 3 && (width - hint.getBoundingClientRect().width) / 2 >= side + gap;
+        parts[index].header.dataset.hint = fits ? 'shown' : 'hidden';
+        if (chip) chip.dataset.tooltip = fits ? chip.getAttribute('aria-label') : hint.textContent.trim();
+      });
+    };
+    servicesHintFit();
+    if (typeof ResizeObserver === 'function' && parts.length) {
+      servicesHintObserver = new ResizeObserver(() => servicesHintFit());
+      parts.forEach(({header, title, rail}) => [header, title, rail].forEach(node => servicesHintObserver.observe(node)));
+    }
+  }
+
   function renderPreservingViewport() {
     const snapshot = captureSettingsViewport();
     render();
@@ -812,12 +865,15 @@
       ? settingsDisclosure(bodyId, expanded, `${title} sources`, persistKey) : '';
     const help = helpChip(options.help, title);
     const header = options.action || disclosure || help;
+    // ``hint``: the group's one-line purpose, centred on the header while it
+    // fits there (fitServicesHints), else carried by its help chip.
+    const hinted = header && options.hint;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
         options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}>
-        <div class="card-header${header ? ' dp-settings-card-header' : ''}">
+        <div class="card-header${header ? ' dp-settings-card-header' : ''}${hinted ? ' dp-settings-card-header--hinted' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
-          ${header ? `<div class="dp-settings-card-header-center"></div>
+          ${header ? `<div class="dp-settings-card-header-center">${hinted ? `<p class="dp-settings-provider-header-copy">${html(options.hint)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls">${help}${options.action || ''}</div>` : ''}
         </div>
         <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
@@ -1338,7 +1394,9 @@
    * Everything about the CONFIGURATION -- credentials, optional tuning behind
    * its disclosure -- stays in the body. The rail therefore never moves when
    * the body grows, shrinks, opens or closes, because it is not in it. */
-  // ``help`` is the one provider exception (Usenet), in the same rail order.
+  // ``help``: the card's own help topic, in the same rail order; ``headerCopy``
+  // its one-line purpose, centred on the header while it fits there
+  // (fitServicesHints), else carried by that help chip.
   function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerAction = '', help = ''}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
@@ -1358,7 +1416,7 @@
     const status = providerStatus(enabled, configured, verified);
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${className} dp-settings-provider-card--collapsed" data-provider-configured="${configured}">
-        <div class="card-header dp-settings-card-header">
+        <div class="card-header dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}">
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
           <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>${
@@ -1902,6 +1960,7 @@
       displayName: 'AllDebrid',
       headerCopy: 'Resolve supported links and torrents through your AllDebrid account.',
       headerAction: providerTest,
+      help: 'alldebrid',
     });
 
     // Absent means OFF: Real-Debrid participates only once an operator turns
@@ -1950,6 +2009,7 @@
       displayName: 'Real-Debrid',
       headerCopy: 'Resolve supported links and torrents through your Real-Debrid account.',
       headerAction: providerTestAction('test-realdebrid'),
+      help: 'realdebrid',
     });
 
     // Absent means OFF: TorBox participates only once an operator turns it on,
@@ -1999,8 +2059,9 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt="">
       </span>`,
       displayName: 'TorBox',
-      headerCopy: 'Resolve supported links, torrents, and NZBs through your TorBox account.',
+      headerCopy: 'Resolve supported links and torrents through your TorBox account; NZBs where your plan allows.',
       headerAction: providerTestAction('test-torbox'),
+      help: 'torbox',
     });
 
     // Absent means OFF for Usenet: it participates only once an operator turns
@@ -2053,6 +2114,7 @@
       displayName: 'Debrid-Link',
       headerCopy: 'Resolve supported links and torrents through your Debrid-Link account.',
       headerAction: providerTestAction('test-debridlink'),
+      help: 'debridlink',
     });
 
     // Absent means OFF: Premiumize participates only once an operator turns
@@ -2093,8 +2155,9 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt="">
       </span>`,
       displayName: 'Premiumize',
-      headerCopy: 'Resolve supported links, torrents, and NZBs through your Premiumize account.',
+      headerCopy: 'Resolve supported links and torrents through your Premiumize account; NZBs where your plan allows.',
       headerAction: providerTestAction('test-premiumize'),
+      help: 'premiumize',
     });
 
     const {families, providers} = premiumServiceOrder([
@@ -2106,6 +2169,7 @@
         + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
       help: 'premium-services',
+      hint: 'Connect your Usenet servers and the debrid services you have accounts with.',
       titlePrefix: familyIcon('sources', 'crown'),
     });
     // Group identity, label and gate all come from metadata the members
@@ -2127,6 +2191,7 @@
         sourceProtocolBox(id, SOURCE_BOX_TITLES[id] || entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
       help: 'network-sources',
+      hint: 'Download directly from network sources; no premium account needed.',
       titlePrefix: protocolIcon(groupId, true),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
@@ -5164,6 +5229,7 @@
     activateTab(state.activeTab);
     navigation.fit({measure: true});
     fitServicesRows();
+    fitServicesHints();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -6653,7 +6719,10 @@
   });
 
   // Fonts that finish loading change the tabs' and the copy's own widths.
-  document.fonts?.addEventListener?.('loadingdone', () => navigation.fit({measure: true}));
+  document.fonts?.addEventListener?.('loadingdone', () => {
+    navigation.fit({measure: true});
+    servicesHintFit?.();
+  });
 
   registerCommitScopes();
   window.DPSettingsPage = Object.freeze({load});

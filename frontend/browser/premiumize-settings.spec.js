@@ -33,7 +33,7 @@ test('the Premiumize card is the API-key premium card with exactly the scoped Ad
   await expect(logo).toHaveAttribute('src', '/icons/providers/premiumize.svg');
   expect(await logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(card.locator('.dp-settings-provider-header-copy'))
-    .toHaveText('Resolve supported links, torrents, and NZBs through your Premiumize account.');
+    .toHaveText('Resolve supported links and torrents through your Premiumize account; NZBs where your plan allows.');
 
   // The credential island is Debrid-Link's, exactly.
   const geometry = async id => {
