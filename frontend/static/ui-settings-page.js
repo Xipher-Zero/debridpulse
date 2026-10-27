@@ -486,8 +486,9 @@
     }
   }
 
-  /* Services' governing and premium-provider headers: each one-line
-   * purpose hint is shown only where it fits on the header's own midpoint,
+  /* The hinted card headers -- Services' governing and premium-provider
+   * headers, and every Downloads card and Transfer Method card header: each
+   * one-line purpose hint is shown only where it fits on the header's own midpoint,
    * on one line, clear of the identity on the left and the rail on the right
    * by the header's own column gap -- MEASURED from the rendered header,
    * identity, rail and hint in the fonts drawn, never a width breakpoint.
@@ -498,20 +499,20 @@
    * (ui-settings-page.css), so neither moves when the hint comes or goes.
    * Kept current as headers, identities or rails change size, and when fonts
    * finish loading. */
-  let servicesHintObserver = null;
-  let servicesHintFit = null;
+  let headerHintObserver = null;
+  let headerHintFit = null;
 
-  function fitServicesHints() {
-    servicesHintObserver?.disconnect();
-    servicesHintObserver = null;
-    const headers = Array.from(root()?.querySelectorAll('[data-panel="sources"] .dp-settings-card-header--hinted') || []);
+  function fitHeaderHints() {
+    headerHintObserver?.disconnect();
+    headerHintObserver = null;
+    const headers = Array.from(root()?.querySelectorAll('.dp-settings-card-header--hinted') || []);
     const parts = headers.map(header => ({header,
       title: header.querySelector(':scope > .dp-settings-card-title-group'),
       rail: header.querySelector(':scope > .dp-settings-card-header-controls'),
-      hint: header.querySelector(':scope > .dp-settings-card-header-center > .dp-settings-provider-header-copy'),
+      hint: header.querySelector(':scope > .dp-settings-card-header-center > :only-child'),
       chip: header.querySelector(':scope > .dp-settings-card-header-controls > .dp-settings-help-chip')}))
       .filter(part => part.title && part.rail && part.hint);
-    servicesHintFit = () => {
+    headerHintFit = () => {
       // The identity and the rail at their own widths, the hint out of the row.
       parts.forEach(({header}) => { header.dataset.hint = 'hidden'; });
       const room = parts.map(({header, title, rail}) => {
@@ -532,10 +533,10 @@
         if (chip) chip.dataset.tooltip = fits ? chip.getAttribute('aria-label') : hint.textContent.trim();
       });
     };
-    servicesHintFit();
+    headerHintFit();
     if (typeof ResizeObserver === 'function' && parts.length) {
-      servicesHintObserver = new ResizeObserver(() => servicesHintFit());
-      parts.forEach(({header, title, rail}) => [header, title, rail].forEach(node => servicesHintObserver.observe(node)));
+      headerHintObserver = new ResizeObserver(() => headerHintFit());
+      parts.forEach(({header, title, rail}) => [header, title, rail].forEach(node => headerHintObserver.observe(node)));
     }
   }
 
@@ -835,10 +836,15 @@
           options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
           options.action || ''}</div>`
       : (options.action || '');
+    /* ``hinted``: the card's header takes the Services header grammar (see
+     * fitHeaderHints) -- identity, its one-line purpose hint (``headerCenter``)
+     * on the header's own midpoint while it fits, and the rail. A card that
+     * does not ask renders exactly as before. */
+    const identity = `<span class="${titleClass}">${titleMarkup}</span>`;
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
-        <div class="card-header">
-          <span class="${titleClass}">${titleMarkup}</span>
+        <div class="card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}">
+          ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}</span>` : identity}
           ${options.headerCenter ? `<div class="${centerClass}">${options.headerCenter}</div>` : ''}
           ${rail}
         </div>
@@ -866,7 +872,7 @@
     const help = helpChip(options.help, title);
     const header = options.action || disclosure || help;
     // ``hint``: the group's one-line purpose, centred on the header while it
-    // fits there (fitServicesHints), else carried by its help chip.
+    // fits there (fitHeaderHints), else carried by its help chip.
     const hinted = header && options.hint;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
@@ -1396,7 +1402,7 @@
    * the body grows, shrinks, opens or closes, because it is not in it. */
   // ``help``: the card's own help topic, in the same rail order; ``headerCopy``
   // its one-line purpose, centred on the header while it fits there
-  // (fitServicesHints), else carried by that help chip.
+  // (fitHeaderHints), else carried by that help chip.
   function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerAction = '', help = ''}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
@@ -2215,15 +2221,10 @@
   function executorWorkCard() {
     return `
       <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Download Engine Activity">
-        <div class="card-header">
-          <span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text">Download Engine Activity</span></span>
-          <div class="dp-settings-card-header-center">
-            <span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span>
-          </div>
-          <div class="dp-executor-work-header-actions">
-            ${helpChip('engine-activity', 'Download Engine Activity')}
-            <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
-          </div>
+        <div class="card-header dp-settings-card-header dp-settings-card-header--hinted">
+          <span class="dp-settings-card-title-group"><span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text">Download Engine Activity</span></span></span>
+          <div class="dp-settings-card-header-center"><span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span></div>
+          <div class="dp-settings-card-header-controls">${helpChip('engine-activity', 'Download Engine Activity')}<button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button></div>
         </div>
         <div class="card-body" data-dp-executor-work-body>
           <div class="dp-settings-caution dp-executor-work-context">
@@ -2534,18 +2535,22 @@
     window.DPSettingsPersistence.commit(control);
   }
 
-  function executorTuningCard(id, label, copy, body, protocol = '') {
+  /* One Transfer Method card: its identity and disclosure, its one-line
+   * purpose hint (fitHeaderHints) and, in its rail, its own Help -- the only
+   * header operation a transfer method has. */
+  function executorTuningCard(id, label, copy, body, protocol = '', help = '') {
     const bodyId = `dp-executor-tuning-${id}`;
     const identity = protocolIcon(protocol);
     return `
       <section class="card dp-settings-card dp-executor-tuning-card" data-executor-tuning="${html(id)}">
-        <div class="card-header dp-settings-card-header">
+        <div class="card-header dp-settings-card-header dp-settings-card-header--hinted">
           <span class="dp-settings-card-title-group">
             <span class="card-title${identity ? ' dp-settings-card-title--with-icon' : ''}">${identity}${
               identity ? `<span class="dp-settings-card-title-text">${html(label)}</span>` : html(label)}</span>
             ${settingsDisclosure(bodyId, false, `${label} tuning`)}
           </span>
           <div class="dp-settings-card-header-center"><span class="dp-settings-download-engine-header-copy">${html(copy)}</span></div>
+          <div class="dp-settings-card-header-controls">${helpChip(help, `${label} Tuning`)}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -2667,6 +2672,7 @@
     `, {
       className: 'dp-settings-download-engine-card',
       help: 'download-behavior',
+      hinted: true,
       titlePrefix: familyIcon('downloads', 'gauge'),
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
     });
@@ -2677,18 +2683,19 @@
       // renaming it would only churn durable identities.
       executorTuningCard('direct', 'Network Sources',
         'How DebridPulse handles downloads from direct network sources.',
-        directTransfersTuning(s), 'direct_sources') +
+        directTransfersTuning(s), 'direct_sources', 'tuning-direct') +
       executorTuningCard('rsync', 'rsync',
-        'How DebridPulse transfers files using rsync.', rsyncTuning(s), 'general_rsync') +
+        'How DebridPulse transfers files using rsync.', rsyncTuning(s), 'general_rsync', 'tuning-rsync') +
       executorTuningCard('webdav', 'WebDAV',
-        'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav') +
+        'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav', 'tuning-webdav') +
       executorTuningCard('usenet', 'Usenet',
-        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet') +
+        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet', 'tuning-usenet') +
       executorTuningCard('media', 'Media Downloads',
         'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),
-        'media'), {
+        'media', 'tuning-media'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
       help: 'transfer-methods',
+      hint: 'Tune how each supported download method transfers files.',
       titlePrefix: familyIcon('downloads', 'arrow-left-right'),
     });
 
@@ -2720,7 +2727,8 @@
         hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
       }),
     ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert'),
-      help: 'disk-recovery'});
+      help: 'disk-recovery', hinted: true,
+      headerCenter: '<span class="dp-settings-download-engine-header-copy">Protect free disk space and recover failed or stalled downloads.</span>'});
 
     return delivery + tuning + recovery + executorWorkCard();
   }
@@ -5229,7 +5237,7 @@
     activateTab(state.activeTab);
     navigation.fit({measure: true});
     fitServicesRows();
-    fitServicesHints();
+    fitHeaderHints();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -6721,7 +6729,7 @@
   // Fonts that finish loading change the tabs' and the copy's own widths.
   document.fonts?.addEventListener?.('loadingdone', () => {
     navigation.fit({measure: true});
-    servicesHintFit?.();
+    headerHintFit?.();
   });
 
   registerCommitScopes();

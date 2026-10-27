@@ -915,8 +915,9 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     cards = re.findall(r"executorTuningCard\('(\w+)', '([^']+)'", panel)
     assert cards == [("direct", "Network Sources"), ("rsync", "rsync"), ("webdav", "WebDAV"), ("usenet", "Usenet"),
                      ("media", "Media Downloads")]
+    # (each method card then names its own Help topic.)
     assert "'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),\n" \
-           "        'media')" in panel
+           "        'media', 'tuning-media')" in panel
 
     # The acquisition preferences: Target Resolution and the video preferences
     # in the integration's own namespace, and the ONE global Preferred

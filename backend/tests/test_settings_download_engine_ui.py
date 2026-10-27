@@ -45,9 +45,13 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     # One engine: the header carries no selector action.
     assert "action:" not in downloads
 
-    header = css.split(".dp-settings-download-engine-card > .card-header {", 1)[1].split("}", 1)[0]
-    assert "display: grid;" in header
-    assert "minmax(420px, 900px)" in header
+    # The header is the canonical hinted Settings card header (identity, the
+    # copy on the header's own midpoint while it fits, the rail); the card
+    # keeps no column model of its own.
+    assert "hinted: true," in downloads
+    assert ".dp-settings-download-engine-card > .card-header" not in css
+    hinted = css.split("#view-settings .card-header.dp-settings-card-header {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in hinted
     assert ".dp-settings-card-header-center" in css
     assert "text-align: center;" in css
 

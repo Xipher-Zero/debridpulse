@@ -265,12 +265,13 @@
   gap: 12px;
 }
 
-/* Services' governing and premium-provider headers (dp-settings-card-header
-   --hinted): one row from 780px, each region in its own track -- the
+/* The hinted card headers (dp-settings-card-header--hinted: Services'
+   governing and premium-provider headers, and every Downloads card and
+   Transfer Method card header): one row from 780px, each region in its own track -- the
    identity at the leading edge, the one-line purpose hint on the header's
    own midpoint, the rail at the trailing edge -- so the hint, shown or not,
    never moves the identity or the rail, and never takes a second row. The
-   page runtime (fitServicesHints) takes the hint out of the layout wherever
+   page runtime (fitHeaderHints) takes the hint out of the layout wherever
    it would not fit there (data-hint="hidden"); its help chip then says it. */
 @media (min-width: 780px) {
   #view-settings .dp-settings-card-header--hinted > .dp-settings-card-title-group { grid-area: 1 / 1; }
@@ -285,7 +286,7 @@
   }
 }
 
-#view-settings .dp-settings-card-header--hinted .dp-settings-provider-header-copy {
+#view-settings .dp-settings-card-header--hinted > .dp-settings-card-header-center > * {
   white-space: nowrap;
 }
 
@@ -498,19 +499,6 @@
 
 #view-settings .dp-settings-engine-tuning[hidden] {
   display: none !important;
-}
-
-/* Download Engine owns a three-part header: title/artwork on the left and the
-   engine explanation true-centered between two equal side columns. */
-#view-settings .dp-settings-download-engine-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(250px, 1fr) minmax(420px, 900px) minmax(250px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-download-engine-card > .card-header > .card-title {
-  justify-self: start;
 }
 
 #view-settings .dp-settings-card-header-center {
@@ -1366,22 +1354,7 @@
   min-width: 0;
 }
 
-@media (max-width: 1420px) {
-  #view-settings .dp-settings-download-engine-card > .card-header {
-    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.3fr) minmax(250px, 1fr);
-  }
-}
-
 @media (max-width: 1180px) {
-  #view-settings .dp-settings-download-engine-card > .card-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
   #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1;
     grid-row: 2;
@@ -1456,18 +1429,8 @@
     padding: 10px 10px 14px;
   }
 
-  #view-settings .dp-settings-download-engine-card > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-  }
-
-  #view-settings .dp-settings-download-engine-card > .card-header > .card-title,
   #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1;
-  }
-
-  #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
-    grid-row: 1;
   }
 
   #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
@@ -1510,33 +1473,29 @@
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
 
 /* ── The Network Source protocol boxes ───────────────────────────────────
-   A compact bounded box per real registered member, in a CAPACITY grid: the
-   available width alone decides how many equal tracks exist, the members
-   populate them left to right, and the tracks a sparse population does not
-   reach simply stay empty. Capacity is therefore a property of the viewport,
-   never of the member count -- two members do not expand or recentre
-   themselves, and a protocol registered later consumes the next free track
-   without any rule learning that it exists. `auto-fill` is what preserves the
-   empty trailing capacity that `auto-fit` would collapse. No fixed column
-   count, no breakpoint naming one, nothing measured, and no horizontal scroll
-   at any width. */
+   A compact bounded box per real registered member, in canonical order, in
+   CENTRED rows: as many boxes as the group body's width holds sit on a row,
+   and every row -- an incomplete last one included -- is centred on the body
+   as a group, the boxes keeping their own width and the one gap between
+   them. Nothing counts members or columns, no breakpoint names a count,
+   nothing is measured or placed per box, and no horizontal scroll at any
+   width; a protocol registered later simply joins the rows. */
 #view-settings .dp-settings-source-box-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: stretch;
-  justify-items: stretch;
   gap: 12px;
 }
 
 #view-settings .card.dp-settings-source-box {
-  /* Bounded and centred in its lane, exactly as a tuning card is: capacity
-     decides how many lanes exist, never how wide a box grows. Without this a
-     sparse population would stretch each box across its whole track, which is
-     the population-driven sizing the capacity grid exists to remove. */
-  width: 100%;
+  /* Bounded: a box is its own compact width wherever the body holds it, and
+     shrinks only where the body itself is narrower -- never stretched across
+     the room an incomplete row leaves. */
+  flex: 0 1 210px;
+  width: 210px;
   min-width: 0;
-  max-width: 210px;
-  margin-inline: auto;
+  max-width: 100%;
   box-sizing: border-box;
   /* The COLLECTION's gap owns the rhythm between boxes. A stacking margin
      inherited from the card material would also be subtracted from the flex

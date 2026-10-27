@@ -53,7 +53,7 @@ def test_the_network_sources_box_is_metadata_plus_copy_only():
                    "webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'},",
                    "webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'},",
                    "webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',",
-                   "'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav') +"}
+                   "'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav', 'tuning-webdav') +"}
         assert set(occurrences) <= allowed, (name, set(occurrences) - allowed)
 
 
@@ -105,7 +105,7 @@ def test_the_three_webdav_tunables_are_one_relationship_group_of_the_shared_gram
 def test_the_card_and_the_commit_scope_are_the_canonical_ones():
     page = _read("ui-settings-page.js")
     assert ("executorTuningCard('webdav', 'WebDAV',\n        'Which files DebridPulse collects from WebDAV folders.', "
-            "webdavTuning(s), 'general_webdav')") in page
+            "webdavTuning(s), 'general_webdav', 'tuning-webdav')") in page
     assert "webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'}," in page
     assert "webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'}," in page
     assert ("webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',\n"

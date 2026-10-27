@@ -17,14 +17,6 @@
    and the boolean's own text-block grammar were all competing visual systems
    for the same controls, and they are gone rather than merely unused. */
 
-/* Safety & Recovery uses its purple artwork at the same perceived 34px
-   footprint as Download Engine, with the established two-stage glow. */
-#view-settings .dp-settings-download-recovery-card > .card-header > .card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
 /* Safety & Recovery's hard-coded 3-over-2 matrix is retired: its five controls
    are cells of the one tuning-cell collection, which decides how many fit per
    row from the width alone. Nothing here names a column count. */

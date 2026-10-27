@@ -167,10 +167,14 @@ def test_every_settings_card_declares_exactly_one_help_topic():
         options = PAGE[start:start + 6000].split("help: ", 1)[1].split("\n", 1)[0]
         assert re.match(r"(own \? '[a-z-]+' : '[a-z-]+'|'[a-z-]+')", options), title
     assert "${helpChip('engine-activity', 'Download Engine Activity')}" in PAGE
-    # Group members (protocol and transfer-method cards) carry none.
-    for builder in ("function sourceProtocolBox(", "function executorTuningCard("):
-        body = PAGE.split(builder, 1)[1].split("\n  }\n", 1)[0]
-        assert "helpChip" not in body and "help:" not in body, builder
+    # A protocol tile carries none.
+    body = PAGE.split("function sourceProtocolBox(", 1)[1].split("\n  }\n", 1)[0]
+    assert "helpChip" not in body and "help:" not in body
+    # Every Transfer Method card names its OWN topic, once, in its own rail.
+    tuning = PAGE.split("function executorTuningCard(", 1)[1].split("\n  }\n", 1)[0]
+    assert '<div class="dp-settings-card-header-controls">${helpChip(help, `${label} Tuning`)}</div>' in tuning
+    assert _tuning_topics() == ["tuning-direct", "tuning-rsync", "tuning-webdav", "tuning-usenet", "tuning-media"]
+    assert set(_tuning_topics()) <= _topics()
     # Every premium provider card names its OWN topic -- six distinct ones,
     # never the group's -- and names it once.
     providers = re.findall(r"providerCard\('([a-z]+)'", PAGE)
@@ -183,15 +187,23 @@ def test_every_settings_card_declares_exactly_one_help_topic():
     assert set(providers) <= _topics()
 
 
+def _tuning_topics():
+    """The topics the Transfer Method cards name: each call's last argument."""
+    panel = PAGE.split("function downloadsPanel(", 1)[1].split("\n  }\n", 1)[0]
+    return re.findall(r"executorTuningCard\('[a-z]+',[^+]*?'(tuning-[a-z]+)'\)", panel)
+
+
 def test_every_referenced_topic_exists_and_none_is_orphaned():
     referenced = set(re.findall(r"help: '([a-z-]+)'", PAGE))
     for left, right in re.findall(r"help: own \? '([a-z-]+)' : '([a-z-]+)'", PAGE):
         referenced |= {left, right}
     referenced |= set(re.findall(r"helpChip\('([a-z-]+)'", PAGE))
+    referenced |= set(_tuning_topics())
     assert referenced == _topics()
-    # 21, and one topic for each of the five premium services that had none.
+    # 21, one topic for each of the five premium services that had none, and
+    # one for each of the five Transfer Method cards.
     assert {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox"} <= referenced
-    assert len(referenced) == 26
+    assert len(referenced) == 31
 
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():
@@ -450,8 +462,136 @@ def test_the_eight_services_headers_carry_one_line_hints_and_the_tiles_none():
     for absent in ("helpChip", "data-tooltip", "hinted", "header-copy", "data-settings-help"):
         assert absent not in tile, absent
     # The hint is measured, not a breakpoint: one fit owner, kept current.
-    fit = PAGE.split("function fitServicesHints() {", 1)[1].split("\n  }\n", 1)[0]
+    fit = PAGE.split("function fitHeaderHints() {", 1)[1].split("\n  }\n", 1)[0]
     assert "chip.dataset.tooltip = fits ? chip.getAttribute('aria-label') : hint.textContent.trim();" in fit
     assert "tracks === 3 && (width - hint.getBoundingClientRect().width) / 2 >= side + gap" in fit
-    assert "new ResizeObserver(() => servicesHintFit())" in fit
-    assert "servicesHintFit?.();" in PAGE
+    assert "new ResizeObserver(() => headerHintFit())" in fit
+    assert "headerHintFit?.();" in PAGE
+
+
+# --- Downloads: the nine card headers, their Help, and the Network Sources tiles
+
+def _block(source: str, start: str) -> str:
+    return source.split(start, 1)[1].split("\n  }\n", 1)[0]
+
+
+def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
+    css = (STATIC / "ui-settings-page.css").read_text(encoding="utf-8")
+    work_css = (STATIC / "ui-settings-executor-work.css").read_text(encoding="utf-8")
+    panel = _block(PAGE, "function downloadsPanel(s) {")
+    # card() takes the grammar only when asked; nothing else changes for it.
+    card = _block(PAGE, "function card(title, body, options = {}) {")
+    assert "<div class=\"card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}\">" in card
+    assert "${options.hinted ? `<span class=\"dp-settings-card-title-group\">${identity}</span>` : identity}" in card
+    # Download Behavior & Limits and Disk Space & Recovery, the two card() headers.
+    assert panel.count("hinted: true,") == 2 and panel.count("help: 'disk-recovery', hinted: true,") == 1
+    # The two hints this pass adds; the four that were there are unchanged.
+    assert "hint: 'Tune how each supported download method transfers files.'," in panel
+    assert "Protect free disk space and recover failed or stalled downloads." in panel
+    for kept in ("Where DebridPulse saves downloads and how many it runs at once.",
+                 "View current download engine jobs and intervene when something is stuck.",
+                 "'How DebridPulse handles downloads from direct network sources.'",
+                 "'How DebridPulse transfers files using rsync.'", "'Which files DebridPulse collects from WebDAV folders.'",
+                 "'Global download behavior shared by all Usenet servers.'",
+                 "'Downloads supported web-hosted media in its native form, without transcoding.'"):
+        assert kept in PAGE, kept
+    tuning = _block(PAGE, "function executorTuningCard(")
+    assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in tuning
+    # Download Engine Activity: the canonical header, its rail Help then Refresh.
+    work = _block(PAGE, "function executorWorkCard() {")
+    assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in work
+    rail = work.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>", 1)[0]
+    assert rail.index("helpChip('engine-activity'") < rail.index("data-dp-executor-work-refresh")
+    # No private header grid survives beside the canonical one.
+    for retired in (".dp-settings-download-engine-card > .card-header", "minmax(420px, 900px)"):
+        assert retired not in css, retired
+    for retired in ("dp-executor-work-header-actions", ".dp-executor-work-card > .card-header"):
+        assert retired not in work_css and retired not in PAGE, retired
+    # One measured fit owner serves every hinted header, on the header's own midpoint.
+    fit = _block(PAGE, "function fitHeaderHints() {")
+    assert "root()?.querySelectorAll('.dp-settings-card-header--hinted')" in fit
+    assert "hint: header.querySelector(':scope > .dp-settings-card-header-center > :only-child')," in fit
+    assert PAGE.count("new ResizeObserver(() => headerHintFit())") == 1
+    assert "#view-settings .dp-settings-card-header--hinted > .dp-settings-card-header-center > * {\n  white-space: nowrap;" in css
+
+
+def test_the_network_sources_tiles_are_centred_rows_not_a_capacity_grid():
+    css = (STATIC / "ui-settings-page.css").read_text(encoding="utf-8")
+    grid = css.split("#view-settings .dp-settings-source-box-grid {", 1)[1].split("}", 1)[0]
+    for declaration in ("display: flex;", "flex-wrap: wrap;", "justify-content: center;", "gap: 12px;"):
+        assert declaration in grid, declaration
+    for retired in ("grid-template-columns", "auto-fill", "auto-fit"):
+        assert retired not in grid, retired
+    box = css.split("#view-settings .card.dp-settings-source-box {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 1 210px;" in box and "width: 210px;" in box and "max-width: 100%;" in box
+    assert "margin-inline: auto" not in box
+
+
+# The Media Downloads Help describes exactly the controls its card renders:
+# label as rendered -> setting key, each in mediaTuning() / youtubePlayerClientsField().
+MEDIA_CONTROLS = {
+    "Target Resolution": "media_target_resolution",
+    "Video Quality": "media_video_quality",
+    "Preferred Video Codec": "media_video_codec",
+    "Preferred Subtitle Language": "preferred_subtitle_language",
+    "Concurrent Fragment Downloads": "media_concurrent_fragment_downloads",
+    "YouTube Player Client": "media_youtube_player_clients",
+}
+
+
+def test_the_media_downloads_help_names_only_the_rendered_controls_and_no_conversion():
+    renderer = _block(PAGE, "function mediaTuning(s) {") + _block(PAGE, "function youtubePlayerClientsField(options) {")
+    rendered = dict((label, key) for key, label in re.findall(r"(?:selectField|input)\('([a-z_]+)', '([^']+)'", renderer))
+    assert rendered == MEDIA_CONTROLS
+    assert "const VIDEO_CODECS = Object.freeze([\n    ['auto', 'Auto'],\n    ['av1', 'AV1'],\n    ['hevc', 'HEVC (H.265)'],\n    ['h264', 'H.264'],\n  ]);" in PAGE
+    topic = _topic("'tuning-media'")
+    for label in MEDIA_CONTROLS:
+        assert f"'{label} " in topic or f"'{label}," in topic, label
+    assert "never re-encodes or transcodes media" in topic
+    assert "There is no setting for the output container." in topic
+    assert "It is a preference among what the site offers, never a conversion." in topic
+    assert "among the bitrates the site offers" in topic
+    for invented in ("Output Container", "Container Format", "convert to", "transcode to", "guarantee that"):
+        assert invented not in topic, invented
+    # The no-conversion statement is the executor's own: stream copy only.
+    worker = (ROOT / "backend" / "executors" / "media" / "worker.py").read_text(encoding="utf-8")
+    assert 'argv += ["-c", "copy"]' in worker
+
+
+def test_each_transfer_method_topic_names_its_cards_controls_and_their_backend_defaults():
+    topics = {name: _topic(f"'{name}'") for name in ("tuning-direct", "tuning-rsync", "tuning-webdav", "tuning-usenet")}
+    expected = {
+        "tuning-direct": ("Connections per Server", "from 1 to 16 (default 16)", "Segments per File", "from 1 to 64 (default 16)",
+                          "Minimum Split Size", "from 1M to 1024M (default 10M)", "Continue Partial Downloads",
+                          "Lowest Speed Limit", "Disk Cache", "(default 64M; 0 turns it off)", "File Allocation", "Fallocate (the default)"),
+        "tuning-rsync": ("Partial Transfers (on by default)", "Compression (off by default)", "Preserve Modification Time (on by default)",
+                         "5 to 300 seconds (default 30)", "30 to 3600 seconds (default 300)", "all subfolders (the default)"),
+        "tuning-webdav": ("the current folder only (the default)", "from 1 to 10000 (default 10000)", "rejected whole",
+                          "empty for no limit (the default), or 10 to 3600 seconds"),
+        "tuning-usenet": ("from 0 to 4096 MB (default 1024)", "from 2 to 25 (default 3)", "from 5 to 300 seconds (default 30)",
+                          "Direct Write (on by default)", "under Services, Usenet"),
+    }
+    for name, phrases in expected.items():
+        for phrase in phrases:
+            assert phrase in topics[name], (name, phrase)
+    # The numbers are the backend's own option models.
+    aria2 = (ROOT / "backend" / "executors" / "aria2" / "definition.py").read_text(encoding="utf-8")
+    for source in ('split: int = Field(default=16, ge=1, le=64)', 'min_split_size: str = "10M"',
+                   'max_connection_per_server: int = Field(default=16, ge=1, le=16)', 'disk_cache: str = "64M"',
+                   '= "falloc"', 'lowest_speed_limit: str = "0"', 'continue_downloads: bool = True'):
+        assert source in aria2, source
+    rsync = (ROOT / "backend" / "executors" / "rsync" / "definition.py").read_text(encoding="utf-8")
+    for source in ("partial_transfers: bool = True", "compression: bool = False", "preserve_modification_time: bool = True",
+                   "connection_timeout_seconds: int = Field(default=30, ge=5, le=300)",
+                   "transfer_timeout_seconds: int = Field(default=300, ge=30, le=3600)"):
+        assert source in rsync, source
+    assert 'directory_depth: DirectoryDepthSetting = "all"' in (ROOT / "backend" / "providers" / "general_rsync" / "definition.py").read_text(encoding="utf-8")
+    webdav = (ROOT / "backend" / "providers" / "general_webdav" / "definition.py").read_text(encoding="utf-8")
+    for source in ('directory_depth: DirectoryDepthSetting = "current"', "max_files: int = Field(default=10_000, ge=1, le=10_000)",
+                   "collection_scan_timeout_seconds: int = Field(default=0, ge=0, le=3600)", "if 0 < value < 10:"):
+        assert source in webdav, source
+    usenet = (ROOT / "backend" / "integrations" / "usenet" / "definition.py").read_text(encoding="utf-8")
+    for source in ("MIN_ARTICLE_CACHE_MB, MAX_ARTICLE_CACHE_MB = 0, 4096", "MIN_ACQUISITION_RETRIES, MAX_ACQUISITION_RETRIES = 2, 25",
+                   "operation_timeout_seconds: int = Field(default=30, ge=5, le=300)", "direct_write: bool = True",
+                   "max_acquisition_retries: int = Field(default=3,", "article_cache_megabytes: int = Field(default=1024,"):
+        assert source in usenet, source

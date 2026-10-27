@@ -137,18 +137,16 @@ async function assertProtocolBoxes(page) {
   expect(Math.abs(heights[0] - heights[1])).toBeLessThanOrEqual(1);
 }
 
-/* DP 1.0.13 Settings consolidation: the collection stopped sizing itself from
- * the population and became a CAPACITY grid. The available width alone decides
- * how many equal tracks exist, the real members populate them left to right,
- * and the tracks a sparse population does not reach stay empty so a protocol
- * registered later consumes the next one. `auto-fill` is what preserves that
- * trailing capacity; `auto-fit` would collapse it and recentre the members,
- * which is exactly the population-centred sizing this replaced. */
-async function assertCapacityLanes(page, width) {
+/* DP 1.0.14: the collection is CENTRED rows of compact boxes. As many boxes
+ * as the group body's width holds share a row, in canonical order, and every
+ * row -- an incomplete last one included -- is centred on the body as a group
+ * (not a box centred in a left-anchored lane), each box keeping its own
+ * compact width and the one gap between boxes. */
+async function assertCentredRows(page, width) {
   const measured = await grid(page).evaluate(el => {
+    const style = getComputedStyle(el);
     const host = el.getBoundingClientRect();
-    const tracks = getComputedStyle(el).gridTemplateColumns
-      .split(' ').filter(Boolean).map(parseFloat);
+    const left = host.left + parseFloat(style.paddingLeft), right = host.right - parseFloat(style.paddingRight);
     const byTop = new Map();
     for (const child of el.children) {
       const r = child.getBoundingClientRect();
@@ -156,58 +154,48 @@ async function assertCapacityLanes(page, width) {
       if (!byTop.has(key)) byTop.set(key, []);
       byTop.get(key).push(r);
     }
+    const rows = [...byTop.entries()].sort((a, b) => a[0] - b[0]).map(entry => entry[1].sort((a, b) => a.left - b.left));
     return {
-      capacity: tracks.length,
-      lane: tracks[0],
-      spread: Math.max(...tracks) - Math.min(...tracks),
-      rows: Array.from(byTop.values()).map(boxes => ({
+      body: right - left, gap: parseFloat(style.columnGap),
+      rows: rows.map(boxes => ({
         count: boxes.length,
-        leading: Math.min(...boxes.map(b => b.left)) - host.left,
-        box: Math.min(...boxes.map(b => b.width)),
+        offset: (Math.min(...boxes.map(b => b.left)) + Math.max(...boxes.map(b => b.right))) / 2 - (left + right) / 2,
+        gaps: boxes.slice(1).map((box, index) => box.left - boxes[index].right),
+        widths: boxes.map(b => b.width),
+        heights: boxes.map(b => b.height),
       })),
     };
   });
-  expect(measured.capacity, `no capacity at ${width}px`).toBeGreaterThanOrEqual(1);
-  expect(measured.spread, `the tracks are not equal at ${width}px`).toBeLessThanOrEqual(1);
   expect(measured.rows.length).toBeGreaterThan(0);
-  for (const row of measured.rows) {
-    // Left-filled: the row occupies the FIRST lane. A bounded box centred
-    // inside its own lane is the lane's slack, not a sparse-row offset.
-    expect(row.leading,
-      `a row of ${row.count} does not start at the first lane at ${width}px`)
-      .toBeLessThanOrEqual((measured.lane - row.box) / 2 + 2);
-  }
+  const capacity = measured.rows[0].count;
+  measured.rows.forEach((row, index) => {
+    const at = `row ${index + 1} of ${measured.rows.length} (${row.count}) at ${width}px`;
+    expect(Math.abs(row.offset), `${at} is not centred on the group body`).toBeLessThanOrEqual(1);
+    for (const gap of row.gaps) expect(Math.abs(gap - measured.gap), `${at}: gap ${gap}`).toBeLessThanOrEqual(1);
+    for (const boxWidth of row.widths) {
+      expect(boxWidth, `${at}: a box stretched`).toBeLessThanOrEqual(210.5);
+      expect(boxWidth, `${at}: a box shrank while the body holds it`).toBeGreaterThanOrEqual(Math.min(209.5, measured.body - 0.5));
+    }
+    expect(Math.max(...row.heights) - Math.min(...row.heights), `${at}: heights disagree`).toBeLessThanOrEqual(1);
+    // Every row but the last is full; the last holds the rest.
+    if (index < measured.rows.length - 1) expect(row.count, at).toBe(capacity);
+    else expect(row.count, at).toBeLessThanOrEqual(capacity);
+  });
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
     `horizontal overflow at ${width}px`).toBeTruthy();
+  return measured;
 }
 
-test('Network Sources renders one compact protocol box per real provider, left-filling its capacity, in dark and light themes', async ({ page }) => {
+test('Network Sources renders one compact protocol box per real provider, in rows centred on the group, in dark and light themes', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await page.goto('/'); await openSettings(page);
   await assertProtocolBoxes(page);
-  await assertCapacityLanes(page, 1440);
-  // At the wide viewport the members fill the lanes the content establishes
-  // row by row -- every row but the last is full, so a member past the
-  // capacity starts the next row at the first lane (assertCapacityLanes) --
-  // and spare capacity never stretches a box to fill it.
-  const wide = await grid(page).evaluate(el => {
-    const tops = new Map();
-    for (const child of el.children) {
-      const top = Math.round(child.getBoundingClientRect().top);
-      tops.set(top, (tops.get(top) || 0) + 1);
-    }
-    return {
-      capacity: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
-      members: el.children.length,
-      rows: [...tops.entries()].sort((a, b) => a[0] - b[0]).map(entry => entry[1]),
-      widest: Math.max(...Array.from(el.children, child => child.getBoundingClientRect().width)),
-    };
-  });
-  expect(wide.rows.length).toBe(Math.ceil(wide.members / wide.capacity));
-  for (const count of wide.rows.slice(0, -1)) expect(count).toBe(wide.capacity);
-  expect(wide.widest).toBeLessThanOrEqual(220);
+  // At the wide viewport the members fill rows as the body's width allows,
+  // and the incomplete last row is centred, never pinned to the left.
+  const wide = await assertCentredRows(page, 1440);
+  expect(wide.rows.reduce((sum, row) => sum + row.count, 0)).toBe(CARDS.length);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-dark.png'});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
@@ -224,7 +212,7 @@ test('Network Sources renders one compact protocol box per real provider, left-f
       await expect(integrationControl(page, identity)).toBeVisible();
       expect((await box.boundingBox()).width).toBeLessThanOrEqual(Math.min(220, width));
     }
-    await assertCapacityLanes(page, width);
+    await assertCentredRows(page, width);
   }
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-light-narrow.png'});
   expect(errors).toEqual([]);

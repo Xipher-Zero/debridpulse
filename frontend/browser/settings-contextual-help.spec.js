@@ -28,7 +28,7 @@ async function chooseTab(page, name) {
   await expect(page.locator(`.dp-settings-panel[data-panel="${name}"]`)).toBeVisible();
 }
 
-test('every top-level Settings card has exactly one help chip naming it, and of group members only the six premium services have one each', async ({page}) => {
+test('every top-level Settings card has exactly one help chip naming it, and of group members only the six premium services and the five transfer methods have one each', async ({page}) => {
   await openSettings(page);
   const census = await page.evaluate(() => Array.from(document.querySelectorAll('.dp-settings-panel')).map(panel => ({
     panel: panel.dataset.panel,
@@ -50,11 +50,14 @@ test('every top-level Settings card has exactly one help chip naming it, and of 
     expect(card.labels, card.title).toEqual([`Help: ${card.title}`]);
     expect(card.text, card.title).toEqual(['']);
   }
-  // Each of the six premium services has its own; no protocol tile or
-  // transfer-method card has a chip.
+  // Each of the six premium services and each of the five transfer-method
+  // cards has its own; no protocol tile has a chip.
   const premium = ['Help: AllDebrid', 'Help: Debrid-Link', 'Help: Premiumize', 'Help: Real-Debrid', 'Help: TorBox', 'Help: Usenet'];
+  const methods = ['Help: Media Downloads Tuning', 'Help: Network Sources Tuning', 'Help: Usenet Tuning', 'Help: WebDAV Tuning',
+    'Help: rsync Tuning'];
   for (const entry of census) {
-    expect([...entry.memberChips].sort(), entry.panel).toEqual(entry.panel === 'sources' ? premium : []);
+    expect([...entry.memberChips].sort(), entry.panel)
+      .toEqual(entry.panel === 'sources' ? premium : entry.panel === 'downloads' ? methods : []);
   }
 });
 
@@ -70,8 +73,9 @@ test('every header rail reads status, then help, then the card’s own controls 
       rightEdge: kinds.length === 1 ? Math.round(header.getBoundingClientRect().right - chip.getBoundingClientRect().right) : null,
       paddingRight: Math.round(parseFloat(getComputedStyle(header).paddingRight))};
   }));
-  // 19, and the five premium services that had no help of their own.
-  expect(rails).toHaveLength(24);
+  // 19, the five premium services that had no help of their own, and the
+  // five transfer-method cards.
+  expect(rails).toHaveLength(29);
   for (const rail of rails) {
     const expected = rail.kinds[0] === 'status' ? 1 : 0;
     expect(rail.kinds.indexOf('help'), rail.label).toBe(expected);

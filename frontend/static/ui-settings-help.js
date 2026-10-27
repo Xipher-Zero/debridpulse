@@ -301,6 +301,111 @@
       ],
     },
 
+    /* ── Downloads -> Transfer Method Settings: one topic per method card.
+     * Defaults and limits are the backend's own option models
+     * (executors/aria2/definition.py Aria2Options, executors/rsync/definition.py
+     * RsyncOptions, providers/general_rsync|general_webdav/definition.py,
+     * integrations/usenet/definition.py UsenetOptions,
+     * integrations/media/definition.py MediaOptions, core/config.py). */
+    'tuning-direct': {
+      title: 'Network Sources Tuning',
+      sections: [
+        {text: [
+          'These settings tune the direct download engine. It downloads HTTP, HTTPS, FTP and SFTP links: direct links you add, and the download links a premium service resolves for you. rsync, Usenet and Media Downloads use their own engines, so these settings do not affect them.',
+        ]},
+        {heading: 'Connections and segments', list: [
+          'Connections per Server is how many connections one download may open to the same server, from 1 to 16 (default 16).',
+          'Segments per File is how many parts of one file may download in parallel, from 1 to 64 (default 16). The server, Connections per Server and Minimum Split Size can allow fewer.',
+          'Minimum Split Size is the smallest part a file is split into, from 1M to 1024M (default 10M); a larger value gives fewer parallel parts.',
+        ]},
+        {heading: 'Interrupted and slow downloads', list: [
+          'Continue Partial Downloads (on by default) resumes a partly downloaded file where possible instead of starting it again.',
+          'Lowest Speed Limit stops a connection whose speed falls to this value or below, in bytes per second with an optional K or M suffix. 0 (the default) turns the limit off.',
+        ]},
+        {heading: 'Disk', list: [
+          'Disk Cache is memory the engine may use as a shared cache to reduce disk writes (default 64M; 0 turns it off). A change takes effect the next time the download engine starts.',
+          'File Allocation is how disk space is prepared for a new file: Truncate, Fallocate (the default), Preallocate or None.',
+        ]},
+        {heading: 'Related', text: [
+          'Which network protocols DebridPulse may use at all is chosen under Services, Network Sources; these settings tune the engine those downloads share. How many downloads run at once is Maximum Concurrent Downloads in Download Behavior & Limits.',
+        ]},
+      ],
+    },
+    'tuning-rsync': {
+      title: 'rsync Tuning',
+      sections: [
+        {text: [
+          'These settings apply only to downloads from rsync sources, whether reached through an rsync server or over SSH.',
+        ]},
+        {heading: 'Transfers', list: [
+          'Partial Transfers (on by default) continues an interrupted file from what was already downloaded. Off, an interrupted file starts again from the beginning.',
+          'Compression (off by default) compresses data in transit. It rarely helps with archives, video or other already-compressed files.',
+          'Preserve Modification Time (on by default) gives each completed file the modification time it has on the source.',
+        ]},
+        {heading: 'Timeouts', list: [
+          'Connection Timeout is how long reaching the source and starting a transfer may take, including an SSH connection and sign-in: 5 to 300 seconds (default 30).',
+          'Transfer Timeout is how long a running transfer may receive no data before it stops: 30 to 3600 seconds (default 300). It is separate from the Stalled Download Timeout under Disk Space & Recovery.',
+        ]},
+        {heading: 'Directory Depth', list: [
+          'How many folder levels below an rsync folder you add are searched for files: the current folder only, 1, 2 or 3 levels, or all subfolders (the default). Files in deeper folders are not included.',
+        ]},
+        {heading: 'Related', text: [
+          'Whether rsync sources are used at all is chosen under Services, Network Sources.',
+        ]},
+      ],
+    },
+    'tuning-webdav': {
+      title: 'WebDAV Tuning',
+      sections: [
+        {text: [
+          'These settings decide which files DebridPulse collects when you add a WebDAV folder. Every file collected is offered in the usual file selection and downloads as an ordinary file.',
+        ]},
+        {heading: 'Collecting a folder', list: [
+          'Directory Depth is how many folder levels below the folder you add are searched: the current folder only (the default), 1, 2 or 3 levels, or all subfolders. Files in deeper folders are not included.',
+          'Maximum Files is the most files one folder may contain, from 1 to 10000 (default 10000). A folder with more files is rejected whole; it is never added in part.',
+          'Collection Scan Timeout is how long listing the folder and its subfolders may take in total before the folder is reported unavailable: empty for no limit (the default), or 10 to 3600 seconds. Each listing request keeps its own time limit either way. It applies to collecting the folder only, not to downloading its files.',
+        ]},
+        {heading: 'Related', text: [
+          'Whether WebDAV sources are used at all is chosen under Services, Network Sources.',
+        ]},
+      ],
+    },
+    'tuning-usenet': {
+      title: 'Usenet Tuning',
+      sections: [
+        {text: [
+          'These settings apply to every Usenet download, whichever news server provides it. Each server’s host, credentials, connections, priority, Server Timeout and Test are on its own card under Services, Usenet.',
+        ]},
+        {heading: 'Settings', list: [
+          'Article Cache Limit is memory DebridPulse may use to hold downloaded article data before writing it to disk, from 0 to 4096 MB (default 1024). 0 turns the cache off.',
+          'Maximum Retries is how many times one article is retried on a news server before that server is given up for it, from 2 to 25 (default 3). It is not the download retry count under Disk Space & Recovery.',
+          'Request Timeout is how long DebridPulse waits for its own Usenet download service to answer a request, from 5 to 300 seconds (default 30). It is not a news-server timeout.',
+          'Direct Write (on by default) writes article data straight to the destination file instead of holding it in memory first, which reduces disk work when articles arrive in order.',
+        ]},
+      ],
+    },
+    'tuning-media': {
+      title: 'Media Downloads Tuning',
+      sections: [
+        {text: [
+          'These settings apply to Media Downloads: media from supported web pages, downloaded in a form the site itself offers. DebridPulse never re-encodes or transcodes media. The downloaded streams and the chosen subtitle are combined, unchanged, into one file: in the site’s own container when it can hold them all, otherwise in Matroska (MKV). There is no setting for the output container.',
+        ]},
+        {heading: 'Choosing what is downloaded', list: [
+          'Target Resolution is the resolution DebridPulse looks for. When the site does not offer it, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available (the default) takes the highest resolution offered.',
+          'Video Quality chooses, within the preferred codec, among the bitrates the site offers for the video at that resolution: High (the default) the highest, Low the lowest, Normal one in between. It cannot make a video better than the site offers, and where there is nothing to choose between, the site’s usual choice is kept.',
+          'Preferred Video Codec (Auto, AV1, HEVC or H.264) prefers that codec when the site offers it at that resolution; Auto (the default) keeps the site’s usual choice. It is a preference among what the site offers, never a conversion.',
+          'Preferred Subtitle Language is the language of the one subtitle embedded in the file, when the site offers one (default English). A subtitle written for the media is preferred; one the site generated automatically in that language is used otherwise. A subtitle that cannot be embedded without converting it makes the download fail rather than being dropped or converted.',
+        ]},
+        {heading: 'Downloading', list: [
+          'Concurrent Fragment Downloads is how many fragments of one segmented stream download at once, from 1 to 8 (default 1). A download that is a single file is unaffected, and it is not the number of downloads that run at once.',
+          'YouTube Player Client is Automatic (recommended): the installed yt-dlp’s own default. Choose one of the clients that yt-dlp offers only when troubleshooting YouTube downloads; no choice guarantees that a particular video can be downloaded. A saved client the installed yt-dlp no longer offers is kept, and Automatic is used until you choose again.',
+        ]},
+        {heading: 'Related', text: [
+          'Whether Media Downloads are used at all is chosen under Services, Network Sources.',
+        ]},
+      ],
+    },
+
     /* ── Extraction ───────────────────────────────────────────────────── */
     'automatic-extraction': {
       title: 'Automatic Extraction',

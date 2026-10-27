@@ -352,8 +352,9 @@ def test_downloads_tuning_cards_carry_the_same_protocol_identity():
     what is proven here is that there is no second Downloads-only identity.
     """
     assert "executorTuningCard('direct', 'Network Sources'," in SETTINGS
-    assert "directTransfersTuning(s), 'direct_sources')" in SETTINGS
-    assert "usenetTuning(s), 'usenet')" in SETTINGS
+    # (each card then names its own Help topic.)
+    assert "directTransfersTuning(s), 'direct_sources', 'tuning-direct')" in SETTINGS
+    assert "usenetTuning(s), 'usenet', 'tuning-usenet')" in SETTINGS
     tuning = body(SETTINGS, "executorTuningCard")
     assert "protocolIcon(protocol)" in tuning
     assert "dp-settings-protocol-icon" not in tuning, \

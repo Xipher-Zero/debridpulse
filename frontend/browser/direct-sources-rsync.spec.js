@@ -100,21 +100,27 @@ test('the rsync box is a registered Network Sources member after SCP with the Fo
     }
   });
 
-test('the Network Sources capacity grid left-fills with the rsync member', async ({page}) => {
+test('the Network Sources rows, the rsync member among them, are centred on the group', async ({page}) => {
   await isolateExternalFonts(page);
   await page.setViewportSize({width: 1400, height: 900});
   await openNetworkSources(page);
   for (const width of [1400, 900, 560]) {
     await page.setViewportSize({width, height: 900});
-    const lefts = await page.locator('.dp-settings-general-sources .dp-settings-source-box').evaluateAll(
-      nodes => nodes.map(node => Math.round(node.getBoundingClientRect().left)));
-    const columns = [...new Set(lefts)].sort((a, b) => a - b);
-    // Every box sits in a column the first row established: no stray offsets
-    // and no gap before a wrapped member.
-    expect(columns.length).toBeGreaterThan(0);
-    const firstRow = lefts.slice(0, columns.length);
-    expect(firstRow).toEqual(columns);
-    for (const left of lefts) expect(columns).toContain(left);
+    const rows = await page.locator('.dp-settings-general-sources .dp-settings-source-box-grid').evaluate(grid => {
+      const style = getComputedStyle(grid), host = grid.getBoundingClientRect();
+      const middle = (host.left + parseFloat(style.paddingLeft) + host.right - parseFloat(style.paddingRight)) / 2;
+      const byTop = new Map();
+      for (const box of grid.children) {
+        const r = box.getBoundingClientRect(), top = Math.round(r.top);
+        byTop.set(top, [...(byTop.get(top) || []), r]);
+      }
+      return [...byTop.values()].map(boxes => (Math.min(...boxes.map(b => b.left)) + Math.max(...boxes.map(b => b.right))) / 2 - middle);
+    });
+    // Every row -- an incomplete last one included -- sits on the group's
+    // own midpoint: no left-pinned row and no gap before a wrapped member.
+    expect(rows.length).toBeGreaterThan(0);
+    for (const offset of rows) expect(Math.abs(offset), `${width}px`).toBeLessThanOrEqual(1);
+    await expect(page.locator('.dp-settings-general-sources .dp-settings-provider-card--general-rsync')).toBeVisible();
   }
 });
 

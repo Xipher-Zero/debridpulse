@@ -146,8 +146,9 @@ def test_the_disclosure_keeps_its_accessible_state_and_never_swallows_the_header
                               ("function executorTuningCard(", "function directTransfersTuning(")):
         block = SETTINGS_JS[SETTINGS_JS.index(marker):SETTINGS_JS.index(following)]
         assert "onclick" not in block, marker
-        # (A provider header adds Services' hinted modifier when it has a hint.)
-        assert ("<div class=\"card-header dp-settings-card-header\">" in block
+        # (A provider header adds Services' hinted modifier when it has a hint;
+        # a Transfer Method header always has one.)
+        assert ("<div class=\"card-header dp-settings-card-header dp-settings-card-header--hinted\">" in block
                 or "<div class=\"card-header dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}\">" in block), marker
 
 
