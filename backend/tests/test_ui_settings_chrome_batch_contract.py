@@ -136,23 +136,39 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
     assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
-    assert "chooseTab(target.dataset.tab);" in travel[:travel.index("return;\n      }")]
+    assert "chooseTab(target.dataset.tab, 'end');" in travel[:travel.index("return;\n      }")]
     assert "addEventListener?.('loadingdone', () => navigation.fit({measure: true}))" in runtime
     assert "new ResizeObserver(() => navigation.fit())" in runtime
     place = mechanics[mechanics.index("function placeNavigation("):]
     place = place[:place.index("\n    }\n")]
+    draw = mechanics[mechanics.index("function drawNavigation("):]
+    draw = draw[:draw.index("\n    }\n")]
     assert "window.DPMotion.slide({element: strip, axis: 'x'" in place and "motion?.direction" in place
-    assert "tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;" in place
+    assert "tab.dataset.navCut = part < NAV_TARGET ? 'sliver' : cut;" in draw
     # The window slides the way the choice goes (the panel's own direction),
-    # compared with where it was last placed, never with a scroll offset a
-    # pending slide has yet to draw; the end state is written with it.
+    # compared with where it is drawn, never with a scroll offset read in
+    # the middle of a slide; the slide's commit only draws the latest
+    # decision, and the end state is written with it.
     assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
-    assert "const placed = navFit.left ?? strip.scrollLeft;" in place and "control.dataset.navAt = at;" in place
+    assert "(navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap" in place
+    assert "distance: motion.distance}, drawNavigation);" in place
+    assert "control.dataset.navAt = at;" in draw and "navFit.drawn = {left: target, index};" in draw
     assert "const room = navRoom(navFit.window, index);" in place
+    # A choice is placed from the window as drawn (navChoice): a whole section
+    # leaves it still; the edge section moves it by just as much as puts the
+    # next section where the chosen one was; a shown end section, chosen as a
+    # tab (not through First / Last), snaps -- drawn at once, ending any
+    # selector slide still under way. A refit that leaves the window as it
+    # is leaves the placement alone.
+    choice = mechanics[mechanics.index("function navChoice("):mechanics.index("function placeNavigation(")]
+    assert "const step = Math.min(widths[index] - Math.max(0, part(index) - widths[index + (forward ? 1 : -1)])," in choice
+    assert "if (motion.via === 'end') return null;" in choice and "snap: true" in choice
+    assert "navFit.slide?.skip();\n      drawNavigation();" in place
+    assert "if (presentation !== 'compact' || drawn !== `${navFit.window} ${navFit.trim}`) placeNavigation();" in fit
     assert "navigation.place(motion);" in runtime
     choose = runtime[runtime.index("function chooseTab("):]
     choose = choose[:choose.index("\n  }\n")]
-    assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});" in choose
+    assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step), via});" in choose
     assert "order.indexOf(state.activeTab)" in choose and ":not([hidden])" not in choose
 
     # The explicit query generation prevents a browser-cached synthetic glyph

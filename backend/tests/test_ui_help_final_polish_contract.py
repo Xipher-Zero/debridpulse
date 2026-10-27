@@ -98,7 +98,7 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     # chosen last, never from the panel still on screen.
     choose = runtime[runtime.index("function chooseTab("):]
     choose = choose[:choose.index("\n  }\n")]
-    assert "selectTabControl(name, focus, {direction: Math.sign(step), distance: Math.abs(step)});" in choose
+    assert "selectTabControl(name, focus, {direction: Math.sign(step), distance: Math.abs(step), via});" in choose
     assert "order.indexOf(state.activeTab)" in choose and ":not([hidden])" not in choose
     select = runtime[runtime.index("function selectTabControl("):]
     select = select[:select.index("\n  }\n")]
@@ -106,6 +106,6 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     assert "selected?.focus({preventScroll: navigation.placing()});" in select
     # First / Last reach the ends through the same choice.
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-help-nav-end');"):]
-    assert "chooseTab(target.dataset.tab, document.activeElement === travel);" in travel[:travel.index("});")]
+    assert "chooseTab(target.dataset.tab, document.activeElement === travel, 'end');" in travel[:travel.index("});")]
     # Every entry still opens Quick Start.
     assert "function load() {\n    state.activeTab = 'quickstart';\n    render();\n  }" in runtime

@@ -37,6 +37,10 @@
    * can; where that is not enough either, the selected section still comes
    * first -- whole, at the list's end -- and its neighbour gives up the
    * rest, cut at the window's edge and faded like any section an edge cuts.
+   * That is where a render, a resize or a refit places the window; the
+   * operator's own choices move it from where it is drawn (navChoice), so
+   * that the section under the pointer at the window's edge is the next one
+   * after each move, and a shown first or last section is reached at once.
    *
    * Everything is decided here, in this browser, from the rendered tabs,
    * copy and controls: the tab set and the fonts are whatever the page
@@ -92,6 +96,8 @@
         navFit = {nav, natural: widths, widths, strip: widths.reduce((sum, width) => sum + width, 0) + frame, copy: 0, chrome, slot, edge, window: 0, trim: 0, left: null};
       }
       navFit.copy = copyWidth(header);
+      // The window as drawn now (none until it has been drawn compact).
+      const drawn = navFit.drawn && header.dataset.presentation === 'compact' ? `${navFit.window} ${navFit.trim}` : null;
       const style = getComputedStyle(header);
       const width = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       const gap = parseFloat(style.columnGap);
@@ -107,7 +113,9 @@
       if (presentation === 'compact' && navFit.trim) nav.style.setProperty('--dp-section-nav-trim', `${navFit.trim}px`);
       else nav.style.removeProperty('--dp-section-nav-trim');
       if (header.dataset.presentation !== presentation) header.dataset.presentation = presentation;
-      placeNavigation();
+      // A refit that leaves the compact window as it is (the page's height
+      // changed, say) leaves its placement -- and a slide under way -- alone.
+      if (presentation !== 'compact' || drawn !== `${navFit.window} ${navFit.trim}`) placeNavigation();
       // A focused control the new presentation no longer shows hands focus to
       // the selected tab, never to a hidden control.
       const focused = document.activeElement;
@@ -207,40 +215,103 @@
       return {left: Math.min(Math.max(at + widths[index] / 2 - window / 2, 0), Math.max(0, total - window))};
     }
 
-    /* The compact strip scrolls (never by the user) to where navLayout places
-     * the selected section, and fades where sections continue. The strip
-     * spans the whole control, First and Last over its ends: it is clipped
-     * to the window, and at the first or last section (data-nav-at) the
-     * action that would lead there is gone and the window takes its place.
-     * A choice that moves the window (`motion`: the page's own choice,
-     * {direction, distance}, the step its panel slides by) slides it, by
-     * DPMotion's own slide of the strip alone, the way the choice goes (as
-     * the panel does); one that leaves the window where it is, a resize or
-     * a refit moves nothing. Where the window is is where it was last placed
-     * (navFit.left), even while that slide has yet to draw it. */
+    /* Where the window goes for the operator's choice of this section
+     * (`motion`), from where it is drawn (navFit.drawn): the window keeps
+     * the interaction targets where the operator's pointer is. A section the
+     * drawn window already shows whole leaves it where it is. The rightmost
+     * section shown (a part of NAV_TARGET or more), chosen going forward,
+     * moves the window on by exactly as much as puts the next section where
+     * the chosen one was -- so the next click, at the same place, chooses
+     * the next section -- and the leftmost going back, the previous one;
+     * where the next section is narrower than the part shown, it ends where
+     * that part ended, never beyond. The selection stays whole: the window
+     * moves no farther than that allows, and never past the list's ends.
+     * The first or last section chosen where it is already shown is the
+     * end arrangement at once (`snap`: no selector slide); First and Last
+     * (`motion.via === 'end'`) and a section the window does not show keep
+     * the ordinary layout (navLayout). null: the ordinary layout. */
+    function navChoice(index, room, motion) {
+      const {widths, edge, slot} = navFit;
+      const {left: drawn, index: was} = navFit.drawn;
+      const count = widths.length;
+      const at = [];
+      let end = edge;
+      for (const each of widths) { at.push(end); end += each; }
+      const total = end + edge;
+      const offset = k => (k > 0 ? slot : 0);
+      // The drawn window on the list, and the sections it showed.
+      const before = drawn - slot + offset(was);
+      const beforeRoom = navRoom(navFit.window, was);
+      const part = k => Math.min(at[k] + widths[k], before + beforeRoom) - Math.max(at[k], before);
+      const shown = widths.map((_, k) => k).filter(k => k === was || part(k) >= NAV_TARGET);
+      if (!shown.includes(index)) return null;
+      if (index === 0 || index === count - 1) {
+        if (motion.via === 'end') return null;
+        return {left: (navLayout(room, index) || navFallback(room, index)).left, snap: true};
+      }
+      // The list where it is drawn, with this section's own travel actions.
+      const still = before + offset(index) - offset(was);
+      const forward = index > was && index === shown.at(-1);
+      const backward = index < was && index === shown[0];
+      let left = still;
+      if (forward || backward) {
+        const step = Math.min(widths[index] - Math.max(0, part(index) - widths[index + (forward ? 1 : -1)]),
+          forward ? at[index] - still : still + room - at[index] - widths[index]);
+        left = still + (forward ? step : -step);
+      }
+      left = Math.min(Math.max(left, 0), Math.max(0, total - room));
+      const whole = at[index] >= left - 0.5 && at[index] + widths[index] <= left + room + 0.5;
+      return whole ? {left, snap: false} : null;
+    }
+
+    /* The compact strip scrolls (never by the user) to where the selected
+     * section's window goes -- for the operator's choice (`motion`: the
+     * page's own, {direction, distance, via}) as navChoice decides, else
+     * (a render, a resize, a refit) where navLayout places it -- and fades
+     * where sections continue. The strip spans the whole control, First and
+     * Last over its ends: it is clipped to the window, and at the first or
+     * last section (data-nav-at) the action that would lead there is gone
+     * and the window takes its place. A choice that moves the window from
+     * where it is drawn slides it, by DPMotion's own slide of the strip
+     * alone, the way the choice goes (as the panel does), unless it is an
+     * end section's snap; anything else is drawn at once, ending a slide of
+     * the strip still running. Where the window goes is decided here
+     * (navFit.left); the slide's commit only draws the latest decision. */
     function placeNavigation(motion = null) {
       const nav = locate();
       if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navDesktop.matches) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
-      const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
-      const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+      const index = Array.from(strip.querySelectorAll('[role="tab"]')).findIndex(tab => tab.getAttribute('aria-selected') === 'true');
       if (index < 0) return;
-      const {widths, edge, slot} = navFit;
       const room = navRoom(navFit.window, index);
       // (Without a layout -- only when no window width gives every section one
       // -- the selection as centred as the list's ends allow.)
-      const layout = navLayout(room, index) || navFallback(room, index);
+      const {left, snap} = (motion && navFit.drawn && navChoice(index, room, motion))
+        || {left: (navLayout(room, index) || navFallback(room, index)).left, snap: false};
       // The window starts after First, unless First is gone; the strip's own
       // padding (one slot) lets it start before the list.
-      const start = index > 0 ? slot : 0;
-      const target = Math.round(layout.left + slot - start);
-      const placed = navFit.left ?? strip.scrollLeft;
+      const target = Math.round(left + navFit.slot - (index > 0 ? navFit.slot : 0));
       navFit.left = target;
-      if (placed !== target && motion?.direction && window.DPMotion) {
-        window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
-          distance: motion.distance}, () => placeNavigation());
+      navFit.index = index;
+      if ((navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
+        navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
+          distance: motion.distance}, drawNavigation);
         return;
       }
+      navFit.slide?.skip();
+      drawNavigation();
+    }
+
+    // The latest decided window, drawn.
+    function drawNavigation() {
+      const nav = locate();
+      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navDesktop.matches) return;
+      const strip = nav.querySelector('.dp-section-nav-strip');
+      const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
+      const {widths, edge, slot, left: target, index} = navFit;
+      const room = navRoom(navFit.window, index);
+      const start = index > 0 ? slot : 0;
+      navFit.drawn = {left: target, index};
       const at = tabs.length === 1 ? 'only' : index === 0 ? 'first' : index === tabs.length - 1 ? 'last' : '';
       const control = strip.parentElement;
       if ((control.dataset.navAt || '') !== at) {
@@ -250,9 +321,9 @@
       if (strip.scrollLeft !== target) strip.scrollLeft = target;
       // The section each window edge cuts where sections continue fades
       // outwards from that edge, over NAV_FADE of what it shows (NAV_TARGET at
-      // least); a part smaller than NAV_TARGET -- only where no layout fits
-      // (navFallback) -- is not shown at all. On the tab itself: the strip is
-      // DPMotion's slide surface, which cannot carry a mask of its own.
+      // least); a part smaller than NAV_TARGET is not shown at all. On the tab
+      // itself: the strip is DPMotion's slide surface, which cannot carry a
+      // mask of its own.
       const from = target - slot + start;
       let x = edge;
       tabs.forEach((tab, k) => {

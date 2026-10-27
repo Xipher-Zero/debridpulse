@@ -798,9 +798,10 @@
     if (scroller) scroller.scrollTop = 0;
   }
 
-  /* The operator chose a section: the strip changes at once and the panel
-   * slides across, by the tabs' displayed order. */
-  function chooseTab(name, focus = false) {
+  /* The operator chose a section (`via` 'tab', or 'end' through First /
+   * Last): the strip changes at once and the panel slides across, by the
+   * tabs' displayed order. */
+  function chooseTab(name, focus = false, via = 'tab') {
     const view = root();
     const order = Array.from(view?.querySelectorAll('.dp-help-tab') || []).map(tab => tab.dataset.tab);
     // From the section chosen last -- what a slide still under way will
@@ -808,7 +809,7 @@
     const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
     const step = from >= 0 && to >= 0 ? to - from : 0;
     // The compact navigator's window, when it moves, slides the same way.
-    selectTabControl(name, focus, {direction: Math.sign(step), distance: Math.abs(step)});
+    selectTabControl(name, focus, {direction: Math.sign(step), distance: Math.abs(step), via});
     if (window.DPMotion) window.DPMotion.slide({element: view?.querySelector('.dp-help-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
@@ -868,7 +869,7 @@
       if (!travel) return;
       const tabs = Array.from(view.querySelectorAll('.dp-help-tab'));
       const target = travel.dataset.helpEnd === 'first' ? tabs[0] : tabs.at(-1);
-      if (target) chooseTab(target.dataset.tab, document.activeElement === travel);
+      if (target) chooseTab(target.dataset.tab, document.activeElement === travel, 'end');
     });
 
     view.addEventListener('keydown', event => {

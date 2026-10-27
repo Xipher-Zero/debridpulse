@@ -82,7 +82,7 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
         choose = source[source.index("function chooseTab("):]
         choose = choose[:choose.index("\n  }\n")]
         assert "selectTabControl(name" in choose and "showTabPanel" in choose, owner
-        assert "{direction: Math.sign(step), distance: Math.abs(step)}" in choose, owner
+        assert "{direction: Math.sign(step), distance: Math.abs(step), via}" in choose, owner
         # Render and restore activate in place.
         assert "activateTab(state.activeTab);" in source, owner
 

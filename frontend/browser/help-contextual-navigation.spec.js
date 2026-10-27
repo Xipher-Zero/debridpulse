@@ -65,6 +65,7 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
    * the frames that break it). */
   await page.addInitScript(() => {
     window.__dpNav = [];
+    window.__dpContent = [];
     window.__dpEnds = [];
     // Where the destination's own snapshot stands now: + arriving from the
     // right (forward), - from the left (backward), 0 none.
@@ -73,6 +74,10 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
       return match ? Math.sign(Math.round(+match[1].split(',')[4])) : 0;
     };
     const tick = () => {
+      // The content viewport's own slide, recorded whether or not the selector slides.
+      const content = document.querySelector('#view-help .dp-help-scroll.dp-motion-surface');
+      if (content) window.__dpContent.push({direction: content.dataset.dpMotionDirection, arriving: arriving(content),
+        moving: document.getAnimations().some(a => a.effect?.target === content && /\(root\)$/.test(a.effect?.pseudoElement || ''))});
       const strip = document.querySelector('#view-help .dp-help-tabs.dp-motion-surface');
       if (strip) {
         const control = strip.parentElement.getBoundingClientRect();
@@ -290,9 +295,9 @@ async function choose(page, id) {
   const k = at.order.indexOf(id);
   if (k === at.index) return;
   if (at.shown[k] >= TARGET) {
+    // The middle of what the window shows of it (the strip is clipped to the window).
     const box = await tab.boundingBox();
-    const strip = await page.locator('#view-help .dp-help-tabs').boundingBox();
-    const x = (Math.max(box.x, strip.x) + Math.min(box.x + box.width, strip.x + strip.width)) / 2;
+    const x = (Math.max(box.x, at.strip.left + at.clip[0]) + Math.min(box.x + box.width, at.strip.right - at.clip[1])) / 2;
     await page.mouse.click(x, box.y + box.height / 2);
   } else {
     await selected(page).focus();
@@ -459,13 +464,19 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   await expect(first).not.toBeFocused();   // a hidden action takes no focus
   const control = h.control;
 
-  // Between them: the selection whole and both edges fading.
+  // Between them: the selection whole, away from both ends; each edge fades
+  // where it cuts a section, or falls (within less than TARGET) on a section
+  // boundary, that part not shown (the window keeps where it is drawn, the
+  // operator's targets under the pointer, before centring the selection).
   const middle = Math.floor(order.length / 2);
   await choose(page, order[middle]);
   h = await header(page);
   expect(h.currentWhole).toBe(true);
-  expect(h.fadeStart).toBeGreaterThanOrEqual(TARGET);
-  expect(h.fadeEnd).toBeGreaterThanOrEqual(TARGET);
+  for (const [fade, k] of [[h.fadeStart, h.shown.findIndex(part => part > 0)], [h.fadeEnd, h.shown.findLastIndex(part => part > 0)]]) {
+    if (fade) expect(fade).toBeGreaterThanOrEqual(TARGET);
+    else expect(Math.abs(h.shown[k] - h.widths[k]), `${h.order[k]} whole at the edge`).toBeLessThanOrEqual(0.5);
+  }
+  expect(h.shown.filter(part => part > 0.5 && part < TARGET)).toEqual([]);
   expect(h.atStart).toBeGreaterThan(h.edge);
   expect(h.atEnd).toBeGreaterThan(h.edge);
   await expect(first).toBeVisible();
@@ -719,13 +730,17 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
 
 /* Whether the window moved for the last choice, and how it slid. */
 async function slideOf(page, act) {
-  await page.evaluate(() => { window.__dpNav = []; });
+  await page.evaluate(() => { window.__dpNav = []; window.__dpContent = []; });
   const before = await page.evaluate(() => document.querySelector('#view-help .dp-help-tabs').scrollLeft);
   await act();
   await settle(page);
   const after = await page.evaluate(() => document.querySelector('#view-help .dp-help-tabs').scrollLeft);
   const frames = await page.evaluate(() => window.__dpNav);
-  return {moved: after - before, frames, directions: [...new Set(frames.map(frame => frame.direction))],
+  const content = await page.evaluate(() => window.__dpContent);
+  return {moved: after - before, frames,
+    // The content viewport's own slide: its direction and the way it arrives.
+    content: {directions: [...new Set(content.map(frame => frame.direction))], arriving: [...new Set(content.map(frame => frame.arriving).filter(Boolean))],
+      moving: content.filter(frame => frame.moving).length}, directions: [...new Set(frames.map(frame => frame.direction))],
     moving: frames.filter(frame => frame.moving).length,
     strip: [...new Set(frames.map(frame => frame.strip).filter(Boolean))],
     panel: [...new Set(frames.map(frame => frame.panel).filter(Boolean))],
@@ -744,6 +759,18 @@ const expectSlide = (slide, direction, label) => {
   expect(slide.controls, label).toBe(1);                        // the control, the header and the identity stay
   expect(slide.headers, label).toBe(1);
   expect(slide.copies, label).toBe(1);
+};
+
+/* The first or last section chosen where the window already shows it: the
+ * selector is in its end arrangement at once -- never slid -- while
+ * the content viewport slides as for any choice, the way the choice goes. */
+const expectSnap = (slide, direction, label) => {
+  // (Its scroll may already be the end arrangement's: then only the travel
+  // action goes and the window takes its place.)
+  expect(slide.frames, `${label}: no selector slide`).toEqual([]);
+  expect(slide.content.directions, `${label}: the content slides`).toEqual([direction]);
+  expect(slide.content.arriving, label).toEqual([direction === 'forward' ? 1 : -1]);
+  expect(slide.content.moving, label).toBeGreaterThanOrEqual(3);
 };
 
 test('the Help window slides only when a choice moves it, the same way as the panel: neighbours, edges, First and Last, into either end, and a quick return turns back', async ({page}) => {
@@ -800,15 +827,19 @@ test('the Help window slides only when a choice moves it, the same way as the pa
   // shifts the window slides the way it goes; the others move nothing.
   let slid = 0;
   for (let k = 1; k < order.length; k += 1) {
+    const exposed = (await header(page)).shown[k] >= TARGET;
     slide = await slideOf(page, () => choose(page, order[k]));
-    if (slide.moved) { expectSlide(slide, 'forward', order[k]); slid += 1; }
+    if (k === order.length - 1 && exposed) expectSnap(slide, 'forward', `${order[k]}, shown: snapped`);
+    else if (slide.moved) { expectSlide(slide, 'forward', order[k]); slid += 1; }
     else expect(slide.frames, order[k]).toEqual([]);
   }
   expect(slid).toBeGreaterThan(0);
   slid = 0;
   for (let k = order.length - 2; k >= 0; k -= 1) {
+    const exposed = (await header(page)).shown[k] >= TARGET;
     slide = await slideOf(page, () => choose(page, order[k]));
-    if (slide.moved) { expectSlide(slide, 'backward', order[k]); slid += 1; }
+    if (k === 0 && exposed) expectSnap(slide, 'backward', `${order[k]}, shown: snapped`);
+    else if (slide.moved) { expectSlide(slide, 'backward', order[k]); slid += 1; }
     else expect(slide.frames, order[k]).toEqual([]);
   }
   expect(slid).toBeGreaterThan(0);
@@ -839,6 +870,102 @@ test('the Help window slides only when a choice moves it, the same way as the pa
   h = await header(page);
   expect(h.currentWhole).toBe(true);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
+});
+
+/* Stable edge targets. Choosing the rightmost section the window shows moves
+ * it on by just as much as puts the next section where the chosen one was;
+ * choosing the leftmost, the previous one. So the operator clicks the edge
+ * preview again and again at one point, without moving the pointer, and
+ * each click chooses the next section -- read from what is under that point
+ * before each click, not from scroll offsets. The selection is whole after
+ * every move. Where the window then shows the first or last section, choosing
+ * it puts the selector in its end arrangement at once (no selector slide;
+ * its travel action gone, its place the window's) while the content
+ * viewport slides as for any choice. */
+for (const fonts of ['web fonts', 'fallback fonts']) {
+  test(`with ${fonts}, the Help edge preview clicked again and again at one point chooses the next section each time, both ways, and the end section snaps while the content slides`, async ({page}) => {
+    await openHelp(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
+    const order = (await header(page)).order;
+    const n = order.length;
+    const under = point => page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-tab]')?.dataset.tab ?? null, [point.x, point.y]);
+    const rows = [];
+    for (const width of [780, 1100]) {
+      await resize(page, width);
+      for (const dir of ['forward', 'backward']) {
+        const step = dir === 'forward' ? 1 : -1;
+        await choose(page, order[dir === 'forward' ? 0 : n - 1]);
+        let h = await header(page);
+        expect(h.compact, `${width}px`).toBe(true);
+        // The edge preview: the rightmost (leftmost) part of TARGET or more.
+        const shown = h.shown.map((part, k) => (part >= TARGET && k !== h.index ? k : -1)).filter(k => k >= 0);
+        let expected = dir === 'forward' ? shown.at(-1) : shown[0];
+        const point = await page.evaluate(([sel, k]) => {
+          const strip = document.querySelector(sel);
+          const box = strip.getBoundingClientRect();
+          const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(strip).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
+          const [top, right = top, , left = right] = inset;
+          const t = strip.querySelectorAll('[data-tab]')[k].getBoundingClientRect();
+          return {x: (Math.max(t.left, box.left + left) + Math.min(t.right, box.right - right)) / 2, y: (t.top + t.bottom) / 2};
+        }, ['#view-help .dp-help-tabs', expected]);
+        const trail = [];
+        for (;;) {
+          const label = `${dir} at ${width}px, click ${trail.length + 1} at x=${point.x.toFixed(1)}`;
+          expect(await under(point), `${label}: the next section is under the pointer`).toBe(order[expected]);
+          const atEnd = expected === 0 || expected === n - 1;
+          const slide = await slideOf(page, () => page.mouse.click(point.x, point.y));
+          await expect(selected(page), label).toHaveAttribute('data-tab', order[expected]);
+          h = await header(page);
+          expect(h.currentWhole, `${label}: the selection whole`).toBe(true);
+          expect(h.labelWhole, label).toBe(true);
+          expect(problems(h, h), label).toEqual([]);
+          expectNoHiddenCut(h, label);
+          trail.push(order[expected]);
+          if (atEnd) {
+            expectSnap(slide, dir, label);
+            // Its travel action gone, the window in its place, the section at its end.
+            expect(h.ends.map(end => end.shown), label).toEqual([expected !== 0, expected !== n - 1]);
+            expect(Math.abs((expected === 0 ? h.atStart : h.atEnd) - h.edge), label).toBeLessThanOrEqual(1);
+            break;
+          }
+          if (slide.moved) expectSlide(slide, dir, label);
+          else expect(slide.frames, label).toEqual([]);
+          expected += step;
+        }
+        rows.push(`${dir} ${width}px at x=${point.x.toFixed(1)}: ${trail.join(' > ')}`);
+        if (width === 780) await page.locator('#view-help .dp-help-master-header').screenshot({
+          path: `test-results/checkpoint-help-navigator-repeat-${fonts.split(' ')[0]}-${dir}-780.png`});
+      }
+    }
+    expect(await page.evaluate(() => window.__dpEnds)).toEqual([]);
+    test.info().annotations.push({type: `one point, repeated (${fonts})`, description: rows.join('; ')});
+  });
+}
+
+/* A quick choice of a shown end section, made while a slide of the selector
+ * is still to run, ends it: the selector is drawn in its end arrangement and
+ * no older slide plays over it. */
+test('a Help end section chosen straight after a move that slides the selector snaps, and no older slide plays over it', async ({page}) => {
+  await openHelp(page, 1100);
+  const order = (await header(page)).order;
+  const n = order.length;
+  await choose(page, order[n - 1]);
+  const h0 = await header(page);
+  const leftmost = h0.shown.findIndex((part, k) => part >= TARGET && k !== h0.index);
+  expect(h0.shown[n - 1]).toBeGreaterThanOrEqual(TARGET);
+  const slide = await slideOf(page, () => page.evaluate(([sel, k]) => {
+    const tabs = [...document.querySelectorAll(`${sel} [data-tab]`)];
+    tabs[k].click();          // backward: the selector would slide
+    tabs.at(-1).click();      // the shown last section, in the same task
+  }, ['#view-help .dp-help-tabs', leftmost]));
+  await expect(selected(page)).toHaveAttribute('data-tab', order[n - 1]);
+  expect(slide.moving, 'no selector slide drawn').toBe(0);
+  expect(slide.strip, 'no selector slide drawn').toEqual([]);
+  const h = await header(page);
+  expect(h.currentWhole).toBe(true);
+  expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
+  expect(h.ends.map(end => end.shown)).toEqual([true, false]);
+  expect(slide.moved).toBe(0);                                   // where it was, in its end arrangement
+  expect(await page.evaluate(sel => document.querySelector(sel).classList.contains('dp-motion-surface'), '#view-help .dp-help-tabs')).toBe(false);
 });
 
 test('with reduced motion the Help window moves at once and never slides', async ({page}) => {

@@ -5211,16 +5211,17 @@
     });
   }
 
-  /* The operator chose a tab: the strip changes at once and the panel slides
-   * across from the one on screen, by the tabs' displayed order. */
-  function chooseTab(name) {
+  /* The operator chose a tab (`via` 'tab', or 'end' through First / Last):
+   * the strip changes at once and the panel slides across from the one on
+   * screen, by the tabs' displayed order. */
+  function chooseTab(name, via = 'tab') {
     const order = Array.from(root()?.querySelectorAll('.dp-settings-tabs [data-tab]') || []).map(tab => tab.dataset.tab);
     // From the section chosen last -- what a slide still under way will
     // show -- so a quick return turns back.
     const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
     const step = from >= 0 && to >= 0 ? to - from : 0;
     // The compact navigator's window, when it moves, slides the same way.
-    selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step)});
+    selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step), via});
     if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
@@ -5504,7 +5505,7 @@
         const target = travel.dataset.settingsEnd === 'first' ? tabs[0] : tabs.at(-1);
         if (!target) return;
         const focused = document.activeElement === travel;
-        chooseTab(target.dataset.tab);
+        chooseTab(target.dataset.tab, 'end');
         if (focused) target.focus({preventScroll: true});
         return;
       }
