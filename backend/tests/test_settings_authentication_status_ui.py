@@ -46,8 +46,10 @@ def test_session_information_and_control_form_one_centred_bounded_island():
     assert "padding: 10px 22px;" in island
     assert "gap: 18px 44px;" in island
 
-    # Stacked, the island stops being content-bounded: there is one column.
-    narrow = css[css.index("@media (max-width: 900px)"):]
+    # Stacked, the island stops being content-bounded: there is one column --
+    # handheld only (the shell's 780px mode change), never from 900px.
+    assert "@media (max-width: 900px)" not in css
+    narrow = css[css.index("@media (max-width: 779px)"):]
     assert ".dp-settings-auth-session-row" in narrow
     assert "flex-direction: column;" in narrow
 

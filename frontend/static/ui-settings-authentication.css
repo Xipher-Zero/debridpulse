@@ -342,7 +342,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-username-password-card > .card-header,
   #view-settings .dp-settings-users-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
@@ -759,7 +759,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-oidc-grouped-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;

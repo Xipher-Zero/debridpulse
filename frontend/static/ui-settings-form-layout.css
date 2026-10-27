@@ -13,7 +13,7 @@
 
    The Extraction behaviour group is likewise stated once, by the Extraction
    geometry owner (ui-settings-downloads-completion.css). */
-@media (min-width: 901px) {
+@media (min-width: 780px) {
   /* The Extraction panel owns the available Settings viewport height. The
      password editor then flexes into the remaining card body instead of ending
      at an arbitrary textarea-height cap and leaving a large dead area below. */

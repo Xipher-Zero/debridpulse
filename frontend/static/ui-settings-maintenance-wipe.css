@@ -347,7 +347,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-event-logging-card > .card-header,
   #view-settings .dp-settings-database-wipe-card > .card-header,
   #view-settings .dp-settings-backups-retention-card > .card-header {

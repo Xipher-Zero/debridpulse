@@ -48,6 +48,16 @@ async function openMedia(page) {
   await picker(page).scrollIntoViewIfNeeded();
 }
 
+// Network Sources is closed on arrival (DP 1.0.14): open it, and let its
+// opening motion settle before its row is measured.
+async function openNetwork(page) {
+  const chip = page.locator('.dp-settings-general-sources .dp-settings-disclosure');
+  if ((await chip.getAttribute('aria-expanded')) !== 'true') await chip.click();
+  await expect(network(page)).toBeVisible();
+  await page.waitForFunction(() => !document.querySelector(
+    '[data-panel="sources"] > .dp-settings-general-sources > .dp-settings-group-body').getAnimations().length);
+}
+
 async function saveSubtitle(page, code) {
   const current = await (await page.request.get('/api/settings')).json();
   const saved = await page.request.put('/api/settings', {data: {...current, preferred_subtitle_language: code}});
@@ -133,6 +143,7 @@ test('desktop: the deck is fixed, Network Sources is pinned with one full row, e
   async ({page}) => {
     await page.setViewportSize({width: 1000, height: 900});
     await openSettings(page, 'sources');
+    await openNetwork(page);
     await expect.poll(async () => (await geometry(page)).bodyBottom).toBeGreaterThan(0);
     const facts = await geometry(page);
     expect(facts.deckOverflow, 'the deck itself scrolls').toBeLessThanOrEqual(1);
@@ -194,6 +205,7 @@ test('expanded Usenet servers keep the end of the Premium list reachable, Networ
   async ({page}) => {
     await page.setViewportSize({width: 1600, height: 935});
     await openSettings(page, 'sources');
+    await openNetwork(page);
     await expect.poll(async () => (await geometry(page)).bodyBottom).toBeGreaterThan(0);
     const pinned = async () => page.evaluate(() => {
       const card = document.querySelector('[data-panel="sources"] > .dp-settings-general-sources').getBoundingClientRect();
@@ -238,6 +250,7 @@ test('a short viewport scrolls the deck by only its shortfall and keeps every co
   async ({page}) => {
     await page.setViewportSize({width: 1000, height: 420});
     await openSettings(page, 'sources');
+    await openNetwork(page);
     await expect.poll(async () => (await geometry(page)).bodyBottom).toBeGreaterThan(0);
     const facts = await geometry(page);
     expect(facts.deckOverflow).toBeGreaterThan(0);                  // the bounded fallback engages...
@@ -250,6 +263,7 @@ test('a short viewport scrolls the deck by only its shortfall and keeps every co
 
 test('a narrow width keeps one full Network row with its own scroll', async ({page}) => {
   await openSettings(page, 'sources');
+  await openNetwork(page);
   await page.setViewportSize({width: 700, height: 900});
   await expect.poll(async () => (await geometry(page)).bodyBottom).toBeGreaterThan(0);
   const facts = await geometry(page);

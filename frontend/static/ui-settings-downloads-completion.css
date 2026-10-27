@@ -157,7 +157,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-extraction-card > .card-header {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto;

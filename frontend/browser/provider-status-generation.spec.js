@@ -251,6 +251,9 @@ test('UISTATE-003-A an accepted disable is immediate while an unrelated probe is
   await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
   await expect(directSources(page)).toHaveAttribute('data-provider-state', 'healthy');
   // A member's accepted disable changes the aggregate in the same immediate snapshot.
+  // (Its tile is inside Network Sources, closed on arrival: opening it is
+  // local presentation, no request.)
+  await page.locator('.dp-settings-general-sources .dp-settings-disclosure').click();
   await accept(page, 'media');
   await expect.poll(() => ctl.pending.length).toBe(2);
   await expect(directSources(page)).toHaveAttribute('data-provider-state', 'mixed');

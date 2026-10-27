@@ -409,6 +409,41 @@ def test_general_sources_uses_the_one_canonical_disclosure_primitive():
         "Premium Services was made collapsible by this pass"
 
 
+def test_network_sources_opens_closed_and_settings_keeps_one_workspace_from_780px():
+    """DP 1.0.14: Network Sources is closed on first arrival (the remembered
+    choice still wins afterwards), its row is measured as it opens, and the
+    Settings workspace, its bounded Services and Extraction chains, its card
+    headers and the topbar's speed badge change mode only at the shell's
+    780px boundary -- no Settings rule switches at 900/901px."""
+    panel = body(SETTINGS, "sourcesPanel")
+    general = panel[panel.index("const generalSources = groupCard("):]
+    general = general[:general.index("});")]
+    assert "expanded: false," in general and "expanded: true" not in general
+    assert "disclosureOpen(persistKey, options.expanded)" in body(SETTINGS, "groupCard")
+    opening = body(SETTINGS, "setDisclosureExpanded")
+    assert "body.matches(SERVICES_LISTS.networkTop)" in opening
+    assert opening.index("servicesRowFit?.()") < opening.index("window.DPMotion.disclose(")
+    assert "if (row && !network.getAnimations().length) {" in body(SETTINGS, "fitServicesRows")
+
+    for name in ("ui-settings-page.css", "ui-settings-form-layout.css", "ui-settings-archive-passwords.css",
+                 "ui-settings-downloads-completion.css", "ui-settings-authentication.css",
+                 "ui-settings-notifications.css", "ui-settings-maintenance-wipe.css"):
+        css = read(name)
+        assert "(max-width: 900px)" not in css and "(min-width: 901px)" not in css, name
+    page = read("ui-settings-page.css")
+    assert "@media (min-width: 780px) {\n  #content:has(#view-settings.active) {\n    overflow-y: hidden;" in page
+    assert "@media (min-width: 780px) {\n  #view-settings .dp-settings-scroll:has([data-panel=\"sources\"]:not([hidden]))" in page
+    assert "@media (max-width: 779px) {\n  #view-settings.dp-settings-clean-view.active {\n    height: auto;" in page
+    assert "@media (min-width: 780px) {\n  /* The Extraction panel owns" in FORM_LAYOUT
+    # A centred second-row copy is bounded to the header it sits in.
+    assert "max-width: calc(200cqi - 100%);" in page
+
+    # The badge leaves the topbar only with the handheld one (below 780px).
+    assert ("@media (max-width: 899px) {\n  #page-title { font-size: 21px; }\n"
+            "  #topbar-actions .btn { padding-inline: 9px; }\n}") in read("ui-shell.css")
+    assert "@media (min-width: 780px) and (max-width: 1050px) {\n  .dp-page-heading { min-width: 0; }" in read("ui-shell-structural.css")
+
+
 def test_the_provider_header_reports_exactly_the_three_configuration_states():
     status = body(SETTINGS, "providerStatus")
     assert "'Unconfigured'" in status and "'Unverified'" in status and "'Verified'" in status

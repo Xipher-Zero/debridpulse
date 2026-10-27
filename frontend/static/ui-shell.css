@@ -453,7 +453,6 @@ body.light #runtime-speed-badge {
 @media (max-width: 899px) {
   #page-title { font-size: 21px; }
   #topbar-actions .btn { padding-inline: 9px; }
-  #runtime-speed-badge { display: none !important; }
 }
 
 @media (max-width: 778px) {

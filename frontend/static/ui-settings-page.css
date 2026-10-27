@@ -6,10 +6,11 @@
  * universal UI language rather than being recreated here.
  */
 
-/* Desktop follows the same shell-height contract as Downloads and Activity:
-   #content already owns the 24px lower datum, so Settings fills that box rather
-   than recomputing viewport height. */
-@media (min-width: 901px) {
+/* Desktop and tablet (780px and wider, the shell's one mode change) follow the
+   same shell-height contract as Downloads and Activity: #content already owns
+   the 24px lower datum, so Settings fills that box rather than recomputing
+   viewport height. */
+@media (min-width: 780px) {
   #content:has(#view-settings.active) {
     overflow-y: hidden;
   }
@@ -121,7 +122,7 @@
 /* ── Services: two independent list viewports ───────────────────────────
    Network Sources shows exactly one full row of its protocol boxes and
    scrolls the rest inside itself, at every width. The row height is measured
-   from the rendered grid (fitNetworkSourcesRow); until it is, the body is
+   from the rendered grid (fitServicesRows); until it is, the body is
    simply as tall as its content. */
 #view-settings [data-panel="sources"] > .dp-settings-general-sources > .dp-settings-group-body {
   box-sizing: border-box;
@@ -137,7 +138,7 @@
    list. Neither card scrolls the deck. A viewport too short for both headers,
    a minimum Premium list and Network's row is the one case the deck itself
    scrolls -- by exactly that shortfall, never unboundedly. */
-@media (min-width: 901px) {
+@media (min-width: 780px) {
   #view-settings .dp-settings-scroll:has([data-panel="sources"]:not([hidden])) .dp-settings-panels {
     min-height: 100%;
     max-height: 100%;
@@ -1354,15 +1355,27 @@
   min-width: 0;
 }
 
+/* The centre copy takes the header's second row, centred on the header's
+   tracks. Where those tracks' minimums are wider than the header (a narrow
+   tablet), their midpoint lies right of the header's, so the copy is bounded
+   to the room it has on both sides of that midpoint inside the header
+   (2 x the header's width, measured as its container, minus the row) and
+   wraps rather than run past the card. Where it fits, the bound is wider than
+   the copy and nothing moves. */
 @media (max-width: 1180px) {
+  #view-settings .card-header:not(.dp-settings-card-header--hinted):has(> .dp-settings-card-header-center) {
+    container-type: inline-size;
+  }
+
   #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1;
     grid-row: 2;
     padding-top: 2px;
+    max-width: calc(200cqi - 100%);
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings.dp-settings-clean-view.active {
     height: auto;
     overflow: visible;

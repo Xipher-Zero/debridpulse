@@ -456,8 +456,14 @@
    * beneath Network Sources, out of reach. Both are MEASURED from
    * the rendered layout -- track count, box and card heights, padding -- and
    * kept current as it is resized, shown or re-wrapped; no size is assumed.
+   * Network's row is measured as its body opens (servicesRowFit, from the one
+   * disclosure owner), before the motion starts, so Network Sources -- closed
+   * on first arrival -- opens to its row rather than to its whole content and
+   * then jumping back; while that motion runs, its padding is mid-animation,
+   * so the row is left as measured.
    * The geometry itself is CSS's (ui-settings-page.css). */
   let servicesRowObserver = null;
+  let servicesRowFit = null;
 
   function fitServicesRows() {
     servicesRowObserver?.disconnect();
@@ -472,13 +478,16 @@
     const fit = () => {
       const tile = grid?.firstElementChild;
       const row = tile ? tile.getBoundingClientRect().height : 0;
-      if (row) network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row)}px`);
+      if (row && !network.getAnimations().length) {
+        network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row)}px`);
+      }
       const card = premium?.firstElementChild;
       const body = card?.querySelector(':scope > .card-body');
       const open = body && !body.hidden ? body.getBoundingClientRect().height : 0;
       const first = card ? card.getBoundingClientRect().height - open : 0;
       if (first) premium.style.setProperty('--dp-settings-premium-row-min', `${padded(premium, first)}px`);
     };
+    servicesRowFit = fit;
     fit();
     if (typeof ResizeObserver === 'function') {
       servicesRowObserver = new ResizeObserver(fit);
@@ -2202,10 +2211,10 @@
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
       collapsible: true,
-      // The network sources are what an operator arriving at Services most
-      // often needs to see; a later manual collapse is theirs and survives
-      // every canonical refresh.
-      expanded: true,
+      // Arriving at Services, the protocol boxes start closed so Premium
+      // Services takes the room; a later manual expand (or collapse) is the
+      // operator's and survives every canonical refresh.
+      expanded: false,
     });
     return premiumServices + generalSources;
   }
@@ -5330,6 +5339,12 @@
     const persistKey = String(button.dataset.disclosurePersist || '');
     if (persistKey) disclosureChoices.set(persistKey, !!expanded);
     const body = document.getElementById(button.getAttribute('aria-controls'));
+    // A body whose height is measured from its own content (Network Sources'
+    // row) is measured as it opens, so its motion ends where it will rest.
+    if (expanded && body?.hidden && body.matches(SERVICES_LISTS.networkTop)) {
+      body.hidden = false;
+      servicesRowFit?.();
+    }
     if (body && window.DPMotion) window.DPMotion.disclose(body, !!expanded, {animate, focusReturn: button});
     else if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');

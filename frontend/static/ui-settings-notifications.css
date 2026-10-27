@@ -233,7 +233,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 779px) {
   #view-settings .dp-settings-discord-card > .card-header,
   #view-settings .dp-settings-statistics-reporting-card > .card-header {
     grid-template-columns: minmax(0, 1fr);

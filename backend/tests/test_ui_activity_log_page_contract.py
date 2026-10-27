@@ -186,9 +186,8 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     shell = read("ui-shell-structural.css")
     activity = read("ui-activity-log-page.css")
 
-    assert "@media (min-width: 901px)" in shell
-    assert ".sidebar-footer" in shell
-    assert "bottom: 24px !important" in shell
+    # The desktop datum is the shell's from its one 780px mode change.
+    assert "@media (min-width: 780px) {\n  .sidebar-footer {\n    bottom: 24px !important;" in shell
     assert ":has(#view-torrents.active) .sidebar-footer" not in shell
     assert ".sidebar-footer" not in activity
 

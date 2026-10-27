@@ -601,9 +601,10 @@ body.light .theme-toggle {
   }
 }
 
-/* Preserve the full desktop control row immediately above the compact-shell
-   breakpoint by allowing the heading flex item to yield its unused minimum. */
-@media (min-width: 901px) and (max-width: 1050px) {
+/* Preserve the full desktop control row (the runtime speed badge included) down
+   to the shell's 780px mode change by allowing the heading flex item to yield
+   its unused minimum; below 780px the handheld topbar hides the badge. */
+@media (min-width: 780px) and (max-width: 1050px) {
   .dp-page-heading { min-width: 0; }
 }
 
