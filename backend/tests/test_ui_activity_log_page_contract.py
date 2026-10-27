@@ -205,3 +205,20 @@ def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> Non
     transfer = overlay.index("/ui-transfer-contract.css?v=33")
 
     assert shell < dashboard < controls < stats < activity < downloads < transfer
+
+
+def test_activity_log_workspace_holds_from_780px_and_keeps_its_configured_page() -> None:
+    # 1.0.14 four-fix: one full-height workspace from the desktop down to the
+    # tablet floor (780px); the 62vh list is handheld only. The list keeps its
+    # configured page (50/100/250) and scrolls it -- never trimmed to the view.
+    css = read("ui-activity-log-page.css")
+    assert "@media (min-width: 901px)" not in css and "@media (max-width: 900px)" not in css
+    workspace = css[css.index("@media (min-width: 780px) {\n  #content:has(#view-events.active) {"):]
+    workspace = workspace[:workspace.index("\n}\n")]
+    assert "height: 100% !important;" in workspace and "overflow-y: hidden;" in workspace
+    handheld = css[css.index("@media (max-width: 779px) {\n  #view-events.active {"):]
+    handheld = handheld[:handheld.index("\n}\n")]
+    assert "max-height: 62vh;" in handheld and css.count("62vh") == 1
+    runtime = read("ui-activity-log-runtime.js")
+    assert "const PAGE_SIZES=[50,100,250],DEFAULT_PAGE_SIZE=100;" in runtime
+    assert "params.set('limit',String(pageSize()));" in runtime and "measuredSize" not in runtime

@@ -6,8 +6,12 @@
  * ui-universal-language.css and must not be redefined here.
  */
 
-/* ── Full-height desktop workspace ───────────────────────────────────── */
-@media (min-width: 901px) {
+/* ── Full-height desktop and tablet workspace ────────────────────────── */
+/* One workspace from the widest desktop down to the tablet floor (780px), as
+   Statistics and the Activity Log: the card fills the content height and the
+   table viewport takes what its header, toolbar and pager leave. The global
+   header changes at 900px on its own; the workspace does not change with it. */
+@media (min-width: 780px) {
   #view-torrents.active {
     display: flex !important;
     flex-direction: column;
@@ -374,7 +378,9 @@ body.light #view-torrents .empty-icon {
 }
 
 /* ── Responsive geometry ─────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 779px) {
+  /* Handheld: the page grows with its card, and the table viewport is
+     bounded by the window. */
   #view-torrents.active {
     height: auto;
     overflow: visible;
@@ -383,9 +389,7 @@ body.light #view-torrents .empty-icon {
   #view-torrents .dp-downloads-table-wrap {
     max-height: 62vh;
   }
-}
 
-@media (max-width: 779px) {
   #view-torrents > .card > .card-header {
     flex-wrap: wrap;
     gap: 8px;
@@ -409,12 +413,6 @@ body.light #view-torrents .empty-icon {
     grid-template-columns: 1fr;
     justify-items: center;
   }
-
-  /* Progress and Size step aside, and with them the name's secondary bar;
-     Name (with its source and provider), Status, Added, Actions and the
-     selection column remain. */
-  #view-torrents .t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }
-  #view-torrents #t-tbody .dash-row-bar-slot { display: none; }
 
   #view-torrents #torrent-page-btns,
   #view-torrents #torrent-page-info {
@@ -440,7 +438,7 @@ body.light #view-torrents .empty-icon {
   }
 }
 
-/* ── Table composition, desktop and tablet (780px and up) ─────────────────
+/* ── Table composition, at every width ────────────────────────────────────
    Download Activity's composition (ui-dashboard.css), with Downloads' own
    columns and measured tracks: Name (the name, its secondary bar, and its
    source, provider and candidate controls beneath), Status, Progress, Size,
@@ -458,62 +456,63 @@ body.light #view-torrents .empty-icon {
    its checkbox. Progress keeps its proportion but yields to Name, which never
    falls below 280px (the Download Activity floor, grip included: the widest
    metadata row -- source, Debrid-Link selector, candidate launcher and size
-   -- still fits with room to spare) and takes the rest. */
-@media (min-width: 780px) {
-  #view-torrents .dp-downloads-table-wrap {
-    container: dp-downloads-table / inline-size;
-  }
-  #view-torrents .t-table {
-    width: 100%;
-    table-layout: fixed;
-    --dp-downloads-status-track: 180px;
-    --dp-downloads-size-track: max(84px, 7cqw);
-    --dp-downloads-date-track: 178px;
-    --dp-downloads-action-slot: 72px;
-    --dp-downloads-action-slots: 2;
-    --dp-downloads-action-track: 0px;
-    --dp-downloads-select-track: 0px;
-    --dp-downloads-fixed-tracks: calc(var(--dp-downloads-status-track) + var(--dp-downloads-size-track)
-      + var(--dp-downloads-date-track) + var(--dp-downloads-action-track) + var(--dp-downloads-select-track));
-    --dp-downloads-progress-track: min(22cqw, 100cqw - 280px - var(--dp-downloads-fixed-tracks));
-  }
-  /* The operable columns, where the caller may operate (the header renders
-     them only then): no phantom tracks for a read-only viewer. */
-  #view-torrents .t-table:has(> thead .dp-downloads-select-cell) {
-    --dp-downloads-action-track: calc(var(--dp-downloads-action-slots) * var(--dp-downloads-action-slot)
-      + (var(--dp-downloads-action-slots) - 1) * 7px + 28px);
-    --dp-downloads-select-track: 36px;
-  }
-  #view-torrents .t-table:has(> #t-tbody .actions > :nth-child(3)) {
-    --dp-downloads-action-slots: 3;
-  }
-  #view-torrents .t-table .dp-downloads-name-cell {
-    width: calc(100cqw - var(--dp-downloads-progress-track) - var(--dp-downloads-fixed-tracks));
-  }
-  #view-torrents .t-table .dp-downloads-progress-cell { width: var(--dp-downloads-progress-track); }
-  #view-torrents .t-table .dp-downloads-size-cell { width: var(--dp-downloads-size-track); }
-  #view-torrents .t-table .dp-downloads-date-cell { width: var(--dp-downloads-date-track); }
-  #view-torrents .t-table .dp-downloads-select-cell { width: var(--dp-downloads-select-track); }
-  /* Status's heading and each badge (a chip, centred as a unit), and the
-     reaffirmation beneath it, share the column's centre line; so do Actions'
-     heading and the whole group of buttons, however many it holds. */
-  #view-torrents .t-table .dp-downloads-status-cell {
-    width: var(--dp-downloads-status-track);
-    text-align: center;
-  }
-  #view-torrents .t-table .dp-downloads-action-cell {
-    width: var(--dp-downloads-action-track);
-    text-align: center;
-  }
-  #view-torrents #t-tbody .dp-downloads-action-cell .actions {
-    justify-content: center;
-    gap: 7px;
-    white-space: nowrap;
-  }
-  #view-torrents #t-tbody .dp-queue-consent { margin-inline: auto; }
-  #view-torrents .dp-page-placeholder-row :is(.dp-downloads-status-cell, .dp-downloads-action-cell) .dp-ph {
-    margin-inline: auto;
-  }
+   -- still fits with room to spare) and takes the rest. Below 780px Progress
+   and Size step aside (the handheld composition after the compact steps
+   below) and Name takes the room they leave. The same tracks hold at every
+   width, so the table is never wider than its viewport. */
+#view-torrents .dp-downloads-table-wrap {
+  container: dp-downloads-table / inline-size;
+}
+#view-torrents .t-table {
+  width: 100%;
+  table-layout: fixed;
+  --dp-downloads-status-track: 180px;
+  --dp-downloads-size-track: max(84px, 7cqw);
+  --dp-downloads-date-track: 178px;
+  --dp-downloads-action-slot: 72px;
+  --dp-downloads-action-slots: 2;
+  --dp-downloads-action-track: 0px;
+  --dp-downloads-select-track: 0px;
+  --dp-downloads-fixed-tracks: calc(var(--dp-downloads-status-track) + var(--dp-downloads-size-track)
+    + var(--dp-downloads-date-track) + var(--dp-downloads-action-track) + var(--dp-downloads-select-track));
+  --dp-downloads-progress-track: min(22cqw, 100cqw - 280px - var(--dp-downloads-fixed-tracks));
+}
+/* The operable columns, where the caller may operate (the header renders
+   them only then): no phantom tracks for a read-only viewer. */
+#view-torrents .t-table:has(> thead .dp-downloads-select-cell) {
+  --dp-downloads-action-track: calc(var(--dp-downloads-action-slots) * var(--dp-downloads-action-slot)
+    + (var(--dp-downloads-action-slots) - 1) * 7px + 28px);
+  --dp-downloads-select-track: 36px;
+}
+#view-torrents .t-table:has(> #t-tbody .actions > :nth-child(3)) {
+  --dp-downloads-action-slots: 3;
+}
+#view-torrents .t-table .dp-downloads-name-cell {
+  width: calc(100cqw - var(--dp-downloads-progress-track) - var(--dp-downloads-fixed-tracks));
+}
+#view-torrents .t-table .dp-downloads-progress-cell { width: var(--dp-downloads-progress-track); }
+#view-torrents .t-table .dp-downloads-size-cell { width: var(--dp-downloads-size-track); }
+#view-torrents .t-table .dp-downloads-date-cell { width: var(--dp-downloads-date-track); }
+#view-torrents .t-table .dp-downloads-select-cell { width: var(--dp-downloads-select-track); }
+/* Status's heading and each badge (a chip, centred as a unit), and the
+   reaffirmation beneath it, share the column's centre line; so do Actions'
+   heading and the whole group of buttons, however many it holds. */
+#view-torrents .t-table .dp-downloads-status-cell {
+  width: var(--dp-downloads-status-track);
+  text-align: center;
+}
+#view-torrents .t-table .dp-downloads-action-cell {
+  width: var(--dp-downloads-action-track);
+  text-align: center;
+}
+#view-torrents #t-tbody .dp-downloads-action-cell .actions {
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+#view-torrents #t-tbody .dp-queue-consent { margin-inline: auto; }
+#view-torrents .dp-page-placeholder-row :is(.dp-downloads-status-cell, .dp-downloads-action-cell) .dp-ph {
+  margin-inline: auto;
 }
 
 /* Compact row controls. Where the table itself is narrower than 1166px
@@ -571,6 +570,22 @@ body.light #view-torrents .empty-icon {
     font-weight: 600;
     white-space: nowrap;
   }
+}
+
+/* The handheld composition (below 780px). Progress and Size step aside --
+   their columns and tracks, the name's secondary bar and the size beside the
+   name -- and Name (with its source and provider), Status, Actions and the
+   selection column remain, in the compact steps the table's own width takes
+   above; Name takes the rest, and where that is too narrow for its source,
+   provider and candidate controls on one line they wrap beneath it. */
+@media (max-width: 779px) {
+  #view-torrents .t-table {
+    --dp-downloads-progress-track: 0px;
+    --dp-downloads-size-track: 0px;
+  }
+  #view-torrents .t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }
+  #view-torrents #t-tbody :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }
+  #view-torrents #t-tbody .dp-transfer-provider-meta { flex-wrap: wrap; }
 }
 
 /* ── Pause shim, date menu, and name metadata material (folded

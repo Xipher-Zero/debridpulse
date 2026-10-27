@@ -249,6 +249,12 @@ let capacityTimer = null;
 let capacityObserver = null;
 let busy = false;
 
+/* How many complete rows the table viewport holds: the wrapper's own client
+ * height (the workspace gives it what the card's header, toolbar and pager
+ * leave, less any scrollbar) beneath its sticky heading, in rows as tall as
+ * the tallest rendered -- never the window's height, which knows nothing of
+ * the content inset, the shell's gutter or the card's own chrome. A row that
+ * would not fit whole belongs to the next page. */
 function measuredSize() {
   if (!window.matchMedia(DESKTOP_QUERY).matches) return null;
   const view = document.getElementById('view-torrents');
@@ -256,12 +262,11 @@ function measuredSize() {
   const table = wrap?.querySelector('table');
   const head = table?.querySelector('thead');
   const rows = Array.from(table?.querySelectorAll('tbody tr[data-torrent-id]') || []);
-  const pager = document.getElementById('torrent-pagination');
-  if (!view || !wrap || !head || !rows.length || !pager) return null;
+  if (!view || !wrap || !head || !rows.length || !wrap.clientHeight) return null;
   const heights = rows.map(r => r.getBoundingClientRect().height).filter(h => h > 0);
   if (!heights.length) return null;
-  const budget = Math.max(0, window.innerHeight - wrap.getBoundingClientRect().top - pager.getBoundingClientRect().height - head.getBoundingClientRect().height - 4);
-  return Math.max(1, Math.min(100, Math.floor(budget / Math.max(...heights)) || 1));
+  const budget = Math.max(0, wrap.clientHeight - head.getBoundingClientRect().height);
+  return Math.max(1, Math.min(100, Math.floor((budget + 0.5) / Math.max(...heights)) || 1));
 }
 function applySize(size) {
   const old = Math.max(1, Number(torrentPageSize) || 1);
@@ -301,6 +306,8 @@ function scheduleCapacityCheck() {
     if (applySize(measuredSize())) loadTorrents().catch(() => {});
   }, 120);
 }
+// Fonts that finish loading change the rows' height, not the viewport's.
+document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());
 function observeResize() {
   const card = document.querySelector('#view-torrents > .card');
   if (!card || !('ResizeObserver' in window)) return;

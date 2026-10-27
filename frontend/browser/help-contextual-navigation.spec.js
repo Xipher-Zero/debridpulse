@@ -686,6 +686,11 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
       await resize(page, width);
       const at = k => `${order[k]} at ${width}px`;
       await choose(page, order[Math.floor(n / 2)]);
+      // (Placed afresh, as a render places it: a choice leaves the window
+      // where it was drawn, which may still show an end section whole -- its
+      // action then gone.)
+      await page.evaluate(() => document.fonts.dispatchEvent(new Event('loadingdone')));
+      await settle(page);
       const inner = await header(page);
       expect(inner.compact, `${width}px`).toBe(true);
       const [first, last] = inner.ends;

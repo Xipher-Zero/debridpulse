@@ -152,8 +152,13 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
     assert "(navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap" in place
     assert "distance: motion.distance}, drawNavigation);" in place
-    assert "control.dataset.navAt = at;" in draw and "navFit.drawn = {left: target, index};" in draw
-    assert "const room = navRoom(navFit.window, index);" in place
+    assert "control.dataset.navAt = at;" in draw and "navFit.drawn = {left: target, index, room, side};" in draw
+    # Which travel action is gone follows the window as drawn -- the end of
+    # the list it shows (each arrangement's side) -- never which section is
+    # selected: no room by selection is left.
+    assert "const at = tabs.length === 1 ? 'only' : side;" in draw
+    assert "navRoom" not in mechanics and "index > 0 ? navFit.slot" not in place
+    assert "const target = Math.round(left + (firstGone(side) ? navFit.slot : 0));" in place
     # A choice is placed from the window as drawn (navChoice): a whole section
     # leaves it still; the edge section moves it by just as much as puts the
     # next section where the chosen one was; a shown end section, chosen as a

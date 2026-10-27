@@ -299,8 +299,12 @@ body.light #view-events .dp-activity-search-band {
   }
 }
 
-/* ── Full-height desktop workspace ───────────────────────────────────── */
-@media (min-width: 901px) {
+/* ── Full-height desktop and tablet workspace ────────────────────────── */
+/* One workspace from the widest desktop down to the tablet floor (780px), as
+   Statistics and Downloads: the card fills the content height and the event
+   list scrolls its configured page inside it. The global header changes at
+   900px on its own; the workspace does not change with it. */
+@media (min-width: 780px) {
   #content:has(#view-events.active) {
     overflow-y: hidden;
   }
@@ -319,7 +323,9 @@ body.light #view-events .dp-activity-search-band {
   }
 }
 
-@media (max-width: 900px) {
+/* Handheld: the page grows with its card, and the event list is bounded by
+   the window. */
+@media (max-width: 779px) {
   #view-events.active {
     height: auto;
     overflow: visible;

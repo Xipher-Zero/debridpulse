@@ -125,7 +125,11 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
         # selection toolbar have their own 780px blocks).
         return next(part.split("\n}", 1)[0] for part in css.split(query + " {")[1:] if owner in part.split("\n}", 1)[0])
 
-    full = block("@media (min-width: 780px)", "dp-downloads-table")
+    # 1.0.14 four-fix: the one composition holds at every width (the table
+    # never outgrows its viewport, handheld included), so it is no longer
+    # inside a 780px block.
+    full = css[css.index("/* ── Table composition, at every width"):css.index("/* Compact row controls.")]
+    assert "@media" not in full.split("*/", 1)[1]
     assert "container: dp-downloads-table / inline-size;" in full
     assert "--dp-downloads-status-track: 180px;" in full and "--dp-downloads-date-track: 178px;" in full
     assert "--dp-downloads-size-track: max(84px, 7cqw);" in full
@@ -145,9 +149,18 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     assert "--dp-downloads-size-track: 0px;" in relocated
     assert re.search(r"\.dp-downloads-size-cell \{\s*display: none;", relocated)
     assert re.search(r"#t-tbody \.dp-downloads-size \{\s*display: block;", relocated)
-    # Progress steps aside only on mobile (779px and below).
+    # Progress and Size step aside only on mobile (779px and below): their
+    # columns, tracks, the name's bar and the size beside the name, after the
+    # compact steps; the name's metadata may wrap there rather than spill.
     hide = ".t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }"
-    assert css.count(hide) == 1 and hide in block("@media (max-width: 779px)")
+    handheld = block("@media (max-width: 779px)", "--dp-downloads-progress-track: 0px;")
+    assert css.count(hide) == 1 and hide in handheld
+    assert "--dp-downloads-size-track: 0px;" in handheld
+    assert "#t-tbody :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" in handheld
+    assert "#t-tbody .dp-transfer-provider-meta { flex-wrap: wrap; }" in handheld
+    assert css.index("@container dp-downloads-table (width < 763px)") < css.index("--dp-downloads-progress-track: 0px;")
+    # No inline floor beneath the composition: the table is as wide as its viewport.
+    assert '<table class="t-table" style="min-width:500px">' not in read("index.html")
 
 
 def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> None:
@@ -161,3 +174,26 @@ def test_e1_removes_post_render_downloads_owner() -> None:
     index = read("index.html")
     assert not (STATIC / "ui-downloads-runtime.js").exists()
     assert "ui-downloads-runtime.js" not in index
+
+
+def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_holds() -> None:
+    # 1.0.14 four-fix: one full-height workspace from the desktop down to the
+    # tablet floor (780px), as Statistics; the 62vh viewport is handheld only.
+    css = read("ui-downloads-page.css")
+    assert "@media (min-width: 901px) {\n  #view-torrents.active" not in css
+    assert "@media (max-width: 900px)" not in css
+    workspace = css[css.index("@media (min-width: 780px) {\n  #view-torrents.active {"):]
+    workspace = workspace[:workspace.index("\n}\n")]
+    assert "height: 100% !important;" in workspace and "flex: 1 1 auto;" in workspace
+    handheld = css[css.index("@media (max-width: 779px) {\n  /* Handheld: the page grows"):]
+    handheld = handheld[:handheld.index("\n}\n")]
+    assert "height: auto;" in handheld and "max-height: 62vh;" in handheld
+    assert css.count("62vh") == 1
+    # Capacity is the table viewport's own: its client height beneath the
+    # sticky heading, never the window's height.
+    downloads = read("ui-downloads.js")
+    size = downloads[downloads.index("function measuredSize() {"):downloads.index("function applySize(")]
+    assert "window.innerHeight" not in size
+    assert "const budget = Math.max(0, wrap.clientHeight - head.getBoundingClientRect().height);" in size
+    assert "Math.floor((budget + 0.5) / Math.max(...heights))" in size
+    assert "document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());" in downloads
