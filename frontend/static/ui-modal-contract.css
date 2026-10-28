@@ -298,6 +298,27 @@ body.light .dp-modal-dialog {
   font-size: 15px;
   line-height: 1.25;
   font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A title action (`placement: 'title'`): the compact icon control right after
+   the title, in the established pencil treatment (the Usenet server name's). */
+.dp-modal-title-action.btn {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.dp-modal-title-action[hidden] {
+  display: none;
+}
+
+.dp-modal-title-action img {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 /* The optional upper-right close control (`closeControl`): the cancel slot's

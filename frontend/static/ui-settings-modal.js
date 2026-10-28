@@ -24,7 +24,11 @@
  * ahead of the cancel slot, reported through `onAction(id)` and enabled
  * through `handle.setActionEnabled(id, enabled)`; they never settle the
  * dialog; an action with `placement: 'leading'` takes the footer's far start
- * instead, and `handle.setActionHidden(id, hidden)` shows or withdraws it.
+ * instead, and `handle.setActionHidden(id, hidden)` shows or withdraws it. An
+ * action with `placement: 'title'` and an `icon` (an image URL) is the compact
+ * icon control immediately after the title, in the header -- an edit of what
+ * the title names -- whose `label` is its accessible name and tooltip;
+ * `handle.focusAction(id)` returns focus to any action.
  * A dialog with more than one view changes its slot labels through
  * `handle.setAcceptLabel` / `setCancelLabel` -- and, for a view that asks a
  * different question, its title and tone through `handle.setTitle(title)` and
@@ -203,8 +207,9 @@
     const progress = spec.progress === true;
     const dismissOnly = spec.dismiss === true;
     const declared = Array.isArray(spec.actions) ? spec.actions : [];
+    const titled = progress ? [] : declared.filter(action => action.placement === 'title');
     const actions = [...declared.filter(action => action.placement === 'leading'),
-      ...declared.filter(action => action.placement !== 'leading')];
+      ...declared.filter(action => action.placement !== 'leading' && action.placement !== 'title')];
     const blocking = progress || spec.blocking === true;
     const cancelSlot = spec.cancelTone === 'danger'
       ? '<button class="btn btn-danger dp-modal-cancel-leading" type="button" data-modal-cancel></button>'
@@ -231,6 +236,7 @@
       <section class="dp-modal-dialog" role="${role}" aria-modal="true" aria-labelledby="${dialogId}-title">
         <header class="dp-modal-header">
           <div class="dp-modal-title" id="${dialogId}-title"></div>
+          ${titled.map(() => '<button class="btn btn-ghost btn-sm dp-modal-title-action" type="button" data-modal-action><img alt="" aria-hidden="true"></button>').join('')}
           ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" data-tooltip="Close"></button>' : ''}
         </header>
         <div class="dp-modal-body"></div>
@@ -247,13 +253,20 @@
     const accept = overlay.querySelector('[data-modal-accept]');
     const close = overlay.querySelector('[data-modal-close]');
     const actionButtons = new Map();
+    const placed = [...titled, ...actions];   // document order: the header's, then the footer's
     overlay.querySelectorAll('[data-modal-action]').forEach((button, index) => {
-      const action = actions[index] || {};
+      const action = placed[index] || {};
       const id = String(action.id || index);
       button.dataset.modalAction = id;
-      button.classList.add(action.tone === 'success' ? 'btn-success' : action.tone === 'danger' ? 'btn-danger' : 'btn-ghost');
-      if (action.placement === 'leading') button.classList.add('dp-modal-action-leading');
-      button.textContent = String(action.label || '');
+      if (action.placement === 'title') {
+        button.querySelector('img').src = String(action.icon || '');
+        button.setAttribute('aria-label', String(action.label || ''));
+        button.dataset.tooltip = String(action.label || '');
+      } else {
+        button.classList.add(action.tone === 'success' ? 'btn-success' : action.tone === 'danger' ? 'btn-danger' : 'btn-ghost');
+        if (action.placement === 'leading') button.classList.add('dp-modal-action-leading');
+        button.textContent = String(action.label || '');
+      }
       button.disabled = action.disabled === true;
       actionButtons.set(id, button);
     });
@@ -341,6 +354,7 @@
         const button = actionButtons.get(String(id));
         if (button) button.hidden = !!hidden;
       },
+      focusAction(id) { actionButtons.get(String(id))?.focus(); },
       setAcceptLabel(label) { if (accept) accept.textContent = String(label || ''); },
       setCancelLabel(label) { if (cancel) cancel.textContent = String(label || ''); },
       setTitle(title) { if (!progress) overlay.querySelector(`#${dialogId}-title`).textContent = String(title || ''); },

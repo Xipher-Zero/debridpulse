@@ -150,11 +150,16 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
     await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
     const dialog = page.locator('.dp-modal-dialog.dp-account-dialog');
     await expect(dialog).toBeVisible();
-    // Display Name, Actual Name, Email -- in that order; an account with no
-    // email may enter one (Batch 2), so all three are inputs here.
+    // The DP Username, read-only, then Display Name, Actual Name, Email -- in
+    // that order; an account with no email may enter one (Batch 2), so the
+    // last three are inputs here.
     expect(await dialog.locator('[data-account-view="profile"] .form-label').allTextContents())
-      .toEqual(['Display Name', 'Actual Name', 'Email']);
+      .toEqual(['DP Username', 'Display Name', 'Actual Name', 'Email']);
+    await expect(dialog.locator('[data-account-username]')).toHaveText(user.username);
+    await expect(dialog.locator('.dp-account-username')).toContainText(
+      'Your DebridPulse account username. Used for local password sign-in when configured. Separate from your display name.');
     await expect(dialog.locator('[data-account-view="profile"] input')).toHaveCount(3);
+    await expect(dialog.locator('.dp-account-username :is(input, button)')).toHaveCount(0);
     await expect(dialog.locator('[data-field="email"]')).toHaveValue('');
     // Change Password at the bottom left; Cancel then Save at the bottom right.
     const footer = await dialog.evaluate(node => [...node.querySelectorAll('.dp-modal-footer .btn')]
@@ -330,7 +335,8 @@ test('Edit is offered for every other eligible person, never the signed-in Admin
     // is added to the server's own account list; the renderer is what is tested.
     const oidc = {id: `oidc-${run}`, role: 'user', origin: 'oidc', display_name: `Olivia ${run}`, actual_name: '',
       email: '', email_verified: false, email_verified_known: false, enabled: true, protected: null, generation: 1,
-      merged_into: null, deleted_at: null, username: '', has_password: false, oidc_identities: 1, active_tokens: 0};
+      merged_into: null, deleted_at: null, username: `olivia-${run}`, has_password: false, oidc_identities: 1,
+      active_tokens: 0};
     await page.route('**/api/accounts', async route => {
       if (route.request().method() !== 'GET') return route.fallback();
       const response = await route.fetch();
@@ -351,14 +357,16 @@ test('Edit is offered for every other eligible person, never the signed-in Admin
     await expect(protectedRow.locator('.dp-settings-users-hint')).toHaveText('Password managed in Authentication');
     await expect(protectedRow.locator('.dp-settings-users-hint')).not.toHaveAttribute('role', /.+/);
     await expect(protectedRow.locator('button')).toHaveText([/.+/]);                // only its name opens details
-    // Another local person's Edit resets its password; the OIDC person's sets one, with a username.
+    // Another local person's Edit resets its password; the OIDC person's sets
+    // one, under the username its title names beside the pencil.
     await editIn(local.id).click();
     const editor = page.locator('.dp-modal-dialog.dp-users-edit-dialog');
     await expect(editor.locator('.dp-users-edit-heading').nth(1)).toHaveText('Reset Local Password');
     await editor.locator('[data-modal-cancel]').click();
     await editIn(oidc.id).click();
     await expect(editor.locator('.dp-users-edit-heading').nth(1)).toHaveText('Set Local Password');
-    await expect(editor.locator('[data-edit-field="username"]')).toBeVisible();
+    await expect(editor.locator('.dp-modal-title')).toHaveText(`Edit User: olivia-${run}`);
+    await expect(editor.getByRole('button', {name: 'Edit Username', exact: true})).toBeVisible();
     await editor.locator('[data-modal-cancel]').click();
     await page.locator('#view-settings [data-tab="authentication"]').click();
     await expect(page.locator('.dp-settings-username-password-card [data-setting="auth_username"]')).toBeVisible();
@@ -412,6 +420,11 @@ test('the sidebar names the account by its Display Name, never its Actual Name o
     await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).not.toHaveAttribute('title');
     await expect(page.locator('#sidebar-auth-row .dp-sidebar-account-role')).toHaveText('User');
     await expect(page).not.toHaveURL(/\/login/);
+    // ... and the DP Username is still the one it signs in with.
+    await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
+    await expect(page.locator('.dp-account-dialog [data-account-username]')).toHaveText(user.username);
+    await expect(page.locator('.dp-account-dialog [data-field="display_name"]')).toHaveValue(`Renamed ${run}`);
+    await page.locator('.dp-account-dialog [data-modal-cancel]').click();
 
     // Only when the profile cannot be read does the session's own name stand in.
     await page.route('**/api/account', route => route.fulfill({status: 500, body: '{}'}));

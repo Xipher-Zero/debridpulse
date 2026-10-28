@@ -451,7 +451,7 @@
         {heading: 'Principal controls', list: [
           'Enable turns local password sign-in on or off for the whole instance. It can be turned on only when an active Admin has a username and password.',
           'Username and Password are your own account’s credential. Typing in them changes nothing until you choose Apply, which saves both together or, if anything is refused, changes nothing.',
-          'The stored password is never shown. Leave Password blank to keep it; enter a new one to replace it. Changing the username needs a new password with it, and a first credential needs both.',
+          'The stored password is never shown. Leave Password blank to keep it; enter a new one to replace it. Changing the username needs a new password with it.',
           'Applying a new credential ends your account’s browser sessions, including this one; sign in again with the new username and password.',
           'Clear, inside the Password field, removes your stored password after you confirm. It never applies what you have typed.',
           'The status beside Help says Configured when a username and password are stored, and Unconfigured otherwise. It does not test the password.',
@@ -501,6 +501,7 @@
         {table: ROLE_TABLE},
         {heading: 'Account actions', list: [
           'Add Local Account creates a person with a username and password. A role changed in Edit User takes effect on the account’s next request; its open browsers reload with the new role.',
+          'Every person has a DebridPulse username, separate from the display name they choose: an OpenID Connect account takes it from its first sign-in, and it is the name a local password signs in with. Edit User changes it from the pencil beside it in the dialog’s title; a stored password is kept.',
           'Disabling an account ends its sessions and withdraws its outstanding download requests. Removing it does the same and deletes its own notification settings.',
           'Merge combines accounts that belong to the same person into one. Accounts that share an email address are only suggested; nothing is merged automatically.',
           'DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account here.',

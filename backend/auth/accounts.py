@@ -1,13 +1,18 @@
 """DebridPulse accounts: the ONE owner of durable identity.
 
 An account is the stable, immutable identity every sign-in resolves to. Its
-three facts are kept apart: the ROLE (``accounts.role``), the zero-or-one LOCAL
-CREDENTIAL (``account_local_credentials``) and the zero-or-more linked OIDC
-IDENTITIES (``account_oidc_bindings``, keyed by the validated ``(issuer,
-subject)``). A username or an email address is never identity: a local sign-in
-finds the account through its credential row, an OIDC sign-in through its
-binding, and email is display metadata only -- it never links, merges or
-grants anything.
+facts are kept apart: the ROLE (``accounts.role``), the human account's one
+USERNAME (``accounts.username``), its zero-or-one local PASSWORD
+(``account_local_credentials``) and the zero-or-more linked OIDC IDENTITIES
+(``account_oidc_bindings``, keyed by the validated ``(issuer, subject)``).
+
+The username is the account's own, whatever it signs in with: an OIDC
+identity's first sign-in gives it one from the identity's claims, an Admin
+changes it, and it is the name a local password signs in under. It is not the
+display name, which the account chooses for itself, and it is not identity:
+the account is its internal ID, an OIDC sign-in finds the account through its
+binding alone, and a username or email address never links, merges or grants
+anything. Email is display metadata only.
 
 Two protected default identities always exist, with well-known IDs: the
 default **Admin** (no password until the operator sets one) and the default
@@ -66,12 +71,21 @@ OIDC_PROVISION_ROLES = frozenset({Role.USER, Role.READONLY})
 DEFAULT_ADMIN_ID = "00000000-0000-4000-8000-000000000001"
 DEFAULT_INTEGRATION_ID = "00000000-0000-4000-8000-000000000002"
 
+# An account's local password: a row exists only while it holds one. The name
+# it signs in under is the account's username (``accounts.username``).
+_CREDENTIAL_COLUMNS = """(
+        account_id TEXT PRIMARY KEY REFERENCES accounts(id),
+        password_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )"""
+
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         role TEXT NOT NULL CHECK (role IN ('admin','user','readonly','integration')),
         origin TEXT NOT NULL CHECK (origin IN ('local','oidc','integration')),
         display_name TEXT NOT NULL DEFAULT '',
+        username TEXT,
         actual_name TEXT,
         email TEXT NOT NULL DEFAULT '',
         email_verified INTEGER NOT NULL DEFAULT 0,
@@ -85,12 +99,7 @@ SCHEMA = (
         updated_at TEXT NOT NULL,
         deleted_at TEXT
     )""",
-    """CREATE TABLE IF NOT EXISTS account_local_credentials (
-        account_id TEXT PRIMARY KEY REFERENCES accounts(id),
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL DEFAULT '',
-        updated_at TEXT NOT NULL
-    )""",
+    "CREATE TABLE IF NOT EXISTS account_local_credentials " + _CREDENTIAL_COLUMNS,
     """CREATE TABLE IF NOT EXISTS account_oidc_bindings (
         issuer TEXT NOT NULL,
         subject TEXT NOT NULL,
@@ -213,6 +222,7 @@ async def ensure_schema(db) -> None:
     # Every token issued before external clients existed was its own client.
     await _ensure_column(db, "account_tokens", "client_id", "TEXT")
     await db.execute("UPDATE account_tokens SET client_id=id WHERE client_id IS NULL")
+    await _ensure_column(db, "accounts", "username", "TEXT")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "
@@ -225,10 +235,47 @@ async def ensure_schema(db) -> None:
         (DEFAULT_INTEGRATION_ID, Role.INTEGRATION.value, "integration", "Automation",
          "default_integration", now, now),
     )
+    await _initialize_usernames(db)
+
+
+async def _initialize_usernames(db) -> None:
+    """Every current human account has a username; idempotent. Before
+    usernames were the account's, only a local credential held one: that
+    name is kept, and the credential table keeps the password alone (a row
+    without one is no credential). Any other account takes its stored display
+    name, made unique (``_available_username``) in creation order. Nothing is
+    looked up anywhere else."""
+    await db.commit()
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        columns = {row[1] for row in await (await db.execute("PRAGMA table_info(account_local_credentials)")).fetchall()}
+        if "username" in columns:
+            await db.execute(
+                "UPDATE accounts SET username=(SELECT c.username FROM account_local_credentials c "
+                "WHERE c.account_id=accounts.id) WHERE username IS NULL AND role<>'integration' "
+                "AND EXISTS (SELECT 1 FROM account_local_credentials c WHERE c.account_id=accounts.id)")
+            await db.execute(f"CREATE TABLE account_local_credentials_next {_CREDENTIAL_COLUMNS}")
+            await db.execute(
+                "INSERT INTO account_local_credentials_next(account_id,password_hash,updated_at) "
+                "SELECT account_id, password_hash, updated_at FROM account_local_credentials WHERE password_hash<>''")
+            await db.execute("DROP TABLE account_local_credentials")
+            await db.execute("ALTER TABLE account_local_credentials_next RENAME TO account_local_credentials")
+        pending = await (await db.execute(
+            "SELECT id, display_name FROM accounts WHERE username IS NULL AND role<>'integration' "
+            "AND deleted_at IS NULL AND merged_into IS NULL ORDER BY created_at, id")).fetchall()
+        for account_id, display_name in pending:
+            name = await _available_username(db, str(display_name or ""), str(account_id))
+            await db.execute("UPDATE accounts SET username=? WHERE id=?", (name, account_id))
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_username ON accounts (username) WHERE username IS NOT NULL")
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.commit()
 
 
 _ACCOUNT_SELECT = (
-    "SELECT a.*, COALESCE(c.username,'') AS username, COALESCE(c.password_hash,'') AS password_hash "
+    "SELECT a.*, COALESCE(c.password_hash,'') AS password_hash "
     "FROM accounts a LEFT JOIN account_local_credentials c ON c.account_id = a.id"
 )
 
@@ -309,7 +356,7 @@ async def local_credential(username: str) -> tuple[Account, str] | None:
     from db.database import get_db
 
     async with get_db() as db:
-        row = await db.fetchone(f"{_ACCOUNT_SELECT} WHERE c.username=?", (str(username or ""),))
+        row = await db.fetchone(f"{_ACCOUNT_SELECT} WHERE a.username=?", (str(username or ""),))
     account = _account(row)
     if account is None or not account.active or not account.has_password:
         return None
@@ -510,24 +557,47 @@ async def _new_verifier(password: str | None) -> str | None:
     return await asyncio.to_thread(hash_password, password)
 
 
-async def _set_password_row(db, account_id: str, username: str | None, verifier: str | None) -> None:
-    """Create or replace an account's one local credential row; ``verifier``
-    is a prepared ``_new_verifier`` (``None`` keeps the stored one)."""
-    existing = await db.fetchone(
-        "SELECT username, password_hash FROM account_local_credentials WHERE account_id=?", (account_id,),
-    )
-    name = str(username if username is not None else (existing["username"] if existing else "")).strip()
-    if not name or len(name) > 256:
+USERNAME_LIMIT = 256
+
+
+async def _username_owner(db, name: str, account_id: str) -> bool:
+    # The bootstrap's connection and the request connection both answer this.
+    cursor = await db.execute("SELECT 1 FROM accounts WHERE username=? AND id<>?", (name, account_id))
+    return await cursor.fetchone() is not None
+
+
+async def _set_username(db, account_id: str, username: str) -> None:
+    """An explicitly chosen username: one another account holds is refused,
+    never taken over or varied."""
+    name = str(username or "").strip()
+    if not name or len(name) > USERNAME_LIMIT:
         raise AccountRefused("A username is required")
-    owner = await db.fetchone("SELECT account_id FROM account_local_credentials WHERE username=?", (name,))
-    if owner is not None and owner["account_id"] != account_id:
+    if await _username_owner(db, name, account_id):
         raise AccountRefused("That username belongs to another account")
-    verifier = verifier or (existing["password_hash"] if existing else "")
+    await db.execute("UPDATE accounts SET username=?, updated_at=? WHERE id=?", (name, _now(), account_id))
+
+
+async def _available_username(db, preferred: str, account_id: str) -> str:
+    """The username an account is GIVEN (an OIDC identity's first sign-in,
+    an account from before usernames): ``preferred`` when no other account
+    holds it, else the first free ``preferred-2``, ``preferred-3``, ...; an
+    empty preference is ``user-`` and the start of the account's ID."""
+    base = str(preferred or "").strip()[:USERNAME_LIMIT] or f"user-{account_id[:8]}"
+    name, suffix = base, 1
+    while await _username_owner(db, name, account_id):
+        suffix += 1
+        tail = f"-{suffix}"
+        name = f"{base[:USERNAME_LIMIT - len(tail)]}{tail}"
+    return name
+
+
+async def _set_password_row(db, account_id: str, verifier: str) -> None:
+    """Create or replace an account's local password; ``verifier`` is a
+    prepared ``_new_verifier``. It signs in under the account's username."""
     await db.execute(
-        "INSERT INTO account_local_credentials(account_id,username,password_hash,updated_at) VALUES(?,?,?,?) "
-        "ON CONFLICT(account_id) DO UPDATE SET username=excluded.username, "
-        "password_hash=excluded.password_hash, updated_at=excluded.updated_at",
-        (account_id, name, verifier, _now()),
+        "INSERT INTO account_local_credentials(account_id,password_hash,updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(account_id) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at",
+        (account_id, verifier, _now()),
     )
 
 
@@ -546,9 +616,13 @@ def oidc_profile(claims: Mapping[str, Any]) -> dict:
         part for part in (_claim_text(claims, "given_name", 128), _claim_text(claims, "family_name", 128)) if part)
     verified = claims.get("email_verified")
     email = _claim_text(claims, "email", 320)
+    name = (_claim_text(claims, "preferred_username", 256) or _claim_text(claims, "nickname", 256)
+            or _claim_text(claims, "name", 256))
     return {
-        "display_name": (_claim_text(claims, "preferred_username", 256) or _claim_text(claims, "nickname", 256)
-                         or _claim_text(claims, "name", 256)),
+        # The display name and the username a new account is given start from
+        # the same claims; afterwards each is its own.
+        "display_name": name,
+        "username": name or email,
         "actual_name": actual[:256],
         "email": email,
         "email_verified": verified if isinstance(verified, bool) and email else None,
@@ -561,8 +635,10 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
     A bound identity resolves to its account; an unbound one is provisioned
     exactly once -- the binding's primary key makes a concurrent first sign-in
     of the same identity find the account the first one created -- with the
-    configured default role. Only ``(issuer, subject)`` identifies: a matching
-    email never links an existing account.
+    configured default role and a username from the claims
+    (``_available_username``), which no later sign-in changes. Only ``(issuer,
+    subject)`` identifies: a matching username or email never links an
+    existing account.
 
     An identity whose account was REMOVED (its binding still names that
     tombstone, the durable marker) returns as a new account under a fresh ID,
@@ -586,10 +662,11 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
             account_id = str(uuid.uuid4())
             now = _now()
             await db.execute(
-                "INSERT INTO accounts(id,role,origin,display_name,actual_name,email,email_verified,"
-                "email_verified_known,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (account_id, role.value, "oidc", display, profile["actual_name"] or None, email, int(verified is True),
-                 int(verified is not None), int(enabled), now, now),
+                "INSERT INTO accounts(id,role,origin,display_name,username,actual_name,email,email_verified,"
+                "email_verified_known,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (account_id, role.value, "oidc", display,
+                 await _available_username(db, profile["username"], account_id), profile["actual_name"] or None,
+                 email, int(verified is True), int(verified is not None), int(enabled), now, now),
             )
             return account_id
 
@@ -615,8 +692,8 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
 
 async def _complete_oidc_profile(db, account_id: str, profile: Mapping[str, Any]) -> None:
     """A returning identity's claims only complete what the account lacks.
-    Display and actual names the account already has are its own choices and
-    are never overwritten -- an actual name the account set or cleared is a
+    Its username, display and actual names are its own and are never
+    overwritten -- an actual name the account set or cleared is a
     string, and only a never-populated one (NULL) is completed; an empty
     email is filled; the provider may restate the verification of the SAME
     address only, and never of one the account entered itself. Nothing here
@@ -673,8 +750,8 @@ async def set_own_local_credential(
     account_id: str, *, username: str | None = None, password: str | None = None, clear: bool = False,
     settings=None, persist=None,
 ) -> None:
-    """The signed-in account's own local credential, as Settings ->
-    Authentication edits it, committed together with the authentication
+    """The signed-in account's own username and local password, as Settings
+    -> Authentication edits them, committed together with the authentication
     ``settings`` that ``persist`` writes (``_mutation``). The caller holds the
     authentication configuration lock (the Authentication settings mutation
     path)."""
@@ -684,25 +761,12 @@ async def set_own_local_credential(
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
             raise AccountRefused("Integration accounts have no password")
+        if username is not None:
+            await _set_username(db, account.id, username)
         if clear:
-            if username is None:
-                await db.execute(
-                    "UPDATE account_local_credentials SET password_hash='', updated_at=? WHERE account_id=?",
-                    (_now(), account.id),
-                )
-            else:
-                await _set_password_row(db, account.id, username, None)
-                await db.execute(
-                    "UPDATE account_local_credentials SET password_hash='' WHERE account_id=?", (account.id,),
-                )
-        elif username is not None and not username.strip() and not password:
-            # Clearing the username releases a credential that holds no
-            # password; a stored password always keeps its username.
-            if account.has_password:
-                raise AccountRefused("A username is required while a password is stored")
             await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
-        else:
-            await _set_password_row(db, account.id, username, verifier)
+        elif verifier:
+            await _set_password_row(db, account.id, verifier)
 
 
 async def local_credential_status(account_id: str) -> tuple[str, bool]:
@@ -728,24 +792,20 @@ async def import_legacy_credential(username: str, password_hash: str) -> bool:
         return False
     async with _transaction() as db:
         current = await db.fetchone(
-            "SELECT username, password_hash FROM account_local_credentials WHERE account_id=?",
+            "SELECT a.username, COALESCE(c.password_hash,'') AS password_hash FROM accounts a "
+            "LEFT JOIN account_local_credentials c ON c.account_id=a.id WHERE a.id=?",
             (DEFAULT_ADMIN_ID,),
         )
-        name = username or (str(current["username"]) if current else "")
+        name = username or str(current["username"] or "")
         if not name:
             raise RuntimeError("The configuration file's password has no username to sign in with")
-        if current is not None and current["username"] == name and current["password_hash"] == password_hash:
+        if current["username"] == name and current["password_hash"] == password_hash:
             await db.rollback()
             return False
-        owner = await db.fetchone("SELECT account_id FROM account_local_credentials WHERE username=?", (name,))
-        if owner is not None and owner["account_id"] != DEFAULT_ADMIN_ID:
+        if await _username_owner(db, name, DEFAULT_ADMIN_ID):
             raise RuntimeError("The configuration file's username belongs to another account")
-        await db.execute(
-            "INSERT INTO account_local_credentials(account_id,username,password_hash,updated_at) VALUES(?,?,?,?) "
-            "ON CONFLICT(account_id) DO UPDATE SET username=excluded.username, "
-            "password_hash=excluded.password_hash, updated_at=excluded.updated_at",
-            (DEFAULT_ADMIN_ID, name, password_hash, _now()),
-        )
+        await db.execute("UPDATE accounts SET username=? WHERE id=?", (name, DEFAULT_ADMIN_ID))
+        await _set_password_row(db, DEFAULT_ADMIN_ID, password_hash)
         await _touch(db, [DEFAULT_ADMIN_ID])
     _revoke([DEFAULT_ADMIN_ID])
     return True
@@ -765,7 +825,8 @@ async def create_local_account(username: str, password: str, *, role, display_na
             "INSERT INTO accounts(id,role,origin,display_name,created_at,updated_at) VALUES(?,?,?,?,?,?)",
             (account_id, role.value, "local", str(display_name or username).strip()[:256], now, now),
         )
-        await _set_password_row(db, account_id, username, verifier)
+        await _set_username(db, account_id, username)
+        await _set_password_row(db, account_id, verifier)
     return await get_account(account_id)
 
 
@@ -862,7 +923,9 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
         if account.protected:
             raise AccountRefused("A default account cannot be deleted")
         await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
-        await db.execute("UPDATE accounts SET enabled=0, deleted_at=? WHERE id=?", (_now(), account.id))
+        # A removed account's username is released with its password.
+        await db.execute("UPDATE accounts SET enabled=0, username=NULL, deleted_at=? WHERE id=?",
+                         (_now(), account.id))
         await db.execute("UPDATE account_tokens SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
                          (_now(), account.id))
         await db.execute("DELETE FROM account_notifications WHERE account_id=?", (account.id,))
@@ -875,10 +938,11 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
     explicitly and atomically: every source is folded in the same transaction,
     or nothing changes.
 
-    Each source's OIDC identities, and its local credential when it holds the
+    Each source's OIDC identities, and its local password when it holds the
     only one among them all, move to the target; each source becomes a
-    tombstone redirecting to the target (``canonical_account_id``). No
-    historical row is rewritten. The target keeps its own role."""
+    tombstone redirecting to the target (``canonical_account_id``) and
+    releases its username. No historical row is rewritten. The target keeps
+    its own role and username, which a moved password then signs in under."""
     sources = [str(source_ids)] if isinstance(source_ids, str) else [str(item) for item in source_ids]
     sources = list(dict.fromkeys(sources))
     if not sources:
@@ -914,11 +978,13 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
             await db.execute("DELETE FROM account_notifications WHERE account_id=?", (source_id,))
             await db.execute("DELETE FROM account_appearance WHERE account_id=?", (source_id,))
             await db.execute(
-                "UPDATE accounts SET enabled=0, merged_into=?, deleted_at=? WHERE id=?", (target.id, now, source_id))
+                "UPDATE accounts SET enabled=0, username=NULL, merged_into=?, deleted_at=? WHERE id=?",
+                (target.id, now, source_id))
 
 
 async def reset_password(actor_id: str, account_id: str, password: str, *, username: str | None = None) -> None:
-    """An Admin sets or resets another account's local credential."""
+    """An Admin sets or resets another account's local password, under its
+    username -- or under ``username``, changed in the same transaction."""
     _not_self(actor_id, account_id)
     known = await get_account(account_id)
     if known is not None and known.role is Role.INTEGRATION:
@@ -930,24 +996,27 @@ async def reset_password(actor_id: str, account_id: str, password: str, *, usern
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
             raise AccountRefused("Integration accounts have no password")
-        await _set_password_row(db, account.id, username, verifier)
+        if username is not None:
+            await _set_username(db, account.id, username)
+        await _set_password_row(db, account.id, verifier)
 
 
-async def rename_local_credential(actor_id: str, account_id: str, username: str) -> None:
-    """An Admin renames another account's local credential, keeping its
-    password. A credential holds a password: an account without one gets its
-    username together with its first password (``reset_password``), never a
-    username alone that could not sign in. Like every credential change, the
-    account's sessions end (``_mutation``), so nothing stays signed in under
-    the former name."""
+async def set_username(actor_id: str, account_id: str, username: str) -> None:
+    """An Admin changes another human account's username. A stored password
+    is kept and signs in under the new name alone; like every credential
+    change, the account's sessions then end (``_mutation``), so nothing stays
+    signed in under the former name. An account without a password keeps its
+    sessions, re-bound to its current state. Its display name, actual name,
+    email and OIDC identities are untouched."""
     _not_self(actor_id, account_id)
-    async with _locked_mutation([str(account_id)]) as db:
+    known = await get_account(account_id)
+    async with _locked_mutation([str(account_id)], rebind=known is not None and not known.has_password) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
-            raise AccountRefused("Integration accounts have no password")
-        if not account.has_password:
-            raise AccountRefused("A username is set together with the account's first password")
-        await _set_password_row(db, account.id, str(username or ""), None)
+            raise AccountRefused("Integration accounts have no username")
+        if known is None or account.has_password != known.has_password:
+            raise AccountRefused("The account changed meanwhile; try again")
+        await _set_username(db, account.id, username)
 
 
 async def set_display_name(account_id: str, display_name: str) -> None:
@@ -1026,7 +1095,7 @@ async def list_accounts() -> list[dict]:
 
     async with get_db() as db:
         rows = await db.fetchall(
-            f"""SELECT a.*, COALESCE(c.username,'') AS username, COALESCE(c.password_hash,'') AS password_hash,
+            f"""SELECT a.*, COALESCE(c.password_hash,'') AS password_hash,
                     (SELECT COUNT(*) FROM account_oidc_bindings b WHERE b.account_id=a.id) AS oidc_identities,
                     (SELECT COUNT(*) FROM account_tokens t WHERE t.account_id=a.id AND t.revoked_at IS NULL)
                         AS active_tokens
@@ -1123,7 +1192,7 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
         if row is None or not secrets.compare_digest(password_credential_version(row["password_hash"]),
                                                      password_credential_version(proven)):
             raise AccountRefused("The password was changed meanwhile; try again")
-        await _set_password_row(db, account.id, None, verifier)
+        await _set_password_row(db, account.id, verifier)
     password_failure_throttle.record_success(peer, identity)
 
 

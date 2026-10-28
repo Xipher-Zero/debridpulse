@@ -109,7 +109,12 @@ _COPY_CHUNK = 1024 * 1024
 #   reported") for every attempt it holds; nothing is reconstructed;
 # * the released v1.0.13 schema (34d4e8b2, unchanged on 1.0.14 until account
 #   appearance), which it extends with the one ``account_appearance`` table,
-#   empty: every account it holds has the native appearance.
+#   empty: every account it holds has the native appearance;
+# * the 1.0.14 schema immediately before usernames were the account's own
+#   (0f2c2825), whose local credentials held them: each credential's name
+#   becomes its account's username, every other human account's username is
+#   its stored display name made unique, and the credentials keep only their
+#   passwords (``auth.accounts._initialize_usernames``).
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -120,6 +125,7 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:353e5b5844c34ab95a18293e0028bfb5d6a26e1939187ff9077e4983b49b1b1f",
     "sha256:c12ccc8158d94390c994fd49ef8a86a4ed4d895839fcf062b8379eae58f44f0e",
     "sha256:937ed58caa1cc42c91d6e47e917e020f8025f27e7ec596aef13d4cc456e76ac6",
+    "sha256:c51de6ae14c6185ac650bd1f5f02d93c88ac21b676799494e7418a8022d26239",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

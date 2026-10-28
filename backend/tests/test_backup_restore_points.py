@@ -1321,6 +1321,54 @@ async def test_the_released_1013_backup_restores_every_account_with_the_native_a
     assert await account_appearance.load(people["Viewer"][2]) == account_appearance.DEFAULT
 
 
+# Written by the 1.0.14 build immediately before usernames were the account's
+# own (0f2c2825) with its own backup service: the default Admin with a password
+# (operator / pre-username-secret), a local User (reader), an OIDC-only User
+# first signed in as bigsky whose display name is now Sierra, and an OIDC-only
+# ReadOnly User whose display name, reader, is the local User's username.
+PRE_USERNAME_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-0f2c2825.zip"
+
+
+async def test_a_backup_from_before_account_usernames_restores_every_account_with_one(served):
+    """Upgraded on the private staged copy only through the canonical
+    bootstrap: each local credential's name is its account's username and
+    still signs in with its password; each OIDC-only account takes its stored
+    display name, made unique; and the credentials keep passwords alone."""
+    from auth import accounts
+    from auth.passwords import verify_password
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_USERNAME_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    people = {row["display_name"]: (row["username"], row["role"], row["has_password"])
+              for row in await accounts.list_accounts()}
+    assert people == {"Administrator": ("operator", "admin", True), "Automation": ("", "integration", False),
+                      "Reader": ("reader", "user", True), "Sierra": ("Sierra", "user", False),
+                      "reader": ("reader-2", "readonly", False)}
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-username-secret")
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert [row[1] for row in conn.execute("PRAGMA table_info(account_local_credentials)")] == [
+            "account_id", "password_hash", "updated_at"]
+    finally:
+        conn.close()
+
+
 async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):
     """Only the exact pinned predecessor is upgradable: the same backup with a
     schema one column away is an unsupported version, refused before

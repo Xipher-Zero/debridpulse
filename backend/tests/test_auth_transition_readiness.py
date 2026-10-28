@@ -87,8 +87,8 @@ async def test_malformed_stored_password_hash_cannot_become_sole_auth():
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO account_local_credentials(account_id,username,password_hash,updated_at) "
-            "VALUES(?,?,?,?)", (DEFAULT_ADMIN_ID, "operator", "$argon2id$configured-but-not-valid", "now"))
+            "INSERT INTO account_local_credentials(account_id,password_hash,updated_at) "
+            "VALUES(?,?,?)", (DEFAULT_ADMIN_ID, "$argon2id$configured-but-not-valid", "now"))
         await db.commit()
     response = await settings_transition_rejection(
         _request({"auth_password_enabled": True}),

@@ -169,12 +169,13 @@ async def test_my_account_reads_and_edits_the_sanitized_profile(served, monkeypa
     profile = (await client.get("/api/account", headers=own)).json()
     assert profile == {"display_name": "me", "actual_name": "Me Myself", "email": "me@example.com",
                        "email_verification": "unknown", "email_self_entered": False, "origin": "oidc", "role": "user",
-                       "has_password": False}
+                       "has_password": False, "username": "me"}
 
     assert (await client.put("/api/account/actual-name", headers=own, json={"actual_name": "Me Edited"})).status_code == 200
     assert (await client.put("/api/account/display-name", headers=own, json={"display_name": "Edited"})).status_code == 200
     edited = (await client.get("/api/account", headers=own)).json()
     assert (edited["display_name"], edited["actual_name"], edited["email"]) == ("Edited", "Me Edited", "me@example.com")
+    assert edited["username"] == "me"                       # the display name is not the username
     # A provider-supplied email is never replaced here -- not by a stale form,
     # and not by a crafted request that names it as the expected address --
     # and an Integration has no profile.

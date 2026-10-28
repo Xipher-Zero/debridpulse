@@ -206,7 +206,8 @@
   }
 
   /* My Account: ONE dialog of one fixed size with two views. The profile view
-   * (Display Name, Actual Name, Email) saves the two names and, while the
+   * (the account's DP Username, shown read-only -- an Admin changes it --
+   * then Display Name, Actual Name, Email) saves the two names and, while the
    * account has none, an email; Change Password, offered only to an account
    * that holds a local password, swaps the same dialog to the password view, whose Cancel returns to the profile -- with
    * its unsaved edits intact -- and whose Save changes only the password. A
@@ -266,6 +267,11 @@
         this.handle = handle;
         body.innerHTML = `
           <div class="dp-account-view" data-account-view="profile">
+            <div class="dp-modal-field dp-account-username">
+              <span class="form-label">DP Username</span>
+              <span class="dp-account-username-value" data-account-username></span>
+              <p class="dp-account-username-note">Your DebridPulse account username. Used for local password sign-in when configured. Separate from your display name.</p>
+            </div>
             <label class="dp-modal-field"><span class="form-label">Display Name</span>
               <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
             <label class="dp-modal-field"><span class="form-label">Actual Name</span>
@@ -282,6 +288,7 @@
           </div>`;
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
+        body.querySelector('[data-account-username]').textContent = String(profile.username || '');
         fields.display_name.value = String(profile.display_name || data.display_name || '');
         fields.actual_name.value = String(profile.actual_name || '');
         emailSlot = body.querySelector('[data-account-email]');

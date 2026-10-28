@@ -73,7 +73,8 @@ async def test_a_first_credential_that_is_a_username_alone_is_refused(monkeypatc
         monkeypatch, _settings(auth_password_enabled=False), principal=Principal.standalone(), auth_username="operator")
     assert response.status_code == 400
     assert saved == []
-    assert await local_credential_status(DEFAULT_ADMIN_ID) == ("", False)
+    # The default Admin's username is its own from the start; it stays without a password.
+    assert await local_credential_status(DEFAULT_ADMIN_ID) == ("Administrator", False)
 
 
 @pytest.mark.asyncio

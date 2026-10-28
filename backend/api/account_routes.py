@@ -150,9 +150,9 @@ async def reset_account_password(account_id: str, body: PasswordReset, request: 
 async def rename_account_username(account_id: str,
                                   username: Annotated[str, Body(embed=True, min_length=1, max_length=256)],
                                   request: Request):
-    """Rename the account's local credential; its password is kept."""
+    """Change the account's username; a stored password is kept."""
     try:
-        await accounts.rename_local_credential(_actor(request), account_id, username)
+        await accounts.set_username(_actor(request), account_id, username)
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
@@ -216,7 +216,8 @@ def _verification(account) -> str | None:
 
 @router.get("/account")
 async def own_account(request: Request):
-    """The signed-in account's own profile: names it may edit, and its email
+    """The signed-in account's own profile: its username (read-only: an Admin
+    changes it), the names it may edit, and its email
     -- supplied by its identity provider (read-only here) or entered by the
     account itself (``email_self_entered``; the account may correct it) --
     with the verification the provider stated (a self-entered email is
@@ -229,7 +230,8 @@ async def own_account(request: Request):
         raise HTTPException(status_code=404, detail="Account not found")
     return {"display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
             "email_verification": _verification(account), "email_self_entered": account.email_self_entered,
-            "origin": account.origin, "role": account.role.value, "has_password": account.has_password}
+            "origin": account.origin, "role": account.role.value, "has_password": account.has_password,
+            "username": account.username}
 
 
 @router.put("/account/actual-name")

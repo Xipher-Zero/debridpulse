@@ -190,31 +190,39 @@ async def test_admin_account_endpoints_merge_and_link_retirement(served):
     assert not hasattr(accounts, "link_oidc_identity") and hasattr(accounts, "bind_verified_oidc")
 
 
-async def test_an_admin_renames_a_local_credential_keeping_its_password(accounts_db):
+async def test_an_admin_changes_a_username_keeping_the_password(accounts_db):
     person = await accounts.create_local_account("before", "before-secret", role="user", display_name="P")
     _owner, verifier = await accounts.local_credential("before")
     session, _ = session_store.create(Principal.password_session(await accounts.get_account(person.id)),
                                       lifetime_seconds=3600)
     generation = (await accounts.get_account(person.id)).generation
 
-    await accounts.rename_local_credential(ADMIN, person.id, "  after ")
+    await accounts.set_username(ADMIN, person.id, "  after ")
 
-    assert await accounts.local_credential("before") is None
+    assert await accounts.local_credential("before") is None                   # the former name no longer signs in
     renamed, kept = await accounts.local_credential("after")
     assert (renamed.id, kept) == (person.id, verifier)                          # the same password
     assert renamed.generation == generation + 1 and session_store.resolve(session) is None   # signed out
+    assert renamed.display_name == "P"
     taken = await accounts.create_local_account("taken", "taken-secret", role="user")
     oidc = await _login("named", preferred_username="named")
     for actor, target, name, words in (
             (person.id, person.id, "self", "to itself"),
             (ADMIN, person.id, "taken", "belongs to another account"),
+            (ADMIN, oidc.id, "taken", "belongs to another account"),
             (ADMIN, person.id, "   ", "A username is required"),
-            (ADMIN, oidc.id, "named", "together with the account's first password"),   # never a username alone
-            (ADMIN, accounts.DEFAULT_INTEGRATION_ID, "bot", "Integration accounts have no password")):
+            (ADMIN, accounts.DEFAULT_INTEGRATION_ID, "bot", "Integration accounts have no username")):
         with pytest.raises(accounts.AccountRefused, match=words):
-            await accounts.rename_local_credential(actor, target, name)
+            await accounts.set_username(actor, target, name)
     assert (await accounts.local_credential("after"))[0].id == person.id and (await accounts.get_account(taken.id)).username == "taken"
-    assert not (await accounts.get_account(oidc.id)).has_password
+
+    # An account without a password has a username too, changed alone: its
+    # sessions are re-bound, not ended, and it still has no password.
+    oidc_session, _ = session_store.create(Principal.oidc_session("named").bound_to(oidc), lifetime_seconds=3600)
+    await accounts.set_username(ADMIN, oidc.id, "renamed")
+    changed = await accounts.get_account(oidc.id)
+    assert (changed.username, changed.display_name, changed.has_password) == ("renamed", "named", False)
+    assert session_store.resolve(oidc_session) is not None
 
 
 async def test_the_username_endpoint_is_admin_only_and_reports_refusals(served):

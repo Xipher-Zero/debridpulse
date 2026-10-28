@@ -40,7 +40,9 @@ Use only an HTTPS origin in `scheme://host[:port]` form, with no path, query, fr
 
 ## Accounts
 
-Every sign-in resolves to one durable DebridPulse **account** with a stable ID. An account has one of four fixed roles (**Admin**, **User**, **ReadOnly User**, **Integration**), zero or one local Username & Password credential, and zero or more linked OpenID Connect identities, each identified by the provider-validated `(issuer, subject)` pair. A username or an email address is never the identity: email is display information only and never links, merges or grants anything.
+Every sign-in resolves to one durable DebridPulse **account** with a stable ID. An account has one of four fixed roles (**Admin**, **User**, **ReadOnly User**, **Integration**); a human account has one **username** of its own, zero or one local password, and zero or more linked OpenID Connect identities, each identified by the provider-validated `(issuer, subject)` pair. A username or an email address is never the identity: email is display information only and never links, merges or grants anything.
+
+The username belongs to the account whatever it signs in with, and is separate from the display name the account chooses for itself. An OIDC identity's first sign-in gives its new account one from the provider's `preferred_username` (then `nickname`, `name`, `email`), varied as `name-2`, `name-3`, ... when another account holds it; later sign-ins never change it. An Admin changes it in **Edit User**; a stored password is kept and signs in under the new name only, and the account's sessions end. A local password always signs in under the account's username. Accounts from before usernames were the account's keep their local sign-in name, or otherwise take their stored display name (made unique the same way); the account sees its username, read-only, in **My Account**.
 
 Two default accounts always exist:
 

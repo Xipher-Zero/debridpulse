@@ -1,7 +1,8 @@
 const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.14 Users & Access: one Edit entry per person, and the one Edit User
- * dialog -- role and local password together, lifecycle in its footer, the
+ * dialog -- the username in its title with the pencil beside it, role and
+ * local password together, lifecycle in its footer, the
  * Disable/Remove impact confirmation as a view of the same dialog.
  *
  * The account API is ISOLATED: every /api/accounts* and /api/requests call is
@@ -26,7 +27,7 @@ function directory() {
     person(SELF, 'Operator', {role: 'admin'}),
     person('acct-admin', 'Administrator', {role: 'admin', protected: 'default_admin', username: 'admin'}),
     person('acct-ann', 'Ann', {email: 'ann@example.test'}),
-    person('acct-bob', 'Bob', {role: 'readonly', username: '', has_password: false, origin: 'oidc', oidc_identities: 1}),
+    person('acct-bob', 'Bob', {role: 'readonly', has_password: false, origin: 'oidc', oidc_identities: 1}),
     person('acct-cid', 'Cid', {enabled: false}),
     person('acct-bot', 'Automation', {role: 'integration', origin: 'integration', protected: 'default_integration',
       username: '', has_password: false}),
@@ -136,7 +137,7 @@ test('role only: the current role and its description; Cancel sends nothing; App
   const {sent} = await isolate(page);
   await openUsers(page);
   let dialog = await edit(page, 'acct-ann');
-  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: Ann');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');      // the username, not the display name
   await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Enabled');
   await expect(dialog.locator('.dp-dropdown__value')).toHaveText('User');
   await expect(dialog.locator('[data-field-description="role"]'))
@@ -180,7 +181,7 @@ test('password only: two empty fields, a live agreement mark, mismatch blocks Ap
     await expect(field).toHaveAttribute('autocomplete', 'new-password');
   }
   await expect(dialog).toContainText('Leave both password fields blank to keep the existing password.');
-  await expect(dialog).toContainText('The account is signed out everywhere and signs in again with this password.');
+  await expect(dialog).toContainText('The account is signed out everywhere and signs in again with its username and this password.');
 
   await next.fill(SECRET);                                                  // one field: incomplete
   await expect(check).toBeHidden();
@@ -211,12 +212,11 @@ test('password only: two empty fields, a live agreement mark, mismatch blocks Ap
   expect(page.url()).not.toContain(SECRET);
 });
 
-const usernameRow = dialog => dialog.locator('.dp-users-username');
-
 async function pickUsername(page, value, {back = false} = {}) {
   const dialog = editor(page);
   await dialog.getByRole('button', {name: 'Edit Username', exact: true}).click();
   await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit Username');
+  await expect(dialog.getByRole('button', {name: 'Edit Username', exact: true})).toBeHidden();
   const input = dialog.locator('[data-username-input]');
   await expect(input).toBeFocused();
   await input.fill(value);
@@ -225,70 +225,83 @@ async function pickUsername(page, value, {back = false} = {}) {
   await expect(dialog.locator('.dp-modal-title')).not.toHaveText('Edit Username');
 }
 
-test('the username is shown with its pencil; a new username alone keeps the password', async ({page}) => {
-  const {sent} = await isolate(page);
+test('the title names the username with its pencil right beside it; a new username alone keeps the password', async ({page}) => {
+  let failListing = false;
+  const {sent} = await isolate(page, {listing: () => (failListing ? {status: 503, detail: 'Storage is unavailable'} : null)});
   await openUsers(page);
-  const dialog = await edit(page, 'acct-ann');
-  const value = dialog.locator('[data-username-value]');
+  let dialog = await edit(page, 'acct-ann');
+  const title = dialog.locator('.dp-modal-title');
   const draft = dialog.locator('[data-username-draft]');
   const pencil = dialog.getByRole('button', {name: 'Edit Username', exact: true});
-  await expect(value).toHaveText('ann');
+  await expect(title).toHaveText('Edit User: ann');
+  await expect(dialog.locator('.dp-modal-header').getByRole('button', {name: 'Edit Username', exact: true})).toHaveCount(1);
   await expect(pencil).toHaveAttribute('data-tooltip', 'Edit Username');
   await expect(pencil.locator('img[src="/icons/lucide/pencil.svg"]')).toHaveCount(1);
-  await expect(dialog.locator('[data-edit-view="edit"] input[type="text"]')).toHaveCount(0);   // no username textbox
+  const beside = await dialog.evaluate(node => {
+    const words = document.createRange();
+    words.selectNodeContents(node.querySelector('.dp-modal-title'));
+    const text = words.getBoundingClientRect();
+    const button = node.querySelector('.dp-modal-title-action').getBoundingClientRect();
+    return {gap: button.left - text.right, centre: Math.abs((button.top + button.bottom) / 2 - (text.top + text.bottom) / 2)};
+  });
+  expect(beside.gap, 'the pencil follows the username').toBeGreaterThanOrEqual(0);
+  expect(beside.gap, 'the pencil follows the username').toBeLessThanOrEqual(12);
+  expect(beside.centre, 'the pencil sits on the title line').toBeLessThanOrEqual(2);
+  // The body holds no username: the password section starts with its two fields.
+  await expect(dialog.locator('[data-edit-view="edit"]')).not.toContainText('Username');
+  await expect(dialog.locator('[data-edit-view="edit"] input[type="text"]')).toHaveCount(0);
+  expect(await dialog.locator('.dp-users-edit-group').nth(1).locator('.form-label').allTextContents())
+    .toEqual(['New Password', 'Confirm New Password']);
   await expect(draft).toBeHidden();
-  const [shown, button] = await Promise.all([value.boundingBox(), pencil.boundingBox()]);
-  expect(button.x - (shown.x + shown.width)).toBeLessThan(12);              // immediately beside the value
 
   await pickUsername(page, 'annie', {back: true});                          // Back: unchanged
-  await expect(value).toHaveText('ann');
+  await expect(title).toHaveText('Edit User: ann');
   await expect(pencil).toBeFocused();
   await expect(dialog.locator('[data-modal-accept]')).toBeDisabled();
+  await pickUsername(page, 'zed');                                          // Done, then Cancel: discarded
+  await expect(title).toHaveText('Edit User: zed');
+  await dialog.locator('[data-modal-cancel]').click();
+  await expect(editor(page)).toHaveCount(0);
+  dialog = await edit(page, 'acct-ann');
+  await expect(title).toHaveText('Edit User: ann');
+
   await pickUsername(page, '  annie ');                                      // Done: a draft, not a write
-  await expect(value).toHaveText('annie');
-  await expect(draft).toHaveText('Not yet applied');
+  await expect(title).toHaveText('Edit User: annie');
+  await expect(draft).toHaveText('Username annie is not yet applied. The account’s username is still ann.');
   await expect(pencil).toBeFocused();
   expect(writes(sent)).toEqual([]);
-  await expect(dialog).toContainText('A new username alone keeps the password, and also signs the account out everywhere.');
+  // Applied while the directory cannot be re-read: acknowledged, sent once, and the dialog is done.
+  failListing = true;
   await dialog.locator('[data-modal-accept]').click();
   await expect(editor(page)).toHaveCount(0);
   expect(writes(sent)).toEqual([{method: 'PUT', path: '/accounts/acct-ann/username', body: {username: 'annie'}}]);
-  await expect(row(page, 'acct-ann')).toContainText('Password (annie)');
+  await expect(page.locator('.toast').filter({hasText: 'Username changed to annie; the account is signed out everywhere.'})).toHaveCount(1);
+  await expect(page.locator('.dp-settings-load-error')).toContainText('Accounts could not be loaded.');
 });
 
-test('no local credential: "Not set", and the username travels with the first password, never alone', async ({page}) => {
-  let refuse = true;
-  const {sent} = await isolate(page, {answer: ({path}) => (path.endsWith('/password') && refuse
-    ? {status: 409, detail: 'That username belongs to another account'} : null)});
+test('an account without a password has its username: changed alone, and its first password signs in under it', async ({page}) => {
+  const {sent} = await isolate(page);
   await openUsers(page);
-  const dialog = await edit(page, 'acct-bob');
-  const accept = dialog.locator('[data-modal-accept]');
+  let dialog = await edit(page, 'acct-bob');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: bob');
   await expect(dialog.locator('.dp-users-edit-heading').nth(1)).toHaveText('Set Local Password');
-  await expect(dialog.locator('[data-username-value]')).toHaveText('Not set');
-  await expect(dialog).toContainText('A local password needs a username: set both here, and they are saved together.');
+  await expect(dialog).not.toContainText('Not set');
+  await pickUsername(page, 'bobby');
+  await dialog.locator('[data-modal-accept]').click();                     // a username alone, no password
+  await expect(editor(page)).toHaveCount(0);
+  await expect(page.locator('.toast').filter({hasText: /^Username changed to bobby\.$/})).toHaveCount(1);
+  dialog = await edit(page, 'acct-bob');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: bobby');
   await dialog.locator('[data-edit-field="password"]').fill(SECRET);
   await dialog.locator('[data-edit-field="confirm"]').fill(SECRET);
-  await expect(dialog.locator('.dp-users-password-check')).toBeVisible();           // the two agree
-  await expect(dialog.locator('.dp-users-password-status')).toHaveText('Passwords match. Set a username too: a first password needs one.');
-  await expect(accept).toBeDisabled();
-  await dialog.locator('[data-edit-field="password"]').fill('');
-  await dialog.locator('[data-edit-field="confirm"]').fill('');
-  await pickUsername(page, 'ann');
-  await expect(dialog.locator('.dp-users-password-status')).toHaveText('Enter the new password in both fields.');
-  await expect(accept).toBeDisabled();                                       // a username alone sets nothing
-  await dialog.locator('[data-edit-field="password"]').fill(SECRET);
-  await dialog.locator('[data-edit-field="confirm"]').fill(SECRET);
-  await accept.click();
-  await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Password not saved: That username belongs to another account');
-  refuse = false;
-  await pickUsername(page, 'bob');
-  await accept.click();
+  await expect(dialog.locator('.dp-users-password-status')).toHaveText('Passwords match');
+  await dialog.locator('[data-modal-accept]').click();
   await expect(editor(page)).toHaveCount(0);
   expect(writes(sent)).toEqual([
-    {method: 'POST', path: '/accounts/acct-bob/password', body: {password: SECRET, username: 'ann'}},
-    {method: 'POST', path: '/accounts/acct-bob/password', body: {password: SECRET, username: 'bob'}},
+    {method: 'PUT', path: '/accounts/acct-bob/username', body: {username: 'bobby'}},
+    {method: 'POST', path: '/accounts/acct-bob/password', body: {password: SECRET}},   // no second name
   ]);
-  await expect(row(page, 'acct-bob')).toContainText('Password (bob)');
+  await expect(row(page, 'acct-bob')).toContainText('Password (bobby)');
 });
 
 test('a new username with a new password is one password request; a refused rename after an acknowledged role resends neither', async ({page}) => {
@@ -310,7 +323,7 @@ test('a new username with a new password is one password request; a refused rena
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Role changed to Admin. Username not changed: That username belongs to another account');
   await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled');
   await expect(dialog.locator('.dp-users-edit-stale')).toBeVisible();
-  await expect(dialog.locator('[data-username-value]')).toHaveText('bob');        // still the unapplied draft
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: bob');   // still the unapplied draft
   await expect(dialog.locator('[data-username-draft]')).toBeVisible();
   refuseRename = false;
   await pickUsername(page, 'annie');
@@ -452,14 +465,14 @@ test('Disable and Remove confirm in the same dialog: server figures, Back keeps 
   await expect(footer).toHaveText(['Back', 'Disable account']);
   await expect(dialog.locator('[data-modal-accept]')).toHaveClass(/\bbtn-warn\b/);
   await page.keyboard.press('Escape');                                       // Escape is Back here
-  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: Ann');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');
   await expect(dialog.locator('.dp-dropdown__value')).toHaveText('Admin');
   await expect(dialog.locator('[data-edit-field="password"]')).toHaveValue(SECRET);
   expect(writes(sent)).toEqual([]);
 
   await dialog.getByRole('button', {name: 'Disable', exact: true}).click();
   await dialog.locator('[data-modal-accept]').click();
-  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: Ann');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Account disabled. It had no outstanding requests.');
   await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Disabled');
   await expect(footer).toHaveText(['Enable', 'Remove', 'Cancel', 'Apply']);
@@ -485,7 +498,7 @@ test('an impact that cannot be read changes nothing and offers no confirmation',
   await dialog.getByRole('button', {name: 'Remove', exact: true}).click();
   await expect(dialog.locator('.dp-users-edit-outcome'))
     .toHaveText("The account's impact could not be read, so nothing was changed: Storage is unavailable");
-  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: Ann');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');
   await expect(dialog.locator('.dp-account-impact-figures')).toHaveCount(0);
   expect(writes(sent)).toEqual([]);
 });
@@ -532,3 +545,101 @@ test('the footer: lifecycle at the start, Cancel and Apply at the end; keyboard 
   expect(fit.overflow).toBe(0);
   await expect(narrow.locator('.dp-modal-footer .btn:visible')).toHaveCount(4);
 });
+
+// Where the dialog's parts sit, in one read: everything an operator reaches must be inside the viewport.
+const containment = dialog => dialog.evaluate(node => {
+  const edges = element => { const r = element.getBoundingClientRect(); return {top: r.top, bottom: r.bottom}; };
+  const body = node.querySelector('.dp-modal-body');
+  const reachable = [...node.querySelectorAll('.dp-modal-title-action, .dp-modal-footer .btn')]
+    .filter(button => button.getClientRects().length)
+    .map(button => {
+      const r = button.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {label: button.getAttribute('aria-label') || button.textContent.trim(), top: r.top, bottom: r.bottom,
+        unobstructed: button === top || button.contains(top)};
+    });
+  return {viewport: innerHeight, dialog: edges(node), header: edges(node.querySelector('.dp-modal-header')),
+    footer: edges(node.querySelector('.dp-modal-footer')), reachable, pageScroll: document.scrollingElement.scrollTop,
+    body: {scrollTop: body.scrollTop, scrollHeight: body.scrollHeight, clientHeight: body.clientHeight,
+      overflowY: getComputedStyle(body).overflowY}};
+});
+
+const contained = (facts, label) => {
+  expect(facts.dialog.top, `${label}: dialog top`).toBeGreaterThanOrEqual(0);
+  expect(facts.dialog.bottom, `${label}: dialog bottom`).toBeLessThanOrEqual(facts.viewport);
+  expect(facts.header.top, `${label}: header`).toBeGreaterThanOrEqual(0);
+  expect(facts.footer.bottom, `${label}: footer`).toBeLessThanOrEqual(facts.viewport);
+  for (const control of facts.reachable) {
+    expect(control.top, `${label}: ${control.label}`).toBeGreaterThanOrEqual(0);
+    expect(control.bottom, `${label}: ${control.label}`).toBeLessThanOrEqual(facts.viewport);
+    expect(control.unobstructed, `${label}: ${control.label} is not covered`).toBe(true);
+  }
+  expect(facts.pageScroll, `${label}: the page behind never scrolls`).toBe(0);
+};
+
+for (const viewport of [{width: 390, height: 844}, {width: 390, height: 700}]) {
+  test(`at ${viewport.width}×${viewport.height} the editor stays in view: header and pencil, a scrolling body, and the footer`, async ({page}) => {
+    const {sent} = await isolate(page);
+    await openUsers(page);
+    await page.setViewportSize(viewport);
+    const dialog = await edit(page, 'acct-ann');
+    await settled(page);
+    const label = `${viewport.width}×${viewport.height}`;
+    let facts = await containment(dialog);
+    contained(facts, `${label} editor`);
+    expect(facts.body.overflowY).toBe('auto');
+    expect(facts.body.scrollHeight, 'the body has more than fits').toBeGreaterThan(facts.body.clientHeight);
+    expect(facts.reachable.map(control => control.label)).toEqual(['Edit Username', 'Disable', 'Remove', 'Cancel', 'Apply']);
+    const pencil = dialog.getByRole('button', {name: 'Edit Username', exact: true});
+
+    // The pencil, Back: nothing changes, focus returns to the pencil.
+    await pencil.click();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit Username');
+    contained(await containment(dialog), `${label} username view`);
+    await dialog.locator('[data-username-input]').fill('annie');
+    await dialog.locator('[data-modal-cancel]').click();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');
+    await expect(dialog.locator('[data-username-draft]')).toBeHidden();
+    await expect(pencil).toBeFocused();
+
+    // The pencil again, Done: a pending draft, back in the editor.
+    await pencil.click();
+    await dialog.locator('[data-username-input]').fill('annie');
+    await dialog.getByRole('button', {name: 'Done', exact: true}).click();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: annie');
+    await expect(dialog.locator('[data-username-draft]')).toBeVisible();
+    await expect(pencil).toBeFocused();
+    contained(await containment(dialog), `${label} editor with a draft`);
+
+    // The password fields, and the body's end, are reached by scrolling the body, not the page.
+    const within = locator => locator.evaluate(node => {
+      const r = node.getBoundingClientRect(), b = node.closest('.dp-modal-body').getBoundingClientRect();
+      return r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5;
+    });
+    for (const name of ['password', 'confirm']) {
+      const field = dialog.locator(`[data-edit-field="${name}"]`);
+      await field.scrollIntoViewIfNeeded();
+      expect(await within(field), `${name} is visible within the body`).toBe(true);
+      await field.fill('typed-not-applied');
+    }
+    await expect(dialog.locator('.dp-users-password-status')).toHaveText('Passwords match');
+    const last = dialog.locator('[data-edit-view="edit"] .dp-users-edit-note').last();
+    await last.scrollIntoViewIfNeeded();
+    facts = await containment(dialog);
+    expect(facts.body.scrollTop, 'the body scrolled to its end').toBeGreaterThan(0);
+    expect(await within(last), 'the last note is visible within the body').toBe(true);
+    contained(facts, `${label} scrolled`);
+
+    // A footer action works from here: Remove's confirmation stays contained too, and Back returns.
+    await dialog.getByRole('button', {name: 'Remove', exact: true}).click();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText('Remove Ann?');
+    contained(await containment(dialog), `${label} confirmation`);
+    await dialog.getByRole('button', {name: 'Back', exact: true}).click();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: annie');
+
+    // Cancel: nothing was written.
+    await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
+    await expect(editor(page)).toHaveCount(0);
+    expect(writes(sent)).toEqual([]);
+  });
+}

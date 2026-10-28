@@ -4377,15 +4377,16 @@
       'Account enabled');
   }
 
-  /* Edit User: ONE dialog for a person's role, local password and lifecycle.
+  /* Edit User: ONE dialog for a person's username, role, local password and
+   * lifecycle. Its title names the account's username, with the pencil that
+   * edits it (in a view of this dialog) right beside it; the chosen name is a
+   * draft until Apply.
    *
    * Apply sends only what changed, one request each and the role first: the
    * role through PATCH /accounts/{id}, the password through POST
-   * /accounts/{id}/password (with the username when that changed too, or when
-   * it is the account's first password, which needs one), and a username
-   * alone through PUT /accounts/{id}/username, which keeps the password. The
-   * username is edited from its pencil, in a view of this dialog, and is a
-   * draft until Apply. These are separate server writes, never one
+   * /accounts/{id}/password (with the username when that changed too, so the
+   * two are one write), and a username alone through PUT
+   * /accounts/{id}/username, which keeps any password. These are separate server writes, never one
    * transaction, so Apply stops at the first that fails, says exactly which
    * took effect, and re-reads the account; a later Apply sends only what the
    * re-read account still lacks. A write the server acknowledged is part of
@@ -4411,22 +4412,19 @@
     let handle = null;
     const nodes = {};
     const roleLabel = role => ROLE_LABELS[role] || role;
-    const editTitle = () => `Edit User: ${accountName(account || initial)}`;
-
-    // An account without a password gets its username with its first one.
-    const establishing = () => !account?.has_password;
-    const wantedName = () => usernameDraft ?? (account?.username || '');
-    const usernameChanged = () => usernameDraft !== null && usernameDraft !== (account?.username || '');
+    const appliedName = () => account?.username || '';
+    const wantedName = () => usernameDraft ?? appliedName();
+    const usernameChanged = () => usernameDraft !== null && usernameDraft !== appliedName();
+    const editTitle = () => `Edit User: ${wantedName() || accountName(account || initial)}`;
     const passwordState = () => {
       const next = nodes.password.value;
       const confirmed = nodes.confirm.value;
-      if (!next && !confirmed) return establishing() && usernameChanged() ? 'incomplete' : 'empty';
+      if (!next && !confirmed) return 'empty';
       if (!confirmed) return 'incomplete';
-      if (next !== confirmed) return 'mismatch';
-      return establishing() && !wantedName() ? 'unnamed' : 'match';
+      return next !== confirmed ? 'mismatch' : 'match';
     };
     const roleChanged = () => Boolean(account) && nodes.role.value !== account.role;
-    const renameAlone = () => !establishing() && usernameChanged() && passwordState() === 'empty';
+    const renameAlone = () => usernameChanged() && passwordState() === 'empty';
 
     const say = (message, tone = '') => {
       nodes.outcome.textContent = message;
@@ -4436,18 +4434,16 @@
 
     const paint = () => {
       const state = passwordState();
-      const agree = state === 'match' || state === 'unnamed';
-      nodes.confirmField.dataset.match = String(agree);
+      nodes.confirmField.dataset.match = String(state === 'match');
       nodes.confirm.setAttribute('aria-invalid', String(state === 'mismatch'));
-      nodes.passwordStatus.dataset.state = agree ? 'match' : state;
+      nodes.passwordStatus.dataset.state = state;
       nodes.passwordStatus.textContent = {
         empty: '', incomplete: 'Enter the new password in both fields.',
         mismatch: 'Passwords do not match', match: 'Passwords match',
-        unnamed: 'Passwords match. Set a username too: a first password needs one.',
       }[state];
-      nodes.usernameValue.textContent = wantedName() || 'Not set';
-      nodes.usernameValue.dataset.unset = String(!wantedName());
       nodes.usernameDraft.hidden = !usernameChanged();
+      nodes.usernameDraft.textContent = usernameChanged()
+        ? `Username ${wantedName()} is not yet applied. The account’s username is still ${appliedName()}.` : '';
       nodes.identity.textContent = account
         ? [account.email, roleLabel(account.role), account.enabled ? 'Enabled' : 'Disabled'].filter(Boolean).join(' · ')
         : 'This account no longer exists.';
@@ -4459,9 +4455,12 @@
         return;
       }
       if (view === 'username') {
-        handle.setAcceptEnabled(!establishing() ? Boolean(nodes.usernameInput.value.trim()) : true);
+        handle.setAcceptEnabled(Boolean(nodes.usernameInput.value.trim()));
         return;
       }
+      handle.setTitle(editTitle());
+      handle.setActionHidden('username', !account);
+      handle.setActionEnabled('username', Boolean(account) && !pending);
       handle.setAcceptEnabled(Boolean(account) && !pending && ['empty', 'match'].includes(state)
         && (roleChanged() || state === 'match' || renameAlone()));
       handle.setActionHidden('disable', !account?.enabled);
@@ -4493,8 +4492,8 @@
       nodes.editView.hidden = next !== 'edit';
       nodes.confirmView.hidden = next !== 'confirm';
       nodes.usernameView.hidden = next !== 'username';
+      if (next !== 'edit') ['username', 'disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
       if (next === 'username') {
-        ['disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
         handle.setTitle('Edit Username');
         handle.setAcceptLabel('Done');
         handle.setCancelLabel('Back');
@@ -4506,7 +4505,6 @@
       }
       if (next === 'confirm') {
         const destructive = act !== 'disable';
-        ['disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
         handle.setTitle(`${IMPACT[act].title} ${accountName(account)}?`);
         handle.setTone(destructive ? 'danger' : '', destructive ? '' : 'warning');
         handle.setAcceptLabel(IMPACT[act].accept);
@@ -4515,19 +4513,19 @@
         nodes.confirmView.querySelector('.dp-account-impact-lead').focus();
         return;
       }
-      handle.setTitle(editTitle());
       handle.setTone('', '');
       handle.setAcceptLabel('Apply');
       handle.setCancelLabel('Cancel');
       paint();
-      (focus || nodes.role).focus();
+      if (focus === 'username') handle.focusAction('username');
+      else (focus || nodes.role).focus();
     };
 
     // The username view's Done: the chosen name becomes the draft, nothing more.
     const chooseUsername = () => {
       const name = nodes.usernameInput.value.trim();
-      usernameDraft = name === (account?.username || '') ? null : name;
-      show('edit', nodes.usernameEdit);
+      usernameDraft = name === appliedName() ? null : name;
+      show('edit', 'username');
     };
 
     async function apply() {
@@ -4536,7 +4534,8 @@
       const sendRole = roleChanged();
       const sendPassword = passwordState() === 'match';
       const sendRename = renameAlone();
-      const withName = sendPassword && (establishing() || usernameChanged());
+      const withName = sendPassword && usernameChanged();
+      const signsOut = Boolean(account?.has_password);
       if (!sendRole && !sendPassword && !sendRename) return false;
       pending = true;
       say('');
@@ -4559,7 +4558,8 @@
         try {
           await request('PUT', `${path}/username`, {username: name}, 10000);
           acknowledge({username: name});
-          done.push(`Username changed to ${name}; the account is signed out everywhere.`);
+          usernameDraft = null;
+          done.push(`Username changed to ${name}${signsOut ? '; the account is signed out everywhere' : ''}.`);
         } catch (error) {
           renameUnanswered = !error?.status;
           failure = renameUnanswered ? '' : `Username not changed: ${text(error.message)}`;
@@ -4569,7 +4569,10 @@
         try {
           await request('POST', `${path}/password`, {password: nodes.password.value, ...(withName ? {username: name} : {})}, 10000);
           acknowledge({has_password: true, ...(withName ? {username: name} : {})});
-          if (withName) done.push(`Username set to ${name}.`);
+          if (withName) {
+            usernameDraft = null;
+            done.push(`Username changed to ${name}.`);
+          }
           done.push('Password saved; the account is signed out everywhere.');
           clearPassword();
         } catch (error) {
@@ -4591,7 +4594,10 @@
         if (sendRename) failure = [failure, 'The username was not sent.'].filter(Boolean).join(' ');
       } else if (renameUnanswered) {
         if (!read) failure = 'The username change got no response and the account could not be re-read, so whether it took effect is unknown.';
-        else if (account?.username === name) done.push(`Username changed to ${name}; the account is signed out everywhere.`);
+        else if (account?.username === name) {
+          usernameDraft = null;
+          done.push(`Username changed to ${name}${signsOut ? '; the account is signed out everywhere' : ''}.`);
+        }
         else failure = 'The username change got no response and the account still has its previous username.';
       } else if (failure && sendRole && !done.length && (sendPassword || sendRename)) {
         failure += sendPassword ? ' The password was not sent.' : ' The username was not sent.';
@@ -4695,6 +4701,7 @@
       acceptDisabled: true,
       className: 'dp-users-dialog dp-users-edit-dialog',
       actions: [
+        {id: 'username', label: 'Edit Username', placement: 'title', icon: '/icons/lucide/pencil.svg'},
         {id: 'disable', label: 'Disable', placement: 'leading'},
         {id: 'enable', label: 'Enable', placement: 'leading'},
         {id: 'remove', label: 'Remove', tone: 'danger', placement: 'leading'},
@@ -4704,6 +4711,7 @@
         body.innerHTML = `
           <div class="dp-users-edit-view" data-edit-view="edit">
             <p class="dp-modal-message dp-users-edit-identity"></p>
+            <p class="dp-users-username-draft" data-username-draft role="status" hidden></p>
             <section class="dp-users-edit-group">
               <h3 class="dp-users-edit-heading">Account Role</h3>
               <div data-edit-role></div>
@@ -4711,15 +4719,6 @@
             </section>
             <section class="dp-users-edit-group">
               <h3 class="dp-users-edit-heading">${has ? 'Reset' : 'Set'} Local Password</h3>
-              <div class="dp-modal-field dp-users-username"><span class="form-label">Username</span>
-                <span class="dp-users-username-row">
-                  <span class="dp-users-username-value" data-username-value></span>
-                  <button type="button" class="btn btn-ghost btn-sm dp-users-username-edit" data-edit-username
-                          data-tooltip="Edit Username" aria-label="Edit Username">
-                    <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
-                  </button>
-                  <span class="dp-users-username-draft" data-username-draft hidden>Not yet applied</span>
-                </span></div>
               <label class="dp-modal-field"><span class="form-label">New Password</span>
                 <input class="input" data-edit-field="password" type="password" maxlength="4096" autocomplete="new-password"></label>
               <label class="dp-modal-field dp-users-password-confirm"><span class="form-label">Confirm New Password</span>
@@ -4731,9 +4730,7 @@
               <p class="dp-users-password-status" id="dp-users-password-status" aria-live="polite"></p>
               <p class="dp-users-edit-note">${has ? 'Leave both password fields blank to keep the existing password.'
                 : 'Leave both password fields blank to keep the account without a local password.'}</p>
-              <p class="dp-users-edit-note">The account is signed out everywhere and signs in again with this password. Its OIDC sign-in, if it has one, stays linked.</p>
-              <p class="dp-users-edit-note">${has ? 'A new username alone keeps the password, and also signs the account out everywhere.'
-                : 'A local password needs a username: set both here, and they are saved together.'}</p>
+              <p class="dp-users-edit-note">The account is signed out everywhere and signs in again with its username and this password. Its OIDC sign-in, if it has one, stays linked.</p>
             </section>
             <p class="dp-users-edit-outcome" role="alert" hidden></p>
             <p class="dp-users-edit-stale" role="status" hidden>The account list could not be re-read. Shown here: the account as last read, with the changes the server confirmed since.</p>
@@ -4742,8 +4739,7 @@
           <div class="dp-users-edit-view" data-edit-view="username" hidden>
             <label class="dp-modal-field"><span class="form-label">Username</span>
               <input class="input" data-username-input type="text" maxlength="256" autocomplete="off" spellcheck="false"></label>
-            <p class="dp-users-edit-note">${has ? 'The account signs in with this username and its current password. It takes effect when you apply.'
-              : 'It is saved together with the account’s first password when you apply.'}</p>
+            <p class="dp-users-edit-note">The account’s DebridPulse username: the name its local password signs in with. It is not the account’s display name, and its OIDC sign-in is unaffected. It takes effect when you apply${has ? ', keeps the password and signs the account out everywhere' : ''}.</p>
           </div>`;
         handle = mounted;
         Object.assign(nodes, {
@@ -4756,8 +4752,6 @@
           stale: body.querySelector('.dp-users-edit-stale'),
           usernameView: body.querySelector('[data-edit-view="username"]'),
           usernameInput: body.querySelector('[data-username-input]'),
-          usernameValue: body.querySelector('[data-username-value]'),
-          usernameEdit: body.querySelector('[data-edit-username]'),
           usernameDraft: body.querySelector('[data-username-draft]'),
           role: mountFields(body.querySelector('[data-edit-role]'), '',
             [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}]).role,
@@ -4765,19 +4759,19 @@
         body.querySelectorAll('[data-edit-field]').forEach(input => { nodes[input.dataset.editField] = input; });
         body.addEventListener('input', paint);
         body.addEventListener('change', paint);
-        nodes.usernameEdit.addEventListener('click', () => { if (!pending && account) show('username'); });
         paint();
         return nodes.identity;
       },
       onAction(action) {
         if (pending || !account || view !== 'edit') return;
-        if (action === 'enable') void enable();
+        if (action === 'username') show('username');
+        else if (action === 'enable') void enable();
         else if (action === 'disable' || action === 'remove') void confirmAct(action);
       },
       onCancel() {
         if (pending) return false;
         if (view === 'edit') return true;
-        show('edit', view === 'username' ? nodes.usernameEdit : null);
+        show('edit', view === 'username' ? 'username' : null);
         return false;
       },
       async onAccept() {

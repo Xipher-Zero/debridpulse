@@ -167,13 +167,104 @@ async def test_a_merge_moves_live_identities_and_redirects_history_without_rewri
     assert await accounts.canonical_account_id(duplicate.id) == target.id
     tombstone = await accounts.get_account(duplicate.id)
     assert tombstone is not None and not tombstone.active and tombstone.merged_into == target.id
-    assert (await accounts.get_account(target.id)).role is Role.ADMIN
+    assert tombstone.username == ""                                     # released; the target keeps its own
+    assert ((await accounts.get_account(target.id)).role, (await accounts.get_account(target.id)).username) == (
+        Role.ADMIN, "target")
 
     holder = await accounts.create_local_account("holder", "secret-pw", role=Role.USER)
     with pytest.raises(AccountRefused):
         await accounts.merge_accounts(DEFAULT_ADMIN_ID, holder.id, target.id)  # two local credentials
     with pytest.raises(AccountRefused):
         await accounts.merge_accounts(target.id, DEFAULT_INTEGRATION_ID, target.id)  # protected
+
+
+@pytest.mark.asyncio
+async def test_an_oidc_account_owns_the_username_its_first_sign_in_gave_it(installation):
+    """The username is the account's own from its first OIDC sign-in, with no
+    local credential; no later sign-in, display-name change or rename touches
+    the other; a first password signs in under it; and a username another
+    account holds is varied for a new account but never shared or linked."""
+    bigsky = await accounts.resolve_oidc(ISSUER, "sub-bigsky", {"preferred_username": "bigsky"}, default_role="user")
+    assert (bigsky.username, bigsky.display_name, bigsky.has_password) == ("bigsky", "bigsky", False)
+    assert await _count("SELECT COUNT(*) AS n FROM account_local_credentials") == 0
+
+    await accounts.set_display_name(bigsky.id, "Sierra")
+    again = await accounts.resolve_oidc(ISSUER, "sub-bigsky", {"preferred_username": "changed-upstream"},
+                                        default_role="user")
+    assert (again.id, again.username, again.display_name) == (bigsky.id, "bigsky", "Sierra")
+
+    await accounts.set_username(DEFAULT_ADMIN_ID, bigsky.id, "bigsky2")
+    renamed = await accounts.resolve_oidc(ISSUER, "sub-bigsky", {"preferred_username": "bigsky"}, default_role="user")
+    assert (renamed.id, renamed.username, renamed.display_name) == (bigsky.id, "bigsky2", "Sierra")
+
+    # The first local password: the account's username, no second name.
+    await accounts.reset_password(DEFAULT_ADMIN_ID, bigsky.id, "first-password")
+    owner, _verifier = await accounts.local_credential("bigsky2")
+    assert owner.id == bigsky.id and await accounts.local_credential("bigsky") is None
+
+    # Taken names are varied deterministically for a NEW account, never shared.
+    taken = await accounts.resolve_oidc(ISSUER, "sub-other", {"preferred_username": "bigsky2"}, default_role="user")
+    nameless = await accounts.resolve_oidc(ISSUER, "sub-nameless", {}, default_role="user")
+    assert taken.id != bigsky.id and taken.username == "bigsky2-2"
+    assert nameless.username == f"user-{nameless.id[:8]}"
+    with pytest.raises(AccountRefused, match="belongs to another account"):
+        await accounts.set_username(DEFAULT_ADMIN_ID, taken.id, "bigsky2")
+    assert await _basic_status("bigsky2", "first-password") == 204
+    assert await _basic_status("bigsky", "first-password") == 401
+
+
+@pytest.mark.asyncio
+async def test_accounts_from_before_usernames_are_given_one_once(installation):
+    """The bootstrap gives every current human account a username exactly
+    once: a local credential's own name is kept, with its password; any other
+    account takes its stored display name, made unique; the credential table
+    keeps passwords alone; and a second start changes nothing."""
+    import sqlite3
+
+    from db import database
+
+    local = await accounts.create_local_account("operator", "local-secret", role=Role.ADMIN)
+    oidc = await accounts.resolve_oidc(ISSUER, "sub-sierra", {"preferred_username": "bigsky"}, default_role="user")
+    await accounts.set_display_name(oidc.id, "Sierra")
+    clash = await accounts.resolve_oidc(ISSUER, "sub-clash", {"preferred_username": "x"}, default_role="user")
+    await accounts.set_display_name(clash.id, "operator")
+    removed = await accounts.resolve_oidc(ISSUER, "sub-removed", {"preferred_username": "gone"}, default_role="user")
+    await accounts.delete_account(DEFAULT_ADMIN_ID, removed.id)
+    _owner, verifier = await accounts.local_credential("operator")
+
+    # The schema before usernames were the account's: a credential row held the
+    # name, and could hold it without a password.
+    conn = sqlite3.connect(database.DB_PATH)
+    with conn:
+        conn.execute("DROP INDEX idx_accounts_username")
+        conn.execute("UPDATE accounts SET username=NULL")
+        conn.execute("DROP TABLE account_local_credentials")
+        conn.execute("CREATE TABLE account_local_credentials (account_id TEXT PRIMARY KEY REFERENCES accounts(id), "
+                     "username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)")
+        conn.execute("INSERT INTO account_local_credentials VALUES(?,?,?,?)", (local.id, "operator", verifier, "then"))
+        conn.execute("INSERT INTO account_local_credentials VALUES(?,?,?,?)", (oidc.id, "kept-name", "", "then"))
+    conn.close()
+
+    await database.init_db()
+    names = {account["id"]: account["username"] for account in await accounts.list_accounts()}
+    assert names == {DEFAULT_ADMIN_ID: "Administrator", DEFAULT_INTEGRATION_ID: "", local.id: "operator",
+                     oidc.id: "kept-name", clash.id: "operator-2", removed.id: ""}
+    owner, kept = await accounts.local_credential("operator")
+    assert (owner.id, kept) == (local.id, verifier) and not (await accounts.get_account(oidc.id)).has_password
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(account_local_credentials)")]
+        rows = conn.execute("SELECT * FROM accounts ORDER BY id").fetchall()
+    finally:
+        conn.close()
+    assert columns == ["account_id", "password_hash", "updated_at"]
+
+    await database.init_db()                                             # idempotent
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert conn.execute("SELECT * FROM accounts ORDER BY id").fetchall() == rows
+    finally:
+        conn.close()
 
 
 @pytest.mark.asyncio
