@@ -259,8 +259,14 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
 /* DP 1.0.12 canonical flattening: #topbar h1 (1,0,1) is more specific than
    #page-title (1,0,0) alone, so it has always governed font-size/flex for
    the shared <h1 id="page-title"> element regardless of source order --
-   preserved verbatim rather than folded into #page-title. */
-#topbar h1 { font-size: 17px; font-weight: 700; flex: 1; }
+   preserved verbatim rather than folded into #page-title. From the shell's
+   780px mode change up the page title's size is the one desktop page-title
+   size (ui-shell-structural.css --dp-shell-title-size); this 17px governs the
+   handheld shell only. */
+#topbar h1 { font-weight: 700; flex: 1; }
+@media (max-width: 779px) {
+  #topbar h1 { font-size: 17px; }
+}
 
 #page-title {
   position: relative;
@@ -432,10 +438,9 @@ body.light #runtime-speed-badge {
   #runtime-speed-badge { padding-inline: 8px !important; }
 }
 
-/* The compact desktop sidebar (901-1559px) is ui-shell-structural.css's. */
-@media (max-width: 1179px) {
-  #page-title::after { display: none; }
-}
+/* The compact desktop sidebar (901-1559px) is ui-shell-structural.css's. The
+   page title's pulse artwork stays beside it at every desktop width; only the
+   handheld shell (below 780px) sets it aside (ui-shell-structural.css). */
 
 /* The drawer's sidebar (below 780px); above it the compact rail holds. */
 @media (max-width: 779px) {

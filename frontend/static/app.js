@@ -38,12 +38,16 @@ function renderTopbarActions() {
 
   // Create these controls once. Replacing their DOM nodes during live refreshes
   // can swallow pointer-up/click events when an SSE update lands mid-click.
+  // Each label is the button's icon label (a pending label replaces it, never
+  // the glyph); where the shell shows the glyph only (ui-shell-structural.css)
+  // the label stays the accessible name and the tooltip says it.
   if (el.dataset.initialized !== '1') {
     const icon = (name) => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
+    const label = '[data-dp-icon-label]';
     el.innerHTML = `
-      <button id="btn-resume-all" class="btn btn-primary" data-default-label="Resume All" onclick="resumeProcessing()" style="display:none">${icon('play')}<span>Resume All</span></button>
-      <button id="btn-resume-paused" class="btn btn-primary" data-default-label="Resume Paused" onclick="resumePausedDownloads()" style="display:none">${icon('play')}<span>Resume Paused</span></button>
-      <button id="btn-pause-all" class="btn btn-ghost" data-default-label="Pause All" onclick="pauseProcessing()">${icon('pause')}<span>Pause All</span></button>
+      <button id="btn-resume-all" class="btn btn-primary" data-default-label="Resume All" data-tooltip="Resume All" data-tooltip-label="${label}" onclick="resumeProcessing()" style="display:none">${icon('play')}<span data-dp-icon-label="1">Resume All</span></button>
+      <button id="btn-resume-paused" class="btn btn-primary" data-default-label="Resume Paused" data-tooltip="Resume Paused" data-tooltip-label="${label}" onclick="resumePausedDownloads()" style="display:none">${icon('play')}<span data-dp-icon-label="1">Resume Paused</span></button>
+      <button id="btn-pause-all" class="btn btn-ghost" data-default-label="Pause All" data-tooltip="Pause All" data-tooltip-label="${label}" onclick="pauseProcessing()">${icon('pause')}<span data-dp-icon-label="1">Pause All</span></button>
     `;
     el.dataset.initialized = '1';
   }
@@ -64,12 +68,17 @@ function renderTopbarActions() {
     resumeAllBtn.dataset.defaultLabel = 'Resume All';
   }
 
+  // Resume Paused beside Pause All: the topbar's widest control state
+  // (ui-shell-structural.css reads it to fit the title's artwork beside them).
+  el.toggleAttribute('data-resume-paused', !globallyPaused && selectivelyPaused > 0);
+
   if (resumePausedBtn) {
     resumePausedBtn.style.display =
       !globallyPaused && selectivelyPaused > 0 ? '' : 'none';
 
     const label = `Resume Paused (${selectivelyPaused})`;
     resumePausedBtn.dataset.defaultLabel = label;
+    resumePausedBtn.dataset.tooltip = label;
 
     if (resumePausedBtn.dataset.pending !== '1') {
       const copy = resumePausedBtn.querySelector('span:last-child');

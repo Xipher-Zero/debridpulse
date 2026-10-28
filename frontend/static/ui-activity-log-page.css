@@ -351,7 +351,7 @@ body:has(.nav-item[data-view="events"].active) #page-title {
 }
 body:has(.nav-item[data-view="events"].active) #page-title::before {
   content: 'Activity Log';
-  font-size: 28px;
+  font-size: var(--dp-shell-title-size);
   line-height: 1.04;
   font-weight: 700;
   letter-spacing: -.03em;

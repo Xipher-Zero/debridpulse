@@ -4,7 +4,12 @@
 :root {
   --dp-shell-sidebar: 240px;
   --dp-shell-header: 102px;
-  --dp-shell-x: 30px;
+  /* The page's horizontal inset: one value from the shell's 780px mode change
+     up, at every width; the handheld shell (below 780px) sets its own. */
+  --dp-shell-x: 22px;
+  /* The one desktop page-title size: every page's title, Activity Log's drawn
+     one included (ui-activity-log-page.css), from the 780px mode change up. */
+  --dp-shell-title-size: 23px;
 }
 
 html, body {
@@ -230,7 +235,7 @@ body.light .conn-row .dot {
   min-width: 0;
   margin: 0;
   color: var(--dp-chrome-title);
-  font-size: 28px;
+  font-size: var(--dp-shell-title-size);
   line-height: 1.04;
   font-weight: 700;
   letter-spacing: -.03em;
@@ -238,7 +243,7 @@ body.light .conn-row .dot {
 #page-title::after {
   width: 105px;
   height: 19px;
-  margin-left: 17px;
+  margin-left: 4px;
   opacity: .85;
   filter: saturate(1.15) drop-shadow(0 0 6px rgba(155, 78, 255, .34));
 }
@@ -374,7 +379,7 @@ body.light .theme-toggle {
 }
 
 @media (max-width: 1180px) {
-  :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; --dp-sidebar-item-inset: 18px; }
+  :root { --dp-shell-sidebar: 220px; --dp-sidebar-item-inset: 18px; }
 }
 
 /* The brand glyph is centred on the navigation icon rail at every width (the
@@ -598,6 +603,54 @@ body.light .theme-toggle {
   #sidebar.sidebar-reflowing .sidebar-bottom-stack .sidebar-footer,
   #sidebar.sidebar-reflowing[data-sidebar-reflow="persistent"]:not(.sidebar-overlay-open) {
     animation: none;
+  }
+}
+
+/* The desktop topbar (the shell's 780px mode change up): every page's title
+   and its pulse artwork keep one line. */
+@media (min-width: 780px) {
+  #page-title { white-space: nowrap; }
+}
+
+/* The compact operational controls: at and below 1023px, one width for
+   every page and download state, Pause All, Resume All and Resume Paused show
+   their glyph only. Measured on the widest composition -- Help & License with
+   its artwork, Resume Paused beside Pause All, the full speed badge and the
+   theme controls -- the labelled row keeps the topbar's 10px gap from 1005px
+   with the fallback fonts (968px with Outfit); 1023px leaves room for other
+   fallback faces. Each keeps its element, handler, state, colours and glyph;
+   its label (app.js renderTopbarActions, the paused count included) stays its
+   accessible name and becomes its tooltip (ui-tooltip.js data-tooltip-label). */
+@media (min-width: 780px) and (max-width: 1023px) {
+  /* One 6px spacing through the narrowed rail (the topbar's 10px and the
+     controls' 9px), and the speed badge's 12px side padding at 8px. */
+  #topbar,
+  #topbar-actions { gap: 6px; }
+  #runtime-speed-badge { padding-inline: 8px !important; }
+  #topbar-actions .btn {
+    width: 37px;
+    padding: 0;
+    justify-content: center;
+  }
+  #topbar-actions .btn [data-dp-icon-label] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+  }
+}
+
+/* Where even the narrowed rail is short -- Resume Paused beside Pause All
+   below 788px, measured with the fallback fonts -- the title's artwork is drawn
+   10% smaller (105x19 to 95x17.2, the same shape), never hidden; it returns to
+   its size as Resume Paused leaves or the window widens. */
+@media (min-width: 780px) and (max-width: 787px) {
+  #topbar:has(#topbar-actions[data-resume-paused]) #page-title::after {
+    width: 95px;
+    height: 17.2px;
   }
 }
 
