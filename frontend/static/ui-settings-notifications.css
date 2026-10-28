@@ -107,18 +107,34 @@
   white-space: nowrap;
 }
 
-/* Upload Avatar sits inside the Avatar URL field's own border, as the
-   control's sibling, so entered text physically ends where the button begins.
-   Its vertical size is the compound field's, not a button band of its own. */
-#view-settings .dp-settings-avatar-upload {
+/* The Avatar URL field's one action sits inside the field's own border, as
+   the control's sibling, so entered text physically ends where the button
+   begins. Its vertical size is the compound field's, not a button band of its
+   own, and its width is ONE slot for both of its states (Upload, Clear), so
+   switching between them moves nothing. */
+#view-settings .dp-settings-avatar-action {
   min-height: 0;
   padding-block: 4px;
   white-space: nowrap;
+  width: 5.5em;
+  justify-content: center;
+}
+
+/* A field carrying an embedded action -- a webhook's Clear, the avatar's
+   Upload/Clear -- keeps its typing room beside it (the stored password and
+   client secret do the same): the control never narrows past what it holds,
+   and its sentence yields the width instead. */
+#view-settings [data-panel="notifications"] :is(.dp-settings-webhook-row, .dp-settings-avatar-row) > .dp-settings-inline-field-control {
+  min-width: min-content;
+}
+
+#view-settings [data-panel="notifications"] :is(.dp-settings-webhook-row, .dp-settings-avatar-row) .dp-action-field > .input {
+  min-width: 100px;
 }
 
 /* The primary destination row shares the identity row's card-body rails: same
    left and right edge, same two-column split. Each webhook carries its own
-   explicit Clear Webhook beside its own control. The disclosure below is a
+   explicit Clear inside its own field. The disclosure below is a
    separate block, so opening it changes nothing here. */
 #view-settings .dp-settings-notifications-delivery-row {
   /* One step of the shared spacing scale, wider than the 28px gap INSIDE a

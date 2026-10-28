@@ -87,8 +87,8 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   for (const key of ['discord_notify_update', 'update_check_interval_hours']) {
     await expect(global.locator(`[data-setting="${key}"]`)).toHaveCount(1);
   }
-  await expect(global.locator('[data-action="upload-avatar"]')).toHaveCount(1);
-  await expect(global.locator('[data-action="clear-avatar"]')).toHaveCount(1);
+  // The Avatar URL field's one action (Upload while empty, Clear with a URL).
+  await expect(global.locator('[data-avatar-action]')).toHaveCount(1);
   await expect(global.locator('[data-settings-help="discord"], [data-settings-help="statistics-reporting"]')).toHaveCount(2);
   await shot(admin.page, 'admin-settings-notifications');
   for (const width of [800, 390]) {
@@ -133,7 +133,7 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
     'discord_webhook_added', 'discord_notify_added', 'discord_notify_finished', 'discord_notify_error',
     'discord_notify_extract', 'stats_reporting_enabled', 'stats_report_webhook_url',
     'stats_report_interval_hours', 'stats_report_window_hours']));
-  await expect(view.locator('[data-action="upload-avatar"], [data-action="clear-avatar"]')).toHaveCount(0);
+  await expect(view.locator('[data-avatar-action], [data-action="upload-avatar"], [data-action="clear-avatar"]')).toHaveCount(0);
   await expect(view.locator('[data-action="test-discord"]')).toHaveCount(1);
   await expect(view.locator('[data-action="send-report"]')).toHaveCount(1);
   // The same two cards carry the help of the User's OWN scope, never the
@@ -175,6 +175,22 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   expect(own.body.discord_webhook_url_configured).toBe(true);
   expect(own.body.discord_webhook_added_configured).toBe(false);
   expect(await page.content()).not.toContain(HOOK);
+  // The User's own Clear is inside the field, reads Clear, and clears through
+  // the account-scoped endpoint only -- after the canonical confirmation.
+  const clear = view.locator('[data-action="clear-webhook"][data-webhook="discord_webhook_url"]');
+  expect(await clear.evaluate(button => !!button.closest('.dp-action-field') && button.textContent.trim())).toBe('Clear');
+  await expect(clear).toHaveAttribute('aria-label', 'Clear the stored primary Discord webhook');
+  const writes = [];
+  page.on('request', request => { if (request.method() === 'PUT') writes.push([new URL(request.url()).pathname, request.postDataJSON()]); });
+  await clear.click();
+  await page.locator('.dp-modal-overlay [data-modal-cancel]').click();
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+  expect(writes).toEqual([]);
+  await clear.click();
+  await page.locator('.dp-modal-overlay').getByRole('button', {name: 'Clear Webhook'}).click();
+  await expect.poll(async () => (await api(page, 'GET', '/account/notifications')).body.discord_webhook_url_configured).toBe(false);
+  expect(writes).toEqual([['/api/account/notifications', {clear_secrets: ['discord_webhook_url']}]]);
+  await expect(clear).toBeDisabled();
   // The global surfaces stay closed to a User, whatever the client sends.
   expect((await api(page, 'GET', '/settings')).status).toBe(403);
   expect((await api(page, 'POST', '/settings/validate-discord')).status).toBe(403);

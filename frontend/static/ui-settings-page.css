@@ -737,9 +737,12 @@
    are the same element in two forms, so the two-line form must win wherever the
    base form is stated -- including the second `.dp-settings-inline-field`
    declaration further down this sheet. */
+/* The control's track keeps the control's OWN declared minimum (`auto`): zero
+   for an ordinary control, which declares min-width: 0, and its typing room
+   plus its embedded action for one that declares more (the Avatar URL). */
 #view-settings .dp-settings-inline-field.dp-settings-inline-field--two-line {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(auto, 1fr) auto;
   grid-template-rows: auto auto;
   row-gap: 0;
 }

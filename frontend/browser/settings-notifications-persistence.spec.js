@@ -424,46 +424,73 @@ test('a rejected write converges the control back onto canonical truth', async (
   }
 });
 
-test('Upload Avatar lives inside the Avatar URL field and Clear Avatar beside it', async ({page}) => {
+test('the Avatar URL field has ONE embedded action: Upload while empty, Clear while it holds a URL, one fixed slot', async ({page}) => {
   const before = await canonical(page);
-  await openSettings(page, 'notifications');
-
+  const writes = [];
+  page.on('request', request => {
+    if (request.url().includes('/api/settings') && request.method() === 'PUT') writes.push(request.postDataJSON());
+  });
   try {
-    const placement = await page.locator('#view-settings .dp-settings-avatar-row').evaluate(row => {
+    await restoreNotifications(page, before, {clears: [], discord_avatar_url: ''});
+    await page.reload();
+    await openSettings(page, 'notifications');
+    writes.length = 0;
+    const avatar = field(page, 'discord_avatar_url');
+    const action = page.locator('#view-settings .dp-settings-avatar-row [data-avatar-action]');
+    const read = () => page.locator('#view-settings .dp-settings-avatar-row').evaluate(row => {
       const input = row.querySelector('#dp-settings-field-discord-avatar-url');
       const compound = input.closest('.dp-action-field');
-      const upload = compound?.querySelector('[data-action="upload-avatar"]');
-      const clear = row.querySelector('[data-action="clear-avatar"]');
-      const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
-      return {
-        uploadInsideField: !!upload,
-        clearOutsideField: !clear.closest('.dp-action-field'),
-        // Entered text ends where the button begins: they are siblings, not
-        // one drawn over the other.
-        textClearsTheButton: Math.round(upload.getBoundingClientRect().left
-          - input.getBoundingClientRect().right) >= 0,
-        uploadCentred: Math.abs(mid(upload) - mid(compound)) < 2,
-        clearCentred: Math.abs(mid(clear) - mid(compound)) < 2,
-        uploadIsAButton: upload.tagName,
-        uploadFocusable: upload.tabIndex >= 0,
-      };
+      const buttons = [...row.querySelectorAll('button')];
+      const button = buttons[0], b = button.getBoundingClientRect(), c = compound.getBoundingClientRect(), i = input.getBoundingClientRect();
+      return {buttons: buttons.length, inField: compound.contains(button), label: button.textContent.trim(),
+        name: button.getAttribute('aria-label'), tip: button.dataset.tooltip, action: button.dataset.action,
+        danger: button.classList.contains('btn-danger'), size: [Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10],
+        input: Math.round(i.width * 10) / 10, field: Math.round(c.height * 10) / 10,
+        right: Math.round((c.right - b.right) * 10) / 10, centred: Math.abs((b.top + b.bottom) / 2 - (c.top + c.bottom) / 2) < 2,
+        clears: i.right <= b.left + 0.5, focusable: button.tabIndex >= 0};
     });
-    expect(placement).toEqual({
-      uploadInsideField: true, clearOutsideField: true, textClearsTheButton: true,
-      uploadCentred: true, clearCentred: true, uploadIsAButton: 'BUTTON', uploadFocusable: true,
-    });
+    // Empty: Upload, neutral, inside the field.
+    const empty = await read();
+    expect(empty).toMatchObject({buttons: 1, inField: true, label: 'Upload', name: 'Upload Avatar', tip: 'Upload Avatar',
+      action: 'upload-avatar', danger: false, centred: true, clears: true, focusable: true});
+    // Upload opens the existing file browser.
+    const chooser = page.waitForEvent('filechooser');
+    await action.click();
+    expect((await chooser).isMultiple()).toBe(false);
+    // A typed URL: Clear, destructive -- the SAME slot, nothing moved, nothing written.
+    await avatar.fill('https://example.com/typed-draft.png');
+    const typed = await read();
+    expect(typed).toMatchObject({buttons: 1, label: 'Clear', name: 'Clear Avatar', tip: 'Clear Avatar', action: 'clear-avatar', danger: true});
+    expect([typed.size, typed.input, typed.field, typed.right]).toEqual([empty.size, empty.input, empty.field, empty.right]);
+    // Clearing a draft nothing stores sends nothing and needs no confirmation.
+    await action.click();
+    await expect(avatar).toHaveValue('');
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+    await expect(action).toHaveText('Upload');
+    await page.waitForTimeout(300);
+    expect(writes, 'a draft was submitted in order to be cleared').toEqual([]);
 
-    // Nothing to clear -> present, disabled, and still occupying its track.
-    await expect(page.locator('#view-settings [data-action="clear-avatar"]')).toBeDisabled();
-    await expect(page.locator('#view-settings [data-action="clear-avatar"]')).toBeVisible();
-
+    // A stored URL: Clear asks first; declining changes nothing and keeps a newer draft.
     await commit(page, 'discord_avatar_url', 'https://example.com/avatar.png');
-    await expect(page.locator('#view-settings [data-action="clear-avatar"]')).toBeEnabled();
     await expect(page.locator('#dp-settings-avatar-preview')).toBeVisible();
-
-    await page.locator('#view-settings [data-action="clear-avatar"]').click();
+    await expect(action).toHaveText('Clear');
+    await avatar.fill('https://example.com/newer-draft.png');
+    writes.length = 0;
+    await action.click();
+    await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+    await page.locator('.dp-modal-overlay [data-modal-cancel]').click();
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+    await expect(avatar).toHaveValue('https://example.com/newer-draft.png');
+    await page.waitForTimeout(300);
+    expect(writes, 'cancelling wrote something').toEqual([]);
+    expect((await canonical(page)).discord_avatar_url).toBe('https://example.com/avatar.png');
+    // Confirming removes the STORED URL through the existing write -- the newer
+    // draft is never submitted first.
+    await action.click();
     await confirmDialog(page, 'Clear Avatar');
-    await expect(page.locator('#view-settings [data-action="clear-avatar"]')).toBeDisabled();
+    expect(writes.map(write => write.discord_avatar_url)).toEqual(['']);
+    await expect(avatar).toHaveValue('');
+    await expect(action).toHaveText('Upload');
     await expect(page.locator('#dp-settings-avatar-preview')).toBeHidden();
     expect((await canonical(page)).discord_avatar_url).toBe('');
   } finally {
@@ -471,20 +498,65 @@ test('Upload Avatar lives inside the Avatar URL field and Clear Avatar beside it
   }
 });
 
+test('a refused avatar removal keeps the stored URL on screen', async ({page}) => {
+  const before = await canonical(page);
+  try {
+    await withStoredAvatar(page, before, 'https://example.com/avatar.png');
+    await page.route('**/api/settings', route => route.request().method() === 'PUT'
+      ? route.fulfill({status: 500, contentType: 'application/json', body: '{"detail":"synthetic failure"}'}) : route.continue());
+    await page.locator('#view-settings [data-avatar-action]').click();
+    await page.locator('.dp-modal-overlay').getByRole('button', {name: 'Clear Avatar'}).click();
+    await expect(page.locator('#toasts .toast').last()).toContainText('synthetic failure');
+    await expect(field(page, 'discord_avatar_url')).toHaveValue('https://example.com/avatar.png');
+    await expect(page.locator('#view-settings [data-avatar-action]')).toHaveText('Clear');
+    await expect(page.locator('#dp-settings-avatar-preview')).toBeVisible();
+    await page.unroute('**/api/settings');
+    expect((await canonical(page)).discord_avatar_url).toBe('https://example.com/avatar.png');
+  } finally {
+    await restoreNotifications(page, before, {clears: []});
+  }
+});
+
+test('every webhook Clear is inside its own field, named for what it clears, and keeps the typing room', async ({page}) => {
+  await openSettings(page, 'notifications');
+  for (const width of [1440, 1180, 1024, 900, 780, 480]) {
+    await page.setViewportSize({width, height: 1000});
+    for (const [key, name] of [['discord_webhook_url', 'Clear the stored primary Discord webhook'],
+      ['discord_webhook_added', 'Clear the stored Download Added webhook'], ['stats_report_webhook_url', 'Clear the stored reporting webhook']]) {
+      const g = await field(page, key).evaluate((input, key) => {
+        const row = input.closest('.dp-settings-inline-field'), compound = input.closest('.dp-action-field');
+        const clears = row.querySelectorAll('[data-action="clear-webhook"]'), clear = clears[0];
+        clear.scrollIntoView({block: 'center'});
+        const b = clear.getBoundingClientRect(), c = compound.getBoundingClientRect(), i = input.getBoundingClientRect(), r = row.getBoundingClientRect();
+        const hit = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+        return {count: clears.length, inField: compound.contains(clear), label: clear.textContent.trim(), name: clear.getAttribute('aria-label'),
+          tip: clear.dataset.tooltip, webhook: clear.dataset.webhook, danger: clear.classList.contains('btn-danger'), hit: clear.contains(hit),
+          clears: i.right <= b.left + 0.5, centred: Math.abs((b.top + b.bottom) / 2 - (c.top + c.bottom) / 2) < 2,
+          inRow: c.right <= r.right + 0.5, input: i.width, overflow: row.scrollWidth - row.clientWidth};
+      }, key);
+      const at = `${key} at ${width}px`;
+      expect(g, at).toMatchObject({count: 1, inField: true, label: 'Clear', name, tip: name, webhook: key, danger: true, hit: true,
+        clears: true, centred: true, inRow: true});
+      expect(g.input, `${at}: no room to type`).toBeGreaterThanOrEqual(100);
+      expect(g.overflow, `${at}: overflow`).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
 test('the destination row keeps its geometry in both disclosure states', async ({page}) => {
   await openSettings(page, 'notifications');
   const panel = page.locator('.dp-settings-panel[data-panel="notifications"]');
 
-  // No horizontal overflow, and each Clear action is centred on its own field's
-  // control rather than on the whole title/hint stack.
+  // No horizontal overflow, and each embedded action is centred on its own
+  // field's control rather than on the whole title/hint stack.
   const measured = await panel.evaluate(el => {
     const rows = [...el.querySelectorAll('.dp-settings-inline-field')]
-      .filter(row => row.querySelector(':scope > .dp-settings-inline-field-action'));
+      .filter(row => row.querySelector('.dp-action-field > .btn'));
     return {
       overflow: el.scrollWidth - el.clientWidth,
       offsets: rows.map(row => {
         const control = row.querySelector(':scope > .dp-settings-inline-field-control');
-        const action = row.querySelector(':scope > .dp-settings-inline-field-action');
+        const action = row.querySelector('.dp-action-field > .btn');
         const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
         return Math.round(mid(action) - mid(control));
       }),
@@ -553,7 +625,7 @@ async function avatarGeometry(page) {
               left: Math.round(r.left), right: Math.round(r.right)};
     };
     const control = row.querySelector(':scope > .dp-settings-inline-field-control');
-    const action = row.querySelector(':scope > .dp-settings-inline-field-action');
+    const action = row.querySelector('[data-avatar-action]');
     const line = row.querySelector(':scope > .dp-settings-inline-field-second-line');
     const preview = row.querySelector('#dp-settings-avatar-preview');
     return {
@@ -589,8 +661,8 @@ test('the avatar preview is a dedicated second line beneath the Avatar URL row',
 
       expect(g.previewInSecondLine, `${width}px: preview is not the field's second line`).toBe(true);
       expect(g.previewInsideControl, `${width}px: preview is inside the control box`).toBe(false);
-      // Structurally below: the whole preview clears the whole control row, and
-      // clears the Clear Avatar action beside it too. No shared line at any width.
+      // Structurally below: the whole preview clears the whole control row and
+      // the field's one action inside it. No shared line at any width.
       expect(g.preview.top, `${width}px: preview shares the control's line`)
         .toBeGreaterThanOrEqual(g.control.bottom);
       expect(g.preview.top, `${width}px: preview shares the action's line`)
@@ -598,20 +670,22 @@ test('the avatar preview is a dedicated second line beneath the Avatar URL row',
       // ... and beneath the control, not beneath the title block.
       expect(g.line.left, `${width}px: second line is not under the control`)
         .toBeGreaterThanOrEqual(g.control.left - 1);
-      // Upload stays INSIDE the field; Clear stays outside it, on the control's line.
+      // The one action stays INSIDE the field, on the control's line (a stored
+      // URL: Clear).
       const placement = await page.locator('#view-settings .dp-settings-avatar-row').evaluate(row => {
         const input = row.querySelector('#dp-settings-field-discord-avatar-url');
         const compound = input.closest('.dp-action-field');
-        const clear = row.querySelector('[data-action="clear-avatar"]');
+        const action = row.querySelector('[data-avatar-action]');
         const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
         return {
-          uploadInsideField: !!compound.querySelector('[data-action="upload-avatar"]'),
-          clearOutsideField: !clear.closest('.dp-action-field'),
-          clearOnTheControlLine: Math.abs(mid(clear) - mid(compound)) < 2,
+          buttons: row.querySelectorAll('button').length,
+          actionInsideField: compound.contains(action),
+          actionOnTheControlLine: Math.abs(mid(action) - mid(compound)) < 2,
+          label: action.textContent.trim(),
         };
       });
       expect(placement, `${width}px`).toEqual({
-        uploadInsideField: true, clearOutsideField: true, clearOnTheControlLine: true,
+        buttons: 1, actionInsideField: true, actionOnTheControlLine: true, label: 'Clear',
       });
     }
   } finally {

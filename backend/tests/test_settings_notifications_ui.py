@@ -119,21 +119,21 @@ def test_display_name_and_avatar_url_use_the_standard_field_grammar():
     assert "<label class=\"form-label\"" not in card
 
 
-def test_upload_avatar_is_inside_the_avatar_field_and_clear_avatar_is_beside_it():
+def test_the_avatar_field_has_one_embedded_action_upload_or_clear():
     runtime = source(RUNTIME)
     card = discord_card()
-    # Inside the field, through the ONE embedded-action primitive.
-    # The global card keeps both; a User's own card (`own`) has no instance upload.
-    assert "embedAction: own ? '' : AVATAR_UPLOAD" in card
-    assert "action: own ? '' : AVATAR_CLEAR(" in card
-    # One markup owner each; the only other mentions are the action router and
-    # the convergence read, neither of which renders a control.
-    assert runtime.count(">Upload Avatar<") == 1
-    assert runtime.count(">Clear Avatar<") == 1
+    # Inside the field, through the ONE embedded-action primitive, and only one:
+    # Upload while the field is empty, Clear while it holds a URL. A User's own
+    # card (`own`) has no instance upload, so no action at all.
+    assert "embedAction: own ? '' : avatarAction(s.discord_avatar_url)," in card
+    assert "AVATAR_CLEAR" not in runtime and "AVATAR_UPLOAD" not in runtime
+    actions = block(runtime, "const AVATAR_ACTIONS = Object.freeze({", "});")
+    assert "upload: {action: 'upload-avatar', label: 'Upload', name: 'Upload Avatar', tone: 'btn-ghost'}" in actions
+    assert "clear: {action: 'clear-avatar', label: 'Clear', name: 'Clear Avatar', tone: 'btn-danger'}" in actions
     # Keyboard reachable: a real button opening the hidden file input, not a
     # <label> wrapper that no tab stop can reach.
-    upload = block(runtime, "const AVATAR_UPLOAD", "const AVATAR_CLEAR")
-    assert 'type="button"' in upload and 'data-action="upload-avatar"' in upload
+    markup = block(runtime, "const avatarAction = url => {", "  };")
+    assert 'type="button"' in markup and "data-avatar-action" in markup and 'id="dp-settings-avatar-file" type="file"' in markup
     assert "dp-settings-file-button" not in runtime
     # Room for the text is structural: the control and the action are siblings
     # inside one compound field, so entered text cannot run beneath the button.
@@ -141,13 +141,22 @@ def test_upload_avatar_is_inside_the_avatar_field_and_clear_avatar_is_beside_it(
     assert "flex: 1 1 auto" in block(source(LANGUAGE), ".dp-action-field > :is(.input, .dp-field) {", "}")
 
 
-def test_clear_avatar_is_the_shared_two_state_destructive_action():
-    clear = block(source(RUNTIME), "const AVATAR_CLEAR", "const avatarPreview")
-    assert "btn btn-danger btn-sm" in clear
-    assert "configured ? '' : ' disabled'" in clear
-    assert "aria-label=" in clear
-    # It never disappears, so the row cannot reflow as a value comes and goes.
-    assert "hidden" not in clear
+def test_the_avatar_action_follows_the_field_in_one_fixed_slot_and_never_submits_a_draft_to_clear_it():
+    runtime = source(RUNTIME)
+    project = block(runtime, "function projectAvatarAction() {", "\n  }\n")
+    # What the FIELD holds decides the state -- never the placeholder.
+    assert "fieldFor('discord_avatar_url')?.value" in project and "placeholder" not in project
+    # One slot: the same width in both states, and a busy state with no new label.
+    css = source(STATIC / "ui-settings-notifications.css")
+    assert "width: 5.5em;" in block(css, "#view-settings .dp-settings-avatar-action {", "}")
+    clear = block(runtime, "async function clearAvatar(button) {", "\n  }\n")
+    assert "setBusy(button, true);" in clear
+    # A draft is set aside before the confirmation and the settle, and given back on cancel.
+    assert clear.index("avatar.value = accepted;") < clear.index("DPSettingsModal.confirm(")
+    assert clear.index("DPSettingsModal.confirm(") < clear.index("DPSettingsPersistence.settle(root())")
+    assert "avatar.value = draft;" in clear
+    # Pressing it does not take focus from the field (no blur commit of a draft).
+    assert "if (event.target.closest?.('[data-avatar-action]')) event.preventDefault();" in runtime
 
 
 # ── Discord destinations ─────────────────────────────────────────────────────
@@ -158,10 +167,11 @@ def test_both_webhooks_use_the_standard_field_grammar_with_one_clear_each():
     assert "webhookField('discord_webhook_url'" in card
     assert "webhookField('discord_webhook_added'" in card
 
-    composer = block(runtime, "function webhookField(key, configured)", "/* Upload Avatar belongs")
+    composer = block(runtime, "function webhookField(key, configured)", "/* The Avatar URL field's ONE action")
     assert "input(key, spec.label, ''" in composer
     assert "hint: spec.hint" in composer
-    assert "inline: true" in composer and "action: WEBHOOK_CLEAR(key" in composer
+    # Clear is inside the field (the embedded action), as the stored password's is.
+    assert "inline: true" in composer and "embedAction: WEBHOOK_CLEAR(key" in composer
 
     controls = block(runtime, "const WEBHOOK_CONTROLS = Object.freeze({", "const webhookPlaceholder")
     assert "'Discord Webhook'" in controls
@@ -172,7 +182,9 @@ def test_both_webhooks_use_the_standard_field_grammar_with_one_clear_each():
     assert "Optional destination for statistics reports. Leave blank to use the primary Discord webhook." in controls
     # One declaration, three rows, one clear action shape.
     assert runtime.count("const WEBHOOK_CLEAR") == 1
-    assert runtime.count(">Clear Webhook<") == 1
+    clear = block(runtime, "const WEBHOOK_CLEAR", "function webhookField")
+    assert "}>Clear</button>" in clear and ">Clear Webhook<" not in runtime
+    assert 'aria-label="${html(WEBHOOK_CONTROLS[key].aria)}" data-tooltip="${html(WEBHOOK_CONTROLS[key].aria)}"' in clear
     assert runtime.count("WEBHOOK_CLEAR(key") == 1
 
 
@@ -324,7 +336,7 @@ def test_every_control_uses_the_shared_horizontal_field_grammar():
     or any page-local rearrangement of it."""
     runtime = source(RUNTIME)
     panel = block(runtime, "function notificationsPanel(s, own = false) {", "/* Converge the Notifications surface")
-    composer = block(runtime, "function webhookField(key, configured)", "/* Upload Avatar belongs")
+    composer = block(runtime, "function webhookField(key, configured)", "/* The Avatar URL field's ONE action")
 
     inline_declared = [
         ("discord_username", panel), ("discord_avatar_url", panel),
@@ -408,9 +420,8 @@ def test_the_avatar_preview_is_the_fields_own_second_line():
     assert "secondLine: avatarPreview(" in call
     assert "after:" not in call
     assert runtime.count("secondLine: avatarPreview(") == 1
-    # Upload stays INSIDE the field and Clear stays beside it, unchanged.
-    assert "embedAction: own ? '' : AVATAR_UPLOAD" in call
-    assert "action: own ? '' : AVATAR_CLEAR(" in call
+    # The field's one action stays INSIDE it.
+    assert "embedAction: own ? '' : avatarAction(s.discord_avatar_url)," in call
 
     # The one field primitive renders it as its own region, AFTER the control
     # and the action -- never inside the control box that holds the input.

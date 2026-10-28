@@ -2978,12 +2978,15 @@
   /* Erasing a stored webhook is destructive, so it is an explicit action behind
    * the ONE canonical Settings confirmation -- never a commit boundary, never a
    * checkbox the page has to arm and reset, and never something a blanked field
-   * can trigger by accident. The action keeps its place whether or not there is
-   * anything to erase; only its state converges. */
+   * can trigger by accident. It is inside its own field (the embedded action, as
+   * the stored password and client secret carry theirs), reads "Clear" and is
+   * named for what it clears. The action keeps its place whether or not there
+   * is anything to erase; only its state converges. */
   const WEBHOOK_CLEAR = (key, configured) => `
             <button type="button" class="btn btn-danger btn-sm dp-settings-webhook-clear"
                     data-action="clear-webhook" data-webhook="${html(key)}"
-                    aria-label="${html(WEBHOOK_CONTROLS[key].aria)}"${configured ? '' : ' disabled'}>Clear Webhook</button>`;
+                    aria-label="${html(WEBHOOK_CONTROLS[key].aria)}" data-tooltip="${html(WEBHOOK_CONTROLS[key].aria)}"${
+                      configured ? '' : ' disabled'}>Clear</button>`;
 
   function webhookField(key, configured) {
     const spec = WEBHOOK_CONTROLS[key];
@@ -2994,24 +2997,43 @@
       hint: spec.hint,
       inline: true,
       className: 'dp-settings-webhook-row',
-      action: WEBHOOK_CLEAR(key, !!configured),
+      embedAction: WEBHOOK_CLEAR(key, !!configured),
     });
   }
 
-  /* Upload Avatar belongs to the Avatar URL field, so it is IN it -- through
-   * the same embedded-action primitive Browse and Copy use. It is a real
-   * button (the file input it opens is the hidden one beside it), so it keeps
-   * its own tab stop and stays keyboard reachable. */
-  const AVATAR_UPLOAD = `
-            <button type="button" class="btn btn-ghost btn-sm dp-settings-avatar-upload"
-                    data-action="upload-avatar">Upload Avatar</button>
+  /* The Avatar URL field's ONE action, in the field (the embedded-action
+   * primitive Browse and Copy use) and in one fixed-size slot: Upload while
+   * the field is empty, Clear while it holds a URL -- what the FIELD holds,
+   * typed or stored, never its placeholder (projectAvatarAction). Each state
+   * runs its existing act (uploadAvatar, clearAvatar). It is a real button --
+   * the file input Upload opens is the hidden one beside it -- so it keeps its
+   * own tab stop. */
+  const AVATAR_ACTIONS = Object.freeze({
+    upload: {action: 'upload-avatar', label: 'Upload', name: 'Upload Avatar', tone: 'btn-ghost'},
+    clear: {action: 'clear-avatar', label: 'Clear', name: 'Clear Avatar', tone: 'btn-danger'},
+  });
+
+  const avatarAction = url => {
+    const mode = AVATAR_ACTIONS[String(url || '').trim() ? 'clear' : 'upload'];
+    return `
+            <button type="button" class="btn ${mode.tone} btn-sm dp-settings-avatar-action" data-avatar-action
+                    data-action="${mode.action}" aria-label="${mode.name}" data-tooltip="${mode.name}">${mode.label}</button>
             <input id="dp-settings-avatar-file" type="file"
                    accept="image/png,image/jpeg,image/gif,image/webp" hidden>`;
+  };
 
-  const AVATAR_CLEAR = configured => `
-            <button type="button" class="btn btn-danger btn-sm dp-settings-avatar-clear"
-                    data-action="clear-avatar" aria-label="Clear the Discord avatar"${
-                      configured ? '' : ' disabled'}>Clear Avatar</button>`;
+  // The one action follows what the field holds now.
+  function projectAvatarAction() {
+    const button = root()?.querySelector('[data-avatar-action]');
+    if (!button || button.disabled) return;
+    const mode = AVATAR_ACTIONS[String(fieldFor('discord_avatar_url')?.value || '').trim() ? 'clear' : 'upload'];
+    button.dataset.action = mode.action;
+    button.classList.toggle('btn-danger', mode.tone === 'btn-danger');
+    button.classList.toggle('btn-ghost', mode.tone === 'btn-ghost');
+    button.setAttribute('aria-label', mode.name);
+    button.dataset.tooltip = mode.name;
+    button.textContent = mode.label;
+  }
 
   /* What the stored URL currently resolves to -- a reading, never a control. It
    * belongs BENEATH the Avatar URL control row, so it is handed to the field's
@@ -3036,12 +3058,11 @@
           placeholder: 'https://example.com/avatar.png',
           hint: own ? 'Image shown with your Discord notifications. Paste a direct HTTPS image URL.'
             : 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
-          embedAction: own ? '' : AVATAR_UPLOAD,
+          embedAction: own ? '' : avatarAction(s.discord_avatar_url),
           controlClass: own ? '' : 'dp-settings-avatar-field-control',
           secondLine: avatarPreview(s.discord_avatar_url || ''),
           inline: true,
           className: 'dp-settings-avatar-row',
-          action: own ? '' : AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
         })}
       </div>
       <div class="dp-settings-notifications-delivery-row">
@@ -3154,8 +3175,7 @@
 
   function renderAvatarPresence() {
     const url = String(state.settings?.discord_avatar_url || '').trim();
-    const clear = root()?.querySelector('[data-action="clear-avatar"]');
-    if (clear) clear.disabled = !url;
+    projectAvatarAction();
     const preview = byId('dp-settings-avatar-preview');
     if (!preview) return;
     preview.hidden = !url;
@@ -5622,6 +5642,7 @@
 
     view.addEventListener('input', event => {
       if (event.target.matches?.('#dp-settings-field-auth-username, #dp-settings-field-auth-password')) projectCredentialDraft();
+      if (event.target.id === fieldId('discord_avatar_url')) projectAvatarAction();
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
     });
 
@@ -5637,6 +5658,13 @@
       if (event.target.matches('[data-integration-group-enabled]')) void groupEnableChanged(event.target);
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
+    });
+
+    // Pressing the Avatar URL field's own action does not take focus from the
+    // field, so the press is no commit boundary for a URL being typed there:
+    // what happens to that draft is the action's decision (clearAvatar).
+    view.addEventListener('mousedown', event => {
+      if (event.target.closest?.('[data-avatar-action]')) event.preventDefault();
     });
 
     view.addEventListener('click', event => {
@@ -6259,6 +6287,7 @@
         avatar.value = result.url || '';
         window.DPSettingsPersistence.commit(avatar);
       }
+      projectAvatarAction();
       notify('Avatar uploaded', 'success');
       if (result.warning) notify(result.warning, 'warn');
     } catch (error) {
@@ -6273,10 +6302,25 @@
    * The same act, the same machinery and the same order as erasing the stored
    * AllDebrid key or the archive-password list: destructive, therefore an
    * explicit action behind the ONE canonical Settings confirmation and never a
-   * commit boundary. Declining performs no mutation at all. Every pending
-   * field commit is settled first, so a URL the operator was still editing is
-   * written before -- never after -- the removal. */
+   * commit boundary. Declining performs no mutation at all. A URL only TYPED
+   * into the field is never submitted in order to be cleared: with nothing
+   * stored, Clear simply empties the field (nothing to remove, nothing sent);
+   * with a URL stored, any newer draft is set aside BEFORE the confirmation
+   * and the settle -- so neither the dialog's focus change nor the settle can
+   * commit it -- and is given back untouched if the operator declines. Every
+   * OTHER pending field commit is settled first, as before. */
   async function clearAvatar(button) {
+    const avatar = fieldFor('discord_avatar_url');
+    const persistence = window.DPSettingsPersistence;
+    const accepted = avatar ? String(persistence.baseline(avatar) ?? '') : '';
+    if (!String(state.settings?.discord_avatar_url || '').trim()) {
+      if (avatar) avatar.value = accepted;
+      projectAvatarAction();
+      avatar?.focus();
+      return;
+    }
+    const draft = avatar ? avatar.value : '';
+    if (avatar) avatar.value = accepted;
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
       title: 'Clear the Discord avatar?',
@@ -6284,9 +6328,14 @@
         + 'without a custom avatar until a new one is set.',
       confirmLabel: 'Clear Avatar',
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      if (avatar && avatar.value === accepted) avatar.value = draft;
+      projectAvatarAction();
+      return;
+    }
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing\u2026');
+    // Busy without a new label: the one action slot keeps its size.
+    setBusy(button, true);
     try {
       await writeSettingsDocument({discord_avatar_url: ''});
       const avatar = fieldFor('discord_avatar_url');
