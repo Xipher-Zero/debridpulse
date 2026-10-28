@@ -443,3 +443,56 @@ test('a live re-read keeps the focused control, the untouched rows and the chose
   expect(await rows(page).evaluateAll(items => items.filter(item => !item.hidden).map(item => item.dataset.executorGroup)))
     .toEqual(['paused']);
 });
+
+/* DP 1.0.14: a row's first line at every width. The name is one line, cut
+ * with an ellipsis and whole in its DP tooltip, with the executor beneath it;
+ * the row's actions stay on that first line, side by side, at the card's
+ * trailing inset -- the name yields width, never the actions. */
+test('each row keeps one line: a truncated name and its actions together at the trailing edge, at every width', async ({page}) => {
+  const long = 'The.Extraordinarily.Long.Release.Name.Of.A.Documentary.Series.S01E01.2160p.UHD.BluRay.REMUX.HDR10.HEVC.DTS-HD.MA.5.1-SYNTHETIC.mkv';
+  const unbroken = 'Another_Very_Long_Archive_Name_Without_Any_Spaces_To_Break_On_part0001_of_0042_synthetic_fixture.rar';
+  await installExecutorWork(page, {...PAYLOAD, items: [
+    {...PAYLOAD.items[0], name: long}, {...PAYLOAD.items[1], name: unbroken}, {...PAYLOAD.items[2], name: 'short.iso', controls: ['cancel']}]});
+  await openDownloads(page);
+  let previous = {};
+  for (const width of [1440, 1180, 1024, 900, 780, 760, 700, 600, 480, 390]) {
+    // Below 780px the shell's sidebar stops taking width, so the card -- and
+    // the name's room -- grows once there; within one shell mode it only shrinks.
+    if (width === 760) previous = {};
+    await page.setViewportSize({width, height: 1000});
+    await page.waitForFunction(() => document.getElementById('sidebar').getAnimations().every(a => a.playState !== 'running'));
+    const rows = await rowsOf(page);
+    for (const row of rows) {
+      const at = `${row.name.slice(0, 12)} at ${width}px`;
+      expect(row.lines, `${at}: the name wraps`).toBe(1);
+      expect(row.ownerBelow, `${at}: the executor is not beneath the name`).toBe(true);
+      expect(row.buttons, at).toBeGreaterThan(0);
+      expect(row.oneRow && row.firstLine, `${at}: the actions left the first line`).toBe(true);
+      expect(Math.abs(row.trailing), `${at}: the actions are off the trailing inset`).toBeLessThanOrEqual(0.5);
+      expect(row.clear, `${at}: the name runs under the actions`).toBeGreaterThanOrEqual(9.5);
+      expect(row.overflow, `${at}: overflow`).toBeLessThanOrEqual(0);
+      expect(row.tooltip, `${at}: the tooltip is not the whole name`).toBe(true);
+      // Narrower, the name only ever gets less room.
+      if (previous[row.name] !== undefined) expect(row.nameWidth, at).toBeLessThanOrEqual(previous[row.name] + 0.5);
+      previous[row.name] = row.nameWidth;
+    }
+    if (width <= 1180) expect(rows.find(row => row.name === long).truncated, `${width}px: the long name is not cut`).toBe(true);
+    if (width === 1440) expect(rows.find(row => row.name === 'short.iso').truncated).toBe(false);
+  }
+  // The actions are still the keyboard's: focus reaches Pause.
+  await rowFor(page, long.slice(0, 20)).locator('[data-executor-action="pause"]').focus();
+  await expect(rowFor(page, long.slice(0, 20)).locator('[data-executor-action="pause"]')).toBeFocused();
+});
+
+const rowsOf = page => page.evaluate(() => [...document.querySelectorAll('.dp-executor-work-item')].map(item => {
+  const r = n => n.getBoundingClientRect(), st = getComputedStyle(item), ib = r(item);
+  const content = ib.right - parseFloat(st.borderRightWidth) - parseFloat(st.paddingRight);
+  const name = item.querySelector('.dp-executor-work-name'), nb = r(name), ob = r(item.querySelector('.dp-executor-work-owner'));
+  const buttons = [...item.querySelectorAll('.dp-executor-work-actions .btn')].map(r);
+  const line = parseFloat(getComputedStyle(name).lineHeight) || 1.2 * parseFloat(getComputedStyle(name).fontSize);
+  return {name: name.textContent, lines: Math.round(nb.height / line), nameWidth: nb.width, truncated: name.scrollWidth > name.clientWidth + 0.5,
+    tooltip: name.dataset.tooltip === name.textContent, ownerBelow: ob.top >= nb.bottom - 1 && Math.abs(ob.left - nb.left) < 1,
+    buttons: buttons.length, oneRow: buttons.every(b => Math.abs(b.top - buttons[0].top) < 1), firstLine: buttons.every(b => b.top < nb.bottom),
+    trailing: content - Math.max(...buttons.map(b => b.right)), clear: Math.min(...buttons.map(b => b.left)) - nb.right,
+    overflow: Math.max(item.scrollWidth - item.clientWidth, item.parentElement.scrollWidth - item.parentElement.clientWidth)};
+}));

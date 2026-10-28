@@ -119,6 +119,8 @@
   max-width: 100%;
 }
 
+/* The row's first line at every width: the identity takes what is left and
+   yields it, the action rail keeps its own width at the trailing edge. */
 .dp-executor-work-item-top {
   display: flex;
   justify-content: space-between;
@@ -127,14 +129,19 @@
   min-width: 0;
 }
 
-.dp-executor-work-identity { min-width: 0; }
+.dp-executor-work-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
+/* One line, cut with an ellipsis -- the Downloads name's grammar
+   (ui-transfer-contract.css .t-name); its DP tooltip carries the whole name. */
 .dp-executor-work-name {
   font-weight: 700;
   min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Which executor holds this work -- a DebridPulse display identity, never a
@@ -171,9 +178,9 @@
 }
 
 .dp-executor-work-actions {
+  flex: 0 0 auto;
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
@@ -181,6 +188,4 @@
 
 @media (max-width: 760px) {
   .dp-executor-work-facts { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
-  .dp-executor-work-item-top { flex-direction: column; }
-  .dp-executor-work-actions { justify-content: flex-start; }
 }
