@@ -361,7 +361,7 @@ body:has(.nav-item[data-view="events"].active) #page-subtitle {
   font-size: 0 !important;
 }
 body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
-  content: 'Recent transfer activity, decisions, warnings, and errors.';
+  content: 'Transfer events, decisions, and alerts.';
   font-size: 12.5px;
   line-height: 1.35;
   color: inherit;

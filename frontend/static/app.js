@@ -135,12 +135,12 @@ function navigateTo(el) {
     stats:'Statistics', settings:'Settings', help:'Help & License',
   };
   const subtitles = {
-    dashboard:'Overview of your download activities and system status.',
-    torrents:'Inspect, filter, and control queued and active transfers.',
-    events:'Recent transfer activity, decisions, warnings, and errors.',
-    stats:'Historical transfer performance and completion metrics.',
-    settings:'Configure providers, downloads, notifications, and system behavior.',
-    help:'Usage guidance, project information, and licensing.',
+    dashboard:'Download activity and system status.',
+    torrents:'Manage active and queued transfers.',
+    events:'Transfer events, decisions, and alerts.',
+    stats:'Transfer history and performance.',
+    settings:'Manage providers and downloads.',
+    help:'Guides, project details, and licensing.',
   };
   // A sidebar entry may name the page it opens (a User's Settings slot opens
   // their own Notifications).
