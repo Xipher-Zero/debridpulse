@@ -128,7 +128,8 @@ def test_settings_executor_work_refresh_is_coalesced_and_actions_acknowledge():
     for retired in ("loadAria2Downloads", "aria2DownloadAction", "renderAria2Downloads", "aria2StatusLabel"):
         assert retired not in js, retired
     assert "async function perform(button)" in live
-    assert "if (refreshRunning) return refreshRunning;" in live
+    # One re-read in flight; whatever is asked for meanwhile is one trailing re-read.
+    assert "if (inflight) {\n      queued = {explicit: !!(queued?.explicit || explicit)};\n      return;" in live
     assert "cancel: 'Terminating…'" in live
     # The superseded Settings handlers that used to live beside the queue
     # (refresh button, database wipe, stats report) are retired; the clean

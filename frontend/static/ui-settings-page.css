@@ -267,8 +267,8 @@
 }
 
 /* The hinted card headers (dp-settings-card-header--hinted: Services'
-   governing and premium-provider headers, and every Downloads card and
-   Transfer Method card header): one row from 780px, each region in its own track -- the
+   governing and premium-provider headers, every Downloads card and
+   Transfer Method card header, and Automatic Extraction's): one row from 780px, each region in its own track -- the
    identity at the leading edge, the one-line purpose hint on the header's
    own midpoint, the rail at the trailing edge -- so the hint, shown or not,
    never moves the identity or the rail, and never takes a second row. The
@@ -553,6 +553,23 @@
    is decided by its controls rather than by its longest sentence. */
 #view-settings .dp-settings-download-engine-row .dp-settings-inline-field-info {
   max-width: 200px;
+}
+
+/* A bounded island whose settings no longer share one row (fitIslands in
+   ui-settings-page.js reads that from the island laid out as a row): one
+   setting per row, its title and hint at the island's leading inset and its
+   control at the trailing one, so the island's max-content width -- and its
+   outline -- is its widest setting rather than the room the wrapped row was
+   given. Handheld (below 780px) keeps its own one-column island. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-island[data-island='stacked'] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
+    justify-content: space-between;
+  }
 }
 
 #view-settings .dp-settings-download-path-stack,

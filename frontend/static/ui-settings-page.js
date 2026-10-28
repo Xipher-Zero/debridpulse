@@ -496,7 +496,8 @@
   }
 
   /* The hinted card headers -- Services' governing and premium-provider
-   * headers, and every Downloads card and Transfer Method card header: each
+   * headers, every Downloads card and Transfer Method card header, and
+   * Automatic Extraction's: each
    * one-line purpose hint is shown only where it fits on the header's own midpoint,
    * on one line, clear of the identity on the left and the rail on the right
    * by the header's own column gap -- MEASURED from the rendered header,
@@ -546,6 +547,41 @@
     if (typeof ResizeObserver === 'function' && parts.length) {
       headerHintObserver = new ResizeObserver(() => headerHintFit());
       parts.forEach(({header, title, rail}) => [header, title, rail].forEach(node => headerHintObserver.observe(node)));
+    }
+  }
+
+  /* The bounded settings islands -- Download Behavior & Limits' folder and
+   * limit, Automatic Extraction's two behaviour settings -- sit on one row
+   * while their room holds them there. Where it does not, the row has wrapped,
+   * and a wrapped row cannot shrink its own box to what it holds: its outline
+   * would stay as wide as the room, far from the settings it frames. So a
+   * wrapped island is marked stacked (data-island="stacked") and its settings
+   * take one row each, which the outline does hug (ui-settings-page.css).
+   * Whether the row wrapped is READ from the island laid out as a row --
+   * a setting that starts left of where the previous one ends began a new
+   * line -- in the fonts drawn, never a width breakpoint. Kept current as the
+   * room changes (the island's container is observed, never the island,
+   * whose own box the mark changes) and when fonts finish loading. */
+  let islandObserver = null;
+  let islandFit = null;
+
+  function fitIslands() {
+    islandObserver?.disconnect();
+    islandObserver = null;
+    const islands = Array.from(root()?.querySelectorAll('.dp-settings-island') || []);
+    islandFit = () => {
+      islands.forEach(island => { delete island.dataset.island; });
+      const wrapped = islands.map(island => {
+        const boxes = Array.from(island.querySelectorAll('.dp-settings-inline-field'))
+          .filter(field => field.getClientRects().length).map(field => field.getBoundingClientRect());
+        return boxes.some((box, index) => index && box.left < boxes[index - 1].right);
+      });
+      islands.forEach((island, index) => { if (wrapped[index]) island.dataset.island = 'stacked'; });
+    };
+    islandFit();
+    if (typeof ResizeObserver === 'function' && islands.length) {
+      islandObserver = new ResizeObserver(() => islandFit());
+      islands.forEach(island => islandObserver.observe(island.parentElement));
     }
   }
 
@@ -2224,7 +2260,7 @@
 
   /* Executor Work: markup owner only.
    *
-   * The rows, the polling and the actions belong to
+   * The rows, their live re-reads and the actions belong to
    * ui-settings-executor-work.js, which reads ONE neutral projection covering
    * every registered executor. Nothing about this card names an executor. */
   function executorWorkCard() {
@@ -2233,7 +2269,7 @@
         <div class="card-header dp-settings-card-header dp-settings-card-header--hinted">
           <span class="dp-settings-card-title-group"><span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text">Download Engine Activity</span></span></span>
           <div class="dp-settings-card-header-center"><span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span></div>
-          <div class="dp-settings-card-header-controls">${helpChip('engine-activity', 'Download Engine Activity')}<button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button></div>
+          <div class="dp-settings-card-header-controls">${helpChip('engine-activity', 'Download Engine Activity')}</div>
         </div>
         <div class="card-body" data-dp-executor-work-body>
           <div class="dp-settings-caution dp-executor-work-context">
@@ -2465,9 +2501,11 @@
     // one final file with its subtitle and metadata, no transcoding -- is
     // DebridPulse policy, not a setting. The two video preferences are one
     // related group; the subtitle language is the global settings-document
-    // preference, whose one control is here.
+    // preference, whose one control is here. YouTube Player Client leads the
+    // one set, so where two cells fit a row the six form 2 x 3.
     const options = mediaOf(s);
     return tuningCells(
+      youtubePlayerClientsField(options),
       selectField('media_target_resolution', 'Target Resolution', options.target_resolution || 'best',
         TARGET_RESOLUTIONS,
         'The resolution DebridPulse looks for. When it is not offered, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available takes the highest resolution offered.'),
@@ -2486,7 +2524,7 @@
           type: 'number', min: 1, max: 8,
           hint: 'Number of media fragments downloaded simultaneously. Higher values may improve download speed for segmented media.',
         }),
-    ) + tuningCells(youtubePlayerClientsField(options));
+    );
   }
 
   function youtubePlayerClientsField(options) {
@@ -2623,9 +2661,16 @@
     // or folder layout belongs here at all: DebridPulse owns both.
     const options = usenetOf(s);
     // Retries and timeout are the two halves of one question -- what happens to
-    // a single article request -- so they stay adjacent; the cache limit and
-    // Direct Write are each about writing, but neither depends on the other.
+    // a single article request -- so they stay adjacent; Direct Write and the
+    // cache limit are each about writing, but neither depends on the other.
+    // Direct Write leads, so where two cells fit a row the four form 2 x 2.
     return tuningCells(
+      tuningToggle(
+        'usenet_direct_write',
+        'Direct Write',
+        'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
+        options.direct_write !== false
+      ),
       input('usenet_article_cache_megabytes', 'Article Cache Limit (MB)',
         options.article_cache_megabytes ?? 1024, {
         type: 'number', min: 0, max: 4096,
@@ -2643,12 +2688,6 @@
           hint: 'How long DebridPulse waits for the Usenet download service to answer a request.'
         }),
       ),
-      tuningToggle(
-        'usenet_direct_write',
-        'Direct Write',
-        'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
-        options.direct_write !== false
-      ),
     ) + `
       <p class="dp-settings-tuning-footer">
         Per-server acquisition tuning belongs to each news server under
@@ -2660,7 +2699,7 @@
     const policy = policyOf(s);
     const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
     const delivery = card('Download Behavior & Limits', `
-      <div class="dp-settings-download-engine-row" role="group" aria-label="Download location and limits">
+      <div class="dp-settings-download-engine-row dp-settings-island" role="group" aria-label="Download location and limits">
         <div class="dp-settings-download-path-stack">
           ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
             hint: 'Where DebridPulse saves downloads.',
@@ -2708,9 +2747,14 @@
       titlePrefix: familyIcon('downloads', 'arrow-left-right'),
     });
 
-    // Two relationships -- the disk-space guard's threshold and its buffer, and
-    // the error-retry count and its delay -- plus one standalone control.
+    // One standalone control, leading, then two relationships -- the
+    // disk-space guard's threshold and its buffer, and the error-retry count
+    // and its delay.
     const recovery = card('Disk Space & Recovery', tuningCells(
+      input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
+        type: 'number', min: 0, max: 168,
+        hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
+      }),
       tuningGroup(
         input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
           type: 'number', min: 0, step: 0.5,
@@ -2728,13 +2772,9 @@
         }),
         input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
           type: 'number', min: 0, max: 3600,
-          hint: 'How long DebridPulse waits before checking or re-resolving a download after an error, and before trying a provider again after a temporary failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
+          hint: 'Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. Plain retries double the delay, up to 5 minutes. Set to 0 to retry immediately.'
         }),
       ),
-      input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
-        type: 'number', min: 0, max: 168,
-        hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
-      }),
     ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert'),
       help: 'disk-recovery', hinted: true,
       headerCenter: '<span class="dp-settings-download-engine-header-copy">Protect free disk space and recover failed or stalled downloads.</span>'});
@@ -2833,21 +2873,22 @@
   function extractionPanel(s) {
     const enableId = fieldId('extract_enabled');
     return card('Automatic Extraction', `
-      <div class="dp-settings-extraction-behavior" role="group" aria-label="Extraction behavior">
+      <div class="dp-settings-extraction-behavior dp-settings-island" role="group" aria-label="Extraction behavior">
+        ${tuningToggle('extract_delete_archive', 'Delete Archives After Extraction',
+          'Remove original archive files only after extraction completes successfully.',
+          s.extract_delete_archive !== false,
+          {inline: true, className: 'dp-settings-extraction-delete-field'})}
         ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
           type: 'number', min: 1, max: 8,
           hint: 'Maximum extraction jobs DebridPulse runs at once.',
           inline: true, className: 'dp-settings-extraction-concurrency-field',
         })}
-        ${tuningToggle('extract_delete_archive', 'Delete Archives After Extraction',
-          'Remove original archive files only after extraction completes successfully.',
-          s.extract_delete_archive !== false,
-          {inline: true, className: 'dp-settings-extraction-delete-field'})}
       </div>
       ${archivePasswordField(s.extraction_password_configured)}
     `, {
       className: 'dp-settings-extraction-card',
       help: 'automatic-extraction',
+      hinted: true,
       titlePrefix: familyIcon('extraction', 'archive-restore'),
       headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
       action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
@@ -5247,6 +5288,7 @@
     navigation.fit({measure: true});
     fitServicesRows();
     fitHeaderHints();
+    fitIslands();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -6745,6 +6787,7 @@
   document.fonts?.addEventListener?.('loadingdone', () => {
     navigation.fit({measure: true});
     headerHintFit?.();
+    islandFit?.();
   });
 
   registerCommitScopes();

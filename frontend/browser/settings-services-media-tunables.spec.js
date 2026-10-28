@@ -284,11 +284,11 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   const fields = mediaCard(page).locator('.dp-settings-field');
   await expect(fields).toHaveCount(6);
   await expect(fields.locator('.form-label')).toHaveText(
-    ['Target Resolution', 'Video Quality', 'Preferred Video Codec', 'Preferred Subtitle Language',
-     'Concurrent Fragment Downloads', 'YouTube Player Client']);
-  // The five keep their one row; YouTube Player Client is its own set beneath.
-  await expect(mediaCard(page).locator('.dp-settings-tuning-grid').first()).toHaveAttribute('data-tuning-lanes', '5');
-  await expect(mediaCard(page).locator('.dp-settings-tuning-grid').nth(1)).toHaveAttribute('data-tuning-lanes', '1');
+    ['YouTube Player Client', 'Target Resolution', 'Video Quality', 'Preferred Video Codec', 'Preferred Subtitle Language',
+     'Concurrent Fragment Downloads']);
+  // One set of six, YouTube Player Client first (two a row: 2 x 3).
+  await expect(mediaCard(page).locator('.dp-settings-tuning-grid')).toHaveCount(1);
+  await expect(mediaCard(page).locator('.dp-settings-tuning-grid')).toHaveAttribute('data-tuning-lanes', '6');
   // The two video preferences: one related group, drawn with the shared outline.
   const group = mediaCard(page).locator('.dp-settings-tuning-group');
   await expect(group).toHaveCount(1);

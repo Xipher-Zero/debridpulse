@@ -123,13 +123,18 @@ test('the browser holds no native executor identity, status or action', async ({
   for (const native of ['gid', 'nzo', 'native', 'correlation', 'apikey', '/aria2/', '/sab']) {
     expect(markup, `native token ${native} reached the browser`).not.toContain(native);
   }
-  // No native endpoint is reachable from this surface at all.
+  // No native endpoint is reachable from this surface at all: the live
+  // re-read it makes when execution activity changes asks only the projection.
   const requested = [];
   page.on('request', request => requested.push(new URL(request.url()).pathname));
-  await card(page).locator('[data-dp-executor-work-refresh]').click();
-  await expect.poll(() => requested.filter(p => p.startsWith('/api/executor-work')).length)
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:execution-activity-changed')));
+  await expect.poll(() => requested.filter(p => p.startsWith('/api/executor-work')).length, {timeout: 12000})
     .toBeGreaterThan(0);
-  expect(requested.filter(p => /aria2|sab|queue|nzb/.test(p))).toEqual([]);
+  // (The window now spans the spaced re-read, so it also sees the shell's own
+  // Admin engine-health check, app.js checkConnections -> POST
+  // /api/settings/test-aria2, which retries while no aria2 answers; that is
+  // the shell's request, not this surface's, and is the only one excluded.)
+  expect(requested.filter(p => /aria2|sab|queue|nzb/.test(p) && p !== '/api/settings/test-aria2')).toEqual([]);
   expect(state.actions).toEqual([]);
 });
 
@@ -261,4 +266,180 @@ test('the execution state badge is the DP 6px rounded rectangle, and pill contro
   // A real pill control (a toggle track) is not a status badge and keeps its geometry.
   const track = page.locator('#view-settings .toggle .ttrack').first();
   expect(await track.evaluate(node => getComputedStyle(node).borderRadius)).not.toBe('6px');
+});
+
+/* DP 1.0.14: Download Engine Activity follows the application's one stream.
+ *
+ * SIMULATED: the stream's signals are dispatched as the document events app.js
+ * bridges them to (debridpulse:execution-activity-changed, -pulse-connected),
+ * and the authoritative projection is the mocked GET /executor-work, whose
+ * answer is the payload committed when each request STARTS -- so a held
+ * request answers with what was true when it was asked. Nothing here is live
+ * executor truth. */
+async function liveExecutorWork(page, payload = PAYLOAD) {
+  const state = {payload, starts: [], inflight: 0, maxInflight: 0, held: [], hold: false};
+  await page.route('**/api/executor-work', async route => {
+    const body = JSON.stringify(state.payload);
+    state.starts.push(Date.now());
+    state.inflight += 1;
+    state.maxInflight = Math.max(state.maxInflight, state.inflight);
+    if (state.hold) await new Promise(resolve => state.held.push(resolve));
+    state.inflight -= 1;
+    await route.fulfill({status: 200, contentType: 'application/json', body});
+  });
+  state.release = () => state.held.splice(0).forEach(resolve => resolve());
+  return state;
+}
+
+const signal = (page, name = 'debridpulse:execution-activity-changed') =>
+  page.evaluate(event => document.dispatchEvent(new CustomEvent(event)), name);
+const names = page => rows(page).evaluateAll(items => items.map(item =>
+  item.querySelector('.dp-executor-work-name').textContent.trim()));
+const withItems = (items, total = items.length) => ({...PAYLOAD, items, summary: {...PAYLOAD.summary, total}});
+const [DIRECT, USENET, WAITING] = PAYLOAD.items;
+const SPACING_MS = 2000;
+const fact = (page, name, key) => rowFor(page, name).locator('.dp-executor-work-facts > div')
+  .filter({has: page.locator('.dp-executor-work-k', {hasText: key})}).locator('.dp-executor-work-v').innerText();
+
+test('added, updated, finished and removed work appears by itself; there is no Refresh and one stream', async ({page}) => {
+  await page.addInitScript(() => {
+    const Native = window.EventSource;
+    window.__dpStreams = 0;
+    window.EventSource = function (...args) { window.__dpStreams += 1; return new Native(...args); };
+    window.EventSource.prototype = Native.prototype;
+  });
+  const state = await liveExecutorWork(page);
+  await openDownloads(page);
+  await expect(card(page).getByRole('button', {name: /Refresh/})).toHaveCount(0);
+  await expect(card(page).locator('[data-dp-executor-work-refresh]')).toHaveCount(0);
+  const done = await fact(page, 'ubuntu-desktop.iso', 'Done');
+
+  // Usenet's job is removed, the waiting one finished, the running one moved
+  // on, and a new one was added -- signalled, never fetched by hand.
+  const added = {...WAITING, attempt_id: 'attempt-direct-3', transfer_id: 14, name: 'new-arrival.bin',
+    state: 'running', filter_group: 'active', progress: 5};
+  state.payload = withItems([{...DIRECT, progress: 77.5, completed_bytes: 775000000},
+    {...WAITING, state: 'succeeded', filter_group: 'stopped', progress: 100, controls: []}, added]);
+  await signal(page);
+  await expect.poll(() => names(page), {timeout: SPACING_MS + 4000})
+    .toEqual(['new-arrival.bin', 'ubuntu-desktop.iso', 'waiting-payload.bin']);
+  expect(await fact(page, 'ubuntu-desktop.iso', 'Done')).not.toBe(done);
+  await expect(rowFor(page, 'waiting-payload.bin').locator('.badge')).toHaveText('Completed');
+  await expect(rowFor(page, 'Some.Collection.S01')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__dpStreams)).toBe(1);
+  expect(state.maxInflight).toBe(1);
+});
+
+test('a burst during a re-read is ONE trailing re-read, spaced, and ends at the latest answer', async ({page}) => {
+  const state = await liveExecutorWork(page);
+  await openDownloads(page);
+  await expect.poll(() => state.starts.length).toBe(1);
+
+  state.hold = true;
+  await signal(page);
+  await expect.poll(() => state.starts.length, {timeout: SPACING_MS + 4000}).toBe(2);   // in flight, held
+  // Twenty signals and two newer commits while that request is held.
+  state.payload = withItems([{...DIRECT, name: 'intermediate.bin'}]);
+  for (let index = 0; index < 20; index += 1) await signal(page);
+  state.payload = withItems([{...DIRECT, name: 'latest.bin'}, USENET]);
+  await page.waitForTimeout(300);
+  expect(state.starts.length, 'a second request started while one was in flight').toBe(2);
+  state.hold = false;
+  state.release();
+
+  await expect.poll(() => names(page), {timeout: SPACING_MS + 4000}).toEqual(['latest.bin', 'Some.Collection.S01']);
+  expect(state.starts.length, 'the burst was not one trailing re-read').toBe(3);
+  expect(state.starts[2] - state.starts[1], 'the trailing re-read was not spaced').toBeGreaterThanOrEqual(SPACING_MS - 50);
+  expect(state.maxInflight).toBe(1);
+  // Nothing else is pending: no further request without a further signal.
+  await page.waitForTimeout(SPACING_MS + 500);
+  expect(state.starts.length).toBe(3);
+});
+
+test('an answer that belongs to an earlier arrival on the card is never shown', async ({page}) => {
+  const state = await liveExecutorWork(page);
+  await openDownloads(page);
+  await page.evaluate(() => {
+    window.__dpStaleSeen = false;
+    const list = document.querySelector('[data-dp-executor-work-list="1"]');
+    new MutationObserver(() => { if (list.textContent.includes('stale-row.bin')) window.__dpStaleSeen = true; })
+      .observe(list, {childList: true, subtree: true, characterData: true});
+  });
+  await page.waitForTimeout(SPACING_MS + 100);
+  state.hold = true;
+  state.payload = withItems([{...DIRECT, name: 'stale-row.bin'}]);
+  await signal(page);
+  await expect.poll(() => state.starts.length).toBe(2);                     // held: answers stale-row.bin
+  // Leave the card and come back while it is in flight; the truth moved on.
+  await page.locator('#view-settings [data-tab="extraction"]').click();
+  state.payload = withItems([{...DIRECT, name: 'fresh-row.bin'}]);
+  state.hold = false;
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  state.release();
+  await expect.poll(() => names(page), {timeout: SPACING_MS + 4000}).toEqual(['fresh-row.bin']);
+  expect(await page.evaluate(() => window.__dpStaleSeen)).toBe(false);
+  expect(state.maxInflight).toBe(1);
+});
+
+test('nothing is read while the card is off screen or for a non-Admin; arriving and reconnecting re-read once', async ({page}) => {
+  const state = await liveExecutorWork(page);
+  await openDownloads(page);
+  await page.waitForTimeout(SPACING_MS + 100);
+  const baseline = state.starts.length;
+  const quiet = async label => {
+    for (const name of ['debridpulse:execution-activity-changed', 'debridpulse:pulse-connected']) {
+      for (let index = 0; index < 5; index += 1) await signal(page, name);
+    }
+    await page.waitForTimeout(SPACING_MS + 300);
+    expect(state.starts.length, label).toBe(baseline);
+  };
+  // Another Settings section, then another page.
+  await page.locator('#view-settings [data-tab="extraction"]').click();
+  await quiet('read while another Settings section was shown');
+  await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
+  await expect(page.locator('#view-dashboard')).toHaveClass(/\bactive\b/);
+  await quiet('read while another page was shown');
+  // Arriving again re-reads once.
+  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await expect.poll(() => state.starts.length).toBe(baseline + 1);
+  // A reconnected stream re-reads once.
+  await page.waitForTimeout(SPACING_MS + 100);
+  await signal(page, 'debridpulse:pulse-connected');
+  await expect.poll(() => state.starts.length, {timeout: SPACING_MS + 2000}).toBe(baseline + 2);
+  // Without the Admin's authority (the application's own predicate) nothing
+  // is read, however the stream signals.
+  await page.evaluate(() => { window.dpCan = () => false; });
+  const before = state.starts.length;
+  for (let index = 0; index < 5; index += 1) await signal(page);
+  await page.waitForTimeout(SPACING_MS + 300);
+  expect(state.starts.length).toBe(before);
+});
+
+test('a live re-read keeps the focused control, the untouched rows and the chosen filter', async ({page}) => {
+  const state = await liveExecutorWork(page);
+  await openDownloads(page);
+  await page.waitForTimeout(SPACING_MS + 100);
+  const pause = rowFor(page, 'ubuntu-desktop.iso').locator('[data-executor-action="pause"]');
+  await pause.focus();
+  const speed = await fact(page, 'ubuntu-desktop.iso', 'Speed');
+  await page.evaluate(() => {
+    document.activeElement.__dpKept = true;
+    document.querySelector('[data-attempt="attempt-usenet-1"]').__dpKept = true;
+  });
+  state.payload = withItems([{...DIRECT, progress: 51.25, completed_bytes: 512500000, bytes_per_second: 2097152}, USENET, WAITING]);
+  await signal(page);
+  await expect.poll(() => fact(page, 'ubuntu-desktop.iso', 'Speed'), {timeout: SPACING_MS + 4000}).not.toBe(speed);
+  expect(await page.evaluate(() => document.activeElement?.__dpKept === true
+    && document.activeElement.dataset.executorAction === 'pause')).toBe(true);
+  expect(await page.evaluate(() => document.querySelector('[data-attempt="attempt-usenet-1"]').__dpKept === true)).toBe(true);
+  // The chosen filter survives a re-read.
+  await card(page).locator('[data-executor-filter="paused"]').click();
+  await page.waitForTimeout(SPACING_MS + 100);
+  state.payload = withItems([{...DIRECT, progress: 60}, USENET, WAITING]);
+  await signal(page);
+  await expect.poll(() => state.starts.length, {timeout: SPACING_MS + 2000}).toBeGreaterThan(2);
+  await expect(card(page).locator('[data-executor-filter="paused"]')).toHaveAttribute('aria-selected', 'true');
+  expect(await rows(page).evaluateAll(items => items.filter(item => !item.hidden).map(item => item.dataset.executorGroup)))
+    .toEqual(['paused']);
 });

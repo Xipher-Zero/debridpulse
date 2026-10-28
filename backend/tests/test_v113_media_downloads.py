@@ -938,11 +938,13 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "'media_video_quality'" in group and "'media_video_codec'" in group
     assert "never re-encodes media" in group
     assert "yt-dlp" not in tuning
-    # The one YouTube preference is its own standalone set beneath the five: a
-    # single choice -- Automatic or one client the packaged yt-dlp offers (the
-    # server validates it) -- never free text, a raw extractor argument or
-    # command-line text. A saved selection of several stays as saved (Custom).
-    assert tuning.rstrip().endswith(") + tuningCells(youtubePlayerClientsField(options));\n  }")
+    # The one YouTube preference leads the one set of six (so two cells a row
+    # make 2 x 3): a single choice -- Automatic or one client the packaged
+    # yt-dlp offers (the server validates it) -- never free text, a raw
+    # extractor argument or command-line text. A saved selection of several
+    # stays as saved (Custom).
+    assert "return tuningCells(\n      youtubePlayerClientsField(options),\n      selectField('media_target_resolution'," in tuning
+    assert "tuningCells(youtubePlayerClientsField" not in tuning and tuning.count("tuningCells(") == 1
     clients = _function(page, "youtubePlayerClientsField")
     assert re.findall(r"(selectField|input)\('(\w+)'", clients) == [("selectField", "media_youtube_player_clients")]
     assert "['', 'Automatic (yt-dlp default)']" in clients

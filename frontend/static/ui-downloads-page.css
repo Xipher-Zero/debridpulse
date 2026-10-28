@@ -292,10 +292,17 @@ body.light #view-torrents > .card > div:has(#torrent-search) {
 }
 
 /* ── Data viewport ───────────────────────────────────────────────────── */
+/* Its vertical scrollbar's room is always reserved (scrollbar-gutter). The
+   table's tracks are sized from this viewport's width (100cqw, below), which
+   does not shrink when a scrollbar appears later -- as one does when a
+   selection's toolbar takes height from a page sized to the rows that fit --
+   so without the reservation the table stayed a scrollbar wider than the room
+   left beside it and the viewport scrolled sideways. */
 #view-torrents .dp-downloads-table-wrap {
   position: relative;
   z-index: 1;
   overflow-x: auto !important;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
   background: transparent;
 }

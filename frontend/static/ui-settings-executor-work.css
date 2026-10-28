@@ -6,7 +6,7 @@
 
 /* The header is the canonical hinted Settings card header
    (ui-settings-page.css): identity, the one-line copy on the header's own
-   midpoint while it fits, and the rail -- Help, then Refresh. */
+   midpoint while it fits, and the rail -- its Help. */
 #view-settings .dp-executor-work-copy {
   color: var(--text3);
   font-size: 12px;

@@ -29,28 +29,15 @@
    would place that whole centred line inside a single 1fr track. */
 
 /* ── Automatic Extraction ───────────────────────────────────────────── */
-/* Match Download Engine's three-part card-header grammar: identity left,
-   explanatory copy true-centered, and the master enable control at right. */
-#view-settings .dp-settings-extraction-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(380px, 780px) minmax(180px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-extraction-card > .card-header > .card-title {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
+/* The card's header is the hinted Settings card header (ui-settings-page.css,
+   fitHeaderHints): identity, the purpose hint on the header's own midpoint
+   while it fits, and the rail -- Help, then Enable. Only the hint's type is
+   stated here. */
 #view-settings .dp-settings-extraction-header-copy {
   display: block;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.45;
-  text-align: center;
 }
 
 #view-settings .dp-settings-extraction-enable {
@@ -68,7 +55,7 @@
 }
 
 /* ── The Extraction behaviour group ───────────────────────────────────────
-   Concurrent Extractions and Delete Archives After Extraction are ONE group,
+   Delete Archives After Extraction and Concurrent Extractions are ONE group,
    not two cards and not two controls floating in a band: a single subtle
    outline around a two-lane form that uses the width deliberately rather than
    clustering both controls in the middle.
@@ -149,40 +136,6 @@
 
 #view-settings .dp-settings-password-eye.is-open .dp-settings-password-eye-open {
   display: block;
-}
-
-@media (max-width: 1180px) {
-  #view-settings .dp-settings-extraction-card > .card-header {
-    grid-template-columns: minmax(210px, 1fr) minmax(260px, 1.35fr) auto;
-  }
-}
-
-@media (max-width: 779px) {
-  #view-settings .dp-settings-extraction-card > .card-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    gap: 8px 16px;
-  }
-
-  #view-settings .dp-settings-extraction-card > .card-header > .card-title {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  #view-settings .dp-settings-extraction-card > .card-header > .dp-settings-extraction-enable {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  #view-settings .dp-settings-extraction-card > .card-header > .dp-settings-card-header-center {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: center;
-  }
-
-  #view-settings .dp-settings-extraction-behavior {
-    gap: 16px 28px;
-  }
 }
 
 @media (max-width: 779px) {

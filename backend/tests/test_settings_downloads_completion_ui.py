@@ -96,7 +96,10 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
         "Download Error Retries",
         "How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.",
         "Retry Delay (seconds)",
-        "How long DebridPulse waits before checking or re-resolving a download after an error, and before trying a provider again after a temporary failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.",
+        # Every fact of the policy it sets (transfers/policy.py TransferPolicy._delay:
+        # retry_delay doubled per failure, at most max_retry_delay = 300 s), in
+        # about a third fewer words.
+        "Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. Plain retries double the delay, up to 5 minutes. Set to 0 to retry immediately.",
     )
     for text in expected:
         assert text in runtime

@@ -121,7 +121,7 @@ test('the two extraction behaviour controls are ONE centred, content-bounded isl
     // Restrained: a job count needs room for a number, not for a sentence.
     expect(geometry.numericWidth).toBeLessThanOrEqual(110);
 
-    await expect(group.locator('.form-hint').first())
+    await expect(group.locator('.dp-settings-extraction-concurrency-field .form-hint'))
       .toHaveText('Maximum extraction jobs DebridPulse runs at once.');
   });
 

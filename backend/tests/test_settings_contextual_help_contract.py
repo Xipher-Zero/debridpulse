@@ -229,8 +229,11 @@ def test_every_header_rail_reads_status_then_help_then_its_own_controls():
     order = [controls.index(token) for token in
              ("dp-settings-provider-config-status", "helpChip(help, title)", "headerAction ?", "${enable}")]
     assert order == sorted(order)
+    # Download Engine Activity updates by itself: its rail is its Help alone.
     work = PAGE.split("function executorWorkCard() {", 1)[1].split("\n  }\n", 1)[0]
-    assert work.index("helpChip('engine-activity'") < work.index("data-dp-executor-work-refresh")
+    assert ('<div class="dp-settings-card-header-controls">${helpChip(\'engine-activity\', '
+            "'Download Engine Activity')}</div>") in work
+    assert "data-dp-executor-work-refresh" not in work
 
 
 def test_the_help_owner_is_read_only_and_uses_the_canonical_dialog():
@@ -497,11 +500,12 @@ def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
         assert kept in PAGE, kept
     tuning = _block(PAGE, "function executorTuningCard(")
     assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in tuning
-    # Download Engine Activity: the canonical header, its rail Help then Refresh.
+    # Download Engine Activity: the canonical header, its rail its Help alone
+    # (it updates by itself; there is no Refresh).
     work = _block(PAGE, "function executorWorkCard() {")
     assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in work
     rail = work.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>", 1)[0]
-    assert rail.index("helpChip('engine-activity'") < rail.index("data-dp-executor-work-refresh")
+    assert rail == "${helpChip('engine-activity', 'Download Engine Activity')}"
     # No private header grid survives beside the canonical one.
     for retired in (".dp-settings-download-engine-card > .card-header", "minmax(420px, 900px)"):
         assert retired not in css, retired

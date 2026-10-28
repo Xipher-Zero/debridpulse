@@ -3076,9 +3076,19 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         );
 
+        // That execution activity changed, for an owner that shows it
+        // (Settings -> Downloads -> Download Engine Activity). Carries nothing:
+        // the owner re-reads its own authorized projection. Bridged from the
+        // transfer and statistics signals every connection already receives,
+        // so no executor fact reaches a new audience.
+        function executionActivityChanged() {
+          document.dispatchEvent(new CustomEvent('debridpulse:execution-activity-changed'));
+        }
+
         es.addEventListener(
           'stats_changed',
           function() {
+            executionActivityChanged();
             loadStats().catch(()=>{});
             // The Statistics owner decides whether it is shown and when to re-read.
             document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated'));
@@ -3109,6 +3119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (_) {}
 
             notifyExtractionFailure(payload);
+            executionActivityChanged();
 
             const patchedProgress =
               patchProgressOnlyTransferEvent(payload);

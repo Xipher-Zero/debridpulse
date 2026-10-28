@@ -291,7 +291,7 @@
       title: 'Download Engine Activity',
       sections: [
         {text: [
-          'A live list of the jobs the download engines are running or holding, refreshed every few seconds while this page is visible. It is a troubleshooting surface; Downloads is where downloads are normally managed.',
+          'A live list of the jobs the download engines are running or holding. While it is on screen it updates by itself as those jobs start, progress, pause or end. It is a troubleshooting surface; Downloads is where downloads are normally managed.',
         ]},
         {heading: 'Controls', list: [
           'Filters show active, waiting, paused, or stopped jobs.',
@@ -414,8 +414,8 @@
           'When Enable is on, DebridPulse unpacks supported archives once their download completes: ZIP, TAR (including gzip, bzip2, xz, Zstandard, and LZMA variants), GZ, BZ2, XZ, 7z, and RAR, including multi-part RAR sets. Other files are left as they are.',
         ]},
         {heading: 'Principal controls', list: [
-          'Concurrent Extractions limits how many archives are unpacked at the same time.',
           'Delete Archives After Extraction removes an archive’s files only after it was extracted successfully; a failed extraction keeps them.',
+          'Concurrent Extractions limits how many archives are unpacked at the same time.',
           'Archive Passwords: each 7z or RAR archive is tried first without a password, then with each stored password in order. ZIP archives are extracted without a password only; a password-protected ZIP is not unlocked with these passwords. Passwords are stored on the server and hidden unless you choose to show them.',
         ]},
         {heading: 'Safety', text: [

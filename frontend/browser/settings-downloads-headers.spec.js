@@ -5,8 +5,8 @@ const { test, expect } = require('@playwright/test');
  * WebDAV, Usenet, Media Downloads), Disk Space & Recovery and Download Engine
  * Activity -- in the Services header grammar. One row at every width from the
  * desktop down to 780px: the identity at the leading inset (a method card's
- * disclosure beside its title), the rail at the trailing inset (Help, and on
- * Download Engine Activity Help then Refresh), and the card's one-line purpose
+ * disclosure beside its title), the rail at the trailing inset (each card's
+ * Help -- Download Engine Activity updates by itself), and the card's one-line purpose
  * hint on the header's own midpoint only while it fits there clear of both;
  * otherwise the hint is out of the layout and the card's Help chip says it
  * instead. Every card's Help opens its own topic.
@@ -81,7 +81,7 @@ function headers(page) {
         disclosure: disclosure ? {afterTitle: d.left >= title.right - 0.5 && d.left - title.right <= 12, row: Math.abs((d.top + d.bottom) / 2 - mid) < 2} : null,
         chips: chips.length, topic: chips[0]?.dataset.settingsHelp, label: chips[0]?.getAttribute('aria-label'), tooltip: chips[0]?.getAttribute('data-tooltip'),
         order: rail ? [...rail.children].map(node => node.classList.contains('dp-settings-help-chip') ? 'help'
-          : node.matches('[data-dp-executor-work-refresh]') ? 'refresh' : node.className) : []};
+          : node.className) : []};
     });
   });
 }
@@ -100,8 +100,7 @@ function problems(list, width) {
     if (h.railInset === null || Math.abs(h.railInset) > 0.5) out.push(`${at}: rail off the trailing inset (${h.railInset})`);
     if (h.chips !== 1) out.push(`${at}: ${h.chips} help chips`);
     if (h.topic !== TOPICS[h.name] || h.label !== HELP(h.name)) out.push(`${at}: help ${h.topic} / ${h.label}`);
-    const order = h.name === 'Download Engine Activity' ? ['help', 'refresh'] : ['help'];
-    if (h.order.join() !== order.join()) out.push(`${at}: rail ${h.order}`);
+    if (h.order.join() !== 'help') out.push(`${at}: rail ${h.order}`);
     if (METHODS[h.name] && !(h.disclosure?.afterTitle && h.disclosure?.row)) out.push(`${at}: disclosure not beside its title`);
     if (!h.hint) out.push(`${at}: no hint`);
     if (h.shown) {
@@ -211,19 +210,18 @@ test('the Help chip shows a hidden hint as its DP tooltip on hover and keyboard 
   await expect(header.locator('.dp-settings-card-header-center > *')).toBeVisible();
 });
 
-test('Download Engine Activity keeps Help then Refresh at the trailing edge, and Refresh still asks for the engine jobs', async ({page}) => {
+test('Download Engine Activity keeps its Help alone at the trailing edge, and reads the engine jobs without being asked', async ({page}) => {
+  const request = page.waitForRequest(r => new URL(r.url()).pathname === '/api/executor-work');
   await open(page, 780);
+  await request;
   const header = page.locator('#view-settings .dp-executor-work-card > .card-header');
   const rail = header.locator(':scope > .dp-settings-card-header-controls');
-  await expect(rail.locator(':scope > *')).toHaveCount(2);
+  await expect(rail.locator(':scope > *')).toHaveCount(1);
   await expect(rail.locator(':scope > :first-child')).toHaveAttribute('data-settings-help', 'engine-activity');
-  await expect(rail.locator(':scope > :last-child')).toHaveText('Refresh');
-  const request = page.waitForRequest(r => new URL(r.url()).pathname === '/api/executor-work');
-  await rail.getByRole('button', {name: 'Refresh'}).click();
-  await request;
+  await expect(header.getByRole('button', {name: 'Refresh'})).toHaveCount(0);
 });
 
-test('at 780px every header control is whole and is its own target: the disclosures, every Help and Refresh', async ({page}) => {
+test('at 780px every header control is whole and is its own target: the disclosures and every Help', async ({page}) => {
   await open(page, 780);
   const report = await page.evaluate(() => {
     const out = [];
@@ -231,7 +229,7 @@ test('at 780px every header control is whole and is its own target: the disclosu
       const name = header.querySelector('.dp-settings-card-title-text').textContent.trim();
       header.scrollIntoView({block: 'center'});
       const hb = header.getBoundingClientRect();
-      for (const node of header.querySelectorAll('.dp-settings-disclosure, .dp-settings-help-chip, [data-dp-executor-work-refresh]')) {
+      for (const node of header.querySelectorAll('.dp-settings-disclosure, .dp-settings-help-chip')) {
         const r = node.getBoundingClientRect();
         if (r.left < hb.left || r.right > hb.right || r.width < 24 || r.height < 24) out.push(`${name}: ${node.className} ${r.width}x${r.height}`);
         const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
