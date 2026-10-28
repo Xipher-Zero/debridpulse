@@ -56,7 +56,7 @@
   const NAV_TARGET = 24;     // the least part of a section that is a position
   const NAV_TRIM = 5;        // the most side padding a compact tab gives up
   const NAV_CUT = [0.3, 0.9];
-  const INDEX_DWELL_MS = 2000;   // the pointer at rest this long before the section index shows
+  const INDEX_DWELL_MS = 1000;   // the pointer at rest this long before the section index shows
   const navDesktop = window.matchMedia('(min-width: 780px)');
 
   const shown = node => node.checkVisibility?.({visibilityProperty: true})

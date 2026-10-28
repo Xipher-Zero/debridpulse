@@ -232,7 +232,7 @@ test('below 780px neither handheld header has an index', async ({page}) => {
  * the wait; keyboard focus stays prompt. Every frame records whether the
  * index is shown, so each case reads WHEN it appeared against what the
  * pointer did -- real time, since the wait itself is the subject. */
-const DWELL = 2000;
+const DWELL = 1000;
 
 async function openLogged(page, view, width = 1100) {
   await page.addInitScript(() => {
@@ -296,7 +296,7 @@ for (const {view, label} of PAGES) {
     await page.mouse.move(p.x - 20, p.y);
     await expect.poll(() => shownNow(page)).toBe(false);
     t0 = await now(page);
-    await until(page, t0 + 900);
+    await until(page, t0 + DWELL * 0.45);
     await awayFrom(page);
     await until(page, t0 + DWELL + 600);
     expect(await appeared(page, t0), 'left during the wait').toEqual([]);
@@ -313,12 +313,13 @@ for (const {view, label} of PAGES) {
       await until(page, t0 + (step + 1) * 100);
     }
     expect(await appeared(page, t0), 'moving continuously').toEqual([]);
-    // 5. Jitter of 3px at rest: the dwell still completes.
+    // 5. Jitter of 3px at rest, through three quarters of the dwell: the
+    // dwell still completes.
     await awayFrom(page);
     t0 = await now(page);
     await page.mouse.move(p.x, p.y);
     for (let step = 1; step <= 6; step += 1) {
-      await until(page, t0 + step * 250);
+      await until(page, t0 + step * DWELL * 0.125);
       await page.mouse.move(p.x + (step % 2 ? 3 : 0), p.y + (step % 2 ? 0 : 2));
     }
     await indexShown(page);
@@ -330,7 +331,7 @@ for (const {view, label} of PAGES) {
     await openLogged(page, view);
     const strip = `#view-${view} .dp-${view}-tabs`;
     // 9 and 11. The right edge clicked again and again at one point (the
-    // window sliding beneath the still pointer), 700ms apart: no index.
+    // window sliding beneath the still pointer), well inside a dwell apart: no index.
     await page.evaluate(sel => document.querySelector(`${sel} [data-tab]`).click(), strip);
     await settled(page);
     let p = await navigatorPoint(page, view, 'right');
@@ -340,7 +341,7 @@ for (const {view, label} of PAGES) {
     for (let click = 0; click < 5; click += 1) {
       lastUse = await now(page);
       await page.mouse.click(p.x, p.y);
-      await until(page, t0 + (click + 1) * 700);
+      await until(page, t0 + (click + 1) * DWELL * 0.35);
     }
     expect(await appeared(page, t0), 'right-edge clicks').toEqual([]);
     // 15. Then still: the index only a full dwell after the last use (which,
@@ -358,7 +359,7 @@ for (const {view, label} of PAGES) {
     t0 = await now(page);
     for (let click = 0; click < 5; click += 1) {
       await page.mouse.click(p.x, p.y);
-      await until(page, t0 + (click + 1) * 700);
+      await until(page, t0 + (click + 1) * DWELL * 0.35);
     }
     expect(await appeared(page, t0), 'left-edge clicks').toEqual([]);
     // 12. First and Last: the index goes at the press and returns only a
@@ -396,7 +397,7 @@ for (const {view, label} of PAGES) {
     t0 = await now(page);
     await page.mouse.click(lastTab.x, lastTab.y);
     await expect(page.locator(`${strip} [aria-selected="true"]`)).toHaveAttribute('data-tab', ids.at(-1));
-    await until(page, t0 + 1500);
+    await until(page, t0 + DWELL * 0.75);
     expect(await appeared(page, t0), 'no index straight after the snap').toEqual([]);
     // 14. A quick reversal (right edge, then left edge, 150ms apart): no
     // stale index; it comes only after a full rest.
@@ -450,7 +451,7 @@ for (const {view, label} of PAGES) {
 test('keyboard focus brings the index promptly and Escape dismisses it; the index rests on the same policy on both pages', async ({page}) => {
   for (const {view} of PAGES) {
     await openLogged(page, view);
-    await expect(page.locator(`#view-${view} .dp-section-nav-control`)).toHaveAttribute('data-tooltip-dwell', '2000');
+    await expect(page.locator(`#view-${view} .dp-section-nav-control`)).toHaveAttribute('data-tooltip-dwell', '1000');
     const selected = page.locator(`#view-${view} .dp-${view}-tabs [aria-selected="true"]`);
     await selected.focus();
     const t0 = await now(page);

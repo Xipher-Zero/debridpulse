@@ -145,7 +145,7 @@ def test_a_dwell_element_waits_for_a_resting_pointer_and_never_takes_the_warm_pa
     assert "if (dwell?.host === host) stopDwell();" in owner
     assert "host.hasAttribute('data-tooltip-busy')" in owner and "document.addEventListener('dp-tooltip-ready'" in owner
     nav = read("ui-section-nav.js")
-    assert "const INDEX_DWELL_MS = 2000;" in nav and "control.dataset.tooltipDwell = String(INDEX_DWELL_MS);" in nav
+    assert "const INDEX_DWELL_MS = 1000;" in nav and "control.dataset.tooltipDwell = String(INDEX_DWELL_MS);" in nav
     assert "control.dataset.tooltipBusy = '';" in nav and "new Event('dp-tooltip-ready', {bubbles: true})" in nav
     # The mark belongs to the slide that set it, not to the fit a re-measure
     # replaces: its own completion clears it unless a newer slide holds it.
