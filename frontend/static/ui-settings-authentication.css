@@ -312,17 +312,20 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   width: 100%;
 }
 
-#view-settings .dp-settings-auth-password-field .dp-action-field > .input {
+/* A stored secret's field -- the local password and the OIDC client secret --
+   carries its Clear inside its own border (the shared .dp-action-field, Clear a
+   sibling of the input, so it never covers typed text, placeholder or caret).
+   The control never narrows past what it holds -- its typing room and Clear
+   beside it -- so Clear stays inside the field and clear of anything after it. */
+#view-settings :is(.dp-settings-auth-password-field, .dp-settings-oidc-client-secret-field) .dp-action-field > .input {
   min-width: 100px;
 }
 
-/* The password control never narrows past what it holds -- its typing room
-   and Clear beside it -- so Clear stays inside the field and clear of Apply. */
-#view-settings .dp-settings-auth-password-field :is(.dp-settings-inline-field-control, .dp-action-field) {
+#view-settings :is(.dp-settings-auth-password-field, .dp-settings-oidc-client-secret-field) :is(.dp-settings-inline-field-control, .dp-action-field) {
   min-width: min-content;
 }
 
-#view-settings .dp-settings-auth-password-field :is(.dp-action-field, .dp-settings-inline-field-action) .btn {
+#view-settings :is(.dp-settings-auth-password-field, .dp-settings-oidc-client-secret-field) :is(.dp-action-field, .dp-settings-inline-field-action) .btn {
   white-space: nowrap;
 }
 
@@ -521,8 +524,11 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex: 1 1 300px;
 }
 
-#view-settings .dp-settings-oidc-client-secret-field > .dp-settings-inline-field-action .btn {
-  white-space: nowrap;
+/* Inside the group every control may narrow to nothing (above); the client
+   secret's may not narrow past its typing room and the Clear inside it -- its
+   sentence yields the width instead. */
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-secret-field .dp-settings-inline-field-control {
+  min-width: min-content;
 }
 
 #view-settings .dp-settings-oidc-group > .dp-settings-oidc-scopes-field {

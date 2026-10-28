@@ -44,7 +44,7 @@ def test_the_two_bounded_islands_share_one_measured_stacking_owner():
     assert "islands.forEach(island => islandObserver.observe(island.parentElement));" in fit
     assert PAGE.count("fitIslands();") == 1 and PAGE.count("islandFit?.();") == 1
     stacked = PAGE_CSS.split("@media (min-width: 780px) {\n  #view-settings .dp-settings-island[data-island='stacked'] {", 1)[1]
-    assert [line.strip() for line in stacked.split("}", 1)[0].strip().splitlines()] == ["flex-direction: column;", "align-items: center;"]
+    assert [line.strip() for line in stacked.split("}", 1)[0].strip().splitlines()] == ["flex-direction: column;"]
 
 
 def test_the_locked_tunable_orders():

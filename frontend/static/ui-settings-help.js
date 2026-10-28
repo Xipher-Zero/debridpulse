@@ -453,7 +453,7 @@
           'Username and Password are your own account’s credential. Typing in them changes nothing until you choose Apply, which saves both together or, if anything is refused, changes nothing.',
           'The stored password is never shown. Leave Password blank to keep it; enter a new one to replace it. Changing the username needs a new password with it, and a first credential needs both.',
           'Applying a new credential ends your account’s browser sessions, including this one; sign in again with the new username and password.',
-          'Clear Stored Password, inside the Password field, removes your stored password after you confirm. It never applies what you have typed.',
+          'Clear, inside the Password field, removes your stored password after you confirm. It never applies what you have typed.',
           'The status beside Help says Configured when a username and password are stored, and Unconfigured otherwise. It does not test the password.',
         ]},
         {heading: 'Related', text: [

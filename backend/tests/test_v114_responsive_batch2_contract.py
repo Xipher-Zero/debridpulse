@@ -22,7 +22,11 @@ def _function(name: str) -> str:
 def test_the_stacked_island_keeps_each_setting_at_its_own_width():
     # Item 1 (and the session island, Item 3): centred, never stretched apart.
     stacked = PAGE_CSS.split("#view-settings .dp-settings-island[data-island='stacked'] {", 1)[1].split("}", 1)[0]
-    assert "align-items: center;" in stacked and "stretch" not in stacked
+    assert "stretch" not in stacked
+    # Each setting centres ITSELF, so no island's own cross-axis rule (the
+    # session row's equal-height `stretch`) can widen one to the island.
+    assert ("#view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {\n"
+            "    align-self: center;\n  }") in PAGE_CSS
     assert "justify-content: space-between" not in PAGE_CSS.split("data-island='stacked'", 1)[1].split("@media", 1)[0]
     assert 'dp-settings-auth-session-row dp-settings-island' in PAGE
     session = _function("authStatusCard")
@@ -46,6 +50,21 @@ def test_the_local_credential_is_applied_only_by_apply():
     password = panel.split("input('auth_password'", 1)[1].split("});", 1)[0]
     assert 'embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password"' in password
     assert "action: '<button class=\"btn btn-blue btn-sm\" type=\"button\" data-action=\"apply-credentials\" disabled>Apply</button>'" in password
+
+
+def test_both_stored_secrets_carry_a_short_clear_inside_their_field():
+    # The password and the OIDC client secret: one embedded treatment, visible
+    # "Clear", named for what it clears; their handlers are unchanged.
+    panel = _function("authenticationPanel")
+    for key, action, name in (("auth_password", "clear-password", "Clear Stored Password"),
+                              ("oidc_client_secret", "clear-oidc-secret", "Clear Stored Secret")):
+        call = panel.split(f"input('{key}'", 1)[1].split("});", 1)[0]
+        assert (f'embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="{action}" '
+                f'aria-label="{name}" data-tooltip="{name}" ') in call, key
+        assert f">Clear</button>`," in call and f">{name}</button>" not in call, key
+    secret = panel.split("input('oidc_client_secret'", 1)[1].split("});", 1)[0]
+    assert "\n      action:" not in secret
+    assert "await writeAuthentication({clear_oidc_client_secret: true});" in _function("clearOidcSecret")
 
 
 def test_the_credential_status_never_says_verified():

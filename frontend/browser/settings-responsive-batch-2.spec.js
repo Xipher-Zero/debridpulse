@@ -90,8 +90,15 @@ test('the session island: Lifetime first, Active Browser Sessions centred beneat
       const [first, second] = fields.map(r), ib = r(island);
       const pad = parseFloat(getComputedStyle(island).paddingLeft) + parseFloat(getComputedStyle(island).borderLeftWidth);
       const count = island.querySelector('[data-auth-session-count]'), logout = island.querySelector('[data-action="logout-session"]');
+      // A setting's CONTENT: its label and hint as drawn text, its control and
+      // its action -- never its box, which may be wider than what it holds.
+      const text = node => { const range = document.createRange(); range.selectNodeContents(node);
+        const boxes = [...range.getClientRects()]; return {left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right))}; };
+      const content = field => { const parts = [text(field.querySelector('.form-label')), text(field.querySelector('.form-hint')),
+        r(field.querySelector('.dp-settings-inline-field-control')), ...[...field.querySelectorAll('.dp-settings-inline-field-action .btn')].map(r)];
+        return (Math.min(...parts.map(b => b.left)) + Math.max(...parts.map(b => b.right))) / 2; };
       return {order: fields.map(f => f.querySelector('.form-label').textContent.trim()), stacked: second.top >= first.bottom - 1,
-        centre: ((second.left + second.right) - (first.left + first.right)) / 2,
+        centre: content(fields[1]) - content(fields[0]),
         slack: ib.width - Math.max(first.width, second.width) - 2 * pad,
         logoutInside: fields[1].contains(logout), logoutNearCount: r(logout).left - r(count).right};
     });
@@ -121,7 +128,8 @@ const pair = page => page.evaluate(() => {
   return {sideBySide: Math.abs(fields[0].top - fields[1].top) < 3, widths: fields.map(f => f.width), overflow: row.scrollWidth - row.clientWidth,
     clears: clear.length, clearInField: box.contains(clear[0]) && cb.left >= r(input).right - 0.5 && cb.right <= bb.right + 0.5
       && Math.abs((cb.top + cb.bottom) / 2 - (bb.top + bb.bottom) / 2) <= 1,
-    clearHit: clear[0].contains(hit), input: r(input).width, applyOutside: !!apply && !box.contains(apply) && (r(apply).left >= bb.right || r(apply).top >= bb.bottom)};
+    clearHit: clear[0].contains(hit), input: r(input).width, clearText: clear[0].textContent.trim(),
+    clearName: clear[0].getAttribute('aria-label'), clearTip: clear[0].dataset.tooltip, applyOutside: !!apply && !box.contains(apply) && (r(apply).left >= bb.right || r(apply).top >= bb.bottom)};
 });
 
 test('Username & Password: side by side while both are usable, then two equal groups; Clear always inside the field; Apply outside it', async ({page}) => {
@@ -134,6 +142,7 @@ test('Username & Password: side by side while both are usable, then two equal gr
     expect(g.clears, `${at}: a second Clear`).toBe(1);
     expect(g.clearInField, `${at}: Clear is not inside the password field`).toBe(true);
     expect(g.clearHit, `${at}: Clear is not its own target`).toBe(true);
+    expect([g.clearText, g.clearName, g.clearTip], at).toEqual(['Clear', 'Clear Stored Password', 'Clear Stored Password']);
     expect(g.applyOutside, `${at}: Apply is not in the field's action slot`).toBe(true);
     expect(g.input, `${at}: the password has no room to type in`).toBeGreaterThanOrEqual(100);
     if (!g.sideBySide) expect(Math.abs(g.widths[0] - g.widths[1]), `${at}: unequal groups ${g.widths}`).toBeLessThanOrEqual(1);
@@ -217,6 +226,59 @@ test('Clear Stored Password: cancelling writes nothing and never applies a typed
   await page.waitForTimeout(300);
   expect(writes).toEqual([]);
   await expect(page.locator('#dp-settings-field-auth-password')).toHaveValue(`${SENTINEL}-draft`);
+});
+
+test('OIDC Client Secret: Clear is inside the field at every width, named Clear Stored Secret, and keeps its confirmation', async ({page}) => {
+  const writes = [];
+  await page.route('**/api/auth/config', async route => {
+    if (route.request().method() === 'PUT') {
+      writes.push(route.request().postDataJSON());
+      const current = await (await page.request.get('/api/auth/config')).json();
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({...current, ok: true, oidc_client_secret_configured: false})});
+    }
+    const current = await (await route.fetch()).json();
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({...current, oidc_client_secret_configured: true})});
+  });
+  await open(page, 1440, 'authentication');
+  const secret = page.locator('.dp-settings-oidc-client-secret-field');
+  for (const width of [1440, 1180, 1024, 900, 780, 700]) {
+    await resize(page, width);
+    const g = await secret.evaluate(field => {
+      const r = n => n.getBoundingClientRect();
+      const clears = document.querySelectorAll('[data-action="clear-oidc-secret"]');
+      const clear = clears[0]; clear.scrollIntoView({block: 'center'});
+      const box = field.querySelector('.dp-action-field'), input = field.querySelector('input[type="password"]');
+      const cb = r(clear), bb = r(box), hit = document.elementFromPoint((cb.left + cb.right) / 2, (cb.top + cb.bottom) / 2);
+      return {clears: clears.length, inField: !!box && box.contains(clear) && cb.left >= r(input).right - 0.5 && cb.right <= bb.right + 0.5
+        && Math.abs((cb.top + cb.bottom) / 2 - (bb.top + bb.bottom) / 2) <= 1, hit: clear.contains(hit), input: r(input).width,
+        text: clear.textContent.trim(), name: clear.getAttribute('aria-label'), tip: clear.dataset.tooltip, masked: input.type,
+        overflow: field.scrollWidth - field.clientWidth};
+    });
+    const at = `${width}px`;
+    expect(g.clears, at).toBe(1);
+    expect(g.inField, `${at}: Clear is not inside the Client Secret field`).toBe(true);
+    expect(g.hit, `${at}: Clear is not its own target`).toBe(true);
+    expect(g.input, `${at}: no room to type`).toBeGreaterThanOrEqual(100);
+    expect([g.text, g.name, g.tip, g.masked], at).toEqual(['Clear', 'Clear Stored Secret', 'Clear Stored Secret', 'password']);
+    expect(g.overflow, `${at}: overflow`).toBeLessThanOrEqual(0);
+  }
+  await resize(page, 1440);
+  const clear = page.locator('[data-action="clear-oidc-secret"]');
+  await expect(clear).toBeEnabled();
+  // Keyboard reaches it and opens the same confirmation; Cancel writes nothing.
+  await clear.focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.locator('[role="alertdialog"]');
+  await expect(dialog).toContainText('Clear stored client secret?');
+  await dialog.locator('[data-modal-cancel]').click();
+  await expect(dialog).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect(writes).toEqual([]);
+  // Confirming is the one clear path, carrying only its own removal.
+  await clear.click();
+  await dialog.locator('[data-modal-accept]').click();
+  await expect.poll(() => writes).toEqual([{clear_oidc_client_secret: true}]);
+  await expect(clear).toBeDisabled();
 });
 
 test('a real Apply against this runtime configures the credential, and the status says Configured -- never Verified', async ({page}) => {

@@ -560,12 +560,18 @@
    setting per row, each at its OWN width and centred under the one above --
    exactly where the wrapped row put it, its title, hint and control together
    -- so the island's max-content width, and its outline, is its widest
-   setting rather than the room the wrapped row was given. Handheld (below
-   780px) keeps its own one-column island. */
+   setting rather than the room the wrapped row was given. Each setting
+   centres ITSELF (align-self), so no island's own cross-axis alignment -- the
+   equal-height `stretch` a row of them uses -- can widen one to the island and
+   leave its content packed to the leading edge. Handheld (below 780px) keeps
+   its own one-column island. */
 @media (min-width: 780px) {
   #view-settings .dp-settings-island[data-island='stacked'] {
     flex-direction: column;
-    align-items: center;
+  }
+
+  #view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
+    align-self: center;
   }
 }
 

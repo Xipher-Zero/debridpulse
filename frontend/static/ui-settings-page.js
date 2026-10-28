@@ -3683,7 +3683,7 @@
       placeholder: passwordPlaceholder(a),
       hint: 'Leave blank to keep the current password. Enter a new password to replace it.',
       className: 'dp-settings-auth-password-field',
-      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>`,
+      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" aria-label="Clear Stored Password" data-tooltip="Clear Stored Password" ${a.password_configured ? '' : 'disabled'}>Clear</button>`,
       action: '<button class="btn btn-blue btn-sm" type="button" data-action="apply-credentials" disabled>Apply</button>',
     });
 
@@ -3748,7 +3748,8 @@
 
     /* Same secret semantics as the password: rendered blank, so blank is the
      * baseline and an untouched field writes nothing; erasing the stored
-     * secret is the confirmed action beside it. */
+     * secret is the confirmed action inside the field, in the password's own
+     * embedded treatment. */
     const secretField = input('oidc_client_secret', 'Client Secret', '', {
       inline: true,
       type: 'password',
@@ -3757,7 +3758,7 @@
       placeholder: clientSecretPlaceholder(a),
       hint: 'Leave blank to keep the stored secret. Enter a new value to replace it.',
       className: 'dp-settings-oidc-client-secret-field',
-      action: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-oidc-secret" ${a.oidc_client_secret_configured ? '' : 'disabled'}>Clear Stored Secret</button>`,
+      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-oidc-secret" aria-label="Clear Stored Secret" data-tooltip="Clear Stored Secret" ${a.oidc_client_secret_configured ? '' : 'disabled'}>Clear</button>`,
     });
 
     const scopesField = input('oidc_scopes', 'Scopes', scopes, {
