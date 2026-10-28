@@ -991,6 +991,30 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-modal-dialog.dp-users-edit-dialog .dp-users-password-status {
   margin-top: -4px;
 }
+/* The local sign-in username: its value and the established pencil (the
+   Usenet server name's treatment), edited in a view of this dialog. */
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-value {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-value[data-unset='true'] {
+  color: var(--dp-text-muted);
+  font-weight: 400;
+  font-style: italic;
+}
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-edit { padding: 2px 6px; line-height: 1; }
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-edit img { width: 14px; height: 14px; display: block; }
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-username-draft {
+  color: var(--dp-state-caution);
+  font-size: 11.5px;
+}
 .dp-modal-dialog.dp-users-edit-dialog .dp-users-password-status:empty {
   display: none;
 }

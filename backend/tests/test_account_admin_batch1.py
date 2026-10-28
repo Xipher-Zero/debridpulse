@@ -17,7 +17,7 @@ import db.database as database
 from auth import accounts
 from auth.accounts import DEFAULT_ADMIN_ID, Role
 from auth.models import Principal
-from auth.permissions import ACTIONS
+from auth.permissions import ACTIONS, Capability
 from auth.sessions import session_store
 from transfers.models import SubmissionDemand, TransferRequest
 from transfers.recovery_repository import TransferRepository
@@ -188,3 +188,49 @@ async def test_admin_account_endpoints_merge_and_link_retirement(served):
     assert linked.status_code in {404, 405}
     assert not any("link_account_identity" in name for name in ACTIONS)
     assert not hasattr(accounts, "link_oidc_identity") and hasattr(accounts, "bind_verified_oidc")
+
+
+async def test_an_admin_renames_a_local_credential_keeping_its_password(accounts_db):
+    person = await accounts.create_local_account("before", "before-secret", role="user", display_name="P")
+    _owner, verifier = await accounts.local_credential("before")
+    session, _ = session_store.create(Principal.password_session(await accounts.get_account(person.id)),
+                                      lifetime_seconds=3600)
+    generation = (await accounts.get_account(person.id)).generation
+
+    await accounts.rename_local_credential(ADMIN, person.id, "  after ")
+
+    assert await accounts.local_credential("before") is None
+    renamed, kept = await accounts.local_credential("after")
+    assert (renamed.id, kept) == (person.id, verifier)                          # the same password
+    assert renamed.generation == generation + 1 and session_store.resolve(session) is None   # signed out
+    taken = await accounts.create_local_account("taken", "taken-secret", role="user")
+    oidc = await _login("named", preferred_username="named")
+    for actor, target, name, words in (
+            (person.id, person.id, "self", "to itself"),
+            (ADMIN, person.id, "taken", "belongs to another account"),
+            (ADMIN, person.id, "   ", "A username is required"),
+            (ADMIN, oidc.id, "named", "together with the account's first password"),   # never a username alone
+            (ADMIN, accounts.DEFAULT_INTEGRATION_ID, "bot", "Integration accounts have no password")):
+        with pytest.raises(accounts.AccountRefused, match=words):
+            await accounts.rename_local_credential(actor, target, name)
+    assert (await accounts.local_credential("after"))[0].id == person.id and (await accounts.get_account(taken.id)).username == "taken"
+    assert not (await accounts.get_account(oidc.id)).has_password
+
+
+async def test_the_username_endpoint_is_admin_only_and_reports_refusals(served):
+    client, as_ = served
+    person = await accounts.create_local_account("route-before", "route-secret", role="user")
+    await accounts.create_local_account("route-taken", "route-taken-secret", role="user")
+    assert ACTIONS["api.account_routes.rename_account_username"] is Capability.ADMINISTER
+    for role in (Role.USER, Role.READONLY, Role.INTEGRATION):
+        assert (await client.put(f"/api/accounts/{person.id}/username", headers=as_(role),
+                                 json={"username": "x"})).status_code == 403
+    assert (await client.put(f"/api/accounts/{person.id}/username", headers=as_(Role.ADMIN),
+                             json={"username": "route-after"})).status_code == 200
+    assert (await accounts.get_account(person.id)).username == "route-after"
+    refused = await client.put(f"/api/accounts/{person.id}/username", headers=as_(Role.ADMIN), json={"username": "route-taken"})
+    assert refused.status_code == 409 and "belongs to another account" in refused.json()["detail"]
+    missing = await client.put("/api/accounts/no-such/username", headers=as_(Role.ADMIN), json={"username": "y"})
+    assert missing.status_code == 404
+    assert (await client.put(f"/api/accounts/{person.id}/username", headers=as_(Role.ADMIN),
+                             json={"username": ""})).status_code == 422

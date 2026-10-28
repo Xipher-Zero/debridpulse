@@ -4381,7 +4381,11 @@
    *
    * Apply sends only what changed, one request each and the role first: the
    * role through PATCH /accounts/{id}, the password through POST
-   * /accounts/{id}/password. They are two separate server writes, never one
+   * /accounts/{id}/password (with the username when that changed too, or when
+   * it is the account's first password, which needs one), and a username
+   * alone through PUT /accounts/{id}/username, which keeps the password. The
+   * username is edited from its pencil, in a view of this dialog, and is a
+   * draft until Apply. These are separate server writes, never one
    * transaction, so Apply stops at the first that fails, says exactly which
    * took effect, and re-reads the account; a later Apply sends only what the
    * re-read account still lacks. A write the server acknowledged is part of
@@ -4403,19 +4407,26 @@
     let act = '';
     let pending = false;
     let reread = true;      // the account shown is the server's latest read
+    let usernameDraft = null;   // the username chosen from its pencil, not yet applied
     let handle = null;
     const nodes = {};
     const roleLabel = role => ROLE_LABELS[role] || role;
     const editTitle = () => `Edit User: ${accountName(account || initial)}`;
 
+    // An account without a password gets its username with its first one.
+    const establishing = () => !account?.has_password;
+    const wantedName = () => usernameDraft ?? (account?.username || '');
+    const usernameChanged = () => usernameDraft !== null && usernameDraft !== (account?.username || '');
     const passwordState = () => {
       const next = nodes.password.value;
       const confirmed = nodes.confirm.value;
-      if (!next && !confirmed) return nodes.username?.value ? 'incomplete' : 'empty';
+      if (!next && !confirmed) return establishing() && usernameChanged() ? 'incomplete' : 'empty';
       if (!confirmed) return 'incomplete';
-      return next === confirmed ? 'match' : 'mismatch';
+      if (next !== confirmed) return 'mismatch';
+      return establishing() && !wantedName() ? 'unnamed' : 'match';
     };
     const roleChanged = () => Boolean(account) && nodes.role.value !== account.role;
+    const renameAlone = () => !establishing() && usernameChanged() && passwordState() === 'empty';
 
     const say = (message, tone = '') => {
       nodes.outcome.textContent = message;
@@ -4425,13 +4436,18 @@
 
     const paint = () => {
       const state = passwordState();
-      nodes.confirmField.dataset.match = String(state === 'match');
+      const agree = state === 'match' || state === 'unnamed';
+      nodes.confirmField.dataset.match = String(agree);
       nodes.confirm.setAttribute('aria-invalid', String(state === 'mismatch'));
-      nodes.passwordStatus.dataset.state = state;
+      nodes.passwordStatus.dataset.state = agree ? 'match' : state;
       nodes.passwordStatus.textContent = {
         empty: '', incomplete: 'Enter the new password in both fields.',
         mismatch: 'Passwords do not match', match: 'Passwords match',
+        unnamed: 'Passwords match. Set a username too: a first password needs one.',
       }[state];
+      nodes.usernameValue.textContent = wantedName() || 'Not set';
+      nodes.usernameValue.dataset.unset = String(!wantedName());
+      nodes.usernameDraft.hidden = !usernameChanged();
       nodes.identity.textContent = account
         ? [account.email, roleLabel(account.role), account.enabled ? 'Enabled' : 'Disabled'].filter(Boolean).join(' · ')
         : 'This account no longer exists.';
@@ -4442,8 +4458,12 @@
         handle.setAcceptEnabled(!pending);
         return;
       }
-      handle.setAcceptEnabled(Boolean(account) && !pending && state !== 'incomplete' && state !== 'mismatch'
-        && (roleChanged() || state === 'match'));
+      if (view === 'username') {
+        handle.setAcceptEnabled(!establishing() ? Boolean(nodes.usernameInput.value.trim()) : true);
+        return;
+      }
+      handle.setAcceptEnabled(Boolean(account) && !pending && ['empty', 'match'].includes(state)
+        && (roleChanged() || state === 'match' || renameAlone()));
       handle.setActionHidden('disable', !account?.enabled);
       handle.setActionHidden('enable', !account || account.enabled);
       handle.setActionHidden('remove', !account);
@@ -4468,10 +4488,22 @@
     };
     const acknowledge = change => { if (account) account = {...account, ...change}; };
 
-    const show = next => {
+    const show = (next, focus = null) => {
       view = next;
       nodes.editView.hidden = next !== 'edit';
       nodes.confirmView.hidden = next !== 'confirm';
+      nodes.usernameView.hidden = next !== 'username';
+      if (next === 'username') {
+        ['disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
+        handle.setTitle('Edit Username');
+        handle.setAcceptLabel('Done');
+        handle.setCancelLabel('Back');
+        nodes.usernameInput.value = wantedName();
+        paint();
+        nodes.usernameInput.focus();
+        nodes.usernameInput.select();
+        return;
+      }
       if (next === 'confirm') {
         const destructive = act !== 'disable';
         ['disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
@@ -4488,20 +4520,31 @@
       handle.setAcceptLabel('Apply');
       handle.setCancelLabel('Cancel');
       paint();
-      nodes.role.focus();
+      (focus || nodes.role).focus();
+    };
+
+    // The username view's Done: the chosen name becomes the draft, nothing more.
+    const chooseUsername = () => {
+      const name = nodes.usernameInput.value.trim();
+      usernameDraft = name === (account?.username || '') ? null : name;
+      show('edit', nodes.usernameEdit);
     };
 
     async function apply() {
       const role = nodes.role.value;
+      const name = wantedName();
       const sendRole = roleChanged();
       const sendPassword = passwordState() === 'match';
-      if (!sendRole && !sendPassword) return false;
+      const sendRename = renameAlone();
+      const withName = sendPassword && (establishing() || usernameChanged());
+      if (!sendRole && !sendPassword && !sendRename) return false;
       pending = true;
       say('');
       paint();
       const done = [];
       let failure = '';
       let roleUnanswered = false;
+      let renameUnanswered = false;
       if (sendRole) {
         try {
           await request('PATCH', path, {role}, 10000);
@@ -4512,11 +4555,21 @@
           failure = roleUnanswered ? '' : `Role not changed: ${text(error.message)}`;
         }
       }
-      if (!failure && !roleUnanswered && sendPassword) {
-        const username = nodes.username?.value || '';
+      if (!failure && !roleUnanswered && sendRename) {
         try {
-          await request('POST', `${path}/password`, {password: nodes.password.value, ...(username ? {username} : {})}, 10000);
-          acknowledge({has_password: true, ...(username ? {username} : {})});
+          await request('PUT', `${path}/username`, {username: name}, 10000);
+          acknowledge({username: name});
+          done.push(`Username changed to ${name}; the account is signed out everywhere.`);
+        } catch (error) {
+          renameUnanswered = !error?.status;
+          failure = renameUnanswered ? '' : `Username not changed: ${text(error.message)}`;
+        }
+      }
+      if (!failure && !roleUnanswered && sendPassword) {
+        try {
+          await request('POST', `${path}/password`, {password: nodes.password.value, ...(withName ? {username: name} : {})}, 10000);
+          acknowledge({has_password: true, ...(withName ? {username: name} : {})});
+          if (withName) done.push(`Username set to ${name}.`);
           done.push('Password saved; the account is signed out everywhere.');
           clearPassword();
         } catch (error) {
@@ -4535,8 +4588,13 @@
         else if (account?.role === role) done.push(`Role changed to ${roleLabel(role)}.`);
         else failure = 'The role change got no response and the account still has its previous role.';
         if (sendPassword) failure = [failure, 'The password was not sent.'].filter(Boolean).join(' ');
-      } else if (failure && sendRole && !done.length && sendPassword) {
-        failure += ' The password was not sent.';
+        if (sendRename) failure = [failure, 'The username was not sent.'].filter(Boolean).join(' ');
+      } else if (renameUnanswered) {
+        if (!read) failure = 'The username change got no response and the account could not be re-read, so whether it took effect is unknown.';
+        else if (account?.username === name) done.push(`Username changed to ${name}; the account is signed out everywhere.`);
+        else failure = 'The username change got no response and the account still has its previous username.';
+      } else if (failure && sendRole && !done.length && (sendPassword || sendRename)) {
+        failure += sendPassword ? ' The password was not sent.' : ' The username was not sent.';
       }
       pending = false;
       if (!failure && account) {
@@ -4653,8 +4711,15 @@
             </section>
             <section class="dp-users-edit-group">
               <h3 class="dp-users-edit-heading">${has ? 'Reset' : 'Set'} Local Password</h3>
-              ${has ? '' : `<label class="dp-modal-field"><span class="form-label">Username</span>
-                <input class="input" data-edit-field="username" type="text" maxlength="256" autocomplete="off"></label>`}
+              <div class="dp-modal-field dp-users-username"><span class="form-label">Username</span>
+                <span class="dp-users-username-row">
+                  <span class="dp-users-username-value" data-username-value></span>
+                  <button type="button" class="btn btn-ghost btn-sm dp-users-username-edit" data-edit-username
+                          data-tooltip="Edit Username" aria-label="Edit Username">
+                    <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
+                  </button>
+                  <span class="dp-users-username-draft" data-username-draft hidden>Not yet applied</span>
+                </span></div>
               <label class="dp-modal-field"><span class="form-label">New Password</span>
                 <input class="input" data-edit-field="password" type="password" maxlength="4096" autocomplete="new-password"></label>
               <label class="dp-modal-field dp-users-password-confirm"><span class="form-label">Confirm New Password</span>
@@ -4667,11 +4732,19 @@
               <p class="dp-users-edit-note">${has ? 'Leave both password fields blank to keep the existing password.'
                 : 'Leave both password fields blank to keep the account without a local password.'}</p>
               <p class="dp-users-edit-note">The account is signed out everywhere and signs in again with this password. Its OIDC sign-in, if it has one, stays linked.</p>
+              <p class="dp-users-edit-note">${has ? 'A new username alone keeps the password, and also signs the account out everywhere.'
+                : 'A local password needs a username: set both here, and they are saved together.'}</p>
             </section>
             <p class="dp-users-edit-outcome" role="alert" hidden></p>
             <p class="dp-users-edit-stale" role="status" hidden>The account list could not be re-read. Shown here: the account as last read, with the changes the server confirmed since.</p>
           </div>
-          <div class="dp-users-edit-view dp-users-edit-confirm" data-edit-view="confirm" hidden></div>`;
+          <div class="dp-users-edit-view dp-users-edit-confirm" data-edit-view="confirm" hidden></div>
+          <div class="dp-users-edit-view" data-edit-view="username" hidden>
+            <label class="dp-modal-field"><span class="form-label">Username</span>
+              <input class="input" data-username-input type="text" maxlength="256" autocomplete="off" spellcheck="false"></label>
+            <p class="dp-users-edit-note">${has ? 'The account signs in with this username and its current password. It takes effect when you apply.'
+              : 'It is saved together with the account’s first password when you apply.'}</p>
+          </div>`;
         handle = mounted;
         Object.assign(nodes, {
           identity: body.querySelector('.dp-users-edit-identity'),
@@ -4681,12 +4754,18 @@
           passwordStatus: body.querySelector('.dp-users-password-status'),
           outcome: body.querySelector('.dp-users-edit-outcome'),
           stale: body.querySelector('.dp-users-edit-stale'),
+          usernameView: body.querySelector('[data-edit-view="username"]'),
+          usernameInput: body.querySelector('[data-username-input]'),
+          usernameValue: body.querySelector('[data-username-value]'),
+          usernameEdit: body.querySelector('[data-edit-username]'),
+          usernameDraft: body.querySelector('[data-username-draft]'),
           role: mountFields(body.querySelector('[data-edit-role]'), '',
             [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}]).role,
         });
         body.querySelectorAll('[data-edit-field]').forEach(input => { nodes[input.dataset.editField] = input; });
         body.addEventListener('input', paint);
         body.addEventListener('change', paint);
+        nodes.usernameEdit.addEventListener('click', () => { if (!pending && account) show('username'); });
         paint();
         return nodes.identity;
       },
@@ -4697,12 +4776,13 @@
       },
       onCancel() {
         if (pending) return false;
-        if (view !== 'confirm') return true;
-        show('edit');
+        if (view === 'edit') return true;
+        show('edit', view === 'username' ? nodes.usernameEdit : null);
         return false;
       },
       async onAccept() {
         if (pending) return false;
+        if (view === 'username') { chooseUsername(); return false; }
         return view === 'confirm' ? commitAct() : apply();
       },
     });
@@ -4849,7 +4929,6 @@
               <td class="dp-settings-users-detail">${html(profile.retention_hours)} h</td>
               <td><div class="dp-settings-users-actions">
                 <button class="btn btn-ghost btn-sm" type="button" data-user-action="edit-profile" data-profile-id="${id}">Edit</button>
-                <button class="btn btn-danger btn-sm" type="button" data-user-action="delete-profile" data-profile-id="${id}">Delete</button>
               </div></td>
             </tr>`;
           }).join('')}
@@ -4893,60 +4972,15 @@
       : `${done}; ${jobsPhrase(retired)} retired`;
   }
 
-  // The explicit authorization to retire a profile's dependent jobs, with the
-  // consequence stated before it is given.
-  function confirmRetirement({title, count, confirmLabel}) {
-    return window.DPSettingsModal.confirm({
-      title,
-      message: `This profile is associated with ${jobsPhrase(count)}. Confirming will also retire `
-        + `${count === 1 ? 'that job' : 'those jobs'} and withdraw their claims. Downloads still required by `
-        + 'another client or an independent DP submission are kept; work no one else needs is stopped and '
-        + 'cleaned up by DP’s normal cleanup. Downloaded files are not deleted.',
-      confirmLabel,
-      tone: 'danger',
-    });
-  }
+  // The consequence of retiring a profile's dependent jobs, stated before the
+  // explicit authorization is given.
+  const retirementMessage = count => `This profile is associated with ${jobsPhrase(count)}. Confirming will also retire `
+    + `${count === 1 ? 'that job' : 'those jobs'} and withdraw their claims. Downloads still required by `
+    + 'another client or an independent DP submission are kept; work no one else needs is stopped and '
+    + 'cleaned up by DP’s normal cleanup. Downloaded files are not deleted.';
 
-  async function deleteProfile(profile) {
-    if (!profile || !state.profiles.catalog) return;
-    let count = 0;
-    try {
-      const dependents = await request('GET', `/external/profiles/${encodeURIComponent(profile.id)}/dependents`,
-        undefined, 10000);
-      count = Number(dependents?.affected_jobs || 0);
-    } catch (error) {
-      notify(text(error?.message || 'The profile’s jobs could not be counted'), 'error');
-      return;
-    }
-    const confirmed = count
-      ? await confirmRetirement({title: 'Delete delivery profile?', count, confirmLabel: 'Delete Profile & Retire Jobs'})
-      : await window.DPSettingsModal.confirm({
-        title: `Delete the ${profile.id} profile?`,
-        message: 'This removes only the delivery profile. API tokens, downloads, and files are not deleted.',
-        confirmLabel: 'Delete Profile',
-        tone: 'danger',
-      });
-    if (!confirmed) return;
-    const {profiles, revision} = state.profiles.catalog;
-    const remaining = profiles.filter(item => item.id !== profile.id);
-    try {
-      let saved;
-      try {
-        saved = await writeCatalog(remaining, revision, count ? [profile.id] : []);
-      } catch (error) {
-        const refusal = profileRefusal(error);
-        // A job arrived after the count: say so, and ask again with its own count.
-        if (refusal.code !== 'profile_in_use' || count) throw error;
-        if (!await confirmRetirement({title: 'Delete delivery profile?', count: refusal.affected,
-          confirmLabel: 'Delete Profile & Retire Jobs'})) return;
-        saved = await writeCatalog(remaining, revision, [profile.id]);
-      }
-      notify(retirementOutcome(saved, 'Delivery profile deleted'), 'success');
-    } catch (error) {
-      notify(profileRefusal(error).message, 'error');
-      await loadProfiles();
-      paintUsers();
-    }
+  function confirmRetirement({title, count, confirmLabel}) {
+    return window.DPSettingsModal.confirm({title, message: retirementMessage(count), confirmLabel, tone: 'danger'});
   }
 
   function profileFormMarkup(profile, creating) {
@@ -4987,14 +5021,26 @@
         <label class="dp-modal-field"><span class="form-label">Token Label</span><input class="input" data-token-input="label" type="text" maxlength="128" autocomplete="off"></label>
         <p class="dp-profile-error" data-token-error role="alert" hidden></p>
       </div>
-      <div class="dp-profile-view" data-profile-view="disclosure" hidden></div>`;
+      <div class="dp-profile-view" data-profile-view="disclosure" hidden></div>
+      <div class="dp-profile-view" data-profile-view="delete" hidden>
+        <p class="dp-modal-message" data-profile-delete-message></p>
+        <p class="dp-profile-error" data-profile-delete-error role="alert" hidden></p>
+      </div>`;
   }
 
   /* Create and Edit: one form in the canonical dialog. Create API Token is a
    * view of the SAME dialog -- the profile draft stays in this dialog's own
    * controls while the token form and then the one-time disclosure are shown,
    * and the new token's client is selected on return. Nothing is written
-   * until Save; a refused Save keeps the dialog and its draft open. */
+   * until Save; a refused Save keeps the dialog and its draft open.
+   *
+   * An existing profile's Delete (its footer, lower left) is a view of the
+   * same dialog too: it reads the profile's dependent jobs from the server,
+   * states the consequence and asks for its own confirmation -- Delete Profile,
+   * or Delete Profile & Retire Jobs when jobs depend on it. Back returns to the
+   * untouched draft; the confirmation writes the current catalog without this
+   * profile and never the draft. Jobs that appear after the count are only
+   * retired after a renewed confirmation with their own count. */
   async function profileDialog(existing) {
     if (!state.profiles.catalog) return;
     const creating = !existing;
@@ -5013,13 +5059,34 @@
     let controls = {};
     let dialogBody = null;
 
+    const title = creating ? 'Create Delivery Profile' : `Edit Delivery Profile: ${existing.id}`;
+    let deleting = null;      // {count} while the Delete confirmation is shown
+    let pending = false;
+
     const show = (handle, next) => {
       view = next;
       dialogBody.querySelectorAll('[data-profile-view]').forEach(pane => { pane.hidden = pane.dataset.profileView !== next; });
+      handle.setActionHidden('delete', creating || next !== 'form');
+      if (next !== 'delete') {
+        handle.setTitle(title);
+        handle.setTone('', '');
+        handle.setAcceptEnabled(true);
+      }
       if (next === 'form') {
         handle.setAcceptLabel(creating ? 'Create Profile' : 'Save Profile');
         handle.setCancelLabel('Cancel');
         handle.setActionHidden('reload', !dialogBody.dataset.stale);
+      } else if (next === 'delete') {
+        handle.setActionHidden('reload', true);
+        handle.setTitle(deleting.count ? 'Delete delivery profile?' : `Delete the ${existing.id} profile?`);
+        handle.setTone('danger', '');
+        handle.setAcceptLabel(deleting.count ? 'Delete Profile & Retire Jobs' : 'Delete Profile');
+        handle.setCancelLabel('Back');
+        const message = dialogBody.querySelector('[data-profile-delete-message]');
+        message.textContent = deleting.count ? retirementMessage(deleting.count)
+          : 'This removes only the delivery profile. API tokens, downloads, and files are not deleted.';
+        message.tabIndex = -1;
+        message.focus();
       } else if (next === 'token') {
         handle.setAcceptLabel('Create Token');
         handle.setCancelLabel('Back');
@@ -5181,6 +5248,67 @@
       await loadUsers();
     }
 
+    // Delete, asked for: the dependent jobs are counted now, never assumed.
+    async function askDelete(handle) {
+      const errorNode = dialogBody.querySelector('[data-profile-error]');
+      pending = true;
+      handle.setActionEnabled('delete', false);
+      showError(errorNode, '');
+      try {
+        const dependents = await request('GET', `/external/profiles/${encodeURIComponent(existing.id)}/dependents`,
+          undefined, 10000);
+        deleting = {count: Number(dependents?.affected_jobs || 0)};
+      } catch (error) {
+        showError(errorNode, `${text(error?.message || 'The profile’s jobs could not be counted')}. Nothing was deleted.`);
+        return;
+      } finally {
+        pending = false;
+        handle.setActionEnabled('delete', true);
+      }
+      showError(dialogBody.querySelector('[data-profile-delete-error]'), '');
+      show(handle, 'delete');
+    }
+
+    // The confirmed deletion, and only it: the current catalog without this
+    // profile, at its revision, retiring only the jobs that were confirmed.
+    async function commitDelete(handle) {
+      const errorNode = dialogBody.querySelector('[data-profile-delete-error]');
+      const catalog = state.profiles.catalog;
+      if (!catalog) { showError(errorNode, 'The catalog could not be read. Nothing was deleted.'); return false; }
+      const remaining = catalog.profiles.filter(item => item.id !== existing.id);
+      let saved;
+      try {
+        saved = await writeCatalog(remaining, catalog.revision, deleting.count ? [existing.id] : []);
+      } catch (error) {
+        const refusal = profileRefusal(error);
+        if (refusal.code === 'profile_in_use' && !deleting.count) {
+          // Jobs arrived after the count: the confirmation given did not cover
+          // them, so it is asked for again, with their own count.
+          deleting = {count: refusal.affected};
+          show(handle, 'delete');
+          showError(errorNode, `Jobs now depend on this profile. Confirm again to retire ${jobsPhrase(refusal.affected)}.`);
+          return false;
+        }
+        if (refusal.code === 'stale_revision') dialogBody.dataset.stale = '1';
+        // Whatever the answer, the catalog is read again, and a new attempt
+        // starts from a fresh count (Back, then Delete).
+        await loadProfiles();
+        paintUsers();
+        const read = state.profiles.catalog;
+        if (!error?.status && read && !read.profiles.some(item => item.id === existing.id)) {
+          notify('Delivery profile deleted', 'success');
+          return true;
+        }
+        showError(errorNode, error?.status ? `Not deleted: ${refusal.message}`
+          : read ? 'The delete got no response, and the profile is still listed: it was not deleted.'
+            : 'The delete got no response and the catalog could not be read, so whether the profile was deleted is unknown.');
+        handle.setAcceptEnabled(false);
+        return false;
+      }
+      notify(retirementOutcome(saved, 'Delivery profile deleted'), 'success');
+      return true;
+    }
+
     function backToForm(handle) {
       // The one-time value leaves the DOM with the disclosure.
       dialogBody.querySelector('[data-profile-view="disclosure"]').innerHTML = '';
@@ -5202,10 +5330,11 @@
     }
 
     const dialog = window.DPSettingsModal.open({
-      title: creating ? 'Create Delivery Profile' : `Edit Delivery Profile: ${existing.id}`,
+      title,
       acceptLabel: creating ? 'Create Profile' : 'Save Profile',
       className: 'dp-users-dialog dp-profile-dialog',
-      actions: [{id: 'reload', label: 'Reload Catalog', placement: 'leading'}],
+      actions: [{id: 'reload', label: 'Reload Catalog', placement: 'leading'},
+        ...(creating ? [] : [{id: 'delete', label: 'Delete', tone: 'danger', placement: 'leading'}])],
       mount(body, handle) {
         dialogBody = body;
         body.innerHTML = profileFormMarkup(existing, creating);
@@ -5259,17 +5388,23 @@
         return creating ? controls.id : controls.local_root;
       },
       async onAccept(handle) {
+        if (pending) return false;
         if (view === 'token') { await createToken(handle); return false; }
         if (view === 'disclosure') { backToForm(handle); return false; }
+        if (view === 'delete') return commitDelete(handle);
         return save(handle);
       },
       onCancel(handle) {
+        if (pending) return false;
         if (view === 'token') { show(handle, 'form'); dialogBody.querySelector('[data-profile-create-token]')?.focus(); return false; }
         if (view === 'disclosure') { backToForm(handle); return false; }
+        if (view === 'delete') { show(handle, 'form'); controls.local_root.focus(); return false; }
         return true;
       },
       onAction(id) {
+        if (pending || view !== 'form') return;
         if (id === 'reload') void reload(dialog);
+        if (id === 'delete') void askDelete(dialog);
       },
     });
     await dialog.closed;
@@ -5393,7 +5528,6 @@
     const account = accountById(button.dataset.accountId || '');
     if (action === 'create-profile') void profileDialog(null);
     else if (action === 'edit-profile') void profileDialog(profileById(button.dataset.profileId || ''));
-    else if (action === 'delete-profile') void deleteProfile(profileById(button.dataset.profileId || ''));
     else if (action === 'create-local') void createLocalAccount();
     else if (action === 'create-integration') void createIntegrationAccount();
     else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));

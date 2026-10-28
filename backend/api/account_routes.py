@@ -146,6 +146,18 @@ async def reset_account_password(account_id: str, body: PasswordReset, request: 
     return {"ok": True}
 
 
+@router.put("/accounts/{account_id}/username")
+async def rename_account_username(account_id: str,
+                                  username: Annotated[str, Body(embed=True, min_length=1, max_length=256)],
+                                  request: Request):
+    """Rename the account's local credential; its password is kept."""
+    try:
+        await accounts.rename_local_credential(_actor(request), account_id, username)
+    except AccountRefused as exc:
+        raise _refused(exc) from None
+    return {"ok": True}
+
+
 @router.get("/accounts/{account_id}/impact")
 async def account_impact(account_id: str, application: ApplicationService = Depends(get_application)):
     """What disabling or deleting the account would withdraw, read now from

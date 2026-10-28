@@ -933,6 +933,23 @@ async def reset_password(actor_id: str, account_id: str, password: str, *, usern
         await _set_password_row(db, account.id, username, verifier)
 
 
+async def rename_local_credential(actor_id: str, account_id: str, username: str) -> None:
+    """An Admin renames another account's local credential, keeping its
+    password. A credential holds a password: an account without one gets its
+    username together with its first password (``reset_password``), never a
+    username alone that could not sign in. Like every credential change, the
+    account's sessions end (``_mutation``), so nothing stays signed in under
+    the former name."""
+    _not_self(actor_id, account_id)
+    async with _locked_mutation([str(account_id)]) as db:
+        account = await _require(db, account_id)
+        if account.role is Role.INTEGRATION:
+            raise AccountRefused("Integration accounts have no password")
+        if not account.has_password:
+            raise AccountRefused("A username is set together with the account's first password")
+        await _set_password_row(db, account.id, str(username or ""), None)
+
+
 async def set_display_name(account_id: str, display_name: str) -> None:
     """An account's display name, set by itself or by an Admin."""
     name = str(display_name or "").strip()[:256]

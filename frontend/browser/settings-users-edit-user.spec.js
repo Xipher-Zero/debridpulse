@@ -66,6 +66,7 @@ async function isolate(page, {answer = () => null, listing = () => null, impact 
     const account = accounts.find(item => item.id === id);
     if (method === 'PATCH') Object.assign(account, body);
     if (method === 'POST' && path.endsWith('/password')) Object.assign(account, {has_password: true, username: body.username || account.username});
+    if (method === 'PUT' && path.endsWith('/username')) Object.assign(account, {username: body.username});
     if (method === 'DELETE') accounts.splice(accounts.indexOf(account), 1);
     return route.fulfill({json: {ok: true, withdrawn_transfers: [], cancelled_transfers: []}});
   });
@@ -210,31 +211,124 @@ test('password only: two empty fields, a live agreement mark, mismatch blocks Ap
   expect(page.url()).not.toContain(SECRET);
 });
 
-test('no local credential: the Username field, and the server\'s username refusal, kept for correction', async ({page}) => {
+const usernameRow = dialog => dialog.locator('.dp-users-username');
+
+async function pickUsername(page, value, {back = false} = {}) {
+  const dialog = editor(page);
+  await dialog.getByRole('button', {name: 'Edit Username', exact: true}).click();
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit Username');
+  const input = dialog.locator('[data-username-input]');
+  await expect(input).toBeFocused();
+  await input.fill(value);
+  if (back) await dialog.locator('[data-modal-cancel]').click();
+  else await input.press('Enter');                                          // Done
+  await expect(dialog.locator('.dp-modal-title')).not.toHaveText('Edit Username');
+}
+
+test('the username is shown with its pencil; a new username alone keeps the password', async ({page}) => {
+  const {sent} = await isolate(page);
+  await openUsers(page);
+  const dialog = await edit(page, 'acct-ann');
+  const value = dialog.locator('[data-username-value]');
+  const draft = dialog.locator('[data-username-draft]');
+  const pencil = dialog.getByRole('button', {name: 'Edit Username', exact: true});
+  await expect(value).toHaveText('ann');
+  await expect(pencil).toHaveAttribute('data-tooltip', 'Edit Username');
+  await expect(pencil.locator('img[src="/icons/lucide/pencil.svg"]')).toHaveCount(1);
+  await expect(dialog.locator('[data-edit-view="edit"] input[type="text"]')).toHaveCount(0);   // no username textbox
+  await expect(draft).toBeHidden();
+  const [shown, button] = await Promise.all([value.boundingBox(), pencil.boundingBox()]);
+  expect(button.x - (shown.x + shown.width)).toBeLessThan(12);              // immediately beside the value
+
+  await pickUsername(page, 'annie', {back: true});                          // Back: unchanged
+  await expect(value).toHaveText('ann');
+  await expect(pencil).toBeFocused();
+  await expect(dialog.locator('[data-modal-accept]')).toBeDisabled();
+  await pickUsername(page, '  annie ');                                      // Done: a draft, not a write
+  await expect(value).toHaveText('annie');
+  await expect(draft).toHaveText('Not yet applied');
+  await expect(pencil).toBeFocused();
+  expect(writes(sent)).toEqual([]);
+  await expect(dialog).toContainText('A new username alone keeps the password, and also signs the account out everywhere.');
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(writes(sent)).toEqual([{method: 'PUT', path: '/accounts/acct-ann/username', body: {username: 'annie'}}]);
+  await expect(row(page, 'acct-ann')).toContainText('Password (annie)');
+});
+
+test('no local credential: "Not set", and the username travels with the first password, never alone', async ({page}) => {
   let refuse = true;
   const {sent} = await isolate(page, {answer: ({path}) => (path.endsWith('/password') && refuse
     ? {status: 409, detail: 'That username belongs to another account'} : null)});
   await openUsers(page);
   const dialog = await edit(page, 'acct-bob');
+  const accept = dialog.locator('[data-modal-accept]');
   await expect(dialog.locator('.dp-users-edit-heading').nth(1)).toHaveText('Set Local Password');
-  await expect(dialog).toContainText('Leave both password fields blank to keep the account without a local password.');
-  const username = dialog.locator('[data-edit-field="username"]');
-  await username.fill('ann');
-  await expect(dialog.locator('[data-modal-accept]')).toBeDisabled();      // a username alone sets nothing
+  await expect(dialog.locator('[data-username-value]')).toHaveText('Not set');
+  await expect(dialog).toContainText('A local password needs a username: set both here, and they are saved together.');
   await dialog.locator('[data-edit-field="password"]').fill(SECRET);
   await dialog.locator('[data-edit-field="confirm"]').fill(SECRET);
-  await dialog.locator('[data-modal-accept]').click();
+  await expect(dialog.locator('.dp-users-password-check')).toBeVisible();           // the two agree
+  await expect(dialog.locator('.dp-users-password-status')).toHaveText('Passwords match. Set a username too: a first password needs one.');
+  await expect(accept).toBeDisabled();
+  await dialog.locator('[data-edit-field="password"]').fill('');
+  await dialog.locator('[data-edit-field="confirm"]').fill('');
+  await pickUsername(page, 'ann');
+  await expect(dialog.locator('.dp-users-password-status')).toHaveText('Enter the new password in both fields.');
+  await expect(accept).toBeDisabled();                                       // a username alone sets nothing
+  await dialog.locator('[data-edit-field="password"]').fill(SECRET);
+  await dialog.locator('[data-edit-field="confirm"]').fill(SECRET);
+  await accept.click();
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Password not saved: That username belongs to another account');
-  await expect(dialog.locator('[data-edit-field="password"]')).toHaveValue(SECRET);   // kept to correct
   refuse = false;
-  await username.fill('bob');
-  await dialog.locator('[data-modal-accept]').click();
+  await pickUsername(page, 'bob');
+  await accept.click();
   await expect(editor(page)).toHaveCount(0);
   expect(writes(sent)).toEqual([
     {method: 'POST', path: '/accounts/acct-bob/password', body: {password: SECRET, username: 'ann'}},
     {method: 'POST', path: '/accounts/acct-bob/password', body: {password: SECRET, username: 'bob'}},
   ]);
   await expect(row(page, 'acct-bob')).toContainText('Password (bob)');
+});
+
+test('a new username with a new password is one password request; a refused rename after an acknowledged role resends neither', async ({page}) => {
+  let refuseRename = true;
+  let failNextListing = false;
+  const {sent} = await isolate(page, {
+    answer: ({path}) => {
+      if (!path.endsWith('/username') || !refuseRename) return null;
+      failNextListing = true;
+      return {status: 409, detail: 'That username belongs to another account'};
+    },
+    listing: () => (failNextListing ? (failNextListing = false, {status: 503, detail: 'Storage is unavailable'}) : null),
+  });
+  await openUsers(page);
+  let dialog = await edit(page, 'acct-ann');
+  await chooseRole(page, 'Admin');
+  await pickUsername(page, 'bob');
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Role changed to Admin. Username not changed: That username belongs to another account');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled');
+  await expect(dialog.locator('.dp-users-edit-stale')).toBeVisible();
+  await expect(dialog.locator('[data-username-value]')).toHaveText('bob');        // still the unapplied draft
+  await expect(dialog.locator('[data-username-draft]')).toBeVisible();
+  refuseRename = false;
+  await pickUsername(page, 'annie');
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(writes(sent)).toEqual([
+    {method: 'PATCH', path: '/accounts/acct-ann', body: {role: 'admin'}},         // exactly once
+    {method: 'PUT', path: '/accounts/acct-ann/username', body: {username: 'bob'}},
+    {method: 'PUT', path: '/accounts/acct-ann/username', body: {username: 'annie'}},
+  ]);
+  // A new username and a new password together: one request, never a separate rename.
+  dialog = await edit(page, 'acct-cid');
+  await pickUsername(page, 'cyd');
+  await dialog.locator('[data-edit-field="password"]').fill(SECRET);
+  await dialog.locator('[data-edit-field="confirm"]').fill(SECRET);
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(editor(page)).toHaveCount(0);
+  expect(writes(sent).slice(3)).toEqual([{method: 'POST', path: '/accounts/acct-cid/password', body: {password: SECRET, username: 'cyd'}}]);
 });
 
 test('role and password: role first, one request each; a refused password is reported alone and the role is not resent', async ({page}) => {
