@@ -249,7 +249,7 @@
     const firstGone = side => side === 'first' || side === 'only';
 
     /* Where the window goes for the operator's choice of this section
-     * (`motion`), from where it is drawn (navFit.drawn): the window keeps
+     * (`motion`), from where it is drawn on screen (onScreen): the window keeps
      * the interaction targets where the operator's pointer is. A section the
      * drawn window already shows whole leaves it -- and the travel actions
      * it shows -- where it is. The rightmost
@@ -268,7 +268,7 @@
      * the ordinary layout (navLayout). null: the ordinary layout. */
     function navChoice(index, motion) {
       const {widths, edge, slot, window: width} = navFit;
-      const {left: drawn, room: drawnRoom, side: drawnSide, index: was} = navFit.drawn;
+      const {left: drawn, room: drawnRoom, side: drawnSide, index: was} = onScreen();
       const count = widths.length;
       const at = [];
       let end = edge;
@@ -334,7 +334,7 @@
       navFit.index = index;
       navFit.room = room;
       navFit.side = side;
-      if ((navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
+      if ((onScreen()?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
         const slide = navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
           distance: motion.distance}, drawNavigation);
         // Busy while the window slides: the section index waits for it
@@ -358,6 +358,13 @@
       drawNavigation();
     }
 
+    /* The window on screen: the one drawn last, or -- until that draw is
+     * painted, the next frame -- the one shown before it. A slide's commit
+     * draws its window at once (DPMotion.slide), so a second choice in the
+     * same task or frame is judged from what the operator sees, not from a
+     * window never shown. */
+    const onScreen = () => navFit?.shown || navFit?.drawn;
+
     // The latest decided window, drawn.
     function drawNavigation() {
       const nav = locate();
@@ -365,6 +372,11 @@
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
       const {widths, edge, slot, left: target, index, room, side} = navFit;
+      if (!navFit.shown && navFit.drawn) {
+        const fit = navFit;
+        fit.shown = fit.drawn;
+        requestAnimationFrame(() => { delete fit.shown; });
+      }
       navFit.drawn = {left: target, index, room, side};
       // Which travel action is gone: the end of the list the window shows.
       const at = tabs.length === 1 ? 'only' : side;

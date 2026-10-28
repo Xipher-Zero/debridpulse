@@ -115,7 +115,7 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     import re
 
     css = read("ui-downloads-page.css")
-    assert "nth-child" not in css.replace("#t-tbody .actions > :nth-child(3)", "")
+    assert "nth-child" not in css.replace(":is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)", "")
     for retired in ("(width <= 1050px)", "(width > 1050px) and (width < 1180px)",
                     "(min-width: 1180px) and (width < 1390px)", "(min-width: 901px) and (width < 1390px)"):
         assert retired not in css
@@ -135,7 +135,7 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     assert "--dp-downloads-size-track: max(84px, 7cqw);" in full
     assert "--dp-downloads-action-slot: 72px;" in full and "--dp-downloads-action-slots: 2;" in full
     assert "--dp-downloads-select-track: 36px;" in full and "* 7px + 28px" in full and "gap: 7px;" in full
-    assert ":has(> #t-tbody .actions > :nth-child(3))" in full and "--dp-downloads-action-slots: 3;" in full
+    assert ":has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3))" in full and "--dp-downloads-action-slots: 3;" in full
     assert "min(22cqw, 100cqw - 280px - var(--dp-downloads-fixed-tracks))" in full
     assert "width: calc(100cqw - var(--dp-downloads-progress-track) - var(--dp-downloads-fixed-tracks));" in full
     assert re.search(r"\.dp-downloads-status-cell \{\s*width: var\(--dp-downloads-status-track\);\s*text-align: center;", full)
@@ -148,7 +148,7 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     relocated = block("@container dp-downloads-table (width < 763px)")
     assert "--dp-downloads-size-track: 0px;" in relocated
     assert re.search(r"\.dp-downloads-size-cell \{\s*display: none;", relocated)
-    assert re.search(r"#t-tbody \.dp-downloads-size \{\s*display: block;", relocated)
+    assert re.search(r":is\(#t-tbody, \.dp-downloads-styled-tbody\) \.dp-downloads-size \{\s*display: block;", relocated)
     # Progress and Size step aside only on mobile (779px and below): their
     # columns, tracks, the name's bar and the size beside the name, after the
     # compact steps; the name's metadata may wrap there rather than spill.
@@ -156,8 +156,8 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     handheld = block("@media (max-width: 779px)", "--dp-downloads-progress-track: 0px;")
     assert css.count(hide) == 1 and hide in handheld
     assert "--dp-downloads-size-track: 0px;" in handheld
-    assert "#t-tbody :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" in handheld
-    assert "#t-tbody .dp-transfer-provider-meta { flex-wrap: wrap; }" in handheld
+    assert ":is(#t-tbody, .dp-downloads-styled-tbody) :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" in handheld
+    assert ":is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta { flex-wrap: wrap; }" in handheld
     assert css.index("@container dp-downloads-table (width < 763px)") < css.index("--dp-downloads-progress-track: 0px;")
     # No inline floor beneath the composition: the table is as wide as its viewport.
     assert '<table class="t-table" style="min-width:500px">' not in read("index.html")
@@ -180,9 +180,9 @@ def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_ho
     # 1.0.14 four-fix: one full-height workspace from the desktop down to the
     # tablet floor (780px), as Statistics; the 62vh viewport is handheld only.
     css = read("ui-downloads-page.css")
-    assert "@media (min-width: 901px) {\n  #view-torrents.active" not in css
+    assert "@media (min-width: 901px) {\n  #view-torrents:is(.active, [data-dp-motion-outgoing])" not in css
     assert "@media (max-width: 900px)" not in css
-    workspace = css[css.index("@media (min-width: 780px) {\n  #view-torrents.active {"):]
+    workspace = css[css.index("@media (min-width: 780px) {\n  #view-torrents:is(.active, [data-dp-motion-outgoing]) {"):]
     workspace = workspace[:workspace.index("\n}\n")]
     assert "height: 100% !important;" in workspace and "flex: 1 1 auto;" in workspace
     handheld = css[css.index("@media (max-width: 779px) {\n  /* Handheld: the page grows"):]

@@ -316,7 +316,7 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
     overflow-y: hidden;
   }
 
-  #view-stats.active.dp-statistics-master {
+  #view-stats:is(.active, [data-dp-motion-outgoing]).dp-statistics-master {
     display: flex !important;
     flex-direction: column;
     height: 100% !important;

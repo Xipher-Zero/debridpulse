@@ -1611,7 +1611,7 @@
 /* Settings: tabs and action footer remain visible; only the body scrolls.
    (DP 1.0.12 canonical flattening: migrated from the retired
    ui-legacy-foundation.css) */
-#view-settings.active {
+#view-settings:is(.active, [data-dp-motion-outgoing]) {
   display: flex !important;
   flex-direction: column;
   height: 100%;

@@ -5269,7 +5269,7 @@
     name = tabName(name);
     state.activeTab = name;
 
-    root()?.querySelectorAll('[data-tab]').forEach(tab => {
+    root()?.querySelectorAll('[data-tab]:not(.dp-motion-still *)').forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -5289,7 +5289,7 @@
 
   // The panel of the tab selected NOW (a later choice made meanwhile wins).
   function showTabPanel() {
-    root()?.querySelectorAll('[data-panel]').forEach(section => {
+    root()?.querySelectorAll('[data-panel]:not(.dp-motion-still *)').forEach(section => {
       section.hidden = section.dataset.panel !== state.activeTab;
     });
   }
@@ -5298,7 +5298,7 @@
    * the strip changes at once and the panel slides across from the one on
    * screen, by the tabs' displayed order. */
   function chooseTab(name, via = 'tab') {
-    const order = Array.from(root()?.querySelectorAll('.dp-settings-tabs [data-tab]') || []).map(tab => tab.dataset.tab);
+    const order = Array.from(root()?.querySelectorAll('.dp-settings-tabs [data-tab]:not(.dp-motion-still *)') || []).map(tab => tab.dataset.tab);
     // From the section chosen last -- what a slide still under way will
     // show -- so a quick return turns back.
     const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
@@ -5537,7 +5537,7 @@
       const current = event.target.closest('.dp-settings-tabs [data-tab]');
       if (!current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
-      const buttons = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]'));
+      const buttons = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]:not(.dp-motion-still *)'));
       let index = buttons.indexOf(current);
       if (event.key === 'Home') index = 0;
       else if (event.key === 'End') index = buttons.length - 1;
@@ -5590,7 +5590,7 @@
       // follows to that tab, since the action is hidden once it is there.
       const travel = event.target.closest('.dp-settings-nav-end');
       if (travel) {
-        const tabs = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]'));
+        const tabs = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]:not(.dp-motion-still *)'));
         const target = travel.dataset.settingsEnd === 'first' ? tabs[0] : tabs.at(-1);
         if (!target) return;
         const focused = document.activeElement === travel;

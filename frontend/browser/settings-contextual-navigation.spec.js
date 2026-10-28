@@ -61,24 +61,32 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
     window.__dpNav = [];
     window.__dpContent = [];
     window.__dpEnds = [];
-    // Where the destination's own snapshot stands now: + arriving from the
+    // Where the destination stands now: + arriving from the
     // right (forward), - from the left (backward), 0 none.
+    // (The destination is the surface's live content, moved by the slide;
+    // its first drawn part says where it stands.)
     const arriving = node => {
-      const match = node && /matrix\(([^)]+)\)/.exec(getComputedStyle(node, '::view-transition-new(root)').transform);
+      const host = node && (node.querySelector('[data-dp-motion-outgoing]')?.parentElement || node);
+      const live = host && [...host.children].find(part => part.getClientRects().length
+        && !part.classList.contains('dp-motion-still') && !part.hasAttribute('data-dp-motion-outgoing'));
+      const match = live && /matrix\(([^)]+)\)/.exec(getComputedStyle(live).transform);
       return match ? Math.sign(Math.round(+match[1].split(',')[4])) : 0;
     };
+    // Whether the slide of `node` is travelling: an animation of its content's place.
+    const travelling = node => document.getAnimations().some(a => a.playState === 'running' && a.effect?.target instanceof Node
+      && node.contains(a.effect.target) && a.effect.target !== node && a.effect.getKeyframes().some(k => k.transform));
     const tick = () => {
       // The content viewport's own slide, recorded whether or not the selector slides.
       const content = document.querySelector('#view-settings .dp-settings-scroll.dp-motion-surface');
       if (content) window.__dpContent.push({direction: content.dataset.dpMotionDirection, arriving: arriving(content),
-        moving: document.getAnimations().some(a => a.effect?.target === content && /\(root\)$/.test(a.effect?.pseudoElement || ''))});
+        moving: travelling(content)});
       const strip = document.querySelector('#view-settings .dp-settings-tabs.dp-motion-surface');
       if (strip) {
         const control = strip.parentElement.getBoundingClientRect();
         const header = strip.closest('.dp-settings-master-header').getBoundingClientRect();
         window.__dpNav.push({direction: strip.dataset.dpMotionDirection, step: strip.dataset.dpMotionStep,
           control: [control.left, control.top, control.width, control.height], header: [header.left, header.top, header.width, header.height],
-          moving: document.getAnimations().some(a => a.effect?.target === strip && /\(root\)$/.test(a.effect?.pseudoElement || '')),
+          moving: travelling(strip),
           strip: arriving(strip), panel: arriving(document.querySelector('#view-settings .dp-settings-scroll.dp-motion-surface'))});
       }
       const compact = document.querySelector('#view-settings .dp-settings-master-header[data-presentation="compact"] .dp-settings-tabs');
@@ -103,7 +111,9 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
   await settle(page);
 }
 
-const selected = page => page.locator('#view-settings .dp-settings-tabs [aria-selected="true"]');
+// The live strip: while the window slides, its outgoing copy (inert, hidden
+// from assistive technology) stands beside it with the same classes.
+const selected = page => page.locator('#view-settings .dp-settings-tabs:not(.dp-motion-still) [aria-selected="true"]');
 
 /* Everything about the header at this width, from geometry alone. `frame`
  * is the strip's own padding and border in the complete presentation. */
@@ -329,7 +339,7 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
  * else the keyboard from the selected tab (the window never shows a section
  * the list does not reach). */
 async function choose(page, id) {
-  const tab = page.locator(`#view-settings .dp-settings-tabs [data-tab="${id}"]`);
+  const tab = page.locator(`#view-settings .dp-settings-tabs:not(.dp-motion-still) [data-tab="${id}"]`);
   const at = await header(page);
   const k = at.order.indexOf(id);
   if (at.shown[k] >= TARGET) {
@@ -418,7 +428,7 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   expect(h.mask).toContain('linear-gradient');
   await expect(first).toHaveCSS('display', 'none');
   await expect(last).toBeVisible();
-  await expect(last).toHaveAccessibleName(`Last section: ${await page.locator(`#view-settings [data-tab="${order.at(-1)}"]`).textContent().then(t => t.trim())}`);
+  await expect(last).toHaveAccessibleName(`Last section: ${await page.locator(`#view-settings [data-tab="${order.at(-1)}"]:not(.dp-motion-still *)`).textContent().then(t => t.trim())}`);
   await first.evaluate(node => node.focus());
   await expect(first).not.toBeFocused();   // a hidden action takes no focus
   const control = h.control;
@@ -439,7 +449,7 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   await last.focus();
   await page.keyboard.press('Enter');
   await expect(selected(page)).toHaveAttribute('data-tab', order.at(-1));
-  await expect(page.locator(`#view-settings [data-tab="${order.at(-1)}"]`)).toBeFocused();
+  await expect(page.locator(`#view-settings [data-tab="${order.at(-1)}"]:not(.dp-motion-still *)`)).toBeFocused();
   await settle(page);
   h = await header(page);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
@@ -455,19 +465,19 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   for (const key of ['left', 'right']) expect(Math.abs(h.control[key] - control[key])).toBeLessThanOrEqual(0.5);
   await first.click();
   await expect(selected(page)).toHaveAttribute('data-tab', order[0]);
-  await expect(page.locator(`#view-settings [data-tab="${order[0]}"]`)).toBeFocused();
+  await expect(page.locator(`#view-settings [data-tab="${order[0]}"]:not(.dp-motion-still *)`)).toBeFocused();
   await settle(page);
 
   // The keyboard walks every section in order, the selection always whole.
   for (let k = 1; k < order.length; k += 1) {
     await page.keyboard.press('ArrowRight');
-    await expect(page.locator(`#view-settings [data-tab="${order[k]}"]`)).toBeFocused();
+    await expect(page.locator(`#view-settings [data-tab="${order[k]}"]:not(.dp-motion-still *)`)).toBeFocused();
     await settle(page);
     expect((await header(page)).currentWhole, order[k]).toBe(true);
   }
   await page.keyboard.press('Home');
-  await expect(page.locator(`#view-settings [data-tab="${order[0]}"]`)).toBeFocused();
-  const strip = page.locator('#view-settings .dp-settings-tabs');
+  await expect(page.locator(`#view-settings [data-tab="${order[0]}"]:not(.dp-motion-still *)`)).toBeFocused();
+  const strip = page.locator('#view-settings .dp-settings-tabs:not(.dp-motion-still)');
   await expect(strip.locator('[tabindex="0"]')).toHaveCount(1);
   await expect(strip.locator('[aria-selected="true"]')).toHaveCount(1);
 
@@ -702,7 +712,7 @@ async function slideOf(page, act) {
     content: {directions: [...new Set(content.map(frame => frame.direction))], arriving: [...new Set(content.map(frame => frame.arriving).filter(Boolean))],
       moving: content.filter(frame => frame.moving).length}, directions: [...new Set(frames.map(frame => frame.direction))],
     moving: frames.filter(frame => frame.moving).length,
-    // The way the strip's and the panel's arriving snapshots actually move.
+    // The way the strip's and the panel's arriving content actually moves.
     strip: [...new Set(frames.map(frame => frame.strip).filter(Boolean))],
     panel: [...new Set(frames.map(frame => frame.panel).filter(Boolean))],
     controls: new Set(frames.map(frame => frame.control.join())).size, headers: new Set(frames.map(frame => frame.header.join())).size};

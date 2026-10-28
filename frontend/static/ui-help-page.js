@@ -774,7 +774,7 @@
     state.activeTab = name;
 
     let selected = null;
-    root()?.querySelectorAll('.dp-help-tab').forEach(tab => {
+    root()?.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)').forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -790,7 +790,7 @@
   function showTabPanel() {
     const view = root();
     if (!view) return;
-    view.querySelectorAll('.dp-help-panel').forEach(section => {
+    view.querySelectorAll('.dp-help-panel:not(.dp-motion-still *)').forEach(section => {
       section.hidden = section.dataset.panel !== state.activeTab;
     });
 
@@ -803,7 +803,7 @@
    * tabs' displayed order. */
   function chooseTab(name, focus = false, via = 'tab') {
     const view = root();
-    const order = Array.from(view?.querySelectorAll('.dp-help-tab') || []).map(tab => tab.dataset.tab);
+    const order = Array.from(view?.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)') || []).map(tab => tab.dataset.tab);
     // From the section chosen last -- what a slide still under way will
     // show -- so a quick return turns back.
     const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
@@ -867,7 +867,7 @@
       // follows to that tab, since the action is hidden once it is there.
       const travel = event.target.closest('.dp-help-nav-end');
       if (!travel) return;
-      const tabs = Array.from(view.querySelectorAll('.dp-help-tab'));
+      const tabs = Array.from(view.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)'));
       const target = travel.dataset.helpEnd === 'first' ? tabs[0] : tabs.at(-1);
       if (target) chooseTab(target.dataset.tab, document.activeElement === travel, 'end');
     });
@@ -876,7 +876,7 @@
       const current = event.target.closest('.dp-help-tab');
       if (!current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
-      const tabs = Array.from(view.querySelectorAll('.dp-help-tab'));
+      const tabs = Array.from(view.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)'));
       let index = tabs.indexOf(current);
       if (event.key === 'Home') index = 0;
       else if (event.key === 'End') index = tabs.length - 1;

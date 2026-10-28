@@ -88,7 +88,7 @@ def test_page_owners_consume_canonical_icons_without_private_svg_maps() -> None:
 
 def test_status_badges_are_rectangular_and_include_details_overlay() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
-    assert ":is(#dash-tbody, #t-tbody, #modal-body) .badge" in css
+    assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge" in css
     assert "border-radius: 6px !important" in css
     assert "gap: 6px !important" in css
     assert ".badge .dp-status-icon" in css

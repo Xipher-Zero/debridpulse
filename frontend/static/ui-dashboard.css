@@ -4,7 +4,7 @@
   overflow-y: hidden;
 }
 
-#view-dashboard.active {
+#view-dashboard:is(.active, [data-dp-motion-outgoing]) {
   display: flex !important;
   flex-direction: column;
   height: 100%;
@@ -304,7 +304,7 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 
 @media (max-width: 1179px) {
   #content.dashboard-active { overflow-y: auto; }
-  #view-dashboard.active { height: auto; overflow: visible; }
+  #view-dashboard:is(.active, [data-dp-motion-outgoing]) { height: auto; overflow: visible; }
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #view-dashboard .dp-dashboard-activity { min-height: 420px; }
 }
@@ -329,7 +329,7 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
    in an adjacent migration stylesheet. They remain in the same source order. */
 
 #content.dashboard-active { overflow-y: auto; }
-#view-dashboard.active {
+#view-dashboard:is(.active, [data-dp-motion-outgoing]) {
   display: flex !important;
   flex-direction: column;
   height: auto;
@@ -963,27 +963,27 @@ body.light .nav-item.active::after {
   font-size: 18px;
 }
 
-#t-tbody .badge {
+:is(#t-tbody, .dp-downloads-styled-tbody) .badge {
   font-variant-emoji: text;
   font-family: var(--dp-font-sans), 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
 }
-#t-tbody tr[data-status="downloading"] .badge-downloading {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-downloading {
   color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
-#t-tbody tr[data-status="downloading"] .badge-partial,
-#t-tbody tr[data-status="paused"] .badge-paused {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-partial,
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="paused"] .badge-paused {
   color: var(--dp-op-ink, #f2bd3f) !important;
 }
-#t-tbody tr[data-status="completed"] .badge-completed {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="completed"] .badge-completed {
   color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
-#t-tbody tr[data-status="error"] .badge-error {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="error"] .badge-error {
   color: var(--dp-op-ink, #ff676f) !important;
 }
 
 /* Active transfer progress must read as live work rather than a hairline. */
 #dash-tbody .prog,
-#t-tbody .prog {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog {
   height: 6px !important;
   border-radius: 999px !important;
   background: var(--dp-chrome-progress-track) !important;
@@ -991,12 +991,12 @@ body.light .nav-item.active::after {
   box-shadow: inset 0 1px 2px rgba(0,0,0,.10) !important;
 }
 body.light #dash-tbody .prog,
-body.light #t-tbody .prog {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) .prog {
   background: var(--dp-chrome-progress-track) !important;
   box-shadow: inset 0 1px 2px rgba(58, 66, 94, .10) !important;
 }
 #dash-tbody .prog-fill,
-#t-tbody .prog-fill {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog-fill {
   height: 6px !important;
   border-radius: 999px !important;
 }
@@ -1014,7 +1014,7 @@ body.light #t-tbody .prog {
 
 /* Percentage is a primary live-transfer datum, not subordinate metadata. */
 #dash-tbody tr[data-status="downloading"] .prog-pct,
-#t-tbody tr[data-status="downloading"] .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .prog-pct {
   display: inline-block !important;
   margin-top: 5px !important;
   font-size: 15px !important;
@@ -1023,21 +1023,21 @@ body.light #t-tbody .prog {
   letter-spacing: -.02em !important;
 }
 #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
-#t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
   color: var(--dp-state-success) !important;
   text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-fill) 30%, transparent);
 }
 #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
-#t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
   color: #f2bd3f !important;
   text-shadow: 0 0 8px rgba(242, 189, 63, .28);
 }
 body.light #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
-body.light #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
   color: var(--dp-state-success) !important;
 }
 body.light #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
-body.light #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
   color: #b37b0d !important;
 }
 
@@ -1336,12 +1336,12 @@ body.light #view-dashboard #btn-add-transfer {
 /* Progress remains green as completion/progress information even when the
    transfer itself is paused; degraded downloads alone switch to amber. */
 #dash-tbody .prog,
-#t-tbody .prog {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog {
   height: 7px !important;
   overflow: visible !important;
 }
 #dash-tbody .prog-fill,
-#t-tbody .prog-fill {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog-fill {
   height: 7px !important;
   background: linear-gradient(90deg, var(--dp-state-success-deep), var(--dp-state-success-fill)) !important;
   /* DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow reduced by
@@ -1354,7 +1354,7 @@ body.light #view-dashboard #btn-add-transfer {
     0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-fill,
-#t-tbody tr:has(.badge-partial) .prog-fill {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .prog-fill {
   background: linear-gradient(90deg, #e7ab29, #f2c84d) !important;
   /* Correction 9: same relative 15% reduction (alpha * 0.85) applied to the
      partial-progress amber glow, from the prior .76/.32. */
@@ -1363,7 +1363,7 @@ body.light #view-dashboard #btn-add-transfer {
     0 0 13px rgba(242,189,63,.272) !important;
 }
 #dash-tbody .prog-pct,
-#t-tbody .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog-pct {
   display: inline-block !important;
   margin-top: 6px !important;
   color: var(--dp-state-success) !important;
@@ -1374,17 +1374,17 @@ body.light #view-dashboard #btn-add-transfer {
   text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-fill) 30%, transparent) !important;
 }
 body.light #dash-tbody .prog-pct,
-body.light #t-tbody .prog-pct {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) .prog-pct {
   color: var(--dp-state-success) !important;
   text-shadow: 0 0 7px color-mix(in srgb, var(--dp-state-success-fill) 18%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-pct,
-#t-tbody tr:has(.badge-partial) .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .prog-pct {
   color: #f2bd3f !important;
   text-shadow: 0 0 8px rgba(242,189,63,.28) !important;
 }
 body.light #dash-tbody tr:has(.badge-partial) .prog-pct,
-body.light #t-tbody tr:has(.badge-partial) .prog-pct {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .prog-pct {
   color: #ad770d !important;
 }
 
@@ -1411,7 +1411,7 @@ body.light #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
    semantic glow applies to ordinary determinate progress bars. The image
    alone is pinned, so the indeterminate hatching can still move. */
 #dash-tbody .prog-fill[style*="repeating-linear-gradient"],
-#t-tbody .prog-fill[style*="repeating-linear-gradient"] {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog-fill[style*="repeating-linear-gradient"] {
   background-color: transparent !important;
   background-image: repeating-linear-gradient(
     90deg,
@@ -1496,9 +1496,9 @@ body.light #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
 /* The bar owns semantic color/glow. The percentage returns to its original
    geometry and mono type, gaining emphasis only through darker neutral text. */
 #dash-tbody .prog-pct,
-#t-tbody .prog-pct,
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog-pct,
 #dash-tbody tr:has(.badge-partial) .prog-pct,
-#t-tbody tr:has(.badge-partial) .prog-pct {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .prog-pct {
   display: block !important;
   margin-top: 3px !important;
   font-family: var(--mono) !important;
@@ -1510,9 +1510,9 @@ body.light #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
   text-shadow: none !important;
 }
 body.light #dash-tbody .prog-pct,
-body.light #t-tbody .prog-pct,
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) .prog-pct,
 body.light #dash-tbody tr:has(.badge-partial) .prog-pct,
-body.light #t-tbody tr:has(.badge-partial) .prog-pct {
+body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .prog-pct {
   color: #3e465f !important;
   text-shadow: none !important;
 }
@@ -1528,13 +1528,13 @@ body.light #t-tbody tr:has(.badge-partial) .prog-pct {
    under 1000 hours take the same room and a changing value never moves the row;
    tabular figures. The secondary text token keeps it legible in both themes,
    and every figure -- held, best-effort or measured -- has the same type. */
-:is(#dash-tbody, #t-tbody) .prog-line {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   column-gap: 8px;
 }
-:is(#dash-tbody, #t-tbody) .prog-eta {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-eta {
   margin: 3px 0 0 auto;
   min-width: 13ch;
   text-align: right;
@@ -1667,7 +1667,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
 /* Preserve the approved semantic glow and reduce only the physical core line
    so completed/error-state progress reads lighter without losing scanability. */
 #dash-tbody .prog,
-#t-tbody .prog {
+:is(#t-tbody, .dp-downloads-styled-tbody) .prog {
   height: 4.5px !important;
 }
 

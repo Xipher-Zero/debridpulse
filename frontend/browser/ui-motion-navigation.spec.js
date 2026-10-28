@@ -4,9 +4,10 @@ const { test, expect } = require('@playwright/test');
  *
  * A pager or tab slides its own surface across, the sidebar slides the main
  * view region up or down, and a Settings disclosure rolls its real height.
- * Every frame of a slide is recorded from the browser's own view-transition
- * pseudo-elements (their computed transforms), so these cases prove the travel
- * itself, not that a function was called. Downloads, Activity Log and
+ * Every frame of a slide is recorded from what is drawn -- the computed
+ * transforms of the outgoing copy beside the surface and of the surface's live
+ * content -- so these cases prove the travel itself, not that a function was
+ * called. Downloads, Activity Log and
  * Statistics data are answered by the page (mocks); the rest is the real
  * application. Motion is the browser default (no reduced motion) except in the
  * case that is about reduced motion. */
@@ -24,21 +25,33 @@ async function boot(page, {width = 1440, height = 900} = {}) {
       : el.classList.contains('dp-downloads-table-wrap') ? 'downloads' : el.classList.contains('dp-settings-scroll') ? 'settings'
       : el.classList.contains('dp-help-scroll') ? 'help' : el.classList.contains('dp-settings-tabs') ? 'settings-nav'
       : el.classList.contains('dp-help-tabs') ? 'help-nav' : el.className;
-    const style = (el, pseudo, key) => { try { return getComputedStyle(el, pseudo)[key]; } catch (_) { return null; } };
+    // What leaves (ui-motion.js): the real element the commit hid, kept in the
+    // surface (data-dp-motion-outgoing), or the copy standing beside the
+    // surface, whose first part moves. What arrives: the first live part
+    // beside what leaves.
+    const kept = surface => surface.querySelector('[data-dp-motion-outgoing]');
+    const outgoing = surface => (surface.nextElementSibling?.classList.contains('dp-motion-still') ? surface.nextElementSibling : null);
+    const leaving = surface => kept(surface) || outgoing(surface)?.firstElementChild;
+    const live = surface => [...(kept(surface)?.parentElement || surface).children]
+      .find(node => node.getClientRects().length && !node.classList.contains('dp-motion-still') && !node.hasAttribute('data-dp-motion-outgoing'));
+    const style = (el, key) => (el ? getComputedStyle(el)[key] : null);
+    const clips = el => !!el && getComputedStyle(el).overflowX !== 'visible' && getComputedStyle(el).overflowY !== 'visible';
     // Every moving surface (a Settings choice can move its panel and its
     // compact navigator's window together).
     const tick = () => {
       for (const surface of document.querySelectorAll('.dp-motion-surface')) {
-        const motion = document.getAnimations().filter(a => a.effect?.target === surface && /\(root\)$/.test(a.effect?.pseudoElement || ''));
+        const ghost = outgoing(surface);
+        const within = node => node instanceof Node && (surface.contains(node) || !!ghost?.contains(node));
+        const motion = document.getAnimations().filter(a => within(a.effect?.target) && a.effect.getKeyframes().some(k => k.transform));
         window.__frames.push({
           t: performance.now(), scope: scopeOf(surface), axis: surface.dataset.dpMotionAxis,
           direction: surface.dataset.dpMotionDirection, step: surface.dataset.dpMotionStep,
-          old: style(surface, '::view-transition-old(root)', 'transform'), new: style(surface, '::view-transition-new(root)', 'transform'),
+          old: style(leaving(surface), 'transform'), new: style(live(surface), 'transform'),
           size: surface.dataset.dpMotionAxis === 'y' ? surface.getBoundingClientRect().height : surface.getBoundingClientRect().width,
-          oldOpacity: Number(style(surface, '::view-transition-old(root)', 'opacity') ?? 1),
-          clip: style(surface, '::view-transition-image-pair(root)', 'overflow'),
+          oldOpacity: Number(style(leaving(surface), 'opacity') ?? 1),
+          clip: clips(surface) && (!ghost || clips(ghost)),
           durations: [...new Set(motion.map(a => a.effect.getTiming().duration))],
-          panels: [...document.querySelectorAll('.view.active [data-panel]:not([hidden]), .view.active .dp-help-panel:not([hidden])')].map(p => p.dataset.panel),
+          panels: [...document.querySelectorAll('.view.active [data-panel]:not([hidden]):not(.dp-motion-still *), .view.active .dp-help-panel:not([hidden]):not(.dp-motion-still *)')].map(p => p.dataset.panel),
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           topbar: document.getElementById('topbar')?.getBoundingClientRect().top,
           sidebar: document.getElementById('sidebar')?.getBoundingClientRect().left,
@@ -100,7 +113,7 @@ function expectSlide(slide, {scope, axis, direction, step}) {
   expect({scope: slide.scope, axis: slide.axis, direction: slide.direction, step: slide.step}).toEqual({scope, axis, direction, step});
   expect(slide.durations).toEqual([PROFILE[step].duration]);
   expect(slide.moving).toBeGreaterThanOrEqual(3);                 // drawn travel over several frames
-  expect(slide.clip).toEqual(['hidden']);                          // clipped to its own surface
+  expect(slide.clip).toEqual([true]);                              // both clipped to the surface's own box
   const sign = direction === 'forward' ? -1 : 1;                    // forward: the old leaves toward the start
   expect(Math.sign(slide.old[axis])).toBe(sign);
   expect(Math.sign(slide.new[axis])).toBe(-sign);                  // and the new arrives from the end
@@ -250,7 +263,9 @@ test('Activity Log: a page turn slides the list across; Refresh and live updates
 });
 
 // ── Settings and Help tabs ─────────────────────────────────────────────────
-const settingsTab = (page, id) => page.locator(`#view-settings.active .dp-settings-tabs [data-tab="${id}"]`);
+// The live tab: while a navigator's window slides, its outgoing copy (inert,
+// hidden from assistive technology) stands beside it with the same classes.
+const settingsTab = (page, id) => page.locator(`#view-settings.active .dp-settings-tabs [data-tab="${id}"]:not(.dp-motion-still *)`);
 
 test('Settings tabs: click and keyboard slide only the panel, by tab order, never through a skipped tab', async ({page}) => {
   await boot(page);
@@ -284,7 +299,7 @@ test('Settings tabs: click and keyboard slide only the panel, by tab order, neve
   await page.keyboard.press('ArrowRight');
   await expect(settingsTab(page, 'downloads')).toBeFocused();
   expectSlide(await lastSlide(page), {scope: 'settings', axis: 'x', direction: 'forward', step: 'adjacent'});
-  const strip = await page.locator('#view-settings.active .dp-settings-tabs [data-tab]').evaluateAll(tabs =>
+  const strip = await page.locator('#view-settings.active .dp-settings-tabs [data-tab]:not(.dp-motion-still *)').evaluateAll(tabs =>
     tabs.map(tab => [tab.dataset.tab, tab.getAttribute('aria-selected'), tab.tabIndex]).filter(([, selected]) => selected === 'true'));
   expect(strip).toEqual([['downloads', 'true', 0]]);
   expect(await page.locator('.view.active [data-panel]:not([hidden])').evaluateAll(p => p.map(x => x.dataset.panel))).toEqual(['downloads']);
@@ -299,7 +314,7 @@ test('Help tabs: the same contract; its accordions keep their state', async ({pa
   await boot(page);
   await page.goto('/');
   await page.evaluate(() => nav(document.querySelector('[data-view="help"]')));
-  const tabs = page.locator('#view-help .dp-help-tab');
+  const tabs = page.locator('#view-help .dp-help-tab:not(.dp-motion-still *)');
   await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
   const ids = await tabs.evaluateAll(list => list.map(tab => tab.dataset.tab));
   const accordion = page.locator(`#dp-help-panel-${ids[0]} details`).first();
@@ -414,7 +429,9 @@ test('Dashboard: the heartbeat route is read from settled cards on arrival; its 
   await settled(page);
   await clear(page);
   await entry(page, 'dashboard').click();
-  // During the slide itself: the strip was measured from the live cards, which never move.
+  // During the slide itself: the strip is measured from the live cards, which
+  // move only as one with their view (a single vertical travel), so the route
+  // -- read as differences between cards -- is the settled route.
   await page.waitForFunction(() => document.getElementById('content').classList.contains('dp-motion-surface') && document.getElementById('view-dashboard').classList.contains('active'));
   const during = await route();
   const live = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
@@ -422,8 +439,14 @@ test('Dashboard: the heartbeat route is read from settled cards on arrival; its 
   const slide = await lastSlide(page);
   expectSlide(slide, {scope: 'main', axis: 'y', direction: 'backward', step: 'adjacent'});
   const sorted = list => [...list].sort((a, b) => a[2] - b[2] || a[0] - b[0]);
-  expect(during).toEqual(settledRoute);
-  expect(sorted(live)).toEqual(sorted(settledRoute));                // the live cards themselves never moved
+  // One rigid offset: every card's left and right as settled, every top
+  // shifted by the same amount (the view's travel when it was read).
+  const rigid = (list, reference) => {
+    const offset = list[0][2] - reference[0][2];
+    return list.map(([left, right, top]) => [left, right, top - offset]);
+  };
+  expect(rigid(during, settledRoute)).toEqual(settledRoute);
+  expect(rigid(sorted(live), sorted(settledRoute))).toEqual(sorted(settledRoute));   // the live cards moved only with their view
   expect(await route()).toEqual(settledRoute);                       // and again once settled
   const after = await page.evaluate(() => ({running: _dashboardHeartbeat.running, born: _dashboardHeartbeat.beats.map(beat => beat.born)}));
   expect(after.running).toBe(true);
@@ -693,7 +716,7 @@ test('Narrow and light: a slide stays inside its surface; nothing overflows the 
   const slide = await lastSlide(page);
   expectSlide(slide, {scope: 'settings', axis: 'x', direction: 'forward', step: 'short'});
   expect(slide.overflow).toBeLessThanOrEqual(0);
-  expect(slide.clip).toEqual(['hidden']);                          // the travelling content is clipped to its surface
+  expect(slide.clip).toEqual([true]);                              // the travelling content is clipped to its surface
 });
 
 test('Distance: the next tab, two or three, and four or more travel longer and farther; a newer choice wins mid-slide', async ({page}) => {
@@ -701,7 +724,7 @@ test('Distance: the next tab, two or three, and four or more travel longer and f
   await page.goto('/');
   await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
   await expect(settingsTab(page, 'sources')).toHaveAttribute('aria-selected', 'true');
-  const order = await page.locator('#view-settings.active .dp-settings-tabs [data-tab]').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab));
+  const order = await page.locator('#view-settings.active .dp-settings-tabs [data-tab]:not(.dp-motion-still *)').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab));
   const runs = [];
   let at = order[0];
   for (const target of [order[1], order[3], order[0], order.at(-1)]) {   // 1, 2, 3 and 6 positions away
@@ -874,25 +897,33 @@ async function turn(page, kind, act, until) {
     const t0 = performance.now();
     window.__turn = {t0, frames: [], clickAt: null, on: true};
     document.addEventListener('pointerdown', () => { window.__turn.clickAt = performance.now() - t0; }, {capture: true, once: true});
-    const x = (el, pseudo) => {
-      let value = null; try { value = getComputedStyle(el, pseudo).transform; } catch (_) {}
-      const m = /matrix\(([^)]+)\)/.exec(value || ''); return m ? Number(m[1].split(',')[4]) / el.getBoundingClientRect().width : 0;
+    // Where an element is drawn along x by its transform, as a share of the surface.
+    const x = (el, surface) => {
+      const m = /matrix\(([^)]+)\)/.exec(el ? getComputedStyle(el).transform : '');
+      return m ? Number(m[1].split(',')[4]) / surface.getBoundingClientRect().width : 0;
     };
+    // The slide's own animations: the travel (transform) of the outgoing copy
+    // beside the surface and of the surface's live content.
+    const travels = (surface, ghost) => document.getAnimations().filter(a => a.effect?.target instanceof Node && a.effect.getKeyframes().some(k => k.transform)
+      && (surface.contains(a.effect.target) || !!ghost?.contains(a.effect.target)));
     const sample = () => {
       const surface = document.querySelector(at.surface), held = document.querySelector(at.placeholder);
+      const sliding = !!surface?.classList.contains('dp-motion-surface');
+      const ghost = sliding && surface.nextElementSibling?.classList.contains('dp-motion-still') ? surface.nextElementSibling : null;
+      const arriving = sliding ? [...surface.children].find(node => node.getClientRects().length && !node.classList.contains('dp-motion-still')) : null;
       const still = surface?.querySelector('.dp-motion-still'), real = document.querySelector(at.real), content = document.querySelector(at.content);
-      window.__turn.frames.push({t: performance.now() - t0, sliding: !!surface?.classList.contains('dp-motion-surface'),
-        x: surface ? x(surface, '::view-transition-new(root)') : 0, oldX: surface ? x(surface, '::view-transition-old(root)') : 0,
-        start: surface ? document.getAnimations().filter(a => a.effect?.target === surface && /new\(root\)$/.test(a.effect?.pseudoElement || '')
-          && a.startTime !== null).map(a => a.startTime + a.effect.getTiming().delay)[0] ?? null : null,
-        delay: surface ? document.getAnimations().filter(a => a.effect?.target === surface && /\(root\)$/.test(a.effect?.pseudoElement || ''))
-          .map(a => a.effect.getTiming().delay) : [],
+      const motion = sliding ? travels(surface, ghost) : [];
+      window.__turn.frames.push({t: performance.now() - t0, sliding,
+        x: arriving ? x(arriving, surface) : 0, oldX: ghost ? x(ghost.firstElementChild, surface) : 0,
+        start: motion.filter(a => surface.contains(a.effect.target) && a.startTime !== null).map(a => a.startTime + a.effect.getTiming().delay)[0] ?? null,
+        delay: motion.map(a => a.effect.getTiming().delay),
         placeholder: held ? held.querySelectorAll('.dp-page-placeholder-row').length : 0, stands: held ? held.dataset.dpPlaceholder : null,
         hidden: held ? held.getAttribute('aria-hidden') : null, text: held ? held.textContent.trim() : '',
         stops: held ? held.querySelectorAll('a, button, input, select, textarea, [tabindex]').length : 0,
         real: real ? (real.dataset.torrentId || real.querySelector('.dp-activity-message')?.textContent || '') : null,
         reals: document.querySelectorAll(at.real).length,
-        still: still ? Number(getComputedStyle(still).opacity) : null, fade: still?.getAnimations()[0]?.effect.getTiming().duration ?? null,
+        still: still ? Number(getComputedStyle(still).opacity) : null,
+        fade: still?.getAnimations().find(a => !a.effect.getKeyframes().some(k => k.transform))?.effect.getTiming().duration ?? null,
         opacity: content && !held ? Number(getComputedStyle(content).opacity) : null,
         pagerHeld: [...document.querySelectorAll(`${at.pager} button`)].some(button => button.disabled && !button.closest('[hidden]'))});
       if (window.__turn.on) requestAnimationFrame(sample);

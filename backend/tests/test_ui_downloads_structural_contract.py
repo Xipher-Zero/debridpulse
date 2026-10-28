@@ -46,7 +46,7 @@ def test_downloads_uses_shared_card_field_table_and_tab_material() -> None:
 def test_downloads_page_layer_owns_geometry_not_copied_material() -> None:
     css = DOWNLOADS.read_text(encoding="utf-8")
     required = (
-        "#view-torrents.active",
+        "#view-torrents:is(.active, [data-dp-motion-outgoing])",
         ".dp-downloads-table-wrap",
         "position: sticky",
         "min-height: 70px",

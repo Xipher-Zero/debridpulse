@@ -6,13 +6,13 @@
 
 /* ── Canonical status badges: Lucide only + progress-parity glow ─────── */
 .badge[data-dp-status]::before,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge::before {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge::before {
   content: none !important;
   display: none !important;
 }
 
 .badge[data-dp-status],
-:is(#dash-tbody, #t-tbody, #modal-body) .badge {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge {
   box-shadow: var(--dp-op-glow,
     0 0 6px color-mix(in srgb, var(--dp-badge-color) 72%, transparent),
     0 0 13px color-mix(in srgb, var(--dp-badge-color) 32%, transparent)) !important;
@@ -22,7 +22,7 @@
 /* A terminal failure keeps truthful progress geometry. The rail itself becomes
    the high-salience error signal; a zero-byte failure therefore remains empty
    while the red outline/glow and edge caps make the failure impossible to miss. */
-:is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail {
   position: relative;
   overflow: visible !important;
   border-radius: 999px !important;
@@ -32,8 +32,8 @@
     0 0 15px color-mix(in srgb, var(--dp-state-error) 32%, transparent) !important;
 }
 
-:is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::before,
-:is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::after {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail::before,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -48,14 +48,14 @@
   transform: translateY(-50%);
   pointer-events: none;
 }
-:is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::before { left: -1px; }
-:is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::after { right: -1px; }
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail::before { left: -1px; }
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail::after { right: -1px; }
 
 /* Error fill must win over every normal success/active progress treatment.
    Partial failures fill only to the real percentage; zero-byte failures leave
    the fill at zero and rely on the rail treatment above. */
-:is(#dash-tbody, #t-tbody) .prog-fill.error,
-:is(#dash-tbody, #t-tbody) .prog-fill.dp-terminal-error-progress {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill.error,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill.dp-terminal-error-progress {
   background: var(--dp-state-error) !important;
   background-color: var(--dp-state-error) !important;
   background-image: none !important;

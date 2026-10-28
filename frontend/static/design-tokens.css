@@ -272,11 +272,11 @@ body.light,
    state; set by the component's owner). Every other reader of a state colour
    -- a bare value, percentage or statistic -- keeps the light value. */
 body.light :is(
-  :is(#dash-tbody, #t-tbody, #modal-body) .badge,
+  :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge,
   .dp-provider-chip,
   #provider-status-list .dot,
   #topbar-actions > .btn,
-  :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("], [onclick*="resumeT("], [onclick*="resumeTorrent("], [onclick*="retryT("], [onclick*="retryTorrent("]),
+  :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("], [onclick*="resumeT("], [onclick*="resumeTorrent("], [onclick*="retryT("], [onclick*="retryTorrent("]),
   #view-torrents :is(.dp-downloads-bulk-action--pause, .dp-downloads-bulk-action--resume, .dp-downloads-bulk-action--reset)
 ) {
   --dp-state-success: #00E676;

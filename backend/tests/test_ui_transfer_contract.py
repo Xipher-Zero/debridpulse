@@ -70,7 +70,7 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
 def test_transfer_actions_share_recent_activity_geometry() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
     required = (
-        ":is(#dash-tbody, #t-tbody) .actions .btn",
+        ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .actions .btn",
         "width: 72px !important",
         "min-width: 72px !important",
         "min-height: 36px !important",
@@ -115,8 +115,8 @@ def test_transfer_percentage_uses_original_geometry_with_weight_only() -> None:
 
 def test_transfer_track_and_fill_share_active_weight() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
-    assert ":is(#dash-tbody, #t-tbody) .prog," in css
-    assert ":is(#dash-tbody, #t-tbody) .prog-fill" in css
+    assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog," in css
+    assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill" in css
     assert "height: 7px !important" in css
     assert "3.5px" not in css
 

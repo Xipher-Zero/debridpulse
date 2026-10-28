@@ -257,8 +257,8 @@
   const dwellOf = host => Number(host?.getAttribute('data-tooltip-dwell')) || 0;
 
   // What is still moving inside an element -- a navigator's window sliding
-  // included, whose motion runs on its own view-transition pseudo-elements
-  // (which an element's own getAnimations() does not list).
+  // included, whose motion runs on its tabs and on the outgoing copy beside
+  // its strip (which the control's own getAnimations() does not list).
   const moving = host => document.getAnimations().filter(animation => animation.playState === 'running'
     && animation.effect?.getTiming().iterations !== Infinity && animation.effect?.target instanceof Node && host.contains(animation.effect.target));
 

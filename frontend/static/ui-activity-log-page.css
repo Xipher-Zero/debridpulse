@@ -309,7 +309,7 @@ body.light #view-events .dp-activity-search-band {
     overflow-y: hidden;
   }
 
-  #view-events.active {
+  #view-events:is(.active, [data-dp-motion-outgoing]) {
     display: flex !important;
     flex-direction: column;
     height: 100% !important;
@@ -317,7 +317,7 @@ body.light #view-events .dp-activity-search-band {
     overflow: visible;
   }
 
-  #view-events.active > .dp-activity-card {
+  #view-events:is(.active, [data-dp-motion-outgoing]) > .dp-activity-card {
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -326,7 +326,7 @@ body.light #view-events .dp-activity-search-band {
 /* Handheld: the page grows with its card, and the event list is bounded by
    the window. */
 @media (max-width: 779px) {
-  #view-events.active {
+  #view-events:is(.active, [data-dp-motion-outgoing]) {
     height: auto;
     overflow: visible;
   }

@@ -101,7 +101,7 @@ def test_activity_log_fills_shell_and_scrolls_only_rebuilt_event_viewport() -> N
 
     assert "#content:has(#view-events.active)" in css
     assert "overflow-y: hidden" in css
-    assert "#view-events.active" in css
+    assert "#view-events:is(.active, [data-dp-motion-outgoing])" in css
     assert "display: flex !important" in css
     assert "height: 100% !important" in css
     assert "min-height: 0" in css
@@ -215,7 +215,7 @@ def test_activity_log_workspace_holds_from_780px_and_keeps_its_configured_page()
     workspace = css[css.index("@media (min-width: 780px) {\n  #content:has(#view-events.active) {"):]
     workspace = workspace[:workspace.index("\n}\n")]
     assert "height: 100% !important;" in workspace and "overflow-y: hidden;" in workspace
-    handheld = css[css.index("@media (max-width: 779px) {\n  #view-events.active {"):]
+    handheld = css[css.index("@media (max-width: 779px) {\n  #view-events:is(.active, [data-dp-motion-outgoing]) {"):]
     handheld = handheld[:handheld.index("\n}\n")]
     assert "max-height: 62vh;" in handheld and css.count("62vh") == 1
     runtime = read("ui-activity-log-runtime.js")

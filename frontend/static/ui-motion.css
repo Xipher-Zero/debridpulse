@@ -5,8 +5,9 @@
  * farther the destination, the longer and farther it travels: the next
  * position, two or three, four and more (capped). Distance is said by the
  * movement itself; the fade is slight. Only the surface being replaced
- * moves, clipped to its own viewport (its own scoped view transition);
- * everything else stays still and live. */
+ * moves, clipped to its own viewport (ui-motion.js animates its outgoing copy
+ * and its live content with these values); everything else stays still and
+ * live. */
 
 :root {
   --dp-motion-adjacent: 280ms;
@@ -20,9 +21,10 @@
   --dp-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* A surface sliding now (ui-motion.js scopes its view transition to it):
-   the main view region for the sidebar, each page or tab viewport for its own
-   pager or tabs. Its own snapshot pair is what moves. */
+/* A surface sliding now (ui-motion.js marks it while it moves): each page or
+   tab viewport for its own pager or tabs, a compact navigator's window. Its
+   outgoing copy and its live content are what move; the travel is a share
+   of the surface's own viewport, the way ui-motion.js says it. */
 
 .dp-motion-surface {
   --dp-motion-curve: var(--dp-motion-ease);
@@ -47,52 +49,6 @@
   --dp-motion-duration: var(--dp-motion-long);
   --dp-motion-travel: 140%;
   --dp-motion-fade: 0.85;
-}
-
-/* Forward: the old content leaves toward the start (left, or up) and the
-   destination arrives from the end (right, or below). Backward: the reverse. */
-.dp-motion-surface[data-dp-motion-axis="x"][data-dp-motion-direction="forward"] {
-  --dp-motion-leave: translateX(calc(-1 * var(--dp-motion-travel)));
-  --dp-motion-enter: translateX(var(--dp-motion-travel));
-}
-.dp-motion-surface[data-dp-motion-axis="x"][data-dp-motion-direction="backward"] {
-  --dp-motion-leave: translateX(var(--dp-motion-travel));
-  --dp-motion-enter: translateX(calc(-1 * var(--dp-motion-travel)));
-}
-.dp-motion-surface[data-dp-motion-axis="y"][data-dp-motion-direction="forward"] {
-  --dp-motion-leave: translateY(calc(-1 * var(--dp-motion-travel)));
-  --dp-motion-enter: translateY(var(--dp-motion-travel));
-}
-.dp-motion-surface[data-dp-motion-axis="y"][data-dp-motion-direction="backward"] {
-  --dp-motion-leave: translateY(var(--dp-motion-travel));
-  --dp-motion-enter: translateY(calc(-1 * var(--dp-motion-travel)));
-}
-
-.dp-motion-surface::view-transition-group(root) {
-  animation-duration: var(--dp-motion-duration);
-  animation-timing-function: var(--dp-motion-curve);
-}
-
-.dp-motion-surface::view-transition-image-pair(root) {
-  overflow: hidden;
-}
-
-.dp-motion-surface::view-transition-old(root) {
-  mix-blend-mode: normal;
-  animation: dp-motion-leave var(--dp-motion-duration) var(--dp-motion-curve) both;
-}
-
-.dp-motion-surface::view-transition-new(root) {
-  mix-blend-mode: normal;
-  animation: dp-motion-enter var(--dp-motion-duration) var(--dp-motion-curve) both;
-}
-
-@keyframes dp-motion-leave {
-  to { transform: var(--dp-motion-leave); opacity: var(--dp-motion-fade); }
-}
-
-@keyframes dp-motion-enter {
-  from { transform: var(--dp-motion-enter); opacity: var(--dp-motion-fade); }
 }
 
 /* A page turn's destination, drawn before its answer: the shape of its rows,
@@ -136,12 +92,4 @@
   z-index: 2;
   margin: 0;
   pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dp-motion-surface::view-transition-group(*),
-  .dp-motion-surface::view-transition-old(*),
-  .dp-motion-surface::view-transition-new(*) {
-    animation: none;
-  }
 }

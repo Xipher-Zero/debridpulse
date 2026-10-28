@@ -10,7 +10,7 @@
 /* Dashboard, Downloads and Details consume one rectangular semantic badge
    contract. The inline glyph itself is supplied by the canonical Lucide runtime;
    CSS owns only geometry/material/color and never injects symbol-font content. */
-:is(#dash-tbody, #t-tbody, #modal-body) .badge {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
@@ -26,7 +26,7 @@
   color: var(--dp-op-ink, var(--dp-badge-color)) !important;
 }
 
-:is(#dash-tbody, #t-tbody, #modal-body) .badge .dp-status-icon {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge .dp-status-icon {
   width: 15px !important;
   height: 15px !important;
   min-width: 15px;
@@ -34,34 +34,34 @@
   stroke-width: 2.15;
 }
 
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-downloading {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-downloading {
   --dp-badge-color: var(--dp-state-success);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-uploading,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-queued,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-input_required {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-uploading,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-queued,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-input_required {
   --dp-badge-color: var(--dp-state-active);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-processing,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-extracting,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-imported {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-processing,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-extracting,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-imported {
   --dp-badge-color: var(--dp-state-processing-badge);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-paused,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-ready,
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-partial {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-paused,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-ready,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-partial {
   --dp-badge-color: var(--dp-state-caution);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-completed {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-completed {
   --dp-badge-color: var(--dp-state-success);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-error {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-error {
   --dp-badge-color: var(--dp-state-error);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-pending {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-pending {
   --dp-badge-color: var(--dp-state-ready);
 }
-:is(#dash-tbody, #t-tbody, #modal-body) .badge-deleted {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody, #modal-body) .badge-deleted {
   --dp-badge-color: var(--dp-text-muted);
 }
 .badge-extracting { animation: pulse 1s ease-in-out infinite; }
@@ -93,7 +93,7 @@
 /* Active Items and Downloads use one fixed action-button footprint. 72×36 is
    the existing Remove/Resume footprint; Retry/Pause and other row actions now
    occupy the same box. Global/topbar controls are intentionally excluded. */
-:is(#dash-tbody, #t-tbody) .actions .btn {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .actions .btn {
   width: 72px !important;
   min-width: 72px !important;
   min-height: 36px !important;
@@ -109,8 +109,8 @@
 /* A row action built with DPIcons.iconLabel carries its glyph and its label;
    it shows the label, and the glyph only where its table sets the label aside
    (a compact table's own geometry owner). */
-:is(#dash-tbody, #t-tbody) .actions .dp-row-action-icon,
-#t-tbody .dp-queue-consent .dp-row-action-icon {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .actions .dp-row-action-icon,
+:is(#t-tbody, .dp-downloads-styled-tbody) .dp-queue-consent .dp-row-action-icon {
   display: none;
 }
 
@@ -147,7 +147,7 @@
   }
 }
 @container dp-downloads-table (width < 1166px) {
-  #t-tbody :is(.badge .dp-status-label, :is(.actions, .dp-queue-consent) [data-dp-icon-label]) {
+  :is(#t-tbody, .dp-downloads-styled-tbody) :is(.badge .dp-status-label, :is(.actions, .dp-queue-consent) [data-dp-icon-label]) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -156,22 +156,22 @@
     opacity: 0;
     pointer-events: none;
   }
-  #t-tbody :is(.badge, .actions .btn, .dp-queue-consent) {
+  :is(#t-tbody, .dp-downloads-styled-tbody) :is(.badge, .actions .btn, .dp-queue-consent) {
     position: relative;
   }
-  #t-tbody .actions .btn {
+  :is(#t-tbody, .dp-downloads-styled-tbody) .actions .btn {
     width: 36px !important;
     min-width: 36px !important;
     padding: 0 !important;
     justify-content: center;
   }
-  #t-tbody :is(.actions, .dp-queue-consent) .dp-row-action-icon {
+  :is(#t-tbody, .dp-downloads-styled-tbody) :is(.actions, .dp-queue-consent) .dp-row-action-icon {
     display: block;
     width: 15px;
     height: 15px;
   }
   /* Start Now beneath its badge: the badge chip's width. */
-  #t-tbody .dp-queue-consent {
+  :is(#t-tbody, .dp-downloads-styled-tbody) .dp-queue-consent {
     width: 35px;
     padding-inline: 0;
     justify-content: center;
@@ -179,7 +179,7 @@
 }
 
 /* Pause/Resume material is shared by both list implementations. */
-:is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
 #view-torrents .dp-downloads-bulk-action--pause {
   background: linear-gradient(135deg,
     rgba(125, 91, 30, .91) 0%,
@@ -189,7 +189,7 @@
   color: #ffd35b !important;
   box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
 }
-body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
+body.light :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
 body.light #view-torrents .dp-downloads-bulk-action--pause {
   --dp-op-hue: var(--dp-state-caution);
   background: var(--dp-op-surface) !important;
@@ -198,14 +198,14 @@ body.light #view-torrents .dp-downloads-bulk-action--pause {
   text-shadow: none !important;
   box-shadow: inset 0 1px rgba(255,255,255,.55), var(--dp-op-glow) !important;
 }
-body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]):hover,
+body.light :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]):hover,
 body.light #view-torrents .dp-downloads-bulk-action--pause:hover {
   background: var(--dp-op-surface-hover) !important;
   border-color: var(--dp-op-hue) !important;
   color: var(--dp-op-ink) !important;
   box-shadow: inset 0 1px rgba(255,255,255,.6), var(--dp-op-glow-hover) !important;
 }
-:is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
 #view-torrents .dp-downloads-bulk-action--resume {
   background: linear-gradient(135deg,
     rgba(25, 117, 78, .84) 0%,
@@ -215,7 +215,7 @@ body.light #view-torrents .dp-downloads-bulk-action--pause:hover {
   color: #9af0bf !important;
   box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
 }
-body.light :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
+body.light :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
 body.light #view-torrents .dp-downloads-bulk-action--resume {
   --dp-op-hue: var(--dp-state-success);
   background: var(--dp-op-surface) !important;
@@ -228,7 +228,7 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 /* Retry is an information/recovery action. Match the translucent semantic
    treatment used by the other secondary row actions instead of reading as a
    filled primary control. Theme-aware state tokens keep the blue family intact. */
-:is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
 #view-torrents .dp-downloads-bulk-action--reset {
   --dp-op-hue: var(--dp-state-active);
   background: var(--dp-op-surface, var(--dp-state-active-bg)) !important;
@@ -241,8 +241,8 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 /* The track and active fill are one component and therefore one thickness.
    Seven pixels is the approved active-transfer weight; the unfilled track
    must never fall back to the old hairline geometry. */
-:is(#dash-tbody, #t-tbody) .prog,
-:is(#dash-tbody, #t-tbody) .prog-fill {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog,
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill {
   height: 7px !important;
   border-radius: 999px !important;
 }
@@ -250,7 +250,7 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 /* ── Progress percentage ─────────────────────────────────────────────── */
 /* Preserve the original compact mono datum and add emphasis only through
    weight. Semantic color belongs to the bar/status, not the percentage. */
-:is(#dash-tbody, #t-tbody) tr[data-status] .prog-pct {
+:is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) tr[data-status] .prog-pct {
   display: block !important;
   margin-top: 3px !important;
   font-family: var(--dp-font-mono) !important;

@@ -59,7 +59,7 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
   /* Every frame in which the compact navigator's window is sliding (DPMotion
    * marks the strip while it runs): its direction and step, where the
    * navigator's control and the header stand, and the way the strip's and
-   * the panel's arriving snapshots move. And in every frame: a First or Last
+   * the panel's arriving content moves. And in every frame: a First or Last
    * that is shown stands over the window's end, one that is gone has left
    * its place to the window -- never both, never neither (__dpEnds counts
    * the frames that break it). */
@@ -67,17 +67,25 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
     window.__dpNav = [];
     window.__dpContent = [];
     window.__dpEnds = [];
-    // Where the destination's own snapshot stands now: + arriving from the
+    // Where the destination stands now: + arriving from the
     // right (forward), - from the left (backward), 0 none.
+    // (The destination is the surface's live content, moved by the slide;
+    // its first drawn part says where it stands.)
     const arriving = node => {
-      const match = node && /matrix\(([^)]+)\)/.exec(getComputedStyle(node, '::view-transition-new(root)').transform);
+      const host = node && (node.querySelector('[data-dp-motion-outgoing]')?.parentElement || node);
+      const live = host && [...host.children].find(part => part.getClientRects().length
+        && !part.classList.contains('dp-motion-still') && !part.hasAttribute('data-dp-motion-outgoing'));
+      const match = live && /matrix\(([^)]+)\)/.exec(getComputedStyle(live).transform);
       return match ? Math.sign(Math.round(+match[1].split(',')[4])) : 0;
     };
+    // Whether the slide of `node` is travelling: an animation of its content's place.
+    const travelling = node => document.getAnimations().some(a => a.playState === 'running' && a.effect?.target instanceof Node
+      && node.contains(a.effect.target) && a.effect.target !== node && a.effect.getKeyframes().some(k => k.transform));
     const tick = () => {
       // The content viewport's own slide, recorded whether or not the selector slides.
       const content = document.querySelector('#view-help .dp-help-scroll.dp-motion-surface');
       if (content) window.__dpContent.push({direction: content.dataset.dpMotionDirection, arriving: arriving(content),
-        moving: document.getAnimations().some(a => a.effect?.target === content && /\(root\)$/.test(a.effect?.pseudoElement || ''))});
+        moving: travelling(content)});
       const strip = document.querySelector('#view-help .dp-help-tabs.dp-motion-surface');
       if (strip) {
         const control = strip.parentElement.getBoundingClientRect();
@@ -86,7 +94,7 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
         window.__dpNav.push({direction: strip.dataset.dpMotionDirection, step: strip.dataset.dpMotionStep,
           control: [control.left, control.top, control.width, control.height], header: [header.left, header.top, header.width, header.height],
           copy: [copy.left, copy.top, copy.width, copy.height],
-          moving: document.getAnimations().some(a => a.effect?.target === strip && /\(root\)$/.test(a.effect?.pseudoElement || '')),
+          moving: travelling(strip),
           strip: arriving(strip), panel: arriving(document.querySelector('#view-help .dp-help-scroll.dp-motion-surface'))});
       }
       const compact = document.querySelector('#view-help .dp-help-master-header[data-presentation="compact"] .dp-help-tabs');
@@ -111,7 +119,9 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
   await settle(page);
 }
 
-const selected = page => page.locator('#view-help .dp-help-tabs [aria-selected="true"]');
+// The live strip: while the window slides, its outgoing copy (inert, hidden
+// from assistive technology) stands beside it with the same classes.
+const selected = page => page.locator('#view-help .dp-help-tabs:not(.dp-motion-still) [aria-selected="true"]');
 
 /* Everything about the header at this width, from geometry alone. `frame`
  * is the strip's own padding and border in the complete presentation. */
@@ -290,7 +300,7 @@ async function expectEndpoint(page, h, at, reference) {
  * else the keyboard from the selected tab (the window never shows a section
  * the list does not reach). */
 async function choose(page, id) {
-  const tab = page.locator(`#view-help .dp-help-tabs [data-tab="${id}"]`);
+  const tab = page.locator(`#view-help .dp-help-tabs:not(.dp-motion-still) [data-tab="${id}"]`);
   const at = await header(page);
   const k = at.order.indexOf(id);
   if (k === at.index) return;
@@ -525,7 +535,7 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   await expect(page.locator('#dp-help-tab-license')).toBeFocused();
   await expect(page.locator('#dp-help-panel-license')).toBeVisible();
   await settle(page);
-  const strip = page.locator('#view-help .dp-help-tabs');
+  const strip = page.locator('#view-help .dp-help-tabs:not(.dp-motion-still)');
   await expect(strip.locator('[tabindex="0"]')).toHaveCount(1);
   await expect(strip.locator('[aria-selected="true"]')).toHaveCount(1);
   // The keyboard never scrolled the page.
@@ -661,7 +671,7 @@ test('at the 780px floor, where the end pair cannot fit even trimmed, License st
   }
   // The preview opens its section; the neighbour, now selected, is whole.
   await choose(page, order[n - 1]);
-  await page.locator(`#view-help .dp-help-tabs [data-tab="${order[n - 2]}"]`).click();
+  await page.locator(`#view-help .dp-help-tabs:not(.dp-motion-still) [data-tab="${order[n - 2]}"]`).click();
   await expect(selected(page)).toHaveAttribute('data-tab', order[n - 2]);
   await settle(page);
   expect((await header(page)).currentWhole).toBe(true);

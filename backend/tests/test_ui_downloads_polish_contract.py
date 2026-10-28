@@ -89,7 +89,7 @@ def test_universal_language_bridges_all_major_legacy_component_families() -> Non
 def test_downloads_page_layer_is_page_specific_only() -> None:
     css = DOWNLOADS.read_text(encoding="utf-8")
     required = (
-        "#view-torrents.active",
+        "#view-torrents:is(.active, [data-dp-motion-outgoing])",
         ".dp-downloads-heading",
         ".filter-tabs",
         ".dp-downloads-table-wrap",

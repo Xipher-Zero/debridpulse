@@ -499,7 +499,7 @@ body.light #view-help .dp-help-title-icon {
 /* Help view: tabs always visible, content scrolls below (DP 1.0.12 canonical
    flattening: migrated from the retired ui-legacy-foundation.css) */
 #view-help { display: none !important; }
-#view-help.active { display: flex !important; flex-direction: column; height: 100%; }
+#view-help:is(.active, [data-dp-motion-outgoing]) { display: flex !important; flex-direction: column; height: 100%; }
 #help-tabs { flex-shrink: 0; margin-bottom: 0; overflow-x: auto; scrollbar-width: none; }
 #help-tabs::-webkit-scrollbar { display: none; }
 .help-panel { display: none; }

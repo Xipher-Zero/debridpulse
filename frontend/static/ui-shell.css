@@ -471,7 +471,7 @@ body.light #runtime-speed-badge {
 /* ── Page-view visibility (DP 1.0.12 canonical flattening: migrated from
    the retired ui-legacy-foundation.css) ─────────────────────────────────── */
 .view { display: none !important; }
-.view.active { display: block !important; }
+.view:is(.active, [data-dp-motion-outgoing]) { display: block !important; }
 
 @media (min-width: 780px) {
   .mobile-menu-btn { display: none; }
@@ -480,8 +480,8 @@ body.light #runtime-speed-badge {
 }
 
 @media (max-width: 779px) {
-  .view.active { display: block !important; }
-  #view-dashboard.active { height: auto; min-height: 0; overflow: visible; }
+  .view:is(.active, [data-dp-motion-outgoing]) { display: block !important; }
+  #view-dashboard:is(.active, [data-dp-motion-outgoing]) { height: auto; min-height: 0; overflow: visible; }
 
   /* Sidebar: fixed overlay, slides in from left */
   #sidebar {

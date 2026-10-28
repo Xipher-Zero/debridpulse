@@ -12,7 +12,7 @@
    table viewport takes what its header, toolbar and pager leave. The global
    header changes at 900px on its own; the workspace does not change with it. */
 @media (min-width: 780px) {
-  #view-torrents.active {
+  #view-torrents:is(.active, [data-dp-motion-outgoing]) {
     display: flex !important;
     flex-direction: column;
     /* #content already owns the remaining shell height and 24px bottom gutter.
@@ -307,11 +307,11 @@ body.light #view-torrents > .card > div:has(#torrent-search) {
 }
 
 #view-torrents .t-table,
-#view-torrents #t-tbody {
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) {
   background: transparent;
 }
 
-#view-torrents #t-tbody tr.dp-downloads-detail-row {
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr.dp-downloads-detail-row {
   cursor: pointer;
 }
 
@@ -331,13 +331,13 @@ body.light #view-torrents .empty-icon {
   opacity: .72;
   filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
 }
-#view-torrents #t-tbody tr:not([data-torrent-id]),
-#view-torrents #t-tbody tr:not([data-torrent-id]):hover {
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr:not([data-torrent-id]),
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr:not([data-torrent-id]):hover {
   background: transparent;
   border-bottom: 0;
 }
-#view-torrents #t-tbody tr:not([data-torrent-id]) td,
-#view-torrents #t-tbody tr:not([data-torrent-id]) .empty {
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr:not([data-torrent-id]) td,
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr:not([data-torrent-id]) .empty {
   border-bottom: 0;
   background: transparent;
 }
@@ -381,7 +381,7 @@ body.light #view-torrents .empty-icon {
 @media (max-width: 779px) {
   /* Handheld: the page grows with its card, and the table viewport is
      bounded by the window. */
-  #view-torrents.active {
+  #view-torrents:is(.active, [data-dp-motion-outgoing]) {
     height: auto;
     overflow: visible;
   }
@@ -484,7 +484,7 @@ body.light #view-torrents .empty-icon {
     + (var(--dp-downloads-action-slots) - 1) * 7px + 28px);
   --dp-downloads-select-track: 36px;
 }
-#view-torrents .t-table:has(> #t-tbody .actions > :nth-child(3)) {
+#view-torrents .t-table:has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)) {
   --dp-downloads-action-slots: 3;
 }
 #view-torrents .t-table .dp-downloads-name-cell {
@@ -505,12 +505,12 @@ body.light #view-torrents .empty-icon {
   width: var(--dp-downloads-action-track);
   text-align: center;
 }
-#view-torrents #t-tbody .dp-downloads-action-cell .actions {
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-downloads-action-cell .actions {
   justify-content: center;
   gap: 7px;
   white-space: nowrap;
 }
-#view-torrents #t-tbody .dp-queue-consent { margin-inline: auto; }
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-queue-consent { margin-inline: auto; }
 #view-torrents .dp-page-placeholder-row :is(.dp-downloads-status-cell, .dp-downloads-action-cell) .dp-ph {
   margin-inline: auto;
 }
@@ -553,7 +553,7 @@ body.light #view-torrents .empty-icon {
    track) and the same formatted value closes the name's metadata row, at its
    right end, in the name's own type; Progress, the column that flexes, takes
    the room. Wider, that value is not shown and Size keeps its column. */
-#t-tbody .dp-downloads-size {
+:is(#t-tbody, .dp-downloads-styled-tbody) .dp-downloads-size {
   display: none;
 }
 @container dp-downloads-table (width < 763px) {
@@ -563,7 +563,7 @@ body.light #view-torrents .empty-icon {
   #view-torrents .t-table .dp-downloads-size-cell {
     display: none;
   }
-  #t-tbody .dp-downloads-size {
+  :is(#t-tbody, .dp-downloads-styled-tbody) .dp-downloads-size {
     display: block;
     flex: 0 0 auto;
     margin-left: auto;
@@ -584,8 +584,8 @@ body.light #view-torrents .empty-icon {
     --dp-downloads-size-track: 0px;
   }
   #view-torrents .t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }
-  #view-torrents #t-tbody :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }
-  #view-torrents #t-tbody .dp-transfer-provider-meta { flex-wrap: wrap; }
+  #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }
+  #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta { flex-wrap: wrap; }
 }
 
 /* ── Pause shim, date menu, and name metadata material (folded
@@ -607,7 +607,7 @@ body.light #view-torrents .empty-icon {
 .dp-date-menu button:hover,.dp-date-menu button:focus-visible,.dp-date-menu button[aria-checked="true"]{color:var(--text);background:var(--surface2)}
 .dp-downloads-date-value:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* A label, when set, follows the name's controls and gives way first. */
-#t-tbody .dp-transfer-provider-meta .lbl-badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+:is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta .lbl-badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 
 /* ── Operator queue: Name-cell grip, drag, page edges, selection column ──
    The whole Name cell is the drag surface of a queue member in the Priority
@@ -640,11 +640,11 @@ body.light #view-torrents .empty-icon {
   outline: none;
   box-shadow: inset var(--dp-focus-ring);
 }
-#view-torrents #t-tbody.dp-queue-dragging,
-#view-torrents #t-tbody.dp-queue-dragging td[data-queue-drag="true"] { cursor: grabbing; }
-#view-torrents #t-tbody tr.dp-queue-drag-source { opacity: .45; }
-#view-torrents #t-tbody tr[data-drop="before"] > td { box-shadow: inset 0 2px 0 var(--dp-accent-purple-bright); }
-#view-torrents #t-tbody tr[data-drop="after"] > td { box-shadow: inset 0 -2px 0 var(--dp-accent-purple-bright); }
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody).dp-queue-dragging,
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody).dp-queue-dragging td[data-queue-drag="true"] { cursor: grabbing; }
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr.dp-queue-drag-source { opacity: .45; }
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr[data-drop="before"] > td { box-shadow: inset 0 2px 0 var(--dp-accent-purple-bright); }
+#view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) tr[data-drop="after"] > td { box-shadow: inset 0 -2px 0 var(--dp-accent-purple-bright); }
 .dp-queue-drag-ghost {
   position: fixed;
   z-index: 600;
@@ -709,10 +709,10 @@ body.light #view-torrents .empty-icon {
    colour on hover and keyboard focus. Border, tinted surface, size and
    behaviour are the shared .btn-danger's, unchanged. The same row Remove
    serves the Users & Access account rows. */
-:is(#t-tbody .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove { color: var(--dp-text-secondary); }
+:is(:is(#t-tbody, .dp-downloads-styled-tbody) .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove { color: var(--dp-text-secondary); }
 /* The reaffirmation a promoted transfer offers, under its status badge. */
-#t-tbody .dp-queue-consent { display: flex; align-items: center; margin-top: 4px; }
-:is(#t-tbody .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove:is(:hover, :focus-visible) { color: var(--dp-state-error); }
+:is(#t-tbody, .dp-downloads-styled-tbody) .dp-queue-consent { display: flex; align-items: center; margin-top: 4px; }
+:is(:is(#t-tbody, .dp-downloads-styled-tbody) .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove:is(:hover, :focus-visible) { color: var(--dp-state-error); }
 
 /* The restart confirmation: the title and every affected transfer read from
    the left; only the two explanatory hints are centred (ui-modal-contract). */
@@ -754,7 +754,7 @@ body.light #view-torrents .empty-icon {
    line with the words; narrower, the line is the percentage and the estimate,
    and the words stay in the label's accessible name and tooltip. */
 @media (width < 1600px) {
-  #view-torrents #t-tbody .prog-line .prog-words {
+  #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .prog-line .prog-words {
     display: none;
   }
 }

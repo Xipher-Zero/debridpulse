@@ -150,7 +150,12 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     # the middle of a slide; the slide's commit only draws the latest
     # decision, and the end state is written with it.
     assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
-    assert "(navFit.drawn?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap" in place
+    assert "(onScreen()?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap" in place
+    # "Where it is drawn" is the window on screen: a slide's commit draws at
+    # once (DPMotion), so until that draw is painted a choice is judged from
+    # the window shown before it.
+    assert "const onScreen = () => navFit?.shown || navFit?.drawn;" in mechanics
+    assert "requestAnimationFrame(() => { delete fit.shown; });" in draw
     assert "distance: motion.distance}, drawNavigation);" in place
     assert "control.dataset.navAt = at;" in draw and "navFit.drawn = {left: target, index, room, side};" in draw
     # Which travel action is gone follows the window as drawn -- the end of

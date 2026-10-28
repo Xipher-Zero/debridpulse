@@ -25,13 +25,46 @@ def test_the_motion_primitive_presents_only() -> None:
     for absent in ("api(", "fetch(", "EventSource", "innerHTML", "setInterval", "localStorage", "sessionStorage"):
         assert absent not in motion, absent
     assert "window.DPMotion = Object.freeze({slide, resolve, disclose, enter, leave, restore, focusOrigin, reduced, TIMING});" in motion
-    # The slide is scoped to the surface, so the rest of the page stays live.
-    assert "element.startViewTransition(" in motion and "document.startViewTransition" not in motion
-    # Reduced motion, or no scoped view transitions: the commit, at once.
-    assert "if (!element || !direction || reduced() || typeof element.startViewTransition !== 'function') {" in motion
-    assert "transition.ready.catch(() => {});" in motion          # a superseded slide is no error
+    # One slide in every engine: the Web Animations API on the surface's own
+    # outgoing copy and live content -- no view transition of any scope, no
+    # engine or browser branch.
+    assert "startViewTransition" not in motion and "ViewTransition" not in motion
+    for sniff in ("navigator.userAgent", "navigator.vendor", "userAgentData"):
+        assert sniff not in motion, sniff
+    assert ".animate(leave, timing)" in motion and "node.animate(enter, timing)" in motion
+    # Reduced motion or no Web Animations: the commit, at once. No surface is held.
+    assert "if (!element || !direction || reduced() || typeof element.animate !== 'function') {" in motion
+    assert "HELD" not in motion
+    # Where the owner's commit only hides what it leaves, that real element is
+    # kept for the slide and released; it is never made the selection again.
+    assert "const KEEPS = '#content, #view-settings .dp-settings-scroll, #view-help .dp-help-scroll';" in motion
+    assert "node.dataset.dpMotionOutgoing = '';" in motion and "delete node.dataset.dpMotionOutgoing;" in motion
+    flight = motion[motion.index("function slide("):motion.index("function resolve(")]
+    assert "classList.add('active')" not in flight and ".hidden = " not in flight and "aria-selected" not in flight
+    # The outgoing copy is inert, hidden from assistive technology, without IDs
+    # or form names, and never carries a secret: those are made anew, empty.
+    assert "ghost.inert = true;" in motion and "ghost.setAttribute('aria-hidden', 'true');" in motion
+    assert "made.removeAttribute('id');" in motion and "made.removeAttribute('name');" in motion
+    assert "if (source.matches(SECRET)) return blank(source);" in motion
+    for secret in ('input[type="password"]', ".dp-settings-extraction-password-editor :is(input, textarea)",
+                   'textarea[data-setting="extraction_password"]', ".dp-token-disclosure input"):
+        assert secret in motion, secret
+    # A newer slide of the surface ends the one running first; content the
+    # surface gains while it moves joins it; nothing outlives the slide.
+    assert "previous?.end();" in motion and "observer.observe(host, {childList: true});" in motion
+    assert "observer.disconnect();" in motion and "ghost?.remove();" in motion
+    # The travel's clock starts only once its prepared presentation has been
+    # drawn: paused at its start, played from the next frame (no timer).
+    assert "[...leaving, ...moving.values()].forEach(animation => animation.pause());" in motion
+    assert "[...leaving, ...moving.values()].forEach(animation => animation.play());" in motion
+    assert "if (flight.waiting) animation.pause();" in motion
+    flight_body = motion[motion.index("function slide("):motion.index("function resolve(")]
+    assert "setTimeout" not in flight_body
     css = read("ui-motion.css")
     assert "!important" not in css and "transition: all" not in css
+    # The view-transition presentation is retired, not overridden.
+    for retired in ("::view-transition", "@keyframes", "--dp-motion-leave", "--dp-motion-enter"):
+        assert retired not in css, retired
     # Farther navigation travels longer and farther: 1, 2-3, 4+ positions.
     for token in ("--dp-motion-adjacent: 280ms;", "--dp-motion-short: 380ms;", "--dp-motion-long: 450ms;",
                   "--dp-motion-expand: 250ms;", "--dp-motion-collapse: 200ms;"):
@@ -153,7 +186,7 @@ def test_a_page_turn_slides_at_once_to_a_placeholder_that_its_answer_crossfades_
     assert "startViewTransition" not in resolve and "transform" not in resolve
     assert "commit();\n    host.appendChild(ghost);" in resolve
     assert "[{opacity: 0}, {opacity: 1}]" in resolve and "[{opacity: 1}, {opacity: 0}]" in resolve
-    assert "skip: () => transition.skipTransition()" in motion
+    assert "skip: () => flight.end()" in motion
     css = read("ui-motion.css")
     placeholder = css[css.index("[data-dp-placeholder] {"):css.index(".dp-motion-still {")]
     assert "filter: blur(" in placeholder and "animation" not in placeholder and "@keyframes" not in placeholder

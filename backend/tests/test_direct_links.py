@@ -190,7 +190,7 @@ class DashboardContractTests(unittest.TestCase):
         html = (repo_root / "frontend/static/index.html").read_text()
         js = (repo_root / "frontend/static/app.js").read_text()
         # DP 1.0.12 canonical flattening: style.css is now a pure @import
-        # list. #content.dashboard-active / #view-dashboard.active's own
+        # list. #content.dashboard-active / #view-dashboard:is(.active, [data-dp-motion-outgoing])'s own
         # unscoped definitions in style.css were provably dead (ui-dashboard
         # .css's identical unscoped copy, loaded later in the same cascade,
         # already won) and were removed; #dash-activity-card had no such
@@ -212,7 +212,7 @@ class DashboardContractTests(unittest.TestCase):
         ).read_text()
         self.assertIn("api('GET',`/torrents?limit=${recentLimit}&order=queue`)", owner)
         self.assertIn("#content.dashboard-active {\n  overflow-y: hidden;\n}", dashboard_css)
-        self.assertIn("#view-dashboard.active {", dashboard_css)
+        self.assertIn("#view-dashboard:is(.active, [data-dp-motion-outgoing]) {", dashboard_css)
         self.assertIn("#dash-activity-card {", dashboard_css)
 
 if __name__ == "__main__":

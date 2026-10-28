@@ -29,8 +29,8 @@ def test_shared_transfer_contract_is_final_progress_geometry_owner() -> None:
     assert overlay.index(dashboard) < overlay.index(downloads) < overlay.index(transfer_path)
 
     css = TRANSFER.read_text(encoding="utf-8")
-    assert ":is(#dash-tbody, #t-tbody) .prog," in css
-    assert ":is(#dash-tbody, #t-tbody) .prog-fill" in css
+    assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog," in css
+    assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill" in css
     assert "height: 7px !important" in css
     assert "border-radius: 999px !important" in css
     assert "height: 3.5px !important" not in css

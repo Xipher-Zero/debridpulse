@@ -12,12 +12,12 @@ def read_static(name: str) -> str:
 def test_downloads_outer_view_does_not_clip_universal_card_paint():
     css = read_static("ui-downloads-page.css")
 
-    assert "#view-torrents.active" in css
+    assert "#view-torrents:is(.active, [data-dp-motion-outgoing])" in css
     assert "overflow: visible;" in css
     assert "#view-torrents .dp-downloads-table-wrap" in css
     assert "overflow: auto !important;" in css
 
-    desktop_rule = css.split("#view-torrents.active", 1)[1].split("}", 1)[0]
+    desktop_rule = css.split("#view-torrents:is(.active, [data-dp-motion-outgoing])", 1)[1].split("}", 1)[0]
     assert "overflow: hidden" not in desktop_rule
 
 
