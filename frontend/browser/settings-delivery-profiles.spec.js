@@ -75,23 +75,24 @@ test('the card sits directly beneath Integration Accounts in the Users & Access 
   expect(titles.slice(-2)).toEqual(['Integration Accounts', 'Integration Delivery Profiles']);
   const card = page.locator('.dp-settings-delivery-profiles-card');
   const title = card.locator('> .card-header .card-title');
-  await expect(title.locator('.dp-settings-card-title-hint'))
-    .toHaveText('Configure how external applications access completed downloads.');
+  // The purpose hint is the hinted header's (1.0.14): on the header's
+  // midpoint while it fits, else the exact words of its Help chip.
+  const header = card.locator('> .card-header.dp-settings-card-header--hinted');
+  const hint = 'Configure how external applications access completed downloads.';
+  await expect(header.locator('> .dp-settings-card-header-center > span')).toHaveText(hint);
+  expect([hint, 'Help: Integration Delivery Profiles'])
+    .toContain(await header.locator('.dp-settings-help-chip').getAttribute('data-tooltip'));
   const chip = title.locator(':scope > .dp-settings-protocol-chip');
   await expect(chip).toHaveAttribute('data-section', 'users');
   await expect(chip.locator('img')).toHaveAttribute('src', '/icons/lucide/workflow-users.svg');
-  // Title over hint, the pair centred against the glyph.
+  // The title, centred against the glyph.
   const geometry = await title.evaluate(node => {
     const box = element => element.getBoundingClientRect();
     const chipBox = box(node.querySelector('.dp-settings-protocol-chip'));
-    const stack = box(node.querySelector('.dp-settings-card-title-stack'));
     const text = box(node.querySelector('.dp-settings-card-title-text'));
-    const hint = box(node.querySelector('.dp-settings-card-title-hint'));
-    return {centre: Math.abs((chipBox.top + chipBox.height / 2) - (stack.top + stack.height / 2)),
-            stacked: hint.top >= text.bottom - 0.5, gap: stack.left - chipBox.right};
+    return {centre: Math.abs((chipBox.top + chipBox.height / 2) - (text.top + text.height / 2)), gap: text.left - chipBox.right};
   });
   expect(geometry.centre).toBeLessThanOrEqual(1);
-  expect(geometry.stacked).toBe(true);
   expect(geometry.gap).toBeGreaterThan(0);
   await expect(card.locator('> .card-header [data-user-action="create-profile"]')).toHaveText('Create Delivery Profile');
   await expect(card.locator('.card-body')).toContainText('No delivery profiles.');

@@ -557,18 +557,15 @@
 
 /* A bounded island whose settings no longer share one row (fitIslands in
    ui-settings-page.js reads that from the island laid out as a row): one
-   setting per row, its title and hint at the island's leading inset and its
-   control at the trailing one, so the island's max-content width -- and its
-   outline -- is its widest setting rather than the room the wrapped row was
-   given. Handheld (below 780px) keeps its own one-column island. */
+   setting per row, each at its OWN width and centred under the one above --
+   exactly where the wrapped row put it, its title, hint and control together
+   -- so the island's max-content width, and its outline, is its widest
+   setting rather than the room the wrapped row was given. Handheld (below
+   780px) keeps its own one-column island. */
 @media (min-width: 780px) {
   #view-settings .dp-settings-island[data-island='stacked'] {
     flex-direction: column;
-    align-items: stretch;
-  }
-
-  #view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
-    justify-content: space-between;
+    align-items: center;
   }
 }
 

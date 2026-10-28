@@ -64,7 +64,7 @@ def test_log_out_lives_inside_the_sessions_field_as_a_flex_sibling_of_the_count(
     js = source(SETTINGS)
     css = source(STYLE)
 
-    session = js[js.index("<div class=\"dp-settings-auth-session-row\""):js.index("`, {className: 'dp-settings-auth-status-card',")]
+    session = js[js.index("<div class=\"dp-settings-auth-session-row dp-settings-island\""):js.index("`, {className: 'dp-settings-auth-status-card',")]
     assert "inlineField('', 'Active Browser Sessions'" in session
     assert "className: 'dp-settings-auth-session-count'" in session
     assert 'data-action="logout-session"' in session

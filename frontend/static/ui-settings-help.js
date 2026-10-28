@@ -432,7 +432,8 @@
           'A summary of how people sign in: which sign-in methods are enabled, whether each is ready, and how many browser sessions are currently valid.',
         ]},
         {heading: 'Browser sessions', list: [
-          'Each sign-in, by password or OpenID Connect, starts a new browser session that lasts for the Browser Session Lifetime. Using DebridPulse does not extend it; when it ends, you sign in again.',
+          'Browser Session Lifetime: each sign-in, by password or OpenID Connect, starts a new browser session that lasts this many hours. Using DebridPulse does not extend it; when it ends, you sign in again.',
+          'Active Browser Sessions counts the browser sign-ins that are currently valid.',
           'Log Out Current Session ends only this browser’s session.',
           'Sessions concern the browser interface only. Downloads continue whether or not anyone is signed in.',
         ]},
@@ -449,8 +450,11 @@
         ]},
         {heading: 'Principal controls', list: [
           'Enable turns local password sign-in on or off for the whole instance. It can be turned on only when an active Admin has a username and password.',
-          'Username and Password are your own account’s credential. The stored password is never shown; leave the field blank to keep it, or enter a new one to replace it.',
-          'Clear Stored Password removes your stored password after you confirm.',
+          'Username and Password are your own account’s credential. Typing in them changes nothing until you choose Apply, which saves both together or, if anything is refused, changes nothing.',
+          'The stored password is never shown. Leave Password blank to keep it; enter a new one to replace it. Changing the username needs a new password with it, and a first credential needs both.',
+          'Applying a new credential ends your account’s browser sessions, including this one; sign in again with the new username and password.',
+          'Clear Stored Password, inside the Password field, removes your stored password after you confirm. It never applies what you have typed.',
+          'The status beside Help says Configured when a username and password are stored, and Unconfigured otherwise. It does not test the password.',
         ]},
         {heading: 'Related', text: [
           'Other people’s local accounts and passwords are managed under Users & Access, User Accounts.',

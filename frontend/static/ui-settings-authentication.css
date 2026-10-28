@@ -1,24 +1,14 @@
-/* DebridPulse Authentication and Users & Access cards. */
-#view-settings .dp-settings-username-password-card > .card-header,
-#view-settings .dp-settings-users-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
+/* DebridPulse Authentication and Users & Access cards.
 
-#view-settings .dp-settings-username-password-card > .card-header > .card-title,
-#view-settings .dp-settings-users-card > .card-header > .card-title {
-  justify-self: start;
-}
-
+   Every governing card here takes the hinted Settings card header
+   (ui-settings-page.css, fitHeaderHints): identity, the purpose hint on the
+   header's own midpoint while it fits, the rail. Only the hint's type is
+   stated here. */
 #view-settings .dp-settings-auth-header-copy {
   min-width: 0;
-  justify-self: center;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.45;
-  text-align: center;
 }
 
 #view-settings .dp-settings-auth-header-enable {
@@ -277,10 +267,17 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 /* Username & Password ------------------------------------------------------ */
-/* Two settings on one line, each the shared inline field. Clear Stored
-   Password is the password field's own trailing action, so it shares that
-   field's centre line without any spacer row pretending to be a label. */
+/* Two settings, each the shared inline field, as ONE pair: equal shares of the
+   row, each shrinking -- its sentence wraps, its control narrows -- down to
+   the one minimum both declare before the pair breaks, so they stay side by
+   side as long as both remain usable; broken, each is the same bounded width,
+   centred, one above the other. Clear Stored Password is inside the password
+   field (its embedded action, a sibling of the input, so it never covers
+   typed text) and Apply is the field's own trailing action. */
 #view-settings .dp-settings-auth-credentials-row {
+  /* The narrowest either setting stays usable at: its sentence in about
+     100px, the password's own room beside Clear, and Apply. */
+  --dp-auth-credential-min: 460px;
   min-width: 0;
   display: flex;
   /* STRETCH, not centre: the two settings' informational stacks wrap to
@@ -296,21 +293,36 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 #view-settings .dp-settings-auth-credentials-row > .dp-settings-inline-field {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min(100%, var(--dp-auth-credential-min));
+  max-width: 600px;
 }
 
-#view-settings .dp-settings-auth-username-field .input {
-  width: 200px;
-  max-width: 100%;
+#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info {
+  flex: 1 1 150px;
+  min-width: 100px;
 }
 
-#view-settings .dp-settings-auth-password-field .input {
-  width: 240px;
-  max-width: 100%;
+#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-control {
+  flex: 1 1 150px;
 }
 
-#view-settings .dp-settings-auth-password-field > .dp-settings-inline-field-action .btn {
+#view-settings .dp-settings-auth-username-field .input,
+#view-settings .dp-settings-auth-password-field .dp-action-field {
+  width: 100%;
+}
+
+#view-settings .dp-settings-auth-password-field .dp-action-field > .input {
+  min-width: 100px;
+}
+
+/* The password control never narrows past what it holds -- its typing room
+   and Clear beside it -- so Clear stays inside the field and clear of Apply. */
+#view-settings .dp-settings-auth-password-field :is(.dp-settings-inline-field-control, .dp-action-field) {
+  min-width: min-content;
+}
+
+#view-settings .dp-settings-auth-password-field :is(.dp-action-field, .dp-settings-inline-field-action) .btn {
   white-space: nowrap;
 }
 
@@ -327,11 +339,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 @media (max-width: 1280px) {
-  #view-settings .dp-settings-username-password-card > .card-header,
-  #view-settings .dp-settings-users-card > .card-header {
-    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
-  }
-
   #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
   #view-settings .dp-settings-auth-credentials-row {
     gap: 16px 28px;
@@ -343,22 +350,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 @media (max-width: 779px) {
-  #view-settings .dp-settings-username-password-card > .card-header,
-  #view-settings .dp-settings-users-card > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
-    padding-block: 10px;
-  }
-
-  #view-settings .dp-settings-auth-header-copy {
-    justify-self: start;
-    text-align: left;
-  }
-
-  /* (Not Services' governing and premium-provider headers, whose rail stays
-     at the trailing edge: ui-settings-page.css, dp-settings-card-header--hinted.) */
-  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-controls,
-  #view-settings .dp-settings-auth-header-enable {
+  /* (Not a hinted header, whose rail stays at the trailing edge:
+     ui-settings-page.css, dp-settings-card-header--hinted.) */
+  #view-settings :where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-controls {
     justify-self: start;
     justify-content: flex-start;
   }
@@ -412,26 +406,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 /* Header follows the same Title / centered flavor / Enable pattern as the
    other Settings cards with a master control. */
-#view-settings .dp-settings-oidc-grouped-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-oidc-grouped-card > .card-header > .card-title {
-  justify-self: start;
-}
-
-#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy {
-  justify-self: center;
-  text-align: center;
-}
-
-#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
-  justify-self: end;
-}
-
 /* An explicit 1fr column. Without it the auto column is sized to the widest
    item's max-content, and a content-bounded island's own `max-width: 100%`
    then resolves against that overgrown track instead of the card. */
@@ -746,10 +720,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 @media (max-width: 1280px) {
-  #view-settings .dp-settings-oidc-grouped-card > .card-header {
-    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
-  }
-
   #view-settings .dp-settings-oidc-group {
     gap: 16px 28px;
   }
@@ -760,18 +730,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 @media (max-width: 779px) {
-  #view-settings .dp-settings-oidc-grouped-card > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
-    padding-block: 10px;
-  }
-
-  #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy,
-  #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
-    justify-self: start;
-    text-align: left;
-  }
-
   /* Stacked, each setting keeps its own inline title/hint + control. */
   #view-settings .dp-settings-oidc-group {
     width: auto;

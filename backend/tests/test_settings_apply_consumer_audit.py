@@ -123,8 +123,14 @@ def test_every_editable_control_on_every_panel_declares_its_own_boundary():
         seen |= found
     # The probe really does reach every tab, not just the one being changed.
     for witness in ("alldebrid_rate_limit_per_minute", "download_folder", "extract_enabled",
-                    "discord_username", "auth_username", "backup_folder"):
+                    "discord_username", "oidc_provider_name", "backup_folder"):
         assert witness in seen, witness
+    # The one deliberate exception: the local credential pair is applied by
+    # its own explicit Apply (applyCredentials), never at a field boundary.
+    auth = block("  function authenticationPanel(a) {", "  /* ── Users & Access")
+    _found, unpersisted = rendered_controls(auth)
+    assert {"auth_username", "auth_password"} <= unpersisted
+    assert not {"auth_username", "auth_password"} & declared
 
 
 def test_data_and_maintenance_declares_every_one_of_its_own_controls():

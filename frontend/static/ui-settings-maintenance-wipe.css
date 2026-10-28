@@ -5,29 +5,14 @@
    tuning cell and its group, the canonical disclosure, the shared toggle row,
    the right-aligned card-header rail -- and this sheet states only where this
    page puts them. */
-#view-settings .dp-settings-event-logging-card > .card-header,
-#view-settings .dp-settings-database-wipe-card > .card-header,
-#view-settings .dp-settings-backups-retention-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.1fr) minmax(300px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-event-logging-card > .card-header > .card-title,
-#view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
-#view-settings .dp-settings-backups-retention-card > .card-header > .card-title {
-  justify-self: start;
-}
-
+/* The three headers are the hinted Settings card header (ui-settings-page.css,
+   fitHeaderHints); only the hint's type is stated here. */
 #view-settings .dp-settings-event-logging-header-copy,
 #view-settings .dp-settings-database-wipe-header-copy,
 #view-settings .dp-settings-backups-header-copy {
-  justify-self: center;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.45;
-  text-align: center;
 }
 
 /* ── The Backups & Retention header rail ─────────────────────────────────
@@ -332,12 +317,6 @@
 }
 
 @media (max-width: 1180px) {
-  #view-settings .dp-settings-event-logging-card > .card-header,
-  #view-settings .dp-settings-database-wipe-card > .card-header,
-  #view-settings .dp-settings-backups-retention-card > .card-header {
-    grid-template-columns: minmax(200px, 1fr) minmax(260px, 1fr) minmax(260px, 1fr);
-  }
-
   #view-settings .dp-settings-backup-folder-island {
     width: 82%;
   }
@@ -347,29 +326,7 @@
   }
 }
 
-@media (max-width: 779px) {
-  #view-settings .dp-settings-event-logging-card > .card-header,
-  #view-settings .dp-settings-database-wipe-card > .card-header,
-  #view-settings .dp-settings-backups-retention-card > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
-  }
 
-  #view-settings .dp-settings-event-logging-card > .card-header > .card-title,
-  #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
-  #view-settings .dp-settings-backups-retention-card > .card-header > .card-title,
-  #view-settings .dp-settings-event-logging-header-copy,
-  #view-settings .dp-settings-database-wipe-header-copy,
-  #view-settings .dp-settings-backups-header-copy,
-  #view-settings .dp-settings-backups-header-toggle,
-  #view-settings .dp-settings-backups-retention-card .dp-settings-card-header-controls {
-    justify-self: center;
-  }
-
-  #view-settings .dp-settings-backups-retention-card .dp-settings-card-header-controls {
-    justify-content: center;
-  }
-}
 
 @media (max-width: 779px) {
   /* One control per line; each keeps its own title/hint + control. */

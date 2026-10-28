@@ -273,8 +273,6 @@
     // marks a secret, whose accepted presentation is always blank; it is not a
     // different commit class and not a different write.
     auth_password_enabled: {scope: 'auth-config', option: 'auth_password_enabled', commit: 'immediate'},
-    auth_username: {scope: 'auth-config', option: 'auth_username'},
-    auth_password: {scope: 'auth-config', option: 'auth_password', redacted: true},
     auth_session_lifetime_hours: {scope: 'auth-config', option: 'auth_session_lifetime_hours'},
     auth_oidc_enabled: {scope: 'auth-config', option: 'auth_oidc_enabled', commit: 'immediate'},
     oidc_provider_name: {scope: 'auth-config', option: 'oidc_provider_name'},
@@ -861,12 +859,7 @@
     let titleMarkup = html(title);
     if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
-      // ``titleHint``: the card's one-line purpose, stacked beneath its title
-      // beside the glyph, in place of a centred header copy.
-      titleMarkup = options.titleHint
-        ? `${options.titlePrefix}<span class="dp-settings-card-title-stack"><span class="dp-settings-card-title-text">${
-          html(title)}</span><span class="dp-settings-card-title-hint">${html(options.titleHint)}</span></span>`
-        : `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
+      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
     }
     const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
     /* The SAME operational header rail a provider card renders: what the
@@ -886,11 +879,15 @@
      * on the header's own midpoint while it fits, and the rail. A card that
      * does not ask renders exactly as before. */
     const identity = `<span class="${titleClass}">${titleMarkup}</span>`;
+    // The hinted grammar measures ONE hint element (fitHeaderHints); a hint
+    // given as plain text is that element's text.
+    const center = options.hinted && options.headerCenter && !/^\s*</.test(options.headerCenter)
+      ? `<span>${options.headerCenter}</span>` : options.headerCenter;
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}">
           ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}</span>` : identity}
-          ${options.headerCenter ? `<div class="${centerClass}">${options.headerCenter}</div>` : ''}
+          ${center ? `<div class="${centerClass}">${center}</div>` : ''}
           ${rail}
         </div>
         <div class="card-body">${body}</div>
@@ -3078,6 +3075,7 @@
       headerCenter: own ? 'Configure your identity, Discord destinations, and alerts for your own downloads.'
         : 'Configure notification identity, delivery destinations, and event alerts.',
       headerCenterClass: 'dp-settings-notifications-header-copy',
+      hinted: true,
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
       headerAction: providerTestAction('test-discord'),
       action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false),
@@ -3110,6 +3108,7 @@
       headerCenter: own ? 'Configure where reports of your own activity are sent, how often, and how much they summarize.'
         : 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
       headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
+      hinted: true,
       headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
       headerAction: providerTestAction('send-report'),
       action: headerEnableToggle('stats_reporting_enabled', s.stats_reporting_enabled !== false),
@@ -3404,8 +3403,6 @@
    * what is stored. */
   const AUTH_CONTROL_VALUES = Object.freeze({
     auth_password_enabled: a => (a?.password_enabled ? '1' : '0'),
-    auth_username: a => text(a?.username),
-    auth_password: () => '',
     auth_session_lifetime_hours: a => String(a?.session_lifetime_hours || 12),
     auth_oidc_enabled: a => (a?.oidc_enabled ? '1' : '0'),
     oidc_provider_name: a => text(a?.oidc_provider_name || 'OpenID Connect'),
@@ -3557,6 +3554,8 @@
     // one canonical status node the card's rail already owns; the OIDC word is
     // never derived from a toast or from the DOM.
     paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));
+    paintCardStatus(view, '.dp-settings-username-password-card', credentialStatus(a));
+    projectCredentialDraft();
 
     const passwordField = fieldFor('auth_password');
     if (passwordField) passwordField.placeholder = passwordPlaceholder(a);
@@ -3628,13 +3627,7 @@
             </div>
           </div>`).join('')}
       </div>
-      <div class="dp-settings-auth-session-row" role="group" aria-label="Browser session information and controls">
-        ${inlineField('', 'Active Browser Sessions', 'Browser logins currently holding a valid session.',
-          `<span class="dp-settings-auth-session-count-value" data-auth-session-count>${html(a.session_count ?? 0)}</span>`,
-          {
-            className: 'dp-settings-auth-session-count',
-            action: '<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session">Log Out Current Session</button>',
-          })}
+      <div class="dp-settings-auth-session-row dp-settings-island" role="group" aria-label="Browser session information and controls">
         ${inlineField(lifetimeId, 'Browser Session Lifetime',
           'How long a browser login remains valid before the session expires and you must sign in again. Signing in starts a new session. Active downloads continue uninterrupted.',
           `<span class="dp-settings-auth-duration-control">
@@ -3644,9 +3637,17 @@
             <span class="dp-settings-auth-duration-unit" aria-hidden="true">hours</span>
           </span>`,
           {className: 'dp-settings-auth-session-lifetime'})}
+        ${inlineField('', 'Active Browser Sessions', 'Browser logins currently holding a valid session.',
+          `<span class="dp-settings-auth-session-count-value" data-auth-session-count>${html(a.session_count ?? 0)}</span>`,
+          {
+            className: 'dp-settings-auth-session-count',
+            action: '<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session">Log Out Current Session</button>',
+          })}
       </div>
     `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check'),
-      help: 'auth-status'});
+      help: 'auth-status', hinted: true,
+      headerCenter: 'How people sign in, and how long a browser stays signed in.',
+      headerCenterClass: 'dp-settings-auth-header-copy'});
   }
 
   function authenticationPanel(a) {
@@ -3656,8 +3657,12 @@
     const lines = values => Array.isArray(values) ? values.join('\n') : '';
     const callback = callbackFromPublicBase(externalBase) || '';
 
+    /* Username and Password are ONE credential, applied together and only by
+     * Apply (applyCredentials): neither is enrolled in field-boundary
+     * persistence, so typing, blurring or reflowing them writes nothing. */
     const usernameField = input('auth_username', 'Username', a.username || '', {
       inline: true,
+      commit: false,
       autocomplete: 'username',
       placeholder: 'operator',
       hint: 'Username used for browser and HTTP Basic authentication.',
@@ -3665,19 +3670,21 @@
     });
 
     /* The stored password is never projected into the browser: this field is
-     * always rendered blank, so blank IS its canonical baseline and leaving it
-     * untouched crosses no commit boundary at all. Erasing the stored password
-     * is the separate confirmed action beside it, never an inference from an
-     * empty field. */
+     * always rendered blank, and blank means "keep the stored password".
+     * Erasing it is Clear Stored Password, the confirmed action inside the
+     * field, never an inference from an empty field; Apply, in the field's
+     * action slot, is the one act that changes the credential. */
     const passwordField = input('auth_password', 'Password', '', {
       inline: true,
+      commit: false,
       type: 'password',
       autocomplete: 'new-password',
       maxlength: 4096,
       placeholder: passwordPlaceholder(a),
       hint: 'Leave blank to keep the current password. Enter a new password to replace it.',
       className: 'dp-settings-auth-password-field',
-      action: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>`,
+      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>`,
+      action: '<button class="btn btn-blue btn-sm" type="button" data-action="apply-credentials" disabled>Apply</button>',
     });
 
     const credentials = card('Username & Password', `
@@ -3685,9 +3692,11 @@
     `, {
       className: 'dp-settings-username-password-card',
       help: 'username-password',
+      hinted: true,
       titlePrefix: familyIcon('authentication', 'user-lock'),
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
+      headerStatus: credentialStatus(a),
       action: headerEnableToggle('auth_password_enabled', a.password_enabled),
     });
 
@@ -3814,6 +3823,7 @@
       titlePrefix: familyIcon('authentication', 'id-card'),
       headerCenter: 'Configure an external identity provider for browser sign-in.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
+      hinted: true,
       // Test is a provider-level action proving provider-level state, so it
       // takes the card's own rail in the one canonical treatment -- there is no
       // OIDC-specific Test.
@@ -3997,6 +4007,7 @@
       titlePrefix: familyIcon('users', 'users'),
       headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
       headerCenterClass: 'dp-settings-auth-header-copy',
+      hinted: true,
       headerAction: '<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge">Merge</button>'
         + '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local">Add Local Account</button>',
     });
@@ -4006,13 +4017,16 @@
       titlePrefix: familyIcon('users', 'key-round'),
       headerCenter: 'Automation that submits downloads through the API. A token is shown once, when it is issued.',
       headerCenterClass: 'dp-settings-auth-header-copy',
+      hinted: true,
       headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">Add Integration Account</button>',
     });
     const delivery = card('Integration Delivery Profiles', profileRows(), {
       className: 'dp-settings-delivery-profiles-card',
       help: 'delivery-profiles',
       titlePrefix: familyIcon('users', 'workflow-users'),
-      titleHint: 'Configure how external applications access completed downloads.',
+      headerCenter: 'Configure how external applications access completed downloads.',
+      headerCenterClass: 'dp-settings-auth-header-copy',
+      hinted: true,
       headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">Create Delivery Profile</button>',
     });
     return people + automation + delivery;
@@ -4024,7 +4038,10 @@
 
   function paintUsers() {
     const mount = root()?.querySelector('[data-users-mount]');
-    if (mount) mount.innerHTML = usersBody();
+    if (!mount) return;
+    mount.innerHTML = usersBody();
+    // Its cards' headers are new: the one hinted-header fitter takes them on.
+    fitHeaderHints();
   }
 
   async function loadUsers() {
@@ -5077,6 +5094,15 @@
    * failed leaves complete configuration unverified, which is Configured --
    * the concrete reason travels in the Test's own feedback, not in this word.
    * Disabled OIDC states nothing at all. */
+  /* Username & Password's header status: whether a complete local credential
+   * (a username and a stored password) is durably configured -- the server's
+   * ``password_configured``. There is no independent verification of a
+   * password, so this never says Verified. */
+  function credentialStatus(a) {
+    return a?.password_configured && text(a?.username).trim()
+      ? {text: 'Configured', tone: 'warning'} : {text: 'Unconfigured', tone: 'error'};
+  }
+
   function oidcHeaderStatus(a) {
     if (!a?.oidc_enabled) return {text: '', tone: 'none'};
     if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
@@ -5134,6 +5160,7 @@
       titlePrefix: familyIcon('maintenance', 'file-text'),
       headerCenter: 'Configure how many activity log entries are displayed per page.',
       headerCenterClass: 'dp-settings-event-logging-header-copy',
+      hinted: true,
     });
     const backupEnabledId = fieldId('backup_enabled');
     const backups = card('Backups & Retention', `
@@ -5182,6 +5209,7 @@
       titlePrefix: familyIcon('maintenance', 'archive'),
       headerCenter: 'Configure automated backups and retention for backups and statistics snapshots.',
       headerCenterClass: 'dp-settings-backups-header-copy',
+      hinted: true,
       headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
           <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
       action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
@@ -5212,6 +5240,7 @@
       titlePrefix: familyIcon('maintenance', 'database-x'),
       headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
+      hinted: true,
     });
     return eventLogging + backups + reset;
   }
@@ -5591,6 +5620,7 @@
     });
 
     view.addEventListener('input', event => {
+      if (event.target.matches?.('#dp-settings-field-auth-username, #dp-settings-field-auth-password')) projectCredentialDraft();
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
     });
 
@@ -5673,6 +5703,7 @@
       else if (action === 'backups') openBackups();
       else if (action === 'wipe-database') wipeDatabaseClean(button);
       else if (action === 'clear-password') clearPassword(button);
+      else if (action === 'apply-credentials') void applyCredentials(button);
       else if (action === 'clear-oidc-secret') clearOidcSecret(button);
       else if (action === 'verify-oidc') verifyOidc(button);
       else if (action === 'copy-oidc-callback') copyOidcCallback();
@@ -6439,6 +6470,73 @@
     if (button?.isConnected) button.focus();
   }
 
+  /* The local credential: a DRAFT until Apply.
+   *
+   * Username and Password are one credential. Neither is enrolled in
+   * field-boundary persistence, so typing, blurring or a reflow writes
+   * nothing; Apply is the one act that changes them, as ONE PUT /auth/config
+   * carrying both, which the server validates and commits atomically with
+   * the authentication settings (api/auth_config_routes.py). What the draft
+   * may ask for, checked here before anything is sent and again by the server:
+   *   - a username change brings a new password with it (a new name is never
+   *     bound to the stored password);
+   *   - a new credential needs both a username and a password;
+   *   - a blank password means "keep the stored one"; nothing to change is
+   *     nothing to send.
+   * The applied username is canonical state (state.auth.username); the
+   * password is never projected back. */
+  let credentialApply = null;            // the one Apply in flight
+
+  function credentialDraft() {
+    const username = text(fieldFor('auth_username')?.value).trim();
+    const password = String(fieldFor('auth_password')?.value || '');
+    const applied = text(state.auth?.username).trim();
+    const renamed = username !== applied;
+    let problem = '';
+    if (!username && (password || applied)) problem = 'Enter a username.';
+    else if (renamed && !password) problem = 'Enter a new password to change the username.';
+    return {username, password, renamed, dirty: renamed || !!password, problem};
+  }
+
+  // Apply is offered exactly while there is a valid change and none in flight.
+  function projectCredentialDraft() {
+    const button = root()?.querySelector('[data-action="apply-credentials"]');
+    if (!button || credentialApply) return;
+    const draft = credentialDraft();
+    button.disabled = !draft.dirty || !!draft.problem;
+    button.dataset.tooltip = draft.dirty && draft.problem ? draft.problem : 'Apply username and password';
+  }
+
+  async function applyCredentials(button) {
+    const draft = credentialDraft();
+    if (credentialApply || !draft.dirty) return;
+    if (draft.problem) {
+      notify(draft.problem, 'error');
+      return;
+    }
+    const payload = {auth_password: draft.password};
+    if (draft.renamed) payload.auth_username = draft.username;
+    setBusy(button, true, 'Applying…');
+    credentialApply = writeAuthentication(payload);
+    try {
+      await credentialApply;
+      // Only what the operator still shows is reconciled: a draft typed while
+      // the request was in flight is newer intent and is kept.
+      const passwordField = fieldFor('auth_password');
+      if (passwordField && passwordField.value === draft.password) passwordField.value = '';
+      const usernameField = fieldFor('auth_username');
+      if (usernameField && text(usernameField.value).trim() === draft.username) usernameField.value = text(state.auth?.username);
+      notify('Username and password applied', 'success');
+    } catch (error) {
+      // Nothing was changed by the server; the draft stays for correction.
+      notify(error.message, 'error');
+    } finally {
+      credentialApply = null;
+      setBusy(button, false);
+      paintAuthDerived();
+    }
+  }
+
   async function clearOidcSecret(button) {
     const confirmed = await window.DPSettingsModal.confirm({
       title: 'Clear stored client secret?',
@@ -6738,6 +6836,8 @@
           </div>
         </div>
       </section>`;
+    // The same two cards, the same one hinted-header fitter as Settings.
+    fitHeaderHints();
     bindEvents(view);
     window.DPSettingsPersistence.adopt(view);
   }

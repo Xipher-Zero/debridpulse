@@ -170,13 +170,14 @@ test('ordinary Authentication values commit at their own boundary, with no Apply
     try {
       await openSettings(page, 'authentication');
 
-      // Changed blur: nothing is written before the boundary is crossed.
+      // The local credential is the one exception (1.0.14): it is applied
+      // only by its own Apply, so typing and leaving the username writes
+      // nothing at all.
       const username = before.username === 'dp-probe-a' ? 'dp-probe-b' : 'dp-probe-a';
       await field(page, 'auth_username').fill(username);
-      expect((await auth(page)).username,
-        'the username was written before its commit boundary').toBe(before.username);
       await field(page, 'auth_username').blur();
-      await expect.poll(async () => (await auth(page)).username).toBe(username);
+      await page.waitForTimeout(400);
+      expect((await auth(page)).username, 'the username was written without Apply').toBe(before.username);
 
       // A list value keeps its canonical list shape across the boundary.
       const scopes = before.oidc_scopes.join(' ') === 'openid email'
@@ -198,7 +199,7 @@ test('ordinary Authentication values commit at their own boundary, with no Apply
       // All of it survives a reload, with no Apply pressed anywhere.
       await page.reload();
       await openSettings(page, 'authentication');
-      await expect(field(page, 'auth_username')).toHaveValue(username);
+      await expect(field(page, 'auth_username')).toHaveValue(before.username);
       await expect(field(page, 'oidc_scopes')).toHaveValue(scopes);
     } finally {
       await restoreAuth(page, before);

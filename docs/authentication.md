@@ -68,7 +68,7 @@ Every accepted submission records a **request** owned by the submitting account 
 
 ## Username & Password
 
-DebridPulse stores the local password only as an Argon2id verifier, on the account it belongs to. The plaintext password is accepted only as transient input when setting or replacing the credential. Until the Users & Access surface exists, **Settings → Authentication** edits the signed-in account's own username and password (the default Admin's in open mode).
+DebridPulse stores the local password only as an Argon2id verifier, on the account it belongs to. The plaintext password is accepted only as transient input when setting or replacing the credential. Until the Users & Access surface exists, **Settings → Authentication** edits the signed-in account's own username and password (the default Admin's in open mode). The two are applied together, only by that card's **Apply**, in one request the server validates and commits atomically: typing in either field writes nothing, a blank password keeps the stored one, and a username change is refused unless it brings a new password (a name is never re-bound to a stored password).
 
 Browser users authenticate through the DebridPulse login page. REST clients may use the same credentials with standard HTTP Basic authentication:
 

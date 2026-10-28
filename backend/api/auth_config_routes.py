@@ -480,6 +480,17 @@ async def update_authentication_config(request: Request, update: AuthenticationC
             status_code=409,
         )
 
+    # The local credential is changed WHOLE: a new username brings the
+    # password it will be checked against, so a name is never bound to a
+    # stored password it was not set with, and a first credential is never a
+    # name alone. Refused before anything is written.
+    if (_requested_username(update, own_username) and not str(update.auth_password or "")
+            and not update.clear_password):
+        return JSONResponse(
+            {"detail": "Enter a new password to change the username"},
+            status_code=400,
+        )
+
     if bool(getattr(candidate, "auth_password_enabled", False)) and not await _prospective_password_ready(
         candidate, update, principal, own_username,
     ):

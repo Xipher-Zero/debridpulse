@@ -10,27 +10,14 @@
  * sit and how much width each control in them deserves.
  */
 
-/* Three header regions: identity, the card's sentence, the operational rail. */
-#view-settings .dp-settings-discord-card > .card-header,
-#view-settings .dp-settings-statistics-reporting-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.2fr) minmax(280px, 1fr);
-  align-items: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-discord-card > .card-header > .card-title,
-#view-settings .dp-settings-statistics-reporting-card > .card-header > .card-title {
-  justify-self: start;
-}
-
+/* Both headers are the hinted Settings card header (ui-settings-page.css,
+   fitHeaderHints) -- the Admin's Notifications and a User's own alike: only
+   the hint's type is stated here. */
 #view-settings .dp-settings-notifications-header-copy,
 #view-settings .dp-settings-statistics-reporting-header-copy {
-  justify-self: center;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.45;
-  text-align: center;
 }
 
 /* Every control on this page is the shared inline field: a left descriptive
@@ -210,11 +197,6 @@
 }
 
 @media (max-width: 1280px) {
-  #view-settings .dp-settings-discord-card > .card-header,
-  #view-settings .dp-settings-statistics-reporting-card > .card-header {
-    grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.1fr) minmax(260px, 1fr);
-  }
-
   #view-settings .dp-settings-notifications-identity-row {
     grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.25fr);
     gap: 22px;
@@ -230,29 +212,6 @@
   #view-settings .dp-settings-notifications-identity-row,
   #view-settings .dp-settings-notifications-delivery-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 779px) {
-  #view-settings .dp-settings-discord-card > .card-header,
-  #view-settings .dp-settings-statistics-reporting-card > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
-  }
-
-  #view-settings .dp-settings-discord-card > .card-header > .card-title,
-  #view-settings .dp-settings-statistics-reporting-card > .card-header > .card-title,
-  #view-settings .dp-settings-notifications-header-copy,
-  #view-settings .dp-settings-statistics-reporting-header-copy {
-    justify-self: center;
-  }
-
-  /* The rail keeps its order; it simply stops being pinned to the right when
-     the header stops being three regions wide. */
-  #view-settings .dp-settings-discord-card .dp-settings-card-header-controls,
-  #view-settings .dp-settings-statistics-reporting-card .dp-settings-card-header-controls {
-    justify-self: center;
-    justify-content: center;
   }
 }
 
