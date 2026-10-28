@@ -138,9 +138,9 @@ function navigateTo(el) {
     dashboard:'Download activity and system status.',
     torrents:'Manage active and queued transfers.',
     events:'Transfer events, decisions, and alerts.',
-    stats:'Transfer history and performance.',
-    settings:'Manage providers and downloads.',
-    help:'Guides, project details, and licensing.',
+    stats:'Transfer history and metrics.',
+    settings:'Manage downloads and services.',
+    help:'Guides, project information, and licensing.',
   };
   // A sidebar entry may name the page it opens (a User's Settings slot opens
   // their own Notifications).
