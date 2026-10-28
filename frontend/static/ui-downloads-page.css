@@ -297,14 +297,22 @@ body.light #view-torrents > .card > div:has(#torrent-search) {
    does not shrink when a scrollbar appears later -- as one does when a
    selection's toolbar takes height from a page sized to the rows that fit --
    so without the reservation the table stayed a scrollbar wider than the room
-   left beside it and the viewport scrolled sideways. */
+   left beside it and the viewport scrolled sideways. The reserved room lies
+   outside the table's clip, so this viewport's own background continues the
+   header's surface across it, from the header's own token. The header surface
+   is opaque in every theme, so the band drawn beneath the header cells is
+   never seen there. The header's 1px rule and the rows' paint (hover tint,
+   separators) still end at the table's edge. */
 #view-torrents .dp-downloads-table-wrap {
   position: relative;
   z-index: 1;
   overflow-x: auto !important;
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
-  background: transparent;
+  background: var(--dp-table-head-surface) 0 0 / 100% var(--dp-table-head-height) no-repeat;
+}
+body.light #view-torrents .dp-downloads-table-wrap {
+  background-image: linear-gradient(var(--dp-chrome-table-head-plain) 0 0);
 }
 
 #view-torrents .dp-downloads-table-wrap .t-table thead th {

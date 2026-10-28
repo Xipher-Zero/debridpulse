@@ -666,7 +666,7 @@ body[data-dp-palette] {
   --dp-field-surface: var(--dp-surface-input);
   --dp-field-border: var(--dp-border-default);
   --dp-field-text: var(--dp-text-primary);
-  --dp-table-head-surface: var(--dp-surface-2);
+  --dp-table-head-surface: linear-gradient(var(--dp-surface-2) 0 0);
   --dp-table-head-border: var(--dp-border-default);
   --dp-table-row-border: var(--dp-border-subtle);
   --dp-table-row-hover: color-mix(in srgb, var(--dp-accent-purple) 5%, transparent);
