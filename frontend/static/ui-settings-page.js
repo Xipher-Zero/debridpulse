@@ -4900,27 +4900,32 @@
       return '<div class="dp-settings-users-empty">No delivery profiles. Create one so an external application can import what DebridPulse downloads.</div>';
     }
     const clients = tokenClients();
-    const kinds = Object.fromEntries(PROFILE_SOURCE_KINDS);
+    // Source Types are the editor's alone. Each path is one line; the
+    // tooltip (on focus too) and the editor hold the whole of a shortened one.
     return `
-      <div class="dp-settings-users-table-wrap">
+      <div class="dp-settings-users-table-wrap dp-settings-profiles-table-wrap">
         <table class="t-table dp-settings-profiles-table">
-          <thead><tr><th>Profile</th><th>Categories</th><th>API Tokens</th><th>Sources</th><th>Paths</th><th>Retention</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+          <thead><tr><th>Profile</th><th>Categories</th><th>API Tokens</th><th class="dp-settings-profiles-paths">Paths</th><th class="dp-settings-profiles-retention">Retention</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
           <tbody>${profiles.catalog.profiles.map(profile => {
             const id = html(profile.id);
             const importRoot = profile.import_root || profile.local_root;
             const tokens = profile.clients.length
               ? profile.clients.map(clientId => `<div${clients.has(clientId) ? '' : ' class="dp-settings-users-detail"'}>${html(clientLabel(clients, clientId))}</div>`).join('')
               : '<span class="dp-settings-users-detail">None</span>';
-            const sources = profile.source_kinds.length === PROFILE_SOURCE_KINDS.length
-              ? 'All' : profile.source_kinds.map(kind => kinds[kind] || kind).join(', ');
+            const mapped = importRoot !== profile.local_root;
+            const route = mapped ? `${profile.local_root} → ${importRoot}` : profile.local_root;
             return `
             <tr data-profile-row="${id}">
               <td><b>${id}</b></td>
               <td>${profile.categories.length ? profile.categories.map(category => `<span class="dp-settings-profile-chip">${html(category)}</span>`).join('') : '<span class="dp-settings-users-detail">None</span>'}</td>
               <td>${tokens}</td>
-              <td class="dp-settings-users-detail">${html(sources)}</td>
-              <td class="dp-settings-users-detail"><div>${html(profile.local_root)}</div>${importRoot !== profile.local_root ? `<div>→ ${html(importRoot)}</div>` : ''}</td>
-              <td class="dp-settings-users-detail">${html(profile.retention_hours)} h</td>
+              <td class="dp-settings-users-detail dp-settings-profiles-paths">
+                <div class="dp-settings-profile-path-lines" role="group" aria-label="Paths" tabindex="0" data-tooltip="${html(route)}">
+                  <div class="dp-settings-profile-path"><span class="dp-settings-profile-path-text">${html(profile.local_root)}</span></div>${mapped ? `
+                  <div class="dp-settings-profile-path"><span class="dp-settings-profile-path-arrow">→</span> <span class="dp-settings-profile-path-text">${html(importRoot)}</span></div>` : ''}
+                </div>
+              </td>
+              <td class="dp-settings-users-detail dp-settings-profiles-retention">${html(profile.retention_hours)} h</td>
               <td><div class="dp-settings-users-actions">
                 <button class="btn btn-ghost btn-sm" type="button" data-user-action="edit-profile" data-profile-id="${id}">Edit</button>
               </div></td>

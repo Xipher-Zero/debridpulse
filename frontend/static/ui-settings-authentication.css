@@ -1087,6 +1087,46 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 #view-settings .dp-settings-profiles-table td {
   vertical-align: top;
 }
+/* Paths: each path one line, shortened with an ellipsis only when its column
+   is narrower than the path; the mapping arrow stays in view beside a
+   shortened import path. Its one grid track (0 .. the path's own width)
+   takes a share of the room in proportion to the path. Its minimum -- its
+   own width, up to 36% of the table's container -- is met before Categories
+   and API Tokens are kept on one line, so a path is shortened only when it
+   is longer than that, and the table still fits its card. Where calc-size()
+   is unsupported the minimum is dropped and the table still fits. */
+#view-settings .dp-settings-profile-path-lines {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  min-width: calc-size(max-content, min(size, 36cqi));
+}
+#view-settings .dp-settings-profile-path {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+#view-settings .dp-settings-profile-path-arrow {
+  flex: 0 0 auto;
+}
+#view-settings .dp-settings-profile-path-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Retention leaves before Paths would be shortened for it. Measured: a
+   representative table (a category pair, an API token, /download/tv mapped
+   to /data/media/downloads/tv) needs 774px of its own width with Retention
+   and 684px without, so below 780px of the table's container -- the card's
+   width, not the viewport's -- Retention gives its 90px to Paths. */
+#view-settings .dp-settings-profiles-table-wrap {
+  container: dp-delivery-profiles / inline-size;
+}
+@container dp-delivery-profiles (width < 780px) {
+  #view-settings .dp-settings-profiles-table .dp-settings-profiles-retention {
+    display: none;
+  }
+}
 .dp-settings-profile-chip {
   display: inline-flex;
   align-items: center;

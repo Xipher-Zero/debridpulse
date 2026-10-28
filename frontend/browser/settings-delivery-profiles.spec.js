@@ -467,3 +467,95 @@ for (const theme of ['dark', 'light']) {
     expect(glow).toContain('drop-shadow');
   });
 }
+
+test('the table: no Sources, one line per path, Retention only where it fits, and Edit always in view', async ({page}) => {
+  const before = await catalog(page);
+  cleanup.push(p => putCatalog(p, before.profiles));
+  const client = await integration(page, 'Table Sonarr', 'table-sonarr');
+  cleanup.push(p => p.request.delete(`/api/accounts/${client.id}`));
+  const folder = await settingsFolder(page);
+  const longLocal = `${folder}/integrations/very-long-folder-name-for-anime-series/season-collections/incoming`;
+  const longImport = '/mnt/user/media/downloads/integrations/very-long-folder-name-for-anime-series/season-collections/incoming';
+  await putCatalog(page, [
+    {id: 'mapped', categories: ['tv-sonarr', 'tv'], clients: [client.client], local_root: `${folder}/tv`, import_root: '/data/tv', retention_hours: 168},
+    {id: 'shared', categories: ['radarr'], clients: [client.client], local_root: `${folder}/movies`, import_root: `${folder}/movies`},
+    {id: 'long', categories: ['anime'], clients: [client.client], local_root: longLocal, import_root: longImport, retention_hours: 24}]);
+  await page.setViewportSize({width: 1440, height: 900});
+  await openUsers(page);
+  const card = page.locator('.dp-settings-delivery-profiles-card');
+  const table = card.locator('.dp-settings-profiles-table');
+  const row = id => table.locator(`tr[data-profile-row="${id}"]`);
+  const shown = () => table.locator('thead th').evaluateAll(cells => cells
+    .filter(cell => getComputedStyle(cell).display !== 'none').map(cell => cell.textContent.trim()));
+  // Fit: the table within its wrapper, every Edit inside it, Retention shown exactly while its container is 780px or wider.
+  const fit = () => card.locator('.dp-settings-profiles-table-wrap').evaluate(wrap => {
+    const box = wrap.getBoundingClientRect();
+    const retention = [...wrap.querySelectorAll('.dp-settings-profiles-retention')].map(cell => getComputedStyle(cell).display !== 'none');
+    return {width: wrap.clientWidth, overflow: wrap.scrollWidth - wrap.clientWidth, retention,
+      edits: [...wrap.querySelectorAll('[data-user-action="edit-profile"]')].every(button => {
+        const b = button.getBoundingClientRect();
+        return b.width > 0 && b.left >= box.left - 0.5 && b.right <= box.right + 0.5;
+      })};
+  });
+  const expectFit = async (retained) => {
+    const facts = await fit();
+    expect(facts.overflow, 'no horizontal scroll').toBeLessThanOrEqual(0);
+    expect(facts.edits, 'every Edit is inside the table region').toBe(true);
+    expect(facts.width >= 780, 'Retention follows the container width').toBe(retained);
+    expect(facts.retention.every(visible => visible === retained), 'header and cells together').toBe(true);
+  };
+
+  await expect.poll(shown).toEqual(['Profile', 'Categories', 'API Tokens', 'Paths', 'Retention', 'Actions']);
+  await expectFit(true);
+  // Sources is the editor's alone.
+  await expect(table).not.toContainText('Sources');
+  await expect(row('mapped')).not.toContainText('All');
+
+  // Paths: a shared path is one line, a mapped one two, the second led by the arrow; never wrapped.
+  await expect(row('shared').locator('.dp-settings-profile-path')).toHaveCount(1);
+  await expect(row('mapped').locator('.dp-settings-profile-path')).toHaveText([`${folder}/tv`, '→ /data/tv']);
+  await expect(row('mapped').locator('.dp-settings-profile-path-arrow')).toBeVisible();
+  const lines = () => table.locator('.dp-settings-profile-path').evaluateAll(nodes => nodes.map(node => {
+    const text = node.querySelector('.dp-settings-profile-path-text');
+    const arrow = node.querySelector('.dp-settings-profile-path-arrow')?.getBoundingClientRect();
+    const cell = node.closest('td').getBoundingClientRect();
+    return {row: node.closest('tr').dataset.profileRow, height: node.getBoundingClientRect().height,
+      line: parseFloat(getComputedStyle(text).lineHeight) || parseFloat(getComputedStyle(text).fontSize) * 1.6,
+      shortened: text.scrollWidth > text.clientWidth + 0.5, ellipsis: getComputedStyle(text).textOverflow,
+      arrowInside: arrow ? arrow.width > 0 && arrow.left >= cell.left && arrow.right <= cell.right : null};
+  }));
+  for (const line of await lines()) expect(line.height, `${line.row}: one line`).toBeLessThanOrEqual(line.line + 1);
+  // A path is shortened only when its column is narrower than it: /data/tv is always whole.
+  const mappedImport = async () => (await lines()).filter(line => line.row === 'mapped')[1];
+  expect((await mappedImport()).shortened, '/data/tv is whole at 1440').toBe(false);
+  // The whole route is the tooltip of one keyboard-reachable group, and the cell's own text.
+  const longPaths = row('long').locator('.dp-settings-profile-path-lines');
+  await expect(longPaths).toHaveAttribute('data-tooltip', `${longLocal} → ${longImport}`);
+  await expect(longPaths).toHaveAttribute('tabindex', '0');
+  await expect(longPaths).toContainText(longImport);
+
+  // The constrained desktop: Retention leaves, everything else fits; the long paths shorten, the arrow stays.
+  await page.setViewportSize({width: 780, height: 900});
+  await expect.poll(shown).toEqual(['Profile', 'Categories', 'API Tokens', 'Paths', 'Actions']);
+  await expectFit(false);
+  const narrow = (await lines()).filter(line => line.row === 'long');
+  expect(narrow.map(line => line.shortened)).toEqual([true, true]);
+  expect(narrow.every(line => line.ellipsis === 'ellipsis')).toBe(true);
+  expect(narrow[1].arrowInside, 'the arrow stays in view').toBe(true);
+  expect((await mappedImport()).shortened, '/data/tv is whole at 780').toBe(false);
+  for (const line of await lines()) expect(line.height, `${line.row}: one line at 780`).toBeLessThanOrEqual(line.line + 1);
+
+  // Edit works from here; the editor keeps the whole paths and the Source Types.
+  await row('long').locator('[data-user-action="edit-profile"]').click();
+  const form = dialog(page);
+  await expect(form.locator('[data-profile-input="local_root"]')).toHaveValue(longLocal);
+  await expect(form.locator('[data-profile-input="import_root"]')).toHaveValue(longImport);
+  await expect(form.locator('[role="group"][aria-label="Source Types"] input')).toHaveCount(5);
+  await form.locator('[data-modal-cancel]').click();
+  await expect(form).toHaveCount(0);
+
+  // Wider again: Retention returns.
+  await page.setViewportSize({width: 1440, height: 900});
+  await expect.poll(shown).toEqual(['Profile', 'Categories', 'API Tokens', 'Paths', 'Retention', 'Actions']);
+  await expectFit(true);
+});
