@@ -222,7 +222,7 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
   }
 });
 
-test('User Accounts: name opens Account Details, Remove is the quiet Downloads Remove, Merge is card-level', async ({browser}) => {
+test('User Accounts: name opens Account Details, Remove is in Edit User, Merge is card-level', async ({browser}) => {
   const admin = await signIn(browser, ADMIN);
   const ann = await person(admin, 'Ann');
   const bob = await person(admin, 'Bob');
@@ -242,22 +242,8 @@ test('User Accounts: name opens Account Details, Remove is the quiet Downloads R
     expect(await page.locator('.dp-settings-users-card:not(.dp-settings-users-integrations-card) > .card-header .dp-settings-header-action .btn')
       .allTextContents()).toEqual(['Merge', 'Add Local Account']);
 
-    // Remove: the Downloads row Remove, at rest and when meant.
-    const remove = row.locator('[data-user-action="remove"]');
-    await expect(remove).toHaveClass(/\bdp-downloads-remove\b/);
-    const color = locator => locator.evaluate(node => getComputedStyle(node).color);
-    const token = name => page.evaluate(variable => {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${variable})`;
-      document.body.appendChild(probe);
-      const value = getComputedStyle(probe).color;
-      probe.remove();
-      return value;
-    }, name);
-    await page.mouse.move(0, 0);
-    expect(await color(remove)).toBe(await token('--dp-text-secondary'));
-    await remove.hover();
-    await expect.poll(() => color(remove)).toBe(await token('--dp-state-error'));
+    // The row's one action is Edit; Remove lives in its footer.
+    await expect(row.locator('.dp-settings-users-actions button')).toHaveText(['Edit']);
 
     // Account Details: profile and Activity, from the account's name.
     await row.locator('[data-user-action="details"]').click();
@@ -267,17 +253,25 @@ test('User Accounts: name opens Account Details, Remove is the quiet Downloads R
     await expect(details.locator('.dp-account-details-heading')).toHaveText('Activity');
     await details.locator('[data-modal-cancel]').click();
 
-    // Remove: canonical impact confirmation; Cancel changes nothing.
+    // Remove: Edit User's impact confirmation, with the server's figures;
+    // Back and Cancel change nothing.
+    await row.locator('[data-user-action="edit"]').click();
+    const impact = page.locator('.dp-modal-dialog.dp-users-edit-dialog');
+    const remove = impact.getByRole('button', {name: 'Remove', exact: true});
+    await expect(remove).toHaveClass(/\bbtn-danger\b/);
     await remove.click();
-    const impact = page.locator('.dp-modal-dialog.dp-account-impact');
     await expect(impact.locator('.dp-account-impact-lead'))
       .toHaveText('Removing this account will revoke its access and withdraw its outstanding download requests.');
+    await expect(impact.locator('.dp-account-impact-figures dd')).toHaveText(['0', '0', '0']);
     await expect(impact.locator('[data-modal-accept]')).toHaveText('Remove account');
     await expect(impact.locator('[data-modal-accept]')).toHaveClass(/\bbtn-danger\b/);
-    await impact.locator('[data-modal-cancel]').click();
+    await impact.locator('[data-modal-cancel]').click();                    // Back
+    await impact.locator('[data-modal-cancel]').click();                    // Cancel
+    await expect(impact).toHaveCount(0);
     await expect(row).toHaveCount(1);
-    await row.locator('[data-user-action="remove"]').click();
-    await page.locator('.dp-modal-dialog.dp-account-impact [data-modal-accept]').click();
+    await row.locator('[data-user-action="edit"]').click();
+    await impact.getByRole('button', {name: 'Remove', exact: true}).click();
+    await impact.locator('[data-modal-accept]').click();
     await expect(page.locator(`tr[data-account-row="${ann.id}"]`)).toHaveCount(0);
 
     // Merge: choose two or more, then -- in the same dialog -- the survivor.
@@ -323,7 +317,7 @@ test('User Accounts: name opens Account Details, Remove is the quiet Downloads R
   }
 });
 
-test('Remove is offered for every other eligible person, never the signed-in Admin or the protected Administrator', async ({browser}) => {
+test('Edit is offered for every other eligible person, never the signed-in Admin or the protected Administrator', async ({browser}) => {
   const admin = await signIn(browser, ADMIN);                              // the protected default Administrator
   const operator = await person(admin, 'Ops', 'admin');                    // a non-protected Admin
   const local = await person(admin, 'Lou');
@@ -344,22 +338,28 @@ test('Remove is offered for every other eligible person, never the signed-in Adm
       await route.fulfill({response, json: {...listed, accounts: [...listed.accounts, oidc]}});
     });
     await usersTab(page);
-    const removeIn = id => page.locator(`tr[data-account-row="${id}"] [data-user-action="remove"]`);
+    const editIn = id => page.locator(`tr[data-account-row="${id}"] [data-user-action="edit"]`);
     await expect(page.locator(`tr[data-account-row="${local.id}"]`)).toHaveCount(1);
-    await expect(removeIn(operator.id)).toHaveCount(0);                    // never the signed-in account
+    await expect(editIn(operator.id)).toHaveCount(0);                      // never the signed-in account
     await expect(page.locator(`tr[data-account-row="${operator.id}"] .dp-settings-users-self`)).toHaveText('You');
-    await expect(removeIn(defaultAdmin.id)).toHaveCount(0);                // never the protected Administrator
-    await expect(removeIn(local.id)).toHaveCount(1);                       // another local person
-    await expect(removeIn(oidc.id)).toHaveCount(1);                        // an OIDC person
+    await expect(editIn(defaultAdmin.id)).toHaveCount(0);                  // never the protected Administrator
+    await expect(editIn(local.id)).toHaveCount(1);                         // another local person
+    await expect(editIn(oidc.id)).toHaveCount(1);                          // an OIDC person
     // The protected Administrator's password is Authentication's: its row
-    // says so instead of offering a second Reset Password.
+    // says so instead of offering an Edit.
     const protectedRow = page.locator(`tr[data-account-row="${defaultAdmin.id}"]`);
-    await expect(protectedRow.locator('[data-user-action="password"]')).toHaveCount(0);
     await expect(protectedRow.locator('.dp-settings-users-hint')).toHaveText('Password managed in Authentication');
     await expect(protectedRow.locator('.dp-settings-users-hint')).not.toHaveAttribute('role', /.+/);
     await expect(protectedRow.locator('button')).toHaveText([/.+/]);                // only its name opens details
-    await expect(page.locator(`tr[data-account-row="${local.id}"] [data-user-action="password"]`))
-      .toHaveText('Reset Password');                                     // other rows keep theirs
+    // Another local person's Edit resets its password; the OIDC person's sets one, with a username.
+    await editIn(local.id).click();
+    const editor = page.locator('.dp-modal-dialog.dp-users-edit-dialog');
+    await expect(editor.locator('.dp-users-edit-heading').nth(1)).toHaveText('Reset Local Password');
+    await editor.locator('[data-modal-cancel]').click();
+    await editIn(oidc.id).click();
+    await expect(editor.locator('.dp-users-edit-heading').nth(1)).toHaveText('Set Local Password');
+    await expect(editor.locator('[data-edit-field="username"]')).toBeVisible();
+    await editor.locator('[data-modal-cancel]').click();
     await page.locator('#view-settings [data-tab="authentication"]').click();
     await expect(page.locator('.dp-settings-username-password-card [data-setting="auth_username"]')).toBeVisible();
     await page.locator('#view-settings [data-tab="users"]').click();

@@ -26,7 +26,10 @@
  * dialog; an action with `placement: 'leading'` takes the footer's far start
  * instead, and `handle.setActionHidden(id, hidden)` shows or withdraws it.
  * A dialog with more than one view changes its slot labels through
- * `handle.setAcceptLabel` / `setCancelLabel`, and may guard settlement:
+ * `handle.setAcceptLabel` / `setCancelLabel` -- and, for a view that asks a
+ * different question, its title and tone through `handle.setTitle(title)` and
+ * `handle.setTone(tone, acceptTone)`, the same two choices `open` takes -- and
+ * may guard settlement:
  * `onAccept()` and `onCancel()` (also reached by Enter and Escape) keep the
  * dialog open by returning (or resolving to) `false` -- a Back, a refused
  * save -- and while an `onAccept` is pending the accept slot is busy.
@@ -195,7 +198,8 @@
 
   function open(spec = {}) {
     const role = spec.role === 'alertdialog' ? 'alertdialog' : 'dialog';
-    const tone = spec.tone === 'danger' || spec.tone === 'warning' || spec.tone === 'success' ? spec.tone : '';
+    const toneOf = value => (value === 'danger' || value === 'warning' || value === 'success' ? value : '');
+    const tone = toneOf(spec.tone);
     const progress = spec.progress === true;
     const dismissOnly = spec.dismiss === true;
     const declared = Array.isArray(spec.actions) ? spec.actions : [];
@@ -208,8 +212,10 @@
     // The accept control takes the dialog's danger/success tone; `acceptTone:
     // 'warning'` asks for the caution treatment for an accept that is
     // consequential but not destructive of its own.
-    const acceptClass = spec.acceptTone === 'warning' ? 'btn-warn'
-      : tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
+    const ACCEPT_CLASSES = ['btn-warn', 'btn-danger', 'btn-success', 'btn-primary'];
+    const acceptClassOf = (dialogTone, acceptTone) => (acceptTone === 'warning' ? 'btn-warn'
+      : dialogTone === 'danger' ? 'btn-danger' : dialogTone === 'success' ? 'btn-success' : 'btn-primary');
+    const acceptClass = acceptClassOf(tone, spec.acceptTone);
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
 
@@ -337,6 +343,15 @@
       },
       setAcceptLabel(label) { if (accept) accept.textContent = String(label || ''); },
       setCancelLabel(label) { if (cancel) cancel.textContent = String(label || ''); },
+      setTitle(title) { if (!progress) overlay.querySelector(`#${dialogId}-title`).textContent = String(title || ''); },
+      setTone(next, acceptTone) {
+        const value = toneOf(next);
+        if (value) dialog.dataset.tone = value; else delete dialog.dataset.tone;
+        if (accept) {
+          accept.classList.remove(...ACCEPT_CLASSES);
+          accept.classList.add(acceptClassOf(value, acceptTone));
+        }
+      },
       setBusy(busy) { dialog.setAttribute('aria-busy', busy ? 'true' : 'false'); },
     });
 

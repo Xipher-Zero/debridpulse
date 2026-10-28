@@ -722,12 +722,11 @@ body.light #view-torrents .empty-icon {
 
 /* The row Remove is quiet until it is meant: theme text at rest, the danger
    colour on hover and keyboard focus. Border, tinted surface, size and
-   behaviour are the shared .btn-danger's, unchanged. The same row Remove
-   serves the Users & Access account rows. */
-:is(:is(#t-tbody, .dp-downloads-styled-tbody) .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove { color: var(--dp-text-secondary); }
+   behaviour are the shared .btn-danger's, unchanged. */
+:is(#t-tbody, .dp-downloads-styled-tbody) .actions .dp-downloads-remove { color: var(--dp-text-secondary); }
 /* The reaffirmation a promoted transfer offers, under its status badge. */
 :is(#t-tbody, .dp-downloads-styled-tbody) .dp-queue-consent { display: flex; align-items: center; margin-top: 4px; }
-:is(:is(#t-tbody, .dp-downloads-styled-tbody) .actions, #view-settings .dp-settings-users-actions) .dp-downloads-remove:is(:hover, :focus-visible) { color: var(--dp-state-error); }
+:is(#t-tbody, .dp-downloads-styled-tbody) .actions .dp-downloads-remove:is(:hover, :focus-visible) { color: var(--dp-state-error); }
 
 /* The restart confirmation: the title and every affected transfer read from
    the left; only the two explanatory hints are centred (ui-modal-contract). */

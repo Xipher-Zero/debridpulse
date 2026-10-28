@@ -196,7 +196,7 @@ def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_sem
         "Delete Archives After Extraction", "Archive Passwords", "Clear Passwords",
         "Authentication Status", "Username &amp; Password", "OpenID Connect",
         "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
-        "Default Role for New OIDC Users", "Add Local Account", "Change Role",
+        "Default Role for New OIDC Users", "Add Local Account", "Edit User",
         "Integration Accounts", "Issue Token", "Authorization: Bearer &lt;token&gt;",
         "finished downloads are never touched", "removing keeps the account's history",
         "Discord Notifications", "Download Added Webhook", "Statistics Reporting",

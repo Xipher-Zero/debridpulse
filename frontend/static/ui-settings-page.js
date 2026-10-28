@@ -3906,30 +3906,15 @@
     return [...byEmail.entries()].filter(([, group]) => group.length > 1);
   }
 
+  /* A person's row has one entry point: Edit, which opens the one Edit User
+   * dialog (editUser). The signed-in account is "You" and the protected
+   * Administrator's local credential is Authentication's; neither is editable
+   * here, and the server refuses both regardless. */
   function userActions(account) {
     if (account.id === selfId()) return '<span class="dp-settings-users-self">You</span>';
-    const id = html(account.id);
-    const actions = [];
-    if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="role" data-account-id="${id}">Change Role</button>`);
-    // The protected Administrator's local credential is configured in
-    // Authentication (Username & Password); this row only says so.
-    if (account.protected === 'default_admin') {
-      actions.push('<span class="dp-settings-users-hint">Password managed in Authentication</span>');
-    } else {
-      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="password" data-account-id="${id}">${account.has_password ? 'Reset Password' : 'Set Password'}</button>`);
-    }
-    if (account.enabled && account.protected !== 'default_admin') {
-      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`);
-    } else if (!account.enabled) {
-      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}">Enable</button>`);
-    }
-    // Remove: the Downloads row Remove, quiet until it is meant. Never for a
-    // protected account and never for the signed-in account itself (the
-    // server refuses both regardless).
-    if (!account.protected && account.id !== selfId()) {
-      actions.push(`<button class="btn btn-danger btn-sm dp-downloads-remove" type="button" data-user-action="remove" data-account-id="${id}">Remove</button>`);
-    }
-    return actions.join('');
+    if (account.protected === 'default_admin') return '<span class="dp-settings-users-hint">Password managed in Authentication</span>';
+    if (account.protected) return '';
+    return `<button class="btn btn-ghost btn-sm" type="button" data-user-action="edit" data-account-id="${html(account.id)}">Edit</button>`;
   }
 
   function humanRows(humans) {
@@ -4185,32 +4170,6 @@
       'Integration account created');
   }
 
-  async function changeRole(account) {
-    const values = await fieldsDialog({
-      title: `Change Role: ${accountName(account)}`, acceptLabel: 'Change Role',
-      intro: 'The new role applies to the account’s next request. Its open browsers reload with the new role; it is not signed out.',
-      fields: [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}],
-    });
-    if (!values || values.role === account.role) return;
-    await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {role: values.role}, 10000),
-      'Role changed');
-  }
-
-  async function resetPassword(account) {
-    const values = await fieldsDialog({
-      title: `${account.has_password ? 'Reset' : 'Set'} Password: ${accountName(account)}`,
-      acceptLabel: account.has_password ? 'Reset Password' : 'Set Password',
-      intro: 'The account is signed out everywhere and signs in again with this password.',
-      fields: [
-        ...(account.has_password ? [] : [{name: 'username', label: 'Username'}]),
-        {name: 'password', label: 'New Password', type: 'password', maxlength: 4096, autocomplete: 'new-password'},
-      ],
-    });
-    if (!values) return;
-    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/password`,
-      {password: values.password, ...(values.username ? {username: values.username} : {})}, 10000), 'Password saved');
-  }
-
   /* Merge Accounts: ONE dialog, two steps. Choose two or more accounts, then
    * -- in the same dialog -- choose the one that survives and confirm. Only the
    * final Confirm Merge sends anything: one request, which the server applies
@@ -4326,9 +4285,10 @@
     await loadUsers();
   }
 
-  /* The account-impact confirmation for Disable, Remove and (Integration)
-   * Delete. Its figures are
-   * read from the server when the dialog opens (GET /accounts/{id}/impact) and
+  /* The account-impact confirmation: its own dialog for an Integration
+   * account's Disable and Delete, and a view of Edit User for a person's
+   * Disable and Remove. Its figures are
+   * read from the server when it is asked for (GET /accounts/{id}/impact) and
    * are never assumed; the mutation re-reads everything itself, and its own
    * answer is what the page reports afterwards. */
   function impactFigures(impact) {
@@ -4346,6 +4306,18 @@
     remove: {title: 'Remove', accept: 'Remove account', lead: 'Removing'},
     delete: {title: 'Delete', accept: 'Delete account', lead: 'Deleting'},
   });
+
+  // The confirmation's content: the consequence, the server's figures and the
+  // qualifier. Its lead sentence is set by the caller (impactLead).
+  function impactMarkup(impact, act) {
+    return `
+      <p class="dp-modal-message dp-account-impact-lead"></p>
+      ${impactFigures(impact)}
+      ${act !== 'disable' ? '<p class="dp-account-impact-note">Transfers other accounts still need continue, and completed downloads are not undone. The account’s history and the provenance of its past requests are retained.</p>' : ''}
+      <p class="dp-account-impact-qualifier">These figures reflect the current account and transfer state. They may change before confirmation.</p>`;
+  }
+
+  const impactLead = act => `${IMPACT[act].lead} this account will revoke its access and withdraw its outstanding download requests.`;
 
   async function confirmImpact(account, act) {
     const words = IMPACT[act];
@@ -4366,13 +4338,9 @@
       acceptTone: destructive ? '' : 'warning',
       className: 'dp-account-impact',
       mount(body) {
-        body.innerHTML = `
-          <p class="dp-modal-message dp-account-impact-lead"></p>
-          ${impactFigures(impact)}
-          ${destructive ? '<p class="dp-account-impact-note">Transfers other accounts still need continue, and completed downloads are not undone. The account’s history and the provenance of its past requests are retained.</p>' : ''}
-          <p class="dp-account-impact-qualifier">These figures reflect the current account and transfer state. They may change before confirmation.</p>`;
+        body.innerHTML = impactMarkup(impact, act);
         const lead = body.querySelector('.dp-account-impact-lead');
-        lead.textContent = `${words.lead} this account will revoke its access and withdraw its outstanding download requests.`;
+        lead.textContent = impactLead(act);
         return lead;
       },
     });
@@ -4396,17 +4364,353 @@
       result => withdrawalReport('disabled', result));
   }
 
-  // Remove (a person) and Delete (an Integration account) are the one
-  // account deletion; only the words differ.
-  async function deleteAccount(account, act = 'delete') {
-    if (!await confirmImpact(account, act)) return;
+  // An Integration account's Delete. A person's Remove is the same deletion,
+  // confirmed inside Edit User.
+  async function deleteAccount(account) {
+    if (!await confirmImpact(account, 'delete')) return;
     await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}`, undefined, 15000),
-      result => withdrawalReport(act === 'remove' ? 'removed' : 'deleted', result));
+      result => withdrawalReport('deleted', result));
   }
 
   async function enableAccount(account) {
     await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {enabled: true}, 10000),
       'Account enabled');
+  }
+
+  /* Edit User: ONE dialog for a person's role, local password and lifecycle.
+   *
+   * Apply sends only what changed, one request each and the role first: the
+   * role through PATCH /accounts/{id}, the password through POST
+   * /accounts/{id}/password. They are two separate server writes, never one
+   * transaction, so Apply stops at the first that fails, says exactly which
+   * took effect, and re-reads the account; a later Apply sends only what the
+   * re-read account still lacks. A write the server acknowledged is part of
+   * the account from then on, whether or not the re-read succeeds, so it is
+   * never sent again; an unanswered one stays unknown until a re-read says.
+   * A password write that went unanswered is never sent again by itself: its
+   * fields are cleared.
+   *
+   * Disable and Remove turn this same dialog into the server-backed impact
+   * confirmation (figures read when asked for); Back returns to the untouched
+   * draft, and the confirmation sends only its own act. Enable is sent
+   * directly. No lifecycle act ever sends the draft. The two password fields
+   * agreeing is only that -- the server's rules decide the rest. */
+  function editUser(initial) {
+    const id = initial.id;
+    const path = `/accounts/${encodeURIComponent(id)}`;
+    let account = initial;
+    let view = 'edit';
+    let act = '';
+    let pending = false;
+    let reread = true;      // the account shown is the server's latest read
+    let handle = null;
+    const nodes = {};
+    const roleLabel = role => ROLE_LABELS[role] || role;
+    const editTitle = () => `Edit User: ${accountName(account || initial)}`;
+
+    const passwordState = () => {
+      const next = nodes.password.value;
+      const confirmed = nodes.confirm.value;
+      if (!next && !confirmed) return nodes.username?.value ? 'incomplete' : 'empty';
+      if (!confirmed) return 'incomplete';
+      return next === confirmed ? 'match' : 'mismatch';
+    };
+    const roleChanged = () => Boolean(account) && nodes.role.value !== account.role;
+
+    const say = (message, tone = '') => {
+      nodes.outcome.textContent = message;
+      nodes.outcome.hidden = !message;
+      nodes.outcome.dataset.tone = tone;
+    };
+
+    const paint = () => {
+      const state = passwordState();
+      nodes.confirmField.dataset.match = String(state === 'match');
+      nodes.confirm.setAttribute('aria-invalid', String(state === 'mismatch'));
+      nodes.passwordStatus.dataset.state = state;
+      nodes.passwordStatus.textContent = {
+        empty: '', incomplete: 'Enter the new password in both fields.',
+        mismatch: 'Passwords do not match', match: 'Passwords match',
+      }[state];
+      nodes.identity.textContent = account
+        ? [account.email, roleLabel(account.role), account.enabled ? 'Enabled' : 'Disabled'].filter(Boolean).join(' · ')
+        : 'This account no longer exists.';
+      nodes.stale.hidden = reread;
+      if (!handle) return;
+      handle.setBusy(pending);
+      if (view === 'confirm') {
+        handle.setAcceptEnabled(!pending);
+        return;
+      }
+      handle.setAcceptEnabled(Boolean(account) && !pending && state !== 'incomplete' && state !== 'mismatch'
+        && (roleChanged() || state === 'match'));
+      handle.setActionHidden('disable', !account?.enabled);
+      handle.setActionHidden('enable', !account || account.enabled);
+      handle.setActionHidden('remove', !account);
+      ['disable', 'enable', 'remove'].forEach(action => handle.setActionEnabled(action, Boolean(account) && !pending));
+    };
+
+    const clearPassword = () => {
+      nodes.password.value = '';
+      nodes.confirm.value = '';
+    };
+
+    // The account as the server now has it, and whether it could be read. An
+    // unreadable directory keeps the last known account, with what the server
+    // acknowledged since (acknowledge); a directory without it means it is gone.
+    const refresh = async () => {
+      await loadUsers();
+      reread = Array.isArray(state.users.accounts);
+      if (!reread) return false;
+      const current = accountById(id);
+      account = current && liveAccount(current) ? current : null;
+      return true;
+    };
+    const acknowledge = change => { if (account) account = {...account, ...change}; };
+
+    const show = next => {
+      view = next;
+      nodes.editView.hidden = next !== 'edit';
+      nodes.confirmView.hidden = next !== 'confirm';
+      if (next === 'confirm') {
+        const destructive = act !== 'disable';
+        ['disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
+        handle.setTitle(`${IMPACT[act].title} ${accountName(account)}?`);
+        handle.setTone(destructive ? 'danger' : '', destructive ? '' : 'warning');
+        handle.setAcceptLabel(IMPACT[act].accept);
+        handle.setCancelLabel('Back');
+        paint();
+        nodes.confirmView.querySelector('.dp-account-impact-lead').focus();
+        return;
+      }
+      handle.setTitle(editTitle());
+      handle.setTone('', '');
+      handle.setAcceptLabel('Apply');
+      handle.setCancelLabel('Cancel');
+      paint();
+      nodes.role.focus();
+    };
+
+    async function apply() {
+      const role = nodes.role.value;
+      const sendRole = roleChanged();
+      const sendPassword = passwordState() === 'match';
+      if (!sendRole && !sendPassword) return false;
+      pending = true;
+      say('');
+      paint();
+      const done = [];
+      let failure = '';
+      let roleUnanswered = false;
+      if (sendRole) {
+        try {
+          await request('PATCH', path, {role}, 10000);
+          acknowledge({role});
+          done.push(`Role changed to ${roleLabel(role)}.`);
+        } catch (error) {
+          roleUnanswered = !error?.status;
+          failure = roleUnanswered ? '' : `Role not changed: ${text(error.message)}`;
+        }
+      }
+      if (!failure && !roleUnanswered && sendPassword) {
+        const username = nodes.username?.value || '';
+        try {
+          await request('POST', `${path}/password`, {password: nodes.password.value, ...(username ? {username} : {})}, 10000);
+          acknowledge({has_password: true, ...(username ? {username} : {})});
+          done.push('Password saved; the account is signed out everywhere.');
+          clearPassword();
+        } catch (error) {
+          if (error?.status) {
+            failure = `Password not saved: ${text(error.message)}`;
+          } else {
+            failure = 'The password request got no response, so the password may or may not have changed. It is not sent again; enter it again to set it.';
+            clearPassword();
+          }
+        }
+      }
+      const read = await refresh();
+      if (roleUnanswered) {
+        // Unanswered: only a re-read account says whether it took effect.
+        if (!read) failure = 'The role change got no response and the account could not be re-read, so whether it took effect is unknown.';
+        else if (account?.role === role) done.push(`Role changed to ${roleLabel(role)}.`);
+        else failure = 'The role change got no response and the account still has its previous role.';
+        if (sendPassword) failure = [failure, 'The password was not sent.'].filter(Boolean).join(' ');
+      } else if (failure && sendRole && !done.length && sendPassword) {
+        failure += ' The password was not sent.';
+      }
+      pending = false;
+      if (!failure && account) {
+        notify(done.join(' '), 'success');
+        return true;
+      }
+      say([...done, failure || 'This account no longer exists.'].join(' '), 'error');
+      paint();
+      return false;
+    }
+
+    async function enable() {
+      pending = true;
+      say('');
+      paint();
+      let failure = '';
+      let unanswered = false;
+      try {
+        await request('PATCH', path, {enabled: true}, 10000);
+        acknowledge({enabled: true});
+      } catch (error) {
+        unanswered = !error?.status;
+        failure = unanswered ? 'The request got no response.' : `Not enabled: ${text(error.message)}`;
+      }
+      const read = await refresh();
+      pending = false;
+      if (account?.enabled) say('Account enabled.', 'success');
+      else if (unanswered && !read) say('The enable request got no response and the account could not be re-read, so whether it is enabled is unknown.', 'error');
+      else say(failure || 'The account is still disabled.', 'error');
+      paint();
+      nodes.role.focus();
+    }
+
+    async function confirmAct(next) {
+      pending = true;
+      say('');
+      paint();
+      let impact = null;
+      try {
+        impact = await request('GET', `${path}/impact`, undefined, 10000);
+      } catch (error) {
+        say(`The account's impact could not be read, so nothing was changed: ${text(error.message)}`, 'error');
+      }
+      pending = false;
+      if (!impact) {
+        paint();
+        return;
+      }
+      act = next;
+      nodes.confirmView.innerHTML = `${impactMarkup(impact, act)}<p class="dp-account-impact-refusal" role="alert" hidden></p>`;
+      const lead = nodes.confirmView.querySelector('.dp-account-impact-lead');
+      lead.textContent = impactLead(act);
+      lead.tabIndex = -1;
+      show('confirm');
+    }
+
+    // The confirmed act, and only it.
+    async function commitAct() {
+      const removing = act === 'remove';
+      pending = true;
+      paint();
+      let result = null;
+      let failure = '';
+      let unanswered = false;
+      try {
+        result = removing
+          ? await request('DELETE', path, undefined, 15000)
+          : await request('PATCH', path, {enabled: false}, 15000);
+        if (!removing) acknowledge({enabled: false});
+      } catch (error) {
+        unanswered = !error?.status;
+        failure = unanswered ? 'no response from the server' : text(error.message);
+      }
+      const read = await refresh();
+      pending = false;
+      if (removing && (!failure || (read && !account))) {
+        notify(result ? withdrawalReport('removed', result) : 'Account removed.', 'success');
+        return true;
+      }
+      if (!removing && account && (!failure || (read && !account.enabled))) {
+        show('edit');
+        say(result ? withdrawalReport('disabled', result) : 'Account disabled.', 'success');
+        return false;
+      }
+      const refusal = nodes.confirmView.querySelector('.dp-account-impact-refusal');
+      refusal.textContent = unanswered && !read
+        ? `The request got no response and the account could not be re-read, so whether it was ${removing ? 'removed' : 'disabled'} is unknown.`
+        : `${removing ? 'Not removed' : 'Not disabled'}: ${failure || 'the account no longer exists'}`;
+      refusal.hidden = false;
+      paint();
+      return false;
+    }
+
+    const dialog = window.DPSettingsModal.open({
+      title: editTitle(),
+      acceptLabel: 'Apply',
+      cancelLabel: 'Cancel',
+      acceptDisabled: true,
+      className: 'dp-users-dialog dp-users-edit-dialog',
+      actions: [
+        {id: 'disable', label: 'Disable', placement: 'leading'},
+        {id: 'enable', label: 'Enable', placement: 'leading'},
+        {id: 'remove', label: 'Remove', tone: 'danger', placement: 'leading'},
+      ],
+      mount(body, mounted) {
+        const has = Boolean(account.has_password);
+        body.innerHTML = `
+          <div class="dp-users-edit-view" data-edit-view="edit">
+            <p class="dp-modal-message dp-users-edit-identity"></p>
+            <section class="dp-users-edit-group">
+              <h3 class="dp-users-edit-heading">Account Role</h3>
+              <div data-edit-role></div>
+              <p class="dp-users-edit-note">The new role applies to the account’s next request. Its open browsers reload with the new role; it is not signed out.</p>
+            </section>
+            <section class="dp-users-edit-group">
+              <h3 class="dp-users-edit-heading">${has ? 'Reset' : 'Set'} Local Password</h3>
+              ${has ? '' : `<label class="dp-modal-field"><span class="form-label">Username</span>
+                <input class="input" data-edit-field="username" type="text" maxlength="256" autocomplete="off"></label>`}
+              <label class="dp-modal-field"><span class="form-label">New Password</span>
+                <input class="input" data-edit-field="password" type="password" maxlength="4096" autocomplete="new-password"></label>
+              <label class="dp-modal-field dp-users-password-confirm"><span class="form-label">Confirm New Password</span>
+                <span class="dp-users-password-input">
+                  <input class="input" data-edit-field="confirm" type="password" maxlength="4096" autocomplete="new-password"
+                         aria-describedby="dp-users-password-status">
+                  <span class="dp-users-password-check" aria-hidden="true">${window.DPIcons?.svg('circleCheck') || ''}</span>
+                </span></label>
+              <p class="dp-users-password-status" id="dp-users-password-status" aria-live="polite"></p>
+              <p class="dp-users-edit-note">${has ? 'Leave both password fields blank to keep the existing password.'
+                : 'Leave both password fields blank to keep the account without a local password.'}</p>
+              <p class="dp-users-edit-note">The account is signed out everywhere and signs in again with this password. Its OIDC sign-in, if it has one, stays linked.</p>
+            </section>
+            <p class="dp-users-edit-outcome" role="alert" hidden></p>
+            <p class="dp-users-edit-stale" role="status" hidden>The account list could not be re-read. Shown here: the account as last read, with the changes the server confirmed since.</p>
+          </div>
+          <div class="dp-users-edit-view dp-users-edit-confirm" data-edit-view="confirm" hidden></div>`;
+        handle = mounted;
+        Object.assign(nodes, {
+          identity: body.querySelector('.dp-users-edit-identity'),
+          editView: body.querySelector('[data-edit-view="edit"]'),
+          confirmView: body.querySelector('[data-edit-view="confirm"]'),
+          confirmField: body.querySelector('.dp-users-password-confirm'),
+          passwordStatus: body.querySelector('.dp-users-password-status'),
+          outcome: body.querySelector('.dp-users-edit-outcome'),
+          stale: body.querySelector('.dp-users-edit-stale'),
+          role: mountFields(body.querySelector('[data-edit-role]'), '',
+            [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}]).role,
+        });
+        body.querySelectorAll('[data-edit-field]').forEach(input => { nodes[input.dataset.editField] = input; });
+        body.addEventListener('input', paint);
+        body.addEventListener('change', paint);
+        paint();
+        return nodes.identity;
+      },
+      onAction(action) {
+        if (pending || !account || view !== 'edit') return;
+        if (action === 'enable') void enable();
+        else if (action === 'disable' || action === 'remove') void confirmAct(action);
+      },
+      onCancel() {
+        if (pending) return false;
+        if (view !== 'confirm') return true;
+        show('edit');
+        return false;
+      },
+      async onAccept() {
+        if (pending) return false;
+        return view === 'confirm' ? commitAct() : apply();
+      },
+    });
+    // The editor starts at its first field: the Role selector, once the one
+    // dropdown owner has projected it (its focus then goes to the trigger).
+    window.DPDropdowns?.refresh();
+    nodes.role.focus();
+    return dialog.closed;
   }
 
   /* The one-time token disclosure. The raw value exists only in this modal's
@@ -5094,13 +5398,11 @@
     else if (action === 'create-integration') void createIntegrationAccount();
     else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));
     else if (!account) return true;
-    else if (action === 'role') void changeRole(account);
-    else if (action === 'password') void resetPassword(account);
+    else if (action === 'edit') { if (account.id !== selfId() && !account.protected) void editUser(account); }
     else if (action === 'details') void showAccountDetails(account);
     else if (action === 'disable') void disableAccount(account);
     else if (action === 'enable') void enableAccount(account);
-    else if (action === 'remove') void deleteAccount(account, 'remove');
-    else if (action === 'delete') void deleteAccount(account, 'delete');
+    else if (action === 'delete') void deleteAccount(account);
     else if (action === 'issue-token') void issueToken(account);
     else if (action === 'revoke-token') void revokeToken(account, button.dataset.tokenId || '');
     return true;

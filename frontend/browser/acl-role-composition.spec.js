@@ -175,28 +175,33 @@ test('each role is composed from its server authority, and a role change resets 
     // figures, and sends the account's open page to sign-in.
     await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
     await admin.page.locator('#view-settings [data-tab="users"]').click();
-    await admin.page.locator(`tr[data-account-row="${user.id}"] [data-user-action="disable"]`).click();
-    const impact = admin.page.locator('.dp-modal-dialog.dp-account-impact');
+    await admin.page.locator(`tr[data-account-row="${user.id}"] [data-user-action="edit"]`).click();
+    const impact = admin.page.locator('.dp-modal-dialog.dp-users-edit-dialog');
+    await impact.getByRole('button', {name: 'Disable', exact: true}).click();
     await expect(impact.locator('.dp-account-impact-lead'))
       .toHaveText('Disabling this account will revoke its access and withdraw its outstanding download requests.');
     await expect(impact.locator('.dp-account-impact-lead')).toHaveCSS('text-align', 'center');
     await expect(impact.locator('.dp-account-impact-figures dd')).toHaveText(['0', '0', '0']);
     await expect(impact.locator('.dp-account-impact-qualifier'))
       .toHaveText('These figures reflect the current account and transfer state. They may change before confirmation.');
-    await expect(impact.locator('.dp-modal-footer .btn')).toHaveText(['Cancel', 'Disable account']);
+    await expect(impact.locator('.dp-modal-footer .btn:visible')).toHaveText(['Back', 'Disable account']);
     await expect(impact).not.toContainText('Illustrative');
     const signedOut = signedUser.page.waitForURL(/\/login/);
     await impact.locator('[data-modal-accept]').click();
     await signedOut;
+    await expect(impact.locator('.dp-users-edit-identity')).toContainText('Disabled');
+    await impact.locator('[data-modal-cancel]').click();
 
     await signedViewer.context.close();          // its removal is not what this page shows
-    await admin.page.locator(`tr[data-account-row="${viewer.id}"] [data-user-action="remove"]`).click();
-    const removal = admin.page.locator('.dp-modal-dialog.dp-account-impact');
+    await admin.page.locator(`tr[data-account-row="${viewer.id}"] [data-user-action="edit"]`).click();
+    const removal = admin.page.locator('.dp-modal-dialog.dp-users-edit-dialog');
+    await removal.getByRole('button', {name: 'Remove', exact: true}).click();
     await expect(removal.locator('.dp-modal-footer [data-modal-accept]')).toHaveClass(/\bbtn-danger\b/);
     await expect(removal.locator('.dp-account-impact-note'))
       .toHaveText('Transfers other accounts still need continue, and completed downloads are not undone. '
         + 'The account’s history and the provenance of its past requests are retained.');
-    await removal.locator('[data-modal-cancel]').click();
+    await removal.locator('[data-modal-cancel]').click();                  // Back
+    await removal.locator('[data-modal-cancel]').click();                  // Cancel
 
     expect([...admin.errors, ...signedUser.errors, ...signedViewer.errors]).toEqual([]);
   } finally {
@@ -279,7 +284,7 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
   }
 });
 
-test('Change Role offers every human role inside its dialog, and each choice is applied', async ({browser}) => {
+test('Edit User offers every human role, and each choice is applied', async ({browser}) => {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   const admin = await signIn(browser, ADMIN);
   const person = {username: `acl-role-${run}`, password: `acl-role-${run}-pass`};
@@ -291,7 +296,7 @@ test('Change Role offers every human role inside its dialog, and each choice is 
     const roleOf = async () => (await api(admin.page, 'GET', '/accounts')).body.accounts
       .find(account => account.id === created.body.id).role;
     for (const [label, role] of [['ReadOnly User', 'readonly'], ['Admin', 'admin'], ['User', 'user']]) {
-      await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="role"]`).click();
+      await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="edit"]`).click();
       await admin.page.locator('.dp-users-dialog .dp-dropdown__trigger').click();
       // The projected menu sits above the dialog: every human role, and only those, can be chosen.
       const options = admin.page.locator('.dp-dropdown-menu .dp-dropdown__option');

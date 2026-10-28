@@ -441,9 +441,10 @@ body.light .dp-modal-dialog {
 }
 
 /* A destructive cancel slot (cancelTone: 'danger') leads the footer; the
-   actions keep the far end. A leading action (placement: 'leading') takes the
-   far start the same way. */
-.dp-modal-footer :is(.dp-modal-cancel-leading, .dp-modal-action-leading) {
+   actions keep the far end. Leading actions (placement: 'leading') take the
+   far start the same way, together: only the last one shown opens the gap. */
+.dp-modal-footer :is(.dp-modal-cancel-leading,
+  .dp-modal-action-leading:not(:has(~ .dp-modal-action-leading:not([hidden])))) {
   margin-right: auto;
 }
 

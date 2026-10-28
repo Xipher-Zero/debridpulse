@@ -20,7 +20,7 @@
   const NO = 'No';
 
   /* Shared by User Accounts (the card) and the Role selectors of Add Local
-   * Account and Change Role. Derived from backend/auth/permissions.py
+   * Account and Edit User. Derived from backend/auth/permissions.py
    * (ROLE_CAPABILITIES, ACTIONS, destruction_precondition). */
   const ROLE_TABLE = Object.freeze({
     caption: 'What each role can do',
@@ -500,7 +500,7 @@
         ]},
         {table: ROLE_TABLE},
         {heading: 'Account actions', list: [
-          'Add Local Account creates a person with a username and password. Change Role takes effect on the account’s next request; its open browsers reload with the new role.',
+          'Add Local Account creates a person with a username and password. A role changed in Edit User takes effect on the account’s next request; its open browsers reload with the new role.',
           'Disabling an account ends its sessions and withdraws its outstanding download requests. Removing it does the same and deletes its own notification settings.',
           'Merge combines accounts that belong to the same person into one. Accounts that share an email address are only suggested; nothing is merged automatically.',
           'DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account here.',
