@@ -412,7 +412,10 @@
      the page; Escape closes it and focus returns to its control. Its panel
      travels from its bar's edge -- down from the header (the account), up
      from the dock (More) -- clipped to that box, so neither bar is covered;
-     closing, it returns the same way and takes no input. */
+     closing, it returns the same way and takes no input. The panel is
+     placed against its bar's edge itself (absolutely, in the sheet's box),
+     so where it starts never depends on how the sheet is laid out in the
+     frame it opens or closes in. */
   .dp-shell-sheet {
     position: fixed;
     inset: var(--dp-shell-header) 0 var(--dp-shell-dock-edge) 0;
@@ -427,24 +430,22 @@
     background: transparent;
     color: var(--dp-text-primary);
     font-family: var(--dp-font-sans);
-    /* Its layout is the sheet's own, open or closing: only display changes,
-       so the panel keeps its width and its bar's edge while it returns. */
-    flex-direction: column;
     pointer-events: none;
     transition:
       background-color var(--dp-motion-collapse) var(--dp-motion-ease),
       display var(--dp-motion-collapse) allow-discrete,
       overlay var(--dp-motion-collapse) allow-discrete;
   }
-  .dp-shell-sheet--down { justify-content: flex-start; }
-  .dp-shell-sheet--up { justify-content: flex-end; }
   .dp-shell-sheet:popover-open {
-    display: flex;
+    display: block;
     background: var(--dp-chrome-scrim);
     pointer-events: auto;
     transition-duration: var(--dp-motion-expand);
   }
   .dp-shell-sheet-panel {
+    position: absolute;
+    right: 0;
+    left: 0;
     box-sizing: border-box;
     max-height: 100%;
     padding: 14px 12px;
@@ -456,11 +457,13 @@
     transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
   }
   .dp-shell-sheet--down .dp-shell-sheet-panel {
+    top: 0;
     border-top: 0;
     border-radius: 0 0 var(--dp-radius-lg) var(--dp-radius-lg);
     transform: translateY(-100%);
   }
   .dp-shell-sheet--up .dp-shell-sheet-panel {
+    bottom: 0;
     border-bottom: 0;
     border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
     transform: translateY(100%);

@@ -524,6 +524,21 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     }
   });
 
+  test('a sheet panel is placed against its own bar by itself, whatever the sheet layout in the frame it opens in (iOS drew More from the middle)', async ({page}) => {
+    await open(page, {width: 390, height: 760});
+    // The sheet laid out as a plain block, as an engine may draw it before its own layout applies.
+    await page.addStyleTag({content: '.dp-shell-sheet:popover-open { display: block; }'});
+    await page.emulateMedia({reducedMotion: 'reduce'});
+    await page.locator('#shell-dock .dp-shell-dock-more').click();
+    const facts = await page.evaluate(() => {
+      const box = document.getElementById('shell-more').getBoundingClientRect();
+      const panel = document.querySelector('#shell-more .dp-shell-sheet-panel').getBoundingClientRect();
+      return {bottom: Math.round(box.bottom - panel.bottom), width: Math.round(box.width - panel.width)};
+    });
+    expect(facts, 'More rests on the dock edge').toEqual({bottom: 0, width: 0});
+    await page.keyboard.press('Escape');
+  });
+
   test('one shell menu at a time: another bar control switches to its menu, a dock choice closes More and navigates, quick repeats settle, no press reaches the page', async ({page}) => {
     await open(page, {width: 390, height: 760});
     const state = () => page.evaluate(() => ({theme: document.getElementById('theme-picker').matches(':popover-open'),
