@@ -496,13 +496,15 @@ def test_the_report_cadence_and_window_are_one_centred_bordered_group():
     centred in the card body -- the same island the Download Engine and
     Extraction surfaces already use, not a new decorative language."""
     card = reports_card()
-    group = block(card, 'class="dp-settings-statistics-cadence-group"', "</div>")
+    # A bounded Settings island: the shared owner (fitIslands) stacks it when
+    # its row wraps, and the outline then hugs the stack.
+    group = block(card, 'class="dp-settings-statistics-cadence-group dp-settings-island"', "</div>")
     assert "stats_report_interval_hours" in group
     assert "stats_report_window_hours" in group
     # The destination is NOT in it: it keeps the full row above.
     assert "stats_report_webhook_url" not in group
     assert card.index("webhookField('stats_report_webhook_url'") \
-        < card.index('class="dp-settings-statistics-cadence-group"')
+        < card.index('class="dp-settings-statistics-cadence-group dp-settings-island"')
     # Nothing new was introduced around it.
     assert "disclosureSection(" not in card
     assert "card(" not in group and "form-label" not in group

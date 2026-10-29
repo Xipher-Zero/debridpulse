@@ -200,6 +200,16 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
     await page.evaluate(() => window.closeSidebar?.());
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(overflow, `no horizontal page scroll at ${width}px`).toBe(false);
+    if (width !== 390) {
+      // A User's own fields reflow as the Admin's do: two bordered islands, one control width (no upload action).
+      const grouped = await view.evaluate(panel => ({
+        borders: ['.dp-settings-notifications-identity-row', '.dp-settings-notifications-delivery-row']
+          .map(selector => getComputedStyle(panel.querySelector(selector)).borderTopStyle),
+        widths: new Set(['discord_username', 'discord_avatar_url', 'discord_webhook_url', 'discord_webhook_added'].map(key =>
+          Math.round(panel.querySelector(`[data-setting="${key}"]`).closest('.dp-settings-inline-field')
+            .querySelector(':scope > .dp-settings-inline-field-control').getBoundingClientRect().width))).size}));
+      expect(grouped, `${width}px`).toEqual({borders: ['solid', 'solid'], widths: 1});
+    }
     await shot(page, `user-notifications-${width}`);
   }
   await page.setViewportSize({width: 1440, height: 914});

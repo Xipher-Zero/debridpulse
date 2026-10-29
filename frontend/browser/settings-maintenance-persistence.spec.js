@@ -205,7 +205,8 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
         const readingGroup = reading.closest('.dp-settings-event-logging-field');
         const select = island.querySelector('.dp-dropdown__trigger') || island.querySelector('select');
         return {
-          islandWidth: i.width, inner,
+          islandWidth: i.width, inner, stacked: island.dataset.island === 'stacked',
+          widestGroup: Math.max(...groups.map(group => group.width)),
           groupsSideBySide: groups.length === 2 && groups[0].right <= groups[1].left + 1,
           groupsCentred: groups.length === 2
             && Math.abs((groups[0].top + groups[0].height / 2) - (groups[1].top + groups[1].height / 2)),
@@ -258,14 +259,19 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
       // A quarter of the card body, centred; the label and hint stay to the
       // left of the selector, centred against it, and nothing leaves the island.
       if (width > 700) {
-        // Half the card body, floored at the 720px both groups need, the two
-        // groups side by side and centred against each other.
-        expect(Math.abs(facts.islandWidth - Math.max(0.5 * facts.inner, Math.min(facts.inner, 720)))).toBeLessThan(2);
-        // With room for both, side by side and centred against each other;
-        // without it (a card body under 720px) they wrap onto rows instead.
-        if (facts.inner >= 720) {
+        if (!facts.stacked) {
+          // Half the card body, floored at the 720px both groups need, the
+          // two groups side by side and centred against each other.
+          expect(Math.abs(facts.islandWidth - Math.max(0.5 * facts.inner, Math.min(facts.inner, 720)))).toBeLessThan(2);
           expect(facts.groupsSideBySide).toBe(true);
           expect(facts.groupsCentred).toBeLessThan(2);
+        } else {
+          // Too narrow for both side by side: a stacked island whose outline
+          // hugs the stack (its widest group and the padding), never the
+          // side-by-side share around a column.
+          expect(facts.inner).toBeLessThan(720);
+          expect(facts.islandWidth).toBeLessThanOrEqual(facts.widestGroup + 46);
+          expect(facts.islandWidth).toBeLessThan(facts.inner);
         }
         expect(facts.sideBySide).toBe(true);
         expect(facts.centredRow).toBeLessThan(2);
@@ -685,4 +691,38 @@ test('Allow Database Reset persists immediately but authorizes nothing on its ow
     } finally {
       await restore(page, before);
     }
+  });
+
+test('Event Logging stacks below the room for both groups, its island hugging the stack, centred; wide again it is side by side',
+  async ({page}) => {
+    await openMaintenance(page);
+    const read = () => page.locator('.dp-settings-event-logging-card').evaluate(card => {
+      const box = node => node.getBoundingClientRect();
+      const body = card.querySelector(':scope > .card-body'), island = body.querySelector('.dp-settings-event-logging-island');
+      const fields = [...island.querySelectorAll(':scope > .dp-settings-event-logging-field')].map(box);
+      const content = box(body), i = box(island), padding = parseFloat(getComputedStyle(body).paddingLeft);
+      return {stacked: island.dataset.island === 'stacked', direction: getComputedStyle(island).flexDirection,
+        sameLine: Math.abs(fields[0].top - fields[1].top) <= 1,
+        leftAir: Math.round(i.left - content.left - padding), rightAir: Math.round(content.right - padding - i.right),
+        hugs: Math.round(i.width) <= Math.round(Math.max(...fields.map(field => field.width))) + 46,
+        inside: fields.every(field => field.left >= i.left && field.right <= i.right + 0.5),
+        overflow: body.scrollWidth - body.clientWidth};
+    });
+    const wide = await read();
+    expect(wide).toMatchObject({stacked: false, direction: 'row', sameLine: true, overflow: 0});
+    expect(Math.abs(wide.leftAir - wide.rightAir)).toBeLessThanOrEqual(1);
+
+    await page.setViewportSize({width: 820, height: 1000});
+    await expect.poll(async () => (await read()).stacked).toBe(true);
+    const narrow = await read();
+    expect(narrow).toMatchObject({direction: 'column', sameLine: false, hugs: true, inside: true, overflow: 0});
+    expect(Math.abs(narrow.leftAir - narrow.rightAir)).toBeLessThanOrEqual(1);
+    expect(narrow.leftAir).toBeGreaterThan(40);
+    // Still the same two controls: the page size is a choice, Recorded Events a reading.
+    await expect(page.locator('[data-setting="activity_log_page_size"]')).toBeEnabled();
+    await expect(page.locator('[data-setting="event_journal_recorded"]')).toHaveAttribute('readonly', '');
+
+    await page.setViewportSize({width: 1440, height: 1000});
+    await expect.poll(async () => (await read()).stacked).toBe(false);
+    expect(await read()).toMatchObject({direction: 'row', sameLine: true});
   });

@@ -816,3 +816,85 @@ test('both Discord rows share the same card-body rails', async ({page}) => {
   expect(rails.statistics).toEqual(rails.identity);
   expect(rails.overflow).toBeLessThanOrEqual(0);
 });
+
+// The four Discord fields and the cadence island at one width, in one read.
+async function responsiveGeometry(page) {
+  return page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
+    const box = node => { const r = node.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width}; };
+    const inside = (inner, outer) => inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5
+      && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
+    const groups = ['.dp-settings-notifications-identity-row', '.dp-settings-notifications-delivery-row'].map(selector => {
+      const node = panel.querySelector(selector), style = getComputedStyle(node);
+      return {node, box: box(node), display: style.display, border: style.borderTopStyle,
+        keys: [...node.querySelectorAll(':scope > .dp-settings-inline-field [data-setting]')].map(field => field.dataset.setting)};
+    });
+    const controls = ['discord_username', 'discord_avatar_url', 'discord_webhook_url', 'discord_webhook_added']
+      .map(key => box(panel.querySelector(`[data-setting="${key}"]`).closest('.dp-settings-inline-field')
+        .querySelector(':scope > .dp-settings-inline-field-control')));
+    const preview = panel.querySelector('#dp-settings-avatar-preview');
+    const avatarControl = panel.querySelector('.dp-settings-avatar-row > .dp-settings-inline-field-control');
+    const cadence = panel.querySelector('.dp-settings-statistics-cadence-group');
+    const row = panel.querySelector('.dp-settings-statistics-reporting-row');
+    const cadenceFields = [...cadence.querySelectorAll(':scope > .dp-settings-inline-field')];
+    const button = selector => { const b = panel.querySelector(selector).getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; };
+    return {
+      groups: groups.map(({box: _box, node: _node, ...rest}) => rest),
+      fieldsInside: groups.every(group => [...group.node.querySelectorAll(':scope > .dp-settings-inline-field')]
+        .every(field => inside(box(field), group.box))),
+      controlWidths: controls.map(control => Math.round(control.width)),
+      controlRights: controls.map(control => Math.round(control.right)),
+      preview: {belowControl: box(preview).top >= box(avatarControl).bottom - 0.5, inIdentity: inside(box(preview), groups[0].box),
+        rightWithinGroup: box(preview).right <= groups[0].box.right + 0.5},
+      cadence: {stacked: cadence.dataset.island === 'stacked', direction: getComputedStyle(cadence).flexDirection,
+        leftAir: Math.round(box(cadence).left - box(row).left), rightAir: Math.round(box(row).right - box(cadence).right),
+        hugs: Math.round(box(cadence).width) <= Math.round(Math.max(...cadenceFields.map(field => box(field).width))) + 46,
+        fieldsInside: cadenceFields.every(field => inside(box(field), box(cadence)))},
+      avatarButton: button('[data-avatar-action]'), webhookButton: button('[data-action="clear-webhook"]'),
+      overflow: panel.scrollWidth - panel.clientWidth,
+    };
+  });
+}
+
+test('narrow: two bordered Discord islands with one control width, a cadence island that hugs its stack; wide again restores both', async ({page}) => {
+  const before = await canonical(page);
+  try {
+    await withStoredAvatar(page, before, `https://example.com/${'a-very-long-avatar-path-segment/'.repeat(6)}avatar.png`);
+    const wide = await responsiveGeometry(page);
+    expect(wide.groups.map(group => [group.display, group.border])).toEqual([['grid', 'none'], ['grid', 'none']]);
+    expect(wide.cadence).toMatchObject({stacked: false, direction: 'row'});
+
+    // 1024px: the card body is under 968px -- Identity and Destinations become two bordered islands.
+    await page.setViewportSize({width: 1024, height: 1000});
+    await expect.poll(async () => (await responsiveGeometry(page)).groups[0].display).toBe('flex');
+    const narrow = await responsiveGeometry(page);
+    expect(narrow.groups).toEqual([
+      {display: 'flex', border: 'solid', keys: ['discord_username', 'discord_avatar_url']},
+      {display: 'flex', border: 'solid', keys: ['discord_webhook_url', 'discord_webhook_added']}]);
+    expect(narrow.fieldsInside).toBe(true);
+    expect(new Set(narrow.controlWidths).size, `one control width: ${narrow.controlWidths}`).toBe(1);
+    expect(new Set(narrow.controlRights).size, `one right edge: ${narrow.controlRights}`).toBe(1);
+    expect(narrow.preview).toEqual({belowControl: true, inIdentity: true, rightWithinGroup: true});
+    // The avatar's action is the webhook Clear's embedded button: the same height (the slot keeps one width for both states).
+    expect(narrow.avatarButton[1]).toBe(narrow.webhookButton[1]);
+    expect(narrow.overflow).toBeLessThanOrEqual(0);
+
+    // 900px: the cadence pair no longer fits side by side -- it stacks, and its border hugs the stack, centred.
+    await page.setViewportSize({width: 900, height: 1000});
+    await expect.poll(async () => (await responsiveGeometry(page)).cadence.stacked).toBe(true);
+    const stacked = (await responsiveGeometry(page)).cadence;
+    expect(stacked).toMatchObject({direction: 'column', hugs: true, fieldsInside: true});
+    expect(Math.abs(stacked.leftAir - stacked.rightAir)).toBeLessThanOrEqual(1);
+    expect(stacked.leftAir).toBeGreaterThan(40);
+
+    // Wider again: both layouts come back, with no border left on the Discord rows.
+    await page.setViewportSize({width: 1440, height: 1000});
+    await expect.poll(async () => (await responsiveGeometry(page)).groups[0].display).toBe('grid');
+    const restored = await responsiveGeometry(page);
+    expect(restored.groups.map(group => [group.display, group.border])).toEqual([['grid', 'none'], ['grid', 'none']]);
+    expect(restored.cadence).toMatchObject({stacked: false, direction: 'row'});
+    expect(restored.controlWidths).toEqual(wide.controlWidths);
+  } finally {
+    await page.setViewportSize({width: 1440, height: 1000});
+    await restoreNotifications(page, before, {clears: []});
+  }
+});

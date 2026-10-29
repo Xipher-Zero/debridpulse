@@ -107,14 +107,11 @@
   white-space: nowrap;
 }
 
-/* The Avatar URL field's one action sits inside the field's own border, as
-   the control's sibling, so entered text physically ends where the button
-   begins. Its vertical size is the compound field's, not a button band of its
-   own, and its width is ONE slot for both of its states (Upload, Clear), so
-   switching between them moves nothing. */
+/* The Avatar URL field's one action is the shared embedded action, drawn
+   exactly as a webhook's Clear is (the plain small button inside the field's
+   own border). It states only its width: ONE slot for both of its states
+   (Upload, Clear), so switching between them moves nothing. */
 #view-settings .dp-settings-avatar-action {
-  min-height: 0;
-  padding-block: 4px;
   white-space: nowrap;
   width: 5.5em;
   justify-content: center;
@@ -224,16 +221,45 @@
   }
 }
 
-@media (max-width: 1000px) {
-  #view-settings .dp-settings-notifications-identity-row,
-  #view-settings .dp-settings-notifications-delivery-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* Narrower than the two-column layout serves -- below 968px of the Discord
+   card body's content, where its narrowest control (Display Name) would fall
+   under about 200px -- the two rows become two bordered islands, Identity and
+   Destinations, one field per line, the islands' material and padding.
+   Every description takes the same width, so the four controls share one
+   width and one right edge whatever their sentences say; the avatar's reading
+   stays on its own field's second line. Measured against the card's own
+   width, never the viewport's. */
+#view-settings .dp-settings-discord-card > .card-body {
+  container: dp-discord / inline-size;
 }
 
-@media (max-width: 779px) {
+@container dp-discord (width < 968px) {
   #view-settings .dp-settings-notifications-identity-row,
   #view-settings .dp-settings-notifications-delivery-row {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    border: 1px solid var(--dp-divider);
+    border-radius: 12px;
+    padding: 16px 22px 17px;
+  }
+
+  #view-settings .dp-settings-notifications-delivery-row {
+    margin-top: 16px;
+  }
+
+  #view-settings :is(.dp-settings-notifications-identity-row, .dp-settings-notifications-delivery-row)
+    > .dp-settings-inline-field > .dp-settings-inline-field-info {
+    flex: 0 0 auto;
+    width: min(190px, 40cqi);
+    max-width: none;
+  }
+
+  /* The avatar's row is the two-line field (its reading beneath the
+     control): description and control only, so no empty third column's gap
+     makes its control narrower than its peers'. */
+  #view-settings .dp-settings-notifications-identity-row > .dp-settings-avatar-row {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 }

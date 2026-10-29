@@ -549,7 +549,9 @@
   }
 
   /* The bounded settings islands -- Download Behavior & Limits' folder and
-   * limit, Automatic Extraction's two behaviour settings -- sit on one row
+   * limit, Automatic Extraction's two behaviour settings, the session row,
+   * Statistics Reporting's cadence and window, Event Logging's page size and
+   * count -- sit on one row
    * while their room holds them there. Where it does not, the row has wrapped,
    * and a wrapped row cannot shrink its own box to what it holds: its outline
    * would stay as wide as the room, far from the settings it frames. So a
@@ -3105,7 +3107,7 @@
     const reports = card('Statistics Reporting', `
       <div class="dp-settings-statistics-reporting-row">
         ${webhookField('stats_report_webhook_url', s.stats_report_webhook_url_configured)}
-        <div class="dp-settings-statistics-cadence-group">
+        <div class="dp-settings-statistics-cadence-group dp-settings-island">
           ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
             type: 'number', min: 0, max: 168, step: 1,
             hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
@@ -3912,7 +3914,9 @@
    * here, and the server refuses both regardless. */
   function userActions(account) {
     if (account.id === selfId()) return '<span class="dp-settings-users-self">You</span>';
-    if (account.protected === 'default_admin') return '<span class="dp-settings-users-hint">Password managed in Authentication</span>';
+    if (account.protected === 'default_admin') {
+      return '<span class="dp-settings-users-hint"><span>Password managed</span> <span>in Authentication</span></span>';
+    }
     if (account.protected) return '';
     return `<button class="btn btn-ghost btn-sm" type="button" data-user-action="edit" data-account-id="${html(account.id)}">Edit</button>`;
   }
@@ -5599,7 +5603,7 @@
      * the journal itself is kept indefinitely, so nothing here retains, prunes
      * or enables anything and the header rail stays empty. */
     const eventLogging = card('Event Logging', `
-      <div class="dp-settings-event-logging-island">
+      <div class="dp-settings-event-logging-island dp-settings-island">
         ${selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,
           [[50, '50 events'], [100, '100 events'], [250, '250 events']],
           'Number of events displayed per page in the Activity Log.',

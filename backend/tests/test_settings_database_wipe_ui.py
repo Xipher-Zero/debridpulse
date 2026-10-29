@@ -226,7 +226,8 @@ def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_
     assert "headerAction" not in card and "action:" not in card and "toggle(" not in card
     # Exactly one centred island: the one page-size selector beside the one
     # Recorded Events reading, which is read-only and never persisted.
-    assert card.count('class="dp-settings-event-logging-island"') == 1 and card.count("selectField(") == 1
+    # One bounded Settings island (fitIslands stacks it when its row wraps).
+    assert card.count('class="dp-settings-event-logging-island dp-settings-island"') == 1 and card.count("selectField(") == 1
     assert ("${input('event_journal_recorded', 'Recorded Events', recordedEventsText(), {\n"
             "          inline: true, commit: false, readonly: true,\n"
             "          hint: 'Total events retained in the activity journal.',") in card

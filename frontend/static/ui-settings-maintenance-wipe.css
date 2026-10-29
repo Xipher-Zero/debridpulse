@@ -76,8 +76,7 @@
 /* Event Logging's island holds two compact field groups side by side -- the
    page-size selector and the Recorded Events reading -- centred against each
    other: the same island at half the card body, never narrower than both
-   groups need beside full-size controls. Too narrow for both, the groups
-   wrap onto rows instead of clipping. */
+   groups need beside full-size controls. */
 #view-settings .dp-settings-event-logging-island {
   display: flex;
   flex-wrap: wrap;
@@ -90,6 +89,21 @@
 #view-settings .dp-settings-event-logging-island > .dp-settings-event-logging-field {
   flex: 1 1 300px;
   min-width: 0;
+}
+
+/* Wrapped, it is a stacked Settings island (fitIslands marks it; the shared
+   stacked rule puts one setting per row, each at its own width, centred): the
+   outline then hugs the stack rather than keeping the side-by-side share and
+   minimum it no longer uses. Handheld keeps its own one-column island. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-event-logging-island[data-island='stacked'] {
+    width: max-content;
+    min-width: 0;
+  }
+
+  #view-settings .dp-settings-event-logging-island[data-island='stacked'] > .dp-settings-event-logging-field {
+    flex: 0 1 auto;
+  }
 }
 
 /* The reading takes the selector's footprint, not a free-text field's, and
