@@ -358,6 +358,10 @@ async function choose(page, id) {
 }
 
 test('the compact window holds as many sections as fit, fewer as the header narrows, three wherever three can fit, and every one it shows opens its section', async ({page}) => {
+  // Nine widths x five sections, each chosen, verified and settled: 32-45s on
+  // hosted runners when it passes (CI logs, Oct 2026), at the suite's 45s
+  // default -- the sweep's own budget, not a wait for anything.
+  test.setTimeout(90_000);
   await openSettings(page, 1920);
   const reference = await header(page);
   const frame = reference.control.width - reference.widths.reduce((sum, width) => sum + width, 0);
@@ -524,12 +528,14 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
         expect(h.labelsWhole.every(Boolean), at).toBe(true);
         await expect(page.locator('#view-settings .dp-settings-tabs [tabindex="0"]')).toHaveCount(1);
         await expect(page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[k]}"]`)).toHaveAttribute('tabindex', '0');
-        // First and Last keep their size; each is gone (no room) only at its own end.
+        // First and Last keep their size; each is gone exactly where the window
+        // shows its end section whole (1.0.14, 053c1f60; section-navigator-endpoints).
         for (const end of h.ends.filter(end => end.shown)) {
           expect(end.width, at).toBeGreaterThanOrEqual(32);
           expect(end.height, at).toBeGreaterThanOrEqual(32);
         }
-        expect(h.ends.map(end => end.shown), at).toEqual([k !== 0, k !== n - 1]);
+        const whole = i => h.shown[i] >= h.widths[i] - 0.5;
+        expect(h.ends.map(end => end.shown), at).toEqual([!whole(0), !whole(n - 1)]);
         // Side padding: the complete strip's unless an end section and its
         // whole neighbour would not otherwise fit the end section's own room
         // (the control's window and the place of the action gone there), and
@@ -613,7 +619,8 @@ test('at the 780px floor, where the end pair cannot fit even trimmed (the hosted
     expect(problems(other, reference), where).toEqual([]);
     expectNoHiddenCut(other, where);
     for (const key of ['left', 'right']) expect(Math.abs(other.control[key] - control[key]), where).toBeLessThanOrEqual(0.5);
-    expect(other.ends.map(end => end.shown), where).toEqual([k !== 0, true]);
+    // First is gone exactly where the window shows the first section whole; the last is never whole here.
+    expect(other.ends.map(end => end.shown), where).toEqual([other.shown[0] < other.widths[0] - 0.5, true]);
     if (k === 0) await expectEndpoint(page, other, where, reference);
   }
   // The preview opens its section, the window sliding back the way the
@@ -640,7 +647,11 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
     await openSettings(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const order = (await header(page)).order;
     const n = order.length;
-    for (const width of [780, 900, 1100, 1300]) {
+    // Widths where the middle section, placed afresh, leaves both end sections
+    // cut, so both actions are there. (At 1300px, with the room the inset shell
+    // gives the header since af5496ef, the window shows the first section whole
+    // and First is rightly gone: section-navigator-endpoints covers that.)
+    for (const width of [780, 900, 1100, 1200]) {
       await resize(page, width);
       const at = k => `${order[k]} at ${width}px`;
       // Between the ends: both actions, each over one end of the strip, the

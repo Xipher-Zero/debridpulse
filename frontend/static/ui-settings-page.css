@@ -146,7 +146,10 @@
     flex-direction: column;
   }
 
-  #view-settings [data-panel="sources"]:not([hidden]) {
+  /* Shown, or kept on screen by a slide leaving it (data-dp-motion-outgoing):
+     a kept panel is drawn as it was, so its lists keep their bounds and their
+     scroll positions while it leaves. */
+  #view-settings [data-panel="sources"]:is(:not([hidden]), [data-dp-motion-outgoing]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;

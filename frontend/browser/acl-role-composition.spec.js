@@ -143,7 +143,10 @@ test('each role is composed from its server authority, and a role change resets 
       settingsContext: null, settingsLabel: null,
       dashboardColumns: 5, unmounted: 0, badgeOccupancy: 0, badgeSpeed: 1});
     await signedViewer.page.locator('#sidebar .nav-item[data-view="torrents"]').click();
-    await expect(signedViewer.page.locator('#view-torrents thead th')).toHaveCount(6);
+    // The unified table's five columns for a viewer who cannot operate: no
+    // Actions and no selection column (1.0.14, 42239670).
+    await expect(signedViewer.page.locator('#view-torrents thead th')).toHaveCount(5);
+    await expect(signedViewer.page.locator('#view-torrents thead th', {hasText: 'Actions'})).toHaveCount(0);
     await expect(signedViewer.page.locator('#view-torrents input[type="checkbox"]')).toHaveCount(0);
 
     // A role change made before a page's live pulse subscribed is announced to

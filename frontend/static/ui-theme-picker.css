@@ -41,7 +41,11 @@
   position: fixed;
   inset: auto;
   margin: 0;
-  width: 264px;
+  /* 264px, or as wide as its longest palette name needs in the face it is
+     drawn in (the fallback face, DejaVu Sans, sets some names wider): a name
+     is never shortened at any desktop width. */
+  width: max-content;
+  min-width: 264px;
   max-width: calc(100vw - 16px);
   padding: 6px;
   overflow-y: auto;

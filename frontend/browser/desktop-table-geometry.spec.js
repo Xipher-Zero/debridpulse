@@ -121,7 +121,7 @@ const geometry = (page, view) => page.evaluate(view => {
   for (const th of heads) if (getComputedStyle(th).display !== 'none' && lines(th) > 1) misfits.push(`heading ${th.firstChild?.textContent.trim()} wraps`);
   const w = wrap.getBoundingClientRect(), t = table.getBoundingClientRect();
   return {columns, misfits, layout: getComputedStyle(table).tableLayout,
-          wrap: {left: w.left, right: w.right, width: w.width}, tableRight: t.right,
+          wrap: {left: w.left, right: w.right, width: w.width, inner: w.left + wrap.clientLeft + wrap.clientWidth}, tableRight: t.right,
           wrapScrolls: wrap.scrollWidth > wrap.clientWidth + 1,
           pageScrolls: document.documentElement.scrollWidth > innerWidth,
           sidebar: document.getElementById('sidebar').getBoundingClientRect().width};
@@ -140,7 +140,9 @@ test('Downloads keeps every column, whole, through the desktop with either sideb
       expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
       expect(g.misfits, where).toEqual([]);
       expect(g.wrapScrolls || g.pageScrolls, where).toBe(false);
-      expect(Math.abs(g.tableRight - g.wrap.right), where).toBeLessThanOrEqual(1);
+      // The table fills the wrap's scrollport exactly; the wrap's reserved
+      // scrollbar room (scrollbar-gutter: stable, 2bc5bbe5) lies beyond it.
+      expect(Math.abs(g.tableRight - g.wrap.inner), where).toBeLessThanOrEqual(1);
       // Name, which now carries the provider identity beneath the name, never
       // squeezed below its 280px floor for the secondary columns; its
       // provider controls whole inside it.

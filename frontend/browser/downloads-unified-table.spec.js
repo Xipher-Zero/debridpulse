@@ -350,14 +350,18 @@ test('a state change re-renders its badge, tooltip and actions; a pending compac
   items = [ITEMS[3]];
   await page.mouse.move(0, 0);
   await page.evaluate(() => loadTorrents());
-  let release;
-  await page.route('**/api/torrents/9704/retry', async route => { await new Promise(resolve => { release = resolve; }); return route.fulfill({status: 200, contentType: 'application/json', body: '{}'}); });
+  // The answer is held until released; ``reached`` is the request arriving here
+  // (the button shows its pending state before it does).
+  let release, arrive;
+  const reached = new Promise(resolve => { arrive = resolve; });
+  await page.route('**/api/torrents/9704/retry', async route => { await new Promise(resolve => { release = resolve; arrive(); }); return route.fulfill({status: 200, contentType: 'application/json', body: '{}'}); });
   const retry = page.locator('#t-tbody tr[data-torrent-id="9704"] .actions .btn', {hasText: 'Retry'});
   await retry.click();
   await expect(retry).toHaveAttribute('aria-busy', 'true');
   await expect(retry.locator('[data-dp-icon-label]')).toHaveText('Retrying…');
   await expect(retry.locator('svg[data-dp-lucide="refresh"]')).toBeVisible();
   expect(Math.round((await retry.boundingBox()).width)).toBe(36);
+  await reached;
   release();
   await expect(retry).not.toHaveAttribute('aria-busy', 'true');
 });
@@ -403,8 +407,14 @@ test('pressing a control in the Name cell never picks the row up; the Name and i
   await page.keyboard.press('Space');
   await expect(page.locator('#dp-queue-status')).toContainText('Picked up');
   await page.keyboard.press('ArrowUp');
+  // Cancelling reloads the list and then restores focus where the move had it
+  // (the gap's row); that lands after this step, so wait for it before taking
+  // focus back to 9704, or the restore can take it away again.
+  const reloaded = page.waitForResponse(response => new URL(response.url()).pathname === '/api/torrents');
   await page.keyboard.press('Escape');
   await expect(page.locator('#dp-queue-status')).toContainText('Nothing was moved');
+  await reloaded;
+  await page.waitForFunction(() => document.activeElement?.matches('#t-tbody td[data-queue-drag="true"]'));
   expect(log.moves.length).toBe(1);
   await page.locator('#t-tbody tr[data-torrent-id="9704"] td[data-queue-drag="true"]').focus();
   await page.keyboard.press('Enter');
@@ -457,7 +467,8 @@ test('a page turn draws its placeholder in the table\'s own columns, and a resiz
     await page.evaluate(() => goToTorrentPage(2, {turn: true}));
     await expect(page.locator('#t-tbody tr.dp-page-placeholder-row').first()).toBeVisible();
     const match = await page.evaluate(() => {
-      const heads = [...document.querySelectorAll('#view-torrents thead th')];
+      // The table's own headings -- not those of the inert copy the page turn's slide draws beside it.
+      const heads = [...document.getElementById('t-tbody').closest('table').tHead.rows[0].cells];
       const cells = [...document.querySelector('#t-tbody tr.dp-page-placeholder-row').children];
       const shown = node => getComputedStyle(node).display !== 'none';
       return {count: [heads.length, cells.length],
@@ -509,7 +520,8 @@ test('a viewer who cannot operate gets no Actions or selection column: headings,
   await page.evaluate(() => goToTorrentPage(2, {turn: true}));
   await expect(page.locator('#t-tbody tr.dp-page-placeholder-row').first()).toBeVisible();
   expect(await page.evaluate(() => {
-    const heads = [...document.querySelectorAll('#view-torrents thead th')];
+    // The table's own headings -- not those of the inert copy the page turn's slide draws beside it.
+    const heads = [...document.getElementById('t-tbody').closest('table').tHead.rows[0].cells];
     const cells = [...document.querySelector('#t-tbody tr.dp-page-placeholder-row').children];
     return [heads.length, cells.length, cells.every((td, index) => getComputedStyle(td).display === 'none'
       || Math.abs(td.getBoundingClientRect().width - heads[index].getBoundingClientRect().width) <= 1)];

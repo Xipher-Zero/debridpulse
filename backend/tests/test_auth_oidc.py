@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -403,6 +404,57 @@ async def test_hmac_id_token_uses_client_secret_without_fetching_jwks(monkeypatc
             {"id_token": encoded([cfg.client_id, "other-audience"])},
             transaction,
         )
+
+
+@pytest.mark.asyncio
+async def test_id_token_without_nonce_empty_mac_key_unsigned_or_signature_stripped_is_rejected(monkeypatch):
+    """The ID-token checks Authlib 1.9 tightened hold in DP's own validator.
+
+    A token missing the transaction's nonce, a MAC-signed token when no client
+    secret is configured (an empty HMAC key would let anyone forge it), an
+    unsigned token, and a signed token whose signature was stripped are each
+    refused -- never accepted on a provider's say-so.
+    """
+    secret = "authentik-generated-client-secret-with-sufficient-entropy"
+    cfg = _config(oidc_client_secret=secret, oidc_allow_all=True, oidc_allowed_groups=[])
+    disc = _discovery(cfg, signing_algorithms=("HS256",))
+    transaction = _transaction(cfg, disc, nonce="expected-nonce")
+    now = int(time.time())
+    key = OctKey.import_key(secret, {"use": "sig"})
+
+    async def unexpected_jwks_fetch(_url):
+        raise AssertionError("MAC-signed ID token must use client_secret, not JWKS")
+
+    monkeypatch.setattr(oidc, "_fetch_json", unexpected_jwks_fetch)
+
+    def claims(**updates):
+        values = {"iss": cfg.issuer, "sub": "user-1", "aud": cfg.client_id,
+                  "exp": now + 300, "iat": now, "nonce": "expected-nonce", **updates}
+        return {name: value for name, value in values.items() if value is not None}
+
+    def signed(**updates):
+        return jwt.encode({"alg": "HS256"}, claims(**updates), key, algorithms=["HS256"])
+
+    # The same token is accepted with its nonce, refused without it.
+    assert (await oidc.validate_id_token({"id_token": signed()}, transaction))["sub"] == "user-1"
+    with pytest.raises(oidc.OidcProtocolError):
+        await oidc.validate_id_token({"id_token": signed(nonce=None)}, transaction)
+
+    # No client secret: a MAC-signed token is refused, never verified with an empty key.
+    keyless = _transaction(_config(oidc_client_secret="", oidc_allow_all=True, oidc_allowed_groups=[]),
+                           disc, nonce="expected-nonce")
+    with pytest.raises(oidc.OidcProtocolError, match="requires a client secret"):
+        await oidc.validate_id_token({"id_token": signed()}, keyless)
+
+    def segment(value):
+        return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+
+    unsigned = ".".join((segment(json.dumps({"alg": "none"}).encode()),
+                         segment(json.dumps(claims()).encode()), ""))
+    stripped = signed().rsplit(".", 1)[0] + "."
+    for token in (unsigned, stripped):
+        with pytest.raises(oidc.OidcProtocolError):
+            await oidc.validate_id_token({"id_token": token}, transaction)
 
 
 @pytest.mark.asyncio

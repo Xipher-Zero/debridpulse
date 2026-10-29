@@ -114,8 +114,9 @@ function placeholder(list,rows){const height=list.querySelector('.dp-activity-ro
 const block=document.createElement('div');block.className='dp-activity-placeholder';block.dataset.dpPlaceholder=rows?String(rows):'';block.setAttribute('aria-hidden','true');
 block.innerHTML=`<div class="dp-activity-placeholder-row dp-page-placeholder-row" style="height:${Math.round(height)}px"><span class="dp-ph dp-ph--dot"></span><div class="dp-activity-copy"><span class="dp-ph dp-ph--line"></span><span class="dp-ph dp-ph--sub"></span></div><span class="dp-ph dp-ph--time"></span></div>`.repeat(rows?Math.min(rows,fits):Math.ceil(fits/2));
 list.scrollTop=0;list.replaceChildren(block);}
-// Whatever replaces a placeholder on screen crossfades into it.
-function replace(commit){const list=document.getElementById('event-list'),block=list?.querySelector(':scope > .dp-activity-placeholder');
+// Whatever replaces a placeholder on screen crossfades into it -- a placeholder, never the
+// still copy of one an earlier answer is still crossfading out (that is not a page to replace).
+function replace(commit){const list=document.getElementById('event-list'),block=list?.querySelector(':scope > .dp-activity-placeholder:not(.dp-motion-still)');
 if(block&&window.DPMotion)window.DPMotion.resolve({region:block,host:list,content:()=>Array.from(list.children).filter(node=>!node.classList.contains('dp-motion-still'))},commit);else commit();}
 const ACTIONS=Object.freeze({first:()=>go({kind:'first'}),previous:()=>go({kind:'previous',after:nav.first}),next:()=>go({kind:'next',before:nav.oldest}),last:()=>go({kind:'last'})});
 function changed(c){restart();void fetchPage();}

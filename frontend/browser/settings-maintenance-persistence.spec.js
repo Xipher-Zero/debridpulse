@@ -24,8 +24,10 @@ const { test, expect } = require('@playwright/test');
 async function openMaintenance(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="maintenance"]').click();
+  await page.locator('#view-settings [data-tab="maintenance"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="maintenance"]')).toBeVisible();
+  // The view's and the panel's slides have ended: the page is drawn at rest.
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-surface'));
 }
 
 const field = (page, key) => page.locator(`#dp-settings-field-${key.replaceAll('_', '-')}`);

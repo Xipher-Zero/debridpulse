@@ -1180,14 +1180,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    is narrower than the path; the mapping arrow stays in view beside a
    shortened import path. Its one grid track (0 .. the path's own width)
    takes a share of the room in proportion to the path. Its minimum -- its
-   own width, up to 36% of the table's container -- is met before Categories
+   own width, up to 30% of the table's container -- is met before Categories
    and API Tokens are kept on one line, so a path is shortened only when it
-   is longer than that, and the table still fits its card. Where calc-size()
-   is unsupported the minimum is dropped and the table still fits. */
+   is longer than that, and the table still fits its card at 780px with the
+   wider fallback face (DejaVu: 36% overflowed the card by 20px there). Where
+   calc-size() is unsupported the minimum is dropped and the table still fits. */
 #view-settings .dp-settings-profile-path-lines {
   display: grid;
   grid-template-columns: minmax(0, max-content);
-  min-width: calc-size(max-content, min(size, 36cqi));
+  min-width: calc-size(max-content, min(size, 30cqi));
 }
 #view-settings .dp-settings-profile-path {
   display: flex;

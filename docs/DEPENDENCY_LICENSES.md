@@ -20,7 +20,7 @@ the lock file and `licenses/python-runtime.json`.
 | argon2-cffi-bindings | 26.1.0 | MIT; vendored Argon2/BLAKE2 components are CC0-1.0 |
 | asyncssh | 2.24.0 | EPL-2.0 OR GPL-2.0-or-later (used under GPL-2.0-or-later) |
 | attrs | 26.1.0 | MIT |
-| authlib | 1.7.2 | BSD-3-Clause |
+| authlib | 1.9.1 | BSD-3-Clause |
 | babelfish | 0.6.1 | BSD-3-Clause |
 | bcrypt | 5.0.0 | Apache-2.0 |
 | bencode2 | 0.3.33 | MIT ([bundled notice](../licenses/bencode2-MIT.txt)) |

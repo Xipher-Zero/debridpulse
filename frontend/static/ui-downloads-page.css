@@ -99,7 +99,9 @@
 }
 
 /* ── Header control placement ────────────────────────────────────────── */
-/* The filter rail never yields width: the identity beside it does. */
+/* The filter rail never yields width to the identity's wording: the identity
+   yields first, down to the number alone. Only then (below) do the filters'
+   side paddings narrow, so even a six-digit count keeps its reserve. */
 #view-torrents .filter-tabs {
   margin-left: auto;
   flex: 0 0 auto;
@@ -111,12 +113,14 @@
 
 /* Desktop and tablet (780px and up): one header row. The seven filters keep
    their full width and the card's identity yields to them, in four steps
-   chosen by the header's own content width (measured in Chromium, with the
-   widest five-digit count; see the 1.0.14 header packet):
-     860px and wider  On the Books + "N downloads tracked. Most of them behaved."
-     736px to 860px   On the Books + "N downloads tracked"
-     712px to 736px   On the Books + "N downloads"
-     below 712px      the number alone, in the title's place
+   chosen by the header's own content width. Each step is where its wording
+   fits with the widest five-digit count in the WIDER of the faces it may be
+   drawn in -- the web face or the fallback (DejaVu Sans) -- plus 1px:
+   measured needs 882.8 / 758.2 / 736.6px (DejaVu; the web face needs less):
+     884px and wider  On the Books + "N downloads tracked. Most of them behaved."
+     760px to 884px   On the Books + "N downloads tracked"
+     738px to 760px   On the Books + "N downloads"
+     below 738px      the number alone, in the title's place
    Each hidden line leaves the row but not the title: the full hint stays its
    text, and DP's tooltip says it while the hint is not shown. */
 @media (min-width: 780px) {
@@ -128,7 +132,7 @@
     white-space: nowrap;
   }
 
-  @container dp-downloads-header (width < 860px) {
+  @container dp-downloads-header (width < 884px) {
     #view-torrents .dp-downloads-subtitle {
       position: absolute;
       width: 1px;
@@ -138,13 +142,13 @@
       pointer-events: none;
     }
   }
-  @container dp-downloads-header (736px <= width < 860px) {
+  @container dp-downloads-header (760px <= width < 884px) {
     #view-torrents [data-dp-copy="tracked"] { display: block; }
   }
-  @container dp-downloads-header (712px <= width < 736px) {
+  @container dp-downloads-header (738px <= width < 760px) {
     #view-torrents [data-dp-copy="downloads"] { display: block; }
   }
-  @container dp-downloads-header (width < 712px) {
+  @container dp-downloads-header (width < 738px) {
     #view-torrents .dp-downloads-heading {
       position: absolute;
       width: 1px;
@@ -164,6 +168,13 @@
     }
     #view-torrents .dp-downloads-title-icon {
       --dp-feature-icon-size: 30px;
+    }
+    /* With the number alone, the seven filters' side paddings narrow to 8px
+       (no label shortens; a short one keeps its 64px): at 780px that keeps a
+       six-digit count 12px clear of them in the fallback face too (measured
+       14.7px for 999999 with DejaVu Sans; -16.6px at the full padding). */
+    #view-torrents .filter-tabs .ftab {
+      padding-inline: 8px;
     }
   }
 }
@@ -244,8 +255,8 @@
 }
 
 /* Desktop and tablet (780px and up): where the toolbar is narrower than its
-   full labels need (with every action shown, measured in Chromium; see the
-   1.0.14 header packet), each action shows its glyph alone, in the same
+   full labels need with every action shown -- 824.1px in the wider fallback
+   face (DejaVu Sans), plus 1px -- each action shows its glyph alone, in the same
    button, and Clear Selections reads "Clear". A label leaves the row but
    stays the button's name, and DP's tooltip says the action. */
 @media (min-width: 780px) {
@@ -253,7 +264,7 @@
     container: dp-downloads-bulk / inline-size;
   }
 
-  @container dp-downloads-bulk (width < 794px) {
+  @container dp-downloads-bulk (width < 826px) {
     #view-torrents :is(.dp-downloads-bulk-actions [data-dp-icon-label], .dp-downloads-bulk-clear-rest) {
       position: absolute;
       width: 1px;

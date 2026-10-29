@@ -245,24 +245,24 @@ test('every sidebar entry opens Downloads page 1, Settings Services and Help Qui
     await nav('torrents').click();                                            // re-entered
     await expect(current).toHaveText('1');
 
-    const settingsTab = () => page.locator('#view-settings .stab[aria-selected="true"]');
+    const settingsTab = () => page.locator('#view-settings .stab[aria-selected="true"]:not(.dp-motion-still *)');
     await nav('settings').click();
-    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
     await expect(settingsTab()).toHaveAttribute('data-tab', 'downloads');
     await nav('settings').click();
     await expect(settingsTab()).toHaveAttribute('data-tab', 'sources');
-    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
     await nav('dashboard').click();
     await nav('settings').click();
     await expect(settingsTab()).toHaveAttribute('data-tab', 'sources');
 
-    const helpTab = () => page.locator('#view-help .dp-help-tab[aria-selected="true"]');
+    const helpTab = () => page.locator('#view-help .dp-help-tab[aria-selected="true"]:not(.dp-motion-still *)');
     await nav('help').click();
-    await page.locator('#view-help .dp-help-tab[data-tab="license"]').click();
+    await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
     await expect(helpTab()).toHaveAttribute('data-tab', 'license');
     await nav('help').click();
     await expect(helpTab()).toHaveAttribute('data-tab', 'quickstart');
-    await page.locator('#view-help .dp-help-tab[data-tab="license"]').click();
+    await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
     await nav('dashboard').click();
     await nav('help').click();
     await expect(helpTab()).toHaveAttribute('data-tab', 'quickstart');
@@ -282,13 +282,13 @@ test('re-entering Settings keeps a write already in flight', async ({page}) => {
   page.on('requestfailed', request => { if (request.method() === 'PUT') failed = true; });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const field = page.locator('#dp-settings-field-min-free-disk-gb');
   await field.fill(String((Number(await field.inputValue()) || 0) + 1));
   await field.blur();
   await expect.poll(() => typeof release).toBe('function');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await expect(page.locator('#view-settings .stab[aria-selected="true"]')).toHaveAttribute('data-tab', 'sources');
+  await expect(page.locator('#view-settings .stab[aria-selected="true"]:not(.dp-motion-still *)')).toHaveAttribute('data-tab', 'sources');
   release();
   await expect.poll(() => completed).toBe(true);
   expect(failed).toBe(false);

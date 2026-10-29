@@ -4,19 +4,20 @@ const { test, expect } = require('@playwright/test');
  * tablet (780px). The header stays one row: the seven filters keep their full
  * width and the card's identity yields to them in four presentations of the one
  * tracked count, chosen by the header's own content width -- the full hint at
- * 860px and wider, "N downloads tracked" from 736px, "N downloads" from 712px,
+ * 884px and wider, "N downloads tracked" from 760px, "N downloads" from 738px,
  * and the number alone in the title's place below that (13px, beside the same
- * icon at 30px, 6px from it, so every count through six digits fits at 780px).
- * The toolbar shows each
+ * icon at 30px, 6px from it, the filters' side paddings narrowed to 8px, so
+ * every count through six digits fits at 780px). Each switch is where its
+ * wording fits in the wider fallback face (DejaVu Sans). The toolbar shows each
  * action's glyph alone, and Clear Selections reads "Clear", where it is
- * narrower than 794px. The switches are the header's and the toolbar's, so each
+ * narrower than 826px. The switches are the header's and the toolbar's, so each
  * case finds them by their own widths. Mocked rows, counts and commands: no
  * backend state is read or written. */
 
-const FULL = 860;        // header content width: the full hint at this width and wider
-const TRACKED = 736;     // "N downloads tracked" from this width
-const DOWNLOADS = 712;   // "N downloads" from this width; the number alone below it
-const BULK = 794;        // the toolbar is compact below this width
+const FULL = 884;        // header content width: the full hint at this width and wider
+const TRACKED = 760;     // "N downloads tracked" from this width
+const DOWNLOADS = 738;   // "N downloads" from this width; the number alone below it
+const BULK = 826;        // the toolbar is compact below this width
 
 function row(id, o) {
   return {
@@ -168,7 +169,7 @@ test('the header keeps one row and its seven filters while its identity steps th
 
 test('every presentation follows the one count /stats gives, singular and plural, under any active filter', async ({page}) => {
   const state = await open(page, {count: 0});
-  const widths = {full: 1560, tracked: 800 + 152, downloads: 720 + 152, count: 780};
+  const widths = {full: 1560, tracked: 800 + 152, downloads: DOWNLOADS + 10 + 152, count: 780};
   for (const count of [0, 1, 9999]) {
     await setCount(page, state, count);
     for (const [stage, width] of Object.entries(widths)) {
@@ -325,7 +326,7 @@ const ACTIONS = ['Pause', 'Resume', 'Reset', 'Move to Top', '|', 'Delete'];
 const TOOLTIPS = {pause: 'Pause selected downloads', resume: 'Resume selected downloads', reset: 'Reset selected downloads',
   top: 'Move selected downloads to top', delete: 'Delete selected downloads'};
 
-test('the toolbar keeps its full labels down to 794px; narrower, each action shows its glyph alone and Clear Selections reads Clear, in one row', async ({page}) => {
+test('the toolbar keeps its full labels down to 826px; narrower, each action shows its glyph alone and Clear Selections reads Clear, in one row', async ({page}) => {
   await open(page);
   await select(page, [9801, 9802]);
   for (const width of [BULK + 1, BULK]) {
@@ -486,8 +487,12 @@ test('the title is a keyboard stop from 780px, where its tooltip says the full w
   await expect(page.locator('#torrent-card-title')).not.toHaveAttribute('tabindex', /.*/);
   await resize(page, 780);
   const tablet = await stopsToSearch(page);
-  // The one added stop is the title, just before the filters; nothing else moves.
-  expect(tablet.filter(stop => stop !== 'torrent-card-title')).toEqual(mobile);
+  // From 780px the shell adds its own two controls to the topbar (the speed
+  // badge's cap and the theme chevron, both hidden below 780px); Downloads adds
+  // one stop, the title, just before the filters. Nothing else moves.
+  const SHELL_FROM_780 = ['runtime-cap-toggle', 'theme-picker-toggle'];
+  expect(SHELL_FROM_780.every(stop => tablet.includes(stop) && !mobile.includes(stop))).toBe(true);
+  expect(tablet.filter(stop => stop !== 'torrent-card-title' && !SHELL_FROM_780.includes(stop))).toEqual(mobile);
   expect(tablet.indexOf('torrent-card-title')).toBe(tablet.findIndex(stop => stop.startsWith('div.ftab')) - 1);
   await page.locator('#view-torrents .ftab').first().focus();
   await page.keyboard.press('Shift+Tab');

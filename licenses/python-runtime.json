@@ -64,7 +64,7 @@
     },
     {
       "name": "authlib",
-      "version": "1.7.2",
+      "version": "1.9.1",
       "license": "BSD-3-Clause"
     },
     {

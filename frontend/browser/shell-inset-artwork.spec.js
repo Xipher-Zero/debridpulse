@@ -62,7 +62,7 @@ const measure = (page, view, worst) => page.evaluate(([view, worst]) => {
   return {shellX: getComputedStyle(document.documentElement).getPropertyValue('--dp-shell-x').trim(),
     padding: [parseFloat(style.paddingLeft), parseFloat(style.paddingRight)], inset: [viewBox.left - frame.left, frame.right - viewBox.right],
     art: getComputedStyle(title, '::after').display, artSize: [parseFloat(getComputedStyle(title, '::after').width), parseFloat(getComputedStyle(title, '::after').marginLeft)], fontSize: parseFloat(text.fontSize), lineHeight: parseFloat(text.fontSize) * parseFloat(text.lineHeight),
-    titleHeight: titleBox.height, row: [getComputedStyle(title).display, getComputedStyle(title).flexWrap, getComputedStyle(title).whiteSpace],
+    titleHeight: titleBox.height, headingRight: box(title.closest('.dp-page-heading')).right, titleRight: titleBox.right, row: [getComputedStyle(title).display, getComputedStyle(title).flexWrap, getComputedStyle(title).whiteSpace],
     clearance: Math.min(...controls.map(control => box(control).left)) - titleBox.right,
     rows: new Set(controls.map(control => Math.round(box(control).top))).size,
     inBar: controls.every(control => box(control).top >= bar.top && box(control).bottom <= bar.bottom),
@@ -116,7 +116,17 @@ test('at and below 1023px the operational controls are glyph-only; above it they
       }
       expect(g.buttons[0].tooltip, at).toBe('Resume Paused (12)');
       expect(g.art, `${at}: the artwork is hidden`).not.toBe('none');
-      expect(g.artSize, `${at}: the artwork's size or lead`).toEqual([width <= 787 ? 95 : 105, 4]);
+      // 95px beside both controls below 788px, else 105px -- unless the title
+      // fills its heading to the controls' gap (the longest title in the wider
+      // fallback face): then the artwork yields that room, never below 48px.
+      const art = width <= 787 ? 95 : 105;
+      expect(g.artSize[1], `${at}: the artwork's lead`).toBe(4);
+      if (g.artSize[0] < art - 0.5) {
+        expect(g.artSize[0], `${at}: the artwork is drawn below its floor`).toBeGreaterThanOrEqual(48);
+        expect(Math.abs(g.titleRight - g.headingRight), `${at}: the artwork yields while the heading has room`).toBeLessThanOrEqual(0.5);
+      } else {
+        expect(g.artSize[0], `${at}: the artwork's size`).toBe(art);
+      }
       expect(g.titleHeight, `${at}: the rendered title takes more than one line`).toBeLessThanOrEqual(g.lineHeight + 1.5);
       expect(g.clearance, `${at}: the title or its artwork reaches the controls`).toBeGreaterThan(0);
       expect([g.rows, g.inBar], `${at}: the controls left their one row`).toEqual([1, true]);

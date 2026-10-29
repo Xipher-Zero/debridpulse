@@ -96,6 +96,9 @@ test('the session row holds Log Out and the account as two separate controls, at
   }
   await admin.page.evaluate(() => window.closeSidebar());
   await admin.page.setViewportSize({width: 1600, height: 914});
+  // The drawer closing and the full sidebar's reflow have ended, its rows
+  // included (the row is measured below).
+  await admin.page.waitForFunction(() => document.getElementById('sidebar').getAnimations({subtree: true}).length === 0);
   await expect(admin.page.locator('.dp-sidebar-profile .dp-sidebar-account-role')).toHaveText('Admin');
   // The account side opens My Account; it never logs out.
   await admin.page.locator('.dp-sidebar-profile .dp-sidebar-account-name').click();

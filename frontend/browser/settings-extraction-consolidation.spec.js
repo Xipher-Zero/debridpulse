@@ -25,8 +25,10 @@ async function isolateExternalFonts(page) {
 async function openSettings(page, tab) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
+  // The view's and the panel's slides have ended: the page is drawn at rest.
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-surface'));
 }
 
 const canonical = page => page.request.get('/api/settings').then(r => r.json());

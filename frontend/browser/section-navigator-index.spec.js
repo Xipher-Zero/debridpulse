@@ -429,6 +429,18 @@ for (const {view, label} of PAGES) {
     await page.evaluate(sel => document.querySelector(`${sel} [data-tab]`).click(), strip);
     await settled(page);
     const p = await navigatorPoint(page, view, 'right');
+    // The instant the page settles -- no slide surface and no busy mark --
+    // stamped in the page on the index log's clock (a later read from here
+    // would add the runner's own latency to the dwell measured from it).
+    await page.evaluate(() => {
+      window.__settledAt = null;
+      const check = () => {
+        const settled = !document.querySelector('.dp-motion-surface') && !document.querySelector('[data-tooltip-busy]');
+        if (!settled) window.__settledAt = null;
+        else if (window.__settledAt === null) window.__settledAt = performance.now();
+      };
+      new MutationObserver(check).observe(document.body, {subtree: true, attributes: true, attributeFilter: ['class', 'data-tooltip-busy']});
+    });
     await page.mouse.move(p.x, p.y);
     await page.mouse.click(p.x, p.y);
     // The click's slide is running; the fonts finish loading now.
@@ -440,7 +452,8 @@ for (const {view, label} of PAGES) {
     expect(running, 'the window was sliding when the fonts re-measured').toBe(true);
     await page.waitForFunction(() => !document.querySelector('.dp-motion-surface'));
     await page.waitForFunction(() => !document.querySelector('[data-tooltip-busy]'), null, {timeout: 3000});
-    const rest = await now(page);
+    const rest = await page.evaluate(() => window.__settledAt);
+    expect(rest, 'the settle was stamped').not.toBeNull();
     await indexShown(page);
     const at = (await appeared(page, rest))[0];
     expect(at, 'a full dwell after the slide settled').toBeGreaterThanOrEqual(DWELL - 50);

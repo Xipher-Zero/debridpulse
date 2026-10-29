@@ -14,7 +14,7 @@ asyncssh==2.24.0
 # asyncssh's backend for passphrase-encrypted OpenSSH-format private keys (bcrypt
 # KDF), the default format of ssh-keygen; required by username_private_key.
 bcrypt==5.0.0
-authlib==1.7.2
+authlib==1.9.1
 httpx==0.28.1
 joserfc==1.7.4
 # Safe YAML loading for a submitted link list (transfers/requests.py); already

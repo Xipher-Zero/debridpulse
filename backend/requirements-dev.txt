@@ -30,7 +30,7 @@ asyncssh==2.24.0
     # via -r requirements.in
 attrs==26.1.0
     # via aiohttp
-authlib==1.7.2
+authlib==1.9.1
     # via -r requirements.in
 babelfish==0.6.1
     # via

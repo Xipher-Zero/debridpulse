@@ -195,9 +195,9 @@ test('Settings clean shell renders all tabs and survives representative tab tran
   await page.goto('/');
   await openView(page, 'settings', 'Settings');
 
-  await expect(page.locator('.dp-settings-tabs .stab')).toHaveCount(7);
+  await expect(page.locator('.dp-settings-tabs .stab:not(.dp-motion-still *)')).toHaveCount(7);
   for (const tab of ['downloads', 'authentication', 'users', 'maintenance', 'sources']) {
-    const button = page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]`);
+    const button = page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]:not(.dp-motion-still *)`);
     await button.click();
     await expect(button).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
@@ -309,7 +309,7 @@ test('Help legal modal traps lifecycle and restores opener focus', async ({ page
   await page.goto('/');
   await openView(page, 'help', 'Help & License');
 
-  await page.locator('.dp-help-tab[data-tab="license"]').click();
+  await page.locator('.dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
   const opener = page.locator('[data-legal-document="gpl"]');
   await opener.focus();
   await opener.click();

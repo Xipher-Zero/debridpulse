@@ -385,6 +385,10 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
 }
 
 test('the compact window holds as many Help sections as fit, fewer as the header narrows, three wherever three can fit, and every one it shows opens its section', async ({page}) => {
+  // Nine widths x five sections, each chosen, verified and settled: 32-45s on
+  // hosted runners when it passes (CI logs, Oct 2026), at the suite's 45s
+  // default -- the sweep's own budget, not a wait for anything.
+  test.setTimeout(90_000);
   await openHelp(page, 1920);
   const reference = await header(page);
   const frame = reference.control.width - reference.widths.reduce((sum, width) => sum + width, 0);
@@ -589,7 +593,10 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
           expect(end.width, at).toBeGreaterThanOrEqual(32);
           expect(end.height, at).toBeGreaterThanOrEqual(32);
         }
-        expect(h.ends.map(end => end.shown), at).toEqual([k !== 0, k !== n - 1]);
+        // Each of First and Last is gone exactly where the window shows its end
+        // section whole (1.0.14, 053c1f60; section-navigator-endpoints).
+        const whole = i => h.shown[i] >= h.widths[i] - 0.5;
+        expect(h.ends.map(end => end.shown), at).toEqual([!whole(0), !whole(n - 1)]);
         // Side padding: the complete strip's unless an end section and its
         // whole neighbour would not otherwise fit the end section's own room,
         // and then at least 5px.

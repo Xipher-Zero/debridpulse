@@ -86,7 +86,7 @@ test('Downloads owner exposes fixed three-slot pager and date options',async({pa
  await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
  const release=await parkDownloadsList(page);
  const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();await release();expect(Math.abs(group.width-196)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
- const trigger=page.locator('#view-torrents .dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.locator('#view-torrents').getByRole('menuitemradio',{name})).toBeVisible();
+ const trigger=page.locator('#view-torrents .dp-date-menu-trigger:not(.dp-motion-still *)');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.locator('#view-torrents').getByRole('menuitemradio',{name})).toBeVisible();
 });
 
 /* Dashboard Recent Activity's Date Added heading carries the SAME date menu,

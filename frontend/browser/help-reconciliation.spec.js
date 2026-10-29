@@ -19,30 +19,30 @@ async function openHelp(page) {
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="help"]').evaluate(element => element.click());
-  await expect(page.locator('#view-help .dp-help-tabs')).toBeVisible();
+  await expect(page.locator('#view-help .dp-help-tabs:not(.dp-motion-still)')).toBeVisible();
 }
 
 test('every Help tab renders its own populated section, by click and by keyboard', async ({page}) => {
   await openHelp(page);
   for (const tab of TABS) {
-    await page.locator(`#view-help .dp-help-tab[data-tab="${tab}"]`).click();
+    await page.locator(`#view-help .dp-help-tab[data-tab="${tab}"]:not(.dp-motion-still *)`).click();
     const panel = page.locator(`#dp-help-panel-${tab}`);
     await expect(panel).toBeVisible();
     await expect(panel.locator('h2')).toHaveCount(1);
     expect((await panel.innerText()).length, tab).toBeGreaterThan(400);
   }
   // Arrow keys walk the tab strip in order and wrap.
-  await page.locator('#view-help .dp-help-tab[data-tab="license"]').focus();
+  await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('#view-help .dp-help-tab[data-tab="quickstart"]')).toBeFocused();
+  await expect(page.locator('#view-help .dp-help-tab[data-tab="quickstart"]:not(.dp-motion-still *)')).toBeFocused();
   await expect(page.locator('#dp-help-panel-quickstart')).toBeVisible();
   await page.keyboard.press('End');
-  await expect(page.locator('#view-help .dp-help-tab[data-tab="license"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the License tab offers exactly the three surviving documents, each opening its bundled text', async ({page}) => {
   await openHelp(page);
-  await page.locator('#view-help .dp-help-tab[data-tab="license"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
   const panel = page.locator('#dp-help-panel-license');
   const buttons = panel.locator('[data-legal-document]');
   expect(await buttons.evaluateAll(nodes => nodes.map(node => [node.dataset.legalDocument, node.textContent.trim()])))
@@ -71,7 +71,7 @@ test('a bundled document that cannot load says so and still closes', async ({pag
   await openHelp(page);
   await page.route('**/api/legal-documents/source-offer', route =>
     route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'unavailable'})}));
-  await page.locator('#view-help .dp-help-tab[data-tab="license"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
   const opener = page.locator('[data-legal-document="source-offer"]');
   await opener.click();
   const dialog = page.locator('.dp-help-legal-dialog');
@@ -83,7 +83,7 @@ test('a bundled document that cannot load says so and still closes', async ({pag
 
 test('the License introduction reads as approved, with only the warranty centred and bold', async ({page}) => {
   await openHelp(page);
-  await page.locator('#view-help .dp-help-tab[data-tab="license"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
   const paragraphs = page.locator('#dp-help-panel-license .dp-help-copy--lead > p');
   await expect(paragraphs).toHaveText([
     'DebridPulse is Copyright © 2026 Chris Moore and is distributed under the GNU General Public License v2.0 or later (GPL-2.0-or-later).',
@@ -126,7 +126,7 @@ async function rollSamples(page, details, act) {
 
 test('Help accordions roll down and up, by mouse and keyboard, and settle after fast toggles', async ({page}) => {
   await openHelp(page);
-  await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]:not(.dp-motion-still *)').click();
   const details = page.locator('#dp-help-panel-howitworks details.dp-help-accordion').nth(1);
   const summary = details.locator(':scope > summary');
   const body = details.locator(':scope > .dp-help-accordion-body');
@@ -168,7 +168,7 @@ test('with reduced motion a Help accordion opens and closes at once', async ({br
   const context = await browser.newContext({reducedMotion: 'reduce'});
   const page = await context.newPage();
   await openHelp(page);
-  await page.locator('#view-help .dp-help-tab[data-tab="trouble"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="trouble"]:not(.dp-motion-still *)').click();
   const details = page.locator('#dp-help-panel-trouble details.dp-help-accordion').nth(2);
   await details.locator(':scope > summary').click();
   await expect(details).toHaveAttribute('open', '');
@@ -185,7 +185,7 @@ test('without the Web Animations API a Help accordion is plain native details', 
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await openHelp(page);
-  await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]').click();
+  await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]:not(.dp-motion-still *)').click();
   const details = page.locator('#dp-help-panel-howitworks details.dp-help-accordion').nth(1);
   await details.locator(':scope > summary').click();
   await expect(details).toHaveAttribute('open', '');
@@ -200,7 +200,7 @@ test('the six-step flow is one group centred in its card, with aligned columns',
   for (const width of [1440, 390]) {
     await page.setViewportSize({width, height: 900});
     await openHelp(page);
-    await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]').click();
+    await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]:not(.dp-motion-still *)').click();
     // The tab's slide commits the panel a frame or two after the click; the
     // live layout is final from that commit on, never transformed by the slide.
     await expect(page.locator('#dp-help-panel-howitworks')).toBeVisible();

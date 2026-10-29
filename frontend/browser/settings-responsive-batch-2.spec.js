@@ -463,7 +463,9 @@ const INVENTORY = {
 test('every governing header of Authentication, Users & Access, Notifications and Data & Maintenance keeps the four header rules', async ({page}) => {
   await open(page, 1440, 'authentication');
   const seen = {};
-  for (const width of [1440, 1180, 1024, 900, 780, 700]) {
+  // From a wide desktop down: in the wider fallback face (DejaVu Sans) a long
+  // hint such as Statistics Reporting's has room only above about 1600px.
+  for (const width of [1920, 1440, 1180, 1024, 900, 780, 700]) {
     await resize(page, width);
     for (const [panel, names] of Object.entries(INVENTORY)) {
       await section(page, panel);

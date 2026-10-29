@@ -260,9 +260,9 @@ test('U2 a drag crosses page boundaries to the global anchor; partial views neve
   expect(firstPage.length).toBeLessThan(30);
   await page.locator('#torrent-page-btns [aria-label="Next page"]').click();
   await expect.poll(async () => (await renderedIds(page))[0]).toBe(firstPage.length + 1);
-  // The page turn slides the list in; its rows take a gesture once they have arrived.
-  await page.waitForFunction(() => !document.getAnimations()
-    .some(motion => motion.effect?.target?.classList?.contains('dp-downloads-table-wrap')));
+  // The page turn slides the list in; its rows take a gesture once they have
+  // arrived (the slide moves the surface's content, so its own end is the fence).
+  await page.waitForFunction(() => !document.querySelector('#view-torrents .dp-motion-surface'));
   const moved = (await renderedIds(page))[1];
 
   // Hold the drag over the previous-page zone: page one replaces page two

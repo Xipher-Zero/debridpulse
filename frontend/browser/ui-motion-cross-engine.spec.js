@@ -242,7 +242,10 @@ test('@cross-engine a kept Settings panel is the only copy of its secrets and is
       const look = () => {
         if (document.querySelector('.dp-motion-surface')) {
           frames.push({count: count(), kept: panel.hasAttribute('data-dp-motion-outgoing'), inert: panel.inert, hidden: panel.getAttribute('aria-hidden'),
-                       copies: document.querySelectorAll('#view-settings .dp-motion-still').length,
+                       // Copies of panel content: the panels' own surface. (The compact
+                       // navigator's window may slide with the choice; its still copy of
+                       // the tab strip carries no field.)
+                       copies: document.querySelectorAll('#view-settings .dp-settings-scroll .dp-motion-still').length,
                        focusIn: panel.contains(document.activeElement), hit: (() => { const r = seeded[0]?.getBoundingClientRect();
                          return r && r.width ? panel.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) : false; })()});
           requestAnimationFrame(look);

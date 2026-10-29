@@ -208,10 +208,12 @@ async def test_two_routes_of_one_file_on_a_one_connection_source_converge_instea
     async with database.get_db() as db:
         rows = await db.fetchall("SELECT payload,state,equivalence_disposition,equivalence_reason FROM transfer_requests "
                                  "WHERE transfer_id=? ORDER BY ordinal", (transfer.id,))
-    # The second route was PROVEN the same artifact from material evidence
-    # (never a second writer, never a held or guessed identity).
-    assert [(row["state"], row["equivalence_disposition"], row["equivalence_reason"]) for row in rows] == [
-        ("resolved", "", None), ("resolved", "recovered", "full_content_sample")]
+    # One route wrote the artifact and the other was PROVEN the same artifact
+    # from material evidence (never a second writer, never a held or guessed
+    # identity). Which route reaches the one connection first -- and so writes
+    # -- is the scheduler's, not part of this contract: either order is right.
+    assert sorted(((row["state"], row["equivalence_disposition"], row["equivalence_reason"]) for row in rows),
+                  key=lambda route: route[1]) == [("resolved", "", None), ("resolved", "recovered", "full_content_sample")]
     async with database.get_db() as db:
         held = await db.fetchall("SELECT equivalence_disposition FROM transfer_requests WHERE transfer_id=? "
                                  "AND equivalence_disposition IN ('exhausted','unverified')", (transfer.id,))

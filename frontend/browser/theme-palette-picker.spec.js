@@ -291,7 +291,8 @@ test('a palette chosen within a mode is announced after it applies; Statistics a
 
 test('the chevron sits in the strip right of the unchanged mode toggle, and is absent below 780px', async ({page}) => {
   await noFonts(page);
-  for (const [width, inset] of [[1152, 22], [1440, 30]]) {
+  // One 22px shell inset from 780px up (1.0.14, af5496ef; shell-inset-artwork).
+  for (const [width, inset] of [[1152, 22], [1440, 22]]) {
     await page.setViewportSize({width, height: 1000});
     await page.goto('/');
     const box = await page.evaluate(() => Object.fromEntries(['#theme-toggle', '#theme-picker-toggle'].map(id => { const r = document.querySelector(id).getBoundingClientRect(); return [id, [r.x, r.y, r.width, r.height]]; })));

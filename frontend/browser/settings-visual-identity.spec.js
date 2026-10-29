@@ -31,7 +31,7 @@ async function openSettings(page, tab) {
   await isolateExternalFonts(page);
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
 }
 
@@ -42,7 +42,7 @@ for (const theme of ['dark', 'light']) {
     await openSettings(page, 'sources');
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
     for (const [tab, [colour, glyph]] of Object.entries(FAMILY)) {
-      const button = page.locator(`#view-settings .stab[data-tab="${tab}"]`);
+      const button = page.locator(`#view-settings .stab[data-tab="${tab}"]:not(.dp-motion-still *)`);
       expect((await prop(button, '--dp-settings-tab-color')).toUpperCase()).toBe(colour);
       await expect(button.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
     }
@@ -61,7 +61,7 @@ for (const theme of ['dark', 'light']) {
       await expect(block.locator('img.dp-settings-provider-logo')).toHaveCount(1);   // the shipped mark, inside
       expect(await block.evaluate(node => getComputedStyle(node).borderTopStyle)).toBe('solid');
     }
-    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
     const transfer = page.locator('.dp-executor-tuning-group > .card-header .dp-settings-protocol-chip[data-section="downloads"]');
     expect(await prop(transfer, '--dp-protocol-color')).toBe('#2563EB');
     await expect(transfer.locator('img')).toHaveAttribute('src', '/icons/lucide/arrow-left-right.svg');
@@ -70,7 +70,7 @@ for (const theme of ['dark', 'light']) {
     expect(await prop(usenet, '--dp-protocol-color')).toBe('#C547FF');
     for (const [title, [section, glyph]] of Object.entries(CARDS)) {
       const tab = section === 'downloads' ? 'downloads' : section;
-      await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+      await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
       const icon = page.locator('#view-settings .card-header .card-title', {hasText: title})
         .locator(`.dp-settings-header-chip[data-section="${section}"]`);
       await expect(icon.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
@@ -188,7 +188,7 @@ for (const theme of ['dark', 'light']) {
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
     const facts = [];
     for (const [tab, title, card, section, glyph] of HEADERS) {
-      await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+      await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
       const heading = page.locator(`.dp-settings-panel[data-panel="${tab}"] ${card} > .card-header .card-title`).first();
       await heading.scrollIntoViewIfNeeded();
       const chip = heading.locator(':scope > .dp-settings-protocol-chip');
@@ -207,10 +207,13 @@ for (const theme of ['dark', 'light']) {
         // A title that carries a hint centres the title/hint stack on the chip.
         const text = (node.querySelector('.dp-settings-card-title-stack') || node.querySelector('.dp-settings-card-title-text')).getBoundingClientRect();
         const neutral = value => value.replace(/color\([^)]*\)|rgba?\([^)]*\)/g, 'C');
+        const lu = value => Math.round(value * 64) / 64;
         return {
           colour: style.getPropertyValue('--dp-protocol-color').trim(),
-          geometry: [box.width, box.height, style.borderTopWidth, style.borderTopStyle, style.borderTopLeftRadius,
-            glyphBox.width, glyphBox.height, glyphBox.left - box.left, glyphBox.top - box.top].join(' | '),
+          // Lengths in Blink's own 1/64px layout unit: a transformed box can read
+          // 37.99999237px for 38px, the same geometry in floating point.
+          geometry: [lu(box.width), lu(box.height), style.borderTopWidth, style.borderTopStyle, style.borderTopLeftRadius,
+            lu(glyphBox.width), lu(glyphBox.height), lu(glyphBox.left - box.left), lu(glyphBox.top - box.top)].join(' | '),
           material: [neutral(style.backgroundImage), neutral(style.boxShadow), neutral(style.filter),
             neutral(getComputedStyle(image).filter)].join(' | '),
           gap: Math.round(text.left - box.right),

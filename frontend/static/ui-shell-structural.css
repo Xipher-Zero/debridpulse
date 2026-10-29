@@ -607,9 +607,14 @@ body.light .theme-toggle {
 }
 
 /* The desktop topbar (the shell's 780px mode change up): every page's title
-   and its pulse artwork keep one line. */
+   and its pulse artwork keep one line, within the heading -- whose end is the
+   controls' gap, so a title never reaches the controls. Where the title would
+   (the longest, Help & License, in the wider fallback face), its artwork
+   yields what the title lacks, the same shape and never hidden (48px at the
+   least); otherwise it keeps its size. The controls never move for it. */
 @media (min-width: 780px) {
-  #page-title { white-space: nowrap; }
+  #page-title { white-space: nowrap; max-width: 100%; }
+  #page-title::after { flex: 0 1 auto; min-width: 48px; }
 }
 
 /* The compact operational controls: at and below 1023px, one width for

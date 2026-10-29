@@ -167,8 +167,9 @@ const chartInsideCard = page => page.evaluate(() => {
 });
 
 // 1440x914 is the shortest desktop height at which the page fit before the
-// separator; 950 lies in the band where the x-axis used to be cut off. Every
-// acquisition method is listed, so at 1440 "Media Downloads" wraps.
+// separator; 950 lies in the band where the x-axis used to be cut off. (With
+// the 22px desktop inset, af5496ef, no method's label wraps at these widths;
+// the wrapped label is covered at 780px below.)
 for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 914], [1920, 1080]]) {
   test(`the page still fits at ${width}x${height} with the separator, and the whole chart shows`, async ({ page }) => {
     await boot(page, {width, height, methods: ALL_METHODS});
@@ -180,7 +181,6 @@ for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 91
         .some(key => key.getBoundingClientRect().height > 20)}));
     // The four boxes keep one equal height, wrapped label or not.
     expect(new Set(boxes.heights).size).toBe(1);
-    if (width === 1440) expect(boxes.wrapped).toBe(true);
     const fit = await page.evaluate(() => {
       const body = document.querySelector('#view-stats > .dp-stats-master-body');
       const doc = document.documentElement;
@@ -193,6 +193,22 @@ for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 91
     expect(chart.plot).toBeGreaterThan(60);
   });
 }
+
+// At the 780px floor, with every acquisition method listed, "Media Downloads"
+// wraps (measured in the web face and the fallback face alike; from 800px up no
+// label wraps), and the four boxes still keep one equal height.
+test('at the 780px floor a wrapped method label leaves the four boxes one equal height', async ({ page }) => {
+  await boot(page, {width: 780, height: 914, methods: ALL_METHODS});
+  await show(page, '7d');
+  const boxes = await page.evaluate(() => ({
+    heights: [...document.querySelectorAll('#view-stats .dp-stats-breakdown-grid > .list-card')]
+      .map(card => Math.round(card.getBoundingClientRect().height)),
+    wrapped: [...document.querySelectorAll('#detail-sources .kv-key')]
+      .filter(key => key.getBoundingClientRect().height > 20).map(key => key.textContent.trim())}));
+  expect(boxes.wrapped).toContain('Media Downloads');
+  expect(boxes.heights).toHaveLength(4);
+  expect(new Set(boxes.heights).size).toBe(1);
+});
 
 test('on a phone the page keeps scrolling and the separator keeps its rows apart', async ({ page }) => {
   await boot(page, {width: 390, height: 844});
