@@ -171,6 +171,9 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+    /* Its layout is the menu's own, open or closing: only display changes,
+       so the panel keeps its width and place while it rolls back up. */
+    flex-direction: column;
     pointer-events: none;
     transition:
       background-color var(--dp-motion-collapse) var(--dp-motion-ease),
@@ -179,7 +182,6 @@
   }
   .dp-theme-picker:popover-open {
     display: flex;
-    flex-direction: column;
     background: var(--dp-chrome-scrim);
     pointer-events: auto;
     transition-duration: var(--dp-motion-expand);

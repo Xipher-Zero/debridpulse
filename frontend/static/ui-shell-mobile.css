@@ -77,17 +77,30 @@
   #topbar-actions,
   .dp-page-subtitle { display: none; }
 
+  /* The title and its pulse artwork (ui-shell.css #page-title::after), the
+     artwork drawn at the desktop's proportion to the title (105 x 19 beside
+     23px) with a compact gap. The title is one clipped line: where the
+     artwork does not fit beside the rendered title it wraps to a second line
+     and is not seen, so each title keeps it exactly as far down as it fits,
+     in whatever face it is drawn. */
   #topbar h1 {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     max-width: 100%;
+    height: calc(var(--dp-shell-title-fluid) * 1.2);
     overflow: hidden;
     font-size: var(--dp-shell-title-fluid);
     line-height: 1.2;
     letter-spacing: -.02em;
     white-space: nowrap;
-    text-overflow: ellipsis;
   }
-  #page-title::after { display: none; }
+  #page-title::after {
+    flex: none;
+    width: calc(var(--dp-shell-title-fluid) * 4.565);
+    height: calc(var(--dp-shell-title-fluid) * .826);
+    margin-left: calc(var(--dp-shell-title-fluid) * .15);
+  }
   /* A page with a short name (Activity, Stats, Notifs, Help) shows it here;
      the heading's own text stays the whole name, read by assistive
      technology (the drawn name has no alternative text of its own). */
@@ -250,19 +263,30 @@
      whole dock: the same artwork at its own proportions, as wide as the dock
      and cropped to its crossing band, faded at both ends and kept faint, so
      every icon, label, badge, rail and selected surface stays above it. */
+  /* The field is the artwork's own box (320:300, so never stretched), a
+     little wider than the dock, its crossing band (62% down) on the dock's
+     middle and turned 15deg clockwise about that band, so the rising wave
+     runs across the whole dock, the left buttons included; the dock clips
+     what lies beyond it. */
+  .dp-shell-dock { overflow: clip; }
   .dp-shell-dock::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 50%;
+    left: -6%;
     z-index: -2;
-    background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center 62% / 100% auto no-repeat;
-    opacity: .32;
+    width: 112%;
+    aspect-ratio: 320 / 300;
+    background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center / 100% 100% no-repeat;
+    opacity: .34;
     filter: var(--dp-chrome-signal-filter);
-    mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
-    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+    transform: translateY(-62%) rotate(15deg);
+    transform-origin: 50% 62%;
+    mask-image: linear-gradient(90deg, transparent 4%, #000 16%, #000 84%, transparent 96%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 4%, #000 16%, #000 84%, transparent 96%);
     pointer-events: none;
   }
-  body.light .dp-shell-dock::before { opacity: .18; }
+  body.light .dp-shell-dock::before { opacity: .20; }
 
   .dp-shell-dock-item {
     position: relative;
@@ -402,21 +426,23 @@
     background: transparent;
     color: var(--dp-text-primary);
     font-family: var(--dp-font-sans);
+    /* Its layout is the sheet's own, open or closing: only display changes,
+       so the panel keeps its width and its bar's edge while it returns. */
+    flex-direction: column;
     pointer-events: none;
     transition:
       background-color var(--dp-motion-collapse) var(--dp-motion-ease),
       display var(--dp-motion-collapse) allow-discrete,
       overlay var(--dp-motion-collapse) allow-discrete;
   }
+  .dp-shell-sheet--down { justify-content: flex-start; }
+  .dp-shell-sheet--up { justify-content: flex-end; }
   .dp-shell-sheet:popover-open {
     display: flex;
-    flex-direction: column;
     background: var(--dp-chrome-scrim);
     pointer-events: auto;
     transition-duration: var(--dp-motion-expand);
   }
-  .dp-shell-sheet--down:popover-open { justify-content: flex-start; }
-  .dp-shell-sheet--up:popover-open { justify-content: flex-end; }
   .dp-shell-sheet-panel {
     box-sizing: border-box;
     max-height: 100%;

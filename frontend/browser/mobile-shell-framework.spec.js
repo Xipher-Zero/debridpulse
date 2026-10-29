@@ -69,6 +69,7 @@ const sample = (page, menu) => page.evaluate(([box, panel]) => {
       const top = (x, y, owner) => owner.contains(document.elementFromPoint(x, y));
       const translate = new DOMMatrixReadOnly(getComputedStyle(drawn).transform).m42;
       window.__frames.push({box: [r(shell).top, r(shell).bottom], panel: [r(drawn).top, r(drawn).bottom], header: bar.bottom, dock: dock.top,
+        across: [r(shell).left, r(shell).width, r(drawn).left, r(drawn).width], height: r(drawn).height, layout: getComputedStyle(shell).flexDirection,
         clip: getComputedStyle(shell).overflow, translate, opacity: getComputedStyle(drawn).opacity,
         chrome: top(title.left + 4, title.top + title.height / 2, document.getElementById('topbar'))
           && top(item.left + item.width / 2, item.top + item.height / 2, document.getElementById('shell-dock'))});
@@ -86,7 +87,15 @@ function expectBounded(list, label, {moved = true, from = -1} = {}) {
     expect(frame.box[1], `${label}: the menu reaches over the dock`).toBeLessThanOrEqual(frame.dock + 0.5);
     expect(frame.clip, `${label}: the panel is clipped to the menu's box`).toBe('hidden');
     expect(frame.chrome, `${label}: the header or the dock is covered`).toBe(true);
+    // The panel keeps the menu's whole width and its place across it in every
+    // frame, closing included: never narrowed to its content or moved aside.
+    const [boxLeft, boxWidth, left, width] = frame.across;
+    expect(Math.abs(left - boxLeft), `${label}: the panel moved aside`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(width - boxWidth), `${label}: the panel narrowed`).toBeLessThanOrEqual(0.5);
   }
+  // Its height is its own throughout (not stretched to the menu's box as it closes).
+  const heights = list.map(frame => Math.round(frame.height));
+  expect(Math.max(...heights) - Math.min(...heights), `${label}: the panel changed height`).toBeLessThanOrEqual(1);
   if (moved) {
     // The panel travels from its bar's edge: up (header menus) or down (More) of rest, never the other way.
     const travel = list.map(frame => frame.translate).filter(value => Math.abs(value) > 1);
@@ -487,6 +496,20 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       }
       await page.screenshot({path: `test-results/checkpoint-mobile-menus-${width}.png`});
     }
+    // Reopened while it is still closing, and closed again: the same bounds and width in every frame.
+    await page.setViewportSize({width: 390, height: 700});
+    for (const menu of ['theme', 'more']) {
+      await page.locator(MENUS[menu].open).click();
+      await rested(page, MENUS[menu].panel);
+      await sample(page, menu);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(sel => document.querySelector(sel).getAnimations().length > 0, MENUS[menu].panel);
+      await page.locator(MENUS[menu].open).click();
+      await rested(page, MENUS[menu].panel);
+      await page.keyboard.press('Escape');
+      expectBounded(await frames(page), `${menu} reopened while closing`, {moved: false});
+      expect(await page.evaluate(sel => getComputedStyle(document.querySelector(sel)).display, MENUS[menu].box)).toBe('none');
+    }
   });
 
   test('reduced motion: every shell menu opens and closes at once, in the same bounds', async ({page}) => {
@@ -545,17 +568,65 @@ test.describe('handheld shell, open runtime (every capability)', () => {
         const field = getComputedStyle(dock, '::before');
         const box = dock.getBoundingClientRect();
         const buttons = [...dock.querySelectorAll('button')];
+        const turn = new DOMMatrixReadOnly(field.transform);
         return {image: (field.backgroundImage.match(/sidebar-wave-accent\.svg/g) || []).length, size: field.backgroundSize,
+          ratio: Math.round(parseFloat(field.width) / parseFloat(field.height) * 1000) / 1000,
+          degrees: Math.round(Math.atan2(turn.b, turn.a) * 180 / Math.PI),
+          covers: parseFloat(field.left) < 0 && parseFloat(field.width) > box.width,
           events: field.pointerEvents, z: field.zIndex, opacity: Number(field.opacity), animation: field.animationName,
           height: Math.round(box.height), hits: buttons.every(b => { const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }),
           sidebar: getComputedStyle(document.getElementById('sidebar'), '::before').backgroundImage.includes('sidebar-wave-accent.svg')};
       });
-      expect(art, `${light ? 'light' : 'dark'} ${palette || 'native'}`).toMatchObject({image: 1, size: '100%', events: 'none', z: '-2',
+      expect(art, `${light ? 'light' : 'dark'} ${palette || 'native'}`).toMatchObject({image: 1, size: '100% 100%', ratio: Math.round(320 / 300 * 1000) / 1000, degrees: 15, covers: true, events: 'none', z: '-2',
         animation: 'none', height: 59, hits: true, sidebar: true});
-      expect(art.opacity).toBeLessThanOrEqual(light ? 0.2 : 0.35);   // faint: the artwork's own thin, translucent lines at about a third
+      expect(art.opacity).toBeLessThanOrEqual(light ? 0.2 : 0.34);   // faint: the artwork's own thin, translucent lines at about a third
       await page.screenshot({path: `test-results/checkpoint-mobile-dock-wave-${light ? 'light' : 'dark'}-${palette || 'native'}.png`,
         clip: {x: 0, y: 844 - 90, width: 390, height: 90}});
     }
+  });
+
+  test('the title keeps its pulse artwork beside it exactly where the rendered title, a compact gap and the artwork fit, never at the cost of the title or the row', async ({page}) => {
+    await open(page, {width: 779, height: 760});
+    // Where the artwork is drawn (the clipped one-line title does not scroll),
+    // and whether it fits by the rendered title's own width.
+    const fit = () => page.locator('#page-title').evaluate(heading => {
+      const after = getComputedStyle(heading, '::after');
+      const shown = heading.dataset.short ? getComputedStyle(heading, '::before') : getComputedStyle(heading);
+      const probe = document.createElement('span');
+      probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${shown.font};letter-spacing:${shown.letterSpacing}`;
+      probe.textContent = heading.dataset.short || heading.textContent;
+      document.body.append(probe);
+      const text = probe.getBoundingClientRect().width;
+      probe.remove();
+      const box = heading.getBoundingClientRect();
+      return {drawn: heading.scrollHeight <= heading.clientHeight + 0.5,
+        fits: text + parseFloat(after.marginLeft) + parseFloat(after.width) <= box.width + 0.5,
+        whole: heading.scrollWidth <= heading.clientWidth + 0.5,
+        proportion: Math.round(parseFloat(after.width) / parseFloat(after.height) * 100) / 100,
+        size: Math.round(parseFloat(after.height) / parseFloat(shown.fontSize) * 100) / 100,
+        gap: Math.round(parseFloat(after.marginLeft) * 10) / 10};
+    });
+    const seen = {};
+    for (const [entry, view] of [['Downloads', 'torrents'], ['Dashboard', 'dashboard'], ['Settings', 'settings'], ['Stats', 'stats']]) {
+      await page.setViewportSize({width: 779, height: 760});
+      await page.locator('#shell-dock .dp-shell-dock-item', {hasText: entry}).click();
+      await still(page);
+      for (const width of [320, 375, 390, 430, 600, 779]) {
+        await page.setViewportSize({width, height: 760});
+        const facts = await fit();
+        expect(facts.drawn, `${view} at ${width}px: drawn exactly where it fits`).toBe(facts.fits);
+        expect(facts.whole, `${view} at ${width}px: the title whole`).toBe(true);
+        expect([facts.proportion, facts.size], `${view}: the desktop proportion`).toEqual([5.53, 0.83]);
+        expect(facts.gap).toBeLessThanOrEqual(3);
+        expect(await headerRow(page), `${view} at ${width}px`).toEqual({inside: true, oneLine: true, height: 61});
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+        seen[`${view}@${width}`] = facts.drawn;
+      }
+    }
+    // Every title keeps it at 779px; the longest give it up first.
+    expect(['torrents', 'dashboard', 'settings', 'stats'].every(view => seen[`${view}@779`])).toBe(true);
+    expect(seen['torrents@320']).toBe(false);
+    expect(Object.keys(seen).filter(key => seen[key]).length).toBeGreaterThan(Object.keys(seen).filter(key => key.startsWith('stats') && seen[key]).length);
   });
 
   test('the one version datum stays below the active master surface, inside the workspace and clear of the dock, at every handheld width and at 780px', async ({page}) => {
