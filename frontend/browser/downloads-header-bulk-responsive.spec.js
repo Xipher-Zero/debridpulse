@@ -463,9 +463,11 @@ test('mobile (779px) keeps its header and toolbar: the full title and hint, filt
     labels: ['Pause', 'Resume', 'Reset', 'Move to Top', 'Delete', 'Clear Selections'], labelled: true});
 });
 
-// The keyboard stops from the page header's Pause All to Search, each named by its id or class.
+// The keyboard stops from the header's speed-cap selector (in the topbar from
+// 780px and in the handheld header below it; Pause All is desktop-only) to
+// Search, each named by its id or class.
 async function stopsToSearch(page) {
-  await page.locator('#btn-pause-all').focus();
+  await page.locator('#runtime-cap-toggle').focus();
   const stops = [];
   for (let step = 0; step < 30; step++) {
     await page.keyboard.press('Tab');
@@ -487,12 +489,12 @@ test('the title is a keyboard stop from 780px, where its tooltip says the full w
   await expect(page.locator('#torrent-card-title')).not.toHaveAttribute('tabindex', /.*/);
   await resize(page, 780);
   const tablet = await stopsToSearch(page);
-  // From 780px the shell adds its own two controls to the topbar (the speed
-  // badge's cap and the theme chevron, both hidden below 780px); Downloads adds
-  // one stop, the title, just before the filters. Nothing else moves.
-  const SHELL_FROM_780 = ['runtime-cap-toggle', 'theme-picker-toggle'];
-  expect(SHELL_FROM_780.every(stop => tablet.includes(stop) && !mobile.includes(stop))).toBe(true);
-  expect(tablet.filter(stop => stop !== 'torrent-card-title' && !SHELL_FROM_780.includes(stop))).toEqual(mobile);
+  // The shell's own controls are keyboard stops on both sides of 780px (the
+  // handheld header keeps the theme toggle and its chevron); Downloads adds one
+  // stop from 780px, the title, just before the filters. Nothing else moves.
+  const SHELL = ['theme-toggle', 'theme-picker-toggle'];
+  expect(SHELL.every(stop => tablet.includes(stop) && mobile.includes(stop))).toBe(true);
+  expect(tablet.filter(stop => stop !== 'torrent-card-title')).toEqual(mobile);
   expect(tablet.indexOf('torrent-card-title')).toBe(tablet.findIndex(stop => stop.startsWith('div.ftab')) - 1);
   await page.locator('#view-torrents .ftab').first().focus();
   await page.keyboard.press('Shift+Tab');
