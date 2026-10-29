@@ -228,6 +228,95 @@ test('Clear Stored Password: cancelling writes nothing and never applies a typed
   await expect(page.locator('#dp-settings-field-auth-password')).toHaveValue(`${SENTINEL}-draft`);
 });
 
+test('OIDC islands: each is one row while its narrowest control keeps 160px, else one field per row with one control width and edge; never a partial wrap', async ({page}) => {
+  await page.route('**/api/auth/config', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const current = await (await route.fetch()).json();
+    return route.fulfill({json: {...current, public_base_url: 'https://debridpulse.example.net',
+      public_base_url_effective: 'https://debridpulse.example.net', oidc_provider_name: 'Authentik',
+      oidc_issuer_url: 'https://id.example.net/application/o/debridpulse/', oidc_client_id: 'debridpulse-7f3c9a1e2b4d',
+      oidc_client_secret_configured: true}});
+  });
+  await open(page, 1440, 'authentication');
+  // Each group stacks below its own threshold of the card body's content width.
+  const STACK = {identity: 1176, credentials: 732, protocol: 846};
+  const FIELDS = {identity: ['oidc_provider_name', 'public_base_url', 'oidc_callback_url'],
+    credentials: ['oidc_client_id', 'oidc_client_secret'], protocol: ['oidc_scopes', 'oidc_group_claim']};
+  const measure = () => page.evaluate(FIELDS => {
+    const body = document.querySelector('.dp-settings-oidc-grouped-card > .card-body');
+    const bs = getComputedStyle(body);
+    const out = {body: body.clientWidth - parseFloat(bs.paddingLeft) - parseFloat(bs.paddingRight),
+      overflow: body.scrollWidth - body.clientWidth, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      issuer: document.querySelector('.dp-settings-oidc-issuer-band').getBoundingClientRect().width, groups: {}};
+    for (const [key, settings] of Object.entries(FIELDS)) {
+      const group = document.querySelector(`.dp-settings-oidc-group--${key}`);
+      const gs = getComputedStyle(group), g = group.getBoundingClientRect();
+      const fields = [...group.querySelectorAll(':scope > .dp-settings-inline-field')].map(field => {
+        const f = field.getBoundingClientRect(), info = field.querySelector('.dp-settings-inline-field-info').getBoundingClientRect();
+        const control = field.querySelector('.dp-settings-inline-field-control').getBoundingClientRect();
+        return {setting: field.querySelector('[data-setting]')?.dataset.setting, top: f.top, height: f.height,
+          content: Math.max(info.height, control.height), infoLeft: info.left, left: control.left, right: control.right,
+          width: control.width, inside: f.left >= g.left && f.right <= g.right && f.bottom <= g.bottom};
+      });
+      out.groups[key] = {fields, border: `${gs.borderTopWidth} ${gs.borderTopStyle} ${gs.borderTopLeftRadius}`,
+        overflow: group.scrollWidth - group.clientWidth};
+    }
+    return out;
+  }, FIELDS);
+  const states = {};
+  for (const width of [1920, 1440, 1360, 1359, 1030, 1029, 916, 915, 780, 1440]) {
+    await resize(page, width);
+    const m = await measure(), at = `${width}px (body ${m.body}px)`;
+    expect(m.overflow, `${at}: the card body overflows`).toBeLessThanOrEqual(0);
+    expect(m.pageOverflow, `${at}: the page scrolls sideways`).toBeLessThanOrEqual(0);
+    for (const [key, g] of Object.entries(m.groups)) {
+      const where = `${at} ${key}`;
+      expect(g.fields.map(f => f.setting), where).toEqual(FIELDS[key]);
+      expect(g.border, `${where}: border`).toBe('1px solid 12px');
+      expect(g.overflow, `${where}: overflow`).toBeLessThanOrEqual(0);
+      expect(g.fields.every(f => f.inside), `${where}: a field leaves its island`).toBe(true);
+      const rows = new Set(g.fields.map(f => Math.round(f.top))).size;
+      const stacked = m.body < STACK[key];
+      states[`${key}@${width}`] = stacked;
+      if (stacked) {
+        // One field per row, each as tall as its content, controls one width and edge.
+        expect(rows, `${where}: partial wrap`).toBe(g.fields.length);
+        expect(g.fields.every(f => f.height <= f.content + 1), `${where}: a row is taller than its content`).toBe(true);
+        for (const edge of ['infoLeft', 'left', 'right', 'width']) {
+          const values = g.fields.map(f => f[edge]);
+          expect(Math.max(...values) - Math.min(...values), `${where}: ${edge}`).toBeLessThanOrEqual(0.5);
+        }
+        expect(Math.min(...g.fields.map(f => f.width)), `${where}: stacked control`).toBeGreaterThanOrEqual(300);
+      } else {
+        expect(rows, `${where}: not one row`).toBe(1);
+        expect(Math.min(...g.fields.map(f => f.width)), `${where}: narrowest control`).toBeGreaterThanOrEqual(159.5);
+      }
+    }
+    if (width === 1440) states.issuer = [...(states.issuer || []), m.issuer];
+  }
+  // Each threshold is crossed between its two neighbouring widths, and the
+  // wide arrangement returns intact.
+  expect(states).toMatchObject({'identity@1360': false, 'identity@1359': true, 'protocol@1030': false, 'protocol@1029': true,
+    'credentials@916': false, 'credentials@915': true, 'identity@780': true, 'credentials@780': true, 'protocol@780': true,
+    'identity@1920': false, 'credentials@1920': false, 'protocol@1920': false});
+  expect(states.issuer[1]).toBe(states.issuer[0]);
+
+  // Stacked at the floor, the derived Callback URL keeps its whole value and its Copy.
+  await resize(page, 780);
+  const callback = page.locator('[data-setting="oidc_callback_url"]');
+  await expect(callback).toHaveJSProperty('readOnly', true);
+  await expect(callback).toHaveValue(/^https:\/\/debridpulse\.example\.net\/.+callback$/);
+  const copy = page.locator('[data-action="copy-oidc-callback"]');
+  await expect(copy).toBeEnabled();
+  await expect(copy).toHaveAttribute('aria-label', 'Copy OIDC Callback URL');
+  expect(await copy.evaluate(button => {
+    button.scrollIntoView({block: 'center'});
+    const r = button.getBoundingClientRect(), field = button.closest('.dp-action-field').getBoundingClientRect();
+    return button.contains(document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2))
+      && r.left >= field.left && r.right <= field.right + 0.5;
+  }), 'Copy is not reachable inside the Callback field').toBe(true);
+});
+
 test('OIDC Client Secret: Clear is inside the field at every width, named Clear Stored Secret, and keeps its confirmation', async ({page}) => {
   const writes = [];
   await page.route('**/api/auth/config', async route => {

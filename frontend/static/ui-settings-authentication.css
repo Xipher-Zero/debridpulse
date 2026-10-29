@@ -416,6 +416,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 20px;
+  /* The body's own width decides when each group stacks (below). */
+  container: dp-oidc / inline-size;
 }
 
 #view-settings .dp-settings-oidc-sandwich > .form-label {
@@ -443,13 +445,17 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    as text reflows, and centring items of unequal height pulls the taller one's
    top upward -- so settings genuinely on one row stop sharing a baseline.
    Equal-height items keep that promise at any font metric; each field still
-   centres its own control against its own stack. */
+   centres its own control against its own stack.
+
+   ONE row or one field per row, never a partial wrap: a group that no longer
+   gives every control a usable width stacks whole (the body's container
+   queries below), so its fields never wrap two-plus-one. */
 #view-settings .dp-settings-oidc-group {
   min-width: 0;
   display: flex;
   align-items: stretch;
   justify-content: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 18px 32px;
   width: auto;
   margin-inline: 8px;
@@ -540,8 +546,77 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex: 1 1 240px;
 }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-group-claim-field .dp-settings-inline-field-control {
-  max-width: 220px;
+/* Stacked, a group is one field per row, every row its full width: one
+   description column, so every control in the group starts at one left edge,
+   ends at one right edge and is one width -- whatever share it had on the row.
+   Each group stacks where its NARROWEST control would fall under 160px on the
+   row (measured against the group's own content width: the body less 62px of
+   group margin, border and padding). From 780px only; the handheld layout
+   (below 780px) keeps its own stack. */
+@media (min-width: 780px) {
+  @container dp-oidc (width < 1176px) {
+    #view-settings .dp-settings-oidc-group--identity {
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* A row is as tall as its content: the row's flex basis is a width. */
+    #view-settings .dp-settings-oidc-group--identity > .dp-settings-inline-field {
+      flex: 0 0 auto;
+    }
+
+    #view-settings .dp-settings-oidc-group--identity > .dp-settings-inline-field > .dp-settings-inline-field-info {
+      flex: 0 0 auto;
+      width: min(190px, 40cqi);
+      max-width: none;
+    }
+
+    #view-settings .dp-settings-oidc-group--identity .dp-settings-inline-field-control {
+      max-width: none;
+    }
+  }
+
+  @container dp-oidc (width < 732px) {
+    #view-settings .dp-settings-oidc-group--credentials {
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #view-settings .dp-settings-oidc-group--credentials > .dp-settings-inline-field {
+      flex: 0 0 auto;
+    }
+
+    #view-settings .dp-settings-oidc-group--credentials > .dp-settings-inline-field > .dp-settings-inline-field-info {
+      flex: 0 0 auto;
+      width: min(190px, 40cqi);
+      max-width: none;
+    }
+
+    #view-settings .dp-settings-oidc-group--credentials .dp-settings-inline-field-control {
+      max-width: none;
+    }
+  }
+
+  @container dp-oidc (width < 846px) {
+    #view-settings .dp-settings-oidc-group--protocol {
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #view-settings .dp-settings-oidc-group--protocol > .dp-settings-inline-field {
+      flex: 0 0 auto;
+    }
+
+    #view-settings .dp-settings-oidc-group--protocol > .dp-settings-inline-field > .dp-settings-inline-field-info {
+      flex: 0 0 auto;
+      width: min(190px, 40cqi);
+      max-width: none;
+    }
+
+    #view-settings .dp-settings-oidc-group--protocol .dp-settings-inline-field-control {
+      max-width: none;
+    }
+  }
 }
 
 /* The identity-provider authority endpoint: centred, unbordered, and given
@@ -567,11 +642,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   width: 100%;
 }
 
-/* Access control is one coherent section: ONE header row (the heading at its
-   start, the policy decision at its end), the provisioning role beneath that
-   decision, then the allowlists it can defer to, introduced by their own
-   hint. The section's own width decides whether the role and the hint can
-   share one band -- not the viewport, which knows nothing about the card. */
+/* Access control is one coherent section, four rows at every desktop width:
+   ONE header row (the heading at its start, the policy decision at its end),
+   the provisioning role centred on its own row, the allowlists' hint centred
+   beneath it, then the allowlists themselves. */
 #view-settings .dp-settings-oidc-access {
   --dp-oidc-role-island: 412px;
   --dp-oidc-band-gap: 16px;
@@ -610,9 +684,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1.25;
 }
 
-/* The provisioning role beneath the policy decision, at the section's end,
-   and the allowlists' hint: an ordinary stack, the hint directly over the
-   allowlists it introduces. */
+/* The provisioning role and the allowlists' hint: an ordinary stack, each on
+   its own row, the hint directly over the allowlists it introduces. */
 #view-settings .dp-settings-oidc-policy-band {
   min-width: 0;
   display: grid;
@@ -621,24 +694,11 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: var(--dp-oidc-band-gap);
 }
 
-/* Where the section has room, the role sits beside the hint in ONE band. Both
-   occupy the band's one cell: the hint keeps the centre of the full width --
-   the allowlists' centre -- and is bounded short of the island's widest
-   extent on either side, so the two can never meet whatever the island holds. */
-@container dp-oidc-access (min-width: 1056px) {
-  #view-settings .dp-settings-oidc-policy-band > * {
-    grid-area: 1 / 1;
-  }
-
-  #view-settings .dp-settings-oidc-policy-band > .dp-settings-oidc-section-copy {
-    max-width: min(620px, calc(100% - 2 * (var(--dp-oidc-role-island) + var(--dp-oidc-band-gap))));
-  }
-}
-
 /* The provisioning role: one bounded island in the canonical Settings island
-   material (the Download Engine, Statistics cadence and session islands). */
+   material (the Download Engine, Statistics cadence and session islands),
+   centred on the section as they are. */
 #view-settings .dp-settings-oidc-default-role {
-  justify-self: end;
+  justify-self: center;
   min-width: 0;
   max-width: min(100%, var(--dp-oidc-role-island));
   box-sizing: border-box;

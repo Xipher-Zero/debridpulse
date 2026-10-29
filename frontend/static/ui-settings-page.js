@@ -3807,7 +3807,7 @@
 
     const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
       rows: 3,
-      hint: 'Allow specific users to sign in by entering their unique identity provider subject IDs, one per line, each written as issuer|subject-id. A subject ID is the provider’s own identifier for a user, not a username.',
+      hint: 'Enter one identity-provider subject per line as issuer|subject-id. Use the provider’s unique subject ID, not a username.',
     }), 'dp-settings-oidc-sandwich');
     const emails = fieldClass(textarea('oidc_allowed_emails', 'Allowed Emails', lines(a.oidc_allowed_emails), {
       rows: 3,

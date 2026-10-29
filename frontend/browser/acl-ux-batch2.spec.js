@@ -383,7 +383,7 @@ test('My Account shows the bare email; a self-entered one is corrected with the 
   }
 });
 
-test('OIDC Access Control: heading left, Allow Any right, the Default Role island beneath it at the right; the hint centred on the allowlists', async ({browser}) => {
+test('OIDC Access Control: heading left, Allow Any right; then the Default Role island centred on its own row, the hint centred beneath it, then the allowlists', async ({browser}) => {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   const admin = await signIn(browser, ADMIN);
   const page = admin.page;
@@ -397,6 +397,8 @@ test('OIDC Access Control: heading left, Allow Any right, the Default Role islan
     'When enabled, anyone who successfully signs in through your identity provider can access DebridPulse. '
     + 'Turn this off to restrict access using the allowed subjects, email addresses, and groups below; '
     + 'a user must match every list that is filled in.');
+  await expect(access.locator('.dp-settings-field:has(> #dp-settings-field-oidc-allowed-subjects) .form-hint')).toHaveText(
+    'Enter one identity-provider subject per line as issuer|subject-id. Use the provider’s unique subject ID, not a username.');
 
   const measure = () => access.evaluate(node => {
     const box = element => element.getBoundingClientRect();
@@ -423,9 +425,9 @@ test('OIDC Access Control: heading left, Allow Any right, the Default Role islan
       headingRow: Math.abs((t.top + t.height / 2) - (g.top + g.height / 2)) <= 1 && t.right <= g.left,
       titleStart: Math.abs(t.left - s.left) <= 1,
       toggleEnd: Math.abs(g.right - s.right) <= 1,
-      islandEnd: Math.abs(i.right - s.right) <= 1,
       islandBeneathToggle: i.top >= g.bottom - 0.5,
-      islandOffCentre: Math.abs(mid(i) - mid(s)) > 40,
+      islandOffset: Math.abs(mid(i) - mid(s)),
+      islandAboveHint: i.bottom <= h.top + 0.5,
       sharedBand: i.top < h.bottom && h.top < i.bottom,
       bordered: style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) >= 1 && style.borderRadius === '12px',
       hintAboveLists: h.bottom <= l.top + 0.5,
@@ -444,26 +446,29 @@ test('OIDC Access Control: heading left, Allow Any right, the Default Role islan
     };
   });
 
-  // Wide sections: the island shares the hint's band at the section's end.
-  for (const width of [1920, 1440]) {
-    await page.setViewportSize({width, height: 1000});
-    await access.scrollIntoViewIfNeeded();
-    const facts = await measure();
-    expect(facts).toMatchObject({headingRow: true, titleStart: true, toggleEnd: true, islandEnd: true,
-      islandBeneathToggle: true, islandOffCentre: true, sharedBand: true, bordered: true, hintAboveLists: true,
-      hintAlign: 'center', hintMeetsIsland: false, collisions: false, overflow: false, roleFits: true});
-    expect(facts.hintOffset).toBeLessThanOrEqual(1);
-    expect(facts.bandToLists).toBeLessThanOrEqual(17);
-    await shot(page, `oidc-access-control-${width}`);
-  }
-  // Narrower sections: an ordinary stack -- the island under the toggle, the
-  // hint still centred directly over the allowlists it introduces.
-  for (const width of [1280, 1024, 800, 390]) {
+  // Every desktop width: four rows -- the heading row, the island centred on
+  // its own row, the hint centred beneath it, the allowlists.
+  for (const width of [1920, 1440, 1280, 1024, 800, 780]) {
     await page.setViewportSize({width, height: 1000});
     await page.evaluate(() => window.closeSidebar?.());
     await access.scrollIntoViewIfNeeded();
     const facts = await measure();
-    expect(facts).toMatchObject({islandBeneathToggle: true, bordered: true, hintAboveLists: true, hintAlign: 'center',
+    expect(facts, `${width}px`).toMatchObject({headingRow: true, titleStart: true, toggleEnd: true,
+      islandBeneathToggle: true, islandAboveHint: true, sharedBand: false, bordered: true, hintAboveLists: true,
+      hintAlign: 'center', hintMeetsIsland: false, collisions: false, overflow: false, reachable: true, roleFits: true});
+    expect(facts.islandOffset, `${width}px: the island is off centre`).toBeLessThanOrEqual(1);
+    expect(facts.hintOffset).toBeLessThanOrEqual(1);
+    expect(facts.bandToLists).toBeLessThanOrEqual(17);
+    await shot(page, `oidc-access-control-${width}`);
+  }
+  // Handheld keeps its own stack: the island under the toggle, the hint still
+  // centred directly over the allowlists it introduces.
+  for (const width of [390]) {
+    await page.setViewportSize({width, height: 1000});
+    await page.evaluate(() => window.closeSidebar?.());
+    await access.scrollIntoViewIfNeeded();
+    const facts = await measure();
+    expect(facts).toMatchObject({islandBeneathToggle: true, islandAboveHint: true, bordered: true, hintAboveLists: true, hintAlign: 'center',
       hintMeetsIsland: false, collisions: false, overflow: false, reachable: true, roleFits: true});
     expect(facts.hintOffset).toBeLessThanOrEqual(1);
     expect(facts.bandToLists).toBeLessThanOrEqual(17);
