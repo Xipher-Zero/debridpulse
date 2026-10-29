@@ -228,24 +228,27 @@ test('Clear Stored Password: cancelling writes nothing and never applies a typed
   await expect(page.locator('#dp-settings-field-auth-password')).toHaveValue(`${SENTINEL}-draft`);
 });
 
-test('OIDC islands: each is one row while its narrowest control keeps 160px, else one field per row with one control width and edge; never a partial wrap', async ({page}) => {
+test('OIDC islands: one row while every control stays useful, else a centred island hugging one field per row, controls one bounded width and edge; never a partial wrap', async ({page}) => {
   await page.route('**/api/auth/config', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     const current = await (await route.fetch()).json();
     return route.fulfill({json: {...current, public_base_url: 'https://debridpulse.example.net',
       public_base_url_effective: 'https://debridpulse.example.net', oidc_provider_name: 'Authentik',
-      oidc_issuer_url: 'https://id.example.net/application/o/debridpulse/', oidc_client_id: 'debridpulse-7f3c9a1e2b4d',
-      oidc_client_secret_configured: true}});
+      oidc_issuer_url: 'https://id.example.net/application/o/debridpulse/',
+      // A generated client ID is long: forty characters, as Authentik issues them.
+      oidc_client_id: 'Hk3pQ9sXv2LmT8wZr4NbYc6JdF1gUe7AoK5iRt0S', oidc_client_secret_configured: true}});
   });
   await open(page, 1440, 'authentication');
   // Each group stacks below its own threshold of the card body's content width.
-  const STACK = {identity: 1176, credentials: 732, protocol: 846};
+  const STACK = {identity: 1176, credentials: 1168, protocol: 846};
   const FIELDS = {identity: ['oidc_provider_name', 'public_base_url', 'oidc_callback_url'],
     credentials: ['oidc_client_id', 'oidc_client_secret'], protocol: ['oidc_scopes', 'oidc_group_claim']};
   const measure = () => page.evaluate(FIELDS => {
     const body = document.querySelector('.dp-settings-oidc-grouped-card > .card-body');
-    const bs = getComputedStyle(body);
-    const out = {body: body.clientWidth - parseFloat(bs.paddingLeft) - parseFloat(bs.paddingRight),
+    const bs = getComputedStyle(body), b = body.getBoundingClientRect();
+    const left = b.left + parseFloat(bs.borderLeftWidth) + parseFloat(bs.paddingLeft);
+    const right = b.right - parseFloat(bs.borderRightWidth) - parseFloat(bs.paddingRight);
+    const out = {body: right - left, centre: (left + right) / 2,
       overflow: body.scrollWidth - body.clientWidth, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       issuer: document.querySelector('.dp-settings-oidc-issuer-band').getBoundingClientRect().width, groups: {}};
     for (const [key, settings] of Object.entries(FIELDS)) {
@@ -254,17 +257,30 @@ test('OIDC islands: each is one row while its narrowest control keeps 160px, els
       const fields = [...group.querySelectorAll(':scope > .dp-settings-inline-field')].map(field => {
         const f = field.getBoundingClientRect(), info = field.querySelector('.dp-settings-inline-field-info').getBoundingClientRect();
         const control = field.querySelector('.dp-settings-inline-field-control').getBoundingClientRect();
-        return {setting: field.querySelector('[data-setting]')?.dataset.setting, top: f.top, height: f.height,
-          content: Math.max(info.height, control.height), infoLeft: info.left, left: control.left, right: control.right,
-          width: control.width, inside: f.left >= g.left && f.right <= g.right && f.bottom <= g.bottom};
+        const input = field.querySelector('input'), is = getComputedStyle(input), ir = input.getBoundingClientRect();
+        const action = field.querySelector('.dp-action-field .btn');
+        return {setting: input.dataset.setting, top: f.top, height: f.height, spare: f.right - control.right,
+          content: Math.max(info.height, control.height), infoLeft: info.left, infoWidth: info.width,
+          left: control.left, right: control.right, width: control.width,
+          // Typing room: the input's own text box, beside its embedded action.
+          room: (action ? Math.min(ir.right, action.getBoundingClientRect().left) : ir.right) - ir.left
+            - parseFloat(is.paddingLeft) - parseFloat(is.borderLeftWidth),
+          whole: input.scrollWidth <= input.clientWidth,
+          inside: f.left >= g.left && f.right <= g.right && f.bottom <= g.bottom};
       });
-      out.groups[key] = {fields, border: `${gs.borderTopWidth} ${gs.borderTopStyle} ${gs.borderTopLeftRadius}`,
-        overflow: group.scrollWidth - group.clientWidth};
+      out.groups[key] = {fields, width: g.width, offset: (g.left + g.right) / 2 - out.centre,
+        border: `${gs.borderTopWidth} ${gs.borderTopStyle} ${gs.borderTopLeftRadius}`, overflow: group.scrollWidth - group.clientWidth};
     }
     return out;
   }, FIELDS);
+  // A row only while every control stays useful (font-independent bounds).
+  const ROW_USEFUL = {
+    identity: fields => fields[1].width >= 199.5 && fields.every(f => f.width >= 144.5),
+    credentials: fields => fields[0].whole && fields[1].room >= 279.5,
+    protocol: fields => fields.every(f => f.width >= 159.5),
+  };
   const states = {};
-  for (const width of [1920, 1440, 1360, 1359, 1030, 1029, 916, 915, 780, 1440]) {
+  for (const width of [1920, 1560, 1440, 1360, 1359, 1352, 1351, 1030, 1029, 780, 1440]) {
     await resize(page, width);
     const m = await measure(), at = `${width}px (body ${m.body}px)`;
     expect(m.overflow, `${at}: the card body overflows`).toBeLessThanOrEqual(0);
@@ -275,29 +291,37 @@ test('OIDC islands: each is one row while its narrowest control keeps 160px, els
       expect(g.border, `${where}: border`).toBe('1px solid 12px');
       expect(g.overflow, `${where}: overflow`).toBeLessThanOrEqual(0);
       expect(g.fields.every(f => f.inside), `${where}: a field leaves its island`).toBe(true);
+      expect(Math.abs(g.offset), `${where}: the island is off the card's centre`).toBeLessThanOrEqual(0.5);
       const rows = new Set(g.fields.map(f => Math.round(f.top))).size;
       const stacked = m.body < STACK[key];
       states[`${key}@${width}`] = stacked;
       if (stacked) {
-        // One field per row, each as tall as its content, controls one width and edge.
+        // One field per row, each as tall as its content; one description
+        // column; controls one bounded width and edge, the island hugging them.
         expect(rows, `${where}: partial wrap`).toBe(g.fields.length);
         expect(g.fields.every(f => f.height <= f.content + 1), `${where}: a row is taller than its content`).toBe(true);
-        for (const edge of ['infoLeft', 'left', 'right', 'width']) {
+        for (const edge of ['infoLeft', 'infoWidth', 'left', 'right', 'width']) {
           const values = g.fields.map(f => f[edge]);
           expect(Math.max(...values) - Math.min(...values), `${where}: ${edge}`).toBeLessThanOrEqual(0.5);
         }
-        expect(Math.min(...g.fields.map(f => f.width)), `${where}: stacked control`).toBeGreaterThanOrEqual(300);
+        expect(g.fields.every(f => f.spare <= 0.5), `${where}: the island is wider than its rows`).toBe(true);
+        const control = g.fields[0].width;
+        expect(control, `${where}: stacked control`).toBeGreaterThanOrEqual(300);
+        expect(control, `${where}: stacked control grows past its reading room`).toBeLessThanOrEqual(420.5);
+        // Below its reading room only where the card itself is the limit.
+        if (control < 419.5) expect(g.width, `${where}: controls yield with room to spare`).toBeGreaterThanOrEqual(m.body - 16 - 0.5);
       } else {
         expect(rows, `${where}: not one row`).toBe(1);
-        expect(Math.min(...g.fields.map(f => f.width)), `${where}: narrowest control`).toBeGreaterThanOrEqual(159.5);
+        expect(ROW_USEFUL[key](g.fields), `${where}: a row control is no longer useful`).toBe(true);
       }
     }
     if (width === 1440) states.issuer = [...(states.issuer || []), m.issuer];
   }
   // Each threshold is crossed between its two neighbouring widths, and the
   // wide arrangement returns intact.
-  expect(states).toMatchObject({'identity@1360': false, 'identity@1359': true, 'protocol@1030': false, 'protocol@1029': true,
-    'credentials@916': false, 'credentials@915': true, 'identity@780': true, 'credentials@780': true, 'protocol@780': true,
+  expect(states).toMatchObject({'identity@1360': false, 'identity@1359': true, 'credentials@1352': false, 'credentials@1351': true,
+    'protocol@1030': false, 'protocol@1029': true, 'identity@780': true, 'credentials@780': true, 'protocol@780': true,
+    'identity@1560': false, 'credentials@1560': false, 'protocol@1560': false,
     'identity@1920': false, 'credentials@1920': false, 'protocol@1920': false});
   expect(states.issuer[1]).toBe(states.issuer[0]);
 

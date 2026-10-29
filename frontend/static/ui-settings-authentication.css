@@ -451,6 +451,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    gives every control a usable width stacks whole (the body's container
    queries below), so its fields never wrap two-plus-one. */
 #view-settings .dp-settings-oidc-group {
+  /* A control's reading room -- its cap on a row, its width when stacked. */
+  --dp-oidc-control: 420px;
   min-width: 0;
   display: flex;
   align-items: stretch;
@@ -475,7 +477,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex: 1 1 auto;
   min-width: 0;
   /* Room to read a URL, not room to stretch one across the card. */
-  max-width: 420px;
+  max-width: var(--dp-oidc-control);
 }
 
 #view-settings .dp-settings-oidc-group .dp-settings-inline-field-control > .input,
@@ -546,21 +548,33 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex: 1 1 240px;
 }
 
-/* Stacked, a group is one field per row, every row its full width: one
-   description column, so every control in the group starts at one left edge,
-   ends at one right edge and is one width -- whatever share it had on the row.
-   Each group stacks where its NARROWEST control would fall under 160px on the
-   row (measured against the group's own content width: the body less 62px of
-   group margin, border and padding). From 780px only; the handheld layout
-   (below 780px) keeps its own stack. */
+/* Stacked, a group is one field per row in a centred, content-bounded
+   island: one description column (190px) and one control column (the
+   control's 420px reading room), so every control in the group starts at one
+   left edge, ends at one right edge and is one width. The island hugs those
+   columns -- its rows are as tall as their content, the row's flex basis being
+   a width -- and where the card is narrower than that, the controls yield the
+   difference. A control's width is its own, never its value's.
+
+   Each group stacks below its own measured card-body width, holding with the
+   local fonts and the wider CI fallback (DejaVu) alike:
+   - Provider Identity, 1176px: below it the Public Base URL's control falls
+     under 204px (Provider Name, a short name, keeps at least 147px).
+   - Client Credentials, 1168px: below it the Client Secret's typing room
+     beside its Clear falls under 280px (a 40-character Client ID still shows
+     whole there).
+   - Protocol Details, 846px: below it Group Claim falls under 160px.
+   From 780px only; the handheld layout (below 780px) keeps its own stack. */
 @media (min-width: 780px) {
   @container dp-oidc (width < 1176px) {
     #view-settings .dp-settings-oidc-group--identity {
       flex-direction: column;
       gap: 16px;
+      width: fit-content;
+      max-width: calc(100% - 16px);
+      margin-inline: auto;
     }
 
-    /* A row is as tall as its content: the row's flex basis is a width. */
     #view-settings .dp-settings-oidc-group--identity > .dp-settings-inline-field {
       flex: 0 0 auto;
     }
@@ -572,14 +586,18 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     }
 
     #view-settings .dp-settings-oidc-group--identity .dp-settings-inline-field-control {
-      max-width: none;
+      flex: 0 1 auto;
+      width: var(--dp-oidc-control);
     }
   }
 
-  @container dp-oidc (width < 732px) {
+  @container dp-oidc (width < 1168px) {
     #view-settings .dp-settings-oidc-group--credentials {
       flex-direction: column;
       gap: 16px;
+      width: fit-content;
+      max-width: calc(100% - 16px);
+      margin-inline: auto;
     }
 
     #view-settings .dp-settings-oidc-group--credentials > .dp-settings-inline-field {
@@ -593,7 +611,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     }
 
     #view-settings .dp-settings-oidc-group--credentials .dp-settings-inline-field-control {
-      max-width: none;
+      flex: 0 1 auto;
+      width: var(--dp-oidc-control);
     }
   }
 
@@ -601,6 +620,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     #view-settings .dp-settings-oidc-group--protocol {
       flex-direction: column;
       gap: 16px;
+      width: fit-content;
+      max-width: calc(100% - 16px);
+      margin-inline: auto;
     }
 
     #view-settings .dp-settings-oidc-group--protocol > .dp-settings-inline-field {
@@ -614,7 +636,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     }
 
     #view-settings .dp-settings-oidc-group--protocol .dp-settings-inline-field-control {
-      max-width: none;
+      flex: 0 1 auto;
+      width: var(--dp-oidc-control);
     }
   }
 }
