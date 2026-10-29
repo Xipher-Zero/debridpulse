@@ -145,6 +145,12 @@
       menu.showPopover({source: toggle});
     });
     ['pointercancel', 'pointerleave'].forEach(function (type) { toggle.addEventListener(type, endHold); });
+    // A tap on the mode toggle while the menu is open (after a long press the
+    // toggle is its opener, so the browser keeps it open) closes the menu as
+    // the mode changes: the header's controls stay usable, one menu at a time.
+    toggle.addEventListener('click', function () {
+      if (handheld.matches && menu.matches(':popover-open')) menu.hidePopover();
+    });
     toggle.addEventListener('contextmenu', function (event) {
       if (handheld.matches) event.preventDefault();
     });

@@ -346,16 +346,20 @@ body.light #view-events .dp-activity-search-band {
   font-size: 13px;
   color: inherit;
 }
-body:has(.nav-item[data-view="events"].active) #page-title {
-  font-size: 0 !important;
-}
-body:has(.nav-item[data-view="events"].active) #page-title::before {
-  content: 'Activity Log';
-  font-size: var(--dp-shell-title-size);
-  line-height: 1.04;
-  font-weight: 700;
-  letter-spacing: -.03em;
-  color: inherit;
+/* The desktop page title; below 780px the handheld header draws its own
+   (ui-shell-mobile.css). */
+@media (min-width: 780px) {
+  body:has(.nav-item[data-view="events"].active) #page-title {
+    font-size: 0 !important;
+  }
+  body:has(.nav-item[data-view="events"].active) #page-title::before {
+    content: 'Activity Log';
+    font-size: var(--dp-shell-title-size);
+    line-height: 1.04;
+    font-weight: 700;
+    letter-spacing: -.03em;
+    color: inherit;
+  }
 }
 body:has(.nav-item[data-view="events"].active) #page-subtitle {
   font-size: 0 !important;
@@ -368,9 +372,6 @@ body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
 }
 
 @media (max-width: 779px) {
-  body:has(.nav-item[data-view="events"].active) #page-title::before {
-    font-size: 23px;
-  }
   body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
     font-size: 11.5px;
   }

@@ -31,11 +31,11 @@
     </div>
     <div class="nav-group">Review</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="events" data-dock="5" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="events" data-dock="5" data-short-label="Activity" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label">Activity Log</span>
     </div>
     </template>
-    <div class="nav-item" data-view="stats" data-dock="2" data-dock-label="Stats" data-tooltip="Statistics" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="stats" data-dock="2" data-short-label="Stats" data-tooltip="Statistics" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="statistics" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21v-6"/><path d="M12 21V9"/><path d="M19 21V3"/></svg></span><span class="nav-label">Statistics</span>
     </div>
     <div class="nav-group">System</div>
@@ -45,11 +45,11 @@
     </div>
     </template>
     <template data-requires="notifications.self">
-    <div class="nav-item" data-view="settings" data-dock="4" data-dock-label="Notifs" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="settings" data-dock="4" data-short-label="Notifs" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="bell-ring" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg></span><span class="nav-label">Notifications</span>
     </div>
     </template>
-    <div class="nav-item" data-view="help" data-dock="6" data-dock-label="Help" data-tooltip="Help &amp; License" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="help" data-dock="6" data-short-label="Help" data-tooltip="Help &amp; License" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label">Help &amp; License</span>
     </div>
   </nav>
@@ -101,6 +101,7 @@
           <span class="dp-speedcap-arrow" aria-hidden="true"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span><span id="runtime-badge-limit">Unlimited</span>
         </button>
         <div id="runtime-cap-menu" class="runtime-cap-menu" role="menu" hidden>
+          <div class="runtime-cap-panel">
           <div class="runtime-cap-title">Download speed cap</div>
           <div class="runtime-cap-options">
             <button type="button" data-cap-bps="0" onclick="applyTopbarSpeedCap(0)">Unlimited</button>
@@ -119,6 +120,7 @@
               <button type="button" class="btn btn-primary btn-sm" onclick="applyTopbarCustomSpeedCap()">Set Custom</button>
             </div>
           </div>
+          </div>
         </div>
       </div></template>
     </div>
@@ -126,11 +128,13 @@
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" data-tooltip="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
       <button type="button" class="dp-theme-picker-trigger" id="theme-picker-toggle" popovertarget="theme-picker" aria-haspopup="menu" aria-controls="theme-picker" aria-expanded="false" aria-label="Choose theme" data-tooltip="Choose theme"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
       <div id="theme-picker" class="dp-theme-picker" popover="auto" role="menu" aria-labelledby="theme-picker-title">
+        <div class="dp-theme-picker-panel">
         <div class="dp-theme-picker-head">
           <div class="dp-theme-picker-title" id="theme-picker-title">Dark themes</div>
           <div class="dp-theme-picker-note" id="theme-picker-note">Changes dark appearance only</div>
         </div>
         <div class="dp-theme-picker-list" id="theme-picker-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -533,7 +537,7 @@
   <!-- The handheld dock (below 780px): app.js renders it from the authorized
        sidebar entries above, in their data-dock order; More holds the rest. -->
   <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"></nav>
-  <div id="shell-more" class="dp-shell-sheet" popover role="dialog" aria-labelledby="shell-more-title">
+  <div id="shell-more" class="dp-shell-sheet dp-shell-sheet--up" popover role="dialog" aria-labelledby="shell-more-title">
     <div class="dp-shell-sheet-panel">
       <div class="dp-shell-sheet-title" id="shell-more-title">More</div>
       <div class="dp-shell-sheet-list" id="shell-more-list"></div>

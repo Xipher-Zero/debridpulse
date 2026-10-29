@@ -149,7 +149,12 @@ function navigateTo(el) {
   // A sidebar entry may name the page it opens (a User's Settings slot opens
   // their own Notifications).
   const title = el.dataset.title || titles[v] || v;
-  document.getElementById('page-title').textContent = title;
+  const heading = document.getElementById('page-title');
+  heading.textContent = title;
+  // The entry's short name, drawn in its place by the handheld header only
+  // (ui-shell-mobile.css); the heading's own text stays the whole name.
+  if (el.dataset.shortLabel) heading.dataset.short = el.dataset.shortLabel;
+  else delete heading.dataset.short;
   const subtitle = document.getElementById('page-subtitle');
   if (subtitle) subtitle.textContent = el.dataset.subtitle || subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
@@ -192,7 +197,7 @@ function shellDockButton(entry, className) {
   const label = document.createElement('span');
   label.className = 'dp-shell-label';
   // A shorter display label (Stats) keeps the entry's whole name as the button's.
-  const shown = className === 'dp-shell-dock-item' ? entry.dataset.dockLabel || name : name;
+  const shown = className === 'dp-shell-dock-item' ? entry.dataset.shortLabel || name : name;
   label.textContent = shown;
   button.append(label);
   if (shown !== name) button.setAttribute('aria-label', name);
@@ -2992,12 +2997,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', function(event) {
     if (!event.target.closest('.runtime-cap-control')) closeSpeedCapMenu();
   });
-  // Below 780px the cap menu's scrim is its own (ui-shell-mobile.css), so a
-  // press beside the sheet lands on the menu, never on the page: it closes it.
+  // Below 780px the cap menu is the page's own scrim with its panel at the
+  // top (ui-shell-mobile.css), so a press beside the panel lands on the menu
+  // itself, never on the page: it closes it.
   document.getElementById('runtime-cap-menu')?.addEventListener('click', function(event) {
-    if (!_shellHandheld.matches || event.target !== event.currentTarget) return;
-    var box = event.currentTarget.getBoundingClientRect();
-    if (event.clientY < box.top || event.clientY > box.bottom || event.clientX < box.left || event.clientX > box.right) closeSpeedCapMenu();
+    if (_shellHandheld.matches && event.target === event.currentTarget) closeSpeedCapMenu();
   });
   // Crossing 779/780px changes the shell: its open sheets close rather than
   // stay over a presentation that is gone.

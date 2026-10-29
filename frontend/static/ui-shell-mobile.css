@@ -2,7 +2,10 @@
    one scrolling workspace, one fixed dock -- the same application, composed
    for a phone. app.js renders the dock from the authorized sidebar entries
    and owns More and the speed-cap sheet; auth.js owns the account control and
-   its sheet; ui-theme-picker.css owns the theme sheet. From 780px none of this
+   its sheet; ui-theme-picker.css owns the theme sheet. Every shell menu opens
+   from the edge of its own bar into the page between them -- the header's
+   (theme, speed cap, account) roll down below the header, More rolls up above
+   the dock -- and neither bar is ever covered. From 780px none of this
    is drawn and the desktop shell (ui-shell.css, ui-shell-structural.css) is
    unchanged. Every colour is a theme token: the dock carries the sidebar's own
    material (--dp-chrome-sidebar-*, --dp-chrome-nav-*) turned to a horizontal
@@ -13,11 +16,27 @@
 
 @media (max-width: 779px) {
   :root {
-    --dp-shell-x: 14px;
-    --dp-shell-header: 58px;
+    --dp-shell-x: max(10px, env(safe-area-inset-right, 0px));
     /* Every header control's own hit area: at least 44 x 44 CSS px. */
     --dp-shell-control: 44px;
     --dp-shell-dock-height: 58px;
+    /* The one header row: the speed reading (the control height and its
+       border) between 7px insets, the top one never under the safe area, and
+       the bar's 1px edge. Every shell menu's region is the page between the
+       two bars: from the header's bottom edge to the dock's top edge. */
+    --dp-shell-header-top: max(7px, env(safe-area-inset-top, 0px));
+    --dp-shell-header: calc(var(--dp-shell-header-top) + var(--dp-shell-control) + 2px + 7px + 1px);
+    --dp-shell-dock-edge: calc(var(--dp-shell-dock-height) + 1px + env(safe-area-inset-bottom, 0px));
+    /* The page title's one size per header width (the heading is its
+       container): the longest titles (Dashboard, Downloads) fill its room at
+       16.5cqi, never above 18px or below 13px. */
+    --dp-shell-title-fluid: clamp(13px, 16.5cqi, 18px);
+  }
+  /* Every shell menu's panel: the overlay surface laid over the page
+     background, so it is opaque in every palette (declared on body, where
+     the mode and palette tokens are). */
+  body {
+    --dp-shell-panel-surface: linear-gradient(var(--dp-surface-overlay), var(--dp-surface-overlay)), var(--dp-bg-app);
   }
 
   /* The sidebar gives way to the dock; nothing of it is drawn or focusable. */
@@ -28,21 +47,21 @@
     height: 100dvh;
   }
 
-  /* ── Header: the page at the start, the global controls at the end ─────
-     One row from 600px; narrower, the controls' speed reading takes a second
-     row of its own, at the end, so the title and every control keep a usable
-     size down to 320px. */
+  /* ── Header: one row from 320 to 779px ─────────────────────────────────
+     The page at the start, the global controls at the end. Where the row is
+     short the speed reading gives way in stages (below), never the title, a
+     control or the row. */
   #topbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas: "account heading speed theme";
     align-items: center;
-    column-gap: 8px;
-    row-gap: 6px;
+    column-gap: 6px;
     flex: none;
-    height: auto;
+    box-sizing: border-box;
+    height: var(--dp-shell-header);
     min-height: 0;
-    padding: max(9px, env(safe-area-inset-top, 0px)) var(--dp-shell-x) 9px;
+    padding: var(--dp-shell-header-top) var(--dp-shell-x) 7px max(10px, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid var(--dp-chrome-sidebar-edge);
   }
   #topbar:has(> #topbar-account-mount[hidden]) {
@@ -50,7 +69,7 @@
     grid-template-areas: "heading speed theme";
   }
   #topbar-account-mount { grid-area: account; }
-  #topbar .dp-page-heading { grid-area: heading; min-width: 0; }
+  #topbar .dp-page-heading { grid-area: heading; min-width: 0; container-type: inline-size; }
   #runtime-speed-badge { grid-area: speed; }
   #topbar .topbar-theme-control { grid-area: theme; }
 
@@ -62,12 +81,21 @@
     display: block;
     max-width: 100%;
     overflow: hidden;
-    font-size: 19px;
+    font-size: var(--dp-shell-title-fluid);
     line-height: 1.2;
+    letter-spacing: -.02em;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   #page-title::after { display: none; }
+  /* A page with a short name (Activity, Stats, Notifs, Help) shows it here;
+     the heading's own text stays the whole name, read by assistive
+     technology (the drawn name has no alternative text of its own). */
+  #topbar h1[data-short] { font-size: 0; }
+  #topbar h1[data-short]::before {
+    content: attr(data-short) / "";
+    font-size: var(--dp-shell-title-fluid);
+  }
 
   .dp-topbar-account:not([hidden]) { display: block; }
   .dp-topbar-account-button,
@@ -136,33 +164,57 @@
     touch-action: manipulation;
   }
 
-  /* The speed-cap menu is a bottom sheet over the page and the dock. Its own
-     ::before is the scrim's hit area across the viewport (app.js closes the
-     sheet on a press there), its spread shadow the scrim's colour. Its
-     surface is the sheets' overlay surface, drawn as an inset shadow: the
-     dropdown material's own background (ui-dropdown-contract.css) is drawn
-     through on the desktop's blur, which a sheet does not use. */
+  /* The speed-cap menu: its own box is the page between the bars, the scrim
+     (::before) dims only that, and its panel rolls down from the header's
+     edge. A press on the scrim lands on the menu itself (app.js closes it),
+     never on the page; while it closes it takes no input. The dropdown's own
+     material (ui-dropdown-contract.css) is the desktop's. */
   .runtime-cap-menu {
     position: fixed;
-    top: auto;
-    bottom: 0;
+    top: var(--dp-shell-header);
+    right: 0;
+    bottom: var(--dp-shell-dock-edge);
     left: 0;
     width: auto;
-    max-height: 82dvh;
+    max-height: none;
     margin: 0;
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    border-width: 1px 0 0;
-    border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
     backdrop-filter: none;
-    box-shadow: inset 0 0 0 100vmax var(--dp-surface-overlay), 0 0 0 100vmax var(--dp-chrome-scrim), var(--dp-shadow-raised);
+    box-shadow: none;
+    transition: display var(--dp-motion-collapse) allow-discrete;
   }
+  .runtime-cap-menu[hidden] { pointer-events: none; }
   .runtime-cap-menu::before {
     content: '';
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: -1;
+    background: var(--dp-chrome-scrim);
+    transition: opacity var(--dp-motion-collapse) var(--dp-motion-ease);
+  }
+  .runtime-cap-menu[hidden]::before { opacity: 0; }
+  .runtime-cap-panel {
+    position: relative;
+    box-sizing: border-box;
+    max-height: 100%;
+    padding: 14px 16px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--dp-border-default);
+    border-top: 0;
+    border-radius: 0 0 var(--dp-radius-lg) var(--dp-radius-lg);
+    background: var(--dp-shell-panel-surface);
+    box-shadow: var(--dp-shadow-raised);
+    transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
+  }
+  .runtime-cap-menu[hidden] .runtime-cap-panel { transform: translateY(-100%); }
+  .runtime-cap-menu:not([hidden]) .runtime-cap-panel,
+  .runtime-cap-menu:not([hidden])::before { transition-duration: var(--dp-motion-expand); }
+  @starting-style {
+    .runtime-cap-menu:not([hidden]) .runtime-cap-panel { transform: translateY(-100%); }
+    .runtime-cap-menu:not([hidden])::before { opacity: 0; }
   }
   .runtime-cap-options button { min-height: 44px; }
   .runtime-cap-custom input,
@@ -194,6 +246,23 @@
     user-select: none;
   }
   body.light .dp-shell-dock { box-shadow: 0 -6px 20px rgba(45, 61, 96, .09); }
+  /* The sidebar's signal field (ui-shell-signal-field.css), once, behind the
+     whole dock: the same artwork at its own proportions, as wide as the dock
+     and cropped to its crossing band, faded at both ends and kept faint, so
+     every icon, label, badge, rail and selected surface stays above it. */
+  .dp-shell-dock::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center 62% / 100% auto no-repeat;
+    opacity: .32;
+    filter: var(--dp-chrome-signal-filter);
+    mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+    pointer-events: none;
+  }
+  body.light .dp-shell-dock::before { opacity: .18; }
 
   .dp-shell-dock-item {
     position: relative;
@@ -313,12 +382,15 @@
   .dp-shell-dock-badge[hidden] { display: none; }
 
   /* ── Sheets (More, the account) ───────────────────────────────────────
-     A popover whose own box is the scrim over the whole viewport: a press
-     beside the panel lands on it and closes it (its owner), never on the
-     page; Escape closes it and focus returns to its control. */
+     A popover whose own box is the page between the bars and its scrim: a
+     press beside the panel lands on it and closes it (its owner), never on
+     the page; Escape closes it and focus returns to its control. Its panel
+     travels from its bar's edge -- down from the header (the account), up
+     from the dock (More) -- clipped to that box, so neither bar is covered;
+     closing, it returns the same way and takes no input. */
   .dp-shell-sheet {
     position: fixed;
-    inset: 0;
+    inset: var(--dp-shell-header) 0 var(--dp-shell-dock-edge) 0;
     width: auto;
     height: auto;
     max-width: none;
@@ -327,22 +399,53 @@
     padding: 0;
     overflow: hidden;
     border: 0;
-    background: var(--dp-chrome-scrim);
+    background: transparent;
     color: var(--dp-text-primary);
     font-family: var(--dp-font-sans);
+    pointer-events: none;
+    transition:
+      background-color var(--dp-motion-collapse) var(--dp-motion-ease),
+      display var(--dp-motion-collapse) allow-discrete,
+      overlay var(--dp-motion-collapse) allow-discrete;
   }
   .dp-shell-sheet:popover-open {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    background: var(--dp-chrome-scrim);
+    pointer-events: auto;
+    transition-duration: var(--dp-motion-expand);
   }
+  .dp-shell-sheet--down:popover-open { justify-content: flex-start; }
+  .dp-shell-sheet--up:popover-open { justify-content: flex-end; }
   .dp-shell-sheet-panel {
-    padding: 14px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+    max-height: 100%;
+    padding: 14px 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--dp-border-default);
+    background: var(--dp-shell-panel-surface);
+    box-shadow: var(--dp-shadow-raised);
+    transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
+  }
+  .dp-shell-sheet--down .dp-shell-sheet-panel {
+    border-top: 0;
+    border-radius: 0 0 var(--dp-radius-lg) var(--dp-radius-lg);
+    transform: translateY(-100%);
+  }
+  .dp-shell-sheet--up .dp-shell-sheet-panel {
     border-bottom: 0;
     border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
-    background: var(--dp-surface-overlay);
-    box-shadow: var(--dp-shadow-raised);
+    transform: translateY(100%);
+  }
+  .dp-shell-sheet:popover-open .dp-shell-sheet-panel {
+    transform: none;
+    transition-duration: var(--dp-motion-expand);
+  }
+  @starting-style {
+    .dp-shell-sheet:popover-open { background-color: transparent; }
+    .dp-shell-sheet--down:popover-open .dp-shell-sheet-panel { transform: translateY(-100%); }
+    .dp-shell-sheet--up:popover-open .dp-shell-sheet-panel { transform: translateY(100%); }
   }
   .dp-shell-sheet-title {
     padding: 2px 8px 12px;
@@ -406,21 +509,64 @@
   }
 }
 
-/* One row of header controls fits from 600px; narrower, the speed reading is
-   the header's second row, at its end. */
-@media (max-width: 599px) {
-  #topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "account heading theme"
-      "speed speed speed";
+/* The speed reading gives way in stages as the one header row narrows, each
+   from the width where the full row (the longest title, Downloads, at its
+   18px, the account, the theme pair and the gaps: 279px) no longer has room
+   for the stage before -- measured with the wider fallback face (DejaVu Sans)
+   at its widest values (999.9 MB/s, 12/16): 287, 216 and 169px, so 565, 494
+   and 447px:
+   first an Admin's active/max goes; then the cap's current value is drawn no
+   more (it stays the selector's accessible name, and the menu marks it);
+   then the reading is the live speed alone, value over unit, and an Admin's
+   whole reading is the cap selector, its chevron at the end. The live speed
+   never goes; the runtime and its polling are unchanged. */
+@media (max-width: 565px) {
+  #runtime-badge-active,
+  #runtime-badge-active + span,
+  #runtime-badge-max,
+  #runtime-badge-max + span { display: none; }
+}
+@media (max-width: 494px) {
+  #runtime-badge-limit {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
-  #topbar:has(> #topbar-account-mount[hidden]) {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "heading theme"
-      "speed speed";
+}
+@media (max-width: 447px) {
+  #runtime-speed-badge { min-width: var(--dp-shell-control); }
+  #runtime-speed-badge > span:first-child,
+  #runtime-badge-speed + span { display: none; }
+  #runtime-badge-speed {
+    width: auto;
+    max-width: 5ch;
+    line-height: 1.05;
+    white-space: normal;
+    text-align: center;
   }
-  #runtime-speed-badge { justify-self: end; }
-  :root { --dp-shell-header: 104px; }
+  #runtime-speed-badge .runtime-cap-control {
+    position: absolute;
+    inset: 0;
+  }
+  #runtime-speed-badge:has(.runtime-cap-control) #runtime-badge-speed { margin-right: 12px; }
+  #runtime-cap-toggle,
+  #runtime-cap-toggle:hover,
+  #runtime-cap-toggle[aria-expanded="true"] {
+    width: 100%;
+    justify-content: flex-end;
+    padding: 0 5px 0 0;
+    background: transparent;
+  }
+}
+
+/* Reduced motion: every shell menu opens and closes at once, in place. */
+@media (max-width: 779px) and (prefers-reduced-motion: reduce) {
+  .runtime-cap-menu,
+  .runtime-cap-menu::before,
+  .runtime-cap-panel,
+  .dp-shell-sheet,
+  .dp-shell-sheet-panel { transition: none; }
 }

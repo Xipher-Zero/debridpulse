@@ -83,7 +83,7 @@ test('from 780px up: a 22px inset, one 23px one-line title beside its artwork on
       const g = await measure(page, view, false), at = `${view} at ${width}px`;
       expect(g.overflow, `${at}: the page overflows`).toBe(0);
       if (width === 779) {
-        expect([g.shellX, g.art], `${at}: the handheld shell changed`).toEqual(['14px', 'none']);
+        expect([g.shellX, g.art], `${at}: the handheld shell changed`).toEqual(['max(10px, 0px)', 'none']);
         continue;
       }
       expect(g.shellX, `${at}: --dp-shell-x`).toBe('22px');

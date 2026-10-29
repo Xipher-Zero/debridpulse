@@ -144,10 +144,12 @@
 
 /* The handheld shell (below 780px): the chevron is the second half of one
    control with the mode toggle (ui-shell-mobile.css draws the pair), with a
-   hit area of its own; the menu is a bottom sheet. The popover's own box is
-   the scrim over the whole viewport, so a press beside the panel lands on
-   the menu (ui-theme-picker.js closes it), never on the page; the head and
-   the list are the panel, the list scrolling on its own. */
+   hit area of its own. The menu opens from the header's edge: the popover's
+   own box is the page between the header and the dock and its scrim, so a
+   press beside the panel lands on the menu (ui-theme-picker.js closes it),
+   never on the page, and neither bar is covered; the panel (head and list)
+   rolls down from the header, clipped to that box, its list scrolling on its
+   own, and returns upward as it closes, taking no input. */
 @media (max-width: 779px) {
   .topbar-theme-control .dp-theme-picker-trigger {
     position: static;
@@ -157,7 +159,7 @@
   }
   .topbar-theme-control .dp-theme-picker-trigger:focus-visible { outline-offset: -3px; }
   .dp-theme-picker {
-    inset: 0;
+    inset: var(--dp-shell-header) 0 var(--dp-shell-dock-edge) 0;
     width: auto;
     min-width: 0;
     max-width: none;
@@ -167,28 +169,46 @@
     overflow: hidden;
     border: 0;
     border-radius: 0;
-    background: var(--dp-chrome-scrim);
+    background: transparent;
     box-shadow: none;
+    pointer-events: none;
+    transition:
+      background-color var(--dp-motion-collapse) var(--dp-motion-ease),
+      display var(--dp-motion-collapse) allow-discrete,
+      overlay var(--dp-motion-collapse) allow-discrete;
   }
   .dp-theme-picker:popover-open {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    background: var(--dp-chrome-scrim);
+    pointer-events: auto;
+    transition-duration: var(--dp-motion-expand);
   }
-  .dp-theme-picker-head,
-  .dp-theme-picker-list {
-    border-inline: 1px solid var(--dp-border-default);
-    background: var(--dp-surface-overlay);
-  }
-  .dp-theme-picker-head {
-    padding: 14px 18px 10px;
-    border-top: 1px solid var(--dp-border-default);
-    border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
+  .dp-theme-picker-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 100%;
+    border: 1px solid var(--dp-border-default);
+    border-top: 0;
+    border-radius: 0 0 var(--dp-radius-lg) var(--dp-radius-lg);
+    background: var(--dp-shell-panel-surface);
     box-shadow: var(--dp-shadow-raised);
+    transform: translateY(-100%);
+    transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
   }
+  .dp-theme-picker:popover-open .dp-theme-picker-panel {
+    transform: none;
+    transition-duration: var(--dp-motion-expand);
+  }
+  @starting-style {
+    .dp-theme-picker:popover-open { background-color: transparent; }
+    .dp-theme-picker:popover-open .dp-theme-picker-panel { transform: translateY(-100%); }
+  }
+  .dp-theme-picker-head { padding: 12px 18px 10px; }
   .dp-theme-picker-list {
-    max-height: min(62dvh, 520px);
-    padding: 6px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+    min-height: 0;
+    padding: 6px 10px 12px;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -197,5 +217,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .topbar-theme-control .dp-theme-picker-trigger,
-  .dp-theme-picker-option { transition: none; }
+  .dp-theme-picker-option,
+  .dp-theme-picker,
+  .dp-theme-picker-panel { transition: none; }
 }

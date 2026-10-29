@@ -198,7 +198,7 @@
           <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
         </svg>
       </button>
-      <div id="topbar-account-sheet" class="dp-shell-sheet" popover role="dialog" aria-labelledby="topbar-account-name">
+      <div id="topbar-account-sheet" class="dp-shell-sheet dp-shell-sheet--down" popover role="dialog" aria-labelledby="topbar-account-name">
         <div class="dp-shell-sheet-panel">
           <div class="dp-shell-sheet-title dp-topbar-account-copy">
             <span class="dp-topbar-account-name" id="topbar-account-name"></span>
