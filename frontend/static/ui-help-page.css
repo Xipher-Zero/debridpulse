@@ -6,7 +6,12 @@
  * geometry, documentation typography, accordions, and content flow only.
  */
 
-@media (min-width: 901px) {
+/* From the shell's 780px mode change up -- the same boundary as Settings,
+   Downloads, the Activity Log and Statistics -- Help is the bounded master
+   card: #content does not scroll, the card fills the view and only the manual
+   (.dp-help-scroll) scrolls, so the version beneath the view stays on screen.
+   Below 780px the handheld page scrolls (below). */
+@media (min-width: 780px) {
   #content:has(#view-help.active) {
     overflow-y: hidden;
   }
@@ -425,6 +430,19 @@
 }
 
 @media (max-width: 900px) {
+  #view-help .dp-help-panels {
+    padding: 14px;
+  }
+}
+
+
+@media (max-width: 779px) {
+  #view-help .dp-help-master-header {
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  /* Handheld: the page scrolls, not the card. */
   #view-help.dp-help-clean-view.active {
     height: auto;
     min-height: 0;
@@ -434,17 +452,6 @@
   #view-help .dp-help-master-body,
   #view-help .dp-help-scroll {
     overflow: visible;
-  }
-
-  #view-help .dp-help-panels {
-    padding: 14px;
-  }
-}
-
-@media (max-width: 779px) {
-  #view-help .dp-help-master-header {
-    min-height: 0;
-    align-items: stretch;
   }
 
   #view-help .dp-help-header-copy {
