@@ -70,6 +70,7 @@ const sample = (page, menu) => page.evaluate(([box, panel]) => {
       const translate = new DOMMatrixReadOnly(getComputedStyle(drawn).transform).m42;
       window.__frames.push({box: [r(shell).top, r(shell).bottom], panel: [r(drawn).top, r(drawn).bottom], header: bar.bottom, dock: dock.top,
         across: [r(shell).left, r(shell).width, r(drawn).left, r(drawn).width], height: r(drawn).height, layout: getComputedStyle(shell).flexDirection,
+        scrolled: shell.scrollTop,
         clip: getComputedStyle(shell).overflow, translate, opacity: getComputedStyle(drawn).opacity,
         chrome: top(title.left + 4, title.top + title.height / 2, document.getElementById('topbar'))
           && top(item.left + item.width / 2, item.top + item.height / 2, document.getElementById('shell-dock'))});
@@ -86,6 +87,8 @@ function expectBounded(list, label, {moved = true, from = -1} = {}) {
     expect(frame.box[0], `${label}: the menu reaches over the header`).toBeGreaterThanOrEqual(frame.header - 0.5);
     expect(frame.box[1], `${label}: the menu reaches over the dock`).toBeLessThanOrEqual(frame.dock + 0.5);
     expect(frame.clip, `${label}: the panel is clipped to the menu's box`).toBe('hidden');
+    // The box never scrolls to the panel: it travels, it is not shown at once (iOS drew a hop).
+    expect(frame.scrolled, `${label}: the menu's box scrolled`).toBe(0);
     expect(frame.chrome, `${label}: the header or the dock is covered`).toBe(true);
     // The panel keeps the menu's whole width and its place across it in every
     // frame, closing included: never narrowed to its content or moved aside.
@@ -462,12 +465,14 @@ test.describe('handheld shell, open runtime (every capability)', () => {
           idle: getComputedStyle(idle).color === resolve('color', 'var(--dp-chrome-nav-text)'),
           distinct: getComputedStyle(active).color !== getComputedStyle(idle).color,
           weight: [getComputedStyle(active).fontWeight, getComputedStyle(idle).fontWeight],
+          // The selected button's rail runs its whole width, edge to edge.
+          railSpan: Math.abs(parseFloat(getComputedStyle(active, '::after').width) - active.getBoundingClientRect().width) <= 0.5,
         };
         probe.remove();
         return facts;
       });
       expect(facts, `${light ? 'light' : 'dark'} ${palette || 'native'}`).toEqual({surface: true, rail: true, activeSurface: true,
-        icon: true, idle: true, distinct: true, weight: ['650', '500']});
+        icon: true, idle: true, distinct: true, weight: ['650', '500'], railSpan: true});
       await page.screenshot({path: `test-results/checkpoint-mobile-dock-${light ? 'light' : 'dark'}-${palette || 'native'}.png`,
         clip: {x: 0, y: 844 - 120, width: 390, height: 120}});
     }

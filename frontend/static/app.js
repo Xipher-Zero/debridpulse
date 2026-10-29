@@ -338,8 +338,11 @@ document.getElementById('shell-more')?.addEventListener('click', event => {
 document.getElementById('shell-more')?.addEventListener('keydown', event => {
   if (event.key === 'Tab') closeShellMore();
 });
+// Focus moves into the sheet without scrolling it: its panel is still below
+// the sheet's edge as it opens, and scrolling the sheet to it would show the
+// panel at once and then move it again.
 document.getElementById('shell-more')?.addEventListener('toggle', event => {
-  if (event.newState === 'open') event.currentTarget.querySelector('[aria-current="page"], .dp-shell-sheet-item')?.focus();
+  if (event.newState === 'open') event.currentTarget.querySelector('[aria-current="page"], .dp-shell-sheet-item')?.focus({preventScroll: true});
 });
 renderShellDock();
 

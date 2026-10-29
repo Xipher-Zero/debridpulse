@@ -35,6 +35,17 @@
   /* Every shell menu's panel: the overlay surface laid over the page
      background, so it is opaque in every palette (declared on body, where
      the mode and palette tokens are). */
+  /* The bars' separation from the page between them, one pair per mode: the
+     header's a close, firm shadow that stays one line over any page beneath
+     it (a bright card rim included), the dock's a softer one. */
+  body {
+    --dp-shell-bar-shadow-down: 0 1px 2px rgba(0, 0, 10, .55), 0 3px 8px -1px rgba(0, 0, 10, .50);
+    --dp-shell-bar-shadow-up: 0 -2px 4px rgba(0, 0, 10, .30), 0 -6px 18px -4px rgba(0, 0, 10, .42);
+  }
+  body.light {
+    --dp-shell-bar-shadow-down: 0 1px 2px rgba(45, 61, 96, .24), 0 3px 8px -1px rgba(45, 61, 96, .22);
+    --dp-shell-bar-shadow-up: 0 -1px 3px rgba(45, 61, 96, .10), 0 -6px 16px -4px rgba(45, 61, 96, .16);
+  }
   body {
     --dp-shell-panel-surface: linear-gradient(var(--dp-surface-overlay), var(--dp-surface-overlay)), var(--dp-bg-app);
   }
@@ -63,7 +74,11 @@
     min-height: 0;
     padding: var(--dp-shell-header-top) var(--dp-shell-x) 7px max(10px, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid var(--dp-chrome-sidebar-edge);
+    /* The header stands above the page it scrolls over: a modest shadow
+       falls from its lower edge onto the workspace (the dock's, mirrored). */
+    box-shadow: var(--dp-shell-bar-shadow-down);
   }
+  body.light #topbar { box-shadow: var(--dp-shell-bar-shadow-down); }
   #topbar:has(> #topbar-account-mount[hidden]) {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas: "heading speed theme";
@@ -254,11 +269,11 @@
     padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     border-top: 1px solid var(--dp-chrome-sidebar-edge);
     background: var(--dp-chrome-sidebar-surface);
-    box-shadow: 0 -8px 24px rgba(0, 0, 10, .22);
+    box-shadow: var(--dp-shell-bar-shadow-up);
     -webkit-touch-callout: none;
     user-select: none;
   }
-  body.light .dp-shell-dock { box-shadow: 0 -6px 20px rgba(45, 61, 96, .09); }
+
   /* The sidebar's signal field (ui-shell-signal-field.css), once, behind the
      whole dock: the same artwork at its own proportions, as wide as the dock
      and cropped to its crossing band, faded at both ends and kept faint, so
@@ -352,8 +367,8 @@
     content: '';
     position: absolute;
     top: 0;
-    left: 22%;
-    right: 22%;
+    left: 0;
+    right: 0;
     height: 3px;
     border-radius: 0 0 3px 3px;
     background: var(--dp-chrome-nav-rail);
@@ -368,7 +383,6 @@
   body.light .dp-shell-dock-item.active { color: var(--dp-text-primary); }
   .dp-shell-dock-item.active::before,
   .dp-shell-dock-item.active::after { opacity: 1; }
-  .dp-shell-dock-item[data-view="dashboard"].active::after { left: 14%; right: 14%; }
   .dp-shell-dock-item.active .icon {
     color: var(--dp-chrome-nav-icon-active);
     filter: var(--dp-chrome-nav-icon-glow);

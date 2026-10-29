@@ -225,7 +225,8 @@
     });
     sheet.addEventListener('keydown', event => { if (event.key === 'Tab') close(); });
     sheet.addEventListener('toggle', event => {
-      if (event.newState === 'open') sheet.querySelector('.dp-shell-sheet-item')?.focus();
+      // Into the sheet without scrolling it while its panel travels in.
+      if (event.newState === 'open') sheet.querySelector('.dp-shell-sheet-item')?.focus({preventScroll: true});
     });
     handheld.addEventListener('change', close);
     sheet.querySelector('[data-account-action="profile"]').addEventListener('click', () => {
