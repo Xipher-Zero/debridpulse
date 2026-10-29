@@ -281,9 +281,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       expect(await headerRow(page), `${width}px`).toEqual({inside: true, oneLine: true, height: 61});
       expect((await expectHeaderTargets(page, width)).map(hit => hit.id)).toEqual(['#theme-toggle', '#theme-picker-toggle', '#runtime-cap-toggle']);
       expect(await page.locator('#page-title').evaluate(node => node.scrollWidth <= node.clientWidth + 0.5), `${width}px: Downloads whole`).toBe(true);
-      expect({occupancy: await shown(page, '#runtime-badge-active'), cap: await shown(page, '#runtime-badge-limit'),
-        speed: await shown(page, '#runtime-badge-speed'), split: await page.locator('#runtime-badge-speed').evaluate(node => node.getClientRects().length > 1 || node.getBoundingClientRect().height > 20)},
-        `${width}px stage`).toEqual({occupancy: width >= 566, cap: width >= 495, speed: true, split: width <= 447});
+      expect(await shown(page, '#runtime-badge-speed'), `${width}px: the live speed`).toBe(true);
     }
     // The cap's value, drawn or not, is the selector's accessible name.
     await expect(page.locator('#runtime-cap-toggle')).toHaveAccessibleName(/Unlimited|MB\/s/);
@@ -572,61 +570,90 @@ test.describe('handheld shell, open runtime (every capability)', () => {
         return {image: (field.backgroundImage.match(/sidebar-wave-accent\.svg/g) || []).length, size: field.backgroundSize,
           ratio: Math.round(parseFloat(field.width) / parseFloat(field.height) * 1000) / 1000,
           degrees: Math.round(Math.atan2(turn.b, turn.a) * 180 / Math.PI),
-          covers: parseFloat(field.left) < 0 && parseFloat(field.width) > box.width,
+          covers: parseFloat(field.width) >= Math.min(box.width * 1.12, 440) - 0.5 && parseFloat(field.width) <= 440.5,
           events: field.pointerEvents, z: field.zIndex, opacity: Number(field.opacity), animation: field.animationName,
           height: Math.round(box.height), hits: buttons.every(b => { const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }),
           sidebar: getComputedStyle(document.getElementById('sidebar'), '::before').backgroundImage.includes('sidebar-wave-accent.svg')};
       });
       expect(art, `${light ? 'light' : 'dark'} ${palette || 'native'}`).toMatchObject({image: 1, size: '100% 100%', ratio: Math.round(320 / 300 * 1000) / 1000, degrees: 15, covers: true, events: 'none', z: '-2',
         animation: 'none', height: 59, hits: true, sidebar: true});
-      expect(art.opacity).toBeLessThanOrEqual(light ? 0.2 : 0.34);   // faint: the artwork's own thin, translucent lines at about a third
+      expect(art.opacity).toBeLessThanOrEqual(light ? 0.13 : 0.22);   // faint: the artwork's own thin, translucent lines at about a third
       await page.screenshot({path: `test-results/checkpoint-mobile-dock-wave-${light ? 'light' : 'dark'}-${palette || 'native'}.png`,
         clip: {x: 0, y: 844 - 90, width: 390, height: 90}});
     }
   });
 
-  test('the title keeps its pulse artwork beside it exactly where the rendered title, a compact gap and the artwork fit, never at the cost of the title or the row', async ({page}) => {
+  test('narrowing, the header gives way in one order -- active/max, the title artwork, the cap value, the one-line speed -- and nothing it gave up returns', async ({page}) => {
+    test.setTimeout(90_000);
+    await page.route('**/api/execution/throughput', route => route.fulfill({json: {download_bytes_per_second: 999.9 * 1048576,
+      max_download_bytes_per_second: 104857600, sustained_peak_bytes_per_second: 0}}));
+    await page.route('**/api/execution/runtime-status', route => route.fulfill({json: {active_execution_slots: 12}}));
     await open(page, {width: 779, height: 760});
-    // Where the artwork is drawn (the clipped one-line title does not scroll),
-    // and whether it fits by the rendered title's own width.
-    const fit = () => page.locator('#page-title').evaluate(heading => {
-      const after = getComputedStyle(heading, '::after');
-      const shown = heading.dataset.short ? getComputedStyle(heading, '::before') : getComputedStyle(heading);
-      const probe = document.createElement('span');
-      probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${shown.font};letter-spacing:${shown.letterSpacing}`;
-      probe.textContent = heading.dataset.short || heading.textContent;
-      document.body.append(probe);
-      const text = probe.getBoundingClientRect().width;
-      probe.remove();
-      const box = heading.getBoundingClientRect();
-      return {drawn: heading.scrollHeight <= heading.clientHeight + 0.5,
-        fits: text + parseFloat(after.marginLeft) + parseFloat(after.width) <= box.width + 0.5,
-        whole: heading.scrollWidth <= heading.clientWidth + 0.5,
-        proportion: Math.round(parseFloat(after.width) / parseFloat(after.height) * 100) / 100,
-        size: Math.round(parseFloat(after.height) / parseFloat(shown.fontSize) * 100) / 100,
-        gap: Math.round(parseFloat(after.marginLeft) * 10) / 10};
+    await expect(page.locator('#runtime-badge-active')).toHaveText('12');
+    // What the row shows, read from the rendered page.
+    const state = () => page.evaluate(() => {
+      const title = document.getElementById('page-title');
+      const drawn = selector => { const node = document.querySelector(selector); return !!node && node.getBoundingClientRect().width > 1; };
+      const after = getComputedStyle(title, '::after');
+      const speed = document.getElementById('runtime-badge-speed');
+      return {occupancy: drawn('#runtime-badge-active'), art: after.display !== 'none' && title.scrollHeight <= title.clientHeight + 0.5,
+        cap: drawn('#runtime-badge-limit'), line: speed.getBoundingClientRect().height < 20,
+        whole: title.scrollWidth <= title.clientWidth + 0.5, overflow: document.documentElement.scrollWidth - innerWidth,
+        room: document.querySelector('#topbar .dp-page-heading').getBoundingClientRect().width,
+        art18: (parseFloat(after.width) + parseFloat(after.marginLeft)) * 18 / (parseFloat(getComputedStyle(title).fontSize) || parseFloat(getComputedStyle(title, '::before').fontSize))};
     });
-    const seen = {};
-    for (const [entry, view] of [['Downloads', 'torrents'], ['Dashboard', 'dashboard'], ['Settings', 'settings'], ['Stats', 'stats']]) {
+    const ORDER = ['occupancy', 'art', 'cap', 'line'];                   // given up first .. last
+    for (const [entry, view] of [['Downloads', 'torrents'], ['Help', 'help'], ['Stats', 'stats']]) {
       await page.setViewportSize({width: 779, height: 760});
+      if (entry === 'Help') {
+        await page.locator('#shell-dock .dp-shell-dock-more').click();
+        await page.locator('#shell-more .dp-shell-sheet-item', {hasText: 'Help'}).click();
+      } else {
+        await page.locator('#shell-dock .dp-shell-dock-item', {hasText: entry}).click();
+      }
+      await still(page);
+      let previous = null;
+      for (let width = 779; width >= 320; width -= 3) {
+        await page.setViewportSize({width, height: 760});
+        // The row's fit runs in the frame its width changes, before that frame is drawn.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const now = await state();
+        const at = `${view} at ${width}px`;
+        expect(now.whole, `${at}: the title whole`).toBe(true);
+        expect(now.overflow, `${at}: no sideways overflow`).toBeLessThanOrEqual(0);
+        // One order: a part is shown only while every part kept longer is shown too.
+        const kept = ORDER.map(part => now[part]);
+        expect(kept.every((value, i) => !value || kept.slice(i + 1).every(Boolean)), `${at}: out of order ${JSON.stringify(now)}`).toBe(true);
+        // Nothing given up returns as the row narrows.
+        if (previous) for (const part of ORDER) expect(!now[part] || previous[part], `${at}: ${part} returned`).toBe(true);
+        // The artwork goes only for want of room, never while active/max is still drawn.
+        if (previous?.art && !now.art) {
+          expect(now.occupancy, `${at}: the artwork went before active/max`).toBe(false);
+        }
+        previous = now;
+      }
+      expect(previous, `${view} at 320px`).toMatchObject({occupancy: false, art: false});
+    }
+    expect(await headerRow(page)).toEqual({inside: true, oneLine: true, height: 61});
+  });
+
+  test('the title artwork, where drawn, is beside the title at its desktop proportion with a compact gap, and goes with no room to spare', async ({page}) => {
+    await open(page, {width: 779, height: 760});
+    for (const [entry, width] of [['Downloads', 779], ['Stats', 779]]) {
+      await page.setViewportSize({width, height: 760});
       await page.locator('#shell-dock .dp-shell-dock-item', {hasText: entry}).click();
       await still(page);
-      for (const width of [320, 375, 390, 430, 600, 779]) {
-        await page.setViewportSize({width, height: 760});
-        const facts = await fit();
-        expect(facts.drawn, `${view} at ${width}px: drawn exactly where it fits`).toBe(facts.fits);
-        expect(facts.whole, `${view} at ${width}px: the title whole`).toBe(true);
-        expect([facts.proportion, facts.size], `${view}: the desktop proportion`).toEqual([5.53, 0.83]);
-        expect(facts.gap).toBeLessThanOrEqual(3);
-        expect(await headerRow(page), `${view} at ${width}px`).toEqual({inside: true, oneLine: true, height: 61});
-        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-        seen[`${view}@${width}`] = facts.drawn;
-      }
+      const facts = await page.locator('#page-title').evaluate(heading => {
+        const after = getComputedStyle(heading, '::after');
+        const shown = heading.dataset.short ? getComputedStyle(heading, '::before') : getComputedStyle(heading);
+        return {display: after.display, proportion: Math.round(parseFloat(after.width) / parseFloat(after.height) * 100) / 100,
+          size: Math.round(parseFloat(after.height) / parseFloat(shown.fontSize) * 100) / 100, gap: parseFloat(after.marginLeft),
+          inside: heading.scrollHeight <= heading.clientHeight + 0.5 && heading.scrollWidth <= heading.clientWidth + 0.5};
+      });
+      expect(facts, `${entry} at ${width}px`).toMatchObject({display: 'block', proportion: 5.53, size: 0.83, inside: true});
+      expect(facts.gap).toBeLessThanOrEqual(3);
     }
-    // Every title keeps it at 779px; the longest give it up first.
-    expect(['torrents', 'dashboard', 'settings', 'stats'].every(view => seen[`${view}@779`])).toBe(true);
-    expect(seen['torrents@320']).toBe(false);
-    expect(Object.keys(seen).filter(key => seen[key]).length).toBeGreaterThan(Object.keys(seen).filter(key => key.startsWith('stats') && seen[key]).length);
+    await page.screenshot({path: 'test-results/checkpoint-mobile-title-artwork-779.png', clip: {x: 0, y: 0, width: 779, height: 62}});
   });
 
   test('the one version datum stays below the active master surface, inside the workspace and clear of the dock, at every handheld width and at 780px', async ({page}) => {

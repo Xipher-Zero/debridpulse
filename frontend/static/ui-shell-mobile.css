@@ -79,10 +79,9 @@
 
   /* The title and its pulse artwork (ui-shell.css #page-title::after), the
      artwork drawn at the desktop's proportion to the title (105 x 19 beside
-     23px) with a compact gap. The title is one clipped line: where the
-     artwork does not fit beside the rendered title it wraps to a second line
-     and is not seen, so each title keeps it exactly as far down as it fits,
-     in whatever face it is drawn. */
+     23px) with a compact gap; whether it is drawn is the header's fit
+     (below). The title is one clipped line, so nothing it holds can ever
+     push the row. */
   #topbar h1 {
     display: flex;
     flex-wrap: wrap;
@@ -108,6 +107,7 @@
   #topbar h1[data-short]::before {
     content: attr(data-short) / "";
     font-size: var(--dp-shell-title-fluid);
+    letter-spacing: -.02em;
   }
 
   .dp-topbar-account:not([hidden]) { display: block; }
@@ -263,30 +263,31 @@
      whole dock: the same artwork at its own proportions, as wide as the dock
      and cropped to its crossing band, faded at both ends and kept faint, so
      every icon, label, badge, rail and selected surface stays above it. */
-  /* The field is the artwork's own box (320:300, so never stretched), a
-     little wider than the dock, its crossing band (62% down) on the dock's
-     middle and turned 15deg clockwise about that band, so the rising wave
-     runs across the whole dock, the left buttons included; the dock clips
-     what lies beyond it. */
+  /* The field is the artwork's own box (320:300, so never stretched) at
+     about the sidebar's own scale -- a little wider than a phone's dock, never
+     more than 440px, so a wider dock does not enlarge its strokes -- centred,
+     its crossing band (62% down) on the dock's middle and turned 15deg
+     clockwise about that band; the dock clips what lies beyond it and the
+     ends fade. */
   .dp-shell-dock { overflow: clip; }
   .dp-shell-dock::before {
     content: '';
     position: absolute;
     top: 50%;
-    left: -6%;
+    left: 50%;
     z-index: -2;
-    width: 112%;
+    width: min(112%, 440px);
     aspect-ratio: 320 / 300;
     background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center / 100% 100% no-repeat;
-    opacity: .34;
+    opacity: .22;
     filter: var(--dp-chrome-signal-filter);
-    transform: translateY(-62%) rotate(15deg);
+    transform: translate(-50%, -62%) rotate(15deg);
     transform-origin: 50% 62%;
     mask-image: linear-gradient(90deg, transparent 4%, #000 16%, #000 84%, transparent 96%);
     -webkit-mask-image: linear-gradient(90deg, transparent 4%, #000 16%, #000 84%, transparent 96%);
     pointer-events: none;
   }
-  body.light .dp-shell-dock::before { opacity: .20; }
+  body.light .dp-shell-dock::before { opacity: .13; }
 
   .dp-shell-dock-item {
     position: relative;
@@ -535,25 +536,20 @@
   }
 }
 
-/* The speed reading gives way in stages as the one header row narrows, each
-   from the width where the full row (the longest title, Downloads, at its
-   18px, the account, the theme pair and the gaps: 279px) no longer has room
-   for the stage before -- measured with the wider fallback face (DejaVu Sans)
-   at its widest values (999.9 MB/s, 12/16): 287, 216 and 169px, so 565, 494
-   and 447px:
-   first an Admin's active/max goes; then the cap's current value is drawn no
-   more (it stays the selector's accessible name, and the menu marks it);
-   then the reading is the live speed alone, value over unit, and an Admin's
-   whole reading is the cap selector, its chevron at the end. The live speed
-   never goes; the runtime and its polling are unchanged. */
-@media (max-width: 565px) {
-  #runtime-badge-active,
-  #runtime-badge-active + span,
-  #runtime-badge-max,
-  #runtime-badge-max + span { display: none; }
-}
-@media (max-width: 494px) {
-  #runtime-badge-limit {
+/* The one header row gives way in a fixed order as it narrows, decided by
+   app.js (fitShellHeader) from the rendered title and controls: first an
+   Admin's active/max, then the title's pulse artwork, then the cap's drawn
+   value (it stays the selector's accessible name, and the menu marks it),
+   then the one-line speed -- the reading becomes the live speed alone, value
+   over unit, and an Admin's whole reading is the cap selector, its chevron at
+   the end. The row keeps the longest run of that order that fits, so a part
+   never returns at a narrower width. The live speed never goes; the runtime
+   and its polling are unchanged. */
+@media (max-width: 779px) {
+  #topbar[data-shell-yield~="occupancy"] :is(#runtime-badge-active, #runtime-badge-active + span,
+    #runtime-badge-max, #runtime-badge-max + span) { display: none; }
+  #topbar[data-shell-yield~="art"] #page-title::after { display: none; }
+  #topbar[data-shell-yield~="cap"] #runtime-badge-limit {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -561,26 +557,21 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-}
-@media (max-width: 447px) {
-  #runtime-speed-badge { min-width: var(--dp-shell-control); }
-  #runtime-speed-badge > span:first-child,
-  #runtime-badge-speed + span { display: none; }
-  #runtime-badge-speed {
+  #topbar[data-shell-yield~="speed"] #runtime-speed-badge { min-width: var(--dp-shell-control); }
+  #topbar[data-shell-yield~="speed"] :is(#runtime-speed-badge > span:first-child, #runtime-badge-speed + span) { display: none; }
+  #topbar[data-shell-yield~="speed"] #runtime-badge-speed {
     width: auto;
     max-width: 5ch;
     line-height: 1.05;
     white-space: normal;
     text-align: center;
   }
-  #runtime-speed-badge .runtime-cap-control {
+  #topbar[data-shell-yield~="speed"] #runtime-speed-badge .runtime-cap-control {
     position: absolute;
     inset: 0;
   }
-  #runtime-speed-badge:has(.runtime-cap-control) #runtime-badge-speed { margin-right: 12px; }
-  #runtime-cap-toggle,
-  #runtime-cap-toggle:hover,
-  #runtime-cap-toggle[aria-expanded="true"] {
+  #topbar[data-shell-yield~="speed"] #runtime-speed-badge:has(.runtime-cap-control) #runtime-badge-speed { margin-right: 12px; }
+  #topbar[data-shell-yield~="speed"] :is(#runtime-cap-toggle, #runtime-cap-toggle:hover, #runtime-cap-toggle[aria-expanded="true"]) {
     width: 100%;
     justify-content: flex-end;
     padding: 0 5px 0 0;

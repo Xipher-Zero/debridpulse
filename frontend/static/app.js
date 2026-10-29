@@ -155,6 +155,7 @@ function navigateTo(el) {
   // (ui-shell-mobile.css); the heading's own text stays the whole name.
   if (el.dataset.shortLabel) heading.dataset.short = el.dataset.shortLabel;
   else delete heading.dataset.short;
+  fitShellHeader();
   const subtitle = document.getElementById('page-subtitle');
   if (subtitle) subtitle.textContent = el.dataset.subtitle || subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
@@ -265,6 +266,52 @@ function syncShellDock() {
     more.setAttribute('aria-label', held ? `More, current page: ${active.querySelector('.nav-label')?.textContent || ''}` : 'More');
   }
 }
+
+/* The handheld header's one row (ui-shell-mobile.css): its parts in the
+ * order they are kept, longest first -- the one-line speed, the cap's drawn
+ * value, the title's pulse artwork, an Admin's active/max. The row keeps the
+ * longest run of that order whose controls leave the rendered title (at its
+ * full 18px, with the artwork where kept) its room, and gives way the rest,
+ * named in #topbar[data-shell-yield]. Narrowing therefore takes active/max
+ * first, then the artwork, and no part returns at a narrower width. Measured
+ * again when the row's width, its title, its account control, its fonts or
+ * the reading's own figures change; from 780px nothing gives way. */
+const SHELL_HEADER_KEPT = ['speed', 'cap', 'art', 'occupancy'];
+const SHELL_TITLE_PX = 18;
+function fitShellHeader() {
+  const bar = document.getElementById('topbar');
+  const heading = bar?.querySelector('.dp-page-heading');
+  const title = document.getElementById('page-title');
+  if (!bar || !heading || !title) return;
+  if (!_shellHandheld.matches) { delete bar.dataset.shellYield; return; }
+  const shown = title.dataset.short ? getComputedStyle(title, '::before') : getComputedStyle(title);
+  const probe = document.createElement('span');
+  probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font-family:${shown.fontFamily};`
+    + `font-weight:${shown.fontWeight};font-size:${SHELL_TITLE_PX}px;letter-spacing:-.02em`;
+  probe.textContent = title.dataset.short || title.textContent;
+  document.body.appendChild(probe);
+  const text = probe.getBoundingClientRect().width;
+  probe.remove();
+  let kept = 0;
+  for (let count = SHELL_HEADER_KEPT.length; count >= 0; count -= 1) {
+    bar.dataset.shellYield = SHELL_HEADER_KEPT.slice(count).join(' ');
+    const room = heading.getBoundingClientRect().width;
+    const art = getComputedStyle(title, '::after');
+    const scale = SHELL_TITLE_PX / (parseFloat(getComputedStyle(title).fontSize) || parseFloat(shown.fontSize) || SHELL_TITLE_PX);
+    const need = text + (count > 2 ? (parseFloat(art.width) + parseFloat(art.marginLeft)) * scale : 0);
+    // A pixel to spare, so a fit the line would round away is not taken.
+    if (room >= need + 1) { kept = count; break; }
+  }
+  bar.dataset.shellYield = SHELL_HEADER_KEPT.slice(kept).join(' ');
+}
+let _shellHeaderFigures = '';
+if (window.ResizeObserver) {
+  const watch = new ResizeObserver(() => fitShellHeader());
+  ['topbar', 'topbar-account-mount'].forEach(id => { const node = document.getElementById(id); if (node) watch.observe(node); });
+}
+document.fonts?.ready.then(() => fitShellHeader());
+document.fonts?.addEventListener?.('loadingdone', () => fitShellHeader());
+_shellHandheld.addEventListener('change', () => fitShellHeader());
 
 // The Downloads count, the sidebar's one value, shown on both its entries.
 function showDownloadsBadge(count) {
@@ -3525,6 +3572,13 @@ function updateRuntimeStatusBadge(patch) {
   if (elSpeed)  elSpeed.textContent  = fmtSpeed(s.liveBps || 0);
 
   if (elLimit) elLimit.textContent = fmtSpeedCap(s.limitBps);
+  // Active/max are the reading's only figures without a fixed width: the
+  // handheld header refits when what they show changes.
+  var figures = (elActive ? elActive.textContent : '') + '/' + (elMax ? elMax.textContent : '');
+  if (figures !== _shellHeaderFigures) {
+    _shellHeaderFigures = figures;
+    fitShellHeader();
+  }
 
   // Occupancy and capacity are administrative runtime facts: a caller who
   // cannot read them sees only the live speed, never a stand-in zero.
