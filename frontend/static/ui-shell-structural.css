@@ -32,7 +32,7 @@ body {
   /* The sidebar's one separation from the page, along its right edge, in
      every desktop and tablet presentation (docked, the rail and, beneath its
      own elevation, the overlay): restrained, a close edge and a soft falloff.
-     The handheld drawer has its own (ui-shell.css #sidebar.open). */
+     Below 780px there is no sidebar (ui-shell-mobile.css). */
   --dp-sidebar-separation: 1px 0 2px rgba(0, 0, 10, .34), 6px 0 22px rgba(0, 0, 10, .30);
   box-shadow: none;
   overflow: hidden;
@@ -170,8 +170,7 @@ body.light .logo-name span { color: var(--dp-chrome-brand-text); }
 .sidebar-footer::before {
   text-align: center !important;
 }
-/* Desktop shell owns one lower datum for every page. The mobile drawer
-   retains the inherited 12px inset below 780px. */
+/* Desktop shell owns one lower datum for every page. */
 @media (min-width: 780px) {
   .sidebar-footer {
     bottom: 24px !important;
@@ -299,7 +298,10 @@ body.light .conn-row .dot {
 }
 
 /* operator-title.js moves the compatibility wrapper into #topbar. Resolve that
-   final shell geometry here instead of relying on a later correction layer. */
+   final shell geometry here instead of relying on a later correction layer.
+   The desktop shell's (from 780px); the handheld shell's is
+   ui-shell-mobile.css's. */
+@media (min-width: 780px) {
 .sidebar-theme-control.topbar-theme-control {
   position: relative !important;
   top: auto !important;
@@ -323,6 +325,7 @@ body.light .conn-row .dot {
   margin: 0 !important;
   padding: 0 !important;
   pointer-events: auto !important;
+}
 }
 
 /* The shell owns the ordinary content inset. Page layers may own geometry
@@ -394,8 +397,8 @@ body.light .theme-toggle {
    240px sidebar; from 780 to 1559px the compact 72px icon rail. 1560 is just
    above the Dashboard's first measured pressure point with the full sidebar
    (its six-card row runs out of room near 1535px); the rail gives the page
-   168px back. Below 780px the existing mobile drawer applies unchanged; the
-   sidebar never widens again as the window narrows. app.js reads the same range (SIDEBAR_COMPACT_QUERY) for the
+   168px back. Below 780px the handheld shell's dock replaces the sidebar
+   (ui-shell-mobile.css); the sidebar never widens again as the window narrows. app.js reads the same range (SIDEBAR_COMPACT_QUERY) for the
    rail's handle.
 
    The rail is the same sidebar, not a second one: every label stays in place
@@ -579,11 +582,11 @@ body.light .theme-toggle {
   }
 }
 
-/* The rail's other edge (779/780px) is a change of kind, not of width: the
-   drawer is not in the row, so the sidebar takes its new place at once --
-   neither an in-flow width shrinking from the drawer's (which would narrow
-   the page and give it back) nor the drawer sliding away over the page.
-   app.js names the change; the name lasts only for its reveal, if any. */
+/* The rail's other edge (779/780px) is a change of kind, not of width: below
+   it the sidebar is not shown at all, so it takes its new place at once --
+   never an in-flow width growing from nothing (which would narrow the page
+   and give it back). app.js names the change; the name lasts only for its
+   reveal, if any. */
 #sidebar[data-sidebar-reflow="drawer"],
 #sidebar[data-sidebar-reflow="drawer"] :is(.logo, .nav-item, .logo-text, .nav-label) {
   transition: none;
@@ -661,41 +664,9 @@ body.light .theme-toggle {
 
 /* Preserve the full desktop control row (the runtime speed badge included) down
    to the shell's 780px mode change by allowing the heading flex item to yield
-   its unused minimum; below 780px the handheld topbar hides the badge. */
+   its unused minimum; below 780px the handheld header composes its own. */
 @media (min-width: 780px) and (max-width: 1050px) {
   .dp-page-heading { min-width: 0; }
-}
-
-@media (max-width: 779px) {
-  #topbar {
-    padding-left: 58px;
-    padding-right: 16px !important;
-  }
-  #sidebar { width: min(280px, 88vw); }
-}
-
-@media (max-width: 779px) {
-  :root { --dp-shell-header: 88px; --dp-shell-x: 14px; }
-  /* Preserve the accepted effective layout while removing its dependency on
-     the legacy <=779px !important topbar rule. */
-  #topbar { padding: 8px 16px 8px 12px !important; }
-  #page-title { font-size: 23px; }
-  #page-title::after { display: none; }
-  .dp-page-subtitle { margin-top: 6px; font-size: 11.5px; }
-  #topbar-actions { position: absolute; top: 91px; right: 14px; }
-  #runtime-speed-badge { display: none !important; }
-  .sidebar-theme-control.topbar-theme-control {
-    width: 36px !important;
-    min-width: 36px !important;
-    height: 36px !important;
-    flex-basis: 36px !important;
-    margin-top: 0 !important;
-  }
-  .topbar-theme-control .theme-toggle {
-    width: 36px !important;
-    min-width: 36px !important;
-    height: 36px !important;
-  }
 }
 
 /* Canonical selected-navigation and shell depth retained from the accepted Dashboard review. */

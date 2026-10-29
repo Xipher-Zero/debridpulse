@@ -69,10 +69,6 @@ body.light #sidebar .logo-icon {
 }
 
 @media (max-width: 779px) {
-  #sidebar .logo-text {
-    display: flex;
-  }
-
   #content > #sidebar-version.dp-app-version {
     font-size: 8px;
   }

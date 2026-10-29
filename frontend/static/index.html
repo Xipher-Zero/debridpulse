@@ -2,7 +2,7 @@
 <html lang="en" data-dp-ui="v1.0.12-canonical">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>DebridPulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22,34 +22,34 @@
   </div>
   <nav>
     <div class="nav-group">Queue</div>
-    <div class="nav-item active" data-view="dashboard" data-tooltip="Dashboard" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item active" data-view="dashboard" data-dock="3" data-tooltip="Dashboard" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="dashboard" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg></span><span class="nav-label">Dashboard</span>
     </div>
-    <div class="nav-item" data-view="torrents" data-tooltip="Downloads" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="torrents" data-dock="1" data-tooltip="Downloads" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="download" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg></span><span class="nav-label">Downloads</span>
       <span class="nav-badge" id="nb-active" style="display:none">0</span>
     </div>
     <div class="nav-group">Review</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="events" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="events" data-dock="5" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label">Activity Log</span>
     </div>
     </template>
-    <div class="nav-item" data-view="stats" data-tooltip="Statistics" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="stats" data-dock="2" data-dock-label="Stats" data-tooltip="Statistics" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="statistics" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21v-6"/><path d="M12 21V9"/><path d="M19 21V3"/></svg></span><span class="nav-label">Statistics</span>
     </div>
     <div class="nav-group">System</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="settings" data-tooltip="Settings" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="settings" data-dock="4" data-tooltip="Settings" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="settings" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span>
     </div>
     </template>
     <template data-requires="notifications.self">
-    <div class="nav-item" data-view="settings" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="settings" data-dock="4" data-dock-label="Notifs" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="bell-ring" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg></span><span class="nav-label">Notifications</span>
     </div>
     </template>
-    <div class="nav-item" data-view="help" data-tooltip="Help &amp; License" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="help" data-dock="6" data-dock-label="Help" data-tooltip="Help &amp; License" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label">Help &amp; License</span>
     </div>
   </nav>
@@ -82,7 +82,7 @@
 
 <div id="main">
   <div id="topbar">
-    <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Menu"><svg class="lucide dp-utility-icon" data-dp-lucide="menu" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></button>
+    <div id="topbar-account-mount" class="dp-topbar-account" hidden></div>
     <div class="dp-page-heading">
       <h1 id="page-title">Dashboard</h1>
       <p id="page-subtitle" class="dp-page-subtitle">Download activity and system status.</p>
@@ -530,6 +530,15 @@
     <!-- The one version datum: just below the active page's master surface. -->
     <div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>
   </div>
+  <!-- The handheld dock (below 780px): app.js renders it from the authorized
+       sidebar entries above, in their data-dock order; More holds the rest. -->
+  <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"></nav>
+  <div id="shell-more" class="dp-shell-sheet" popover role="dialog" aria-labelledby="shell-more-title">
+    <div class="dp-shell-sheet-panel">
+      <div class="dp-shell-sheet-title" id="shell-more-title">More</div>
+      <div class="dp-shell-sheet-list" id="shell-more-list"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal -->
@@ -596,6 +605,5 @@
 <script src="/ui-settings-backup-manager.js?v=1" defer></script>
 <script src="/ui-settings-executor-work.js?v=1" defer></script>
 <script src="/ui-settings-usenet-servers.js?v=1" defer></script>
-<div id="mobile-overlay" onclick="closeSidebar()"></div>
 </body>
 </html>

@@ -228,3 +228,26 @@ def test_one_universal_desktop_sidebar_width_owns_the_compact_rail() -> None:
     assert ".logo-text, .nav-label, .nav-group, .sidebar-footer { display: none; }" not in shell
     # Faded in place (still the accessible name), never removed.
     assert "#sidebar:not(.sidebar-overlay-open) :is(.logo-text, .nav-label) {\n    opacity: 0;" in rail
+
+
+def test_handheld_shell_replaces_the_drawer_with_one_dock_presentation() -> None:
+    # 1.0.14: below 780px the sidebar gives way to one header and one dock;
+    # the hamburger, its drawer and its overlay are retired at their owners.
+    index = read(INDEX)
+    app = read(STATIC / "app.js")
+    shell = read(SHELL_STYLE)
+    for retired in ("mobile-menu-btn", "mobile-overlay", "toggleSidebar", "closeSidebar"):
+        for source in (index, app, shell):
+            assert not re.search(rf"\b{retired}\b", source), retired
+    assert "#sidebar.open" not in shell
+    # The dock is a presentation of the authorized sidebar entries, never a
+    # second list: every entry declares its dock place, and app.js reads them.
+    assert index.count('<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"></nav>') == 1
+    assert index.count(' data-dock="') == index.count('class="nav-item') == 7
+    assert "[...document.querySelectorAll('#sidebar .nav-item[data-dock]')]" in app
+    assert "nav(entry, event);" in app
+    assert "/ui-shell-mobile.css?v=1" in read(STYLE_ENTRY)
+    mobile = read(STATIC / "ui-shell-mobile.css")
+    assert "!important" not in mobile
+    for token in ("--dp-chrome-sidebar-surface", "--dp-chrome-nav-active-surface", "--dp-chrome-nav-rail", "--dp-chrome-count-surface"):
+        assert token in mobile, token

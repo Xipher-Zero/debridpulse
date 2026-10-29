@@ -4,6 +4,12 @@
  * them. The menu is a popover in the top layer, so opening it never moves the
  * topbar; the browser's popover gives it light dismiss, Escape and focus
  * return to the chevron.
+ *
+ * Below 780px (the handheld shell) the same menu is a bottom sheet
+ * (ui-theme-picker.css): the popover's own box is its scrim, so a press beside
+ * the panel closes it without reaching the page; the chevron stays its
+ * visible, separate control, and a long press on the mode toggle opens it too
+ * (on the lift) -- that press never also toggles the mode.
  */
 (function () {
   'use strict';
@@ -14,6 +20,10 @@
   const theme = window.DPTheme;
   const MARGIN = 8;
   const GAP = 8;
+  const handheld = window.matchMedia('(max-width: 779px)');
+  const toggle = document.getElementById('theme-toggle');
+  const HOLD_MS = 480;
+  const HOLD_SLOP = 10;
   const CHECK = '<svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>';
 
   // The rows of the active mode only, each with its own swatch: an
@@ -56,6 +66,10 @@
   // window; taller than the room below, it scrolls on its own.
   function place() {
     if (!menu.matches(':popover-open')) return;
+    if (handheld.matches) {
+      menu.style.left = menu.style.top = menu.style.maxHeight = '';
+      return;
+    }
     const anchor = trigger.getBoundingClientRect();
     const width = menu.offsetWidth;
     const left = Math.max(MARGIN, Math.min(anchor.right - width, window.innerWidth - MARGIN - width));
@@ -67,6 +81,7 @@
 
   menu.addEventListener('beforetoggle', function (event) {
     if (event.newState === 'open') render();
+    else opener = trigger;
   });
   menu.addEventListener('toggle', function (event) {
     const open = event.newState === 'open';
@@ -75,6 +90,71 @@
     place();
     (rows().find(function (row) { return row.getAttribute('aria-checked') === 'true'; }) || rows()[0])?.focus();
   });
+
+  // The control that opened the sheet: focus returns there when a press on
+  // the scrim closes it (the press itself took focus out of the sheet).
+  let opener = trigger;
+  menu.addEventListener('click', function (event) {
+    if (!handheld.matches || event.target !== menu) return;
+    const back = opener;
+    menu.hidePopover();
+    back.focus();
+  });
+  handheld.addEventListener('change', function () {
+    if (menu.matches(':popover-open')) menu.hidePopover();
+  });
+
+  /* The long press: held still on the mode toggle for HOLD_MS, the toggle
+   * shows it is armed (data-theme-hold), and lifting then opens this menu.
+   * Moving, leaving the toggle or a cancelled pointer ends it with nothing
+   * done; a lift before HOLD_MS is the ordinary tap. It opens on the lift,
+   * not before: a touch stays captured by the toggle until it lifts, so a
+   * menu already open would take that lift as a press outside it and close.
+   * The click that ends an opening press -- on the toggle, or on the menu
+   * now under the finger -- is not a tap: it is stopped before any handler,
+   * so the mode never changes and the menu stays open; any new press clears
+   * that, so no later click is ever taken for it. */
+  let hold = null;
+  let held = false;
+  function endHold() {
+    if (hold) window.clearTimeout(hold.timer);
+    hold = null;
+    if (toggle) delete toggle.dataset.themeHold;
+  }
+  if (toggle) {
+    window.addEventListener('pointerdown', function () { held = false; }, true);
+    toggle.addEventListener('pointerdown', function (event) {
+      if (!handheld.matches || !event.isPrimary || event.button !== 0) return;
+      endHold();
+      hold = {x: event.clientX, y: event.clientY, armed: false, timer: window.setTimeout(function () {
+        if (!hold) return;
+        hold.armed = true;
+        toggle.dataset.themeHold = 'armed';
+      }, HOLD_MS)};
+    });
+    toggle.addEventListener('pointermove', function (event) {
+      if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > HOLD_SLOP) endHold();
+    });
+    toggle.addEventListener('pointerup', function () {
+      const armed = !!hold?.armed;
+      endHold();
+      if (!armed) return;
+      held = true;
+      if (menu.matches(':popover-open')) return;
+      opener = toggle;
+      menu.showPopover({source: toggle});
+    });
+    ['pointercancel', 'pointerleave'].forEach(function (type) { toggle.addEventListener(type, endHold); });
+    toggle.addEventListener('contextmenu', function (event) {
+      if (handheld.matches) event.preventDefault();
+    });
+    window.addEventListener('click', function (event) {
+      if (!held) return;
+      held = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
 
   list.addEventListener('click', function (event) {
     const row = event.target.closest('.dp-theme-picker-option');

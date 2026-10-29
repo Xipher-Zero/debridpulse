@@ -261,12 +261,9 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
    the shared <h1 id="page-title"> element regardless of source order --
    preserved verbatim rather than folded into #page-title. From the shell's
    780px mode change up the page title's size is the one desktop page-title
-   size (ui-shell-structural.css --dp-shell-title-size); this 17px governs the
-   handheld shell only. */
+   size (ui-shell-structural.css --dp-shell-title-size); the handheld shell
+   (below 780px) sets its own (ui-shell-mobile.css). */
 #topbar h1 { font-weight: 700; flex: 1; }
-@media (max-width: 779px) {
-  #topbar h1 { font-size: 17px; }
-}
 
 #page-title {
   position: relative;
@@ -376,17 +373,6 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
   backdrop-filter: blur(16px);
 }
 
-.mobile-menu-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--dp-border-default);
-  border-radius: var(--dp-radius-md);
-  background: var(--dp-surface-2);
-  color: var(--dp-text-secondary);
-  font-size: 0;
-}
-.mobile-menu-btn svg { width: 18px; height: 18px; }
-
 /* ── Shared content frame ──────────────────────────────────────────────── */
 #content {
   flex: 1;
@@ -439,34 +425,12 @@ body.light #runtime-speed-badge {
 }
 
 /* The compact desktop sidebar (901-1559px) is ui-shell-structural.css's. The
-   page title's pulse artwork stays beside it at every desktop width; only the
-   handheld shell (below 780px) sets it aside (ui-shell-structural.css). */
-
-/* The drawer's sidebar (below 780px); above it the compact rail holds. */
-@media (max-width: 779px) {
-  #sidebar {
-    width: min(290px, 86vw);
-    min-width: 0;
-  }
-  .logo { justify-content: flex-start; padding-inline: 20px; }
-  .logo-text, .nav-label, .nav-group, .sidebar-footer { display: block; }
-  .sidebar-footer { display: block; }
-  .nav-item { justify-content: flex-start; padding-inline: 12px; }
-  #topbar { padding-left: 16px; padding-right: 60px; }
-}
+   page title's pulse artwork stays beside it at every desktop width; the
+   handheld shell (below 780px) is ui-shell-mobile.css's. */
 
 @media (max-width: 899px) {
   #page-title { font-size: 21px; }
   #topbar-actions .btn { padding-inline: 9px; }
-}
-
-@media (max-width: 778px) {
-  :root { --dp-page-gutter-x: 14px; --dp-page-gutter-y: 14px; }
-  #topbar { min-height: 58px; height: 58px; }
-  .sidebar-theme-control { top: 11px; right: 12px; }
-  #page-title { font-size: 19px; }
-  #topbar-actions .btn { font-size: 0; width: 34px; padding: 0; justify-content: center; }
-  #topbar-actions .btn svg { width: 16px; height: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -479,7 +443,6 @@ body.light #runtime-speed-badge {
 .view:is(.active, [data-dp-motion-outgoing]) { display: block !important; }
 
 @media (min-width: 780px) {
-  .mobile-menu-btn { display: none; }
   /* Keep the shared page header divider aligned with the sidebar logo divider. */
   .logo { box-sizing: border-box; height: var(--chrome-header-height); }
 }
@@ -487,38 +450,4 @@ body.light #runtime-speed-badge {
 @media (max-width: 779px) {
   .view:is(.active, [data-dp-motion-outgoing]) { display: block !important; }
   #view-dashboard:is(.active, [data-dp-motion-outgoing]) { height: auto; min-height: 0; overflow: visible; }
-
-  /* Sidebar: fixed overlay, slides in from left */
-  #sidebar {
-    position: fixed !important;
-    left: 0; top: 0; bottom: 0; z-index: 200;
-    width: 80vw; max-width: 280px; min-width: unset; height: 100vh;
-    transform: translateX(-100%); transition: transform .25s ease;
-    pointer-events: none; /* don't block clicks when hidden */
-  }
-  #sidebar nav { -webkit-overflow-scrolling: touch; }
-  #sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.5); pointer-events: auto; }
-
-  #mobile-overlay {
-    display: none; position: fixed; inset: 0; z-index: 199;
-    background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
-  }
-  #mobile-overlay.open { display: block; }
-
-  #main { width: 100% !important; }
-  #content { padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
-
-  .mobile-menu-btn {
-    display: flex !important; align-items: center; justify-content: center;
-    width: 36px; height: 36px; border: 1px solid var(--border2);
-    border-radius: 8px; background: var(--surface2);
-    color: var(--text); cursor: pointer; font-size: 20px;
-    flex-shrink: 0; margin-right: 10px;
-  }
-
-  #topbar { padding: 8px 12px !important; }
-  #topbar h1 { font-size: 15px; }
-  #topbar-actions { gap: 4px; }
-  #topbar-actions .btn { padding: 6px 9px; font-size: 11px; }
-  #runtime-speed-badge { flex-basis: 230px; width: 230px; min-width: 230px; }
 }

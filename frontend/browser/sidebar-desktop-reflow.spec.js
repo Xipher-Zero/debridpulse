@@ -84,7 +84,8 @@ async function open(page, width, {height = 1000} = {}) {
   await page.addInitScript(`window.__dpSectionHeader = ${sectionHeader.toString()};`);
   await page.setViewportSize({width, height});
   await page.goto('/');
-  await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeVisible();
+  // The shell's own navigation: the sidebar from 780px, the handheld dock below.
+  await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]:visible, #shell-dock [data-view="dashboard"]:visible')).toBeVisible();
 }
 
 // The sidebar's width transition has finished (the real CSS transition, not a sleep).
@@ -436,7 +437,7 @@ test('the overlay keeps its motion and the page its place around abrupt window c
  * new place in the change's own frame -- the page beside the rail, or the
  * whole width beside the hidden drawer -- never an in-flow width narrowing
  * the page and giving it back, nor the drawer sliding away over it. */
-test('crossing between the drawer and the rail changes the sidebar at once and never narrows or covers the page', async ({page}) => {
+test('crossing between the handheld shell and the rail changes the sidebar at once and never narrows or covers the page', async ({page}) => {
   await open(page, 760);
   for (const act of [() => drag(page, 768, 792, 4), () => drag(page, 792, 768, 4),
     () => page.setViewportSize({width: 1051, height: 1000}), () => page.setViewportSize({width: 700, height: 1000})]) {
@@ -737,7 +738,7 @@ test('only the open overlay floats: a soft two-part shadow falls to the right in
  * the rail, beneath the overlay's own elevation -- the same on both sides of
  * 1560px, so it is drawn in every frame of the change, never dropped; the
  * handheld drawer keeps its own. Dark and light. */
-test('the sidebar keeps its separation shadow in every presentation and every frame across 1560px; the handheld drawer keeps its own', async ({page}) => {
+test('the sidebar keeps its separation shadow in every presentation and every frame across 1560px; below 780px there is none', async ({page}) => {
   const shadow = () => page.locator('#sidebar').evaluate(node => getComputedStyle(node).boxShadow);
   // Each layer as [x, y, blur, spread] in px.
   const layers = value => value === 'none' ? [] : value.split(/,(?![^(]*\))/).map(layer =>
@@ -772,13 +773,9 @@ test('the sidebar keeps its separation shadow in every presentation and every fr
       await resize(page, width);
       await page.screenshot({path: `test-results/checkpoint-sidebar-separation-${theme}-${width}.png`, clip: {x: 0, y: 100, width: 320, height: 260}});
     }
-    // Handheld: the closed drawer casts nothing into the page; the open one its own.
+    // Handheld: no sidebar, so nothing is cast into the page.
     await resize(page, 600);
-    expect(await shadow(), `${theme} drawer closed`).toBe('none');
-    await page.evaluate(() => window.toggleSidebar());
-    await settledShell(page);
-    expect(await shadow(), `${theme} drawer open`).toBe('rgba(0, 0, 0, 0.5) 4px 0px 24px 0px');
-    await page.evaluate(() => window.closeSidebar());
+    expect(await shadow(), `${theme} handheld`).toBe('none');
   }
 });
 
@@ -896,16 +893,13 @@ test('the rail names what it no longer writes with DP tooltips and stable access
   await expect(tooltip).toBeHidden();
 });
 
-test('the mobile drawer is unchanged and never takes the desktop handle or overlay', async ({page}) => {
+test('below 780px the sidebar gives way to the handheld dock and never takes the desktop handle or overlay', async ({page}) => {
   await open(page, 600, {height: 900});
+  await expect(page.locator('#sidebar')).toBeHidden();
   await expect(page.locator('#sidebar-handle')).toBeHidden();
-  await page.locator('#mobile-menu-btn').click();
-  await expect(page.locator('#sidebar')).toHaveClass(/\bopen\b/);
-  await expect(page.locator('#mobile-overlay')).toHaveClass(/\bopen\b/);
-  await expect(page.locator('#sidebar')).not.toHaveClass(/sidebar-overlay-open/);
-  await expect(page.locator('#sidebar .nav-item[data-view="dashboard"] .nav-label')).toHaveCSS('opacity', '1');
-  await page.locator('#mobile-overlay').click({position: {x: 560, y: 450}});
-  await expect(page.locator('#sidebar')).not.toHaveClass(/\bopen\b/);
+  await expect(page.locator('#shell-dock')).toBeVisible();
+  await expect(page.locator('#mobile-menu-btn, #mobile-overlay')).toHaveCount(0);
+  expect(await page.evaluate(() => typeof window.toggleSidebar)).toBe('undefined');
   // The desktop overlay cannot be forced open below the desktop range.
   await page.evaluate(() => setSidebarOverlay(true));
   await expect(page.locator('#sidebar')).not.toHaveClass(/sidebar-overlay-open/);

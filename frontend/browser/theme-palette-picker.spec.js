@@ -289,7 +289,7 @@ test('a palette chosen within a mode is announced after it applies; Statistics a
   expect((await page.evaluate(() => window.__themeEvents)).at(-1)).toMatchObject({detail: {light: true}, palette: null, background: '#f4f7fc'});
 });
 
-test('the chevron sits in the strip right of the unchanged mode toggle, and is absent below 780px', async ({page}) => {
+test('the chevron sits in the strip right of the unchanged mode toggle, and below 780px is its attached control', async ({page}) => {
   await noFonts(page);
   // One 22px shell inset from 780px up (1.0.14, af5496ef; shell-inset-artwork).
   for (const [width, inset] of [[1152, 22], [1440, 22]]) {
@@ -300,7 +300,9 @@ test('the chevron sits in the strip right of the unchanged mode toggle, and is a
     expect(box['#theme-picker-toggle']).toEqual([width - inset + 3, 33, 16, 37]);
     expect(await page.getAttribute('#theme-picker-toggle', 'aria-label')).toBe('Choose theme');
   }
+  // Below 780px (the handheld shell) the chevron is the toggle's attached
+  // control, a separate target just after it (mobile-shell-framework.spec.js).
   await page.setViewportSize({width: 779, height: 900});
-  expect(await page.locator('#theme-picker-toggle').isVisible()).toBe(false);
+  expect(await page.locator('#theme-picker-toggle').isVisible()).toBe(true);
   expect(await page.locator('#theme-toggle').isVisible()).toBe(true);
 });

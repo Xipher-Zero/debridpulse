@@ -1,7 +1,8 @@
 /* DebridPulse theme picker (ui-theme-picker.js): a chevron in the strip to
    the right of the mode toggle and the menu of the active mode's palettes.
    The chevron is out of flow, so the toggle and every topbar control keep
-   their own boxes; below 780px there is no strip and no chevron. */
+   their own boxes. Below 780px (the handheld shell) the chevron is the
+   toggle's attached, separate control and the menu a bottom sheet (below). */
 .topbar-theme-control .dp-theme-picker-trigger {
   position: absolute;
   top: 0;
@@ -31,9 +32,6 @@
 .topbar-theme-control .dp-theme-picker-trigger:focus-visible {
   outline: 2px solid var(--dp-accent-purple-bright);
   outline-offset: -2px;
-}
-@media (max-width: 779px) {
-  .topbar-theme-control .dp-theme-picker-trigger { display: none; }
 }
 
 /* The menu: a popover in the top layer, placed by the runtime. */
@@ -143,6 +141,59 @@
 .dp-theme-swatch > [data-role="surface"] { background: var(--dp-surface-3); }
 .dp-theme-swatch > [data-role="accent"] { background: var(--dp-accent-purple-bright); }
 .dp-theme-swatch > [data-role="tone"] { background: var(--dp-accent-blue-bright); }
+
+/* The handheld shell (below 780px): the chevron is the second half of one
+   control with the mode toggle (ui-shell-mobile.css draws the pair), with a
+   hit area of its own; the menu is a bottom sheet. The popover's own box is
+   the scrim over the whole viewport, so a press beside the panel lands on
+   the menu (ui-theme-picker.js closes it), never on the page; the head and
+   the list are the panel, the list scrolling on its own. */
+@media (max-width: 779px) {
+  .topbar-theme-control .dp-theme-picker-trigger {
+    position: static;
+    width: 44px;
+    height: 44px;
+    border-radius: 0 var(--dp-radius-md) var(--dp-radius-md) 0;
+  }
+  .topbar-theme-control .dp-theme-picker-trigger:focus-visible { outline-offset: -3px; }
+  .dp-theme-picker {
+    inset: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: var(--dp-chrome-scrim);
+    box-shadow: none;
+  }
+  .dp-theme-picker:popover-open {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .dp-theme-picker-head,
+  .dp-theme-picker-list {
+    border-inline: 1px solid var(--dp-border-default);
+    background: var(--dp-surface-overlay);
+  }
+  .dp-theme-picker-head {
+    padding: 14px 18px 10px;
+    border-top: 1px solid var(--dp-border-default);
+    border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
+    box-shadow: var(--dp-shadow-raised);
+  }
+  .dp-theme-picker-list {
+    max-height: min(62dvh, 520px);
+    padding: 6px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .dp-theme-picker-option { min-height: 46px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .topbar-theme-control .dp-theme-picker-trigger,

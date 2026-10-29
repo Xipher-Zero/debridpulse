@@ -66,13 +66,13 @@ test('the session row holds Log Out and the account as two separate controls, at
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   // One session, three widths: sign-in pages are rate limited per client.
   const admin = await signIn(browser, ADMIN, undefined, {fresh: true});  // it logs out
-  // The full sidebar and the drawer: one line, Log Out then the account. The
-  // compact rail (780-1559px): both glyphs on the icon rail, the account
-  // above and Log Out at the bottom.
-  for (const [width, layout] of [[1600, 'line'], [1440, 'rail'], [1024, 'rail'], [800, 'rail'], [760, 'line']]) {
+  // The full sidebar: one line, Log Out then the account. The compact rail
+  // (780-1559px): both glyphs on the icon rail, the account above and Log
+  // Out at the bottom. Below 780px there is no sidebar: the handheld header's
+  // account control carries both (mobile-shell-framework.spec.js).
+  for (const [width, layout] of [[1600, 'line'], [1440, 'rail'], [1024, 'rail'], [800, 'rail']]) {
     await admin.page.setViewportSize({width, height: 900});
     await admin.page.waitForFunction(() => document.getElementById('sidebar').getAnimations().length === 0);
-    if (width === 760) await admin.page.evaluate(() => window.toggleSidebar());
     const facts = await admin.page.evaluate(() => {
       const row = document.querySelector('#sidebar-auth-row');
       const box = node => node.getBoundingClientRect();
@@ -94,10 +94,9 @@ test('the session row holds Log Out and the account as two separate controls, at
     expect(facts, `${width}px`).toEqual({rows: 0, controls: ['dp-sidebar-logout', 'dp-sidebar-profile'], rowIsControl: null,
       separate: true, inside: true, layout});
   }
-  await admin.page.evaluate(() => window.closeSidebar());
   await admin.page.setViewportSize({width: 1600, height: 914});
-  // The drawer closing and the full sidebar's reflow have ended, its rows
-  // included (the row is measured below).
+  // The full sidebar's reflow has ended, its rows included (the row is
+  // measured below).
   await admin.page.waitForFunction(() => document.getElementById('sidebar').getAnimations({subtree: true}).length === 0);
   await expect(admin.page.locator('.dp-sidebar-profile .dp-sidebar-account-role')).toHaveText('Admin');
   // The account side opens My Account; it never logs out.

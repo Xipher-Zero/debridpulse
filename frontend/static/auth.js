@@ -91,6 +91,7 @@
   // separate controls in one row, with the elastic space between them
   // belonging to neither.
   function syncSidebarSessionUi(data) {
+    syncHeaderSessionUi(data);
     const stack = document.getElementById('sidebar-bottom-stack');
     const mount = document.getElementById('sidebar-auth-mount');
     if (!stack || !mount) return;
@@ -132,20 +133,8 @@
       </button>`;
 
     // Log Out is quiet: its label and icon never change, so the row keeps its
-    // measure beside the account. A pending logout refuses a second press;
-    // a refused or failed one says so and may be pressed again.
-    const logout = row.querySelector('.dp-sidebar-logout');
-    logout.addEventListener('click', async () => {
-      if (logout.getAttribute('aria-disabled') === 'true') return;
-      logout.setAttribute('aria-disabled', 'true');
-      try {
-        const ok = await logoutSession();
-        if (!ok) throw new Error('Logout failed');
-      } catch (_) {
-        logout.setAttribute('aria-disabled', 'false');
-        try { window.toast('Log Out failed. Try again.', 'error'); } catch (_) {}
-      }
-    });
+    // measure beside the account.
+    bindLogout(row.querySelector('.dp-sidebar-logout'));
 
     const profile = row.querySelector('.dp-sidebar-profile');
     const showAccount = name => {
@@ -161,9 +150,101 @@
     // The account's own Display Name. The session's name is its sign-in (an
     // OIDC ``name`` claim, a username) and is never shown first; it stands in
     // only when the account's profile cannot be read.
-    readProfile().then(own => showAccount(own?.display_name || data.display_name || 'My Account'));
+    readProfile().then(own => {
+      const name = own?.display_name || data.display_name || 'My Account';
+      showAccount(name);
+      showHeaderAccount(data, name);
+    });
     profile.addEventListener('click', () => { void openAccountDialog(data); });
     mount.appendChild(row);
+  }
+
+  // A pending logout refuses a second press; a refused or failed one says so
+  // and may be pressed again.
+  function bindLogout(button) {
+    button.addEventListener('click', async () => {
+      if (button.getAttribute('aria-disabled') === 'true') return;
+      button.setAttribute('aria-disabled', 'true');
+      try {
+        const ok = await logoutSession();
+        if (!ok) throw new Error('Logout failed');
+      } catch (_) {
+        button.setAttribute('aria-disabled', 'false');
+        try { window.toast('Log Out failed. Try again.', 'error'); } catch (_) {}
+      }
+    });
+  }
+
+  /* The handheld shell's session control (below 780px, where the sidebar
+   * gives way to the dock; ui-shell-mobile.css): one account button at the
+   * start of the header, opening a sheet with the account (Display Name over
+   * Role), My Account and Log Out -- the same dialog and the same logout as
+   * the sidebar's row. A press beside the sheet's panel closes it without
+   * reaching the page; Escape and Tab close it, focus back on the button. */
+  const handheld = window.matchMedia('(max-width: 779px)');
+  function syncHeaderSessionUi(data) {
+    const mount = document.getElementById('topbar-account-mount');
+    if (!mount) return;
+    if (!data?.authenticated) {
+      mount.hidden = true;
+      mount.replaceChildren();
+      return;
+    }
+    mount.hidden = false;
+    if (mount.querySelector('#topbar-account-button')) return;
+    mount.innerHTML = `
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" popovertarget="topbar-account-sheet" aria-label="My account">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
+        </svg>
+      </button>
+      <div id="topbar-account-sheet" class="dp-shell-sheet" popover role="dialog" aria-labelledby="topbar-account-name">
+        <div class="dp-shell-sheet-panel">
+          <div class="dp-shell-sheet-title dp-topbar-account-copy">
+            <span class="dp-topbar-account-name" id="topbar-account-name"></span>
+            <span class="dp-topbar-account-role"></span>
+          </div>
+          <div class="dp-shell-sheet-list">
+            <button type="button" class="dp-shell-sheet-item" data-account-action="profile">
+              <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></span>
+              <span class="dp-shell-label">My Account</span>
+            </button>
+            <button type="button" class="dp-shell-sheet-item" data-account-action="logout">
+              <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path><path d="M14 8l4 4-4 4"></path><path d="M18 12H9"></path></svg></span>
+              <span class="dp-shell-label">Log Out</span>
+            </button>
+          </div>
+        </div>
+      </div>`;
+    const sheet = mount.querySelector('#topbar-account-sheet');
+    const close = () => { if (sheet.matches(':popover-open')) sheet.hidePopover(); };
+    sheet.addEventListener('click', event => {
+      if (event.target !== sheet) return;
+      close();
+      mount.querySelector('#topbar-account-button').focus();
+    });
+    sheet.addEventListener('keydown', event => { if (event.key === 'Tab') close(); });
+    sheet.addEventListener('toggle', event => {
+      if (event.newState === 'open') sheet.querySelector('.dp-shell-sheet-item')?.focus();
+    });
+    handheld.addEventListener('change', close);
+    sheet.querySelector('[data-account-action="profile"]').addEventListener('click', () => {
+      close();
+      void openAccountDialog(data);
+    });
+    bindLogout(sheet.querySelector('[data-account-action="logout"]'));
+    showHeaderAccount(data, '');
+  }
+
+  function showHeaderAccount(data, name) {
+    const mount = document.getElementById('topbar-account-mount');
+    const button = mount?.querySelector('#topbar-account-button');
+    if (!button) return;
+    const display = String(name || '');
+    mount.querySelector('.dp-topbar-account-name').textContent = display || 'My Account';
+    mount.querySelector('.dp-topbar-account-role').textContent = roleLabel(data.role);
+    button.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`
+      : `My account, ${roleLabel(data.role)}`);
   }
 
   async function readProfile() {

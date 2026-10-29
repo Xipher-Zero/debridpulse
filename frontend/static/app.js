@@ -95,19 +95,23 @@ function renderTopbarActions() {
 /* A sidebar entry chosen by the operator (a click or its keyboard activation)
  * moves the main view region up or down toward it, by its place among the
  * entries this session actually shows; every other call -- start-up, a
- * redirect, a reset, a test -- changes the view in place. The view itself is
- * changed by navigateTo(), the same commit either way, so the destination's
- * entry work (loading, its first page or tab) is exactly as it was. */
+ * redirect, a reset, a test -- changes the view in place. Below 780px the
+ * entries are chosen from the dock (renderShellDock), so the region moves across,
+ * by their place in the dock's order. The view itself is changed by
+ * navigateTo(), the same commit either way, so the destination's entry work
+ * (loading, its first page or tab) is exactly as it was. */
 function nav(el, event) {
   if (!el) return;
-  const entries = [...document.querySelectorAll('#sidebar .nav-item[data-view]')]
-    .filter(item => item.getClientRects().length);
+  const handheld = _shellHandheld.matches;
+  const entries = handheld ? _shellDockEntries
+    : [...document.querySelectorAll('#sidebar .nav-item[data-view]')].filter(item => item.getClientRects().length);
   const from = entries.findIndex(item => item.classList.contains('active'));
   const to = entries.indexOf(el);
   const sameView = !!document.getElementById('view-' + el.dataset.view)?.classList.contains('active');
   const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;
   const motion = window.DPMotion
-    ? window.DPMotion.slide({element: document.getElementById('content'), axis: 'y', direction: chosen ? Math.sign(to - from) : 0,
+    ? window.DPMotion.slide({element: document.getElementById('content'), axis: handheld ? 'x' : 'y',
+                             direction: chosen ? Math.sign(to - from) : 0,
                              distance: Math.abs(to - from)}, () => navigateTo(el))
     : (navigateTo(el), {settled: Promise.resolve()});
   // Whatever measures the destination's layout may do so again once it is still.
@@ -158,8 +162,134 @@ function navigateTo(el) {
   if (v === 'stats')     loadDetailedStats();
   if (v === 'settings')  loadSettings();
   if (v === 'help')      loadHelp();
-  closeSidebar();
+  syncShellDock();
+  setSidebarOverlay(false);
 }
+
+/* The handheld shell's dock (below 780px; ui-shell-mobile.css): another
+ * presentation of the same sidebar entries, never a second router. Its
+ * entries are exactly the ones auth.js mounted for this session, in their
+ * data-dock order; up to five stand in the dock, and where there are more,
+ * the first four do and More (#shell-more) holds the rest. A dock button
+ * chooses its entry through nav(), so the page, its title and its entry work
+ * are the sidebar's, and the dock marks whichever entry navigateTo() made
+ * active. Built once: a change of authority reloads the page (auth.js). */
+const SHELL_HANDHELD_QUERY = '(max-width: 779px)';
+const _shellHandheld = window.matchMedia(SHELL_HANDHELD_QUERY);
+const _shellDockEntries = [...document.querySelectorAll('#sidebar .nav-item[data-dock]')]
+  .sort((a, b) => Number(a.dataset.dock) - Number(b.dataset.dock));
+const _shellMoreEntries = _shellDockEntries.length > 5 ? _shellDockEntries.slice(4) : [];
+const _shellDockButtons = new Map();
+
+function shellDockButton(entry, className) {
+  const name = (entry.dataset.title || entry.querySelector('.nav-label')?.textContent || '').trim();
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.dataset.view = entry.dataset.view;
+  const icon = entry.querySelector('.icon')?.cloneNode(true);
+  if (icon) button.append(icon);
+  const label = document.createElement('span');
+  label.className = 'dp-shell-label';
+  // A shorter display label (Stats) keeps the entry's whole name as the button's.
+  const shown = className === 'dp-shell-dock-item' ? entry.dataset.dockLabel || name : name;
+  label.textContent = shown;
+  button.append(label);
+  if (shown !== name) button.setAttribute('aria-label', name);
+  button.addEventListener('click', event => {
+    closeShellMore();
+    nav(entry, event);
+  });
+  _shellDockButtons.set(button, entry);
+  return button;
+}
+
+function renderShellDock() {
+  const dock = document.getElementById('shell-dock');
+  const list = document.getElementById('shell-more-list');
+  if (!dock || !list) return;
+  const overflow = _shellMoreEntries.length > 0;
+  const direct = overflow ? _shellDockEntries.slice(0, 4) : _shellDockEntries;
+  dock.replaceChildren(...direct.map(entry => {
+    const button = shellDockButton(entry, 'dp-shell-dock-item');
+    // The Downloads count is the sidebar's (#nb-active): showDownloadsBadge() writes both.
+    if (entry.querySelector('#nb-active')) {
+      const badge = document.createElement('span');
+      badge.className = 'dp-shell-dock-badge';
+      badge.dataset.dockBadge = '';
+      badge.hidden = true;
+      button.append(badge);
+    }
+    return button;
+  }));
+  list.replaceChildren(..._shellMoreEntries.map(entry => shellDockButton(entry, 'dp-shell-sheet-item')));
+  if (overflow) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'dp-shell-dock-item dp-shell-dock-more';
+    more.setAttribute('popovertarget', 'shell-more');
+    more.innerHTML = '<span class="icon" aria-hidden="true"><svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="dp-shell-label">More</span>';
+    dock.append(more);
+  } else {
+    // Fewer than five pages: the free position stays empty and inert, so
+    // Dashboard keeps the middle of five.
+    for (let i = direct.length; i < 5; i += 1) {
+      const free = document.createElement('span');
+      free.className = 'dp-shell-dock-free';
+      free.setAttribute('aria-hidden', 'true');
+      dock.append(free);
+    }
+  }
+  syncShellDock();
+}
+
+// The dock follows the active entry: the button of that entry is the current
+// page, and More is marked while the active entry is one it holds.
+function syncShellDock() {
+  const active = _shellDockEntries.find(entry => entry.classList.contains('active')) || null;
+  _shellDockButtons.forEach((entry, button) => {
+    const current = entry === active;
+    button.classList.toggle('active', current);
+    if (current) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  const more = document.querySelector('#shell-dock .dp-shell-dock-more');
+  if (more) {
+    const held = _shellMoreEntries.includes(active);
+    more.classList.toggle('active', held);
+    more.setAttribute('aria-label', held ? `More, current page: ${active.querySelector('.nav-label')?.textContent || ''}` : 'More');
+  }
+}
+
+// The Downloads count, the sidebar's one value, shown on both its entries.
+function showDownloadsBadge(count) {
+  const shown = count > 0;
+  const nb = document.getElementById('nb-active');
+  if (nb) { nb.textContent = count; nb.style.display = shown ? '' : 'none'; }
+  document.querySelectorAll('[data-dock-badge]').forEach(badge => { badge.textContent = count; badge.hidden = !shown; });
+}
+
+function closeShellMore() {
+  const more = document.getElementById('shell-more');
+  if (more?.matches(':popover-open')) more.hidePopover();
+}
+
+// More is a sheet over the page: its scrim (the popover's own box around the
+// panel) takes a press outside the panel and closes it, so the press never
+// reaches the page beneath, and focus returns to More; Tab leaves it closed,
+// focus back on More.
+document.getElementById('shell-more')?.addEventListener('click', event => {
+  if (event.target !== event.currentTarget) return;
+  closeShellMore();
+  document.querySelector('#shell-dock .dp-shell-dock-more')?.focus();
+});
+document.getElementById('shell-more')?.addEventListener('keydown', event => {
+  if (event.key === 'Tab') closeShellMore();
+});
+document.getElementById('shell-more')?.addEventListener('toggle', event => {
+  if (event.newState === 'open') event.currentTarget.querySelector('[aria-current="page"], .dp-shell-sheet-item')?.focus();
+});
+renderShellDock();
 
 // ── API ────────────────────────────────────────────────────────────────────
 /* The per-transfer private-LAN confirmation, through the canonical dialog
@@ -1624,8 +1754,7 @@ async function loadStats() {
       // are not counted.
       const unfinished = ['pending', 'processing', 'input_required', 'ready', 'queued', 'downloading',
         'paused', 'verifying', 'extracting'].reduce((sum, status) => sum + (Number(bs[status]) || 0), 0);
-      const nb = document.getElementById('nb-active');
-      if (nb) { nb.textContent = unfinished; nb.style.display = unfinished > 0 ? '' : 'none'; }
+      showDownloadsBadge(unfinished);
       // The topbar's active count is NOT written here: it has exactly one
       // writer, the neutral runtime-status poll, whose number is DebridPulse's
       // canonical execution-admission occupancy rather than this aggregate
@@ -2714,21 +2843,11 @@ window.closeModal = closeModal;
 window.showDetail = showDetail;
 
 // ── Theme toggle ─────────────────────────────────────────────────────────────
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('mobile-overlay').classList.toggle('open');
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('mobile-overlay').classList.remove('open');
-  setSidebarOverlay(false);
-}
-
 /* The compact desktop sidebar rail and its temporary overlay: the one sidebar
  * state owner. ui-shell-structural.css owns the rail's geometry and this same
  * range. Its handle shows the same sidebar at full width above the page for
  * the moment, leaving the page exactly where it is; the handle again, Escape,
- * a press outside the sidebar or choosing a page (closeSidebar) closes it, and
+ * a press outside the sidebar or choosing a page (navigateTo) closes it, and
  * leaving the range clears it. Nothing is remembered. */
 const SIDEBAR_COMPACT_QUERY = '(min-width: 780px) and (max-width: 1559px)';
 const _sidebarCompact = window.matchMedia(SIDEBAR_COMPACT_QUERY);
@@ -2740,7 +2859,8 @@ function sidebarOverlayOpen() {
 // A change of presentation replaces Provider Status' and the session's
 // composition at once: the stack fades back in as the width settles. Which
 // change it is -- the persistent one (the window crossing 1560px), the
-// drawer one (crossing 779px, the rail's other edge), or the overlay,
+// handheld one (crossing 779px, the rail's other edge: the sidebar gives way
+// to the handheld shell's dock), or the overlay,
 // which never moves the page -- is said beside it. The
 // mark lasts exactly as long as that fade: where there is none (reduced
 // motion, or no desktop sidebar), it is not left behind.
@@ -2871,6 +2991,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }, RUNTIME_STATUS_INTERVAL_MS);
   document.addEventListener('click', function(event) {
     if (!event.target.closest('.runtime-cap-control')) closeSpeedCapMenu();
+  });
+  // Below 780px the cap menu's scrim is its own (ui-shell-mobile.css), so a
+  // press beside the sheet lands on the menu, never on the page: it closes it.
+  document.getElementById('runtime-cap-menu')?.addEventListener('click', function(event) {
+    if (!_shellHandheld.matches || event.target !== event.currentTarget) return;
+    var box = event.currentTarget.getBoundingClientRect();
+    if (event.clientY < box.top || event.clientY > box.bottom || event.clientX < box.left || event.clientX > box.right) closeSpeedCapMenu();
+  });
+  // Crossing 779/780px changes the shell: its open sheets close rather than
+  // stay over a presentation that is gone.
+  _shellHandheld.addEventListener('change', function() {
+    closeSpeedCapMenu();
+    closeShellMore();
   });
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') closeSpeedCapMenu();
@@ -3416,14 +3549,19 @@ function toggleSpeedCapMenu(event) {
     if (custom && _runtimeStatusState.limitBps > 0) {
       custom.value = (_runtimeStatusState.limitBps / 1048576).toFixed(1).replace(/\.0$/, '');
     }
+    if (_shellHandheld.matches) (menu.querySelector('[data-cap-bps].active') || menu.querySelector('[data-cap-bps]'))?.focus();
   }
 }
 
 function closeSpeedCapMenu() {
   var menu = document.getElementById('runtime-cap-menu');
   var toggle = document.getElementById('runtime-cap-toggle');
+  // Below 780px the menu is a sheet over the page: focus inside it returns
+  // to the toggle that opened it.
+  var refocus = _shellHandheld.matches && !!menu && !menu.hidden && menu.contains(document.activeElement);
   if (menu) menu.hidden = true;
   if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  if (refocus && toggle) toggle.focus();
 }
 
 async function applyTopbarSpeedCap(bps) {

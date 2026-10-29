@@ -55,7 +55,7 @@ const measure = (page, view, worst) => page.evaluate(([view, worst]) => {
   const title = document.getElementById('page-title'), titleBox = box(title), drawn = getComputedStyle(title, '::before');
   const text = drawn.content && drawn.content !== 'none' && drawn.content !== 'normal' ? drawn : getComputedStyle(title);
   const topbar = document.getElementById('topbar'), bar = box(topbar);
-  const controls = [...topbar.children].filter(element => !element.matches('.dp-page-heading, .mobile-menu-btn, template') && element.getClientRects().length)
+  const controls = [...topbar.children].filter(element => !element.matches('.dp-page-heading, template') && element.getClientRects().length)
     .flatMap(element => (element.id === 'topbar-actions' ? [...element.children].filter(child => child.getClientRects().length) : [element]));
   const buttons = [...document.querySelectorAll('#topbar-actions .btn')].filter(button => button.getClientRects().length);
   const chevron = document.querySelector('.topbar-theme-control .dp-theme-picker-trigger');

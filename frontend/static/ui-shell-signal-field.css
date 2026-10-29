@@ -57,21 +57,3 @@ body.light #sidebar::before {
     width: calc(var(--dp-shell-sidebar-full) + 48px);
   }
 }
-
-@media (max-width: 779px) {
-  #sidebar::before {
-    left: -38px !important;
-    right: -30px !important;
-  }
-}
-
-@media (max-width: 779px) {
-  #sidebar::before {
-    bottom: 190px !important;
-    height: 280px !important;
-    opacity: .60 !important;
-  }
-  body.light #sidebar::before {
-    opacity: .28 !important;
-  }
-}
