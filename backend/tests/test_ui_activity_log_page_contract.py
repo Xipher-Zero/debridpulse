@@ -57,7 +57,12 @@ def test_auto_refresh_is_one_island_left_of_refresh_on_by_default_and_kept_for_t
     assert runtime.count("sessionStorage.getItem(") == 1 and runtime.count("sessionStorage.setItem(") == 1   # the one choice
     # On unless switched off: the operator's choice lasts for the tab session (sessionStorage),
     # restored on every entry, and is nothing the server keeps.
-    assert "document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();" in runtime
+    # 1.0.14: entering the page follows the session's choice -- or, below 780px only, on while the
+    # handheld header has Auto Refresh out of the row (never written to the choice).
+    assert "document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();" in runtime
+    assert "function wanted(){return chosen()||liveHidden;}" in runtime
+    assert "if(!HANDHELD.matches){delete header.dataset.dpFit;delete heading.dataset.dpCopy;delete hint.dataset.dpCopy;setLiveHidden(false);return;}" in runtime
+    assert "const HANDHELD=window.matchMedia('(max-width: 779px)');" in runtime
     assert "function chosen(){try{return sessionStorage.getItem(LIVE_CHOICE)!=='off';}catch(_){return true;}}" in runtime
     assert "live=toggle.checked;choose(live);" in runtime
     # The island's height is Refresh's, by stretching; its material is the Settings island's.

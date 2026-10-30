@@ -355,7 +355,8 @@ test('narrow (390px): Search and the control stay one row; the panel stacks its 
   await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
   await expect.poll(() => requests.length).toBeGreaterThan(before);
   expect(requests.at(-1).level).toBeUndefined();
-  expect(await triggerState(page)).toEqual(DEFAULT_TRIGGER);
+  // Below 780px the same control reads Filter (1.0.14 handheld label; Filter Results from 780px).
+  expect(await triggerState(page)).toEqual({...DEFAULT_TRIGGER, text: 'Filter'});
 });
 
 test('a User without administration has no Activity Log, filter control or panel', async ({page}) => {

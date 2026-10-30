@@ -20,6 +20,17 @@
   white-space: nowrap;
 }
 
+/* Below 780px the control reads Filter or Clear (ui-activity-log-runtime.js):
+   one compact footprint for both, the wider -- Filter, with its glyph and
+   padding (84px in Outfit, 90.3px in the fallback face) -- with room to spare,
+   so changing function never moves Search, which takes the rest. */
+@media (max-width: 779px) {
+  #view-events .dp-activity-filter-trigger {
+    flex: 0 0 96px;
+    width: 96px;
+  }
+}
+
 #view-events .dp-activity-filter-trigger .dp-utility-icon {
   width: 15px;
   height: 15px;

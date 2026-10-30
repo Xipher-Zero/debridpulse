@@ -99,7 +99,9 @@ test('Auto Refresh: one bordered island left of Refresh, Refresh\'s height, on i
     await expect(toggle).toBeChecked();                        // a new tab session starts on
     await expect(page.getByRole('switch', {name: 'Auto Refresh'})).toHaveCount(1);
     await expect(page.locator('.dp-activity-refresh')).toHaveText('Refresh');
-    for (const [width, theme] of [[1440, 'dark'], [390, 'light']]) {
+    // 480px: a handheld width where the island stays in the row in either face (1.0.14: below
+    // 780px it leaves the row only where it does not fit; activity-log-mobile-header.spec.js).
+    for (const [width, theme] of [[1440, 'dark'], [480, 'light']]) {
       await page.setViewportSize({width, height: 900});
       await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
       const g = await geometry(page);

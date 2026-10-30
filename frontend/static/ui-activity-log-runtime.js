@@ -53,6 +53,34 @@ let live=false,timer=null,dirty=false,hinted=null,investigation=0;
 const LIVE_CHOICE='dp-activity-auto-refresh';
 function chosen(){try{return sessionStorage.getItem(LIVE_CHOICE)!=='off';}catch(_){return true;}}
 function choose(on){try{sessionStorage.setItem(LIVE_CHOICE,on?'on':'off');}catch(_){}}
+// ── Handheld header (below 780px only; from 780px nothing here applies) ──
+// The card header stays one row: the artwork, the title over the hint, Auto
+// Refresh and Refresh. Where the row is short it gives way in one order, decided
+// on the drawn lines (fitHeader): the copy first -- the title and the hint each
+// the longest of their wordings drawn whole, the hint none at all where even
+// its shortest is not -- then Refresh keeps only its glyph (its name and tooltip
+// stay), then Auto Refresh leaves the row; each step only where the title would
+// otherwise be shorter than "Activity" (an intelligible title before an optional
+// hint, "Logs" only where nothing longer fits even then). While Auto Refresh is out of the row it is on, whatever the
+// session's choice, which it never writes; back in the row, that choice holds.
+const HANDHELD=window.matchMedia('(max-width: 779px)');
+const TITLES=['For the Record','The Records','Activity','Logs'],HINTS=['Everything DebridPulse thought was worth mentioning.','Things worth writing down.','Worth noting.'];
+const ARRANGEMENTS=[[],['icon'],['quiet'],['quiet','icon']];   // icon: Refresh is its glyph; quiet: Auto Refresh is out of the row
+let liveHidden=false;
+// Whether Auto Refresh follows the journal on this page: the session's choice, or on while out of the row.
+function wanted(){return chosen()||liveHidden;}
+function setLiveHidden(hidden){if(hidden===liveHidden)return;liveHidden=hidden;if(!active())return;live=wanted();stopFollowing();syncLive();if(live)catchUp();}
+// A wording drawn in place of the line's own text (ui-activity-log-page.css), which stays its text; '' draws none.
+function word(line,text,own){if(text===own)delete line.dataset.dpCopy;else line.dataset.dpCopy=text;return line.scrollWidth<=line.clientWidth;}
+function fitHeader(){const header=document.querySelector('#view-events > .dp-activity-card > .card-header'),heading=header?.querySelector('.dp-activity-heading'),hint=header?.querySelector('.dp-activity-subtitle');if(!heading||!hint)return;
+if(!HANDHELD.matches){delete header.dataset.dpFit;delete heading.dataset.dpCopy;delete hint.dataset.dpCopy;setLiveHidden(false);return;}
+if(!header.clientWidth)return;
+const arrange=tokens=>{if(tokens.length)header.dataset.dpFit=tokens.join(' ');else delete header.dataset.dpFit;};
+const tokens=ARRANGEMENTS.find(each=>{arrange(each);return word(heading,TITLES[2],TITLES[0]);})||ARRANGEMENTS.at(-1);
+arrange(tokens);
+if(!TITLES.some(text=>word(heading,text,TITLES[0])))word(heading,TITLES.at(-1),TITLES[0]);
+if(!HINTS.some(text=>word(hint,text,HINTS[0])))hint.dataset.dpCopy='';
+setLiveHidden(tokens.includes('quiet'));}
 function controls(){const search=document.getElementById('ev-search'),filter=document.getElementById('ev-filter'),label=document.getElementById('ev-filter-label'),applied=document.getElementById('ev-filter-applied'),panel=document.getElementById('ev-filter-panel'),pagination=document.getElementById('dp-activity-pagination'),info=document.getElementById('dp-activity-page-info'),pager=document.getElementById('dp-activity-page-btns'),newest=document.getElementById('ev-newest');return search&&filter&&label&&applied&&panel?{search,filter,label,applied,panel,pagination,info,pager,newest}:null;}
 // ── Filters ──
 // The applied filters are the only values a request reads: Available history,
@@ -75,7 +103,9 @@ function restrictions(c){return FILTERS.filter(key=>applied[key]!==DEFAULT_FILTE
 // (Filter Results); with any other combination applied it clears it (Clear
 // Filters), and its DP tooltip and description name what is applied.
 function syncFilter(c){const t=c.filter,clear=restricted(),own=(t.getAttribute('aria-describedby')||'').split(/\s+/).filter(id=>id&&id!==c.applied.id);
-t.dataset.state=clear?'clear':'filter';c.label.textContent=clear?'Clear Filters':'Filter Results';
+t.dataset.state=clear?'clear':'filter';
+// Below 780px the same control reads Filter or Clear; from 780px, Filter Results or Clear Filters.
+c.label.textContent=HANDHELD.matches?(clear?'Clear':'Filter'):(clear?'Clear Filters':'Filter Results');
 if(clear){const text=restrictions(c);c.applied.textContent=text;t.dataset.tooltip=`Clear filters — ${text}`;t.setAttribute('aria-describedby',[c.applied.id,...own].join(' '));t.removeAttribute('popovertarget');t.removeAttribute('aria-haspopup');t.removeAttribute('aria-expanded');}
 else{c.applied.textContent='';t.removeAttribute('data-tooltip');if(own.length)t.setAttribute('aria-describedby',own.join(' '));else t.removeAttribute('aria-describedby');t.setAttribute('popovertarget',c.panel.id);t.setAttribute('aria-haspopup','dialog');t.setAttribute('aria-expanded',String(c.panel.matches(':popover-open')));}}
 // The applied filters become ``next`` (one new investigation, if they changed).
@@ -136,7 +166,12 @@ document.addEventListener('scroll',()=>place(c),{capture:true,passive:true});
 c.newest?.addEventListener('click',()=>{restart();void fetchPage();});
 const toggle=document.getElementById('ev-live');toggle?.addEventListener('change',()=>{live=toggle.checked;choose(live);stopFollowing();syncLive();if(live)catchUp();});
 document.getElementById('event-list')?.addEventListener('scroll',()=>{if(live&&c.newest&&!c.newest.hidden&&following())schedule();},{passive:true});
-syncFilter(c);syncLive();return c;}
+// The handheld header and labels follow the header's size, a font arriving and the 780px mode change.
+const header=document.querySelector('#view-events > .dp-activity-card > .card-header');
+if(header)new ResizeObserver(fitHeader).observe(header);
+document.fonts?.addEventListener('loadingdone',fitHeader);
+HANDHELD.addEventListener('change',()=>{fitHeader();syncFilter(c);});
+syncFilter(c);syncLive();fitHeader();return c;}
 function parseTimestamp(value){if(!value)return null;try{if(typeof parseApiDate==='function')return parseApiDate(value);}catch(_){}const raw=String(value),d=new Date(/[zZ]|[+-]\d\d:\d\d$/.test(raw)?raw:`${raw.replace(' ','T')}Z`);return Number.isNaN(d.getTime())?null:d;}
 function formatTimestamp(value){const d=parseTimestamp(value);if(!d)return String(value||'—');let zone='UTC';try{zone=String(settingsData?.timezone||'').trim()||'UTC';}catch(_){}try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);}catch(_){return d.toLocaleString();}}
 function empty(list,text){const e=document.createElement('div');e.className='empty';e.textContent=text;list.appendChild(e);}
@@ -184,7 +219,7 @@ document.addEventListener('debridpulse:activity-journal-changed',hint);
 document.addEventListener('debridpulse:pulse-connected',()=>{hinted=null;syncLive();if(live)catchUp();});
 document.addEventListener('debridpulse:pulse-lost',()=>{hinted=null;syncLive();});
 // Every entry to the page restores the session's choice; a departure stops following.
-document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();stopFollowing();syncLive();const panel=document.getElementById('ev-filter-panel');if(event.detail?.view!=='events'&&panel?.matches(':popover-open'))panel.hidePopover();});
+document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();stopFollowing();syncLive();const panel=document.getElementById('ev-filter-panel');if(event.detail?.view!=='events'&&panel?.matches(':popover-open'))panel.hidePopover();});
 async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',applied.timeframe);if(applied.level)params.set('level',applied.level);if(applied.category)params.set('category',applied.category);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);};
 // The page turn this request makes is already sliding here: its placeholder crossfades into the page, or -- not yet drawn -- the slide draws it. Every other answer is shown in place.

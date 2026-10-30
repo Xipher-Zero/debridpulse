@@ -103,16 +103,63 @@
   background: var(--dp-state-caution);
 }
 
-/* Too narrow for the title and both controls on one line: the controls take
-   their own line, still right-aligned and still one island beside Refresh. */
-@media (max-width: 560px) {
+/* Handheld (below 780px): the header is one row at every width -- the
+   artwork, the title over the hint, then Auto Refresh and Refresh -- never two.
+   Where it is short, fitHeader (ui-activity-log-runtime.js) gives way in one
+   order: a shorter wording of the title and the hint (drawn in place of their
+   own text, which stays their text; the hint none at all), then Refresh as its
+   glyph alone (its name and tooltip stay), then Auto Refresh out of the row (on
+   while it is). From 780px none of this applies. */
+@media (max-width: 779px) {
   #view-events > .dp-activity-card > .card-header {
-    flex-wrap: wrap;
-    row-gap: 8px;
+    flex-wrap: nowrap;
   }
 
   #view-events .dp-activity-card-title {
-    flex-basis: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #view-events .dp-activity-header-actions {
+    flex: 0 0 auto;
+  }
+
+  #view-events :is(.dp-activity-heading, .dp-activity-subtitle) {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  #view-events .dp-activity-heading[data-dp-copy],
+  #view-events .dp-activity-subtitle[data-dp-copy] {
+    font-size: 0;
+  }
+
+  #view-events .dp-activity-heading[data-dp-copy]::before {
+    content: attr(data-dp-copy) / "";
+    font-size: 16px;
+    letter-spacing: -.01em;
+  }
+
+  #view-events .dp-activity-subtitle[data-dp-copy]::before {
+    content: attr(data-dp-copy) / "";
+    font-size: 10.5px;
+  }
+
+  #view-events .dp-activity-subtitle[data-dp-copy=""] {
+    display: none;
+  }
+
+  #view-events > .dp-activity-card > .card-header[data-dp-fit~="quiet"] .dp-activity-live {
+    display: none;
+  }
+
+  #view-events > .dp-activity-card > .card-header[data-dp-fit~="icon"] .dp-activity-refresh > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
