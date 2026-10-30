@@ -69,7 +69,7 @@ def test_universal_language_bridges_all_major_legacy_component_families() -> Non
     css = UNIVERSAL.read_text(encoding="utf-8")
     required = (
         ".dp-card, .card, .scard, .list-card",
-        ".dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi",
+        ".dp-metric-card, .metric-card, .stat-card, .dash-hero-stat",
         ".dp-field, .input",
         ".dp-tabs, .filter-tabs, .stabs",
         ".dp-tab, .ftab, .stab",

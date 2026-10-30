@@ -206,18 +206,19 @@ def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> Non
     assert shell < dashboard < controls < stats < activity < downloads < transfer
 
 
-def test_activity_log_workspace_holds_from_780px_and_keeps_its_configured_page() -> None:
-    # 1.0.14 four-fix: one full-height workspace from the desktop down to the
-    # tablet floor (780px); the 62vh list is handheld only. The list keeps its
-    # configured page (50/100/250) and scrolls it -- never trimmed to the view.
+def test_activity_log_workspace_holds_at_every_width_and_keeps_its_configured_page() -> None:
+    # 1.0.14: one full-height workspace at every width (below 780px the
+    # shell's 10px insets under the header and above the dock), the event list
+    # its one scroller -- no handheld page growth and no 62vh cap. The list
+    # keeps its configured page (50/100/250) and scrolls it -- never trimmed
+    # to the view.
     css = read("ui-activity-log-page.css")
     assert "@media (min-width: 901px)" not in css and "@media (max-width: 900px)" not in css
-    workspace = css[css.index("@media (min-width: 780px) {\n  #content:has(#view-events.active) {"):]
-    workspace = workspace[:workspace.index("\n}\n")]
+    workspace = css[css.index("\n#content:has(#view-events.active) {"):]
+    workspace = workspace[:workspace.index("/* Canonical user-facing Activity Log naming")]
     assert "height: 100% !important;" in workspace and "overflow-y: hidden;" in workspace
-    handheld = css[css.index("@media (max-width: 779px) {\n  #view-events:is(.active, [data-dp-motion-outgoing]) {"):]
-    handheld = handheld[:handheld.index("\n}\n")]
-    assert "max-height: 62vh;" in handheld and css.count("62vh") == 1
+    assert "@media (min-width: 780px) {\n  #content:has(#view-events.active)" not in css
+    assert "62vh" not in css and "height: auto;" not in css
     runtime = read("ui-activity-log-runtime.js")
     assert "const PAGE_SIZES=[50,100,250],DEFAULT_PAGE_SIZE=100;" in runtime
     assert "params.set('limit',String(pageSize()));" in runtime and "measuredSize" not in runtime

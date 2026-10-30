@@ -5,8 +5,9 @@ const { test, expect } = require('@playwright/test');
  * Activity Log's, Statistics' and Settings' end, with no step at 900/901, the page
  * (#content) never scrolls, only the manual (.dp-help-scroll) does, the header
  * stays put while it scrolls, and the version beneath the view stays on
- * screen. Below 780px the handheld page scrolls, as before. Read from the
- * rendered page. */
+ * screen. Below 780px (1.0.14) it is the same bounded card, between the
+ * shell's 10px insets under the header and above the dock, the manual its
+ * one scroller. Read from the rendered page. */
 
 const SIZES = [[1560, 932], [1180, 760], [900, 932], [780, 932], [780, 700]];
 
@@ -139,11 +140,14 @@ test('only the manual scrolls: the header stays put, every section reaches its e
   expect(await page.evaluate(() => document.getElementById('content').scrollHeight <= document.getElementById('content').clientHeight + 1)).toBe(true);
 });
 
-test('below 780px the handheld page still scrolls, not the card', async ({page}) => {
+test('below 780px the card is bounded and the manual scrolls, not the page', async ({page}) => {
   await page.setViewportSize({width: 700, height: 900});
   await page.goto('/');
   await show(page, 'help');
-  const g = await page.evaluate(() => ({content: document.getElementById('content').scrollHeight > document.getElementById('content').clientHeight + 1,
-    scroller: getComputedStyle(document.querySelector('#view-help .dp-help-scroll')).overflowY}));
-  expect(g).toEqual({content: true, scroller: 'visible'});
+  const g = await page.evaluate(() => {
+    const content = document.getElementById('content'), scroller = document.querySelector('#view-help .dp-help-scroll');
+    return {content: content.scrollHeight > content.clientHeight + 1, scroller: getComputedStyle(scroller).overflowY,
+      owns: scroller.scrollHeight > scroller.clientHeight + 1};
+  });
+  expect(g).toEqual({content: false, scroller: 'auto', owns: true});
 });

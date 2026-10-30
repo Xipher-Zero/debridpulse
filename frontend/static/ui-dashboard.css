@@ -26,9 +26,6 @@
   min-width: 0;
   min-height: var(--dp-metric-card-min-height);
   padding: 17px 18px 15px;
-  display: flex;
-  align-items: center;
-  gap: 13px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--dp-border-default);
@@ -77,7 +74,6 @@
   height: 48px;
 }
 
-#view-dashboard .dhs-body { min-width: 0; }
 #view-dashboard .dhs-val {
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
@@ -328,11 +324,21 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   gap: 14px;
   margin: 0 0 15px;
 }
+/* Each card is its title over its group -- the icon beside the value (and,
+   under the value, any secondary line) -- at every width: the title a row of
+   its own across the top, the group beneath it, both centred on the card, so
+   the title is centred on the group whatever their widths. The card keeps its
+   height; the title takes the top of its interior and the group sits 7px
+   below it, so the tallest heartbeat on the line below (and its glow) stays
+   clear of the group, as it was beneath the old composition. */
 #view-dashboard .dash-hero-stat {
   min-height: 130px;
-  padding: 20px 17px 30px;
-  gap: 14px;
-  align-items: flex-start;
+  padding: 10px 17px 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+  align-content: start;
+  align-items: center;
+  gap: 7px 0;
   border-radius: 12px;
   border: 1px solid rgba(105, 119, 181, .23);
   background:
@@ -346,17 +352,23 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   box-shadow: 0 0 10px color-mix(in srgb, var(--c) 24%, transparent);
 }
 #view-dashboard .dhs-icon {
+  grid-column: 2;
+  grid-row: 2;
   width: 51px;
   min-width: 51px;
   height: 51px;
-  margin-top: 1px;
 }
 #view-dashboard .dhs-icon .dp-icon {
   width: 51px;
   height: 51px;
 }
 #view-dashboard .dhs-body {
-  padding-top: 5px;
+  grid-column: 3;
+  grid-row: 2;
+  /* The group is never narrower than its value: what fitDashboardKpiValues
+     (app.js) measures is what is drawn. */
+  min-width: auto;
+  margin-left: 14px;
   position: relative;
   z-index: 2;
 }
@@ -368,16 +380,20 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 }
 #view-dashboard .dhs-val--sm { font-size: 23px; }
 #view-dashboard .dhs-label {
-  margin-top: 7px;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  justify-self: center;
+  position: relative;
+  z-index: 2;
+  margin-top: 0;
+  text-align: center;
   color: var(--dp-chrome-kpi-label);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: .045em;
 }
 #view-dashboard .dhs-sub {
-  position: absolute;
-  left: 0;
-  top: 46px;
+  margin-top: 4px;
   white-space: nowrap;
   font-size: 8px;
   opacity: .66;
@@ -615,14 +631,11 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    value), still filled with every update and shown again from 1390px. On a
    handheld (779px and below) the strip is two cards, Total Downloads then
    Completed: Total Downloaded leaves the layout too, in the same way, and is
-   shown again from 780px. The two always share one row at equal widths, and
-   the label always heads its value. Each card keeps the icon at its left
-   with the label over the value beside it wherever that fits (the label on
-   one line, the exact count whole); where the card is too narrow for it
-   (fitDashboardKpiValues, app.js, measured on the card itself), the card is
-   stacked: the label across its whole width at the top (wrapping only
-   between its words), then the icon and value, side by side and centred
-   together, beneath it. */
+   shown again from 780px. The two always share one row at equal widths, each
+   its title over its icon and value as at every width (the title wrapping
+   only between its words where the card is too narrow for one line); each
+   card shows its exact count beside its icon wherever that fits, else its
+   compact form (fitDashboardKpiValues, app.js, measured on the card itself). */
 @media (max-width: 1389px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #view-dashboard .dash-hero-stat:has(#s-active, #s-processing, #s-error) { display: none; }
@@ -639,27 +652,14 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    header's right inset. */
 @media (max-width: 779px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #view-dashboard .dash-hero-stat {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    align-content: center;
-    gap: 7px 14px;
-  }
-  #view-dashboard .dhs-icon { grid-column: 1; grid-row: 1 / span 2; margin-top: 0; }
-  #view-dashboard .dhs-body { display: contents; }
-  #view-dashboard :is(.dhs-val, .dhs-label) { position: relative; z-index: 2; }
-  #view-dashboard .dhs-val { grid-column: 2; grid-row: 2; align-self: start; white-space: nowrap; font-size: 22px; }
+  #view-dashboard .dhs-body { margin-left: 8px; }
+  #view-dashboard .dhs-val { white-space: nowrap; font-size: 22px; }
   /* A count too wide to stand beside its icon is drawn in compact notation
      (data-compact, chosen by fitDashboardKpiValues in app.js) at the value's
      own size and spacing; the element's text stays the exact count. */
   #view-dashboard .dhs-val[data-compact] { font-size: 0; }
   #view-dashboard .dhs-val[data-compact]::before { content: attr(data-compact) / ""; font-size: 22px; letter-spacing: -.025em; }
-  #view-dashboard .dhs-label { grid-column: 2; grid-row: 1; align-self: end; margin-top: 0; white-space: nowrap; }
-  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); gap: 9px 0; }
-  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-label { grid-column: 1 / -1; grid-row: 1; align-self: auto; text-align: center; white-space: normal; }
-  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-icon { grid-column: 2; grid-row: 2; }
-  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-val { grid-column: 3; grid-row: 2; align-self: auto; margin-left: 8px; }
+  #view-dashboard .dhs-label { white-space: normal; }
   #view-dashboard .dash-hero-stat:has(#s-size) { display: none; }
   /* The Dashboard fills the content box #content leaves above the dock (its
      10px inset, safe area included: ui-shell-mobile.css), and may grow past
@@ -2012,50 +2012,8 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
   .dhs-icon { font-size: 18px !important; }
 }
 
-/* KPI strip — horizontal metrics bar */
-.dash-kpi-strip {
-  display: flex;
-  align-items: stretch;
-  background: linear-gradient(180deg, var(--surface2), var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0;
-  margin-bottom: 14px;
-  overflow: hidden;
-}
-.dash-kpi {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 10px;
-  text-align: center;
-}
-.dash-kpi-val {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.dash-kpi-lbl {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  margin-top: 4px;
-}
-.dash-kpi-sub {
-  font-size: 10px;
-  color: var(--text3);
-  margin-top: 2px;
-}
 body.light .dash-hero-stat:hover {
   box-shadow: 0 8px 20px rgba(28,44,70,.10);
-}
-@media (max-width: 779px) {
-  .dash-kpi-strip { flex-wrap: wrap; }
-  .dash-kpi { flex: 0 0 calc(50% - 1px); border-bottom: 1px solid var(--border); }
-  .dash-kpi:last-child, .dash-kpi:nth-last-child(2) { border-bottom: none; }
 }
 
 /* Drag & Drop reordering */

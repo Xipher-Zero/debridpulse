@@ -1,9 +1,12 @@
 /* DebridPulse Statistics canonical runtime.
  *
  * The accepted Statistics composition is encoded directly in index.html and
- * ui-statistics-page.css. This runtime owns only Statistics data hydration,
- * dynamic list adaptation, Chart.js rendering, and theme-aware chart paint.
- * It must not construct, reparent, or converge the page shell at runtime.
+ * ui-statistics-page.css. This runtime owns Statistics data hydration,
+ * dynamic list adaptation, Chart.js rendering, theme-aware chart paint, the
+ * one selected period (the period filters' active choice, made only by
+ * setStatsPeriod) and its handheld control, and which wording of the master
+ * header's title and hint is drawn. It must not construct, reparent, or
+ * converge the page shell at runtime.
  *
  * Live while shown: every figure, list and the chart come from ONE accepted
  * GET /stats/detail answer for the selected period. The application's one
@@ -22,7 +25,7 @@
   // Events Severity reads the journal's stored severities, always in this
   // order whatever the counts or the query's order.
   const SEVERITIES = Object.freeze([['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]);
-  const PRIMARY_ORDER = Object.freeze(['downloads', 'completed', 'progress', 'success', 'data']);
+  const PRIMARY_ORDER = Object.freeze(['downloads', 'data']);
   const BREAKDOWNS = Object.freeze([
     {id: 'detail-torrent-status', title: 'Transfer Disposition', kind: 'status'},
     {id: 'detail-file-status', title: 'File Status', kind: 'status'},
@@ -40,33 +43,11 @@
     '1y': 'Completed downloads in the last year.',
     'all': 'Completed downloads across all recorded history.',
   });
-  const SUCCESS_FLAVOR = Object.freeze({
-    '1h': 'Share of finished downloads completed successfully during the last hour.',
-    '24h': 'Share of finished downloads completed successfully during the last 24 hours.',
-    '7d': 'Share of finished downloads completed successfully during the last 7 days.',
-    '30d': 'Share of finished downloads completed successfully during the last 30 days.',
-    '1y': 'Share of finished downloads completed successfully during the last year.',
-    'all': 'Share of finished downloads completed successfully across all recorded history.',
-  });
 
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
     const active = document.querySelector('#stats-period-tabs .ftab.active');
     return (active && active.dataset.period) || '7d';
-  }
-
-  function formatCompactDuration(seconds) {
-    const value = Number(seconds);
-    if (!Number.isFinite(value) || value <= 0) return '—';
-    const totalMinutes = Math.max(1, Math.round(value / 60));
-    const days = Math.floor(totalMinutes / 1440);
-    const hours = Math.floor((totalMinutes % 1440) / 60);
-    const minutes = totalMinutes % 60;
-    const parts = [];
-    if (days) parts.push(days + 'D');
-    if (hours) parts.push(hours + 'H');
-    if (minutes) parts.push(minutes + 'M');
-    return parts.join(' ');
   }
 
   function periodPhrase(period) {
@@ -83,9 +64,6 @@
   function primaryDescription(key, period) {
     const phrase = periodPhrase(period);
     if (key === 'downloads') return 'Downloads added ' + phrase + '.';
-    if (key === 'completed') return 'Downloads completed ' + phrase + '.';
-    if (key === 'progress') return 'Downloads still in progress that were added ' + phrase + '.';
-    if (key === 'success') return SUCCESS_FLAVOR[period] || 'Share of finished downloads completed successfully during the selected period.';
     if (key === 'data') return 'Total data downloaded ' + phrase + '.';
     return '';
   }
@@ -123,9 +101,6 @@
   function updatePrimaryMetrics(totals, period) {
     const values = {
       downloads: totals.torrent_total || 0,
-      completed: totals.completed_count || 0,
-      progress: totals.partial_total || 0,
-      success: totals.success_rate_pct != null ? totals.success_rate_pct + '%' : '—',
       data: fmtSize(totals.completed_size || 0),
     };
     PRIMARY_ORDER.forEach(function (key) {
@@ -660,14 +635,171 @@
     return new Promise(function (resolve) { admit(true, [resolve]); });
   }
 
+  /* The selected period is the period filters' active choice (#stats-period-
+   * tabs): setStatsPeriod is the one way it changes -- a filter pressed from
+   * 780px, or a choice in the handheld menu below it -- and the one load of
+   * that period follows. Both presentations draw that one choice. */
+  const periodTabs = function () { return Array.from(document.querySelectorAll('#stats-period-tabs .ftab')); };
+  const desktop = window.matchMedia('(min-width: 780px)');
+
+  function setStatsPeriod(tab) {
+    periodTabs().forEach(function (each) { each.classList.toggle('active', each === tab); });
+    syncPeriodControl();
+    return loadDetailedStats(tab.dataset.period);
+  }
+
+  /* Below 780px the period filters step aside for one header control: the
+   * clock, the selected period and the DP chevron. Every period's label is
+   * laid out in the same cell and only the selected one is drawn, so the
+   * widest label sets the control's width and a choice moves nothing. It
+   * opens a menu of the filters' own choices (read from them each time it
+   * opens); a choice is setStatsPeriod with its filter. The menu is a popover
+   * (light dismiss, Escape, focus back to the control). */
+  function syncPeriodControl() {
+    const trigger = document.getElementById('stats-period');
+    const labels = trigger && trigger.querySelector('.dp-stats-period-labels');
+    if (!labels) return;
+    const tabs = periodTabs();
+    if (labels.children.length !== tabs.length) {
+      labels.replaceChildren.apply(labels, tabs.map(function (tab) {
+        const label = document.createElement('span');
+        label.dataset.period = tab.dataset.period;
+        label.textContent = tab.textContent.trim();
+        return label;
+      }));
+    }
+    const active = selectedPeriod();
+    Array.from(labels.children).forEach(function (label) { label.toggleAttribute('data-current', label.dataset.period === active); });
+    const shown = tabs.find(function (tab) { return tab.dataset.period === active; });
+    trigger.setAttribute('aria-label', 'Statistics period: ' + (shown ? shown.textContent.trim() : active));
+  }
+
+  function periodOptions(menu) { return Array.from(menu.querySelectorAll('.dp-dropdown__option')); }
+
+  function renderPeriodMenu(menu) {
+    const active = selectedPeriod();
+    menu.replaceChildren.apply(menu, periodTabs().map(function (tab) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'dp-dropdown__option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(tab.dataset.period === active));
+      // One tab stop (the chosen option); the arrow keys move between the rest.
+      option.tabIndex = tab.dataset.period === active ? 0 : -1;
+      option.dataset.period = tab.dataset.period;
+      option.textContent = tab.textContent.trim();
+      return option;
+    }));
+  }
+
+  /* Beneath the control, its right edge on the control's (above it where
+   * there is more room), inside the window; at least the control's width. */
+  const MENU_EDGE = 8, MENU_GAP = 6;
+  function placePeriodMenu() {
+    const trigger = document.getElementById('stats-period');
+    const menu = document.getElementById('stats-period-menu');
+    if (!trigger || !menu || !menu.matches(':popover-open')) return;
+    const box = trigger.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    menu.style.minWidth = box.width + 'px';
+    menu.style.maxHeight = '';
+    const size = menu.getBoundingClientRect();
+    const below = vh - box.bottom - MENU_GAP - MENU_EDGE, above = box.top - MENU_GAP - MENU_EDGE;
+    const up = size.height > below && above > below;
+    const room = Math.max(0, up ? above : below);
+    const height = Math.min(size.height, room);
+    menu.style.maxHeight = room + 'px';
+    menu.style.left = Math.max(MENU_EDGE, Math.min(box.right - size.width, vw - MENU_EDGE - size.width)) + 'px';
+    menu.style.top = (up ? box.top - MENU_GAP - height : box.bottom + MENU_GAP) + 'px';
+  }
+
+  function bindPeriodControl() {
+    const trigger = document.getElementById('stats-period');
+    const menu = document.getElementById('stats-period-menu');
+    if (!trigger || !menu) return;
+    menu.addEventListener('beforetoggle', function (event) { if (event.newState === 'open') renderPeriodMenu(menu); });
+    menu.addEventListener('toggle', function (event) {
+      const open = event.newState === 'open';
+      trigger.setAttribute('aria-expanded', String(open));
+      // Placed while open only: it follows the control through a resize or scroll.
+      const method = open ? 'addEventListener' : 'removeEventListener';
+      window[method]('resize', placePeriodMenu);
+      document[method]('scroll', placePeriodMenu, {capture: true});
+      if (!open) return;
+      placePeriodMenu();
+      const options = periodOptions(menu);
+      (options.find(function (option) { return option.getAttribute('aria-selected') === 'true'; }) || options[0])?.focus({preventScroll: true});
+    });
+    menu.addEventListener('click', function (event) {
+      const option = event.target.closest('.dp-dropdown__option');
+      if (!option) return;
+      const tab = periodTabs().find(function (each) { return each.dataset.period === option.dataset.period; });
+      menu.hidePopover();
+      trigger.focus({preventScroll: true});
+      if (tab) setStatsPeriod(tab);
+    });
+    menu.addEventListener('keydown', function (event) {
+      const options = periodOptions(menu);
+      const at = options.indexOf(document.activeElement);
+      let next = -1;
+      if (event.key === 'ArrowDown') next = (at + 1) % options.length;
+      else if (event.key === 'ArrowUp') next = (at - 1 + options.length) % options.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = options.length - 1;
+      if (next < 0) return;
+      event.preventDefault();
+      options[next].focus({preventScroll: true});
+    });
+    // Focus leaving the menu (Tab, Shift+Tab, anything) closes it: it is never
+    // a trap. (Its options' blur, in the capture phase.)
+    menu.addEventListener('blur', function (event) {
+      if (!menu.contains(event.relatedTarget) && menu.matches(':popover-open')) menu.hidePopover();
+    }, true);
+    // From 780px the period filters themselves are the control: an open menu closes.
+    desktop.addEventListener('change', function () { if (menu.matches(':popover-open')) menu.hidePopover(); });
+    syncPeriodControl();
+  }
+
+  /* The master header's title and hint each show the longest of their three
+   * wordings drawn whole on one line in the room the header leaves them --
+   * beside the period filters from 780px, beside the handheld control below
+   * it ("By The Numbers", "Statistics", "Stats"; "Vibes are not a performance
+   * metric.", "Vibes aren't metrics.", "Just data."). A shorter wording is
+   * drawn in place of the full one (ui-statistics-page.css), which stays the
+   * element's text, so assistive technology reads it whole; while either is
+   * shortened the header's tooltip gives both in full. Decided on the drawn
+   * lines, whenever the header's size changes or a font arrives. */
+  const HEADER_WORDINGS = Object.freeze(['', 'short', 'shortest']);
+  function fitStatisticsHeader() {
+    const header = document.querySelector('#view-stats > .dp-stats-master-header');
+    const title = header && header.querySelector('.dp-stats-master-title');
+    const copy = header && header.querySelector('.dp-stats-heading-copy');
+    if (!copy || !copy.clientWidth) return;
+    [['dpTitle', '.dp-stats-heading'], ['dpHint', '.dp-stats-subtitle']].forEach(function ([key, selector]) {
+      const line = copy.querySelector(selector);
+      const wording = HEADER_WORDINGS.find(function (state) {
+        if (state) header.dataset[key] = state; else delete header.dataset[key];
+        return line.scrollWidth <= line.clientWidth;
+      });
+      if (wording === undefined) header.dataset[key] = HEADER_WORDINGS[HEADER_WORDINGS.length - 1];
+    });
+    const full = copy.querySelector('.dp-stats-heading').textContent.trim() + '. ' + copy.querySelector('.dp-stats-subtitle').textContent.trim();
+    if (header.dataset.dpTitle || header.dataset.dpHint) title.dataset.tooltip = full;
+    else delete title.dataset.tooltip;
+  }
+
   function install() {
     window.loadDetailedStats = loadDetailedStats;
-    window.fmtDuration = formatCompactDuration;
+    window.setStatsPeriod = setStatsPeriod;
     return true;
   }
 
   window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});
   install();
+  bindPeriodControl();
+  const statisticsHeader = document.querySelector('#view-stats > .dp-stats-master-header');
+  if (statisticsHeader) new ResizeObserver(fitStatisticsHeader).observe(statisticsHeader);
+  if (document.fonts) document.fonts.addEventListener('loadingdone', fitStatisticsHeader);
   document.addEventListener('debridpulse:theme-changed', applyChartPalette);
   document.addEventListener('debridpulse:statistics-invalidated', invalidated);
   // A reconnected stream may have missed changes: re-read once.

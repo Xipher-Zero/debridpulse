@@ -146,10 +146,10 @@
       <!-- ── Hero Status Row ──────────────────────────────────────────────── -->
       <div class="dash-hero" id="dash-hero">
         <div class="dash-hero-stat" data-c="orange" data-tooltip="Total Downloads: every transfer currently listed in Downloads.">
+          <div class="dhs-label">Total Downloads</div>
           <div class="dhs-icon"><img src="/icons/dp/card-download.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-total">—</div>
-            <div class="dhs-label">Total Downloads</div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -169,10 +169,10 @@
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="green" data-tooltip="Completed: transfers that have finished downloading.">
+          <div class="dhs-label">Completed</div>
           <div class="dhs-icon"><img src="/icons/dp/card-checkmark.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-completed">—</div>
-            <div class="dhs-label">Completed</div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -192,10 +192,10 @@
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="blue" data-tooltip="Active Now: transfers in progress: downloading, being prepared, paused or extracting.">
+          <div class="dhs-label">Active Now</div>
           <div class="dhs-icon"><img src="/icons/dp/card-play.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-active">—</div>
-            <div class="dhs-label">Active Now</div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -215,10 +215,10 @@
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="yellow" data-tooltip="Processing: transfers a provider is still preparing before download, or Paused while processing is paused.">
+          <div class="dhs-label">Processing</div>
           <div class="dhs-icon"><img src="/icons/dp/card-clock.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-processing">—</div>
-            <div class="dhs-label">Processing</div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -238,10 +238,10 @@
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="red" id="dash-error-card" onclick="nav(document.querySelector('[data-view=torrents]'));setTimeout(()=>setFilter(document.querySelector('.ftab[onclick*=error]'),'error'),100)" style="cursor:pointer" data-tooltip="Errors: transfers that stopped with an error.">
+          <div class="dhs-label">Errors</div>
           <div class="dhs-icon"><img src="/icons/dp/card-error.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-error">—</div>
-            <div class="dhs-label">Errors</div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <defs>
@@ -261,10 +261,10 @@
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="purple" data-tooltip="Total Downloaded: combined size of completed transfers.">
+          <div class="dhs-label">Total Downloaded</div>
           <div class="dhs-icon"><img src="/icons/dp/card-disk.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val dhs-val--sm" id="s-size">—</div>
-            <div class="dhs-label">Total Downloaded</div>
             <div class="dhs-sub" id="s-blocked"></div>
           </div>
         <svg class="dp-card-spark" viewBox="0 0 100 29.42" preserveAspectRatio="none" aria-hidden="true" focusable="false">
@@ -475,8 +475,8 @@
         <div class="dp-stats-master-title">
           <img src="/icons/dp/statistics.svg" alt="" aria-hidden="true" class="dp-icon dp-statistics-title-icon">
           <div class="dp-stats-heading-copy">
-            <span class="dp-stats-heading">By the Numbers</span>
-            <span class="dp-stats-subtitle">Vibes are not a performance metric.</span>
+            <span class="dp-stats-heading" data-short="Statistics" data-shortest="Stats">By The Numbers</span>
+            <span class="dp-stats-subtitle" data-short="Vibes aren't metrics." data-shortest="Just data.">Vibes are not a performance metric.</span>
           </div>
         </div>
         <div class="filter-tabs" id="stats-period-tabs">
@@ -487,22 +487,13 @@
           <div class="ftab" data-period="1y" onclick="setStatsPeriod(this)">1Year</div>
           <div class="ftab" data-period="all" onclick="setStatsPeriod(this)">All Time</div>
         </div>
+        <button type="button" id="stats-period" class="btn btn-ghost dp-stats-period-trigger" popovertarget="stats-period-menu" aria-haspopup="listbox" aria-expanded="false" aria-label="Statistics period"><svg class="lucide dp-utility-icon" data-dp-lucide="clock" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="dp-stats-period-labels" aria-hidden="true"></span><span class="dp-dropdown__chevron" aria-hidden="true"></span></button>
+        <div id="stats-period-menu" class="dp-dropdown-menu dp-stats-period-menu" popover="auto" role="listbox" aria-label="Statistics period"></div>
       </div>
       <div class="card-body dp-stats-master-body">
         <div class="tab-grid" id="detail-stat-cards">
           <div class="metric-card" data-dp-stats-metric="downloads"><div class="metric-label">Downloads Added</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads added during the last 7 days.</div></div>
-          <div class="metric-card" data-dp-stats-metric="completed"><div class="metric-label">Downloads Completed</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads completed during the last 7 days.</div></div>
-          <div class="metric-card" data-dp-stats-metric="progress"><div class="metric-label">In Progress</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads still in progress that were added during the last 7 days.</div></div>
-          <div class="metric-card" data-dp-stats-metric="success"><div class="metric-label">Success Rate</div><div class="metric-value">&#8212;</div><div class="metric-sub">Share of finished downloads completed successfully during the last 7 days.</div></div>
-          <div class="metric-card" data-dp-stats-metric="data"><div class="metric-label">Total Data Downloaded</div><div class="metric-value">&#8212;</div><div class="metric-sub">Total data downloaded during the last 7 days.</div></div>
-        </div>
-        <div class="dp-stats-row-separator" role="separator" aria-label="Overall &amp; Rolling Metrics"><span class="dp-stats-row-separator-rule" aria-hidden="true"></span><span class="dp-stats-row-separator-label">Overall &amp; Rolling Metrics</span><span class="dp-stats-row-separator-rule" aria-hidden="true"></span></div>
-        <div class="dash-kpi-strip dp-stats-history-grid">
-          <div class="dash-kpi dp-stats-kpi-day"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/calendar-24.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-day">&#8212;</div><div class="dash-kpi-lbl">Last 24 Hours</div><div class="dash-kpi-sub">Completed downloads over the last 24 hours.</div></div>
-          <div class="dash-kpi dp-stats-kpi-week"><span class="dp-icon-frame dp-icon-frame--purple dp-kpi-icon"><img src="/icons/dp/calendar-7.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-week">&#8212;</div><div class="dash-kpi-lbl">Last 7 Days</div><div class="dash-kpi-sub">Completed downloads over the last 7 days.</div></div>
-          <div class="dash-kpi dp-stats-kpi-duration"><span class="dp-icon-frame dp-icon-frame--amber dp-kpi-icon"><img src="/icons/dp/clock-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-duration">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD TIME</div><div class="dash-kpi-sub">Average completion time for downloads to finish.</div></div>
-          <div class="dash-kpi dp-stats-kpi-success"><span class="dp-icon-frame dp-icon-frame--green dp-kpi-icon"><img src="/icons/dp/heartbeat-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-success-rate">&#8212;</div><div class="dash-kpi-lbl">LIFETIME SUCCESS RATE</div><div class="dash-kpi-sub">Share of all recorded, finished downloads completed successfully.</div></div>
-          <div class="dash-kpi dp-stats-kpi-size"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/cube.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-size">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD SIZE</div><div class="dash-kpi-sub">Average size of completed downloads.</div></div>
+          <div class="metric-card" data-dp-stats-metric="data"><div class="metric-label"><span class="dp-stats-label-wide">Total Data Downloaded</span><span class="dp-stats-label-handheld">Data Transferred</span></div><div class="metric-value">&#8212;</div><div class="metric-sub">Total data downloaded during the last 7 days.</div></div>
         </div>
         <div class="scard dp-stats-chart dp-list-workspace-surface">
           <div class="scard-header"><img src="/icons/dp/card-download.svg" alt="" aria-hidden="true" class="dp-icon dp-stats-chart-title-icon"><span class="dp-stats-chart-heading-copy"><span class="dp-stats-chart-heading">Completions</span><span id="chart-title" class="dp-stats-chart-subtitle">Completed downloads in the last 7 days.</span></span><span id="completions-legend" class="dp-stats-chart-legend" role="list" aria-label="Completions legend"></span></div>

@@ -45,9 +45,11 @@ def test_everyday_use_covers_the_pages_controls_and_prompts_an_operator_meets():
         "Submitted As", "Route History", "Advanced acquisition details",
         "Discard downloaded progress?", "Transfer Trace Log",
         "Activity Log", "Event Type",
-        "Overall &amp; Rolling Metrics", "Transfer Methods", "Unattributed",
+        "Transfer Methods", "Unattributed",
     ):
         assert phrase in panel, phrase
+    # 1.0.14: Statistics no longer has the Overall & Rolling Metrics section.
+    assert "Rolling Metrics" not in panel
 
 
 def test_how_it_works_explains_routing_failure_scope_and_controls_without_guarantees():

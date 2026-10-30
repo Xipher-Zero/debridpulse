@@ -431,9 +431,11 @@ def test_network_sources_opens_closed_and_settings_keeps_one_workspace_from_780p
         css = read(name)
         assert "(max-width: 900px)" not in css and "(min-width: 901px)" not in css, name
     page = read("ui-settings-page.css")
-    assert "@media (min-width: 780px) {\n  #content:has(#view-settings.active) {\n    overflow-y: hidden;" in page
+    # The bounded workspace holds at every width (1.0.14 mobile master cards);
+    # the bounded Services deck stays a 780px-and-wider layout.
+    assert "\n#content:has(#view-settings.active) {\n  overflow-y: hidden;" in page
     assert "@media (min-width: 780px) {\n  #view-settings .dp-settings-scroll:has([data-panel=\"sources\"]:not([hidden]))" in page
-    assert "@media (max-width: 779px) {\n  #view-settings.dp-settings-clean-view.active {\n    height: auto;" in page
+    assert "#view-settings.dp-settings-clean-view.active {\n    height: auto;" not in page
     assert "@media (min-width: 780px) {\n  /* The Extraction panel owns" in FORM_LAYOUT
     # A centred second-row copy is bounded to the header it sits in.
     assert "max-width: calc(200cqi - 100%);" in page

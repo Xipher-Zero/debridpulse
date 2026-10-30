@@ -270,7 +270,7 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
     ):
         assert fragment in source
     for fragment in (
-        "By the Numbers", "Vibes are not a performance metric.",
+        "By The Numbers", "Vibes are not a performance metric.",
         "dp-statistics-master", "dp-stats-master-header", "dp-stats-master-body",
         "dp-stats-breakdown-grid", "Completed downloads in the last 7 days.",
     ):
@@ -291,12 +291,13 @@ def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
     html = read(INDEX)
     view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
-        "Last 24 Hours", "Completed downloads over the last 24 hours.",
-        "Last 7 Days", "Completed downloads over the last 7 days.",
-        "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
+        "Downloads Added", "Total Data Downloaded", "Data Transferred",
         "/icons/dp/card-download.svg", 'class="dp-stats-chart-heading">Completions</span>',
     ):
         assert fragment in view
+    # 1.0.14: the five history cards are retired.
+    for retired in ("Last 24 Hours", "Last 7 Days", "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE"):
+        assert retired not in view
     for fragment in (
         "MAX_VISIBLE = 10", "TWO_COLUMN_THRESHOLD = 6",
         "entries.slice(0, MAX_VISIBLE)", "Math.ceil(visible.length / 2)",

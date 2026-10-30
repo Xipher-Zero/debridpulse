@@ -47,8 +47,14 @@ def test_statistics_composition_is_direct_static_owner_not_runtime_convergence()
     source = read(STATS)
     app = read(APP)
     style = read(STATIC / "style.css")
-    for fragment in ('class="view card dp-statistics-master" id="view-stats"', 'class="card-header dp-stats-master-header"', 'class="card-body dp-stats-master-body"', 'class="dash-kpi-strip dp-stats-history-grid"', 'class="scard dp-stats-chart dp-list-workspace-surface"', 'class="dp-stats-breakdown-grid"', "By the Numbers", "Vibes are not a performance metric."):
+    for fragment in ('class="view card dp-statistics-master" id="view-stats"', 'class="card-header dp-stats-master-header"', 'class="card-body dp-stats-master-body"', 'class="scard dp-stats-chart dp-list-workspace-surface"', 'class="dp-stats-breakdown-grid"', ">By The Numbers<", ">Vibes are not a performance metric.<"):
         assert fragment in view
+    # The shorter wordings the header draws where the full ones do not fit.
+    assert 'data-short="Statistics" data-shortest="Stats">By The Numbers<' in view
+    assert 'data-short="Vibes aren\'t metrics." data-shortest="Just data.">Vibes are not a performance metric.<' in view
+    assert "By the Numbers" not in view
+    for retired in ("dp-stats-history-grid", "dp-stats-row-separator", "Overall &amp; Rolling Metrics", "dash-kpi"):
+        assert retired not in view
     assert "split-grid" not in view
     assert "📈" not in view
     assert "ensureStatisticsArchitecture" not in source
@@ -81,39 +87,48 @@ def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changin
         assert legacy_label not in view
 
 
-def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_base() -> None:
+def test_statistics_has_exactly_the_two_period_metrics_and_no_retired_cards_or_writers() -> None:
     view = statistics_view()
     source = read(STATS)
+    app = read(APP)
     css = read(STATS_CSS)
-    primary = [
-        'data-dp-stats-metric="downloads"', 'data-dp-stats-metric="completed"',
-        'data-dp-stats-metric="progress"', 'data-dp-stats-metric="success"',
-        'data-dp-stats-metric="data"',
-    ]
-    positions = [view.index(item) for item in primary]
-    assert positions == sorted(positions)
-    historical = ["i-last-day", "i-last-week", "i-avg-duration", "i-success-rate", "i-avg-size"]
-    positions = [view.index(item) for item in historical]
-    assert positions == sorted(positions)
-    for reviewed_copy in (
-        "Last 24 Hours", "Completed downloads over the last 24 hours.",
-        "Last 7 Days", "Completed downloads over the last 7 days.",
-        "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
-        "Share of all recorded, finished downloads completed successfully.",
-    ):
-        assert reviewed_copy in view
-    for flavor in (
-        "Share of finished downloads completed successfully during the last hour.",
-        "Share of finished downloads completed successfully during the last 24 hours.",
-        "Share of finished downloads completed successfully during the last 7 days.",
-        "Share of finished downloads completed successfully during the last 30 days.",
-        "Share of finished downloads completed successfully during the last year.",
-        "Share of finished downloads completed successfully across all recorded history.",
-    ):
-        assert flavor in source
-    assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
+    assert re.findall(r'data-dp-stats-metric="([a-z]+)"', view) == ["downloads", "data"]
+    assert "PRIMARY_ORDER = Object.freeze(['downloads', 'data'])" in source
+    # The data card: Total Data Downloaded from 780px, Data Transferred below it (copy only).
+    assert ('<div class="metric-label"><span class="dp-stats-label-wide">Total Data Downloaded</span>'
+            '<span class="dp-stats-label-handheld">Data Transferred</span></div>') in view
+    assert "data: fmtSize(totals.completed_size || 0)" in source
+    # The retired cards, their writers and their presentation are gone, not hidden.
+    combined = chr(10).join((view, source, app, css))
+    for retired in ("i-last-day", "i-last-week", "i-avg-duration", "i-success-rate", "i-avg-size",
+                    'data-dp-stats-metric="completed"', 'data-dp-stats-metric="progress"', 'data-dp-stats-metric="success"',
+                    "SUCCESS_FLAVOR", "formatCompactDuration", "fmtDuration", "dp-stats-history-grid", "dp-stats-kpi-",
+                    "dp-stats-row-separator", "Downloads Completed", "Success Rate", "MEAN DOWNLOAD", "LIFETIME SUCCESS"):
+        assert retired not in combined, retired
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
+    assert "repeat(5, minmax(0, 1fr))" not in css
     assert "grid-template-rows: 18px 48px minmax(28px, auto)" in css
-    assert "grid-template-rows: 18px 28px minmax(24px, auto)" in css
+
+
+def test_statistics_period_has_one_authority_and_a_handheld_control_projecting_it() -> None:
+    view = statistics_view()
+    source = read(STATS)
+    app = read(APP)
+    css = read(STATS_CSS)
+    # setStatsPeriod is the one way the period changes: the active filter, then its one load.
+    assert "function setStatsPeriod" not in app
+    assert "window.setStatsPeriod = setStatsPeriod;" in source
+    assert source.count("loadDetailedStats(tab.dataset.period)") == 1
+    assert "const active = document.querySelector('#stats-period-tabs .ftab.active');" in source
+    # The handheld control: a popover listbox read from the filters each time it opens.
+    assert ('<button type="button" id="stats-period" class="btn btn-ghost dp-stats-period-trigger" popovertarget="stats-period-menu" '
+            'aria-haspopup="listbox" aria-expanded="false" aria-label="Statistics period">') in view
+    assert 'data-dp-lucide="clock"' in view
+    assert '<div id="stats-period-menu" class="dp-dropdown-menu dp-stats-period-menu" popover="auto" role="listbox" aria-label="Statistics period"></div>' in view
+    assert "if (tab) setStatsPeriod(tab);" in source
+    # From 780px the filters, below it the control: never both.
+    assert "#view-stats .dp-stats-period-trigger {\n  display: none;\n}" in css
+    assert "  #view-stats #stats-period-tabs {\n    display: none;\n  }" in css
 
 
 def test_queue_health_compatibility_surface_is_physically_removed() -> None:
@@ -197,10 +212,11 @@ def test_statistics_is_live_through_the_one_stream_with_bounded_reads_and_no_tog
         listener = listener[:listener.index("\n        );")]
         assert "debridpulse:statistics-invalidated" in listener or "debridpulse:pulse-heartbeat" in listener, forwarded
         assert "loadDetailedStats" not in listener and "/stats/detail" not in listener, forwarded
-    # The heartbeat also ages the Overall & Rolling row, through its own owner, only while shown.
+    # 1.0.14: the heartbeat no longer re-reads /stats for Statistics -- the
+    # Overall & Rolling row it aged is retired; the ping is only forwarded.
     ping = app[app.index("'ping'"):]
     ping = ping[:ping.index("\n        );")]
-    assert "getElementById('view-stats')?.classList.contains('active')" in ping and "loadStats()" in ping
+    assert "loadStats()" not in ping and "view-stats" not in ping
     # The Statistics owner opens no stream, runs no timer loop, stores nothing.
     for absent in ("EventSource", "setInterval", "localStorage", "sessionStorage"):
         assert absent not in stats, absent

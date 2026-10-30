@@ -14,7 +14,7 @@ function answer(period, version) {
   const day = index => `2026-10-${String(10 + index).padStart(2, '0')}`;
   return {
     period,
-    totals: {torrent_total: mark, completed_count: mark + 1, partial_total: mark + 2, success_rate_pct: 50, completed_size: 0},
+    totals: {torrent_total: mark, completed_count: mark + 1, partial_total: mark + 2, success_rate_pct: 50, completed_size: mark},
     torrent_status: [{status: 'completed', count: mark}],
     file_status: [{status: 'completed', count: mark}],
     event_levels: [{level: 'error', count: mark}, {level: 'info', count: 1}],
@@ -57,14 +57,15 @@ const figures = page => page.evaluate(() => {
   const metric = key => document.querySelector(`#detail-stat-cards > [data-dp-stats-metric="${key}"] .metric-value, #detail-stat-cards > [data-dp-stats-metric="${key}"] .stat-value`)?.textContent;
   const first = id => document.querySelector(`#${id} .kv-val`)?.textContent;
   const chart = document.getElementById('daily-chart')._ci;
-  return {downloads: metric('downloads'), completed: metric('completed'), progress: metric('progress'),
+  // 1.0.14: the two period cards, Downloads Added and the data figure.
+  return {downloads: metric('downloads'), data: metric('data'),
           disposition: first('detail-torrent-status'), files: first('detail-file-status'), errors: first('detail-event-levels'),
           methods: first('detail-sources'), bars: chart ? chart.data.datasets[0].data.slice() : null,
           tooltip: chart ? chart.options.plugins.tooltip.callbacks.label({dataIndex: 0})[0] : null};
 });
 const expected = (period, version) => {
   const a = answer(period, version);
-  return {downloads: String(a.totals.torrent_total), completed: String(a.totals.completed_count), progress: String(a.totals.partial_total),
+  return {downloads: String(a.totals.torrent_total), data: `${a.totals.completed_size.toFixed(1)} B`,
           disposition: String(a.torrent_status[0].count), files: String(a.file_status[0].count), errors: String(a.event_levels[0].count),
           methods: String(a.transfer_methods[0].count), bars: a.daily_completions.map(item => item.count),
           tooltip: `Total completions: ${a.daily_completions[0].count}`};
@@ -224,7 +225,7 @@ test('with reduced motion a live change lands without a transition, on the same 
   expect(await page.evaluate(() => document.getElementById('daily-chart')._ci === window.__chart)).toBe(true);
 });
 
-test('app.js forwards the stream\'s statistics_changed and heartbeat; the heartbeat also re-reads the rolling row', async ({page}) => {
+test('app.js forwards the stream\'s statistics_changed and heartbeat', async ({page}) => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.addInitScript(() => {
@@ -236,8 +237,6 @@ test('app.js forwards the stream\'s statistics_changed and heartbeat; the heartb
     await route.fulfill({status: 200, contentType: 'text/event-stream', body: 'event: connected\ndata: {}\n\n'
       + 'event: statistics_changed\ndata: {}\n\nevent: ping\ndata: {}\n\n'});
   }});
-  const rolling = [];
-  page.on('request', request => { if (new URL(request.url()).pathname === '/api/stats') rolling.push(request.url()); });
   const before = state.requests.length;
   state.version = 7;
   await page.waitForTimeout(2100);
@@ -246,9 +245,9 @@ test('app.js forwards the stream\'s statistics_changed and heartbeat; the heartb
   await expect.poll(() => figures(page)).toEqual(expected('7d', 7));
   expect(state.requests.length).toBeGreaterThan(before);
   expect(state.maxOpen).toBe(1);
-  // The ping is forwarded as the heartbeat, and re-reads the Overall & Rolling row's own /stats.
+  // The ping is forwarded as the heartbeat. (1.0.14: it no longer re-reads /stats -- the
+  // Overall & Rolling row that aged with it is retired.)
   await expect.poll(() => page.evaluate(() => window.__beats)).toBeGreaterThanOrEqual(1);
-  await expect.poll(() => rolling.length).toBeGreaterThanOrEqual(1);
 });
 
 test('when buckets roll the same chart keeps labels, family stacks and tooltips index-aligned', async ({page}) => {

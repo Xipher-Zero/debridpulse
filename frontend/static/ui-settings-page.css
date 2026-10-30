@@ -6,30 +6,29 @@
  * universal UI language rather than being recreated here.
  */
 
-/* Desktop and tablet (780px and wider, the shell's one mode change) follow the
-   same shell-height contract as Downloads and Activity: #content already owns
-   the 24px lower datum, so Settings fills that box rather than recomputing
-   viewport height. */
-@media (min-width: 780px) {
-  #content:has(#view-settings.active) {
-    overflow-y: hidden;
-  }
+/* At every width Settings follows the same shell-height contract as the
+   Activity Log and Statistics: #content already owns the lower datum (from
+   780px its 24px; below 780px the 10px inset above the dock, as at the top
+   under the header), so Settings fills that box rather than recomputing
+   viewport height, and only its deck (.dp-settings-scroll) scrolls. */
+#content:has(#view-settings.active) {
+  overflow-y: hidden;
+}
 
-  #view-settings.dp-settings-clean-view.active {
-    display: flex !important;
-    flex-direction: column;
-    height: 100% !important;
-    min-height: 0;
-    overflow: visible;
-  }
+#view-settings.dp-settings-clean-view.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100% !important;
+  min-height: 0;
+  overflow: visible;
+}
 
-  #view-settings > .dp-settings-master-card {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
-    margin-bottom: 0 !important;
-  }
+#view-settings > .dp-settings-master-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0 !important;
 }
 
 /* ── Master header ───────────────────────────────────────────────────── */
@@ -1402,18 +1401,6 @@
 }
 
 @media (max-width: 779px) {
-  #view-settings.dp-settings-clean-view.active {
-    height: auto;
-    overflow: visible;
-  }
-
-  #view-settings > .dp-settings-master-card,
-  #view-settings .dp-settings-master-body,
-  #view-settings .dp-settings-scroll {
-    min-height: auto;
-    overflow: visible;
-  }
-
   /* Stacked: the informational block, the field and the action each take the
      full width, in that order. The status stays inside the field. */
   #view-settings .dp-settings-alldebrid-key-row {

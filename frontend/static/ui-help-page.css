@@ -6,31 +6,30 @@
  * geometry, documentation typography, accordions, and content flow only.
  */
 
-/* From the shell's 780px mode change up -- the same boundary as Settings,
-   Downloads, the Activity Log and Statistics -- Help is the bounded master
-   card: #content does not scroll, the card fills the view and only the manual
-   (.dp-help-scroll) scrolls, so the version beneath the view stays on screen.
-   Below 780px the handheld page scrolls (below). */
-@media (min-width: 780px) {
-  #content:has(#view-help.active) {
-    overflow-y: hidden;
-  }
+/* At every width -- as Settings, the Activity Log and Statistics -- Help is
+   the bounded master card: #content does not scroll, the card fills the
+   content box the shell gives the page (from 780px its desktop gutters, so
+   the version beneath the view stays on screen; below 780px the 10px inset
+   under the header and above the dock), its header stays and only the manual
+   (.dp-help-scroll) scrolls. */
+#content:has(#view-help.active) {
+  overflow-y: hidden;
+}
 
-  #view-help.dp-help-clean-view.active {
-    display: flex !important;
-    flex-direction: column;
-    height: 100% !important;
-    min-height: 0;
-    overflow: visible;
-  }
+#view-help.dp-help-clean-view.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100% !important;
+  min-height: 0;
+  overflow: visible;
+}
 
-  #view-help > .dp-help-master-card {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
-    margin-bottom: 0 !important;
-  }
+#view-help > .dp-help-master-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0 !important;
 }
 
 /* Desktop and tablet (780px and wider): one row, as Settings. The
@@ -440,18 +439,6 @@
   #view-help .dp-help-master-header {
     min-height: 0;
     align-items: stretch;
-  }
-
-  /* Handheld: the page scrolls, not the card. */
-  #view-help.dp-help-clean-view.active {
-    height: auto;
-    min-height: 0;
-    overflow: visible;
-  }
-
-  #view-help .dp-help-master-body,
-  #view-help .dp-help-scroll {
-    overflow: visible;
   }
 
   #view-help .dp-help-header-copy {

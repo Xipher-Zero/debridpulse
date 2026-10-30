@@ -1,10 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 Statistics cleanup: copy and card titles, the separator between
- * the period and the overall/rolling KPI rows (and the page still fitting
- * where it did), Completions bucket labels in the viewer's date preference,
+/* DP 1.0.13 Statistics cleanup: copy and card titles, the page still fitting
+ * where it did, Completions bucket labels in the viewer's date preference,
  * whole-number count ticks, Transfer Methods as the server names them, and
- * Events Severity in its fixed order. */
+ * Events Severity in its fixed order. (1.0.14 retired the overall/rolling KPI
+ * row and its separator: their cases now assert that they are gone.) */
 
 const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
 const bucket = (date, count) => ({date, count, premium: 0, network: 0, unattributed: count});
@@ -60,9 +60,7 @@ const labels = page => page.evaluate(() => {
 test('copy and card titles', async ({ page }) => {
   await boot(page);
   await show(page, '7d');
-  const kpi = page.locator('.dp-stats-kpi-success');
-  await expect(kpi.locator('.dash-kpi-lbl')).toHaveText('LIFETIME SUCCESS RATE');
-  await expect(kpi.locator('.dash-kpi-sub')).toHaveText('Share of all recorded, finished downloads completed successfully.');
+  await expect(page.locator('#view-stats .dash-kpi')).toHaveCount(0);
   const titles = await page.locator('#view-stats .dp-stats-breakdown-grid .card-title').allTextContents();
   expect(titles).toEqual(['Transfer Disposition', 'File Status', 'Events Severity', 'Transfer Methods']);
   const view = await page.locator('#view-stats').innerText();
@@ -111,50 +109,15 @@ test('Events Severity is always Errors, Warnings, Informational', async ({ page 
   expect(await rowsOf(page, 'detail-event-levels')).toEqual([['Errors', '1'], ['Informational', '9']]);
 });
 
-test('one separator, between the period row and the overall/rolling row, centred and about half as wide', async ({ page }) => {
+test('no separator and no overall/rolling row: the period choice drives the two cards, then the chart', async ({ page }) => {
   await boot(page);
   await show(page, '7d');
-  const separator = page.locator('#view-stats [role="separator"]');
-  await expect(separator).toHaveCount(1);
-  await expect(separator).toHaveAttribute('aria-label', 'Overall & Rolling Metrics');
-  await expect(separator).toHaveText('Overall & Rolling Metrics');
-  const geometry = await page.evaluate(() => {
-    const box = selector => document.querySelector(selector).getBoundingClientRect();
-    const sep = document.querySelector('#view-stats [role="separator"]');
-    const body = document.querySelector('#view-stats > .dp-stats-master-body');
-    const style = getComputedStyle(body);
-    const inner = body.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const probe = document.createElement('span');
-    probe.style.color = 'var(--dp-text-muted)';
-    document.body.append(probe);
-    const muted = getComputedStyle(probe).color;
-    probe.remove();
-    return {
-      before: sep.previousElementSibling.id, after: sep.nextElementSibling.className,
-      sep: box('#view-stats [role="separator"]').toJSON(), first: box('#detail-stat-cards').toJSON(),
-      second: box('.dp-stats-history-grid').toJSON(), inner, bodyLeft: body.getBoundingClientRect().left + parseFloat(style.paddingLeft),
-      colour: getComputedStyle(sep.querySelector('.dp-stats-row-separator-label')).color, muted,
-      rules: [...sep.querySelectorAll('.dp-stats-row-separator-rule')].map(rule => rule.getBoundingClientRect().width),
-    };
-  });
-  expect(geometry.before).toBe('detail-stat-cards');
-  expect(geometry.after).toContain('dp-stats-history-grid');
-  expect(geometry.sep.top).toBeGreaterThanOrEqual(geometry.first.bottom);
-  expect(geometry.sep.bottom).toBeLessThanOrEqual(geometry.second.top);
-  // Room to breathe, the same above and below: the body's own row gap.
-  const [above, below] = [geometry.sep.top - geometry.first.bottom, geometry.second.top - geometry.sep.bottom];
-  expect(above).toBeGreaterThanOrEqual(10);
-  expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
-  expect(Math.abs(geometry.sep.width - geometry.inner / 2)).toBeLessThanOrEqual(1);
-  expect(Math.abs(geometry.sep.left + geometry.sep.width / 2 - (geometry.bodyLeft + geometry.inner / 2))).toBeLessThanOrEqual(1);
-  expect(geometry.colour).toBe(geometry.muted);
-  expect(geometry.rules).toHaveLength(2);
-  geometry.rules.forEach(width => expect(width).toBeGreaterThan(16));
-  // The period selector still drives only the first row.
-  const second = await page.locator('.dp-stats-history-grid').innerText();
+  await expect(page.locator('#view-stats [role="separator"]')).toHaveCount(0);
+  await expect(page.locator('#view-stats .dp-stats-history-grid')).toHaveCount(0);
+  expect(await page.evaluate(() => document.getElementById('detail-stat-cards').nextElementSibling.className)).toContain('dp-stats-chart');
   await page.locator('#stats-period-tabs .ftab[data-period="30d"]').click();
-  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric="completed"] .metric-sub')).toHaveText('Downloads completed during the last 30 days.');
-  expect(await page.locator('.dp-stats-history-grid').innerText()).toBe(second);
+  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric="downloads"] .metric-sub')).toHaveText('Downloads added during the last 30 days.');
+  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric="data"] .metric-sub')).toHaveText('Total data downloaded during the last 30 days.');
 });
 
 // The whole chart -- plot, zero line and x-axis -- lies inside its card.
@@ -167,11 +130,11 @@ const chartInsideCard = page => page.evaluate(() => {
 });
 
 // 1440x914 is the shortest desktop height at which the page fit before the
-// separator; 950 lies in the band where the x-axis used to be cut off. (With
+// (since retired) separator; 950 lies in the band where the x-axis used to be cut off. (With
 // the 22px desktop inset, af5496ef, no method's label wraps at these widths;
 // the wrapped label is covered at 780px below.)
 for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 914], [1920, 1080]]) {
-  test(`the page still fits at ${width}x${height} with the separator, and the whole chart shows`, async ({ page }) => {
+  test(`the page still fits at ${width}x${height}, and the whole chart shows`, async ({ page }) => {
     await boot(page, {width, height, methods: ALL_METHODS});
     await show(page, '7d');
     const boxes = await page.evaluate(() => ({
@@ -210,20 +173,15 @@ test('at the 780px floor a wrapped method label leaves the four boxes one equal 
   expect(new Set(boxes.heights).size).toBe(1);
 });
 
-test('on a phone the page keeps scrolling and the separator keeps its rows apart', async ({ page }) => {
+test('on a phone the card\'s body scrolls, not the page, and the whole chart shows', async ({ page }) => {
   await boot(page, {width: 390, height: 844});
   await show(page, '7d');
   const layout = await page.evaluate(() => {
-    const box = selector => document.querySelector(selector).getBoundingClientRect();
-    const content = document.getElementById('content');
-    const sep = box('#view-stats [role="separator"]');
-    return {scrolls: content.scrollHeight > content.clientHeight, sep: sep.toJSON(),
-            first: box('#detail-stat-cards').bottom, second: box('.dp-stats-history-grid').top, viewport: innerWidth};
+    const content = document.getElementById('content'), body = document.querySelector('#view-stats > .dp-stats-master-body');
+    return {page: content.scrollHeight > content.clientHeight + 1, body: body.scrollHeight > body.clientHeight + 1};
   });
-  expect(layout.scrolls).toBe(true);
-  expect(layout.sep.top).toBeGreaterThanOrEqual(layout.first);
-  expect(layout.sep.bottom).toBeLessThanOrEqual(layout.second);
-  expect(layout.sep.right).toBeLessThanOrEqual(layout.viewport);
+  expect(layout).toEqual({page: false, body: true});
+  await page.evaluate(() => document.querySelector('#view-stats > .dp-stats-master-body').scrollTo(0, 99999));
   const chart = await chartInsideCard(page);
   expect(chart.canvasWithinCard).toBe(true);
   expect(chart.axisWithinCard).toBe(true);

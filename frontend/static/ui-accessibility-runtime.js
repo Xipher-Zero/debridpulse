@@ -754,8 +754,10 @@
       });
     });
     document.addEventListener('debridpulse:downloads-rendered', installFilterSemantics);
+    // A filter, a Help tab, or a period chosen from the handheld Statistics
+    // menu (the period filters' own choice, ui-statistics.js).
     document.addEventListener('click', function (event) {
-      if (!event.target.closest('.filter-tabs .ftab, .dp-help-tabs .stab')) return;
+      if (!event.target.closest('.filter-tabs .ftab, .dp-help-tabs .stab, #stats-period-menu [role="option"]')) return;
       queueMicrotask(function () {
         installFilterSemantics();
         installTabSemantics();

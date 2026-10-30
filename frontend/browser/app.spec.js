@@ -182,7 +182,7 @@ test('Statistics canonical shell and period controls render and transition', asy
   await openView(page, 'stats', 'Statistics');
 
   await expect(page.locator('.dp-statistics-master')).toBeVisible();
-  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric]')).toHaveCount(5);
+  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric]')).toHaveCount(2);
   const period = page.locator('#stats-period-tabs .ftab[data-period="24h"]');
   await period.click();
   await expect(period).toHaveClass(/\bactive\b/);

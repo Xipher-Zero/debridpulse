@@ -2,11 +2,11 @@ const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.14 handheld Dashboard composition (779px and below):
  * - Exactly two KPI cards, Total Downloads then Completed, side by side at
- *   equal widths at every width. The label always heads its value: each card
- *   keeps its icon at its left with the label over the value beside it
- *   wherever that fits (label on one line, the exact count whole); only where
- *   the card itself is too narrow is it stacked -- the label centred across
- *   the top, the icon and value centred together beneath it.
+ *   equal widths at every width. Each is its title over its group, as at
+ *   every width: the title centred across the top (wrapping only between its
+ *   words), the icon and value centred together beneath it; the count is drawn
+ *   whole beside the icon wherever it fits, else in compact notation. (1.0.14
+ *   retired the former side-by-side arrangement, title beside the icon.)
  * - Quick Add's header is one row: the icon and title over a one-line
  *   subtitle on the left, Recover All (a 44px target) at the right inset. It
  *   gives way in one order where it is short: Recover All keeps only its glyph
@@ -75,16 +75,9 @@ const composition = page => page.evaluate(() => {
         return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
       });
       const style = getComputedStyle(node), own = node.getBoundingClientRect();
-      // Would the side-by-side arrangement fit (the label's one line and the exact count beside the icon)? Laid out
-      // side by side, measured, and put back.
-      const stacked = node.dataset.dpKpi === 'stacked', compact = value.dataset.compact;
-      delete node.dataset.dpKpi; delete value.dataset.compact;
-      const column = box(label).width;
-      const sideBySideFits = textBox(label).width <= column + 0.01 && textBox(value).width <= column + 0.01;
-      if (stacked) node.dataset.dpKpi = 'stacked';
-      if (compact !== undefined) value.dataset.compact = compact;
-      return {label: label.textContent, value: value.textContent, box: box(node), icon: box(node.querySelector('.dhs-icon')), stacked, sideBySideFits,
-        valueText: textBox(value), labelText: textBox(label), labelLines: lines(label), wordsWhole: words.every(count => count === 1),
+      return {label: label.textContent, value: value.textContent, box: box(node), icon: box(node.querySelector('.dhs-icon')), kpiMode: node.dataset.dpKpi ?? null,
+        // The value as drawn: its compact form (::before) where it has one, else its text.
+        valueText: value.dataset.compact ? box(value) : textBox(value), labelText: textBox(label), labelLines: lines(label), wordsWhole: words.every(count => count === 1),
         inner: {left: own.left + parseFloat(style.paddingLeft), right: own.right - parseFloat(style.paddingRight)},
         spark: box(node.querySelector('.dp-card-spark'))};
     }),
@@ -146,10 +139,9 @@ function expectAddInField(c, at, height) {
   expect(Math.round(c.add.height), at).toBe(height);
 }
 
-// The two KPI cards: one row, equal widths, the label above the value in
-// either arrangement -- side by side wherever it fits, else stacked (the label
-// centred across the top, the icon and value centred together beneath it) --
-// nothing clipped, its ECG at its bottom.
+// The two KPI cards: one row, equal widths, each its title centred over its
+// group (the icon and value centred together beneath it), nothing clipped,
+// its ECG at its bottom.
 function expectKpis(c, at) {
   expect(c.cards.map(card => card.label), at).toEqual(['Total Downloads', 'Completed']);
   const [first, second] = c.cards;
@@ -159,21 +151,14 @@ function expectKpis(c, at) {
   for (const card of c.cards) {
     const where = `${at} ${card.label}`;
     const middle = rect => (rect.top + rect.bottom) / 2;
-    expect(card.stacked, `${where}: stacked exactly where side by side does not fit`).toBe(!card.sideBySideFits);
+    expect(card.kpiMode, `${where}: one composition (no data-dp-kpi arrangement)`).toBe(null);
+    expect(card.labelText.bottom, `${where}: the label above the icon`).toBeLessThanOrEqual(card.icon.top);
     expect(card.labelText.bottom, `${where}: the label above the value`).toBeLessThanOrEqual(card.valueText.top);
-    if (card.stacked) {
-      expect(card.labelText.bottom, `${where}: the label above the icon`).toBeLessThanOrEqual(card.icon.top);
-      expect(Math.abs(middle(card.icon) - middle(card.valueText)), `${where}: icon and value centred together`).toBeLessThanOrEqual(1);
-      const group = {left: card.icon.left, right: card.valueText.right};
-      expect(Math.abs((group.left + group.right) / 2 - (card.box.left + card.box.right) / 2), `${where}: the group centred in the card`).toBeLessThanOrEqual(1);
-      expect(Math.abs((card.labelText.left + card.labelText.right) / 2 - (card.box.left + card.box.right) / 2), `${where}: the label centred`).toBeLessThanOrEqual(1);
-    } else {
-      // The icon at the left; beside it the label's one line over the value, starting together; the icon centred on them.
-      expect(card.icon.right, `${where}: the label and value beside the icon`).toBeLessThanOrEqual(Math.min(card.labelText.left, card.valueText.left));
-      expect(Math.abs(card.labelText.left - card.valueText.left), `${where}: label and value aligned`).toBeLessThanOrEqual(1);
-      expect(card.labelLines, `${where}: the label on one line`).toBe(1);
-      expect(Math.abs(middle(card.icon) - (card.labelText.top + card.valueText.bottom) / 2), `${where}: the icon centred on label and value`).toBeLessThanOrEqual(2);
-    }
+    expect(card.icon.right, `${where}: the value beside the icon`).toBeLessThanOrEqual(card.valueText.left);
+    expect(Math.abs(middle(card.icon) - middle(card.valueText)), `${where}: icon and value centred together`).toBeLessThanOrEqual(1.5);
+    const group = {left: card.icon.left, right: card.valueText.right};
+    expect(Math.abs((group.left + group.right) / 2 - (card.box.left + card.box.right) / 2), `${where}: the group centred in the card`).toBeLessThanOrEqual(1);
+    expect(Math.abs((card.labelText.left + card.labelText.right) / 2 - (group.left + group.right) / 2), `${where}: the label centred on the group`).toBeLessThanOrEqual(1);
     expect(card.icon.left >= card.inner.left - 0.5 && card.valueText.right <= card.inner.right + 0.5, `${where}: icon and value within the card`).toBe(true);
     expect(card.labelText.left >= card.inner.left - 0.5 && card.labelText.right <= card.inner.right + 0.5, `${where}: the label within the card`).toBe(true);
     expect(card.wordsWhole, `${where}: a word of the label split`).toBe(true);
@@ -227,12 +212,11 @@ test.describe('handheld Dashboard composition', () => {
       expect([c.pageWidth, c.contentOverflow], `${at}: horizontal overflow`).toEqual([width, false]);
     }
     expect(order, 'the shorter wording is reached at 320px').toBe(2);
-    // Back to a wider card: the side-by-side arrangement returns by itself wherever it fits.
+    // Back to a wider card: the exact count returns by itself wherever it fits.
     await page.setViewportSize({width: 779, height: 844});
     await settle(page);
     const back = await composition(page);
     expectKpis(back, '779px again');
-    expect(back.cards.map(card => card.stacked), '779px again: side by side').toEqual([false, false]);
     await page.setViewportSize({width: 320, height: 844});
     await settle(page);
     await page.screenshot({path: 'test-results/checkpoint-dashboard-mobile-320.png', clip: {x: 0, y: 0, width: 320, height: 560}});
@@ -269,17 +253,16 @@ test.describe('handheld Dashboard composition', () => {
       const value = document.getElementById(id), card = value.closest('.dash-hero-stat'), style = getComputedStyle(card);
       const own = card.getBoundingClientRect(), box = value.getBoundingClientRect();
       const inner = own.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
-      // The room beside the icon: past the value's margin when stacked, past the column gap side by side.
-      const stacked = card.dataset.dpKpi === 'stacked';
+      // The room beside the icon: past the value's own gap from it.
       const room = own.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth) - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-        - card.querySelector('.dhs-icon').getBoundingClientRect().width - (stacked ? parseFloat(getComputedStyle(value).marginLeft) : parseFloat(style.columnGap));
+        - card.querySelector('.dhs-icon').getBoundingClientRect().width - parseFloat(getComputedStyle(card.querySelector('.dhs-body')).marginLeft);
       // Each form's drawn width, tried on the value itself and put back.
       const kept = value.dataset.compact;
       const width = form => { if (form === null) delete value.dataset.compact; else value.dataset.compact = form; return value.getBoundingClientRect().width; };
       const forms = [null, ...[3, 2].map(digits => new Intl.NumberFormat('en', {notation: 'compact', maximumSignificantDigits: digits}).format(Number(value.textContent)))];
       const widths = forms.map(width);
       if (kept === undefined) delete value.dataset.compact; else value.dataset.compact = kept;
-      return {text: value.textContent, shown: kept ?? null, forms, stacked, tooltip: card.dataset.tooltip, fits: widths.map(w => w <= room), inside: box.right <= own.right - parseFloat(style.borderRightWidth),
+      return {text: value.textContent, shown: kept ?? null, forms, tooltip: card.dataset.tooltip, fits: widths.map(w => w <= room), inside: box.right <= own.right - parseFloat(style.borderRightWidth),
         within: box.right <= inner + 0.5, alias: getComputedStyle(value, '::before').content};
     }));
     const expectFitted = async (at, exact) => {
@@ -292,8 +275,6 @@ test.describe('handheld Dashboard composition', () => {
           : `${tooltips[index]} Exact count: ${new Intl.NumberFormat('en').format(exact)}.`);
         expect(card.inside, `${where}: nothing drawn past the card`).toBe(true);
         if (at.startsWith('780') || at.startsWith('1440')) { expect([card.shown, card.alias], where).toEqual([null, 'none']); continue; }
-        // Side by side only with the exact count; a compact form only on a stacked card.
-        if (!card.stacked) expect(card.shown, `${where}: side by side with the exact count`).toBe(null);
         const chosen = card.forms.indexOf(card.shown);
         const first = card.fits.indexOf(true);
         // The most precise form that fits; where none does, the shortest compact one.
@@ -325,11 +306,12 @@ test.describe('handheld Dashboard composition', () => {
     await page.locator('#view-dashboard .dash-hero-stat').nth(1).hover();
     await expect(page.locator('#dp-tooltip')).toHaveText(`${tooltips[1]} Exact count: 1,234,567.`);
     await page.mouse.move(0, 0);
-    // Drawn compact, the card still reads its exact count to assistive technology.
+    // Drawn compact, the card still reads its exact count to assistive technology
+    // (1.0.14: in the order drawn, the title before its value).
     await page.setViewportSize({width: 375, height: 844});
     await settle(page);
     expect(await page.locator('#s-completed').getAttribute('data-compact')).toBe('1.23M');
-    expect(await page.locator('#view-dashboard .dash-hero-stat').nth(1).ariaSnapshot()).toContain('1234567 Completed');
+    expect(await page.locator('#view-dashboard .dash-hero-stat').nth(1).ariaSnapshot()).toContain('Completed 1234567');
     // Live: a count that crosses the room re-fits at once, both ways, at one width.
     await page.setViewportSize({width: 375, height: 844});
     await settle(page);

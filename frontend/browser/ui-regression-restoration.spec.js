@@ -116,7 +116,7 @@ test('Downloads and Activity Log master-card titles change without touching side
  await expect(page.locator('#sidebar .nav-item[data-view="events"] .nav-label')).toHaveText('Activity Log');
  await expect(page.locator('#page-title')).toHaveText('Activity Log');
  await page.locator('#sidebar .nav-item[data-view="stats"]').click();
- await expect(page.locator('.dp-stats-heading')).toHaveText('By the Numbers');
+ await expect(page.locator('.dp-stats-heading')).toHaveText('By The Numbers');
 });
 
 /* DP 1.0.13 Settings consolidation.

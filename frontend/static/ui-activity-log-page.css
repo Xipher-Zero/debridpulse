@@ -299,41 +299,28 @@ body.light #view-events .dp-activity-search-band {
   }
 }
 
-/* ── Full-height desktop and tablet workspace ────────────────────────── */
-/* One workspace from the widest desktop down to the tablet floor (780px), as
-   Statistics and Downloads: the card fills the content height and the event
-   list scrolls its configured page inside it. The global header changes at
-   900px on its own; the workspace does not change with it. */
-@media (min-width: 780px) {
-  #content:has(#view-events.active) {
-    overflow-y: hidden;
-  }
-
-  #view-events:is(.active, [data-dp-motion-outgoing]) {
-    display: flex !important;
-    flex-direction: column;
-    height: 100% !important;
-    min-height: 0;
-    overflow: visible;
-  }
-
-  #view-events:is(.active, [data-dp-motion-outgoing]) > .dp-activity-card {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
+/* ── Full-height workspace ────────────────────────────────────────────── */
+/* One workspace at every width, as Statistics: the card fills the content box
+   the shell gives the page (#content: from 780px its desktop gutters, below
+   it the 10px inset under the header and above the dock), its header, search
+   and pagination stay and the event list scrolls its configured page inside
+   it; #content itself does not. The global header changes at 900px on its
+   own; the workspace does not change with it. */
+#content:has(#view-events.active) {
+  overflow-y: hidden;
 }
 
-/* Handheld: the page grows with its card, and the event list is bounded by
-   the window. */
-@media (max-width: 779px) {
-  #view-events:is(.active, [data-dp-motion-outgoing]) {
-    height: auto;
-    overflow: visible;
-  }
+#view-events:is(.active, [data-dp-motion-outgoing]) {
+  display: flex !important;
+  flex-direction: column;
+  height: 100% !important;
+  min-height: 0;
+  overflow: visible;
+}
 
-  #view-events .dp-activity-list {
-    max-height: 62vh;
-  }
+#view-events:is(.active, [data-dp-motion-outgoing]) > .dp-activity-card {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Canonical user-facing Activity Log naming retained from the accepted review.

@@ -82,20 +82,21 @@ def test_dashboard_canonical_owner_keeps_reviewed_surface_calibration() -> None:
     require_token(css, "--dp-table-head-surface", "#1d1930", "#f2eff8")
 
 
-def test_dashboard_keeps_one_primary_metric_row_and_statistics_owns_history_directly() -> None:
+def test_dashboard_keeps_one_primary_metric_row_and_statistics_history_is_retired() -> None:
     dashboard = DASHBOARD_CSS.read_text(encoding="utf-8")
     statistics = STATISTICS_CSS.read_text(encoding="utf-8")
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "grid-template-columns: repeat(6" in dashboard
     assert "#view-dashboard .dash-kpi-strip--dashboard" not in dashboard
-    assert "#view-stats .dp-stats-history-grid" not in dashboard
-    assert "#view-stats .dp-stats-history-grid" in statistics
+    # 1.0.14: the Statistics history cards are retired with their presentation.
+    assert "dp-stats-history-grid" not in dashboard and "dp-stats-history-grid" not in statistics
+    assert "dash-kpi" not in dashboard and "dash-kpi" not in statistics
     assert "moveDashboardKpisToStatistics" not in app
     assert "decorateHistoricalKpis" not in app
     assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
     stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
-    assert 'class="dash-kpi-strip dp-stats-history-grid"' in stats_view
+    assert "dp-stats-history-grid" not in stats_view and "dash-kpi" not in stats_view
 
 def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None:
     index = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -106,10 +107,11 @@ def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None
     )
     missing = [asset for asset in dashboard_assets if asset not in dashboard_view]
     assert not missing, f"Dashboard is missing canonical assets: {missing}"
-    statistics_assets = ("heartbeat-outline.svg", "calendar-24.svg", "calendar-7.svg", "clock-outline.svg", "cube.svg")
     stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
-    missing = [asset for asset in statistics_assets if asset not in stats_view]
-    assert not missing, f"Statistics is missing canonical assets: {missing}"
+    assert "statistics.svg" in stats_view
+    # 1.0.14: the five history cards and their artwork are retired from Statistics.
+    for retired in ("heartbeat-outline.svg", "calendar-24.svg", "calendar-7.svg", "clock-outline.svg", "cube.svg"):
+        assert retired not in stats_view
     assert "verified-badge.svg" not in stats_view
 
 def test_quick_add_preserves_existing_functional_controls() -> None:
@@ -136,18 +138,18 @@ def test_dashboard_responsive_contract_preserves_desktop_mockup() -> None:
     assert "@media (max-width: 640px)" not in css
     assert "grid-template-columns: repeat(3" in css
     assert "grid-template-columns: repeat(2" in css
-    # The handheld strip is two equal cards on one row at every width; the
-    # label heads its value in both of a card's arrangements: the icon at the
-    # left with the label over the value beside it, or, only where the card
-    # is too narrow for that (fitDashboardKpiValues, data-dp-kpi), stacked --
-    # the full-width label at the top, the icon and value centred beneath
-    # (the former one-column, 1fr 1fr and wrapping strips are retired).
+    # The handheld strip is two equal cards on one row at every width. 1.0.14:
+    # every card at every width is its title over its group -- a row of its
+    # own across the top, the icon and value centred beneath it (the former
+    # handheld side-by-side and data-dp-kpi stacked arrangements are retired);
+    # on a handheld the title may wrap between its words and the value is
+    # drawn compact where it does not fit beside the icon.
     assert "#view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }" in css
-    assert "grid-template-columns: auto minmax(0, 1fr);" in css
-    assert "#view-dashboard .dhs-label { grid-column: 2; grid-row: 1; align-self: end; margin-top: 0; white-space: nowrap; }" in css
-    assert "#view-dashboard .dhs-val { grid-column: 2; grid-row: 2;" in css
-    assert '#view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); gap: 9px 0; }' in css
-    assert ('#view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-label { grid-column: 1 / -1; grid-row: 1; align-self: auto;'
-            ' text-align: center; white-space: normal; }') in css
+    assert "  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);\n" in css
+    assert "#view-dashboard .dhs-label {\n  grid-column: 1 / -1;\n  grid-row: 1;\n  justify-self: center;" in css
+    assert "#view-dashboard .dhs-icon {\n  grid-column: 2;\n  grid-row: 2;" in css
+    assert "#view-dashboard .dhs-body {\n  grid-column: 3;\n  grid-row: 2;" in css
+    assert "  #view-dashboard .dhs-label { white-space: normal; }" in css
+    assert "data-dp-kpi" not in css and "grid-template-columns: auto minmax(0, 1fr);" not in css
     assert "flex-wrap: wrap; gap: 8px" not in css and "min-width: max-content" not in css
     assert "grid-template-columns: 1fr;" not in css

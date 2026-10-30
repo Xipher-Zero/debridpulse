@@ -20,6 +20,7 @@
 }
 
 #view-stats .dp-stats-master-title {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -67,9 +68,88 @@ body.light #view-stats .dp-statistics-title-icon {
   font-weight: 400;
 }
 
+/* The title and the hint are each one line, in the longest of their three
+   wordings drawn whole in the room the header leaves them (fitStatistics-
+   Header, ui-statistics.js): a shorter wording is drawn in place of the
+   full one, which stays the element's text. */
+#view-stats :is(.dp-stats-heading, .dp-stats-subtitle) {
+  overflow: hidden;
+  white-space: nowrap;
+}
+#view-stats > .dp-stats-master-header:is([data-dp-title="short"], [data-dp-title="shortest"]) .dp-stats-heading,
+#view-stats > .dp-stats-master-header:is([data-dp-hint="short"], [data-dp-hint="shortest"]) .dp-stats-subtitle {
+  font-size: 0;
+}
+#view-stats > .dp-stats-master-header[data-dp-title="short"] .dp-stats-heading::before {
+  content: attr(data-short) / "";
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
+#view-stats > .dp-stats-master-header[data-dp-title="shortest"] .dp-stats-heading::before {
+  content: attr(data-shortest) / "";
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
+#view-stats > .dp-stats-master-header[data-dp-hint="short"] .dp-stats-subtitle::before {
+  content: attr(data-short) / "";
+  font-size: 10.5px;
+}
+#view-stats > .dp-stats-master-header[data-dp-hint="shortest"] .dp-stats-subtitle::before {
+  content: attr(data-shortest) / "";
+  font-size: 10.5px;
+}
+
 #view-stats #stats-period-tabs {
   flex: 0 0 auto;
   margin-left: auto;
+}
+
+/* The handheld period control (ui-statistics.js): below 780px it stands for
+   the six period filters -- the clock, the selected period and the DP
+   dropdown chevron -- at the header's right, opening a menu of the filters'
+   own choices. Every period's label shares one cell and only the selected one
+   is drawn, so the widest sets the control's width and a choice moves
+   nothing. From 780px the filters themselves are shown and it is not. */
+#view-stats .dp-stats-period-trigger {
+  display: none;
+}
+#view-stats .dp-stats-period-trigger .dp-utility-icon {
+  width: 15px;
+  height: 15px;
+}
+#view-stats .dp-stats-period-labels {
+  display: inline-grid;
+}
+#view-stats .dp-stats-period-labels > span {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  visibility: hidden;
+}
+#view-stats .dp-stats-period-labels > [data-current] {
+  visibility: visible;
+}
+#view-stats .dp-stats-period-trigger .dp-dropdown__chevron {
+  margin: -3px 2px 0 0;
+}
+/* Its menu: the projected menu's material (.dp-dropdown-menu) and options, in
+   the top layer (a popover), placed beneath the control by ui-statistics.js. */
+#view-stats .dp-stats-period-menu {
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  display: none;
+}
+#view-stats .dp-stats-period-menu:popover-open {
+  display: block;
+}
+#view-stats .dp-stats-period-menu .dp-dropdown__option {
+  white-space: nowrap;
+}
+
+/* The data card's label: Total Data Downloaded from 780px, Data Transferred
+   below it -- the same figure and description. */
+#view-stats .dp-stats-label-handheld {
+  display: none;
 }
 
 /* ── Bounded Statistics body ──────────────────────────────────────────── */
@@ -88,12 +168,13 @@ body.light #view-stats .dp-statistics-title-icon {
   scrollbar-gutter: stable;
 }
 
-/* Primary period metrics remain one balanced row on normal desktop. */
+/* The two period metrics, Downloads Added and the data figure: one balanced
+   row of two, one above the other below 640px. */
 #view-stats #detail-stat-cards {
   width: 100%;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -103,137 +184,9 @@ body.light #view-stats .dp-statistics-title-icon {
   padding: 13px 14px;
 }
 
-/* ── Separator between the period and the overall/rolling KPI rows ───── */
-/* Subdued, centred, about half the section wide; the body's own row gap
-   above and below it is its breathing room, and the chart's flex area gives
-   up its height. */
-#view-stats .dp-stats-row-separator {
-  flex: 0 0 auto;
-  width: 50%;
-  min-width: max-content;
-  max-width: 100%;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-#view-stats .dp-stats-row-separator-rule {
-  flex: 1 0 16px;
-  height: 1px;
-  background: color-mix(in srgb, var(--dp-divider) 70%, transparent);
-}
-
-#view-stats .dp-stats-row-separator-label {
-  color: var(--dp-text-muted);
-  font-size: 9.5px;
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: .06em;
-  white-space: nowrap;
-}
-
-/* ── Historical KPI row ───────────────────────────────────────────────── */
-#view-stats .dp-stats-history-grid {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-sep {
-  display: none;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi {
-  min-width: 0;
-  min-height: 86px;
-  padding: 11px 12px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  column-gap: 10px;
-  align-items: center;
-  text-align: left;
-}
-
-/* Statistics KPI chips deliberately remain dark in both palettes. Keeping the
-   chip material stable preserves contrast for the individual semantic glow and
-   prevents the light theme from washing the icons into the metric surface. */
-#view-stats .dp-stats-history-grid .dp-kpi-icon {
-  --dp-icon-frame-size: 38px;
-  --dp-icon-frame-radius: var(--dp-radius-md);
-  --dp-icon-frame-bg: color-mix(in srgb, var(--dp-icon-frame-fg) 12%, #080b18);
-  --dp-icon-frame-border: color-mix(in srgb, var(--dp-icon-frame-fg) 34%, #10162a);
-  position: relative;
-  z-index: 8;
-  grid-column: 1;
-  grid-row: 1 / span 3;
-  background: var(--dp-icon-frame-bg);
-  box-shadow:
-    0 0 6px color-mix(in srgb, var(--dp-icon-frame-fg) 50%, transparent),
-    0 0 14px color-mix(in srgb, var(--dp-icon-frame-fg) 26%, transparent),
-    0 0 24px color-mix(in srgb, var(--dp-icon-frame-fg) 12%, transparent);
-}
-
-body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
-  --dp-icon-frame-bg: color-mix(in srgb, var(--dp-icon-frame-fg) 11%, #080b18);
-  --dp-icon-frame-border: color-mix(in srgb, var(--dp-icon-frame-fg) 32%, #10162a);
-  background: var(--dp-icon-frame-bg);
-  box-shadow:
-    0 0 6px color-mix(in srgb, var(--dp-icon-frame-fg) 48%, transparent),
-    0 0 14px color-mix(in srgb, var(--dp-icon-frame-fg) 24%, transparent),
-    0 0 22px color-mix(in srgb, var(--dp-icon-frame-fg) 11%, transparent);
-}
-
-#view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
-  width: 22px;
-  height: 22px;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-val {
-  grid-column: 2;
-  grid-row: 1;
-  color: var(--dp-text-primary);
-  font-size: 18px;
-  line-height: 1.05;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-lbl {
-  grid-column: 2;
-  grid-row: 2;
-  margin-top: 3px;
-  color: var(--dp-text-secondary);
-  font-size: 10px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-sub {
-  grid-column: 2;
-  grid-row: 3;
-  margin-top: 2px;
-  color: var(--dp-text-muted);
-  font-size: 9.5px;
-  line-height: 1.2;
-}
-
 /* ── Completion chart ─────────────────────────────────────────────────── */
 #view-stats .dp-stats-chart {
   flex: 1 1 240px;
-  /* 228px less the KPI row separator's 22px (its line and the body gap that
-     follows it), so the page fits where it did; the canvas regains 14px of
-     them from the whitespace above it. */
   min-height: 206px;
   margin: 0 !important;
   display: flex;
@@ -307,22 +260,22 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   padding: 9px 14px 3px;
 }
 
-/* ── Full-height desktop and tablet workspace ────────────────────────── */
-/* One workspace from the widest desktop down to the tablet floor (780px):
-   the master card fills the content height and its body scrolls. The global
-   header changes at 900px on its own; Statistics does not change with it. */
-@media (min-width: 780px) {
-  #content:has(#view-stats.active) {
-    overflow-y: hidden;
-  }
+/* ── Full-height workspace ────────────────────────────────────────────── */
+/* One workspace at every width: the master card fills the content box the
+   shell gives the page (#content: from 780px its desktop gutters, below it
+   the 10px inset under the header and above the dock), its header stays and
+   its body scrolls; #content itself does not. The global header changes at
+   900px on its own; Statistics does not change with it. */
+#content:has(#view-stats.active) {
+  overflow-y: hidden;
+}
 
-  #view-stats:is(.active, [data-dp-motion-outgoing]).dp-statistics-master {
-    display: flex !important;
-    flex-direction: column;
-    height: 100% !important;
-    min-height: 0;
-    overflow: hidden;
-  }
+#view-stats:is(.active, [data-dp-motion-outgoing]).dp-statistics-master {
+  display: flex !important;
+  flex-direction: column;
+  height: 100% !important;
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 1439px) {
@@ -331,19 +284,34 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   }
 }
 
-/* Mobile: the page scrolls, the header may wrap, and the chart keeps a taller floor. */
+/* Handheld: one header row -- the identity at the left, the period control
+   at the right, centred on it, in place of the filters -- the data card's
+   handheld label, and the chart keeps a taller floor. */
 @media (max-width: 779px) {
   #view-stats > .dp-stats-master-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
   }
 
   #view-stats #stats-period-tabs {
-    max-width: 100%;
+    display: none;
   }
 
-  #view-stats > .dp-stats-master-body {
-    overflow: visible;
+  #view-stats .dp-stats-period-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-inline: 8px;
+  }
+
+  #view-stats .dp-stats-label-wide {
+    display: none;
+  }
+
+  #view-stats .dp-stats-label-handheld {
+    display: inline;
   }
 
   #view-stats .dp-stats-chart {
@@ -361,10 +329,6 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 /* DebridPulse Statistics final presentation contract. */
 
 /* Primary period KPI cards. */
-#view-stats #detail-stat-cards {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
 #view-stats #detail-stat-cards :is(.metric-card, .stat-card) {
   min-height: 118px;
   display: flex;
@@ -399,69 +363,6 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   text-align: center;
 }
 
-/* Historical KPI row. */
-#view-stats .dp-stats-history-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi {
-  position: relative;
-  min-height: 96px;
-  padding: 12px 14px !important;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-#view-stats .dp-stats-history-grid .dp-kpi-icon {
-  position: absolute !important;
-  z-index: 8;
-  top: 12px;
-  left: 12px;
-  grid-column: auto !important;
-  grid-row: auto !important;
-  margin: 0;
-}
-
-#view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
-  width: 32px !important;
-  height: 32px !important;
-  max-width: none;
-  max-height: none;
-  object-fit: contain;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-val,
-#view-stats .dp-stats-history-grid .dash-kpi-lbl,
-#view-stats .dp-stats-history-grid .dash-kpi-sub {
-  width: 100%;
-  grid-column: auto;
-  grid-row: auto;
-  text-align: center;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-val {
-  margin: 0;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-lbl {
-  margin-top: 5px;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-sub {
-  margin-top: 3px;
-  font-size: 9.5px;
-  line-height: 1.25;
-}
-
-#view-stats .dp-stats-history-grid .dp-stats-kpi-success { --c: var(--dp-state-success); }
-#view-stats .dp-stats-history-grid .dp-stats-kpi-day { --c: var(--dp-state-active); }
-#view-stats .dp-stats-history-grid .dp-stats-kpi-week { --c: var(--dp-accent-purple-bright); }
-#view-stats .dp-stats-history-grid .dp-stats-kpi-duration { --c: var(--dp-state-caution); }
-#view-stats .dp-stats-history-grid .dp-stats-kpi-size { --c: var(--dp-state-active); }
-
 /* Bottom analytical cards. */
 #view-stats .dp-stats-breakdown-grid > .list-card > .card-header {
   justify-content: center;
@@ -487,64 +388,10 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   font-variant-numeric: tabular-nums;
 }
 
-/* KPI rows: both rows show the same number of cards, one column each --
-   five, four, three, then two at the bottom of the tablet range (see the
-   composition block after the KPI cards for which cards, why these widths,
-   and the secondary row's band). */
-@media (max-width: 1815px) {
-  #view-stats #detail-stat-cards {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1339px) {
-  #view-stats #detail-stat-cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1025px) {
-  #view-stats #detail-stat-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
   #view-stats #detail-stat-cards {
     grid-template-columns: 1fr;
   }
-}
-
-/* Historical KPI band. */
-#view-stats .dp-stats-history-grid {
-  width: 83.333% !important;
-  margin-inline: auto !important;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-}
-
-#view-stats .dp-stats-history-grid .dp-kpi-icon {
-  overflow: visible !important;
-}
-
-#view-stats .dp-stats-kpi-day .dp-kpi-icon > .dp-icon,
-#view-stats .dp-stats-kpi-week .dp-kpi-icon > .dp-icon {
-  width: 32px !important;
-  height: 32px !important;
-}
-
-#view-stats .dp-stats-kpi-success .dp-kpi-icon > .dp-icon {
-  width: 42px !important;
-  height: 42px !important;
-}
-
-#view-stats .dp-stats-kpi-duration .dp-kpi-icon > .dp-icon {
-  width: 46px !important;
-  height: 46px !important;
-}
-
-#view-stats .dp-stats-kpi-size .dp-kpi-icon > .dp-icon {
-  width: 50px !important;
-  height: 50px !important;
 }
 
 /* Adaptive lower-card lists. */
@@ -654,35 +501,7 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1815px) {
-  #view-stats .dp-stats-history-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 1339px) {
-  #view-stats .dp-stats-history-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 1025px) {
-  #view-stats .dp-stats-history-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 779px) {
-  #view-stats .dp-stats-history-grid {
-    width: 100% !important;
-  }
-}
-
 @media (max-width: 639px) {
-  #view-stats .dp-stats-history-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
   #view-stats .dp-stats-adaptive-list--columns {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 0;
@@ -703,52 +522,8 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 #view-stats #detail-stat-cards [data-dp-stats-metric="downloads"] {
   --c: var(--dp-accent-purple-bright);
 }
-#view-stats #detail-stat-cards [data-dp-stats-metric="completed"] {
-  --c: var(--dp-state-success);
-}
-#view-stats #detail-stat-cards [data-dp-stats-metric="progress"] {
-  --c: var(--dp-state-active);
-}
-#view-stats #detail-stat-cards [data-dp-stats-metric="success"] {
-  --c: var(--dp-state-success);
-}
 #view-stats #detail-stat-cards [data-dp-stats-metric="data"] {
   --c: var(--dp-state-active);
-}
-
-/* Historical KPI semantic color and icon centering. */
-#view-stats .dp-stats-kpi-day,
-#view-stats .dp-stats-kpi-week,
-#view-stats .dp-stats-kpi-success {
-  --c: var(--dp-state-success) !important;
-}
-#view-stats .dp-stats-kpi-duration {
-  --c: var(--dp-state-caution) !important;
-}
-#view-stats .dp-stats-kpi-size {
-  --c: var(--dp-state-active) !important;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-val {
-  color: var(--c) !important;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi .dp-kpi-icon {
-  --dp-icon-frame-fg: var(--c) !important;
-}
-
-#view-stats .dp-stats-history-grid .dp-kpi-icon {
-  display: grid !important;
-  place-items: center !important;
-}
-#view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
-  position: absolute !important;
-  top: 50% !important;
-  left: 50% !important;
-  margin: 0 !important;
-  max-width: none !important;
-  transform: translate(-50%, -50%) !important;
-  transform-origin: center !important;
 }
 
 /* Completions chart standard feature header. */
@@ -867,76 +642,6 @@ body.light #view-stats .dp-stats-chart-title-icon {
   margin: 5px 0 0 !important;
 }
 
-#view-stats .dp-stats-history-grid .dash-kpi {
-  display: grid;
-  grid-template-columns: 1fr !important;
-  grid-template-rows: 18px 28px minmax(24px, auto) !important;
-  align-content: start !important;
-  align-items: start !important;
-  justify-items: center !important;
-  padding: 14px 14px 12px !important;
-  text-align: center !important;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-lbl {
-  grid-column: 1 !important;
-  grid-row: 1 !important;
-  align-self: start !important;
-  margin: 0 !important;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-val {
-  grid-column: 1 !important;
-  grid-row: 2 !important;
-  align-self: start !important;
-  margin: 3px 0 0 !important;
-}
-
-#view-stats .dp-stats-history-grid .dash-kpi-sub {
-  grid-column: 1 !important;
-  grid-row: 3 !important;
-  align-self: start !important;
-  margin: 2px 0 0 !important;
-}
-
-/* KPI composition: as the content narrows, both rows drop to four, three and
-   then two cards together, always in their own order, and keep the cards
-   that matter most:
-     5  every card (1816px and wider);
-     4  without In Progress and Lifetime Success Rate (1340-1815px);
-     3  also without Success Rate and Last 24 Hours (1026-1339px);
-     2  also without Downloads Added and Mean Download Time (780-1025px):
-        Downloads Completed and Total Data Downloaded; Last 7 Days and Mean
-        Download Size.
-   The secondary row stays the smaller, centred band beneath the primary row
-   (83.333% of its width) at every stage. Each width keeps the tightest
-   secondary title (Lifetime Success Rate, then Mean Download Time) at least
-   3px clear of its icon, measured in the real fonts with the longest
-   realistic values, so font rendering has a little room before a title would
-   run into its icon. Below 780px the mobile presentation keeps every card, as
-   before. A hidden card is display:none: no slot, no focus stop; its value is
-   still kept current. */
-@media (min-width: 780px) and (max-width: 1815px) {
-  #view-stats #detail-stat-cards > [data-dp-stats-metric="progress"],
-  #view-stats .dp-stats-history-grid > .dp-stats-kpi-success {
-    display: none;
-  }
-}
-
-@media (min-width: 780px) and (max-width: 1339px) {
-  #view-stats #detail-stat-cards > [data-dp-stats-metric="success"],
-  #view-stats .dp-stats-history-grid > .dp-stats-kpi-day {
-    display: none;
-  }
-}
-
-@media (min-width: 780px) and (max-width: 1025px) {
-  #view-stats #detail-stat-cards > [data-dp-stats-metric="downloads"],
-  #view-stats .dp-stats-history-grid > .dp-stats-kpi-duration {
-    display: none;
-  }
-}
-
 /* ── Label badge / trend chart / priority text (DP 1.0.12 canonical
    flattening: migrated from the retired ui-legacy-foundation.css) ──────── */
 .lbl-badge {
@@ -955,11 +660,6 @@ body.light #view-stats .dp-stats-chart-title-icon {
 
 @media (max-width: 779px) {
   .chart-wrap { height: 120px; }
-}
-
-.tab-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 14px; margin-bottom: 18px; }
-@media (max-width: 779px) {
-  .tab-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
 }
 
 /* DP 1.0.12 canonical flattening: .stat-value is a dead-markup JS fallback

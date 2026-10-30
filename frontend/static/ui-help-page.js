@@ -240,7 +240,6 @@
           ${accordion('Statistics', `
             <ul>
               <li>The top cards and the <b>Completions</b> chart follow the <b>Period</b> you choose (1 hour to All Time).</li>
-              <li><b>Overall &amp; Rolling Metrics</b> always shows the last 24 hours, the last 7 days and lifetime figures.</li>
               <li>The <b>Completions</b> chart splits each bar into Premium Sources and Network Sources by the service that actually delivered the files.</li>
               <li><b>Transfer Methods</b> counts finished downloads by how their files were really obtained (for example Debrid, Usenet, HTTP(S), FTP / SFTP, SCP, rsync, WebDAV or Media Downloads), not by what you submitted. A download whose files came by several methods, such as a Metalink download, is counted once under each. Finished downloads with no recorded method appear as <b>Unattributed</b>.</li>
               <li><b>Transfer Disposition</b>, <b>File Status</b> and <b>Events Severity</b> count downloads, files and log events by state.</li>

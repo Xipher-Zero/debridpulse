@@ -1368,13 +1368,6 @@ async function resumePausedDownloads() {
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
-function fmtDuration(secs) {
-  if (!secs || secs <= 0) return '—';
-  if (secs < 60) return secs + 's';
-  if (secs < 3600) return Math.round(secs/60) + 'm';
-  return (secs/3600).toFixed(1) + 'h';
-}
-
 var _operatorTitleState = {active: 0, progress: 0};
 
 function renderOperatorTitle() {
@@ -1632,21 +1625,17 @@ function measureDashboardHeartbeatRoute() {
   return {cards: route, end: last ? last.entry + last.width : 0};
 }
 
-/* On a handheld each KPI card keeps its icon at the left, the label over the
- * value beside it, wherever the label fits there on one line and the exact
- * count whole; where either does not, the card is stacked (data-dp-kpi,
- * ui-dashboard.css): the label across the top, the icon and value centred
- * beneath it. Each card is decided on its own width, always from the side by
- * side arrangement, so it returns to it by itself as room returns. A stacked
- * card shows its count whole wherever it fits beside the card's icon; where
- * it would not, the card draws it in compact notation
- * (1.23K, 12.3K, 123K, 1.23M), the most precise form that fits. Only what is
- * drawn changes: the value's text stays the exact count (what assistive
- * technology reads and every other reader sees), the compact form is its
- * data-compact (ui-dashboard.css), and while it is drawn the card's own
- * tooltip adds the exact count after its unchanged explanation. Run where the
- * counts are written and when the strip's width changes; from 780px every
- * count is drawn exactly. */
+/* On a handheld each KPI card, its title over its icon and value as at every
+ * width (ui-dashboard.css), shows its count whole wherever it fits beside the
+ * card's icon; where it would not, the card draws it in compact notation
+ * (1.23K, 12.3K, 123K, 1.23M), the most precise form that fits. Each card is
+ * decided on its own width, so it returns to the exact count by itself as
+ * room returns. Only what is drawn changes: the value's text stays the exact
+ * count (what assistive technology reads and every other reader sees), the
+ * compact form is its data-compact (ui-dashboard.css), and while it is drawn
+ * the card's own tooltip adds the exact count after its unchanged
+ * explanation. Run where the counts are written and when the strip's width
+ * changes; from 780px every count is drawn exactly. */
 const DASHBOARD_KPI_COMPACT = [3, 2].map(digits => new Intl.NumberFormat('en', {notation: 'compact', maximumSignificantDigits: digits}));
 const DASHBOARD_KPI_EXACT = new Intl.NumberFormat('en');
 const _dashboardKpiTooltips = new WeakMap();
@@ -1657,19 +1646,14 @@ function fitDashboardKpiValues() {
     const explanation = _dashboardKpiTooltips.get(card);
     const tooltip = text => { if (explanation !== undefined && card.dataset.tooltip !== text) card.dataset.tooltip = text; };
     delete value.dataset.compact;
-    delete card.dataset.dpKpi;
     if (!_shellHandheld.matches || !card.offsetWidth) return tooltip(explanation);
-    const style = getComputedStyle(card);
-    const content = card.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
-      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - card.querySelector('.dhs-icon').getBoundingClientRect().width;
-    // Side by side: the label's one line and the exact count (their drawn text) in the column beside the icon.
-    const drawn = node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().width; };
-    const column = content - parseFloat(style.columnGap);
-    if (drawn(card.querySelector('.dhs-label')) <= column && drawn(value) <= column) return tooltip(explanation);
-    card.dataset.dpKpi = 'stacked';
     const count = Number(value.textContent);
     if (value.textContent.trim() === '' || !Number.isFinite(count)) return tooltip(explanation);
-    const room = content - parseFloat(getComputedStyle(value).marginLeft);
+    const style = getComputedStyle(card);
+    // The room beside the icon: the card's content width less the icon and the value's own gap from it.
+    const room = card.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
+      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - card.querySelector('.dhs-icon').getBoundingClientRect().width
+      - parseFloat(getComputedStyle(card.querySelector('.dhs-body')).marginLeft);
     const fits = () => value.getBoundingClientRect().width <= room;
     if (fits()) return tooltip(explanation);
     for (const format of DASHBOARD_KPI_COMPACT) {
@@ -1962,11 +1946,6 @@ async function loadStats() {
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
       fitDashboardKpiValues();
-      document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
-      document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
-      document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
-      document.getElementById('i-avg-duration').textContent = fmtDuration(s.avg_download_duration_seconds);
-      document.getElementById('i-avg-size').textContent = s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—';
       // The Downloads badge: distinct transfers still in the ordinary download
       // lifecycle (one torrents row each, whatever their artifacts or
       // attempts). Failed transfers awaiting the operator and terminal ones
@@ -1995,12 +1974,6 @@ async function loadStats() {
   return false;
 }
 
-
-function setStatsPeriod(el) {
-  document.querySelectorAll('#stats-period-tabs .ftab').forEach(function(t){t.classList.remove('active');});
-  el.classList.add('active');
-  loadDetailedStats(el.dataset.period);
-}
 let _dashboardRecentFitLimit = null;
 // The handheld row height last measured: with no row drawn (none fitted, or
 // none yet) the room is still known, and a row is always this tall.
@@ -3621,11 +3594,6 @@ document.addEventListener('DOMContentLoaded', () => {
         es.addEventListener(
           'ping',
           function() {
-            // Statistics' Overall & Rolling row is this owner's (/stats): its
-            // last-24-hours and last-7-days figures age while the page is open.
-            if (document.getElementById('view-stats')?.classList.contains('active')) {
-              loadStats().catch(()=>{});
-            }
             document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat'));
           }
         );
