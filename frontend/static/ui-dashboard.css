@@ -631,10 +631,13 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    handheld (779px and below) the strip is two cards, Total Downloads then
    Completed: Total Downloaded leaves the layout too, in the same way, and is
    shown again from 780px. The two always share one row at equal widths, and
-   each card is two rows of its own: the icon and value, side by side and
-   centred together, then the label centred beneath them across the card's
-   whole width (wrapping only between its words), so the label is never held
-   to the column beside the icon. */
+   the label always heads its value. Each card keeps the icon at its left
+   with the label over the value beside it wherever that fits (the label on
+   one line, the exact count whole); where the card is too narrow for it
+   (fitDashboardKpiValues, app.js, measured on the card itself), the card is
+   stacked: the label across its whole width at the top (wrapping only
+   between its words), then the icon and value, side by side and centred
+   together, beneath it. */
 @media (max-width: 1389px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #view-dashboard .dash-hero-stat:has(#s-active, #s-processing, #s-error) { display: none; }
@@ -653,21 +656,25 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
   #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   #view-dashboard .dash-hero-stat {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     align-content: center;
-    gap: 9px 0;
+    gap: 7px 14px;
   }
-  #view-dashboard .dhs-icon { grid-column: 2; margin-top: 0; }
+  #view-dashboard .dhs-icon { grid-column: 1; grid-row: 1 / span 2; margin-top: 0; }
   #view-dashboard .dhs-body { display: contents; }
   #view-dashboard :is(.dhs-val, .dhs-label) { position: relative; z-index: 2; }
-  #view-dashboard .dhs-val { grid-column: 3; margin-left: 8px; white-space: nowrap; font-size: 22px; }
+  #view-dashboard .dhs-val { grid-column: 2; grid-row: 2; align-self: start; white-space: nowrap; font-size: 22px; }
   /* A count too wide to stand beside its icon is drawn in compact notation
      (data-compact, chosen by fitDashboardKpiValues in app.js) at the value's
      own size and spacing; the element's text stays the exact count. */
   #view-dashboard .dhs-val[data-compact] { font-size: 0; }
   #view-dashboard .dhs-val[data-compact]::before { content: attr(data-compact) / ""; font-size: 22px; letter-spacing: -.025em; }
-  #view-dashboard .dhs-label { grid-column: 1 / -1; margin-top: 0; text-align: center; white-space: normal; }
+  #view-dashboard .dhs-label { grid-column: 2; grid-row: 1; align-self: end; margin-top: 0; white-space: nowrap; }
+  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); gap: 9px 0; }
+  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-label { grid-column: 1 / -1; grid-row: 1; align-self: auto; text-align: center; white-space: normal; }
+  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-icon { grid-column: 2; grid-row: 2; }
+  #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-val { grid-column: 3; grid-row: 2; align-self: auto; margin-left: 8px; }
   #view-dashboard .dash-hero-stat:has(#s-size) { display: none; }
   #view-dashboard .dp-dashboard-action-track { width: auto; }
   #view-dashboard .dp-dashboard-quick-add .card-title { flex: 1 1 0; min-width: 0; }

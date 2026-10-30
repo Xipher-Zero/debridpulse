@@ -1632,8 +1632,14 @@ function measureDashboardHeartbeatRoute() {
   return {cards: route, end: last ? last.entry + last.width : 0};
 }
 
-/* On a handheld each KPI card shows its count whole wherever it fits beside
- * the card's icon; where it would not, the card draws it in compact notation
+/* On a handheld each KPI card keeps its icon at the left, the label over the
+ * value beside it, wherever the label fits there on one line and the exact
+ * count whole; where either does not, the card is stacked (data-dp-kpi,
+ * ui-dashboard.css): the label across the top, the icon and value centred
+ * beneath it. Each card is decided on its own width, always from the side by
+ * side arrangement, so it returns to it by itself as room returns. A stacked
+ * card shows its count whole wherever it fits beside the card's icon; where
+ * it would not, the card draws it in compact notation
  * (1.23K, 12.3K, 123K, 1.23M), the most precise form that fits. Only what is
  * drawn changes: the value's text stays the exact count (what assistive
  * technology reads and every other reader sees), the compact form is its
@@ -1651,12 +1657,19 @@ function fitDashboardKpiValues() {
     const explanation = _dashboardKpiTooltips.get(card);
     const tooltip = text => { if (explanation !== undefined && card.dataset.tooltip !== text) card.dataset.tooltip = text; };
     delete value.dataset.compact;
-    const count = Number(value.textContent);
-    if (!_shellHandheld.matches || !card.offsetWidth || value.textContent.trim() === '' || !Number.isFinite(count)) return tooltip(explanation);
+    delete card.dataset.dpKpi;
+    if (!_shellHandheld.matches || !card.offsetWidth) return tooltip(explanation);
     const style = getComputedStyle(card);
-    const room = card.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
-      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      - card.querySelector('.dhs-icon').getBoundingClientRect().width - parseFloat(getComputedStyle(value).marginLeft);
+    const content = card.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
+      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - card.querySelector('.dhs-icon').getBoundingClientRect().width;
+    // Side by side: the label's one line and the exact count (their drawn text) in the column beside the icon.
+    const drawn = node => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().width; };
+    const column = content - parseFloat(style.columnGap);
+    if (drawn(card.querySelector('.dhs-label')) <= column && drawn(value) <= column) return tooltip(explanation);
+    card.dataset.dpKpi = 'stacked';
+    const count = Number(value.textContent);
+    if (value.textContent.trim() === '' || !Number.isFinite(count)) return tooltip(explanation);
+    const room = content - parseFloat(getComputedStyle(value).marginLeft);
     const fits = () => value.getBoundingClientRect().width <= room;
     if (fits()) return tooltip(explanation);
     for (const format of DASHBOARD_KPI_COMPACT) {
