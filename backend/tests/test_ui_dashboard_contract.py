@@ -130,7 +130,17 @@ def test_dashboard_responsive_contract_preserves_desktop_mockup() -> None:
     assert "@media (max-width: 1439px)" in css
     assert "@media (max-width: 1179px)" in css
     assert "@media (max-width: 899px)" in css
-    assert "@media (max-width: 640px)" in css
+    # 1.0.14: the handheld Dashboard (779px and below) keeps Quick Add's rows
+    # (dashboard-mobile-composition.spec.js); the former 640px column mode is retired.
+    assert "@media (max-width: 779px)" in css
+    assert "@media (max-width: 640px)" not in css
     assert "grid-template-columns: repeat(3" in css
     assert "grid-template-columns: repeat(2" in css
-    assert "grid-template-columns: 1fr" in css
+    # The handheld strip is two equal cards on one row at every width; each
+    # card is its icon and value centred together over its full-width label
+    # (the former one-column, 1fr 1fr and wrapping strips are retired).
+    assert "#view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }" in css
+    assert "grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);" in css
+    assert "#view-dashboard .dhs-label { grid-column: 1 / -1; margin-top: 0; text-align: center; white-space: normal; }" in css
+    assert "flex-wrap: wrap; gap: 8px" not in css and "min-width: max-content" not in css
+    assert "grid-template-columns: 1fr;" not in css

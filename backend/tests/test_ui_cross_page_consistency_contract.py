@@ -71,12 +71,24 @@ def test_provider_status_has_one_neutral_centered_presentation_owner() -> None:
 
 
 def test_quick_add_focus_resets_to_universal_field_language() -> None:
+    # 1.0.14: Quick Add's entry is one universal field holding its action
+    # (.dp-action-field: Add inside the field), so its material, hover and
+    # focus ring are that field's; the textarea inside is bare.
     dashboard = read_static("ui-dashboard.css")
-    assert "textarea.input.direct-link-input" in dashboard
-    assert "var(--dp-field-border)" in dashboard
-    assert "var(--dp-field-surface)" in dashboard
-    assert "color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong))" in dashboard
-    assert "box-shadow: var(--dp-focus-ring) !important" in dashboard
+    universal = read_static("ui-universal-language.css")
+    assert '<div class="direct-link-entry dp-action-field">' in read_static("index.html")
+    assert "textarea.input.direct-link-input" not in dashboard
+    assert ".dp-action-field:focus-within" in universal
+    assert "color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong))" in universal
+    # The light resting inset and control surface add no specificity (:where),
+    # so focus rings and compound fields' bare controls win at the universal
+    # owner; no page carries a local light focus or transparency patch.
+    assert ":where(body.light) :is(.dp-field, .input, .dp-action-field),\n:where(body.light) select.input,\n:where(body.light) textarea.input {\n  box-shadow: inset 0 1px rgba(255,255,255,.85);" in universal
+    assert ":where(body.light) :is(.dp-field, .input),\n:where(body.light) :is(.dp-field, .input):focus,\n:where(body.light) select.input,\n:where(body.light) textarea.input { background: var(--dp-chrome-input-surface); }" in universal
+    assert "body.light :is(.dp-field, .input, .dp-action-field)," not in universal
+    assert "body.light textarea.input {" not in universal and "body.light textarea.input," not in universal
+    assert "body.light #view-dashboard .direct-link-input" not in dashboard
+    assert "direct-link-entry:focus-within" not in dashboard
 
 
 def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:

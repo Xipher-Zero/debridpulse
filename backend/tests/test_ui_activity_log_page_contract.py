@@ -154,7 +154,7 @@ def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
 
     assert "#view-dashboard #btn-recover-all," in controls
     assert "#view-events .dp-activity-refresh" in controls
-    assert "height: 36px !important;" in controls
+    assert "height: var(--dp-utility-control-block, 36px) !important;" in controls   # 36px; Quick Add's handheld header alone sets 44px
     assert "border-radius: 9px !important;" in controls
     # The reviewed light recipe is the utility chrome tokens' native values.
     assert "background: var(--dp-chrome-utility-surface) !important;" in controls

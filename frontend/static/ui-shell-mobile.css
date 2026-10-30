@@ -249,12 +249,11 @@
   .runtime-cap-custom .btn { min-height: 44px; }
 
   /* ── The page: the one scrolling workspace ────────────────────────────
-     Its bottom inset keeps the one version datum (ui-shell-brand.css), drawn
-     just below the master surface, whole and above the dock at the end of
-     the scroll. */
+     It ends at the dock's edge, so its own even inset is all the page needs
+     at the end of the scroll (the version is not shown here; ui-shell-brand.css). */
   #content,
   #content.settings-active {
-    padding: 10px 10px 30px;
+    padding: 10px;
     overflow-y: auto;
     overscroll-behavior: contain;
   }

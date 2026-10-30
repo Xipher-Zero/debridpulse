@@ -676,9 +676,30 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     await page.screenshot({path: 'test-results/checkpoint-mobile-title-artwork-779.png', clip: {x: 0, y: 0, width: 779, height: 62}});
   });
 
-  test('the one version datum stays below the active master surface, inside the workspace and clear of the dock, at every handheld width and at 780px', async ({page}) => {
+  // Operator decision (1.0.14 Dashboard mobile recomposition 01): below 780px
+  // no page shows the version -- its one element stays in #content with its
+  // text, hidden by its one owner (ui-shell-brand.css) whatever the page -- and
+  // the workspace reserves nothing for it: at the end of the scroll the page
+  // ends its even 10px inset above the workspace's edge, which is the dock's.
+  // From 780px the version stands below the active master surface again.
+  test('below 780px no page shows the one version datum, its element kept, and the page ends 10px above the dock; at 780px it stands below the active master surface, inside the workspace and clear of the dock', async ({page}) => {
     await open(page, {width: 320, height: 640});
     await page.waitForFunction(() => document.getElementById('sidebar-version').textContent !== 'v…');
+    // At the end of the scroll: the active page's last edge to the workspace's, and the workspace's to the dock's.
+    const pageEnd = () => page.evaluate(() => {
+      const content = document.getElementById('content');
+      content.scrollTop = content.scrollHeight;
+      const end = document.querySelector('.view.active').getBoundingClientRect().bottom;
+      const workspace = content.getBoundingClientRect(), dock = document.getElementById('shell-dock').getBoundingClientRect();
+      return {inset: Math.abs(workspace.bottom - end - 10) <= 0.5 ? 10 : Math.round((workspace.bottom - end) * 10) / 10, atDock: Math.abs(workspace.bottom - dock.top) <= 1.5,
+        atEnd: content.scrollTop + content.clientHeight >= content.scrollHeight - 1};
+    });
+    const version = () => page.evaluate(() => {
+      const label = document.getElementById('sidebar-version');
+      const box = label.getBoundingClientRect();
+      return {labels: document.querySelectorAll('.dp-app-version').length, parent: label.parentElement.id, text: label.textContent,
+        display: getComputedStyle(label).display, drawn: box.width > 0 || box.height > 0};
+    });
     for (const width of [320, 375, 390, 430, 600, 779, 780]) {
       await page.setViewportSize({width, height: 640});
       for (const label of width < 780 ? ['Dashboard', 'Help'] : []) {
@@ -689,8 +710,18 @@ test.describe('handheld shell, open runtime (every capability)', () => {
           await page.locator('#shell-more .dp-shell-sheet-item', {hasText: label}).click();
         }
         await still(page);
-        expect(await versionAtEnd(page), `${width}px ${label}`).toEqual({labels: 1, parent: 'content', text: expect.stringMatching(/^v\d/),
-          belowSurface: true, rightAligned: true, insideWorkspace: true, clearOfDock: true, atEnd: true});
+        expect(await version(), `${width}px ${label}`).toEqual({labels: 1, parent: 'content', text: expect.stringMatching(/^v\d/),
+          display: 'none', drawn: false});
+        expect(await pageEnd(), `${width}px ${label}: the end of the scroll`).toEqual({inset: 10, atDock: true, atEnd: true});
+      }
+      if (width === 390) {
+        // Every page: the one owner hides it whichever view is active.
+        for (const view of ['dashboard', 'torrents', 'events', 'stats', 'settings', 'help']) {
+          await page.evaluate(view => nav(document.querySelector(`#sidebar .nav-item[data-view="${view}"]:not([data-title])`)), view);
+          await still(page);
+          expect(await version(), `390px ${view}`).toEqual({labels: 1, parent: 'content', text: expect.stringMatching(/^v\d/),
+            display: 'none', drawn: false});
+        }
       }
       if (width === 780) {
         expect(await versionAtEnd(page), '780px').toEqual({labels: 1, parent: 'content', text: expect.stringMatching(/^v\d/),

@@ -342,6 +342,49 @@ test('crossing 1390px re-measures the strip to the three cards shown and back to
   }
 });
 
+/* On a handheld (779px and below) the strip is the two cards still shown --
+ * Total Downloads then Completed, one row -- and from 780px the three again:
+ * crossing 779/780 either way re-measures the route under the heartbeats
+ * already on it. The heartbeats are the same ones (none reset, none replayed),
+ * the first frame after each crossing, before the clock moves, is drawn on the
+ * cards as they now stand, and the cadence keeps its phase. */
+test('crossing 779/780px re-measures the strip to the two handheld cards and back to three, under the same heartbeats', async ({page}) => {
+  test.setTimeout(90000);
+  await boot(page, {width: 780});
+  const {times: [anchor]} = await births(page, INTERVAL + 100);
+  expect(anchor).toBeDefined();
+  const routeLabels = () => page.evaluate(() => _dashboardHeartbeat.route.cards
+    .map(card => card.svg.closest('.dash-hero-stat').querySelector('.dhs-label').textContent));
+  const beats = () => page.evaluate(() => _dashboardHeartbeat.beats.map(beat => beat.born));
+  for (const [width, labels] of [
+    [779, ['Completed', 'Total Downloads']],
+    [780, ['Total Downloaded', 'Completed', 'Total Downloads']],
+    [779, ['Completed', 'Total Downloads']]]) {
+    expect((await strip(page)).some(card => leads(card).some(x => x > -48 && x < card.width))).toBe(true);   // mid-flight
+    const before = await beats();
+    const clock = await page.evaluate(() => Date.now());
+    await page.setViewportSize({width, height: 900});
+    await expect.poll(async () => (await strip(page)).length).toBe(labels.length);
+    await expect.poll(() => viewBoxesFit(page)).toBe(true);
+    expect(await page.evaluate(() => Date.now()), `${width}px: the clock did not move`).toBe(clock);
+    expect(await routeLabels()).toEqual(labels);                   // the route is the shown cards, right to left
+    // The same heartbeats: none born, reset or replayed by the crossing (one
+    // whose trail is past a shorter strip's end may only be dropped).
+    const kept = await beats();
+    expect(kept.length, `${width}px: heartbeats kept`).toBeGreaterThan(0);
+    expect(kept.every(born => before.includes(born)), `${width}px: the same heartbeats`).toBe(true);
+    const cards = await strip(page);
+    expect(route(cards).rows.length).toBe(1);
+    expectOneContinuousLine(cards);                                 // the first frame is the cards as they stand
+    const after = await births(page, 2 * INTERVAL);
+    expect(after.times.length).toBe(2);
+    after.times.forEach(at => {
+      const phase = ((at - anchor) % INTERVAL + INTERVAL) % INTERVAL;
+      expect(Math.min(phase, INTERVAL - phase)).toBeLessThanOrEqual(QUANTUM);
+    });
+  }
+});
+
 test('negative control: a strip whose route is not re-measured fails the sidebar transition check', async ({page}) => {
   await boot(page);
   await page.evaluate(() => { const stale = _dashboardHeartbeat.route; window.measureDashboardHeartbeatRoute = () => stale; });

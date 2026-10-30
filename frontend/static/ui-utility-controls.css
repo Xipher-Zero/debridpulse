@@ -4,12 +4,15 @@
 /* ── Quick Add header utilities / shared recovery utility ────────────── */
 /* Import and Recover All belong to the card header, not on top of it. Activity
    Refresh deliberately consumes the exact Recover All control recipe so the
-   same recovery/refresh semantic reads identically across pages. */
+   same recovery/refresh semantic reads identically across pages. Its height
+   and side padding are parameters, so Quick Add's handheld header
+   (ui-dashboard.css) gives it a 44px target, and squares it when glyph only,
+   without a second geometry. */
 #view-dashboard #btn-recover-all,
 #view-events .dp-activity-refresh {
-  height: 36px !important;
-  min-height: 36px !important;
-  padding: 0 14px !important;
+  height: var(--dp-utility-control-block, 36px) !important;
+  min-height: var(--dp-utility-control-block, 36px) !important;
+  padding: 0 var(--dp-utility-control-inline, 14px) !important;
   border-radius: 9px !important;
   font-weight: 650 !important;
   text-shadow: none !important;

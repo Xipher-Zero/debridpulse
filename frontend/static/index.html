@@ -292,17 +292,17 @@
         <div class="card-header">
           <div class="card-title" data-dp-structural-title="1">
             <img src="/icons/dp/card-link.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg">
-            <span class="dp-card-heading-copy"><span>Quick Add</span><span class="dp-card-subtitle">Submit links, files, or other supported resources for download.</span></span>
+            <span class="dp-card-heading-copy"><span>Quick Add</span><span class="dp-card-subtitle" data-short="Links, files &amp; more.">Submit links, files, or other supported resources for download.</span></span>
           </div>
           <div class="dp-global-pause-center"><div class="dp-global-pause-title"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg><span>PROCESSING PAUSED</span></div><div class="dp-global-pause-copy">New downloads can still be added. They will remain queued until processing is resumed.</div></div>
           <div class="dp-card-header-actions">
-            <template data-requires="administer"><span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" data-tooltip="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span></template>
+            <template data-requires="administer"><span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" data-tooltip="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span data-dp-icon-label="1">Recover All</span></button></span></template>
           </div>
         </div>
         <div style="padding:12px 16px">
-          <div class="direct-link-entry">
-            <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="Paste a link, magnet, or other supported resource…&#10;Add multiple entries, one per line." data-tooltip="Paste alternate sources for one item separated by tabs; use new lines for separate items." oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
-            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" data-tooltip="Submit links and magnets for provider routing; when empty, choose a transfer file">Add</button></span>
+          <div class="direct-link-entry dp-action-field">
+            <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="Paste a link, magnet, or other supported resource…&#10;Add multiple entries, one per line." data-placeholder-concise="Paste links or magnets…&#10;One per line." data-placeholder-minimum="Paste links…&#10;One per line." data-tooltip="Paste alternate sources for one item separated by tabs; use new lines for separate items." oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
+            <button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" data-tooltip="Submit links and magnets for provider routing; when empty, choose a transfer file">Add</button>
           </div>
         </div>
       </div>

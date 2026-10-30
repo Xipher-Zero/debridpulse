@@ -253,9 +253,10 @@ def test_canonical_dashboard_keeps_live_micro_refinements() -> None:
             ".dash-hero-stat:hover",
             "transform: none !important",
             "transition: none !important",
-            "min-width: 91px !important",
-            "min-height: 56px !important",
-            "height: 56px !important",
+            # 1.0.14: Add sits inside Quick Add's field, as wide as its label.
+            "min-width: 0 !important",
+            "min-height: var(--dp-quick-add-action-height, 40px) !important",
+            "height: var(--dp-quick-add-action-height, 40px) !important",
             ".badge-partial::before",
             "content: '⚠' !important",
             ".badge-completed::before",
@@ -293,8 +294,9 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
         (
             "#btn-recover-all",
             "#view-events .dp-activity-refresh",
-            "height: 36px !important",
-            "min-height: 36px !important",
+            # 36px unless Quick Add's handheld header asks for its 44px target.
+            "height: var(--dp-utility-control-block, 36px) !important",
+            "min-height: var(--dp-utility-control-block, 36px) !important",
             "box-shadow: none !important",
             "hue-rotate(215deg)",
             ".dp-utility-icon",
@@ -334,7 +336,7 @@ def test_canonical_dashboard_keeps_empty_state_and_field_focus_contracts() -> No
     assert "#dash-activity-card.dp-dashboard-activity .empty-icon" in css
     assert "width: 76px !important" in css
     assert "height: 76px !important" in css
-    assert "textarea.input.direct-link-input" in css
-    assert "var(--dp-field-border)" in css
-    assert "var(--dp-field-surface)" in css
-    assert "box-shadow: var(--dp-focus-ring) !important" in css
+    # 1.0.14: the field's material and focus ring are the universal
+    # .dp-action-field's (Add inside the field); Quick Add's textarea is bare.
+    assert "textarea.input.direct-link-input" not in css
+    assert "direct-link-entry:focus-within" not in css      # the ring is the universal field's

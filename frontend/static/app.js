@@ -1517,6 +1517,41 @@ function measureDashboardHeartbeatRoute() {
   return {cards: route, end: last ? last.entry + last.width : 0};
 }
 
+/* On a handheld each KPI card shows its count whole wherever it fits beside
+ * the card's icon; where it would not, the card draws it in compact notation
+ * (1.23K, 12.3K, 123K, 1.23M), the most precise form that fits. Only what is
+ * drawn changes: the value's text stays the exact count (what assistive
+ * technology reads and every other reader sees), the compact form is its
+ * data-compact (ui-dashboard.css), and while it is drawn the card's own
+ * tooltip adds the exact count after its unchanged explanation. Run where the
+ * counts are written and when the strip's width changes; from 780px every
+ * count is drawn exactly. */
+const DASHBOARD_KPI_COMPACT = [3, 2].map(digits => new Intl.NumberFormat('en', {notation: 'compact', maximumSignificantDigits: digits}));
+const DASHBOARD_KPI_EXACT = new Intl.NumberFormat('en');
+const _dashboardKpiTooltips = new WeakMap();
+function fitDashboardKpiValues() {
+  document.querySelectorAll('#view-dashboard .dash-hero-stat .dhs-val').forEach(value => {
+    const card = value.closest('.dash-hero-stat');
+    if (!_dashboardKpiTooltips.has(card)) _dashboardKpiTooltips.set(card, card.dataset.tooltip);
+    const explanation = _dashboardKpiTooltips.get(card);
+    const tooltip = text => { if (explanation !== undefined && card.dataset.tooltip !== text) card.dataset.tooltip = text; };
+    delete value.dataset.compact;
+    const count = Number(value.textContent);
+    if (!_shellHandheld.matches || !card.offsetWidth || value.textContent.trim() === '' || !Number.isFinite(count)) return tooltip(explanation);
+    const style = getComputedStyle(card);
+    const room = card.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)
+      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - card.querySelector('.dhs-icon').getBoundingClientRect().width - parseFloat(getComputedStyle(value).marginLeft);
+    const fits = () => value.getBoundingClientRect().width <= room;
+    if (fits()) return tooltip(explanation);
+    for (const format of DASHBOARD_KPI_COMPACT) {
+      value.dataset.compact = format.format(count);
+      if (fits()) break;
+    }
+    tooltip(`${explanation} Exact count: ${DASHBOARD_KPI_EXACT.format(count)}.`);
+  });
+}
+
 /* A heartbeat's trail: the strip distance to the heartbeat that follows it
  * (born at `following`, or due then) -- or, if the strip was held, to the one
  * that was due then -- less its own complex and the clearance, and never
@@ -1798,6 +1833,7 @@ async function loadStats() {
       if (errCard) errCard.classList.toggle('dash-hero-stat--quiet', !(errCount > 0));
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
+      fitDashboardKpiValues();
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
@@ -2015,6 +2051,7 @@ function resizeDebridLinkInput(input) {
     (parseFloat(styles.paddingBottom) || 0) + border;
   const minimum = Math.ceil((lineHeight * 2) + chrome);
   const maximum = Math.ceil((lineHeight * 5) + chrome);
+  if (!input.value && input.dataset.placeholderConcise) input.placeholder = fittedPlaceholder(input, minimum, border);
   // An empty field is as tall as its placeholder needs: the placeholder is
   // measured as the field's own text (browsers differ on whether scrollHeight
   // counts a placeholder), so a hint that wraps on a narrow screen is shown
@@ -2027,6 +2064,47 @@ function resizeDebridLinkInput(input) {
   const target = Math.max(minimum, Math.min(needed, maximum));
   input.style.height = `${target}px`;
   input.style.overflowY = !placeholder && needed > maximum ? 'auto' : 'hidden';
+}
+
+/* A field that declares shorter placeholders (Quick Add: data-placeholder-
+ * concise, then data-placeholder-minimum) shows, on a handheld, the first of
+ * its authored placeholder, the concise one and the minimum one whose lines
+ * each fit on one line of the field as rendered -- so the empty field rests at
+ * its two lines with whole words, never a clipped or third line. From 780px
+ * it is always the authored one. Each is measured as the field's own text, as
+ * the sizing above measures a placeholder. */
+const _authoredPlaceholders = new WeakMap();
+function fittedPlaceholder(input, twoLines, border) {
+  if (!_authoredPlaceholders.has(input)) _authoredPlaceholders.set(input, input.placeholder);
+  const authored = _authoredPlaceholders.get(input);
+  if (!_shellHandheld.matches) return authored;
+  const choices = [authored, input.dataset.placeholderConcise, input.dataset.placeholderMinimum].filter(Boolean);
+  const fits = text => {
+    input.value = text;
+    input.style.height = `${twoLines}px`;
+    return input.scrollHeight + border <= twoLines;
+  };
+  const chosen = choices.find(fits) ?? choices[choices.length - 1];
+  input.value = '';
+  return chosen;
+}
+
+/* Quick Add's header on a handheld is one row whose subtitle never wraps.
+ * Where the row is short it gives way in one order (ui-dashboard.css): Recover
+ * All keeps only its glyph, then the subtitle shows its shorter wording. The
+ * first that leaves the rendered subtitle within its column is kept; from
+ * 780px the header is the desktop's. */
+const QUICK_ADD_HEADER_FITS = ['', 'icon', 'icon short'];
+function fitQuickAddHeader() {
+  const header = document.querySelector('#view-dashboard .dp-dashboard-quick-add > .card-header');
+  const subtitle = header?.querySelector('.dp-card-subtitle');
+  if (!subtitle) return;
+  if (!_shellHandheld.matches) { delete header.dataset.dpFit; return; }
+  const fit = QUICK_ADD_HEADER_FITS.find(state => {
+    header.dataset.dpFit = state;
+    return subtitle.scrollWidth <= subtitle.clientWidth;
+  }) ?? QUICK_ADD_HEADER_FITS[QUICK_ADD_HEADER_FITS.length - 1];
+  header.dataset.dpFit = fit;
 }
 
 function classifyDashboardEntries(raw) {
@@ -3076,6 +3154,10 @@ document.addEventListener('DOMContentLoaded', () => {
   _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
   document.addEventListener('visibilitychange', syncDashboardSparkPulses);
   new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));
+  // The strip's width changing re-fits its counts (which changes neither the
+  // strip's size nor its cards' lines), as do the fonts they are drawn in.
+  new ResizeObserver(fitDashboardKpiValues).observe(document.getElementById('dash-hero'));
+  document.fonts?.ready.then(() => fitDashboardKpiValues());
   // Quick Add sizes to its text, or to its placeholder while empty, and both
   // wrap with the field's width: size it once now and again whenever that
   // width changes (a resize, or the Dashboard first being shown). Its own
@@ -3089,6 +3171,15 @@ document.addEventListener('DOMContentLoaded', () => {
       quickAddWidth = width;
       resizeDebridLinkInput(quickAdd);
     }).observe(quickAdd);
+  }
+  // Its header is fitted again whenever its width or Recover All's label
+  // (Recovering…) changes; the header and the field's placeholder once the
+  // fonts they are measured in have loaded.
+  const quickAddHeader = document.querySelector('#view-dashboard .dp-dashboard-quick-add > .card-header');
+  if (quickAddHeader) {
+    const refit = new ResizeObserver(() => fitQuickAddHeader());
+    [quickAddHeader, document.getElementById('btn-recover-all')].forEach(node => node && refit.observe(node));
+    document.fonts?.ready.then(() => { fitQuickAddHeader(); resizeDebridLinkInput(quickAdd); });
   }
   // Returning to the Dashboard: the route is read again from the settled cards
   // (the heartbeat clock and the beats on the strip are untouched).

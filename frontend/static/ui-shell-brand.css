@@ -68,8 +68,10 @@ body.light #sidebar .logo-icon {
   }
 }
 
+/* On a handheld (779px and below) no page shows the version for now: the
+   label keeps its element, place and text, and is shown again from 780px. */
 @media (max-width: 779px) {
   #content > #sidebar-version.dp-app-version {
-    font-size: 8px;
+    display: none;
   }
 }

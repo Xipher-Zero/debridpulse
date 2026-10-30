@@ -222,9 +222,11 @@ textarea.input {
   transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
 }
 
-body.light :is(.dp-field, .input, .dp-action-field),
-body.light select.input,
-body.light textarea.input {
+/* The light resting inset adds no specificity of its own (:where), so the
+   focus ring below and a compound field's bare control still win over it. */
+:where(body.light) :is(.dp-field, .input, .dp-action-field),
+:where(body.light) select.input,
+:where(body.light) textarea.input {
   box-shadow: inset 0 1px rgba(255,255,255,.85);
 }
 
@@ -602,9 +604,13 @@ body.light .dash-kpi-strip {
   background: linear-gradient(180deg, #ffffff, #fbfcfe);
   box-shadow: var(--shadow-soft);
 }
-body.light :is(.dp-field, .input),
-body.light select.input,
-body.light textarea.input,
+/* Controls' light surface, at rest and focused, adds no specificity of its
+   own either (:where), so the control inside a .dp-action-field stays bare
+   and the field's one surface shows through it. */
+:where(body.light) :is(.dp-field, .input),
+:where(body.light) :is(.dp-field, .input):focus,
+:where(body.light) select.input,
+:where(body.light) textarea.input { background: var(--dp-chrome-input-surface); }
 body.light .runtime-cap-options button,
 body.light .runtime-cap-custom input { background: var(--dp-chrome-input-surface); }
 body.light thead th { background: var(--dp-chrome-table-head-plain); }

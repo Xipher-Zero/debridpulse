@@ -172,31 +172,23 @@
   padding: 14px 16px 16px !important;
 }
 
+/* Quick Add's entry is one field holding its action (.dp-action-field,
+   ui-universal-language.css): that field's border, surface, hover and focus
+   ring hold the bare textarea and, inside them at the right, Add -- centred
+   on the field however tall the text makes it, at every width. */
 #view-dashboard .direct-link-entry {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
+  padding-inline: 0 10px;
 }
 #view-dashboard .direct-link-input {
   min-height: var(--dp-input-height);
   width: 100%;
   padding: 10px 13px;
-  border: 1px solid var(--dp-border-default);
-  border-radius: var(--dp-radius-sm);
-  background: var(--dp-surface-input);
-  color: var(--dp-text-primary);
   font-family: var(--dp-font-mono);
   font-size: 12px;
   line-height: 18px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
 }
 #view-dashboard .direct-link-input::placeholder { color: var(--dp-text-muted); }
-#view-dashboard .direct-link-input:hover { border-color: var(--dp-border-strong); }
-#view-dashboard .direct-link-input:focus {
-  outline: none;
-  border-color: var(--dp-accent-purple);
-  box-shadow: var(--dp-focus-ring);
-}
 #view-dashboard #btn-add-transfer {
   height: var(--dp-input-height);
   min-width: 92px;
@@ -289,7 +281,6 @@ body.light #view-dashboard .dp-dashboard-activity {
   background: linear-gradient(180deg, #ffffff, var(--dp-surface-2));
   box-shadow: var(--dp-shadow-card);
 }
-body.light #view-dashboard .direct-link-input { background: #fbfcff; }
 body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 
 /* ── Responsive dashboard ──────────────────────────────────────────────── */
@@ -311,12 +302,6 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 
 @media (max-width: 899px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 640px) {
-  #view-dashboard .dash-hero { grid-template-columns: 1fr; }
-  #view-dashboard .direct-link-entry { align-items: stretch; flex-direction: column; }
-  #view-dashboard #btn-add-transfer { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -520,16 +505,11 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   padding: 13px 16px 15px !important;
   border-top: 1px solid var(--dp-chrome-card-divider);
 }
-#view-dashboard .direct-link-entry { gap: 13px; }
 #view-dashboard .direct-link-input {
   min-height: 59px;
   max-height: 112px;
   padding: 12px 13px;
   resize: none;
-  border-radius: 8px;
-  border-color: rgba(110, 124, 184, .25);
-  background: rgba(8, 13, 31, .73);
-  color: #dfe2f2;
   font-size: 11.5px;
   line-height: 18px;
 }
@@ -634,11 +614,6 @@ body.light #view-dashboard .dp-dashboard-activity .card-title { color: var(--dp-
 body.light #view-dashboard .dhs-label { color: var(--dp-chrome-kpi-label); }
 body.light .dp-card-subtitle,
 body.light #view-dashboard #dash-activity-count { color: var(--dp-chrome-card-subtitle) !important; }
-body.light #view-dashboard .direct-link-input {
-  background: #fbfcff;
-  border-color: #d9dfed;
-  color: #30354e;
-}
 body.light #view-dashboard .t-table thead th { background: #f5f7fc; color: var(--dp-chrome-table-head-text); }
 body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
 
@@ -649,16 +624,69 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    Below the desktop the strip keeps three of them -- Total Downloads,
    Completed and Total Downloaded, in that order -- on one row down to 780px:
    Active Now, Processing and Errors leave the layout (each named by its own
-   value), still filled with every update and shown again from 1390px. */
+   value), still filled with every update and shown again from 1390px. On a
+   handheld (779px and below) the strip is two cards, Total Downloads then
+   Completed: Total Downloaded leaves the layout too, in the same way, and is
+   shown again from 780px. The two always share one row at equal widths, and
+   each card is two rows of its own: the icon and value, side by side and
+   centred together, then the label centred beneath them across the card's
+   whole width (wrapping only between its words), so the label is never held
+   to the column beside the icon. */
 @media (max-width: 1389px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #view-dashboard .dash-hero-stat:has(#s-active, #s-processing, #s-error) { display: none; }
 }
+/* Quick Add on a handheld keeps the desktop's rows. The header is one row:
+   the icon and the title over its one-line subtitle on the left, contracting,
+   and Recover All at the right inset (the processing-paused notice, when
+   shown, is the row below it). Where the row is short, fitQuickAddHeader
+   (app.js) gives way in one order, measured on the rendered subtitle: Recover
+   All first keeps only its glyph (its label stays its accessible name), then
+   the subtitle shows its shorter wording (data-short; the full sentence stays
+   its accessible text). Recover All's track, which lines it up with the
+   desktop's row actions, is only as wide as it here, so it reaches the
+   header's right inset. */
 @media (max-width: 779px) {
-  #view-dashboard .dash-hero { grid-template-columns: 1fr; }
-  #view-dashboard .direct-link-entry { flex-direction: column; align-items: stretch; }
-  #view-dashboard #btn-add-transfer { min-height: 42px; }
-  .dp-card-header-actions { width: 100%; margin: 8px 0 0; }
+  #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #view-dashboard .dash-hero-stat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    align-items: center;
+    align-content: center;
+    gap: 9px 0;
+  }
+  #view-dashboard .dhs-icon { grid-column: 2; margin-top: 0; }
+  #view-dashboard .dhs-body { display: contents; }
+  #view-dashboard :is(.dhs-val, .dhs-label) { position: relative; z-index: 2; }
+  #view-dashboard .dhs-val { grid-column: 3; margin-left: 8px; white-space: nowrap; font-size: 22px; }
+  /* A count too wide to stand beside its icon is drawn in compact notation
+     (data-compact, chosen by fitDashboardKpiValues in app.js) at the value's
+     own size and spacing; the element's text stays the exact count. */
+  #view-dashboard .dhs-val[data-compact] { font-size: 0; }
+  #view-dashboard .dhs-val[data-compact]::before { content: attr(data-compact) / ""; font-size: 22px; letter-spacing: -.025em; }
+  #view-dashboard .dhs-label { grid-column: 1 / -1; margin-top: 0; text-align: center; white-space: normal; }
+  #view-dashboard .dash-hero-stat:has(#s-size) { display: none; }
+  #view-dashboard .dp-dashboard-action-track { width: auto; }
+  #view-dashboard .dp-dashboard-quick-add .card-title { flex: 1 1 0; min-width: 0; }
+  #view-dashboard .dp-dashboard-quick-add .dp-card-subtitle { white-space: nowrap; }
+  /* Recover All is 44px tall here, and glyph only a 44px square (its 18px
+     glyph, 12px each side and the edge); Add, inside the field, 44px tall. */
+  #view-dashboard #btn-recover-all { --dp-utility-control-block: 44px; }
+  #view-dashboard .dp-dashboard-quick-add > .card-header[data-dp-fit~="icon"] #btn-recover-all { --dp-utility-control-inline: 12px; }
+  #view-dashboard #btn-add-transfer { --dp-quick-add-action-height: 44px; }
+  #view-dashboard .dp-dashboard-quick-add > .card-header[data-dp-fit~="icon"] #btn-recover-all [data-dp-icon-label] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  #view-dashboard .dp-dashboard-quick-add > .card-header[data-dp-fit~="short"] .dp-card-subtitle { font-size: 0; }
+  #view-dashboard .dp-dashboard-quick-add > .card-header[data-dp-fit~="short"] .dp-card-subtitle::before {
+    content: attr(data-short) / "";
+    font-size: 11.5px;
+  }
 }
 
 /* Canonical Dashboard geometry retained from the accepted second review. */
@@ -1601,14 +1629,16 @@ body.light #runtime-badge-speed {
   transition: none !important;
 }
 
-/* Reduce the primary CTA's visual mass by about five percent and center it
-   against the textarea instead of stretching with it as the input expands. */
+/* The primary CTA sits inside Quick Add's field at its right, as wide as its
+   label and centred on the field instead of stretching with it as the input
+   expands: 40px tall (44px on a handheld), so at the field's two-line rest it
+   keeps an inset like the one at its right. */
 #view-dashboard #btn-add-transfer {
   align-self: center !important;
-  min-width: 91px !important;
+  min-width: 0 !important;
   width: auto !important;
-  min-height: 56px !important;
-  height: 56px !important;
+  min-height: var(--dp-quick-add-action-height, 40px) !important;
+  height: var(--dp-quick-add-action-height, 40px) !important;
 }
 
 /* Dashboard badge normalization strips the leading legacy emoji. Restore the
@@ -1931,29 +1961,6 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
   margin: 0 auto 12px !important;
 }
 
-/* Quick Add already carries the universal .input class. Preserve its textarea
-   geometry/mono typography, but reset the material and focus behavior to the
-   canonical field contract so focus adds a lavender ring without visually
-   replacing the field perimeter. */
-#view-dashboard textarea.input.direct-link-input {
-  border-color: var(--dp-field-border) !important;
-  background: var(--dp-field-surface) !important;
-  color: var(--dp-field-text) !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.018) !important;
-}
-body.light #view-dashboard textarea.input.direct-link-input {
-  box-shadow: inset 0 1px rgba(255,255,255,.85) !important;
-}
-#view-dashboard textarea.input.direct-link-input:hover {
-  border-color: var(--dp-border-strong) !important;
-}
-#view-dashboard textarea.input.direct-link-input:focus {
-  outline: none !important;
-  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
-  background: var(--dp-field-surface) !important;
-  box-shadow: var(--dp-focus-ring) !important;
-}
-
 /* DP 1.0.12 UI Finishing (Correction 3): the Added/Action column-width
    override that used to be re-declared here (a later "final geometry
    correction" layered on top of the block above at the same media query,
@@ -2027,8 +2034,6 @@ body.light #view-dashboard textarea.input.direct-link-input {
 .dhs-label { font-size: 10px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
 .dhs-sub { font-size: 10px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
 @media (max-width: 779px) {
-  .dash-hero { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-  .dhs-val { font-size: 22px !important; }
   .dhs-icon { font-size: 18px !important; }
 }
 
@@ -2088,24 +2093,17 @@ tr[draggable="true"]:active { cursor: grabbing; }
 .dash-row-bar-fill { height: 100%; border-radius: 1px; transition: width .4s ease; }
 
 /* Dashboard quick-add transfer entry (DP 1.0.12 canonical flattening:
-   migrated from the retired ui-legacy-foundation.css) */
-.direct-link-entry {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
+   migrated from the retired ui-legacy-foundation.css); the entry itself is a
+   .dp-action-field (see Quick Add above). */
 .direct-link-input {
-  /* The field takes the row's remaining width; its basis is its own size, so
-     when the entry stacks into a column its height is the one the field's
-     sizing owner (resizeDebridLinkInput) sets rather than a zero basis. */
+  /* The textarea takes the field's width beside Add, down to none of its own
+     minimum, so a narrow field shrinks the text area and never wraps Add. */
   flex: 1 1 auto;
+  min-width: 0;
   resize: none;
   min-height: 38px;
   max-height: 110px;
   overflow-y: hidden;
   line-height: 18px;
   font-family: 'JetBrains Mono', monospace;
-}
-@media (max-width: 640px) {
-  .direct-link-entry { align-items: stretch; flex-direction: column; }
 }

@@ -347,7 +347,9 @@ async function parkDashboardRecent(page){
 }
 const DASH_ROW_HTML='<tr data-torrent-id="1" data-status="downloading"><td>Name</td><td>Status</td><td>Progress</td><td>1MB</td><td>today</td><td><div class="actions"><button class="btn btn-blue btn-sm">Pause</button></div></td></tr>';
 
-test('Dashboard shares one action centerline across Recover All, Add, and the row action button',async({page})=>{
+// 1.0.14: Add sits inside Quick Add's field (operator decision), so it left the
+// shared action centerline; Recover All and the row actions keep it.
+test('Dashboard shares one action centerline across Recover All and the row action button; Add sits inside Quick Add\'s field at its right, centred',async({page})=>{
  for(const theme of ['dark','light']){
   for(const width of DASH_WIDE_WIDTHS){
    await page.setViewportSize({width,height:900});
@@ -359,13 +361,18 @@ test('Dashboard shares one action centerline across Recover All, Add, and the ro
     const centerOf=el=>{const r=el.getBoundingClientRect();return (r.left+r.right)/2;};
     return {
      recover:centerOf(document.getElementById('btn-recover-all')),
-     add:centerOf(document.getElementById('btn-add-transfer')),
      action:centerOf(document.querySelector('#dash-tbody .actions .btn')),
+     add:(()=>{const a=document.getElementById('btn-add-transfer').getBoundingClientRect(),f=document.querySelector('#view-dashboard .direct-link-entry').getBoundingClientRect(),
+       t=document.getElementById('q-transfer-input').getBoundingClientRect();
+       return {right:f.right-a.right,middle:Math.abs((a.top+a.bottom)/2-(f.top+f.bottom)/2),inside:a.left>=f.left&&a.top>=f.top&&a.bottom<=f.bottom,textEnds:t.right<=a.left};})(),
     };
    });
    await release();
-   expect(Math.abs(centers.recover-centers.add)).toBeLessThanOrEqual(1);
    expect(Math.abs(centers.recover-centers.action)).toBeLessThanOrEqual(1);
+   expect(centers.add.inside).toBe(true);
+   expect(centers.add.textEnds).toBe(true);
+   expect(Math.abs(centers.add.right-11)).toBeLessThanOrEqual(0.5);
+   expect(centers.add.middle).toBeLessThanOrEqual(0.5);
   }
  }
 });
