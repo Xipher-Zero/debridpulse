@@ -163,15 +163,24 @@ const read = (page, view) => page.evaluate(view => {
         sourceIcon: !!meta.querySelector('.dp-source-icon-slot') && shown(meta.querySelector('.dp-source-icon-slot')),
         metaHeight: Math.round(r(meta).height), sizeShown: shown(size) && r(size).top < r(meta).bottom - 0.5,
         stage, full, sized, labelled, painted, userLabel: userLabel ? (shown(userLabel) ? (cut(userLabel) ? 'truncated' : 'whole') : 'omitted') : null,
-        grip: grip ? {gripTop: r(grip).top, gripBottom: r(grip).bottom, gripRight: r(grip).right, nameTop: r(name).top, nameBottom: r(name).bottom,
-          nameLeft: r(name).left, slotLeft: r(slot).left, slotTop: r(slot).top, slotWidth: r(slot).width,
-          metaLeft: r(meta).left, metaTop: r(meta).top, contentLeft: r(cell).left + parseFloat(cellStyle.paddingLeft)} : null,
+        grip: grip ? {gripLeft: r(grip).left, gripRight: r(grip).right, gripTop: r(grip).top, gripBottom: r(grip).bottom, cellLeft: r(cell).left,
+          rowMiddle: (r(tr).top + r(tr).bottom) / 2, gripMiddle: (r(grip).top + r(grip).bottom) / 2, nameTop: r(name).top, metaBottom: r(meta).bottom,
+          nameLeft: r(name).left, slotLeft: r(slot).left, metaLeft: r(meta).left, contentLeft: r(cell).left + parseFloat(cellStyle.paddingLeft)} : null,
         providerId: chip?.dataset.providerId || '', drawn: painted?.text, candidates: !!main.querySelector('.dp-candidate-chip'),
         launcher: launcher ? {padding: [getComputedStyle(launcher).paddingLeft, getComputedStyle(launcher).paddingRight, getComputedStyle(launcher).columnGap], height: r(launcher).height} : null,
         labelText: label?.textContent, labelTooltip: label?.getAttribute('data-tooltip') ?? null, labelShort: label?.dataset.shortLabel ?? null,
-        actions: (cellNode => cellNode ? {width: Math.round(r(cellNode).width), padding: getComputedStyle(cellNode).paddingLeft,
+        actions: (cellNode => cellNode ? {width: r(cellNode).width, padding: [getComputedStyle(cellNode).paddingLeft, getComputedStyle(cellNode).paddingRight],
           buttons: [...cellNode.querySelectorAll('.actions .btn')].filter(shown).map(b => `${Math.round(r(b).width)}x${Math.round(r(b).height)}`),
-          gap: getComputedStyle(cellNode.querySelector('.actions')).columnGap, last: tr.lastElementChild.classList.contains('dp-downloads-select-cell')} : null)(tr.querySelector('.dp-downloads-action-cell')),
+          // Each button as drawn: its label physically absent (no box of its own, nothing painted), its glyph drawn, its name kept.
+          drawn: [...cellNode.querySelectorAll('.actions .btn')].filter(shown).map(b => { const label = b.querySelector('[data-dp-icon-label]'), icon = b.querySelector('.dp-row-action-icon');
+            return {labelGone: !label || (r(label).width <= 1 && r(label).height <= 1 && getComputedStyle(label).opacity === '0'), icon: !!icon && shown(icon) && r(icon).width >= 12,
+              name: (b.getAttribute('aria-label') || label?.textContent || '').trim()}; }),
+          gap: getComputedStyle(cellNode.querySelector('.actions') || cellNode).columnGap, last: tr.lastElementChild === cellNode || tr.lastElementChild.classList.contains('dp-downloads-select-cell')} : null)
+          (tr.querySelector('.dp-downloads-action-cell') ?? (view === 'dashboard' && tr.children.length > 1 ? tr.lastElementChild : null)),
+        // The columns as drawn: every one shown, its width; the selection cell's checkbox centre.
+        columns: [...tr.children].filter(shown).map(td => r(td).width),
+        checkbox: (box => box ? (r(box).left + r(box).right) / 2 - (r(box.closest('td')).left + r(box.closest('td')).right) / 2 : null)(tr.querySelector('.dp-downloads-select-cell input')),
+        tableWidth: r(table).width,
         essentialsInside: essentials.every(node => r(node).left >= r(meta).left - 0.5 && r(node).right <= cellRight && r(node).top >= r(meta).top - 0.5 && r(node).bottom <= r(meta).bottom + 0.5),
         consentInActions: !!tr.querySelector('.dp-downloads-action-cell .dp-queue-consent-action') && shown(tr.querySelector('.dp-downloads-action-cell .dp-queue-consent-action')),
       };
@@ -185,7 +194,7 @@ test.describe('handheld transfer lists', () => {
     await open(page, ITEMS, {width: 779, view: 'dashboard'});
     for (const view of ['dashboard', 'torrents']) {
       await show(page, view);
-      for (const width of [779, 600, 440, 414, 390, 362, 361, 360, 342, 341, 340, 336, 334, 330, 328, 326, 324, 322, 320]) {
+      for (const width of [779, 600, 440, 414, 393, 390, 375, 362, 361, 360, 342, 341, 340, 336, 334, 330, 328, 326, 324, 322, 320]) {
         await page.setViewportSize({width, height: 900});
         await settle(page);
         const at = `${view} ${width}px`, t = await read(page, view);
@@ -221,22 +230,30 @@ test.describe('handheld transfer lists', () => {
             const narrow = view === 'torrents' && width < 362 && row.stage === 'short' && row.candidates;
             expect([...row.launcher.padding, row.launcher.height], `${where}: route launcher padding`).toEqual(narrow ? ['4px', '4px', '4px', 20] : ['8px', '8px', '5px', 20]);
           }
-          // A queue grip stands beside the name alone: the slot keeps its place beside it, the metadata line takes the room
-          // beneath it, from the cell's content edge, with no overlap.
+          // A queue grip is the row's left-edge gutter: in the Name cell's left padding, from the cell's edge, over the whole
+          // summary (the name's line to the metadata line's foot) and centred on the row; the name, slot and metadata line
+          // start at the cell's content edge, as every row's do -- nothing overlaps it and it takes no width from them.
           if (row.grip) {
             const g = row.grip;
-            expect(g.gripTop >= g.nameTop - 0.5 && g.gripBottom <= g.nameBottom + 0.5 && g.gripBottom <= g.slotTop + 0.5, `${where}: grip on the name's line`).toBe(true);
-            expect([Math.abs(g.slotLeft - g.nameLeft) <= 0.5, g.gripRight <= g.nameLeft + 0.5, Math.abs(g.metaLeft - g.contentLeft) <= 0.5, g.gripBottom <= g.metaTop + 0.5],
-              `${where}: slot beside the grip, metadata beneath it`).toEqual([true, true, true, true]);
+            expect([Math.abs(g.gripLeft - g.cellLeft) <= 0.5, g.gripRight <= g.contentLeft + 0.5], `${where}: grip in the left gutter`).toEqual([true, true]);
+            expect([g.gripTop <= g.nameTop + 0.5, g.gripBottom >= g.metaBottom - 0.5, Math.abs(g.gripMiddle - g.rowMiddle) <= 1], `${where}: grip over the whole summary, centred on the row`).toEqual([true, true, true]);
+            expect([g.nameLeft, g.slotLeft, g.metaLeft].map(x => Math.abs(x - g.contentLeft) <= 0.5), `${where}: summary at the content edge`).toEqual([true, true, true]);
           }
           // Every status, provider, candidate, file-selection and label control whole on the one line, 320px included.
           expect(row.essentialsInside, `${where}: an essential control off the line`).toBe(true);
           if (row.actions) {
-            expect(row.actions.buttons.every(size => size === '36x36'), `${where}: action buttons`).toBe(true);
-            expect([row.actions.gap, row.actions.last], `${where}: action gap, selection last`).toEqual(['7px', true]);
-            // The outer allowance gives way only where the table is narrower than 336px (a 362px window).
-            expect(row.actions.padding, `${where}: Actions padding`).toBe(width < 362 ? '5px' : '14px');
+            // Glyph-only 36px controls on both tables: the label physically absent, the glyph drawn, the name kept.
+            expect(row.actions.buttons.every(size => size === '36x36'), `${where}: action buttons ${row.actions.buttons}`).toBe(true);
+            expect(row.actions.drawn.every(b => b.labelGone && b.icon && b.name), `${where}: glyph-only actions ${JSON.stringify(row.actions.drawn)}`).toBe(true);
+            expect([row.actions.gap, row.actions.last], `${where}: action gap (each table's own), Actions or selection last`).toEqual([view === 'dashboard' ? '4px' : '7px', true]);
+            // 4px each side between the columns; Dashboard's outer edge keeps its 14px.
+            expect(row.actions.padding, `${where}: Actions padding`).toEqual(view === 'dashboard' ? ['4px', '14px'] : ['4px', '4px']);
           }
+          // The columns are the table: no phantom or dead track; Actions is its buttons and 8px (Downloads) or its one
+          // button and its insets (Dashboard); the checkbox centred in its 36px track; Summary takes every other pixel.
+          expect(Math.abs(row.columns.reduce((a, b) => a + b, 0) - row.tableWidth), `${where}: columns fill the table`).toBeLessThanOrEqual(0.6);
+          if (row.actions && view === 'dashboard') expect(Math.round(row.actions.width), `${where}: Action track`).toBe(54);
+          if (row.checkbox !== null) expect(Math.abs(row.checkbox), `${where}: checkbox centred`).toBeLessThanOrEqual(0.6);
           expect(row.valueLeft, `${where}: the value beside the name`).toBeGreaterThanOrEqual(row.nameRight);
           expect(Math.abs(row.valueTop - row.nameTop), `${where}: the value on the name's line`).toBeLessThanOrEqual(2);
           expect(row.glyph, `${where}: status leads the line`).toEqual({first: true, name: row.badgeLabel});
@@ -246,8 +263,9 @@ test.describe('handheld transfer lists', () => {
         expect(t.rows.find(row => row.id === 9706)?.track ?? null, `${at}: a completed transfer draws no track`).toBe(null);
         if (view === 'torrents') expect(t.rows.find(row => row.id === 9703).consentInActions, `${at}: Start Now in Actions`).toBe(true);
       }
-      // Back at 779px every row has room again: each size and label set aside at 320px returns.
-      expect((await read(page, view)).rows.some(row => !row.sizeShown), `${view} 320px: some size set aside`).toBe(true);
+      // Back at 779px every row has room again: each size and label set aside at 320px returns. (Downloads sets some
+      // aside at 320px in either face; Download Activity, with the Summary's whole width, may keep every one in Outfit.)
+      if (view === 'torrents' || !process.env.DP_WEB_FONTS) expect((await read(page, view)).rows.some(row => !row.sizeShown), `${view} 320px: some size set aside`).toBe(true);
       await page.setViewportSize({width: 779, height: 900});
       await settle(page);
       expect((await read(page, view)).rows.every(row => row.sizeShown && row.userLabel !== 'omitted' && row.stage === ''), `${view} 779px: every size and label back`).toBe(true);
@@ -310,6 +328,47 @@ test.describe('handheld transfer lists', () => {
     await expect(figure(9715)).toHaveText(/^57%/);
   });
 
+  test('one canonical status glyph per row, the same on both tables: no second mark, the same glyph, ink and box in dark and light, kept through a live change', async ({page}) => {
+    let items = ITEMS.map(item => ({...item}));
+    await open(page, () => items, {width: 390, height: 1400, view: 'dashboard'});
+    const marks = view => page.evaluate(view => [...document.getElementById(view === 'dashboard' ? 'dash-tbody' : 't-tbody').querySelectorAll('tr[data-torrent-id]')].map(tr => {
+      const cell = tr.children[0], shown = node => getComputedStyle(node).display !== 'none' && node.getClientRects().length > 0;
+      const pseudo = node => ['::before', '::after'].map(p => getComputedStyle(node, p).content).filter(c => c && c !== 'none' && c !== 'normal');
+      // Every status mark: a shown element carrying a status tone class, and any generated content on one or inside it.
+      const status = [...cell.querySelectorAll('[class*="badge-"]')].filter(shown);
+      const generated = status.flatMap(node => [node, ...node.querySelectorAll('*')]).flatMap(pseudo);
+      const glyph = cell.querySelector('.dp-status-glyph'), svg = glyph?.querySelector('svg'), g = glyph && getComputedStyle(glyph), v = svg && getComputedStyle(svg);
+      return {id: tr.dataset.torrentId, status: glyph?.dataset.dpStatus, count: status.length, generated, icon: svg?.dataset.dpLucide,
+        look: glyph && [g.color, g.backgroundColor, g.backgroundImage, g.boxShadow, g.width, g.height, g.borderRadius, g.borderTopWidth, v.width, v.height, v.stroke, v.strokeWidth, v.filter].join(' | ')};
+    }), view);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
+      await settle(page);
+      await show(page, 'dashboard'); await settle(page);
+      const dashboard = await marks('dashboard');
+      await show(page, 'torrents'); await settle(page);
+      const downloads = await marks('torrents');
+      for (const row of [...dashboard, ...downloads]) {
+        expect([row.count, row.generated], `${theme} #${row.id}: one status mark, nothing generated`).toEqual([1, []]);
+      }
+      for (const row of dashboard) {
+        const twin = downloads.find(entry => entry.id === row.id);
+        if (!twin) continue;
+        expect([row.status, row.icon, row.look], `${theme} #${row.id}: the same glyph on both tables`).toEqual([twin.status, twin.icon, twin.look]);
+      }
+    }
+    // A live change of status: each table, refreshed through its own owner, still draws one mark of the new status.
+    items = items.map(item => item.id === 9705 ? {...item, status: 'completed', presentation_status: 'completed', presentation_label: 'Done', presentation_badge_status: 'completed', progress: 100} : item);
+    await page.evaluate(() => loadTorrents());
+    await settle(page);
+    await show(page, 'dashboard'); await page.evaluate(() => loadRecent()); await settle(page);
+    for (const view of ['dashboard', 'torrents']) {
+      if (view === 'torrents') { await show(page, 'torrents'); await settle(page); }
+      const row = (await marks(view)).find(entry => entry.id === '9705');
+      expect([row.count, row.generated, row.status], `${view} #9705 after a live change`).toEqual([1, [], 'completed']);
+    }
+  });
+
   test('Start Now from the handheld Actions column reaffirms the queue as before', async ({page}) => {
     const log = await open(page, ITEMS, {width: 390});
     const start = page.locator('#t-tbody tr[data-torrent-id="9703"] .dp-downloads-action-cell .dp-queue-consent-action');
@@ -338,11 +397,9 @@ test.describe('handheld transfer lists', () => {
       const meta = tr.querySelector('.dp-transfer-provider-meta'), label = meta.querySelector('.dp-provider-label, .dp-root-provider-name');
       return [Number(tr.dataset.torrentId), meta.dataset.dpFit === 'short' && label?.dataset.shortLabel ? label.dataset.shortLabel : label?.textContent];
     }), view);
-    // 320px: a long catalog name shortened only where its own line has no room for it (AllDebrid has; TorBox's label goes
-    // first, then, in CI's wider fallback face, TorBox); Usenet is already short. Outfit, narrower, keeps Premiumize and TorBox.
-    expect(Object.fromEntries(await names('torrents'))).toEqual(process.env.DP_WEB_FONTS
-      ? {9701: 'DL', 9702: 'AllDebrid', 9703: 'Premiumize', 9704: 'TorBox', 9705: 'RD', 9706: 'Usenet', 9707: 'Media'}
-      : {9701: 'DL', 9702: 'AllDebrid', 9703: 'PM', 9704: 'TB', 9705: 'RD', 9706: 'Usenet', 9707: 'Media'});
+    // 320px: a long catalog name shortened only where its own line has no room for it -- with the columns' 8px gutters,
+    // only Debrid-Link beside the queue grip and its candidate launcher, and Media Downloads; Usenet is already short.
+    expect(Object.fromEntries(await names('torrents'))).toEqual({9701: 'DL', 9702: 'AllDebrid', 9703: 'Premiumize', 9704: 'TorBox', 9705: 'Real-Debrid', 9706: 'Usenet', 9707: 'Media'});
     await expect(page.locator('#t-tbody tr[data-torrent-id="9704"] .lbl-badge')).toBeHidden();
     // Download Activity has room for every full name at 320px.
     await show(page, 'dashboard');
@@ -351,8 +408,8 @@ test.describe('handheld transfer lists', () => {
     await show(page, 'torrents');
     await settle(page);
     // The short label's DP tooltip is the full name.
-    await page.locator('#t-tbody tr[data-torrent-id="9705"] .dp-provider-label').hover();
-    await expect(page.locator('#dp-tooltip')).toHaveText('Real-Debrid');
+    await page.locator('#t-tbody tr[data-torrent-id="9707"] .dp-provider-label').hover();
+    await expect(page.locator('#dp-tooltip')).toHaveText('Media Downloads');
     await page.mouse.move(0, 0);
     const launcher = page.locator('#t-tbody tr[data-torrent-id="9701"] .dp-root-provider-launcher');
     await expect(launcher).toHaveAccessibleName(/^Provider: Debrid-Link/);
@@ -399,13 +456,40 @@ test.describe('handheld transfer lists', () => {
       await page.keyboard.press('Enter');
       await expect.poll(() => log.moves.length, `${width}px keyboard`).toBe(2);
       expect(log.moves[1].id, `${width}px keyboard`).toBe(9705);
+      // Touch, as a finger's pointer: on the name it never picks the row up (it scrolls); on the grip it drags.
+      const touch = (from, to) => page.evaluate(([from, to]) => {
+        const a = document.querySelector(from), r = a.getBoundingClientRect(), b = document.querySelector(to).getBoundingClientRect();
+        const fire = (target, type, x, y) => target.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch',
+          isPrimary: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y}));
+        const x = r.left + r.width / 2, y = r.top + r.height / 2, endY = b.top + b.height * 0.25;
+        fire(a, 'pointerdown', x, y);
+        for (let k = 1; k <= 12; k++) fire(document, 'pointermove', x, y + (endY - y) * k / 12);
+        fire(document, 'pointerup', x, endY);
+      }, [from, to]);
+      await touch('#t-tbody tr[data-torrent-id="9704"] .t-name', '#t-tbody tr[data-torrent-id="9701"]');
+      await page.waitForTimeout(300);
+      expect(log.moves.length, `${width}px: a touch on the name moves nothing`).toBe(2);
+      await touch('#t-tbody tr[data-torrent-id="9704"] .dp-queue-grip', '#t-tbody tr[data-torrent-id="9701"]');
+      await expect.poll(() => log.moves.length, `${width}px touch on the grip`).toBe(3);
+      expect(log.moves[2], `${width}px touch on the grip`).toMatchObject({id: 9704, before_id: 9701});
     }
+    // The keyboard carries a held row across the page's lower edge, as on the desktop: past the last row, onto the next page.
+    const log = await open(page, UNIFORM, {width: 390, height: 640});
+    const ids = await page.locator('#t-tbody tr[data-torrent-id]').evaluateAll(rows => rows.map(row => Number(row.dataset.torrentId)));
+    const last = ids.at(-1);
+    await page.locator(`#t-tbody tr[data-torrent-id="${last}"] td[data-queue-drag="true"]`).focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => (await page.locator('#t-tbody tr[data-torrent-id]').first().getAttribute('data-torrent-id')), {timeout: 4000}).toBe(String(last + 1));
+    await page.keyboard.press('Enter');
+    await expect.poll(() => log.moves.length).toBe(1);
+    expect(log.moves[0], 'cross-page keyboard move').toMatchObject({id: last, after_id: last + 1});
   });
 
   test('capacity: Downloads pages only the rows its viewport and one screen hold, its pager above the dock with no inner scroll; Download Activity fits one screen; stable', async ({page}) => {
     test.setTimeout(60_000);
     const log = await open(page, UNIFORM, {width: 390, view: 'dashboard'});
-    for (const [width, height] of [[320, 568], [390, 640], [390, 844], [779, 1000]]) {
+    for (const [width, height] of [[320, 568], [320, 640], [360, 640], [375, 667], [393, 852], [440, 956], [600, 900], [779, 1000]]) {
       await page.setViewportSize({width, height});
       for (const view of ['dashboard', 'torrents']) {
         await show(page, view);
@@ -415,21 +499,43 @@ test.describe('handheld transfer lists', () => {
         await page.waitForTimeout(1000);
         expect(log.gets - before, `${view} ${width}x${height}: refetching after it settled`).toBe(0);
         const fit = await page.evaluate(view => {
-          const content = document.getElementById('content'), space = getComputedStyle(content);
-          const workspace = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom);
-          if (view === 'dashboard') {
-            const card = document.getElementById('dash-activity-card'), rows = document.querySelectorAll('#dash-tbody tr[data-torrent-id]');
-            const head = card.querySelector('thead').getBoundingClientRect().height, wrap = card.querySelector('.dash-activity-table-wrap');
-            const rowHeight = rows[0].getBoundingClientRect().height, chrome = card.getBoundingClientRect().height - wrap.getBoundingClientRect().height;
-            return {fits: card.getBoundingClientRect().height <= workspace + 0.5, roomForAnother: workspace - card.getBoundingClientRect().height >= rowHeight + 0.5};
-          }
+          const content = document.getElementById('content'), space = getComputedStyle(content), box = content.getBoundingClientRect();
           content.scrollTop = 0;
-          const wrap = document.querySelector('#view-torrents .dp-downloads-table-wrap'), dock = document.getElementById('shell-dock').getBoundingClientRect();
-          const pager = document.getElementById('torrent-pagination').getBoundingClientRect();
-          return {fits: wrap.scrollHeight <= wrap.clientHeight + 0.5 && pager.bottom <= dock.top + 0.5};
+          // The workspace's inset above the dock: the content box's bottom.
+          const inset = box.top + content.clientTop + content.clientHeight - parseFloat(space.paddingBottom);
+          const dock = document.getElementById('shell-dock').getBoundingClientRect();
+          const card = view === 'dashboard' ? document.getElementById('dash-activity-card') : document.querySelector('#view-torrents > .card');
+          const wrap = card.querySelector(view === 'dashboard' ? '.dash-activity-table-wrap' : '.dp-downloads-table-wrap');
+          const rows = [...card.querySelectorAll('tbody tr[data-torrent-id]')], last = rows.at(-1)?.getBoundingClientRect();
+          const rowHeight = rows[0]?.getBoundingClientRect().height ?? 0;
+          const pager = view === 'dashboard' ? null : document.getElementById('torrent-pagination').getBoundingClientRect();
+          return {cardBottom: card.getBoundingClientRect().bottom, inset, dockTop: dock.top, rows: rows.length, innerScroll: wrap.scrollHeight - wrap.clientHeight,
+            headBottom: wrap.querySelector('thead').getBoundingClientRect().bottom, below: card.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom,
+            pageScroll: content.scrollHeight - content.clientHeight, lastBottom: last?.bottom ?? null, wrapBottom: wrap.getBoundingClientRect().bottom,
+            slack: wrap.getBoundingClientRect().bottom - (last?.bottom ?? wrap.querySelector('thead').getBoundingClientRect().bottom), rowHeight,
+            pagerBottom: pager?.bottom ?? null, count: document.getElementById('dash-activity-count')?.textContent ?? ''};
         }, view);
-        expect(fit.fits, `${view} ${width}x${height}`).toBe(true);
-        if (view === 'dashboard') expect(fit.roomForAnother, `${view} ${width}x${height}: room for another whole row`).toBe(false);
+        const at = `${view} ${width}x${height}`;
+        expect(fit.inset, `${at}: the inset above the dock`).toBeLessThanOrEqual(fit.dockTop + 0.5);
+        expect(fit.innerScroll, `${at}: no inner scroll`).toBe(0);
+        // The least the card can be: its own header and table head, and beneath them (Downloads) one row and its pager.
+        const least = fit.headBottom + (view === 'dashboard' ? 0 : fit.rowHeight) + fit.below;
+        if (least > fit.inset + 0.5) {
+          // A screen too short for that alone: the page scrolls by exactly the overrun, nothing clipped; Download Activity
+          // draws no row (none fits whole), Downloads its one.
+          expect(fit.rows, `${at}: too short -- rows`).toBe(view === 'dashboard' ? 0 : 1);
+          expect(Math.abs(fit.pageScroll - (fit.cardBottom - fit.inset)), `${at}: too short -- the page scrolls by the overrun`).toBeLessThanOrEqual(1);
+          if (view === 'dashboard') expect(fit.count, `${at}: too short -- count`).toBe('0 downloads shown');
+          continue;
+        }
+        // The card ends at the workspace's inset above the dock; every row whole and above it; no page scroll.
+        expect(Math.abs(fit.cardBottom - fit.inset), `${at}: card bottom at the inset (${fit.cardBottom} vs ${fit.inset})`).toBeLessThanOrEqual(0.6);
+        expect(fit.pageScroll, `${at}: no page scroll`).toBe(0);
+        if (fit.rows) expect(fit.lastBottom, `${at}: last row whole`).toBeLessThanOrEqual(fit.wrapBottom + 0.5);
+        // Only complete rows that fit: no room for another whole one.
+        expect(fit.slack, `${at}: room left for another row`).toBeLessThan(fit.rowHeight);
+        if (view === 'dashboard') expect(fit.count, `${at}: the count is the rows drawn`).toBe(`${fit.rows} download${fit.rows === 1 ? '' : 's'} shown`);
+        else expect(fit.pagerBottom, `${at}: pager inside the card, above the dock`).toBeLessThanOrEqual(fit.cardBottom + 0.5);
       }
     }
   });

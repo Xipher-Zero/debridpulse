@@ -208,7 +208,6 @@
 /* ── Recent Activity ───────────────────────────────────────────────────── */
 #view-dashboard .dp-dashboard-activity {
   flex: 1 1 auto;
-  min-height: 270px;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -296,7 +295,6 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   #content.dashboard-active { overflow-y: auto; }
   #view-dashboard:is(.active, [data-dp-motion-outgoing]) { height: auto; overflow: visible; }
   #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  #view-dashboard .dp-dashboard-activity { min-height: 420px; }
 }
 
 @media (max-width: 899px) {
@@ -317,8 +315,12 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   display: flex !important;
   flex-direction: column;
   height: auto;
-  min-height: calc(100vh - var(--dp-shell-header) - 24px);
   overflow: visible;
+}
+/* At least the window's workspace from 780px; on a handheld, at least the
+   content box #content leaves above the dock (the handheld block below). */
+@media (min-width: 780px) {
+  #view-dashboard:is(.active, [data-dp-motion-outgoing]) { min-height: calc(100vh - var(--dp-shell-header) - 24px); }
 }
 
 #view-dashboard .dash-hero {
@@ -527,8 +529,10 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
 
 #view-dashboard .dp-dashboard-activity {
   flex: 1 0 auto;
-  min-height: 315px;
   overflow: hidden;
+}
+@media (min-width: 780px) {
+  #view-dashboard .dp-dashboard-activity { min-height: 315px; }
 }
 #view-dashboard .dp-dashboard-activity .card-header {
   min-height: 70px;
@@ -570,25 +574,6 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   border-radius: 6px;
   font-size: 10.5px;
   font-weight: 600;
-}
-#view-dashboard .badge-completed {
-  background: color-mix(in srgb, var(--dp-state-success-fill) 15%, transparent);
-  color: var(--dp-state-success);
-}
-#view-dashboard .badge-completed::before {
-  content: '✓';
-  margin-right: 5px;
-  font-weight: 800;
-}
-#view-dashboard .badge-partial,
-#view-dashboard .badge-processing,
-#view-dashboard .badge-extracting {
-  background: rgba(217, 154, 30, .14);
-  color: #f2bd43;
-}
-#view-dashboard .badge-error {
-  background: rgba(226, 62, 82, .14);
-  color: #f56a79;
 }
 #view-dashboard .prog-bg,
 #view-dashboard .progress-track {
@@ -676,6 +661,14 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
   #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-icon { grid-column: 2; grid-row: 2; }
   #view-dashboard .dash-hero-stat[data-dp-kpi="stacked"] .dhs-val { grid-column: 3; grid-row: 2; align-self: auto; margin-left: 8px; }
   #view-dashboard .dash-hero-stat:has(#s-size) { display: none; }
+  /* The Dashboard fills the content box #content leaves above the dock (its
+     10px inset, safe area included: ui-shell-mobile.css), and may grow past
+     it only where its sections cannot fit; Download Activity, last, takes
+     what the KPI strip and Quick Add leave, down to that inset (no card
+     margin of its own), and holds the whole rows that room shows
+     (dashboardRecentHandheldLimit, app.js). */
+  #view-dashboard:is(.active, [data-dp-motion-outgoing]) { min-height: 100%; }
+  #view-dashboard #dash-activity-card { margin-bottom: 0 !important; }
   #view-dashboard .dp-dashboard-action-track { width: auto; }
   #view-dashboard .dp-dashboard-quick-add .card-title { flex: 1 1 0; min-width: 0; }
   #view-dashboard .dp-dashboard-quick-add .dp-card-subtitle { white-space: nowrap; }
@@ -958,64 +951,32 @@ body.light .nav-item.active::after {
   box-shadow: none !important;
 }
 
-/* Transfer-status grammar. Dashboard badges have their legacy leading emoji
-   stripped by ui-runtime, so restore deliberate monochrome status glyphs here.
-   Downloads keeps the legacy text glyph but forces text presentation/color. */
+/* Transfer-status grammar. A status badge draws its glyph with the canonical
+   Lucide runtime (ui-transfer-contract.css); no table injects a text glyph.
+   These colour only the badges themselves: a handheld row's status glyph
+   (DPIcons.statusGlyph) carries the same tone class for its tone token and
+   takes its colour from that alone, the same in both tables. */
 #dash-tbody .badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
-}
-#dash-tbody .badge::before {
-  display: inline-grid;
-  place-items: center;
-  width: 15px;
-  min-width: 15px;
-  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
-  font-size: 16px;
-  line-height: 1;
-  font-weight: 800;
-  text-shadow: 0 0 7px currentColor;
-}
-#dash-tbody tr[data-status="downloading"] .badge-downloading::before {
-  content: '↓';
-  color: var(--dp-state-success-mark);
-}
-#dash-tbody tr[data-status="downloading"] .badge-partial::before {
-  content: '↓';
-  color: #f2bd3f;
-}
-#dash-tbody tr[data-status="paused"] .badge-paused::before {
-  content: 'Ⅱ';
-  color: #f2bd3f;
-  font-size: 14px;
-  letter-spacing: -2px;
-}
-#dash-tbody tr[data-status="completed"] .badge-completed::before {
-  content: '✓';
-  color: var(--dp-state-success-mark);
-}
-#dash-tbody tr[data-status="error"] .badge-error::before {
-  content: '×';
-  color: #ff676f;
-  font-size: 18px;
 }
 
 :is(#t-tbody, .dp-downloads-styled-tbody) .badge {
   font-variant-emoji: text;
   font-family: var(--dp-font-sans), 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
 }
-:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-downloading {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-downloading:where(.badge) {
   color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
-:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-partial,
-:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="paused"] .badge-paused {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="downloading"] .badge-partial:where(.badge),
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="paused"] .badge-paused:where(.badge) {
   color: var(--dp-op-ink, #f2bd3f) !important;
 }
-:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="completed"] .badge-completed {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="completed"] .badge-completed:where(.badge) {
   color: var(--dp-op-ink, var(--dp-state-success)) !important;
 }
-:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="error"] .badge-error {
+:is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="error"] .badge-error:where(.badge) {
   color: var(--dp-op-ink, #ff676f) !important;
 }
 
@@ -1601,6 +1562,18 @@ body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .pro
   #view-dashboard .dp-dashboard-activity .t-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)) {
     display: none;
   }
+  /* Summary | Action: 4px each side of the boundary (an 8px gutter from the
+     Summary's text to the 36px button); the outer edges keep their 14px. The
+     Action column is its glyph-only button and those insets (a fixed track:
+     its one-word heading runs on into the 14px right inset rather than
+     widening it), and the Summary takes every other pixel of the table --
+     a plain length against the table's container (cqw), as the desktop's
+     tracks are, over the heading's inline 40%. */
+  #view-dashboard .dp-dashboard-activity .t-table { table-layout: fixed; --dp-dashboard-handheld-action-track: calc(4px + 36px + 14px); }
+  #view-dashboard .dp-dashboard-activity .t-table :is(th, td):first-child:not(:last-child) { padding-right: 4px; }
+  #view-dashboard .dp-dashboard-activity .t-table :is(th, td):last-child:not(:first-child) { padding-left: 4px; }
+  #view-dashboard .dp-dashboard-activity .t-table th:first-child:not(:last-child) { width: calc(100cqw - var(--dp-dashboard-handheld-action-track)) !important; }
+  #view-dashboard .dp-dashboard-activity .t-table .dp-dashboard-action-column { width: var(--dp-dashboard-handheld-action-track); }
 }
 
 /* ── Recent Activity header simplification ────────────────────────────── */
@@ -1651,19 +1624,6 @@ body.light #runtime-badge-speed {
   height: var(--dp-quick-add-action-height, 40px) !important;
 }
 
-/* Dashboard badge normalization strips the leading legacy emoji. Restore the
-   deliberate amber caution glyph for completed-with-errors, and optically
-   center the Done checkmark by nudging its visual mass down one pixel. */
-#dash-tbody tr[data-status="completed"] .badge-partial::before {
-  content: '⚠' !important;
-  color: #f2bd3f !important;
-  font-size: 15px !important;
-  line-height: 1 !important;
-  transform: translateY(1px) !important;
-}
-#dash-tbody tr[data-status="completed"] .badge-completed::before {
-  transform: translateY(1px) !important;
-}
 
 /* ── Dark-card red + progress/table/sidebar balance refinements ───────── */
 /* Errors needs to read as a real failure state in the dark theme rather than
@@ -1720,7 +1680,16 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
    to their content. Its narrowest desktop table is about 1256px wide (the
    compact rail at 1390px and the full sidebar at 1560px alike); how far
    below that the tablet's narrower tables still fit is measured, not
-   assumed here. */
+   assumed here.
+
+   The wrapper is the table's size query container at every width (the
+   declaration below): its condition decides the compact Status badges and
+   row actions (ui-transfer-contract.css) wherever the table is narrow --
+   on a handheld too, where the Action column is its 36px glyph-only
+   buttons. Its track variables are read only by this block's widths. */
+#view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
+  container: dp-recent-activity / inline-size;
+}
 @media (min-width: 780px) {
   /* Correction 3 (DP 1.0.12 UI Finishing, row-extent follow-up): the table
      wrapper previously carried a padding-right equal to the accepted
@@ -1746,10 +1715,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
      1cqw = 1% of this wrapper's content width, exactly as the replaced `%`
      did. The wrapper's own width is already fixed by its flex-item cross
      axis, not by its content, so containment changes nothing about its own
-     size. */
-  #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
-    container: dp-recent-activity / inline-size;
-  }
+     size (the container is declared above this block). */
   /* Status and Date Added keep their proportional tracks, but never less
      than their content: Status the widest badge ("Awaiting confirmation")
      and Date Added the widest date the one formatter writes ("Dec 28, 2025
@@ -1995,7 +1961,6 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
   -webkit-overflow-scrolling: touch;
 }
 @media (max-width: 779px) {
-  #dash-activity-card { display: block; }
   .dash-activity-table-wrap { overflow-x: auto; }
 }
 

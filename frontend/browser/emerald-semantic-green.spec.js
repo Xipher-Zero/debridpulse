@@ -34,7 +34,8 @@ async function computed(page, body) {
     for (const tr of document.querySelectorAll(`${sel} tr[data-status]`)) {
       const chip = tr.querySelector('.dp-provider-chip'), badge = tr.querySelector('.badge');
       rows[`${chip?.textContent.trim()}:${tr.dataset.status}`] = {
-        chip: style(chip)?.color, badge: style(badge)?.color, glyph: style(badge, '::before')?.color,
+        // The badge's glyph is the canonical Lucide mark it draws (no badge draws a ::before glyph: ui-visual-accents.css).
+        chip: style(chip)?.color, badge: style(badge)?.color, glyph: style(badge?.querySelector('svg'))?.color,
         fill: style(tr.querySelector('.prog-fill'))?.backgroundImage, pct: style(tr.querySelector('.prog-pct'))?.color};
     }
     return rows;
@@ -64,7 +65,9 @@ test('success reads emerald in both themes, with locked identity chips beside it
         for (const status of ['downloading', 'completed']) {
           const at = `${theme} ${view} ${provider} ${status}`, r = rows[`${provider}:${status}`];
           expect(r.badge, `${at} badge label`).toBe(label);
-          if (view === 'dashboard') expect(r.glyph, `${at} badge glyph`).toBe(mark);
+          // The badge's drawn glyph takes the badge's own ink (the same on both tables and before 1.0.14's six fixes; the
+          // removed ::before rules this once read were never drawn: ui-visual-accents.css suppresses every badge ::before).
+          expect(r.glyph, `${at} badge glyph`).toBe(label);
           expect(r.fill, `${at} progress fill`).toBe(`linear-gradient(90deg, ${DEEP}, ${EMERALD})`);
           if (status === 'downloading') expect(r.pct, `${at} percentage`).toBe(pct);
           expect(r.chip, `${at} identity chip`).toBe(IDENTITY_INK[theme][provider]);

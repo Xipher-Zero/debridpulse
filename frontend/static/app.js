@@ -2002,12 +2002,15 @@ function setStatsPeriod(el) {
   loadDetailedStats(el.dataset.period);
 }
 let _dashboardRecentFitLimit = null;
+// The handheld row height last measured: with no row drawn (none fitted, or
+// none yet) the room is still known, and a row is always this tall.
+let _dashboardRecentRowHeight = null;
 let _dashboardRecentResizeTimer = null;
 
 function dashboardRecentLimit() {
   const mobile = window.matchMedia('(max-width: 779px)').matches;
   const fallback = window.matchMedia('(max-width: 779px)').matches ? 4 : 6;
-  if (mobile) return dashboardRecentHandheldLimit() || _dashboardRecentFitLimit || fallback;
+  if (mobile) return dashboardRecentHandheldLimit() ?? _dashboardRecentFitLimit ?? fallback;
 
   const wrap = document.querySelector('#dash-activity-card .dash-activity-table-wrap');
   const head = wrap?.querySelector('thead');
@@ -2034,11 +2037,14 @@ function dashboardRecentLimit() {
   return Math.max(1, Math.min(32, fitted || 1));
 }
 
-// Below 780px the Dashboard scrolls: Download Activity holds the whole rows
-// one screen of the workspace shows beneath the card's own header and the
-// table's head, so the card can be seen whole and no row is left behind the
-// dock. Neither depends on how many rows are drawn, so the measure is stable;
-// with no row drawn yet there is nothing to measure (null).
+// Below 780px Download Activity, last on the Dashboard, ends at the inset
+// #content leaves above the dock and holds the whole rows that fit between its
+// table's head and that inset (less the card's own edge beneath the table):
+// what the KPI strip, Quick Add and the card's header leave, wherever the
+// page is scrolled. None of that depends on how many rows are drawn, so the
+// measure is stable; where no whole row fits, none is drawn (0), and the page
+// scrolls only if the sections above cannot fit. With no row height known yet
+// there is nothing to measure (null).
 function dashboardRecentHandheldLimit() {
   const content = document.getElementById('content');
   const card = document.getElementById('dash-activity-card');
@@ -2046,12 +2052,14 @@ function dashboardRecentHandheldLimit() {
   const head = wrap?.querySelector('thead');
   const heights = Array.from(document.querySelectorAll('#dash-tbody tr[data-torrent-id]'))
     .map(row => row.getBoundingClientRect().height).filter(height => Number.isFinite(height) && height > 0);
-  if (!content || !wrap || !head || !heights.length) return null;
-  const space = getComputedStyle(content);
-  const chrome = card.getBoundingClientRect().height - wrap.getBoundingClientRect().height;
-  const available = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom)
-    - chrome - head.getBoundingClientRect().height;
-  return Math.max(1, Math.min(32, Math.floor((available + 0.5) / Math.max(...heights)) || 1));
+  if (heights.length) _dashboardRecentRowHeight = Math.max(...heights);
+  if (!content || !wrap || !head || !_dashboardRecentRowHeight) return null;
+  const space = getComputedStyle(content), box = content.getBoundingClientRect();
+  // The head's bottom and the content box's bottom, both in the workspace's own coordinates.
+  const headBottom = head.getBoundingClientRect().bottom - box.top - content.clientTop + content.scrollTop;
+  const below = card.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
+  const available = content.clientHeight - parseFloat(space.paddingBottom) - headBottom - below;
+  return Math.max(0, Math.min(32, Math.floor((available + 0.5) / _dashboardRecentRowHeight)));
 }
 
 // Dashboard Recent Items has exactly one canonical renderer: renderRecent() in

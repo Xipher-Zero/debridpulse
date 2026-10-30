@@ -68,21 +68,24 @@ def test_canonical_dashboard_keeps_transfer_semantics_and_progress_emphasis() ->
     require(
         dashboard_css(),
         (
-            'tr[data-status="downloading"] .badge-downloading::before',
-            'tr[data-status="downloading"] .badge-partial::before',
-            'tr[data-status="paused"] .badge-paused::before',
-            'tr[data-status="completed"] .badge-completed::before',
-            'tr[data-status="error"] .badge-error::before',
-            "content: '↓'",
-            "content: 'Ⅱ'",
-            "content: '✓'",
-            "content: '×'",
             "height: var(--dp-row-progress-track, 6px) !important",
             "font-size: 15px !important",
             "tr:has(.badge-partial) .prog-fill",
         ),
         "Dashboard transfer semantic contract",
     )
+    # 1.0.14 six fixes (F): no table injects a text status glyph. The canonical
+    # Lucide runtime draws every badge's glyph (ui-visual-accents.css removes any
+    # badge ::before), and the legacy Dashboard ::before glyph and tone rules,
+    # dead on badges, drew a second status mark on a handheld row's status glyph
+    # (DPIcons.statusGlyph carries the tone class): removed, not hidden.
+    css = dashboard_css()
+    for gone in ("badge-downloading::before", "badge-partial::before", "badge-paused::before", "badge-completed::before",
+                 "badge-error::before", "content: '↓'", "content: 'Ⅱ'", "content: '✓'", "content: '×'", "content: '⚠'",
+                 "#view-dashboard .badge-completed {", "#view-dashboard .badge-error {", "#dash-tbody .badge::before"):
+        assert gone not in css, gone
+    # Downloads' badge tone colours stay the badges' own (same specificity), never the glyph's.
+    assert ':is(#t-tbody, .dp-downloads-styled-tbody) tr[data-status="error"] .badge-error:where(.badge) {' in css
     # DP 1.0.12 UI Finishing (Correction 9 anti-layering audit): the higher-
     # specificity `tr[data-status="downloading"]:not(:has(.badge-partial))
     # .prog-fill` / `:has(.badge-partial) .prog-fill` pair used to live here,
@@ -257,10 +260,6 @@ def test_canonical_dashboard_keeps_live_micro_refinements() -> None:
             "min-width: 0 !important",
             "min-height: var(--dp-quick-add-action-height, 40px) !important",
             "height: var(--dp-quick-add-action-height, 40px) !important",
-            ".badge-partial::before",
-            "content: '⚠' !important",
-            ".badge-completed::before",
-            "transform: translateY(1px) !important",
         ),
         "Dashboard micro-refinement contract",
     )

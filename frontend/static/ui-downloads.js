@@ -266,19 +266,17 @@ function measuredSize() {
   if (!heights.length) return null;
   let room = wrap.clientHeight;
   if (!window.matchMedia(DESKTOP_QUERY).matches) {
-    // Below 780px the page scrolls and the card ends where its rows do: a page
-    // holds the whole rows its table viewport (no taller than its own cap)
-    // and one screen of the workspace show beneath the card's header,
-    // toolbar, bulk bar and pause notice, above its pager -- none of which
-    // depends on how many rows are drawn, so the measure is stable.
+    // Below 780px the card fills the workspace (one screen of it) but may grow
+    // past it, so its table viewport is not the measure: a page holds the
+    // whole rows that one screen of the workspace shows beneath the card's
+    // header, toolbar, bulk bar and pause notice, above its pager -- none of
+    // which depends on how many rows are drawn, so the measure is stable.
     const content = document.getElementById('content');
     const card = view.querySelector(':scope > .card');
     if (!content || !card) return null;
     const space = getComputedStyle(content);
     const chrome = card.getBoundingClientRect().height - wrap.getBoundingClientRect().height;
-    const workspace = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom) - chrome;
-    const cap = parseFloat(getComputedStyle(wrap).maxHeight);
-    room = Math.min(workspace, Number.isFinite(cap) ? cap : workspace);
+    room = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom) - chrome;
   }
   const budget = Math.max(0, room - head.getBoundingClientRect().height);
   return Math.max(1, Math.min(100, Math.floor((budget + 0.5) / Math.max(...heights)) || 1));

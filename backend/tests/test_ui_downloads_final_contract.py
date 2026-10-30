@@ -164,11 +164,16 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
         assert f"--dp-downloads-{track}-track: 0px;" in handheld, track
     assert ":has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3))" in handheld
     assert ":is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" not in css
-    # Where the table is narrower than 336px (a 362px window) Actions gives back
-    # its outer allowance (the track and the cells' padding together; buttons and
-    # gaps unchanged) and the summary's metadata gaps close from 6px to 4px.
+    # 1.0.14 six fixes (C): between the handheld columns each cell keeps 4px
+    # (Actions' track is its buttons and that 8px; the checkbox stays centred in
+    # its 36px track); the former narrow-table allowance exception is folded in.
+    assert "--dp-downloads-action-allowance: 8px;" in handheld
+    assert ".dp-downloads-name-cell:not(:last-child) { padding-right: 4px; }" in handheld
+    assert ".dp-downloads-action-cell { padding-inline: 4px; }" in handheld
+    assert ".dp-downloads-select-cell { padding-inline: 0; }" in handheld
+    assert "--dp-downloads-action-allowance: 10px;" not in css and "padding-inline: 5px;" not in css
+    # Where the table is narrower than 336px the summary's metadata gaps close from 6px to 4px.
     narrow = handheld[handheld.index("@container dp-downloads-table (width < 336px) {"):]
-    assert "--dp-downloads-action-allowance: 10px;" in narrow and ".dp-downloads-action-cell { padding-inline: 5px; }" in narrow
     assert ".dp-transfer-meta-main { gap: 4px; }" in narrow
     # Last of all, there only: a short-name line with a candidate launcher
     # narrows its route launcher's padding; the provider chip's own stays.
@@ -195,17 +200,22 @@ def test_e1_removes_post_render_downloads_owner() -> None:
 
 def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_holds() -> None:
     # 1.0.14 four-fix: one full-height workspace from the desktop down to the
-    # tablet floor (780px), as Statistics; the 62vh viewport is handheld only.
+    # tablet floor (780px), as Statistics. 1.0.14 six fixes (D): the same flex
+    # workspace at every width -- exactly the content box from 780px, at least
+    # it on a handheld (the page scrolls only where the card's chrome cannot
+    # fit) -- and no 62vh viewport cap.
     css = read("ui-downloads-page.css")
     assert "@media (min-width: 901px) {\n  #view-torrents:is(.active, [data-dp-motion-outgoing])" not in css
     assert "@media (max-width: 900px)" not in css
     workspace = css[css.index("@media (min-width: 780px) {\n  #view-torrents:is(.active, [data-dp-motion-outgoing]) {"):]
     workspace = workspace[:workspace.index("\n}\n")]
-    assert "height: 100% !important;" in workspace and "flex: 1 1 auto;" in workspace
-    handheld = css[css.index("@media (max-width: 779px) {\n  /* Handheld: the page grows"):]
+    assert "height: 100% !important;" in workspace
+    assert "#view-torrents > .card {\n  display: flex;\n  flex: 1 1 auto;" in css
+    assert "#view-torrents .dp-downloads-table-wrap {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto !important;" in css
+    handheld = css[css.index("@media (max-width: 779px) {\n  /* Handheld: the workspace above"):]
     handheld = handheld[:handheld.index("\n}\n")]
-    assert "height: auto;" in handheld and "max-height: 62vh;" in handheld
-    assert css.count("62vh") == 1
+    assert "min-height: 100%;" in handheld
+    assert "62vh" not in css
     # Capacity is the table viewport's own: its client height beneath the
     # sticky heading, never the window's height.
     downloads = read("ui-downloads.js")
@@ -215,7 +225,8 @@ def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_ho
     # the table viewport's (no taller than its cap) and one screen of the
     # workspace beneath the card's own chrome; the desktop room is unchanged.
     assert "let room = wrap.clientHeight;" in size and "if (!window.matchMedia(DESKTOP_QUERY).matches) {" in size
-    assert "room = Math.min(workspace, Number.isFinite(cap) ? cap : workspace);" in size
+    assert "room = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom) - chrome;" in size
+    assert "maxHeight" not in size
     assert "const budget = Math.max(0, room - head.getBoundingClientRect().height);" in size
     assert "Math.floor((budget + 0.5) / Math.max(...heights))" in size
     assert "document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());" in downloads

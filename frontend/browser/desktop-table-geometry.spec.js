@@ -241,9 +241,10 @@ test('Recent Activity keeps its fixed desktop tracks through the desktop, Status
     expect(Math.abs(action.width - (64 + inset)), where).toBeLessThanOrEqual(1);
     expect(Math.abs(progress.width - (W - 280 - 63 - sizeTrack - 64 - inset)), where).toBeLessThanOrEqual(1);
   }
-  // Mobile keeps sizing its columns to their content.
+  // 1.0.14 six fixes: mobile is Summary | Action, fixed tracks too -- Action its 36px glyph-only button and insets
+  // (54px), the Summary every other pixel (transfer-summary-mobile.spec.js measures them).
   await resize(page, 779);
-  expect((await geometry(page, 'dashboard')).layout).toBe('auto');
+  expect((await geometry(page, 'dashboard')).layout).toBe('fixed');
 });
 
 /* fmtSize never writes four integer digits: from 1000 (as written) a size is

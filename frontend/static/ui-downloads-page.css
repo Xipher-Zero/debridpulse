@@ -6,40 +6,47 @@
  * ui-universal-language.css and must not be redefined here.
  */
 
-/* ── Full-height desktop and tablet workspace ────────────────────────── */
-/* One workspace from the widest desktop down to the tablet floor (780px), as
-   Statistics and the Activity Log: the card fills the content height and the
-   table viewport takes what its header, toolbar and pager leave. The global
-   header changes at 900px on its own; the workspace does not change with it. */
+/* ── Full-height workspace ───────────────────────────────────────────── */
+/* One workspace at every width, as Statistics and the Activity Log: the card
+   fills the content height and the table viewport takes what its header,
+   toolbar and pager leave, the pager at the card's bottom. #content already
+   owns the remaining shell height and its bottom inset (on a handheld, the
+   10px above the dock, safe area included: ui-shell-mobile.css); the view
+   fills that content box instead of recomputing 100vh here. From 780px it is
+   exactly that box; below, it is at least that box, so on a screen too short
+   for the card's own header, toolbar and one row the page scrolls as before
+   and nothing is clipped (the rows a page holds are measured to fit:
+   ui-downloads.js measuredSize). The global header changes at 900px on its
+   own; the workspace does not change with it. */
+#view-torrents:is(.active, [data-dp-motion-outgoing]) {
+  display: flex !important;
+  flex-direction: column;
+  /* The standard card's contact shadow paints outside its own box. Keep the
+     page boundary paint-visible; scrolling is confined to the table viewport. */
+  overflow: visible;
+}
 @media (min-width: 780px) {
   #view-torrents:is(.active, [data-dp-motion-outgoing]) {
-    display: flex !important;
-    flex-direction: column;
-    /* #content already owns the remaining shell height and 24px bottom gutter.
-       Fill that authoritative content box instead of recomputing 100vh here. */
     height: 100% !important;
     min-height: 0;
-    /* The standard card's contact shadow paints outside its own box. Keep the
-       page boundary paint-visible; scrolling is confined to the table viewport. */
-    overflow: visible;
   }
+}
 
-  #view-torrents > .card {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
-    /* Full-height workspaces are not stacked legacy cards. The inherited 18px
-       card margin was shortening the visible card relative to Provider Status. */
-    margin-bottom: 0 !important;
-  }
+#view-torrents > .card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  /* Full-height workspaces are not stacked legacy cards. The inherited card
+     margin (18px; 10px on a handheld) was shortening the visible card. */
+  margin-bottom: 0 !important;
+}
 
-  #view-torrents .dp-downloads-table-wrap {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
+#view-torrents .dp-downloads-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 #view-torrents > .card > .card-header,
@@ -405,15 +412,9 @@ body.light #view-torrents .empty-icon {
 
 /* ── Responsive geometry ─────────────────────────────────────────────── */
 @media (max-width: 779px) {
-  /* Handheld: the page grows with its card, and the table viewport is
-     bounded by the window. */
+  /* Handheld: the workspace above (at least the content box). */
   #view-torrents:is(.active, [data-dp-motion-outgoing]) {
-    height: auto;
-    overflow: visible;
-  }
-
-  #view-torrents .dp-downloads-table-wrap {
-    max-height: 62vh;
+    min-height: 100%;
   }
 
   #view-torrents > .card > .card-header {
@@ -602,13 +603,18 @@ body.light #view-torrents .empty-icon {
    cell; ui-dashboard-transfer-presentation.css), Actions -- which there also
    holds Start Now, Status's reaffirmation -- and the selection column last.
    Status, Progress, Size and Date step aside, columns and tracks; Name takes
-   the rest. */
+   the rest. Between the columns each cell keeps 4px (an 8px gutter: the
+   Summary's text to the first button, the last button to the checkbox,
+   which stays centred in its 36px track); the table's outer edges keep
+   their 14px insets. Actions' track is its buttons and that 8px, and every
+   pixel it does not take is the Summary's. */
 @media (max-width: 779px) {
   #view-torrents .t-table {
     --dp-downloads-status-track: 0px;
     --dp-downloads-progress-track: 0px;
     --dp-downloads-size-track: 0px;
     --dp-downloads-date-track: 0px;
+    --dp-downloads-action-allowance: 8px;
   }
   #view-torrents .t-table:has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)) {
     --dp-downloads-action-slots: 3;
@@ -619,25 +625,21 @@ body.light #view-torrents .empty-icon {
      height (Actions' 36px buttons and their cells' 8px) leaves them, so the
      row is no taller and nothing is clipped. */
   #view-torrents .t-table .dp-downloads-name-cell { padding-block: 5px; }
-  /* The queue grip belongs to the filename's line: it stands beside the name
-     only, and its width (less the overhang it takes from the cell's padding,
-     plus the line's gap) is reserved there alone -- the progress slot keeps
-     its place beside it, and the metadata line takes the room beneath it. */
-  #view-torrents td[data-queue-drag="true"] .dp-queue-grip { align-self: flex-start; height: 1lh; }
-  #view-torrents td[data-queue-drag="true"] .dp-transfer-provider-meta {
-    margin-inline-start: calc(var(--dp-queue-grip-overhang) - var(--dp-queue-grip-size) - var(--dp-name-line-gap));
+  #view-torrents .t-table .dp-downloads-name-cell:not(:last-child) { padding-right: 4px; }
+  #view-torrents .t-table .dp-downloads-action-cell { padding-inline: 4px; }
+  #view-torrents .t-table .dp-downloads-select-cell { padding-inline: 0; }
+  /* The queue grip is the row's left-edge gutter: it stands in the Name
+     cell's 14px left padding (its own 14px width), over the whole height of
+     the summary and centred on the row, and reserves nothing beside it -- the
+     name, its slot and its metadata line start where every row's do. */
+  #view-torrents td[data-queue-drag="true"] .dp-queue-grip {
+    align-self: stretch;
+    margin-left: calc(-1 * var(--dp-queue-grip-size));
+    margin-right: calc(-1 * var(--dp-name-line-gap));
   }
-  /* Where the table is narrower than 336px (a 362px window) -- below that,
-     the widest legitimate summaries (the queue grip, status, provider and a
-     candidate launcher; or file selection and a label) can no longer show
-     their controls and the provider's short name whole on their line --
-     Actions gives back its outer allowance: 5px each side instead of 14px,
-     the track and the cells' padding together (the 36px buttons and their
-     7px gaps are unchanged), and the summary's metadata line closes its gaps
-     from 6px to 4px. */
+  /* Where the table is narrower than 336px (a 362px window), the summary's
+     metadata line closes its gaps from 6px to 4px. */
   @container dp-downloads-table (width < 336px) {
-    #view-torrents .t-table { --dp-downloads-action-allowance: 10px; }
-    #view-torrents .t-table .dp-downloads-action-cell { padding-inline: 5px; }
     #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-meta-main { gap: 4px; }
     /* Last, after every reduction of information (the size, a label, the
        providers' full names, the grip's reservation): where a line drawing

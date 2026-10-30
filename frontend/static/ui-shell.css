@@ -449,5 +449,4 @@ body.light #runtime-speed-badge {
 
 @media (max-width: 779px) {
   .view:is(.active, [data-dp-motion-outgoing]) { display: block !important; }
-  #view-dashboard:is(.active, [data-dp-motion-outgoing]) { height: auto; min-height: 0; overflow: visible; }
 }
