@@ -1625,8 +1625,8 @@ function measureDashboardHeartbeatRoute() {
   return {cards: route, end: last ? last.entry + last.width : 0};
 }
 
-/* On a handheld each KPI card, its title over its icon and value as at every
- * width (ui-dashboard.css), shows its count whole wherever it fits beside the
+/* On a handheld each KPI card, its title over its icon and value
+ * (ui-dashboard.css), shows its count whole wherever it fits beside the
  * card's icon; where it would not, the card draws it in compact notation
  * (1.23K, 12.3K, 123K, 1.23M), the most precise form that fits. Each card is
  * decided on its own width, so it returns to the exact count by itself as

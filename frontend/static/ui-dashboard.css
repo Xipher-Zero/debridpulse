@@ -324,21 +324,20 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   gap: 14px;
   margin: 0 0 15px;
 }
-/* Each card is its title over its group -- the icon beside the value (and,
-   under the value, any secondary line) -- at every width: the title a row of
-   its own across the top, the group beneath it, both centred on the card, so
-   the title is centred on the group whatever their widths. The card keeps its
-   height; the title takes the top of its interior and the group sits 7px
-   below it, so the tallest heartbeat on the line below (and its glow) stays
-   clear of the group, as it was beneath the old composition. */
+/* From 780px each card is its icon at the left and, beside it, its text:
+   the title over the value (and, under the value, any secondary line). The
+   icon spans the card's rows (the last takes what is left), so the title and
+   value keep their own spacing; the tallest heartbeat on the line below (and
+   its glow) stays clear of the text. Below 780px the handheld block below
+   composes the title over the icon and value instead. */
 #view-dashboard .dash-hero-stat {
   min-height: 130px;
-  padding: 10px 17px 30px;
+  padding: 20px 17px 30px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
-  align-content: start;
-  align-items: center;
-  gap: 7px 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: 5px 14px;
   border-radius: 12px;
   border: 1px solid rgba(105, 119, 181, .23);
   background:
@@ -352,8 +351,9 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   box-shadow: 0 0 10px color-mix(in srgb, var(--c) 24%, transparent);
 }
 #view-dashboard .dhs-icon {
-  grid-column: 2;
-  grid-row: 2;
+  grid-column: 1;
+  grid-row: 1 / -1;
+  margin-top: 1px;
   width: 51px;
   min-width: 51px;
   height: 51px;
@@ -363,12 +363,11 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   height: 51px;
 }
 #view-dashboard .dhs-body {
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 2;
-  /* The group is never narrower than its value: what fitDashboardKpiValues
-     (app.js) measures is what is drawn. */
+  /* Never narrower than its value: what fitDashboardKpiValues (app.js)
+     measures on a handheld is what is drawn. */
   min-width: auto;
-  margin-left: 14px;
   position: relative;
   z-index: 2;
 }
@@ -380,13 +379,11 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 }
 #view-dashboard .dhs-val--sm { font-size: 23px; }
 #view-dashboard .dhs-label {
-  grid-column: 1 / -1;
+  grid-column: 2;
   grid-row: 1;
-  justify-self: center;
   position: relative;
   z-index: 2;
-  margin-top: 0;
-  text-align: center;
+  margin-top: 2px;
   color: var(--dp-chrome-kpi-label);
   font-size: 9.5px;
   font-weight: 600;
@@ -632,8 +629,9 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    handheld (779px and below) the strip is two cards, Total Downloads then
    Completed: Total Downloaded leaves the layout too, in the same way, and is
    shown again from 780px. The two always share one row at equal widths, each
-   its title over its icon and value as at every width (the title wrapping
-   only between its words where the card is too narrow for one line); each
+   its title centred across the top, over its icon and value centred together
+   beneath it (the title wrapping only between its words where the card is
+   too narrow for one line); each
    card shows its exact count beside its icon wherever that fits, else its
    compact form (fitDashboardKpiValues, app.js, measured on the card itself). */
 @media (max-width: 1389px) {
@@ -652,7 +650,17 @@ body.light #view-dashboard .t-table td { color: var(--dp-chrome-table-text); }
    header's right inset. */
 @media (max-width: 779px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #view-dashboard .dhs-body { margin-left: 8px; }
+  #view-dashboard .dash-hero-stat {
+    padding-top: 10px;
+    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-rows: none;
+    align-content: start;
+    align-items: center;
+    gap: 7px 0;
+  }
+  #view-dashboard .dhs-label { grid-column: 1 / -1; grid-row: 1; justify-self: center; margin-top: 0; text-align: center; }
+  #view-dashboard .dhs-icon { grid-column: 2; grid-row: 2; margin-top: 0; }
+  #view-dashboard .dhs-body { grid-column: 3; grid-row: 2; margin-left: 8px; }
   #view-dashboard .dhs-val { white-space: nowrap; font-size: 22px; }
   /* A count too wide to stand beside its icon is drawn in compact notation
      (data-compact, chosen by fitDashboardKpiValues in app.js) at the value's

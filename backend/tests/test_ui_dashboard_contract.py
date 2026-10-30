@@ -138,18 +138,23 @@ def test_dashboard_responsive_contract_preserves_desktop_mockup() -> None:
     assert "@media (max-width: 640px)" not in css
     assert "grid-template-columns: repeat(3" in css
     assert "grid-template-columns: repeat(2" in css
-    # The handheld strip is two equal cards on one row at every width. 1.0.14:
-    # every card at every width is its title over its group -- a row of its
-    # own across the top, the icon and value centred beneath it (the former
-    # handheld side-by-side and data-dp-kpi stacked arrangements are retired);
-    # on a handheld the title may wrap between its words and the value is
-    # drawn compact where it does not fit beside the icon.
+    # From 780px each card is its icon at the left and, beside it, its title
+    # over its value (and any secondary line). The handheld strip is two equal
+    # cards on one row at every width, each its title centred across the top
+    # over its icon and value centred beneath it (1.0.14; the former handheld
+    # side-by-side and data-dp-kpi stacked arrangements are retired); there the
+    # title may wrap between its words and the value is drawn compact where it
+    # does not fit beside the icon.
     assert "#view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }" in css
-    assert "  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);\n" in css
-    assert "#view-dashboard .dhs-label {\n  grid-column: 1 / -1;\n  grid-row: 1;\n  justify-self: center;" in css
-    assert "#view-dashboard .dhs-icon {\n  grid-column: 2;\n  grid-row: 2;" in css
-    assert "#view-dashboard .dhs-body {\n  grid-column: 3;\n  grid-row: 2;" in css
+    assert "  grid-template-columns: auto minmax(0, 1fr);\n  grid-template-rows: auto auto minmax(0, 1fr);\n" in css
+    assert "#view-dashboard .dhs-icon {\n  grid-column: 1;\n  grid-row: 1 / -1;" in css
+    assert "#view-dashboard .dhs-body {\n  grid-column: 2;\n  grid-row: 2;" in css
+    assert "#view-dashboard .dhs-label {\n  grid-column: 2;\n  grid-row: 1;" in css
+    assert "    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);\n" in css
+    assert ("  #view-dashboard .dhs-label { grid-column: 1 / -1; grid-row: 1; justify-self: center; margin-top: 0; text-align: center; }") in css
+    assert "  #view-dashboard .dhs-icon { grid-column: 2; grid-row: 2; margin-top: 0; }" in css
+    assert "  #view-dashboard .dhs-body { grid-column: 3; grid-row: 2; margin-left: 8px; }" in css
     assert "  #view-dashboard .dhs-label { white-space: normal; }" in css
-    assert "data-dp-kpi" not in css and "grid-template-columns: auto minmax(0, 1fr);" not in css
+    assert "data-dp-kpi" not in css
     assert "flex-wrap: wrap; gap: 8px" not in css and "min-width: max-content" not in css
     assert "grid-template-columns: 1fr;" not in css

@@ -2,11 +2,12 @@ const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.14 Dashboard KPI hierarchy, Statistics recomposition and the four
  * handheld master workspaces.
- * - Dashboard: every KPI card, at every width, is its title over its group
- *   (the icon beside the value and any secondary line), the title centred on
- *   the group; the card keeps its 130px height, and the tallest heartbeat on
- *   the ECG line below (R at y=-2.51, with its 3px glow) stays clear of the
- *   group wherever the title is one line.
+ * - Dashboard: from 780px every KPI card is its icon at the left and, beside
+ *   it, its title over its value (and any secondary line), the icon where it
+ *   always was; below 780px its title centred over its icon and value. The
+ *   card keeps its 130px height, and the tallest heartbeat on the ECG line
+ *   below (R at y=-2.51, with its 3px glow) stays clear of the text wherever
+ *   the title is one line.
  * - Statistics: the title and hint each show the longest of their three
  *   wordings that is drawn whole; from 780px the six period filters, below it
  *   one header control (clock, period, chevron) of one width whichever period
@@ -84,20 +85,22 @@ const kpis = page => page.evaluate(() => {
     const label = card.querySelector('.dhs-label'), sub = card.querySelector('.dhs-sub');
     const range = document.createRange(); range.selectNodeContents(label);
     const title = range.getBoundingClientRect();
-    const parts = [card.querySelector('.dhs-icon').getBoundingClientRect(), drawnBox(card.querySelector('.dhs-val')),
-      ...(sub && sub.textContent.trim() ? [drawnBox(sub)] : [])];
+    const icon = card.querySelector('.dhs-icon').getBoundingClientRect(), value = drawnBox(card.querySelector('.dhs-val'));
+    const parts = [icon, value, ...(sub && sub.textContent.trim() ? [drawnBox(sub)] : [])];
     const group = {left: Math.min(...parts.map(r => r.left)), right: Math.max(...parts.map(r => r.right)),
       top: Math.min(...parts.map(r => r.top)), bottom: Math.max(...parts.map(r => r.bottom))};
     const box = card.getBoundingClientRect(), style = getComputedStyle(card);
     const svg = card.querySelector('.dp-card-spark'), line = svg.getBoundingClientRect(), view = Number(svg.getAttribute('viewBox').split(' ')[3]);
     return {title: label.textContent, lines: new Set([...range.getClientRects()].map(r => Math.round(r.top))).size,
       titleBox: {left: title.left, right: title.right, top: title.top, bottom: title.bottom}, group, height: box.height,
+      icon: {left: icon.left - box.left, top: icon.top - box.top, right: icon.right}, value: {left: value.left, top: value.top},
       inner: {left: box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight)},
+      edge: {left: box.left + parseFloat(style.borderLeftWidth), right: box.right - parseFloat(style.borderRightWidth)},
       peak: line.top - 2.51 * line.height / view, lineBottom: line.bottom, cardBottom: box.bottom, mode: card.dataset.dpKpi ?? null};
   });
 });
 
-test('every KPI card is its title over its group, centred on it, at its 130px height, the tallest heartbeat clear of the group', async ({page}) => {
+test('every KPI card from 780px is its icon beside its title over its value, below it its title over its group; 130px tall, the tallest heartbeat clear of the text', async ({page}) => {
   await boot(page, {stats: {paused: true, by_status: {completed: 12345, downloading: 3, processing: 2, error: 1, paused: 2}}});
   for (const [width, titles] of [
     [1440, ['Total Downloads', 'Completed', 'Active Now', 'Processing', 'Errors', 'Total Downloaded']],
@@ -113,14 +116,24 @@ test('every KPI card is its title over its group, centred on it, at its 130px he
       const at = `${width}px ${card.title}`;
       expect(card.height, `${at}: the card keeps its height`).toBeCloseTo(130, 1);
       expect(card.mode, `${at}: one composition`).toBe(null);
-      expect(card.titleBox.bottom, `${at}: the title above the group`).toBeLessThanOrEqual(card.group.top);
-      expect(Math.abs((card.titleBox.left + card.titleBox.right) / 2 - (card.group.left + card.group.right) / 2), `${at}: the title centred on the group`).toBeLessThanOrEqual(1);
+      expect(card.titleBox.bottom, `${at}: the title above the value`).toBeLessThanOrEqual(card.value.top);
+      if (width >= 780) {
+        // The icon where it always was (the card's padding and its 1px), the text beside it, title and value aligned.
+        expect([card.icon.left, card.icon.top], `${at}: the icon at the left`).toEqual([18, 22]);
+        expect(card.titleBox.left, `${at}: the title beside the icon`).toBeGreaterThanOrEqual(card.icon.right);
+        expect(Math.abs(card.titleBox.left - card.value.left), `${at}: title and value aligned`).toBeLessThanOrEqual(1);
+      } else {
+        expect(card.titleBox.bottom, `${at}: the title above the group`).toBeLessThanOrEqual(card.group.top);
+        expect(Math.abs((card.titleBox.left + card.titleBox.right) / 2 - (card.group.left + card.group.right) / 2), `${at}: the title centred on the group`).toBeLessThanOrEqual(1);
+      }
       expect(card.group.left >= card.inner.left - 0.5 && card.group.right <= card.inner.right + 0.5, `${at}: the group inside the card`).toBe(true);
-      expect(card.titleBox.left >= card.inner.left - 0.5 && card.titleBox.right <= card.inner.right + 0.5, `${at}: the title inside the card`).toBe(true);
+      // Inside the card, never clipped (from 780px the widest title, Total Downloaded, may reach into the
+      // card's right padding, as it always has: measured unchanged from the original composition).
+      expect(card.titleBox.left >= card.inner.left - 0.5 && card.titleBox.right <= card.edge.right + 0.5, `${at}: the title inside the card`).toBe(true);
       expect(Math.abs(card.lineBottom - card.cardBottom), `${at}: the ECG line box at the card's floor`).toBeLessThanOrEqual(0.5);
       if (WEB_FONTS) expect(card.lines, `${at}: the title on one line`).toBe(1);
       // The tallest heartbeat and its 3px glow pass beneath the group, as beneath the former composition.
-      if (card.lines === 1) expect(card.peak - card.group.bottom, `${at}: clearance`).toBeGreaterThan(3 + 3);
+      if (card.lines === 1) expect(card.peak - Math.max(card.group.bottom, card.titleBox.bottom), `${at}: clearance`).toBeGreaterThan(3 + 3);
     }
     if (width === 1440) {
       // Text-heavy samples: the paused Processing card and the blocked files line, whole and inside.
