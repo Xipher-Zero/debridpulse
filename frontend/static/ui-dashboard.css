@@ -2020,8 +2020,50 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
   .dhs-icon { font-size: 18px !important; }
 }
 
+/* KPI strip — horizontal metrics bar */
+.dash-kpi-strip {
+  display: flex;
+  align-items: stretch;
+  background: linear-gradient(180deg, var(--surface2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.dash-kpi {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 10px;
+  text-align: center;
+}
+.dash-kpi-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dash-kpi-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-top: 4px;
+}
+.dash-kpi-sub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
 body.light .dash-hero-stat:hover {
   box-shadow: 0 8px 20px rgba(28,44,70,.10);
+}
+@media (max-width: 779px) {
+  .dash-kpi-strip { flex-wrap: wrap; }
+  .dash-kpi { flex: 0 0 calc(50% - 1px); border-bottom: 1px solid var(--border); }
+  .dash-kpi:last-child, .dash-kpi:nth-last-child(2) { border-bottom: none; }
 }
 
 /* Drag & Drop reordering */

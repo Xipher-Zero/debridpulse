@@ -97,7 +97,7 @@
 
 /* ── KPI / metric cards ───────────────────────────────────────────────── */
 /* The semantic color is local --c when supplied, otherwise DP purple. */
-:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat) {
+:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi) {
   --dp-metric-color: var(--c, var(--dp-accent-purple-bright));
   position: relative;
   isolation: isolate;
@@ -116,7 +116,7 @@
   transform: none;
 }
 
-body.light :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat) {
+body.light :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi) {
   background:
     radial-gradient(ellipse 105% 88% at 1% -8%,
       color-mix(in srgb, var(--dp-metric-color) 15%, transparent) 0%,
@@ -128,7 +128,7 @@ body.light :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat) {
 }
 
 /* Semantic top/left source used by Dashboard hero cards and reusable metrics. */
-:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat)::before {
+:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi)::before {
   display: block;
   content: '';
   position: absolute;
@@ -162,7 +162,7 @@ body.light :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat) {
   pointer-events: none;
 }
 
-:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat)::after {
+:is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi)::after {
   content: '';
   position: absolute;
   z-index: 5;
@@ -599,7 +599,8 @@ body.light textarea.input::placeholder { color: var(--text2); opacity: .7; }
 body.light .card,
 body.light .list-card,
 body.light .scard,
-body.light .dash-hero-stat {
+body.light .dash-hero-stat,
+body.light .dash-kpi-strip {
   background: linear-gradient(180deg, #ffffff, #fbfcfe);
   box-shadow: var(--shadow-soft);
 }

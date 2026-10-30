@@ -11,10 +11,10 @@ const { test, expect } = require('@playwright/test');
  * - Statistics: the title and hint each show the longest of their three
  *   wordings that is drawn whole; from 780px the six period filters, below it
  *   one header control (clock, period, chevron) of one width whichever period
- *   is chosen, whose menu chooses through the filters' own state; exactly two
- *   period cards, side by side at every width (label and value scaled down on
- *   a narrow card, each whole on one line), the data card labelled Data
- *   Transferred below 780px only.
+ *   is chosen, whose menu chooses through the filters' own state. Below 780px
+ *   only Downloads Added and Data Transferred, side by side (label and value
+ *   scaled down on a narrow card, each whole on one line); from 780px every
+ *   card, the separator and the history row, unchanged.
  * - Below 780px Statistics, Activity Log, Settings and Help each fill the
  *   shell's content box -- 10px under the header, 10px above the dock -- with
  *   their header fixed and one inner scroller; the page itself does not
@@ -171,7 +171,8 @@ const header = page => page.evaluate(() => {
     trigger: trigger.offsetWidth ? box(trigger).toJSON() : null, tabs: tabs.offsetWidth ? box(tabs).toJSON() : null, header: box(h).toJSON(),
     contentRight: box(h).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth),
     rows: new Set([...h.children].filter(n => n.offsetWidth && !n.matches('[popover]')).map(n => Math.round((box(n).top + box(n).bottom) / 2))).size,
-    cards: [...document.querySelectorAll('#detail-stat-cards > .metric-card')].map(card => ({metric: card.dataset.dpStatsMetric,
+    rest: [...document.querySelectorAll('#view-stats .dp-stats-row-separator, #view-stats .dp-stats-history-grid')].map(node => getComputedStyle(node).display !== 'none'),
+    cards: [...document.querySelectorAll('#detail-stat-cards > .metric-card')].filter(card => getComputedStyle(card).display !== 'none').map(card => ({metric: card.dataset.dpStatsMetric,
       label: card.querySelector('.metric-label').innerText, value: card.querySelector('.metric-value').textContent, top: Math.round(box(card).top),
       whole: ['.metric-label', '.metric-value'].every(selector => {
         const node = card.querySelector(selector), shown = [...node.querySelectorAll('span')].find(span => span.offsetWidth) || node;
@@ -203,10 +204,18 @@ test('the Statistics header shows the longest wordings drawn whole, the filters 
     const control = h.trigger || h.tabs;
     expect(Math.abs(control.right - h.contentRight), `${width}px: right-aligned`).toBeLessThanOrEqual(0.5);
     expect(Math.abs((control.top + control.bottom) / 2 - (h.header.top + h.header.bottom) / 2), `${width}px: centred on the row`).toBeLessThanOrEqual(1);
-    expect(h.cards.map(card => card.metric)).toEqual(['downloads', 'data']);
-    expect(h.cards.map(card => card.label)).toEqual(['Downloads Added', handheld ? 'Data Transferred' : 'Total Data Downloaded']);
-    expect(h.cards[1].value).toBe('679.9 GB');
-    expect(h.cards[0].top === h.cards[1].top, `${width}px: the two cards side by side`).toBe(true);
+    // Below 780px only Downloads Added and Data Transferred, side by side; from 780px every card, the
+    // separator and the history row, as before (their composition: statistics-kpi-composition.spec.js).
+    if (handheld) {
+      expect(h.cards.map(card => card.metric)).toEqual(['downloads', 'data']);
+      expect(h.cards.map(card => card.label)).toEqual(['Downloads Added', 'Data Transferred']);
+      expect(h.cards[0].top === h.cards[1].top, `${width}px: the two cards side by side`).toBe(true);
+      expect(h.rest, `${width}px: no separator or history row`).toEqual([false, false]);
+    } else {
+      expect(h.cards.find(card => card.metric === 'data').label).toBe('Total Data Downloaded');
+      expect(h.rest, `${width}px: separator and history row`).toEqual([true, true]);
+    }
+    expect(h.cards.find(card => card.metric === 'data').value).toBe('679.9 GB');
     // Label and value each drawn whole on one line inside their card (scaled down on a narrow card).
     for (const card of h.cards) expect(card.whole, `${width}px ${card.metric}: label and value whole`).toBe(true);
   }

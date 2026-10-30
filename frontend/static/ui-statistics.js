@@ -25,7 +25,7 @@
   // Events Severity reads the journal's stored severities, always in this
   // order whatever the counts or the query's order.
   const SEVERITIES = Object.freeze([['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]);
-  const PRIMARY_ORDER = Object.freeze(['downloads', 'data']);
+  const PRIMARY_ORDER = Object.freeze(['downloads', 'completed', 'progress', 'success', 'data']);
   const BREAKDOWNS = Object.freeze([
     {id: 'detail-torrent-status', title: 'Transfer Disposition', kind: 'status'},
     {id: 'detail-file-status', title: 'File Status', kind: 'status'},
@@ -43,11 +43,33 @@
     '1y': 'Completed downloads in the last year.',
     'all': 'Completed downloads across all recorded history.',
   });
+  const SUCCESS_FLAVOR = Object.freeze({
+    '1h': 'Share of finished downloads completed successfully during the last hour.',
+    '24h': 'Share of finished downloads completed successfully during the last 24 hours.',
+    '7d': 'Share of finished downloads completed successfully during the last 7 days.',
+    '30d': 'Share of finished downloads completed successfully during the last 30 days.',
+    '1y': 'Share of finished downloads completed successfully during the last year.',
+    'all': 'Share of finished downloads completed successfully across all recorded history.',
+  });
 
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
     const active = document.querySelector('#stats-period-tabs .ftab.active');
     return (active && active.dataset.period) || '7d';
+  }
+
+  function formatCompactDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return '—';
+    const totalMinutes = Math.max(1, Math.round(value / 60));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+    if (days) parts.push(days + 'D');
+    if (hours) parts.push(hours + 'H');
+    if (minutes) parts.push(minutes + 'M');
+    return parts.join(' ');
   }
 
   function periodPhrase(period) {
@@ -64,6 +86,9 @@
   function primaryDescription(key, period) {
     const phrase = periodPhrase(period);
     if (key === 'downloads') return 'Downloads added ' + phrase + '.';
+    if (key === 'completed') return 'Downloads completed ' + phrase + '.';
+    if (key === 'progress') return 'Downloads still in progress that were added ' + phrase + '.';
+    if (key === 'success') return SUCCESS_FLAVOR[period] || 'Share of finished downloads completed successfully during the selected period.';
     if (key === 'data') return 'Total data downloaded ' + phrase + '.';
     return '';
   }
@@ -101,6 +126,9 @@
   function updatePrimaryMetrics(totals, period) {
     const values = {
       downloads: totals.torrent_total || 0,
+      completed: totals.completed_count || 0,
+      progress: totals.partial_total || 0,
+      success: totals.success_rate_pct != null ? totals.success_rate_pct + '%' : '—',
       data: fmtSize(totals.completed_size || 0),
     };
     PRIMARY_ORDER.forEach(function (key) {
@@ -760,11 +788,11 @@
     syncPeriodControl();
   }
 
-  /* The master header's title and hint each show the longest of their three
-   * wordings drawn whole on one line in the room the header leaves them --
-   * beside the period filters from 780px, beside the handheld control below
-   * it ("By The Numbers", "Statistics", "Stats"; "Vibes are not a performance
-   * metric.", "Vibes aren't metrics.", "Just data."). A shorter wording is
+  /* Below 780px the master header's title and hint each show the longest of
+   * their three wordings drawn whole on one line in the room the handheld
+   * control leaves them ("By The Numbers", "Statistics", "Stats"; "Vibes are
+   * not a performance metric.", "Vibes aren't metrics.", "Just data."); from
+   * 780px both are always the full wording, as before. A shorter wording is
    * drawn in place of the full one (ui-statistics-page.css), which stays the
    * element's text, so assistive technology reads it whole; while either is
    * shortened the header's tooltip gives both in full. Decided on the drawn
@@ -774,7 +802,14 @@
     const header = document.querySelector('#view-stats > .dp-stats-master-header');
     const title = header && header.querySelector('.dp-stats-master-title');
     const copy = header && header.querySelector('.dp-stats-heading-copy');
-    if (!copy || !copy.clientWidth) return;
+    if (!copy) return;
+    if (desktop.matches) {
+      delete header.dataset.dpTitle;
+      delete header.dataset.dpHint;
+      delete title.dataset.tooltip;
+      return;
+    }
+    if (!copy.clientWidth) return;
     [['dpTitle', '.dp-stats-heading'], ['dpHint', '.dp-stats-subtitle']].forEach(function ([key, selector]) {
       const line = copy.querySelector(selector);
       const wording = HEADER_WORDINGS.find(function (state) {
@@ -790,6 +825,7 @@
 
   function install() {
     window.loadDetailedStats = loadDetailedStats;
+    window.fmtDuration = formatCompactDuration;
     window.setStatsPeriod = setStatsPeriod;
     return true;
   }

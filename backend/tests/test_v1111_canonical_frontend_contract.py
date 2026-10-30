@@ -291,13 +291,12 @@ def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
     html = read(INDEX)
     view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
-        "Downloads Added", "Total Data Downloaded", "Data Transferred",
+        "Last 24 Hours", "Completed downloads over the last 24 hours.",
+        "Last 7 Days", "Completed downloads over the last 7 days.",
+        "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
         "/icons/dp/card-download.svg", 'class="dp-stats-chart-heading">Completions</span>',
     ):
         assert fragment in view
-    # 1.0.14: the five history cards are retired.
-    for retired in ("Last 24 Hours", "Last 7 Days", "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE"):
-        assert retired not in view
     for fragment in (
         "MAX_VISIBLE = 10", "TWO_COLUMN_THRESHOLD = 6",
         "entries.slice(0, MAX_VISIBLE)", "Math.ceil(visible.length / 2)",

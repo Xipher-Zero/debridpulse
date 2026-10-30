@@ -326,7 +326,7 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
 
 
 
-def test_statistics_history_strip_is_retired_with_no_database_or_queue_health_tiles():
+def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tiles():
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
     dashboard_styles = (REPO_ROOT / "frontend/static/ui-dashboard.css").read_text()
@@ -334,17 +334,20 @@ def test_statistics_history_strip_is_retired_with_no_database_or_queue_health_ti
 
     assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
     stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
-    # 1.0.14: the history strip itself is retired (its five tiles and writers).
-    assert "dp-stats-history-grid" not in stats_view and 'class="dash-kpi ' not in stats_view
-    assert 'id="i-db-type"' not in stats_view
-    assert 'id="i-queue-health"' not in stats_view
-    assert 'id="i-queue-copy"' not in stats_view
+    history = stats_view.split('<div class="dash-kpi-strip dp-stats-history-grid">', 1)[1].split(
+        '<div class="scard dp-stats-chart', 1
+    )[0]
+
+    assert history.count('class="dash-kpi ') == 5
+    assert 'id="i-db-type"' not in history
+    assert '<div class="dash-kpi-lbl">Database</div>' not in history
+    assert 'id="i-queue-health"' not in history
+    assert 'id="i-queue-copy"' not in history
     assert "getElementById('i-db-type')" not in frontend
     assert "getElementById('i-queue-health')" not in frontend
-    assert "getElementById('i-last-day')" not in frontend
     assert "setDot('db'" in frontend
     assert ".dash-kpi-strip--dashboard" not in dashboard_styles
-    assert "dp-stats-history-grid" not in statistics_styles
+    assert "#view-stats .dp-stats-history-grid" in statistics_styles
 
 
 def test_inherited_file_preview_and_block_routes_are_hardened():

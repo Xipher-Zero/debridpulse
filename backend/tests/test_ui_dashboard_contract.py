@@ -82,21 +82,20 @@ def test_dashboard_canonical_owner_keeps_reviewed_surface_calibration() -> None:
     require_token(css, "--dp-table-head-surface", "#1d1930", "#f2eff8")
 
 
-def test_dashboard_keeps_one_primary_metric_row_and_statistics_history_is_retired() -> None:
+def test_dashboard_keeps_one_primary_metric_row_and_statistics_owns_history_directly() -> None:
     dashboard = DASHBOARD_CSS.read_text(encoding="utf-8")
     statistics = STATISTICS_CSS.read_text(encoding="utf-8")
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "grid-template-columns: repeat(6" in dashboard
     assert "#view-dashboard .dash-kpi-strip--dashboard" not in dashboard
-    # 1.0.14: the Statistics history cards are retired with their presentation.
-    assert "dp-stats-history-grid" not in dashboard and "dp-stats-history-grid" not in statistics
-    assert "dash-kpi" not in dashboard and "dash-kpi" not in statistics
+    assert "#view-stats .dp-stats-history-grid" not in dashboard
+    assert "#view-stats .dp-stats-history-grid" in statistics
     assert "moveDashboardKpisToStatistics" not in app
     assert "decorateHistoricalKpis" not in app
     assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
     stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
-    assert "dp-stats-history-grid" not in stats_view and "dash-kpi" not in stats_view
+    assert 'class="dash-kpi-strip dp-stats-history-grid"' in stats_view
 
 def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None:
     index = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -107,11 +106,10 @@ def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None
     )
     missing = [asset for asset in dashboard_assets if asset not in dashboard_view]
     assert not missing, f"Dashboard is missing canonical assets: {missing}"
+    statistics_assets = ("heartbeat-outline.svg", "calendar-24.svg", "calendar-7.svg", "clock-outline.svg", "cube.svg")
     stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
-    assert "statistics.svg" in stats_view
-    # 1.0.14: the five history cards and their artwork are retired from Statistics.
-    for retired in ("heartbeat-outline.svg", "calendar-24.svg", "calendar-7.svg", "clock-outline.svg", "cube.svg"):
-        assert retired not in stats_view
+    missing = [asset for asset in statistics_assets if asset not in stats_view]
+    assert not missing, f"Statistics is missing canonical assets: {missing}"
     assert "verified-badge.svg" not in stats_view
 
 def test_quick_add_preserves_existing_functional_controls() -> None:

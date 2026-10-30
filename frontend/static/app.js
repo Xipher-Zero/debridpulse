@@ -1368,6 +1368,13 @@ async function resumePausedDownloads() {
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
+function fmtDuration(secs) {
+  if (!secs || secs <= 0) return '—';
+  if (secs < 60) return secs + 's';
+  if (secs < 3600) return Math.round(secs/60) + 'm';
+  return (secs/3600).toFixed(1) + 'h';
+}
+
 var _operatorTitleState = {active: 0, progress: 0};
 
 function renderOperatorTitle() {
@@ -1946,6 +1953,11 @@ async function loadStats() {
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
       fitDashboardKpiValues();
+      document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
+      document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
+      document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
+      document.getElementById('i-avg-duration').textContent = fmtDuration(s.avg_download_duration_seconds);
+      document.getElementById('i-avg-size').textContent = s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—';
       // The Downloads badge: distinct transfers still in the ordinary download
       // lifecycle (one torrents row each, whatever their artifacts or
       // attempts). Failed transfers awaiting the operator and terminal ones
@@ -3594,6 +3606,11 @@ document.addEventListener('DOMContentLoaded', () => {
         es.addEventListener(
           'ping',
           function() {
+            // Statistics' Overall & Rolling row is this owner's (/stats): its
+            // last-24-hours and last-7-days figures age while the page is open.
+            if (document.getElementById('view-stats')?.classList.contains('active')) {
+              loadStats().catch(()=>{});
+            }
             document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat'));
           }
         );
