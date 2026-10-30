@@ -12,7 +12,9 @@ const { test, expect } = require('@playwright/test');
  *   wordings that is drawn whole; from 780px the six period filters, below it
  *   one header control (clock, period, chevron) of one width whichever period
  *   is chosen, whose menu chooses through the filters' own state; exactly two
- *   period cards, the data card labelled Data Transferred below 780px only.
+ *   period cards, side by side at every width (label and value scaled down on
+ *   a narrow card, each whole on one line), the data card labelled Data
+ *   Transferred below 780px only.
  * - Below 780px Statistics, Activity Log, Settings and Help each fill the
  *   shell's content box -- 10px under the header, 10px above the dock -- with
  *   their header fixed and one inner scroller; the page itself does not
@@ -170,7 +172,14 @@ const header = page => page.evaluate(() => {
     contentRight: box(h).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth),
     rows: new Set([...h.children].filter(n => n.offsetWidth && !n.matches('[popover]')).map(n => Math.round((box(n).top + box(n).bottom) / 2))).size,
     cards: [...document.querySelectorAll('#detail-stat-cards > .metric-card')].map(card => ({metric: card.dataset.dpStatsMetric,
-      label: card.querySelector('.metric-label').innerText, value: card.querySelector('.metric-value').textContent, top: Math.round(box(card).top)})),
+      label: card.querySelector('.metric-label').innerText, value: card.querySelector('.metric-value').textContent, top: Math.round(box(card).top),
+      whole: ['.metric-label', '.metric-value'].every(selector => {
+        const node = card.querySelector(selector), shown = [...node.querySelectorAll('span')].find(span => span.offsetWidth) || node;
+        const range = document.createRange(); range.selectNodeContents(shown);
+        const rects = range.getClientRects(), text = range.getBoundingClientRect(), c = box(card), cs = getComputedStyle(card);
+        return new Set([...rects].map(rect => Math.round(rect.top))).size === 1
+          && text.left >= c.left + parseFloat(cs.paddingLeft) - 0.5 && text.right <= c.right - parseFloat(cs.paddingRight) + 0.5;
+      })})),
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
 });
 
@@ -197,7 +206,9 @@ test('the Statistics header shows the longest wordings drawn whole, the filters 
     expect(h.cards.map(card => card.metric)).toEqual(['downloads', 'data']);
     expect(h.cards.map(card => card.label)).toEqual(['Downloads Added', handheld ? 'Data Transferred' : 'Total Data Downloaded']);
     expect(h.cards[1].value).toBe('679.9 GB');
-    expect(h.cards[0].top === h.cards[1].top, `${width}px: side by side from 640px, else stacked`).toBe(width >= 640);
+    expect(h.cards[0].top === h.cards[1].top, `${width}px: the two cards side by side`).toBe(true);
+    // Label and value each drawn whole on one line inside their card (scaled down on a narrow card).
+    for (const card of h.cards) expect(card.whole, `${width}px ${card.metric}: label and value whole`).toBe(true);
   }
   // From 780px the header is the desktop's: the full wordings at 1440px.
   expect((await header(page)).lines.map(line => line.state)).toEqual(['', '']);
