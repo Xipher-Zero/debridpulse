@@ -507,10 +507,10 @@ body.light #view-torrents .empty-icon {
    them only then): no phantom tracks for a read-only viewer. */
 #view-torrents .t-table:has(> thead .dp-downloads-select-cell) {
   --dp-downloads-action-track: calc(var(--dp-downloads-action-slots) * var(--dp-downloads-action-slot)
-    + (var(--dp-downloads-action-slots) - 1) * 7px + 28px);
+    + (var(--dp-downloads-action-slots) - 1) * 7px + var(--dp-downloads-action-allowance, 28px));
   --dp-downloads-select-track: 36px;
 }
-#view-torrents .t-table:has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)) {
+#view-torrents .t-table:has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3 of :not(.dp-queue-consent-action))) {
   --dp-downloads-action-slots: 3;
 }
 #view-torrents .t-table .dp-downloads-name-cell {
@@ -598,20 +598,55 @@ body.light #view-torrents .empty-icon {
   }
 }
 
-/* The handheld composition (below 780px). Progress and Size step aside --
-   their columns and tracks, the name's secondary bar and the size beside the
-   name -- and Name (with its source and provider), Status, Actions and the
-   selection column remain, in the compact steps the table's own width takes
-   above; Name takes the rest, and where that is too narrow for its source,
-   provider and candidate controls on one line they wrap beneath it. */
+/* The handheld composition (below 780px): the Transfer Summary (the Name
+   cell; ui-dashboard-transfer-presentation.css), Actions -- which there also
+   holds Start Now, Status's reaffirmation -- and the selection column last.
+   Status, Progress, Size and Date step aside, columns and tracks; Name takes
+   the rest. */
 @media (max-width: 779px) {
   #view-torrents .t-table {
+    --dp-downloads-status-track: 0px;
     --dp-downloads-progress-track: 0px;
     --dp-downloads-size-track: 0px;
+    --dp-downloads-date-track: 0px;
   }
-  #view-torrents .t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }
-  #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }
-  #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta { flex-wrap: wrap; }
+  #view-torrents .t-table:has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)) {
+    --dp-downloads-action-slots: 3;
+  }
+  #view-torrents .t-table :is(.dp-downloads-status-cell, .dp-downloads-progress-cell, .dp-downloads-size-cell, .dp-downloads-date-cell) { display: none; }
+  /* The summary's three layers (the name's line, the slot and the 20px
+     metadata line) are 42px: the Name cell's block padding is what the row's
+     height (Actions' 36px buttons and their cells' 8px) leaves them, so the
+     row is no taller and nothing is clipped. */
+  #view-torrents .t-table .dp-downloads-name-cell { padding-block: 5px; }
+  /* The queue grip belongs to the filename's line: it stands beside the name
+     only, and its width (less the overhang it takes from the cell's padding,
+     plus the line's gap) is reserved there alone -- the progress slot keeps
+     its place beside it, and the metadata line takes the room beneath it. */
+  #view-torrents td[data-queue-drag="true"] .dp-queue-grip { align-self: flex-start; height: 1lh; }
+  #view-torrents td[data-queue-drag="true"] .dp-transfer-provider-meta {
+    margin-inline-start: calc(var(--dp-queue-grip-overhang) - var(--dp-queue-grip-size) - var(--dp-name-line-gap));
+  }
+  /* Where the table is narrower than 336px (a 362px window) -- below that,
+     the widest legitimate summaries (the queue grip, status, provider and a
+     candidate launcher; or file selection and a label) can no longer show
+     their controls and the provider's short name whole on their line --
+     Actions gives back its outer allowance: 5px each side instead of 14px,
+     the track and the cells' padding together (the 36px buttons and their
+     7px gaps are unchanged), and the summary's metadata line closes its gaps
+     from 6px to 4px. */
+  @container dp-downloads-table (width < 336px) {
+    #view-torrents .t-table { --dp-downloads-action-allowance: 10px; }
+    #view-torrents .t-table .dp-downloads-action-cell { padding-inline: 5px; }
+    #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-meta-main { gap: 4px; }
+    /* Last, after every reduction of information (the size, a label, the
+       providers' full names, the grip's reservation): where a line drawing
+       short names also holds a candidate launcher, its route launcher keeps
+       4px of padding each side instead of 8px, and 4px between its name and
+       caret instead of 5px, so its short name is whole. Its height, label,
+       caret, focus ring and behaviour are unchanged. */
+    #view-torrents :is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta[data-dp-fit="short"]:has(.dp-candidate-chip) .dp-root-provider-launcher { padding-inline: 4px; gap: 4px; }
+  }
 }
 
 /* ── Pause shim, date menu, and name metadata material (folded
@@ -632,26 +667,30 @@ body.light #view-torrents .empty-icon {
 .dp-date-menu button[aria-checked="true"]::before{content:'✓';position:absolute;left:9px}
 .dp-date-menu button:hover,.dp-date-menu button:focus-visible,.dp-date-menu button[aria-checked="true"]{color:var(--text);background:var(--surface2)}
 .dp-downloads-date-value:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* A label, when set, follows the name's controls and gives way first. */
-:is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta .lbl-badge{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A label, when set, follows the name's controls and gives way first: it
+   shrinks before the provider's name does. */
+:is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta .lbl-badge{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 
 /* ── Operator queue: Name-cell grip, drag, page edges, selection column ──
    The whole Name cell is the drag surface of a queue member in the Priority
    view (ui-downloads.js); the grip only shows that it is. Restrained, in the
    table's own colours: no new colour family, no animation system. */
 #view-torrents .dp-downloads-name-line {
+  --dp-queue-grip-size: 14px;
+  --dp-queue-grip-overhang: 8px;
+  --dp-name-line-gap: 4px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dp-name-line-gap);
   min-width: 0;
 }
 #view-torrents .dp-downloads-name-copy { flex: 1 1 auto; min-width: 0; }
 #view-torrents .dp-queue-grip {
   display: inline-grid;
   place-items: center;
-  flex: 0 0 14px;
-  width: 14px;
-  margin-left: -8px;
+  flex: 0 0 var(--dp-queue-grip-size);
+  width: var(--dp-queue-grip-size);
+  margin-left: calc(-1 * var(--dp-queue-grip-overhang));
   color: var(--dp-text-muted);
   touch-action: none;
 }

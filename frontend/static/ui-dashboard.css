@@ -224,7 +224,6 @@
 
 #view-dashboard .t-table {
   width: 100%;
-  min-width: 720px !important;
   border-collapse: collapse;
   font-size: var(--dp-type-table-body-size);
 }
@@ -542,7 +541,11 @@ body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color
   font-size: 10.5px !important;
 }
 #view-dashboard .dash-activity-table-wrap { overflow: hidden auto; }
-#view-dashboard .t-table { min-width: 760px !important; }
+/* The desktop table's floor; below 780px it is the Transfer Summary and
+   Action, as wide as the card. */
+@media (min-width: 780px) {
+  #view-dashboard .t-table { min-width: 760px !important; }
+}
 #view-dashboard .t-table thead th {
   height: 33px;
   padding: 0 14px;
@@ -1012,8 +1015,8 @@ body.light .nav-item.active::after {
 /* Active transfer progress must read as live work rather than a hairline. */
 #dash-tbody .prog,
 :is(#t-tbody, .dp-downloads-styled-tbody) .prog {
-  height: 6px !important;
-  border-radius: 999px !important;
+  height: var(--dp-row-progress-track, 6px) !important;
+  border-radius: var(--dp-row-progress-radius, 999px) !important;
   background: var(--dp-chrome-progress-track) !important;
   overflow: visible !important;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.10) !important;
@@ -1025,8 +1028,8 @@ body.light :is(#t-tbody, .dp-downloads-styled-tbody) .prog {
 }
 #dash-tbody .prog-fill,
 :is(#t-tbody, .dp-downloads-styled-tbody) .prog-fill {
-  height: 6px !important;
-  border-radius: 999px !important;
+  height: var(--dp-row-progress-fill, 6px) !important;
+  border-radius: var(--dp-row-progress-radius, 999px) !important;
 }
 /* DP 1.0.12 UI Finishing (Correction 9): the two data-status="downloading"-
    scoped background/box-shadow blocks that used to live here were removed.
@@ -1365,12 +1368,12 @@ body.light #view-dashboard #btn-add-transfer {
    transfer itself is paused; degraded downloads alone switch to amber. */
 #dash-tbody .prog,
 :is(#t-tbody, .dp-downloads-styled-tbody) .prog {
-  height: 7px !important;
+  height: var(--dp-row-progress-track, 7px) !important;
   overflow: visible !important;
 }
 #dash-tbody .prog-fill,
 :is(#t-tbody, .dp-downloads-styled-tbody) .prog-fill {
-  height: 7px !important;
+  height: var(--dp-row-progress-fill, 7px) !important;
   background: linear-gradient(90deg, var(--dp-state-success-deep), var(--dp-state-success-fill)) !important;
   /* DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow reduced by
      a relative 15% (alpha * 0.85) from the prior .78/.34 -- blur radii,
@@ -1584,12 +1587,12 @@ body.light :is(#t-tbody, .dp-downloads-styled-tbody) tr:has(.badge-partial) .pro
     display: none;
   }
 }
+/* Below 780px Download Activity is its Transfer Summary (the Name cell;
+   ui-dashboard-transfer-presentation.css) and, where the caller may operate,
+   Action: Status, Progress, Size and Date step aside. */
 @media (max-width: 779px) {
-  #view-dashboard #dash-tbody .prog-line {
-    flex-wrap: nowrap;
-  }
-  #view-dashboard #dash-tbody .prog-line .prog-pct {
-    white-space: nowrap;
+  #view-dashboard .dp-dashboard-activity .t-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)) {
+    display: none;
   }
 }
 
@@ -1698,7 +1701,7 @@ body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
    so completed/error-state progress reads lighter without losing scanability. */
 #dash-tbody .prog,
 :is(#t-tbody, .dp-downloads-styled-tbody) .prog {
-  height: 4.5px !important;
+  height: var(--dp-row-progress-track, 4.5px) !important;
 }
 
 /* On wide Dashboard layouts, Status had far more horizontal allocation than

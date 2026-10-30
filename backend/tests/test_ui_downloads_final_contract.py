@@ -115,7 +115,10 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     import re
 
     css = read("ui-downloads-page.css")
-    assert "nth-child" not in css.replace(":is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)", "")
+    # The action-slot counts (desktop: real actions only -- the handheld Start
+    # Now copy is not one; handheld: every action the Actions cell holds).
+    assert "nth-child" not in css.replace(":is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3 of :not(.dp-queue-consent-action))", "").replace(
+        ":is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3)", "")
     for retired in ("(width <= 1050px)", "(width > 1050px) and (width < 1180px)",
                     "(min-width: 1180px) and (width < 1390px)", "(min-width: 901px) and (width < 1390px)"):
         assert retired not in css
@@ -134,8 +137,8 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     assert "--dp-downloads-status-track: 180px;" in full and "--dp-downloads-date-track: 178px;" in full
     assert "--dp-downloads-size-track: max(84px, 7cqw);" in full
     assert "--dp-downloads-action-slot: 72px;" in full and "--dp-downloads-action-slots: 2;" in full
-    assert "--dp-downloads-select-track: 36px;" in full and "* 7px + 28px" in full and "gap: 7px;" in full
-    assert ":has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3))" in full and "--dp-downloads-action-slots: 3;" in full
+    assert "--dp-downloads-select-track: 36px;" in full and "* 7px + var(--dp-downloads-action-allowance, 28px))" in full and "gap: 7px;" in full
+    assert ":has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3 of :not(.dp-queue-consent-action)))" in full and "--dp-downloads-action-slots: 3;" in full
     assert "min(22cqw, 100cqw - 280px - var(--dp-downloads-fixed-tracks))" in full
     assert "width: calc(100cqw - var(--dp-downloads-progress-track) - var(--dp-downloads-fixed-tracks));" in full
     assert re.search(r"\.dp-downloads-status-cell \{\s*width: var\(--dp-downloads-status-track\);\s*text-align: center;", full)
@@ -149,15 +152,29 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     assert "--dp-downloads-size-track: 0px;" in relocated
     assert re.search(r"\.dp-downloads-size-cell \{\s*display: none;", relocated)
     assert re.search(r":is\(#t-tbody, \.dp-downloads-styled-tbody\) \.dp-downloads-size \{\s*display: block;", relocated)
-    # Progress and Size step aside only on mobile (779px and below): their
-    # columns, tracks, the name's bar and the size beside the name, after the
-    # compact steps; the name's metadata may wrap there rather than spill.
-    hide = ".t-table :is(.dp-downloads-progress-cell, .dp-downloads-size-cell) { display: none; }"
+    # 1.0.14 handheld (779px and below): the Transfer Summary, Actions and the
+    # selection column. Status, Progress, Size and Date step aside -- columns
+    # and tracks -- after the compact steps; the name keeps its thin slot and
+    # its one-line metadata closed by the size (the shared summary owner,
+    # ui-dashboard-transfer-presentation.css), which no longer wraps.
+    hide = ".t-table :is(.dp-downloads-status-cell, .dp-downloads-progress-cell, .dp-downloads-size-cell, .dp-downloads-date-cell) { display: none; }"
     handheld = block("@media (max-width: 779px)", "--dp-downloads-progress-track: 0px;")
     assert css.count(hide) == 1 and hide in handheld
-    assert "--dp-downloads-size-track: 0px;" in handheld
-    assert ":is(#t-tbody, .dp-downloads-styled-tbody) :is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" in handheld
-    assert ":is(#t-tbody, .dp-downloads-styled-tbody) .dp-transfer-provider-meta { flex-wrap: wrap; }" in handheld
+    for track in ("status", "progress", "size", "date"):
+        assert f"--dp-downloads-{track}-track: 0px;" in handheld, track
+    assert ":has(> :is(#t-tbody, .dp-downloads-styled-tbody) .actions > :nth-child(3))" in handheld
+    assert ":is(.dash-row-bar-slot, .dp-downloads-size) { display: none; }" not in css
+    # Where the table is narrower than 336px (a 362px window) Actions gives back
+    # its outer allowance (the track and the cells' padding together; buttons and
+    # gaps unchanged) and the summary's metadata gaps close from 6px to 4px.
+    narrow = handheld[handheld.index("@container dp-downloads-table (width < 336px) {"):]
+    assert "--dp-downloads-action-allowance: 10px;" in narrow and ".dp-downloads-action-cell { padding-inline: 5px; }" in narrow
+    assert ".dp-transfer-meta-main { gap: 4px; }" in narrow
+    # Last of all, there only: a short-name line with a candidate launcher
+    # narrows its route launcher's padding; the provider chip's own stays.
+    assert ('.dp-transfer-provider-meta[data-dp-fit="short"]:has(.dp-candidate-chip) .dp-root-provider-launcher'
+            ' { padding-inline: 4px; gap: 4px; }') in narrow
+    assert ".dp-transfer-provider-meta { flex-wrap: wrap; }" not in css
     assert css.index("@container dp-downloads-table (width < 763px)") < css.index("--dp-downloads-progress-track: 0px;")
     # No inline floor beneath the composition: the table is as wide as its viewport.
     assert '<table class="t-table" style="min-width:500px">' not in read("index.html")
@@ -194,6 +211,11 @@ def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_ho
     downloads = read("ui-downloads.js")
     size = downloads[downloads.index("function measuredSize() {"):downloads.index("function applySize(")]
     assert "window.innerHeight" not in size
-    assert "const budget = Math.max(0, wrap.clientHeight - head.getBoundingClientRect().height);" in size
+    # 1.0.14 handheld: the same owner measures below 780px too -- the room is
+    # the table viewport's (no taller than its cap) and one screen of the
+    # workspace beneath the card's own chrome; the desktop room is unchanged.
+    assert "let room = wrap.clientHeight;" in size and "if (!window.matchMedia(DESKTOP_QUERY).matches) {" in size
+    assert "room = Math.min(workspace, Number.isFinite(cap) ? cap : workspace);" in size
+    assert "const budget = Math.max(0, room - head.getBoundingClientRect().height);" in size
     assert "Math.floor((budget + 0.5) / Math.max(...heights))" in size
     assert "document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());" in downloads

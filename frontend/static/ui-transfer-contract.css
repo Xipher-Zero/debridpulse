@@ -83,10 +83,11 @@
   .actions { gap: 4px; flex-wrap: nowrap; }
   .actions .btn { padding: 4px 6px !important; font-size: 10px !important; }
   .t-table { font-size: 12px; width: 100%; }
-  /* Downloads owns its own column order (ui-downloads-page.css); the
-     exclusion adds no specificity to these rules. */
-  .t-table:where(:not(#view-torrents *)) th:nth-child(5), .t-table:where(:not(#view-torrents *)) td:nth-child(5),
-  .t-table:where(:not(#view-torrents *)) th:nth-child(6), .t-table:where(:not(#view-torrents *)) td:nth-child(6) { display: none; }
+  /* Downloads and Download Activity own their own handheld columns
+     (ui-downloads-page.css, ui-dashboard.css); the exclusion adds no
+     specificity to these rules. */
+  .t-table:where(:not(#view-torrents *, #view-dashboard *)) th:nth-child(5), .t-table:where(:not(#view-torrents *, #view-dashboard *)) td:nth-child(5),
+  .t-table:where(:not(#view-torrents *, #view-dashboard *)) th:nth-child(6), .t-table:where(:not(#view-torrents *, #view-dashboard *)) td:nth-child(6) { display: none; }
 }
 
 /* ── Row action language ─────────────────────────────────────────────── */
@@ -243,8 +244,8 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
    must never fall back to the old hairline geometry. */
 :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog,
 :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill {
-  height: 7px !important;
-  border-radius: 999px !important;
+  height: var(--dp-row-progress-fill, 7px) !important;
+  border-radius: var(--dp-row-progress-radius, 999px) !important;
 }
 
 /* ── Progress percentage ─────────────────────────────────────────────── */
@@ -310,6 +311,11 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   background-color: currentColor;
   -webkit-mask: var(--dp-provider-glyph) center / contain no-repeat;
   mask: var(--dp-provider-glyph) center / contain no-repeat;
+}
+.dp-provider-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dp-provider-chip[data-provider-state="pending"],
 .dp-provider-chip[data-provider-state="unknown"] {

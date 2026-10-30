@@ -45,7 +45,11 @@ def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replac
     ):
         assert forbidden not in shell
 
-    assert "return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);" in app
+    # One status projection (statusShown) feeds the runtime's badge, and the
+    # handheld Transfer Summary's glyph: both drawn by DPIcons alone.
+    assert "return {tone: s, label: category ? semantics.labels[category] : '', category, projected: ''};" in app
+    assert "window.DPIcons.statusBadge(shown.tone, shown.label, shown.category)" in app
+    assert "return window.DPIcons.statusGlyph(shown.tone, shown.label, shown.category);" in app
     assert "return window.DPIcons.toast(msg, type);" in app
     assert "window.DPIcons.renderThemeGlyph(!!isLight);" in app
 

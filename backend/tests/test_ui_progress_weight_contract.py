@@ -31,6 +31,8 @@ def test_shared_transfer_contract_is_final_progress_geometry_owner() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
     assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog," in css
     assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill" in css
-    assert "height: 7px !important" in css
-    assert "border-radius: 999px !important" in css
+    # The row track's geometry is parameterized for the handheld summary's
+    # thin slot (3px, 1px round); its default -- every desktop row -- is 7px.
+    assert "height: var(--dp-row-progress-fill, 7px) !important" in css
+    assert "border-radius: var(--dp-row-progress-radius, 999px) !important" in css
     assert "height: 3.5px !important" not in css

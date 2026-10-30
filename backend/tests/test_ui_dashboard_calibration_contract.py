@@ -77,7 +77,7 @@ def test_canonical_dashboard_keeps_transfer_semantics_and_progress_emphasis() ->
             "content: 'Ⅱ'",
             "content: '✓'",
             "content: '×'",
-            "height: 6px !important",
+            "height: var(--dp-row-progress-track, 6px) !important",
             "font-size: 15px !important",
             "tr:has(.badge-partial) .prog-fill",
         ),
@@ -153,7 +153,7 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
         dashboard_css(),
         (
             "#btn-add-transfer",
-            "height: 7px !important",
+            "height: var(--dp-row-progress-track, 7px) !important",
             # DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow
             # reduced by a relative 15% (.34 * 0.85 = .289).
             "0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent)",
@@ -273,7 +273,7 @@ def test_canonical_dashboard_keeps_color_spacing_and_sidebar_hover_refinements()
             "#dash-error-card",
             "--c: #ff4854 !important",
             "saturate(1.28)",
-            "height: 4.5px !important",
+            "height: var(--dp-row-progress-track, 4.5px) !important",
             "@media (min-width: 780px) {\n  /* Correction 3",
             "table-layout: fixed !important",
             "--dp-dashboard-status-track: max(13cqw - 2.21px, 180px);",

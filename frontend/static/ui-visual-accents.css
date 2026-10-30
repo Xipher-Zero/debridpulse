@@ -25,7 +25,7 @@
 :is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog.dp-terminal-error-rail {
   position: relative;
   overflow: visible !important;
-  border-radius: 999px !important;
+  border-radius: var(--dp-row-progress-radius, 999px) !important;
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--dp-state-error) 82%, transparent),
     0 0 7px color-mix(in srgb, var(--dp-state-error) 72%, transparent),

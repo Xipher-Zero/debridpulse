@@ -135,7 +135,7 @@
     // server says this caller may (``access.destroy``).
     if (!known || !(item && item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
-        (known ? 'known' : 'pending') + '"' + identity.attributes + '>' + identity.glyph + esc(label) + '</span>' +
+        (known ? 'known' : 'pending') + '"' + identity.attributes + '>' + identity.glyph + labelMarkup(label, known ? item.route_provider_id : '') + '</span>' +
         switchingMarkup(item && item.id) + deferredMarkup(item);
     }
     return launcherMarkup(item.id, item.route_provider_id, label, surface) + deferredMarkup(item);
@@ -148,7 +148,7 @@
     if (!(item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       const identity = identityOf(providerId);
       return '<span class="dp-provider-chip" data-provider-state="' + esc(state) + '"' + identity.attributes + '>' +
-        identity.glyph + esc(label) + '</span>' + switchingMarkup(item.id) + deferredMarkup(item) + pendingMarkup(item);
+        identity.glyph + labelMarkup(label, providerId) + '</span>' + switchingMarkup(item.id) + deferredMarkup(item) + pendingMarkup(item);
     }
     return launcherMarkup(item.id, providerId, label, surface, {scope: item.route_switch_scope}) +
       deferredMarkup(item) + pendingMarkup(item);
@@ -168,6 +168,10 @@
   // The committed provider's badge identity, from the one identity owner.
   function identityOf(providerId) {
     return window.DPTransferSourcePresentation.providerBadgeIdentity(providerId);
+  }
+  // A badge's label, with its short form (the identity owner's).
+  function labelMarkup(label, providerId, className) {
+    return window.DPTransferSourcePresentation.providerLabelMarkup(label, providerId, className);
   }
 
   // The provider a launcher's surface says it is switching to, or null: a
@@ -233,7 +237,7 @@
       'aria-haspopup="dialog" aria-expanded="false"' + (busy ? ' aria-disabled="true"' : '') + ' ' +
       'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' : launcherAction(scope))) +
       '">' + identity.glyph +
-      '<span class="dp-root-provider-name">' + esc(label) + '</span>' +
+      labelMarkup(label, providerId, 'dp-root-provider-name') +
       '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>' + switchingMarkup(transferId, rootId);
   }
 

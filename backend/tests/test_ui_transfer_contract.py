@@ -117,7 +117,8 @@ def test_transfer_track_and_fill_share_active_weight() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
     assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog," in css
     assert ":is(#dash-tbody, #t-tbody, .dp-downloads-styled-tbody) .prog-fill" in css
-    assert "height: 7px !important" in css
+    # 7px unless a handheld Transfer Summary's thin slot sets its own geometry.
+    assert "height: var(--dp-row-progress-fill, 7px) !important" in css
     assert "3.5px" not in css
 
 
@@ -162,3 +163,43 @@ def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
         "width: calc(var(--dp-dashboard-row-action-track) + var(--dp-dashboard-action-inset)) !important"
         in canonical_calibration
     )
+
+
+def test_transfer_summary_terminal_set_is_the_backends_and_the_summary_reuses_one_progress_projection() -> None:
+    # 1.0.14 handheld Transfer Summary: the frontend's terminal presentation
+    # set is the backend's own, held equal here, not a second list; and both
+    # tables' summaries project the one progress owner (progressParts), whose
+    # full renderer is assembled from the same parts.
+    import ast
+    import re
+    backend = (Path(__file__).resolve().parents[1] / "transfers" / "presentation_repository.py").read_text(encoding="utf-8")
+    declared = re.search(r"_TERMINAL_PRESENTATION = frozenset\((\{[^}]*\})\)", backend).group(1)
+    owner = (STATIC / "ui-processing-presentation.js").read_text(encoding="utf-8")
+    mirrored = re.search(r"const TERMINAL_PRESENTATION=Object\.freeze\((\[[^\]]*\])\);", owner).group(1)
+    assert set(ast.literal_eval(declared)) == set(ast.literal_eval(mirrored))
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "return parts.track + parts.lane + parts.line + parts.activity;" in app
+    assert "function progressSummary(t, presentation) {" in app
+    assert "window.DPProcessingPresentation.TERMINAL_PRESENTATION.includes(" in app
+    for renderer in ("ui-dashboard-transfer-presentation.js", "ui-downloads.js"):
+        source = (STATIC / renderer).read_text(encoding="utf-8")
+        assert "progressSummary(t" in source and "statusGlyph(transferDisplayStatus(t)" in source, renderer
+
+
+def test_provider_short_labels_belong_to_the_identity_owner_and_name_real_integrations() -> None:
+    # 1.0.14 handheld Transfer Summary: a provider badge's short label is the
+    # identity owner's, keyed by integration id, for exactly the catalog names
+    # longer than a handheld badge; each id is a real integration. The badge's
+    # text stays the full name (the short form is a data attribute).
+    import re
+    owner = (STATIC / "ui-transfer-source-presentation.js").read_text(encoding="utf-8")
+    table = owner[owner.index("const SHORT_LABELS = Object.freeze({"):]
+    table = table[:table.index("});")]
+    labels = dict(re.findall(r"(\w+): '([^']+)'", table))
+    assert labels == {"alldebrid": "AD", "debridlink": "DL", "premiumize": "PM", "realdebrid": "RD", "torbox": "TB", "media": "Media"}
+    backend = Path(__file__).resolve().parents[1]
+    for integration in labels:
+        assert (backend / "providers" / integration).is_dir() or (backend / "integrations" / integration).is_dir(), integration
+    assert "data-short-label" in owner and "providerLabelMarkup" in owner
+    for renderer in ("app.js", "ui-root-provider.js"):
+        assert "providerLabelMarkup(" in (STATIC / renderer).read_text(encoding="utf-8"), renderer

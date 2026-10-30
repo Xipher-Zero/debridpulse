@@ -449,9 +449,11 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
   const visibleColumns = () => row(page, 1).locator('td').evaluateAll(cells => cells
     .map((cell, index) => (getComputedStyle(cell).display === 'none' ? null : index)).filter(index => index !== null));
   // The full table while it holds every column (1500, 1300); the compact
-  // table sets Added aside (1000); mobile sets Progress and Size aside (600).
+  // table sets Added aside (1000); mobile is the Transfer Summary, Actions and
+  // selection (600; 1.0.14 handheld recomposition -- formerly a BLOCKED MOBILE
+  // case expecting Name, Status, Date, Actions and selection there).
   for (const [width, expected] of [[1500, [0, 1, 2, 3, 4, 5, 6]], [1300, [0, 1, 2, 3, 4, 5, 6]],
-                                   [1000, [0, 1, 2, 3, 5, 6]], [600, [0, 1, 4, 5, 6]]]) {
+                                   [1000, [0, 1, 2, 3, 5, 6]], [600, [0, 5, 6]]]) {
     await page.setViewportSize({width, height: 900});
     await expect.poll(visibleColumns).toEqual(expected);
     // Both cells measured in ONE read of the row as it stands: a live list

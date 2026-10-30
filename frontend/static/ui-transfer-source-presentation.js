@@ -38,6 +38,21 @@
     usenet: 'newspaper',
   });
 
+  /* A provider badge's short label, keyed by integration id, for where a
+   * handheld Transfer Summary's metadata line cannot hold the full one (the
+   * catalog names longer than a badge there). Every other identity's catalog
+   * name -- HTTP(S), (S)FTP, rsync, WebDAV, Multimeta, Usenet -- is already
+   * short. A presentation only: the badge's text, accessible name and DP
+   * tooltip stay the full name. */
+  const SHORT_LABELS = Object.freeze({
+    alldebrid: 'AD',
+    debridlink: 'DL',
+    premiumize: 'PM',
+    realdebrid: 'RD',
+    torbox: 'TB',
+    media: 'Media',
+  });
+
   // A safe integration id, or ''.
   function identityKey(providerId) {
     const key = String(providerId || '');
@@ -56,6 +71,12 @@
       attributes: ` data-provider-id="${key}" style="--dp-provider-identity: var(--dp-identity-${key})"`,
       glyph: glyph ? `<span class="dp-provider-glyph" style="--dp-provider-glyph: url(/icons/lucide/${glyph}.svg)" aria-hidden="true"></span>` : '',
     };
+  }
+
+  /* A badge's label: its text, carrying its short form where it has one. */
+  function providerLabelMarkup(label, providerId, className = 'dp-provider-label') {
+    const short = SHORT_LABELS[identityKey(providerId)];
+    return `<span class="${className}"${short ? ` data-short-label="${short}"` : ''}>${esc(label)}</span>`;
   }
 
   function normalizeHost(value) {
@@ -114,6 +135,6 @@
   }
 
   window.DPTransferSourcePresentation = Object.freeze({
-    PROTOCOL_GLYPHS, hostAsset, providerBadgeIdentity, sourceIconMarkup, sourceSlot,
+    PROTOCOL_GLYPHS, SHORT_LABELS, hostAsset, providerBadgeIdentity, providerLabelMarkup, sourceIconMarkup, sourceSlot,
   });
 })();

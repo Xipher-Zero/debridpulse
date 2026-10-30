@@ -406,7 +406,10 @@ test('Download Activity keeps the percentage and its ETA on one line at every wi
     const last = document.querySelector('#dash-tbody tr[data-torrent-id] td:last-child').getBoundingClientRect();
     return wrap.scrollWidth > wrap.clientWidth + 1 || last.right > wrap.getBoundingClientRect().right + 1;
   });
-  for (const width of [701, 900, 1100, 1179, 1180, 1200, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
+  // 1.0.14: below 780px Download Activity is its Transfer Summary, which shows
+  // the primary value and track but no ETA (transfer-summary-mobile.spec.js);
+  // its Progress column, and this line, are the desktop's.
+  for (const width of [900, 1100, 1179, 1180, 1200, 1300, 1439, 1440, 1500, 1599, 1600, 1920, 2560]) {
     await resize(page, width);
     if (width >= 1200) expect(await clipped(), `width ${width}`).toBe(false);
     for (const id of [9871, 9872, 9873]) {

@@ -28,7 +28,8 @@ def test_status_badges_are_lucide_only_and_keep_semantic_glow() -> None:
 def test_terminal_error_progress_keeps_truthful_geometry_and_salience() -> None:
     css = read("ui-visual-accents.css")
     assert ".prog.dp-terminal-error-rail" in css
-    assert "border-radius: 999px !important" in css
+    # Parameterized for the handheld summary's thin slot; the default is 999px.
+    assert "border-radius: var(--dp-row-progress-radius, 999px) !important" in css
     assert "width: 16px" in css
     assert "height: 9px" in css
     assert "transform: translateY(-50%)" in css

@@ -1,3 +1,43 @@
 /* Dashboard transfer/source and processing-pause presentation. The name's secondary
    bar slot and its metadata row are shared with the Downloads Name column (#t-tbody). */
 :is(#dash-tbody,:is(#t-tbody, .dp-downloads-styled-tbody)) .dash-row-bar-slot{display:block;height:3px;min-height:3px;margin:0 0 2px;overflow:hidden}:is(#dash-tbody,:is(#t-tbody, .dp-downloads-styled-tbody)) .dash-row-bar-slot .dash-row-bar{height:3px;margin:0}:is(#dash-tbody,:is(#t-tbody, .dp-downloads-styled-tbody)) .dash-row-bar-slot .dash-row-bar.is-empty{visibility:hidden;border-color:transparent!important;background:transparent!important}:is(#dash-tbody,:is(#t-tbody, .dp-downloads-styled-tbody)) .dp-transfer-provider-meta{margin-top:0}.dp-transfer-provider-meta{display:flex;align-items:center;gap:6px;min-width:0}.dp-transfer-provider-meta .dp-provider-chip{flex:0 1 auto;min-width:0}.dp-transfer-provider-meta .dp-candidate-chip{flex:0 0 auto}.dp-source-icon-slot{width:20px;height:20px;flex:0 0 20px;display:inline-grid;place-items:center;border-radius:4px;overflow:hidden;color:var(--text2);background:color-mix(in srgb,var(--surface2) 86%,var(--text) 14%)}.dp-source-host-logo{display:block;width:17px;height:17px;object-fit:contain}.dp-source-fallback{width:17px;height:17px}.dp-source-magnet{--dp-provider-accent:var(--dp-identity-torrent);color:var(--dp-identity-ink);transform:rotate(135deg)}.dp-dashboard-quick-add>.card-header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px}.dp-global-pause-center{visibility:hidden;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,calc(100% - 390px));text-align:center;color:var(--yellow);pointer-events:none}.dp-global-pause-center.is-visible{visibility:visible}.dp-global-pause-title{display:inline-flex;align-items:center;gap:8px;font-size:clamp(15px,1.45vw,20px);font-weight:800;letter-spacing:.07em}.dp-global-pause-title svg{width:20px;height:20px}.dp-global-pause-copy{margin-top:5px;font-size:10px;color:var(--text2)}@media(max-width:779px){.dp-dashboard-quick-add>.card-header{flex-wrap:wrap}.dp-global-pause-center{position:static;transform:none;order:3;flex:1 0 100%;width:100%;margin-top:6px}.dp-global-pause-center:not(.is-visible){display:none}.dp-global-pause-title{font-size:14px}}
+
+/* ── Handheld Transfer Summary (below 780px) ──────────────────────────────
+   Download Activity and Downloads keep only their Name cell (and Actions and
+   selection); its three layers carry what the other columns showed. Row 1:
+   the name, truncating, and at its right the primary value of the row's one
+   progress projection (app.js progressSummary). Row 1.5: the name's thin slot,
+   which draws that projection's primary track at the slot's own 3px, 1px-round
+   geometry instead of the legacy bar (no track for a terminal transfer; the
+   slot keeps its place). Row 2: the metadata line, led by the status glyph in
+   place of the source icon, then the provider and the transfer's controls as
+   one unit, then the size at the right. It stays one line, giving way in one
+   order (app.js fitTransferSummaryLines): the size, then a user label's text
+   and the label itself, then the providers' full names for their short ones,
+   which truncate only after that. From 780px none of this is drawn and the
+   tables are the desktop's. */
+.dp-transfer-meta-main{display:contents}
+:is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) :is(.dp-transfer-summary-value,.dp-transfer-summary-track,.dp-status-glyph,.dp-queue-consent-action){display:none}
+@media (max-width:779px){
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .t-name{max-width:none;contain:inline-size}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-summary-value{display:block;float:right;margin-left:8px;color:var(--text2);font-family:var(--mono);font-size:11px;font-weight:600;line-height:14px;white-space:nowrap}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-summary-value .prog-words{display:none}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dash-row-bar-slot>.dash-row-bar{display:none}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-summary-track{display:block;--dp-row-progress-track:3px;--dp-row-progress-fill:3px;--dp-row-progress-radius:1px}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-summary-track>.prog{min-width:0;margin:0}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta{height:20px;contain:inline-size}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-meta-main{display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;height:20px}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-meta-main>.dp-source-icon-slot{display:none}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-status-glyph{display:inline-grid;place-items:center;flex:0 0 20px;width:20px;height:20px;color:var(--dp-badge-color,var(--text2))}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-status-glyph svg{width:16px;height:16px}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta :is(.dp-recent-size,.dp-downloads-size){display:block;flex:0 0 auto;margin-left:auto;white-space:nowrap}
+  #t-tbody .dp-queue-consent-action,.dp-downloads-styled-tbody .dp-queue-consent-action{display:inline-flex}
+  /* The line's stages (app.js fitTransferSummaryLines, data-dp-fit): "size"
+     sets the size aside; "label" also omits a user label that has given up
+     its text; "short" draws the providers' short labels -- their text,
+     accessible name and tooltip stay the full name. */
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta[data-dp-fit] :is(.dp-recent-size,.dp-downloads-size){display:none}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta:is([data-dp-fit="label"],[data-dp-fit="short"]) .lbl-badge{display:none}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta[data-dp-fit="short"] [data-short-label]{font-size:0}
+  :is(#dash-tbody,#t-tbody,.dp-downloads-styled-tbody) .dp-transfer-provider-meta[data-dp-fit="short"] [data-short-label]::before{content:attr(data-short-label) / "";font-size:10px}
+}

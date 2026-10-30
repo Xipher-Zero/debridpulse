@@ -153,8 +153,13 @@ const read = page => page.evaluate(() => {
       const name = tr.querySelector('.dp-downloads-name-cell'), meta = name.querySelector('.dp-transfer-provider-meta');
       const size = meta.querySelector('.dp-downloads-size'), sizeCell = tr.querySelector('.dp-downloads-size-cell');
       const status = tr.querySelector('.dp-downloads-status-cell'), badge = status.querySelector('.badge');
-      const action = tr.querySelector('.dp-downloads-action-cell'), buttons = action ? [...action.querySelectorAll('.btn')] : [];
-      const controls = [...meta.children].filter(node => node !== size && shown(node));
+      // The drawn row actions (the handheld Start Now copy is not drawn from 780px).
+      const action = tr.querySelector('.dp-downloads-action-cell'), buttons = action ? [...action.querySelectorAll('.btn')].filter(shown) : [];
+      // The metadata items as laid out: the essentials group is display:contents from 780px, so its
+      // children are the line's items; the handheld status glyph is not drawn there; the size is kept.
+      const items = [...meta.querySelectorAll(':scope > .dp-transfer-meta-main > *, :scope > :not(.dp-transfer-meta-main)')]
+        .filter(node => node === size || shown(node) || node.classList.contains('dp-source-icon-slot'));
+      const controls = items.filter(node => node !== size && shown(node));
       const nameBox = box(name), title = getComputedStyle(name.querySelector('.t-name')), type = getComputedStyle(size);
       const bar = name.querySelector('.dash-row-bar-slot');
       const progressCell = tr.querySelector('.dp-downloads-progress-cell');
@@ -163,7 +168,7 @@ const read = page => page.evaluate(() => {
         id: Number(tr.dataset.torrentId), cells: cells.length, height: r(tr).height,
         classes: cells.map(td => [...td.classList].find(name => /^dp-downloads-.*-cell$/.test(name)) || ''),
         last: cells.at(-1).classList.contains('dp-downloads-select-cell'),
-        meta: [...meta.children].map(node => (node.getAttribute('class') || '').split(' ')[0]),
+        meta: items.map(node => (node.getAttribute('class') || '').split(' ')[0]),
         controls: controls.map(node => [Math.round(r(node).left - nameBox.left), Math.round(r(node).width)]),
         metaInside: controls.every(node => r(node).right <= nameBox.right + 0.5),
         metaHeight: r(meta).height,
@@ -561,17 +566,24 @@ test('the Downloads header has no Refresh control at any width; its title, filte
   expect(log.before).toBeGreaterThan(0);
 });
 
-test('mobile (779px) keeps its composition: no Progress or Size column, no name bar, labels shown', async ({page}) => {
+// 1.0.14 handheld Transfer Summary (formerly a BLOCKED MOBILE case: it held
+// the superseded handheld columns Name/Status/Date/Actions/select, no name bar
+// and labelled controls). Below 780px the table is the Transfer Summary,
+// Actions and the selection column; the name's thin slot draws the row's
+// primary track, and its metadata line closes with the size where it fits
+// (transfer-summary-mobile.spec.js qualifies the whole composition).
+test('mobile (779px) is the Transfer Summary, Actions and selection: the name bar is the progress track, the size closes the metadata line, glyph-only actions', async ({page}) => {
   await open(page, () => ITEMS);
   await resize(page, 779);
   const state = await page.evaluate(() => {
     const shown = node => getComputedStyle(node).display !== 'none';
     const heads = [...document.querySelectorAll('#view-torrents thead th')];
     return {headings: heads.filter(shown).map(th => th.classList.contains('dp-downloads-select-cell') ? 'select' : (th.firstChild?.textContent || '').trim()),
-      bars: [...document.querySelectorAll('#t-tbody .dash-row-bar-slot')].filter(shown).length,
+      tracks: [...document.querySelectorAll('#t-tbody .dp-transfer-summary-track')].filter(shown).length,
+      legacyBars: [...document.querySelectorAll('#t-tbody .dash-row-bar')].filter(shown).length,
       sizes: [...document.querySelectorAll('#t-tbody .dp-downloads-size')].filter(shown).length,
-      labels: [...document.querySelectorAll('#t-tbody .badge .dp-status-label, #t-tbody .actions [data-dp-icon-label]')]
-        .every(node => Number(getComputedStyle(node).opacity) > 0.5)};
+      actionLabels: [...document.querySelectorAll('#t-tbody .actions [data-dp-icon-label]')].every(node => Number(getComputedStyle(node).opacity) <= 0.5)};
   });
-  expect(state).toEqual({headings: ['Name', 'Status', 'Date', 'Actions', 'select'], bars: 0, sizes: 0, labels: true});
+  // Six rows, one of them completed (no track); every size has room at 779px.
+  expect(state).toEqual({headings: ['Name', 'Actions', 'select'], tracks: 5, legacyBars: 0, sizes: 6, actionLabels: true});
 });

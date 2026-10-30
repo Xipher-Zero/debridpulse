@@ -666,7 +666,7 @@ function providerChip(t, surface) {
   const identity = window.DPTransferSourcePresentation.providerBadgeIdentity(
     provider.state === 'known' ? provider.id : '');
   return `<span class="dp-provider-chip" data-provider-state="${provider.state}"${identity.attributes}>`
-    + `${identity.glyph}${esc(provider.label)}</span>`;
+    + `${identity.glyph}${window.DPTransferSourcePresentation.providerLabelMarkup(provider.label, provider.state === 'known' ? provider.id : '')}</span>`;
 }
 
 function routeOutcomePresentation(value) {
@@ -854,6 +854,17 @@ function pct(part, total) {
   return Math.round((part / total) * 100);
 }
 function badge(s, detail) {
+  const shown = statusShown(s, detail);
+  const html = window.DPIcons.statusBadge(shown.tone, shown.label, shown.category);
+  return shown.projected ? html.replace('<span class="badge ', '<span data-dp-lifecycle-status="' + esc(shown.projected) + '" class="badge ') : html;
+}
+// The same status as a glyph alone (a handheld Transfer Summary's metadata line).
+function statusGlyph(s, detail) {
+  const shown = statusShown(s, detail);
+  return window.DPIcons.statusGlyph(shown.tone, shown.label, shown.category);
+}
+// What a row's status shows: its tone, label and failure category.
+function statusShown(s, detail) {
   if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
     throw new Error('DebridPulse icon runtime is unavailable');
   }
@@ -864,12 +875,11 @@ function badge(s, detail) {
   if (projected) {
     const tone = String(detail?.presentation_badge_status || projected).trim().toLowerCase();
     const label = String(detail?.presentation_label || '').trim();
-    const html = window.DPIcons.statusBadge(tone, label || undefined, '');
-    return html.replace('<span class="badge ', '<span data-dp-lifecycle-status="' + esc(projected) + '" class="badge ');
+    return {tone, label: label || undefined, category: '', projected};
   }
   const semantics = window.DPFailureSemantics;
   const category = s === 'error' && semantics ? semantics.classify(detail) : '';
-  return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);
+  return {tone: s, label: category ? semantics.labels[category] : '', category, projected: ''};
 }
 // The backend's effective presentation is the one display-status authority; every
 // list and detail payload carries it. The raw lifecycle status is only what a
@@ -960,6 +970,100 @@ function acquisitionEtaMarkup(eta) {
 // surface is compact: progress not yet verified is one line, its percentage
 // and what it counts, with no second line saying it is unverified.
 function progress(pct, status, activePct, basis, eta) {
+  const parts = progressParts(pct, status, activePct, basis, eta);
+  return parts.track + parts.lane + parts.line + parts.activity;
+}
+
+/* The Transfer Summary's projection of the same one progress authority (a
+ * handheld table's Name cell, below 780px): only its primary value, for the
+ * name's line, and its primary track, for the name's thin slot -- which a
+ * terminal transfer (DPProcessingPresentation.TERMINAL_PRESENTATION) does not
+ * draw. No lane, estimate or caption. Each is its own wrapper, so a live
+ * progress update rewrites them from the same parts as the progress column. */
+function progressSummary(t, presentation) {
+  const parts = progressParts(t.progress, presentation, t.active_execution_progress, t.active_execution_basis, null);
+  const terminal = window.DPProcessingPresentation.TERMINAL_PRESENTATION.includes(String(presentation || '').toLowerCase());
+  return {
+    value: progressSummaryValue(parts),
+    track: terminal ? '' : '<div class="dp-transfer-summary-track" data-role="transfer-summary-track">' + parts.track + '</div>',
+  };
+}
+// The summary's value: the primary figure and what it says to assistive
+// technology and in DP's tooltip, as the progress column's percentage.
+function progressSummaryValue(parts) {
+  return '<span class="dp-transfer-summary-value" data-role="transfer-summary-value"' + parts.valueAttrs + '>' + parts.valueLabel + '</span>';
+}
+
+/* A handheld Transfer Summary's metadata line gives way in one order
+ * (ui-dashboard-transfer-presentation.css): first the size alone, which the
+ * line sets aside by itself where the whole line does not fit; then, where
+ * the provider and the transfer's controls still cannot all show whole -- a
+ * label of theirs is being truncated -- the provider badge's short name
+ * (data-dp-short on the line; the size stays aside); and only then does a
+ * label truncate. This is that one decision, read from the rendered line:
+ * after each render of either table and whenever either table's viewport,
+ * or the fonts, change. From 780px no line is shortened. */
+function fitTransferSummaryLines() {
+  const lines = [...document.querySelectorAll(':is(#dash-tbody, #t-tbody) .dp-transfer-provider-meta')];
+  lines.forEach(meta => {
+    if (meta.dataset.dpFit === undefined) return;
+    delete meta.dataset.dpFit;
+    meta.querySelectorAll('[data-short-label]').forEach(label => delete label.dataset.tooltip);
+  });
+  if (!_shellHandheld.matches) return;
+  // Below 780px one line gives way in one order, each stage taken only where
+  // the one before does not fit: the size goes aside ("size"); a user label's
+  // text truncates, and the label goes once it has none to show ("label");
+  // then the providers draw their short labels ("short"), which truncate
+  // only after that. A stage is decided by the provider names' own room,
+  // never by a label's. Each stage is written to every line still pending,
+  // then read: one layout per stage.
+  // A text is truncated when its run is wider than the box it is drawn in
+  // (to the subpixel: an ellipsis is drawn for any overflow).
+  const truncated = node => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const style = getComputedStyle(node);
+    const box = node.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+    return range.getBoundingClientRect().width > box + 0.05;
+  };
+  const providersWhole = meta => ![...meta.querySelectorAll('.dp-transfer-meta-main :is(.dp-provider-label, .dp-root-provider-name)')].some(truncated);
+  const overflows = meta => {
+    const main = meta.querySelector('.dp-transfer-meta-main');
+    return main.scrollWidth > main.clientWidth + 0.5;
+  };
+  const emptied = label => {
+    const style = getComputedStyle(label);
+    return label.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) < 2 * parseFloat(style.fontSize);
+  };
+  let pending = lines.filter(meta => {
+    const label = meta.querySelector('.dp-transfer-meta-main .lbl-badge');
+    return !providersWhole(meta) || overflows(meta) || (label && truncated(label));
+  });
+  pending.forEach(meta => { meta.dataset.dpFit = 'size'; });
+  const omit = [];
+  pending = pending.filter(meta => {
+    if (!providersWhole(meta) || overflows(meta)) return true;
+    const label = meta.querySelector('.dp-transfer-meta-main .lbl-badge');
+    if (label && truncated(label) && emptied(label)) omit.push(meta);
+    return false;
+  });
+  omit.forEach(meta => { meta.dataset.dpFit = 'label'; });
+  pending.forEach(meta => { if (meta.querySelector('.dp-transfer-meta-main .lbl-badge')) meta.dataset.dpFit = 'label'; });
+  pending = pending.filter(meta => !providersWhole(meta) || overflows(meta));
+  pending.forEach(meta => {
+    if (!meta.querySelector('.dp-transfer-meta-main [data-short-label]')) return;
+    meta.dataset.dpFit = 'short';
+    // A short label says its full name in DP's tooltip.
+    meta.querySelectorAll('[data-short-label]').forEach(label => { label.dataset.tooltip = label.textContent; });
+  });
+}
+
+// The parts of one progress projection: the primary track, the secondary
+// execution lane, the line (percentage, and the estimate on a compact
+// surface), the activity caption, and the primary value alone.
+function progressParts(pct, status, activePct, basis, eta) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
   const failed = state === 'error';
@@ -1040,8 +1144,10 @@ function progress(pct, status, activePct, basis, eta) {
   const line = compact
     ? '<div class="prog-line">' + pctLabel + (active ? acquisitionEtaMarkup(eta) : '') + '</div>'
     : pctLabel;
-  return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
-         lane + line + activityLabel;
+  return {
+    track: '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>',
+    lane, line, activity: activityLabel, value: pctLabel, valueLabel: label, valueAttrs: labelTip,
+  };
 }
 
 // An extraction failure is announced once per event; it paints nothing. Only
@@ -1113,6 +1219,15 @@ function patchProgressOnlyTransferEvent(data) {
           if (shownEta && patchedEta && rendered(shownEta).join('\n') === rendered(patchedEta).join('\n')) {
             patchedEta.replaceWith(shownEta);
           }
+        }
+
+        // The Transfer Summary's value and track, from the same parts.
+        const summaryValue = row.querySelector('[data-role="transfer-summary-value"]');
+        const summaryTrack = row.querySelector('[data-role="transfer-summary-track"]');
+        if (summaryValue || summaryTrack) {
+          const parts = progressParts(nextProgress, status, nextActivity, nextBasis, null);
+          if (summaryValue) summaryValue.outerHTML = progressSummaryValue(parts);
+          if (summaryTrack) summaryTrack.innerHTML = parts.track;
         }
 
         const dashFill =
@@ -1879,7 +1994,7 @@ let _dashboardRecentResizeTimer = null;
 function dashboardRecentLimit() {
   const mobile = window.matchMedia('(max-width: 779px)').matches;
   const fallback = window.matchMedia('(max-width: 779px)').matches ? 4 : 6;
-  if (mobile) return fallback;
+  if (mobile) return dashboardRecentHandheldLimit() || _dashboardRecentFitLimit || fallback;
 
   const wrap = document.querySelector('#dash-activity-card .dash-activity-table-wrap');
   const head = wrap?.querySelector('thead');
@@ -1904,6 +2019,26 @@ function dashboardRecentLimit() {
   );
   const fitted = Math.floor(available / rowHeight);
   return Math.max(1, Math.min(32, fitted || 1));
+}
+
+// Below 780px the Dashboard scrolls: Download Activity holds the whole rows
+// one screen of the workspace shows beneath the card's own header and the
+// table's head, so the card can be seen whole and no row is left behind the
+// dock. Neither depends on how many rows are drawn, so the measure is stable;
+// with no row drawn yet there is nothing to measure (null).
+function dashboardRecentHandheldLimit() {
+  const content = document.getElementById('content');
+  const card = document.getElementById('dash-activity-card');
+  const wrap = card?.querySelector('.dash-activity-table-wrap');
+  const head = wrap?.querySelector('thead');
+  const heights = Array.from(document.querySelectorAll('#dash-tbody tr[data-torrent-id]'))
+    .map(row => row.getBoundingClientRect().height).filter(height => Number.isFinite(height) && height > 0);
+  if (!content || !wrap || !head || !heights.length) return null;
+  const space = getComputedStyle(content);
+  const chrome = card.getBoundingClientRect().height - wrap.getBoundingClientRect().height;
+  const available = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom)
+    - chrome - head.getBoundingClientRect().height;
+  return Math.max(1, Math.min(32, Math.floor((available + 0.5) / Math.max(...heights)) || 1));
 }
 
 // Dashboard Recent Items has exactly one canonical renderer: renderRecent() in
@@ -3154,6 +3289,11 @@ document.addEventListener('DOMContentLoaded', () => {
   _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
   document.addEventListener('visibilitychange', syncDashboardSparkPulses);
   new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));
+  // Both transfer tables' handheld metadata lines, refitted with their viewports and fonts.
+  const summaryLines = new ResizeObserver(() => fitTransferSummaryLines());
+  ['#dash-activity-card .dash-activity-table-wrap', '#view-torrents .dp-downloads-table-wrap']
+    .forEach(selector => { const node = document.querySelector(selector); if (node) summaryLines.observe(node); });
+  document.fonts?.addEventListener?.('loadingdone', () => fitTransferSummaryLines());
   // The strip's width changing re-fits its counts (which changes neither the
   // strip's size nor its cards' lines), as do the fonts they are drawn in.
   new ResizeObserver(fitDashboardKpiValues).observe(document.getElementById('dash-hero'));

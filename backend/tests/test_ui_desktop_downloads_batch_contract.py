@@ -33,7 +33,9 @@ def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_prog
     css = read("ui-downloads-page.css")
     assert "--dp-downloads-date-track: 178px;" in css
     assert "--dp-downloads-action-slot: 72px;" in css
-    assert "(var(--dp-downloads-action-slots) - 1) * 7px + 28px" in css
+    # The 28px outer allowance is a parameter only the handheld's narrowest
+    # table reduces (test_ui_downloads_final_contract.py); its default stands.
+    assert "(var(--dp-downloads-action-slots) - 1) * 7px + var(--dp-downloads-action-allowance, 28px)" in css
     assert "table-layout: fixed" in css
     assert "nth-child(6)" not in css and "nth-child(7)" not in css
 

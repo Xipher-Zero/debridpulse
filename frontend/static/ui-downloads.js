@@ -243,7 +243,7 @@ function ensureDateMenu(tableSelector, headings, text) {
   document.addEventListener('click', e => { if (!heading.contains(e.target)) close(); });
 }
 
-// ── Measured desktop capacity ───────────────────────────────────────────
+// ── Measured capacity ───────────────────────────────────────────────────
 const DESKTOP_QUERY = '(min-width: 780px)';
 let capacityTimer = null;
 let capacityObserver = null;
@@ -256,7 +256,6 @@ let busy = false;
  * the content inset, the shell's gutter or the card's own chrome. A row that
  * would not fit whole belongs to the next page. */
 function measuredSize() {
-  if (!window.matchMedia(DESKTOP_QUERY).matches) return null;
   const view = document.getElementById('view-torrents');
   const wrap = view?.querySelector('.dp-downloads-table-wrap');
   const table = wrap?.querySelector('table');
@@ -265,7 +264,23 @@ function measuredSize() {
   if (!view || !wrap || !head || !rows.length || !wrap.clientHeight) return null;
   const heights = rows.map(r => r.getBoundingClientRect().height).filter(h => h > 0);
   if (!heights.length) return null;
-  const budget = Math.max(0, wrap.clientHeight - head.getBoundingClientRect().height);
+  let room = wrap.clientHeight;
+  if (!window.matchMedia(DESKTOP_QUERY).matches) {
+    // Below 780px the page scrolls and the card ends where its rows do: a page
+    // holds the whole rows its table viewport (no taller than its own cap)
+    // and one screen of the workspace show beneath the card's header,
+    // toolbar, bulk bar and pause notice, above its pager -- none of which
+    // depends on how many rows are drawn, so the measure is stable.
+    const content = document.getElementById('content');
+    const card = view.querySelector(':scope > .card');
+    if (!content || !card) return null;
+    const space = getComputedStyle(content);
+    const chrome = card.getBoundingClientRect().height - wrap.getBoundingClientRect().height;
+    const workspace = content.clientHeight - parseFloat(space.paddingTop) - parseFloat(space.paddingBottom) - chrome;
+    const cap = parseFloat(getComputedStyle(wrap).maxHeight);
+    room = Math.min(workspace, Number.isFinite(cap) ? cap : workspace);
+  }
+  const budget = Math.max(0, room - head.getBoundingClientRect().height);
   return Math.max(1, Math.min(100, Math.floor((budget + 0.5) / Math.max(...heights)) || 1));
 }
 function applySize(size) {
@@ -313,7 +328,9 @@ function observeResize() {
   if (!card || !('ResizeObserver' in window)) return;
   capacityObserver?.disconnect();
   capacityObserver = new ResizeObserver(scheduleCapacityCheck);
-  [card, card.querySelector('.dp-downloads-table-wrap'), document.getElementById('bulk-bar'), document.querySelector('.dp-downloads-pause-shim'), document.getElementById('torrent-pagination')]
+  // The workspace too: below 780px a page fits one screen of it, which a
+  // window's height alone changes.
+  [card, card.querySelector('.dp-downloads-table-wrap'), document.getElementById('bulk-bar'), document.querySelector('.dp-downloads-pause-shim'), document.getElementById('torrent-pagination'), document.getElementById('content')]
     .filter(Boolean).forEach(n => capacityObserver.observe(n));
 }
 
@@ -554,6 +571,10 @@ function rowMarkup(t) {
   // on a live progress update, as it does there).
   const pct = t.progress != null ? Math.round(t.progress) : 0;
   const bar = pct > 0 && !['completed', 'consolidated', 'deleted'].includes(presentation);
+  // The handheld Transfer Summary (below 780px): the same projection's
+  // primary value and track (app.js progressSummary), the status glyph
+  // opening the metadata line, the size closing it.
+  const summary = progressSummary(t, presentation);
   const nameCell = movable
     ? `<td class="dp-downloads-name-cell" data-queue-drag="true" tabindex="0" aria-label="${name}" aria-describedby="dp-queue-help"><div class="dp-downloads-name-line">
       <span class="dp-queue-grip" aria-hidden="true">${window.DPIcons?.svg?.('grip-vertical') || ''}</span>`
@@ -565,9 +586,9 @@ function rowMarkup(t) {
   return `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-queue-member="${t.queue_member === true}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" tabindex="0" onclick="onDownloadRowClick(event,${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
     ${nameCell}
       <div class="dp-downloads-name-copy">
-        <div class="t-name" data-tooltip="${name}">${name}</div>
-        <div class="dash-row-bar-slot" aria-hidden="true"><div class="dash-row-bar${bar ? '' : ' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0, Math.min(100, pct))}%;background:var(--blue)"></div></div></div>
-        <div class="dp-transfer-provider-meta">${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}<span class="dp-downloads-size">${fmtSize(t.size_bytes)}</span></div>
+        ${summary.value}<div class="t-name" data-tooltip="${name}">${name}</div>
+        <div class="dash-row-bar-slot" aria-hidden="true"><div class="dash-row-bar${bar ? '' : ' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0, Math.min(100, pct))}%;background:var(--blue)"></div></div>${summary.track}</div>
+        <div class="dp-transfer-provider-meta"><span class="dp-transfer-meta-main">${statusGlyph(transferDisplayStatus(t), t)}${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}</span><span class="dp-downloads-size">${fmtSize(t.size_bytes)}</span></div>
       </div>
     </div></td>
     <td class="dp-downloads-status-cell" data-role="transfer-status">${badge(transferDisplayStatus(t), t)}${consent}</td>
@@ -576,6 +597,7 @@ function rowMarkup(t) {
     <td class="sz dp-downloads-date-cell">${dateMarkup(t.created_at)}</td>
     ${operable ? `<td class="dp-downloads-action-cell" onclick="event.stopPropagation()">
       <div class="actions">
+        ${consent ? consent.replace('class="btn btn-warn btn-sm dp-queue-consent"', 'class="btn btn-warn btn-sm dp-queue-consent-action"') : ''}
         ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)" data-tooltip="Pause this download">${window.DPIcons.iconLabel('pause', 'Pause')}</button>` : ''}
         ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)" data-tooltip="Resume this download">${window.DPIcons.iconLabel('play', 'Resume')}</button>` : ''}
         ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)" data-tooltip="Retry this download">${window.DPIcons.iconLabel('refresh', 'Retry')}</button>` : ''}
@@ -639,6 +661,7 @@ async function fetchAndRenderTorrents() {
         syncDownloadSelectionUi();
       } else {
         tb.innerHTML = items.map(rowMarkup).join('');
+        fitTransferSummaryLines();
         syncDownloadSelectionUi();
       }
       if (reorder) paintReorder();
@@ -670,6 +693,7 @@ async function fetchAndRenderTorrents() {
       torrentPage = renderedTorrentPage;
       if (turn.shown) replaceTorrentRows(() => {
         document.getElementById('t-tbody').innerHTML = turn.source;
+        fitTransferSummaryLines();
         syncDownloadSelectionUi();
       });
     }

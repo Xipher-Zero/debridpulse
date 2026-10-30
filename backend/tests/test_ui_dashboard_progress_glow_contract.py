@@ -42,7 +42,8 @@ def test_progress_glow_blur_radii_and_geometry_are_unchanged() -> None:
     css = read("ui-dashboard.css")
     assert "0 0 6px color-mix(in srgb, var(--dp-state-success-fill) 66.3%, transparent)" in css
     assert "0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent)" in css
-    assert "height: 7px !important" in css
+    # Parameterized for the handheld summary's thin slot; the default is 7px.
+    assert "height: var(--dp-row-progress-fill, 7px) !important" in css
 
 
 def test_terminal_error_progress_glow_is_untouched() -> None:

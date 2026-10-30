@@ -115,6 +115,17 @@
       '<span class="dp-status-label">' + text + '</span></span>';
   }
 
+  /* A status's glyph alone, where a handheld Transfer Summary leads its
+   * metadata line with it: the badge's own icon and tone, its label the
+   * glyph's accessible name and DP tooltip. */
+  function statusGlyph(status, label, category) {
+    const key = String(status == null ? '' : status).trim().toLowerCase();
+    const descriptor = STATUS[key] || {icon: 'info', label: key || 'Unknown', className: key || 'pending'};
+    const text = escapeHtml(label || descriptor.label);
+    return '<span class="dp-status-glyph badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') +
+      ' role="img" aria-label="' + text + '" data-tooltip="' + text + '">' + lucideSvg(descriptor.icon, 'dp-status-icon') + '</span>';
+  }
+
   /* A row action's content: its glyph and its label (the label is the
    * button's name; the label element is the one decorateButton and
    * setButtonPending write). A table that sets the label aside shows the
@@ -502,6 +513,7 @@
   window.DPIcons = Object.freeze({
     svg: lucideSvg,
     statusBadge: statusBadge,
+    statusGlyph: statusGlyph,
     statusMap: STATUS,
     toastMap: TOAST_ICON,
     decorateButton: decorateButton,
