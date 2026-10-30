@@ -118,6 +118,50 @@
   min-width: 64px;
 }
 
+/* The handheld status filter (ui-downloads.js): one control standing for the
+   seven filters below 780px -- Status (its funnel glyph, label and the DP
+   dropdown chevron) opens a menu of the filters' own choices; with a status
+   chosen it is Clear (the funnel-x glyph), which returns to All. Both labels
+   and glyphs share their cells, so the control has one footprint in either
+   state: the wider label sets it, Clear is centred across its label and the
+   chevron's cell, and changing state moves nothing. From 780px the filters
+   themselves are shown and this control is not. */
+#view-torrents .dp-downloads-filter-trigger {
+  display: none;
+}
+#view-torrents .dp-downloads-filter-trigger .dp-utility-icon {
+  grid-area: 1 / 1;
+  width: 15px;
+  height: 15px;
+}
+#view-torrents .dp-downloads-filter-trigger [data-dp-filter-text="filter"] { grid-area: 1 / 2; }
+#view-torrents .dp-downloads-filter-trigger [data-dp-filter-text="clear"] {
+  grid-area: 1 / 2 / 2 / 4;
+  justify-self: center;
+}
+#view-torrents .dp-downloads-filter-trigger .dp-dropdown__chevron {
+  grid-area: 1 / 3;
+  margin: -3px 2px 0 0;
+}
+#view-torrents .dp-downloads-filter-trigger[data-state="filter"] :is([data-dp-filter-glyph="clear"], [data-dp-filter-text="clear"]),
+#view-torrents .dp-downloads-filter-trigger[data-state="clear"] :is([data-dp-filter-glyph="filter"], [data-dp-filter-text="filter"], .dp-dropdown__chevron) {
+  visibility: hidden;
+}
+/* Its menu: the projected menu's material (.dp-dropdown-menu) and options, in
+   the top layer (a popover), placed beneath the control by ui-downloads.js. */
+#view-torrents .dp-downloads-filter-menu {
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  display: none;
+}
+#view-torrents .dp-downloads-filter-menu:popover-open {
+  display: block;
+}
+#view-torrents .dp-downloads-filter-menu .dp-dropdown__option {
+  white-space: nowrap;
+}
+
 /* Desktop and tablet (780px and up): one header row. The seven filters keep
    their full width and the card's identity yields to them, in four steps
    chosen by the header's own content width. Each step is where its wording
@@ -202,6 +246,8 @@
   color: var(--dp-text-primary) !important;
   font-size: inherit !important;
   font-weight: inherit !important;
+  /* Its own width decides its labels, at every width (below). */
+  container: dp-downloads-bulk / inline-size;
 }
 #view-torrents #bulk-bar.dp-downloads-bulk-card.visible {
   display: block !important;
@@ -267,10 +313,6 @@
    button, and Clear Selections reads "Clear". A label leaves the row but
    stays the button's name, and DP's tooltip says the action. */
 @media (min-width: 780px) {
-  #view-torrents #bulk-bar.dp-downloads-bulk-card {
-    container: dp-downloads-bulk / inline-size;
-  }
-
   @container dp-downloads-bulk (width < 826px) {
     #view-torrents :is(.dp-downloads-bulk-actions [data-dp-icon-label], .dp-downloads-bulk-clear-rest) {
       position: absolute;
@@ -282,6 +324,64 @@
       pointer-events: none;
     }
     #view-torrents .dp-downloads-bulk-actions .dp-downloads-bulk-action {
+      position: relative;
+      width: 36px;
+      min-width: 36px;
+      padding: 0 !important;
+      justify-content: center;
+    }
+  }
+}
+
+/* Handheld (below 780px): no visible "N Selected" (it stays the toolbar's
+   text for assistive technology, taking no room), Clear Selections reads
+   "Clear", and the toolbar keeps the actions' own 7px between them and Clear
+   and the table's own 14px insets at its ends. Every button -- the actions
+   and Clear -- shows its label while the whole toolbar fits with its widest
+   legitimate set (Pause, Resume, Reset, Move to Top, the separator, Delete and
+   Clear: 646.5px in the wider fallback face, DejaVu Sans, plus 1px);
+   narrower, every one shows its glyph alone at once, a 36px square, so at
+   320px all six stand on one row (265px of the 270px there). One condition,
+   the toolbar's own width: a button that mounts or leaves never changes it. */
+@media (max-width: 779px) {
+  #view-torrents .dp-downloads-bulk-toolbar {
+    gap: 7px;
+    padding-inline: 14px;
+  }
+  #view-torrents .dp-downloads-bulk-status {
+    padding-left: 0;
+  }
+  #view-torrents .dp-downloads-bulk-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* Hidden as the desktop's compact labels are (opacity), so DP's tooltip
+     knows it is not shown and says the whole operation. */
+  #view-torrents .dp-downloads-bulk-clear-rest {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @container dp-downloads-bulk (width < 648px) {
+    #view-torrents .dp-downloads-bulk-toolbar :is(.dp-downloads-bulk-actions [data-dp-icon-label], .dp-downloads-bulk-action--clear > span) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #view-torrents .dp-downloads-bulk-toolbar .dp-downloads-bulk-action {
       position: relative;
       width: 36px;
       min-width: 36px;
@@ -417,23 +517,60 @@ body.light #view-torrents .empty-icon {
     min-height: 100%;
   }
 
+  /* One header row: the identity at the left, the status filter control at
+     the right (the seven filters step aside; ui-downloads.js keeps them the
+     one filter state). The control is a standard 36px button with 8px side
+     padding, so at 320px "On the Books" stays whole beside it in either face. */
   #view-torrents > .card > .card-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     padding-top: 9px;
     padding-bottom: 9px;
   }
 
   #view-torrents .filter-tabs {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
+    display: none;
   }
 
-  #view-torrents .filter-tabs .ftab {
-    flex: 1 1 0;
-    min-width: 0;
-    padding-inline: 7px;
+  #view-torrents .dp-downloads-filter-trigger {
+    display: inline-grid;
+    grid-template-columns: auto auto auto;
+    align-items: center;
+    column-gap: 6px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-inline: 8px;
+  }
+
+  /* The hint beside it, on one line, in the longest of three presentations
+     whose rendered text fits the identity's column (fitDownloadsHeaderHint,
+     ui-downloads.js, measures them in turn): the full hint, then "N downloads
+     tracked.", then "N downloads". A hidden line leaves the row but not the
+     title: the full wording stays its name, and DP's tooltip says it. */
+  #view-torrents #torrent-card-title.dp-downloads-card-title {
+    flex: 1 1 auto;
+    white-space: nowrap;
+  }
+  #view-torrents > .card > .card-header:is([data-dp-fit="tracked"], [data-dp-fit="downloads"]) .dp-downloads-subtitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #view-torrents > .card > .card-header[data-dp-fit="tracked"] [data-dp-copy="tracked"],
+  #view-torrents > .card > .card-header[data-dp-fit="downloads"] [data-dp-copy="downloads"] {
+    display: block;
+  }
+  #view-torrents [data-dp-copy="tracked"]::after {
+    content: '.';
+  }
+
+  /* Search and the order selector share one row: Search takes the room, the
+     selector its own width, both centred on the row. */
+  #view-torrents .ev-search-row {
+    align-items: center;
   }
 
   #view-torrents #torrent-pagination {

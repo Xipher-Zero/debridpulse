@@ -547,8 +547,10 @@ test('the Downloads header has no Refresh control at any width; its title, filte
     const inside = node => { const b = box(node), h = box(head); return b.left >= h.left - 0.5 && b.right <= h.right + 0.5; };
     const refresh = [...card.querySelectorAll('button, [role="button"]')].filter(node =>
       /refresh/i.test(`${node.textContent} ${node.getAttribute('aria-label') || ''} ${node.className}`));
-    return {refresh: refresh.length, controls: [...head.children].map(node => node.className.split(' ')[0]),
-      filters: inside(head.querySelector('.filter-tabs')), title: inside(head.querySelector('#torrent-card-title')),
+    // Below 780px the one status control stands for the filters (downloads-mobile-header-bulk-filters.spec.js).
+    const filters = getComputedStyle(head.querySelector('.filter-tabs')).display !== 'none' ? head.querySelector('.filter-tabs') : document.getElementById('torrent-filter');
+    return {refresh: refresh.length, controls: [...head.children].map(node => node.id || node.className.split(' ')[0]),
+      filters: inside(filters), filter: filters.id || filters.className, title: inside(head.querySelector('#torrent-card-title')),
       search: getComputedStyle(document.getElementById('torrent-search')).display !== 'none',
       order: getComputedStyle(document.getElementById('torrent-order')).display !== 'none',
       overflow: head.scrollWidth > head.clientWidth + 1};
@@ -556,8 +558,8 @@ test('the Downloads header has no Refresh control at any width; its title, filte
   for (const width of [1560, 1389, 1000, 780, 779, 390]) {
     await resize(page, width);
     const state = await header();
-    expect(state, `${width}px`).toEqual({refresh: 0, controls: ['card-title', 'filter-tabs'], filters: true, title: true,
-      search: true, order: true, overflow: false});
+    expect(state, `${width}px`).toEqual({refresh: 0, controls: ['torrent-card-title', 'filter-tabs', 'torrent-filter', 'torrent-filter-menu'],
+      filters: true, filter: width >= 780 ? 'filter-tabs' : 'torrent-filter', title: true, search: true, order: true, overflow: false});
   }
   // The list still refreshes itself through its one path.
   const log = {before: 0};

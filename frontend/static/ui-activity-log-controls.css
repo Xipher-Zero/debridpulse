@@ -150,6 +150,3 @@
    ui-legacy-foundation.css) */
 .ev-search-row { display:flex; gap:8px; margin-bottom:10px; }
 .ev-search-row .input { flex:1; }
-@media (max-width: 779px) {
-  .ev-search-row { flex-direction: column; gap: 6px; }
-}

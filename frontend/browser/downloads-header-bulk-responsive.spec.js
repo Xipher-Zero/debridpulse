@@ -429,8 +429,9 @@ test('compact actions run their own commands; pending keeps the glyph; Clear end
   await expect(page.locator('#t-tbody .t-chk:checked')).toHaveCount(0);
 });
 
-test('mobile (779px) keeps its header and toolbar: the full title and hint, filters beneath, full action labels', async ({page}) => {
-  // Only markup both before and after this change carry: the same case runs on the baseline.
+test('mobile (779px) has its own header and toolbar: one header row with the status control in place of the filters, the full hint beside it, full action labels and Clear', async ({page}) => {
+  // The handheld composition itself is downloads-mobile-header-bulk-filters.spec.js;
+  // here, only that the desktop's header and toolbar decisions end at 780px.
   await open(page);
   await select(page, [9801, 9802]);
   await resize(page, 779);
@@ -444,23 +445,25 @@ test('mobile (779px) keeps its header and toolbar: the full title and hint, filt
       while (walker.nextNode()) {
         let seen = true;
         for (let element = walker.currentNode.parentElement; element && element !== node.parentElement; element = element.parentElement) {
-          if (!shown(element)) seen = false;
+          if (!shown(element) || getComputedStyle(element).visibility === 'hidden') seen = false;
         }
         if (seen && walker.currentNode.textContent.trim()) parts.push(walker.currentNode.textContent.trim());
       }
       return parts.join(' ');
     };
     const buttons = [...document.querySelectorAll('#bulk-bar .dp-downloads-bulk-action')].filter(shown);
+    const control = document.getElementById('torrent-filter');
     return {
       visible: [...head.querySelectorAll('.dp-downloads-heading-copy > *')].filter(shown).map(node => node.textContent),
-      wrap: getComputedStyle(head).flexWrap,
-      filtersBeneath: r(head.querySelector('.filter-tabs')).top > r(head.querySelector('#torrent-card-title')).bottom,
+      filters: shown(head.querySelector('.filter-tabs')), control: visibleText(control),
+      oneRow: Math.abs(r(control).top - r(head).top - (r(head).height - r(control).height) / 2) < 1 && r(head).height === 70,
       labels: buttons.map(visibleText),
       labelled: buttons.every(button => r(button).width > 36),
+      count: r(document.getElementById('bulk-count')).width <= 1,
     };
   });
-  expect(state).toEqual({visible: ['On the Books', '618 downloads tracked. Most of them behaved.'], wrap: 'wrap', filtersBeneath: true,
-    labels: ['Pause', 'Resume', 'Reset', 'Move to Top', 'Delete', 'Clear Selections'], labelled: true});
+  expect(state).toEqual({visible: ['On the Books', '618 downloads tracked. Most of them behaved.'], filters: false, control: 'Status', oneRow: true,
+    labels: ['Pause', 'Resume', 'Reset', 'Move to Top', 'Delete', 'Clear'], labelled: true, count: true});
 });
 
 // The keyboard stops from the header's speed-cap selector (in the topbar from
@@ -491,10 +494,15 @@ test('the title is a keyboard stop from 780px, where its tooltip says the full w
   const tablet = await stopsToSearch(page);
   // The shell's own controls are keyboard stops on both sides of 780px (the
   // handheld header keeps the theme toggle and its chevron); Downloads adds one
-  // stop from 780px, the title, just before the filters. Nothing else moves.
+  // stop from 780px, the title, just before the filters, and the seven filters
+  // stand where the handheld's one status control does. Nothing else moves.
   const SHELL = ['theme-toggle', 'theme-picker-toggle'];
   expect(SHELL.every(stop => tablet.includes(stop) && mobile.includes(stop))).toBe(true);
-  expect(tablet.filter(stop => stop !== 'torrent-card-title')).toEqual(mobile);
+  const filters = tablet.filter(stop => stop.startsWith('div.ftab'));
+  expect(filters).toHaveLength(7);
+  expect(mobile.filter(stop => stop === 'torrent-filter')).toHaveLength(1);
+  const firstFilter = tablet.indexOf(filters[0]);
+  expect([...tablet.slice(0, firstFilter), 'torrent-filter', ...tablet.slice(firstFilter + 7)].filter(stop => stop !== 'torrent-card-title')).toEqual(mobile);
   expect(tablet.indexOf('torrent-card-title')).toBe(tablet.findIndex(stop => stop.startsWith('div.ftab')) - 1);
   await page.locator('#view-torrents .ftab').first().focus();
   await page.keyboard.press('Shift+Tab');

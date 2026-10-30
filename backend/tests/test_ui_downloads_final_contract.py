@@ -229,4 +229,7 @@ def test_downloads_workspace_holds_from_780px_and_pages_the_rows_its_viewport_ho
     assert "maxHeight" not in size
     assert "const budget = Math.max(0, room - head.getBoundingClientRect().height);" in size
     assert "Math.floor((budget + 0.5) / Math.max(...heights))" in size
-    assert "document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());" in downloads
+    # Fonts that finish loading re-measure the capacity (and, below 780px, the
+    # header's hint and Search's placeholder first).
+    assert ("document.fonts?.addEventListener?.('loadingdone', () => "
+            "{ fitDownloadsHeaderHint(); fitDownloadsSearchPlaceholder(); scheduleCapacityCheck(); });") in downloads

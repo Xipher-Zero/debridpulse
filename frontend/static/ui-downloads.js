@@ -319,13 +319,15 @@ function scheduleCapacityCheck() {
     if (applySize(measuredSize())) loadTorrents().catch(() => {});
   }, 120);
 }
-// Fonts that finish loading change the rows' height, not the viewport's.
-document.fonts?.addEventListener?.('loadingdone', () => scheduleCapacityCheck());
+// Fonts that finish loading change the rows' height (and the header's
+// wording's width), not the viewport's.
+document.fonts?.addEventListener?.('loadingdone', () => { fitDownloadsHeaderHint(); fitDownloadsSearchPlaceholder(); scheduleCapacityCheck(); });
 function observeResize() {
   const card = document.querySelector('#view-torrents > .card');
   if (!card || !('ResizeObserver' in window)) return;
   capacityObserver?.disconnect();
-  capacityObserver = new ResizeObserver(scheduleCapacityCheck);
+  // The card's width also decides the handheld header's hint and Search's placeholder.
+  capacityObserver = new ResizeObserver(() => { fitDownloadsHeaderHint(); fitDownloadsSearchPlaceholder(); scheduleCapacityCheck(); });
   // The workspace too: below 780px a page fits one screen of it, which a
   // window's height alone changes.
   [card, card.querySelector('.dp-downloads-table-wrap'), document.getElementById('bulk-bar'), document.querySelector('.dp-downloads-pause-shim'), document.getElementById('torrent-pagination'), document.getElementById('content')]
@@ -357,9 +359,11 @@ function downloadPaginationSummary(total, from, to) {
   return total <= 0 ? language[0] : total === 1 ? language[1] : language[2](total);
 }
 /* One count, four presentations: the full hint, "N downloads tracked",
- * "N downloads", and the number alone in the title's place. The header's own
- * width shows one of them (ui-downloads-page.css); the full wording stays the
- * title's name, and its DP tooltip while the full hint is not shown. */
+ * "N downloads", and the number alone in the title's place. From 780px the
+ * header's own width shows one of them (ui-downloads-page.css); below, the
+ * longest of the first three that fits (fitDownloadsHeaderHint). The full
+ * wording stays the title's name, and its DP tooltip while the full hint is
+ * not shown. */
 function updateDownloadsTrackedCopy(total) {
   const count = Math.max(0, Number(total) || 0);
   const copy = count === 1 ? '1 download tracked. It behaved.' : count + ' downloads tracked. Most of them behaved.';
@@ -374,6 +378,46 @@ function updateDownloadsTrackedCopy(total) {
   }
   title.setAttribute('aria-label', 'On the Books. ' + copy);
   title.setAttribute('data-tooltip', 'On the Books. ' + copy);
+  fitDownloadsHeaderHint();
+}
+/* Below 780px the header is one row: the identity, then the status filter
+ * control at its right. Its hint is the longest presentation whose rendered
+ * line fits the identity's column beside that control -- the full hint, then
+ * "N downloads tracked.", then "N downloads" -- tried in that order on the
+ * header itself (data-dp-fit), so the title, the control and this count's
+ * own wording in the face actually drawn decide it. From 780px the header's
+ * container queries decide, and no state is kept. */
+const HEADER_HINTS = Object.freeze(['', 'tracked', 'downloads']);
+function fitDownloadsHeaderHint() {
+  const header = document.querySelector('#view-torrents > .card > .card-header');
+  const copy = header?.querySelector('.dp-downloads-heading-copy');
+  if (!copy) return;
+  if (titleFocusMedia.matches) { delete header.dataset.dpFit; return; }
+  if (!copy.clientWidth) return;
+  header.dataset.dpFit = HEADER_HINTS.find(state => {
+    header.dataset.dpFit = state;
+    return copy.scrollWidth <= copy.clientWidth;
+  }) ?? HEADER_HINTS[HEADER_HINTS.length - 1];
+}
+/* Below 780px Search shares its row with the order selector. Its placeholder
+ * is "Search downloads…" wherever that is drawn whole in the field, else
+ * "Search…"; its name stays "Search downloads" (aria-label), and what is
+ * typed is never touched. From 780px it is always the full placeholder. */
+const SEARCH_PLACEHOLDERS = Object.freeze(['Search downloads…', 'Search…']);
+let placeholderMeasure = null;
+function fitDownloadsSearchPlaceholder() {
+  const input = document.getElementById('torrent-search');
+  if (!input) return;
+  if (titleFocusMedia.matches || !input.clientWidth) {
+    if (titleFocusMedia.matches) input.placeholder = SEARCH_PLACEHOLDERS[0];
+    return;
+  }
+  const style = getComputedStyle(input);
+  const room = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  placeholderMeasure ||= document.createElement('canvas').getContext('2d');
+  placeholderMeasure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  input.placeholder = SEARCH_PLACEHOLDERS.find(text => placeholderMeasure.measureText(text).width <= room)
+    ?? SEARCH_PLACEHOLDERS[SEARCH_PLACEHOLDERS.length - 1];
 }
 /* The title is a tab stop from 780px up, where a reduced header shows its full
  * wording in DP's tooltip on keyboard focus. Mobile keeps its own tab order:
@@ -420,10 +464,128 @@ function setFilter(element, status) {
   });
   if (element) { element.classList.add('active'); element.setAttribute('aria-selected', 'true'); }
   currentFilter = status;
+  syncStatusFilterControl();
   torrentPage = 1;
   searchControl().invalidate();
   clearSelection();
   loadTorrents();
+}
+/* The handheld status filter (below 780px, where the seven filters step
+ * aside): one header control. Unfiltered it is Status, opening a menu of the
+ * filters' own choices, read from the filters each time it opens (the one
+ * list of choices, labels and values); with a status chosen it is Clear,
+ * which returns to All and opens nothing. Either way the choice is made by
+ * setFilter, with the filter it names: the filters stay the one filter state.
+ * The menu is a popover (light dismiss, Escape, focus back to the control). */
+const statusFilters = () => [...document.querySelectorAll('#view-torrents .filter-tabs .ftab')];
+function syncStatusFilterControl() {
+  const trigger = document.getElementById('torrent-filter');
+  const menu = document.getElementById('torrent-filter-menu');
+  if (!trigger || !menu) return;
+  const active = statusFilters().find(tab => tab.classList.contains('active') && tab.dataset.dpStatus);
+  trigger.dataset.state = active ? 'clear' : 'filter';
+  if (active) {
+    const name = `Clear ${active.textContent.trim()} filter`;
+    if (menu.matches(':popover-open')) menu.hidePopover();
+    trigger.removeAttribute('popovertarget');
+    trigger.removeAttribute('aria-haspopup');
+    trigger.removeAttribute('aria-expanded');
+    trigger.setAttribute('aria-label', name);
+    trigger.setAttribute('data-tooltip', name);
+  } else {
+    trigger.setAttribute('popovertarget', menu.id);
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', String(menu.matches(':popover-open')));
+    trigger.setAttribute('aria-label', 'Status filter');
+    trigger.removeAttribute('data-tooltip');
+  }
+}
+function statusMenuOptions(menu) { return [...menu.querySelectorAll('.dp-dropdown__option')]; }
+function renderStatusMenu(menu) {
+  menu.replaceChildren(...statusFilters().map(tab => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'dp-dropdown__option';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(tab.classList.contains('active')));
+    // One tab stop (the chosen option); the arrow keys move between the rest.
+    option.tabIndex = tab.classList.contains('active') ? 0 : -1;
+    option.dataset.dpStatus = tab.dataset.dpStatus || '';
+    option.textContent = tab.textContent.trim();
+    return option;
+  }));
+}
+/* Beneath the control, its right edge on the control's (above it where there
+ * is more room), inside the window; at least the control's width. */
+const MENU_EDGE = 8, MENU_GAP = 6;
+function placeStatusMenu() {
+  const trigger = document.getElementById('torrent-filter');
+  const menu = document.getElementById('torrent-filter-menu');
+  if (!trigger || !menu?.matches(':popover-open')) return;
+  const box = trigger.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  menu.style.minWidth = `${box.width}px`;
+  menu.style.maxHeight = '';
+  const size = menu.getBoundingClientRect();
+  const below = vh - box.bottom - MENU_GAP - MENU_EDGE, above = box.top - MENU_GAP - MENU_EDGE;
+  const up = size.height > below && above > below;
+  const room = Math.max(0, up ? above : below);
+  const height = Math.min(size.height, room);
+  menu.style.maxHeight = `${room}px`;
+  menu.style.left = `${Math.max(MENU_EDGE, Math.min(box.right - size.width, vw - MENU_EDGE - size.width))}px`;
+  menu.style.top = `${up ? box.top - MENU_GAP - height : box.bottom + MENU_GAP}px`;
+}
+function bindStatusFilterControl() {
+  const trigger = document.getElementById('torrent-filter');
+  const menu = document.getElementById('torrent-filter-menu');
+  if (!trigger || !menu) return;
+  // Clear: All at once. (Status opens the menu through popovertarget.)
+  trigger.addEventListener('click', event => {
+    if (trigger.dataset.state !== 'clear') return;
+    event.preventDefault();
+    setFilter(statusFilters().find(tab => !tab.dataset.dpStatus) || null, '');
+  });
+  menu.addEventListener('beforetoggle', event => { if (event.newState === 'open') renderStatusMenu(menu); });
+  menu.addEventListener('toggle', event => {
+    const open = event.newState === 'open';
+    if (trigger.dataset.state === 'filter') trigger.setAttribute('aria-expanded', String(open));
+    // Placed while open only: it follows the control through a resize or scroll.
+    const method = open ? 'addEventListener' : 'removeEventListener';
+    window[method]('resize', placeStatusMenu);
+    document[method]('scroll', placeStatusMenu, {capture: true});
+    if (!open) return;
+    placeStatusMenu();
+    const options = statusMenuOptions(menu);
+    (options.find(option => option.getAttribute('aria-selected') === 'true') || options[0])?.focus({preventScroll: true});
+  });
+  menu.addEventListener('click', event => {
+    const option = event.target.closest('.dp-dropdown__option');
+    if (!option) return;
+    const tab = statusFilters().find(each => (each.dataset.dpStatus || '') === option.dataset.dpStatus);
+    menu.hidePopover();
+    trigger.focus({preventScroll: true});
+    setFilter(tab || null, option.dataset.dpStatus);
+  });
+  menu.addEventListener('keydown', event => {
+    const options = statusMenuOptions(menu);
+    const at = options.indexOf(document.activeElement);
+    let next = -1;
+    if (event.key === 'ArrowDown') next = (at + 1) % options.length;
+    else if (event.key === 'ArrowUp') next = (at - 1 + options.length) % options.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = options.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    options[next].focus({preventScroll: true});
+  });
+  // Focus leaving the menu (Tab, Shift+Tab, anything) closes it: it is never a
+  // trap. (Its options' blur, in the capture phase.)
+  menu.addEventListener('blur', event => {
+    if (!menu.contains(event.relatedTarget) && menu.matches(':popover-open')) menu.hidePopover();
+  }, true);
+  // From 780px the filters themselves are the control: an open menu closes.
+  titleFocusMedia.addEventListener('change', () => { if (menu.matches(':popover-open')) menu.hidePopover(); });
+  syncStatusFilterControl();
 }
 function onTorrentOrderChange(value) {
   const next = value === 'newest' ? 'newest' : 'queue';
@@ -1298,6 +1460,7 @@ async function setLabel(id) {
 function init() {
   searchControl();
   ensureDateMenus();
+  bindStatusFilterControl();
   observeResize();
   const body = document.getElementById('t-tbody');
   body?.addEventListener('pointerdown', onNamePointerDown);
