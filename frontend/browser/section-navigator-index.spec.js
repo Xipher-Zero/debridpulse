@@ -217,11 +217,13 @@ for (const {view, label, count} of PAGES) {
   });
 }
 
-test('below 780px neither handheld header has an index', async ({page}) => {
+test('below 780px each handheld header\'s compact navigator describes the sections as from 780px', async ({page}) => {
+  // 1.0.14: the handheld header now has the same compact navigator (settings-help-mobile-navigator.spec.js),
+  // and with it the same index; the former handheld strip had none.
   for (const {view} of PAGES) {
     await open(page, view, 1100, false);
     await resize(page, 779);
-    expect((await index(page, view)).described).toBeNull();
+    expect((await index(page, view)).described).toMatch(/^Current section: .+, 1 of \d+$/);
   }
 });
 

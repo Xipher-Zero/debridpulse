@@ -988,19 +988,23 @@ test('the presentation changing keeps the section, its panel, an unsent edit and
   expect(sent).toEqual([]);
 });
 
-test('below 780px the handheld header keeps its wrapping, scrolling strip and no compact navigator', async ({page}) => {
+test('below 780px the handheld header is one row with the same compact navigator', async ({page}) => {
+  // 1.0.14: the former handheld header (a wrapping, scrolling strip beneath the copy, no compact
+  // navigator) is retired; the identity gives way instead (settings-help-mobile-navigator.spec.js).
   await openSettings(page, 1440);
   await resize(page, 779);
   const h = await page.evaluate(() => {
     const rect = node => node.getBoundingClientRect();
     const root = document.getElementById('view-settings');
-    const copy = rect(root.querySelector('.dp-settings-header-copy'));
+    const header = root.querySelector('.dp-settings-master-header'), control = root.querySelector('.dp-settings-nav-control');
+    const copy = root.querySelector('.dp-settings-header-copy');
     const strip = root.querySelector('.dp-settings-tabs');
-    return {beneath: rect(strip).top >= copy.bottom, scrolls: strip.scrollWidth > strip.clientWidth,
-      ends: [...root.querySelectorAll('.dp-settings-nav-end')].map(node => getComputedStyle(node).display),
-      surface: getComputedStyle(strip).borderTopWidth, tabs: strip.querySelectorAll('[data-tab]').length};
+    const middle = node => (rect(node).top + rect(node).bottom) / 2;
+    return {presentation: header.dataset.presentation, oneRow: !copy.getClientRects().length || Math.abs(middle(copy) - middle(control)) < 14,
+      ends: [...root.querySelectorAll('.dp-settings-nav-end')].some(node => getComputedStyle(node).display !== 'none'),
+      tabs: strip.querySelectorAll('[data-tab]').length};
   });
-  expect(h).toEqual({beneath: true, scrolls: true, ends: ['none', 'none'], surface: '1px', tabs: 7});
+  expect(h).toEqual({presentation: 'compact', oneRow: true, ends: true, tabs: 7});
   await page.locator('#view-settings [data-tab="maintenance"]').click();
   await expect(page.locator('#view-settings [data-panel="maintenance"]')).toBeVisible();
 });

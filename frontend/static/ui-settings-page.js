@@ -5809,13 +5809,21 @@
     navigation.place(motion);
   }
 
-  /* The header's one row (desktop and tablet, 780px and wider): the
-   * complete strip or the compact navigator, measured and placed by the
-   * shared section navigator (ui-section-nav.js). Below 780px the handheld
-   * header keeps its own wrapping strip. */
+  /* The header's one row: the complete strip or the compact navigator,
+   * measured and placed by the shared section navigator (ui-section-nav.js).
+   * On a handheld (below 780px) the identity beside it gives way, as the
+   * navigator needs, through these approved levels and last to none at all;
+   * from 780px it is always the first. */
   const navigation = window.DPSectionNav.create({
     nav: () => root()?.querySelector('.dp-settings-nav'),
     copy: '.dp-settings-header-copy',
+    identity: {title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', levels: [
+      {title: 'Tuning Deck', hint: 'Your rules, your defaults.'},
+      {title: 'Tuning Deck', hint: 'Your rules.'},
+      {title: 'Tuning', hint: 'Your rules.'},
+      {title: 'Tune', hint: ''},
+      {title: 'Tune', hint: '', artwork: false},
+    ]},
   });
 
   // The panel of the tab selected NOW (a later choice made meanwhile wins).

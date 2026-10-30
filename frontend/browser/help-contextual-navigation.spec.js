@@ -1044,24 +1044,23 @@ test('the Help presentation changing keeps the section, its panel and its open a
   expect(await page.evaluate(() => window.__dpNav)).toEqual([]);
 });
 
-test('below 780px the Help handheld header keeps its wrapping, scrolling strip and no compact navigator', async ({page}) => {
+test('below 780px the Help handheld header is one row with the same compact navigator', async ({page}) => {
+  // 1.0.14: the former handheld header (the complete strip, the header's width, scrolling beneath the
+  // copy, no compact navigator) is retired; the identity gives way instead (settings-help-mobile-navigator.spec.js).
   await openHelp(page, 1440);
   await resize(page, 779);
   const h = await page.evaluate(() => {
     const rect = node => node.getBoundingClientRect();
     const root = document.getElementById('view-help');
-    const header = root.querySelector('.dp-help-master-header');
-    const copy = rect(root.querySelector('.dp-help-header-copy'));
+    const header = root.querySelector('.dp-help-master-header'), control = root.querySelector('.dp-help-nav-control');
+    const copy = root.querySelector('.dp-help-header-copy');
     const strip = root.querySelector('.dp-help-tabs');
-    const inner = rect(header).width - parseFloat(getComputedStyle(header).paddingLeft) - parseFloat(getComputedStyle(header).paddingRight);
-    return {beneath: rect(strip).top >= copy.bottom, scrolls: strip.scrollWidth > strip.clientWidth, full: Math.abs(rect(strip).width - inner) < 0.5,
-      ends: [...root.querySelectorAll('.dp-help-nav-end')].map(node => getComputedStyle(node).display),
-      surface: getComputedStyle(strip).borderTopWidth, clip: getComputedStyle(strip).clipPath,
-      masks: [...strip.querySelectorAll('[data-tab]')].filter(tab => getComputedStyle(tab).maskImage !== 'none' || getComputedStyle(tab).opacity !== '1').length,
-      padding: [...new Set([...strip.querySelectorAll('[data-tab]')].map(tab => getComputedStyle(tab).paddingLeft))],
+    const middle = node => (rect(node).top + rect(node).bottom) / 2;
+    return {presentation: header.dataset.presentation, oneRow: !copy.getClientRects().length || Math.abs(middle(copy) - middle(control)) < 14,
+      ends: [...root.querySelectorAll('.dp-help-nav-end')].some(node => getComputedStyle(node).display !== 'none'),
       tabs: strip.querySelectorAll('[data-tab]').length, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
   });
-  expect(h).toEqual({beneath: true, scrolls: true, full: true, ends: ['none', 'none'], surface: '1px', clip: 'none', masks: 0, padding: ['10px'], tabs: 8, overflow: 0});
+  expect(h).toEqual({presentation: 'compact', oneRow: true, ends: true, tabs: 8, overflow: 0});
   await page.locator('#dp-help-tab-license').click();
   await expect(page.locator('#dp-help-panel-license')).toBeVisible();
   await page.locator('#view-help .dp-help-master-header').screenshot({path: 'test-results/checkpoint-help-header-779.png'});

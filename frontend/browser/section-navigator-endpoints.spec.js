@@ -210,14 +210,17 @@ for (const name of Object.keys(PAGES)) {
   });
 }
 
-test('the complete strip and the handheld header have no First or Last, on both pages', async ({page}) => {
+test('the complete strip has no First or Last; the handheld header has the same compact navigator with them, on both pages', async ({page}) => {
   for (const name of Object.keys(PAGES)) {
     await open(page, name, 1920);
     const wide = await state(page);
     expect(wide.compact, name).toBe(false);
     expect(wide.ends.every(end => !end.shown), name).toBe(true);
+    // 1.0.14: below 780px the header is one row with the compact navigator (settings-help-mobile-navigator.spec.js).
     await resize(page, 779);
-    expect((await state(page)).ends.every(end => !end.shown), name).toBe(true);
+    const handheld = await state(page);
+    expect(handheld.compact, `${name} 779px`).toBe(true);
+    expect(handheld.ends.some(end => end.shown), `${name} 779px`).toBe(true);
   }
 });
 

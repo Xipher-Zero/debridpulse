@@ -122,7 +122,11 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     mechanics = read(STATIC / "ui-section-nav.js")
     for moved in ("function fitNavigation(", "function navWindow(", "function navLayout(", "function placeNavigation(", "NAV_TRIM", "navFit"):
         assert moved not in runtime, moved
-    assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-settings-nav'),\n    copy: '.dp-settings-header-copy',\n  });" in runtime
+    assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-settings-nav'),\n    copy: '.dp-settings-header-copy',\n    identity: {title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', levels: [" in runtime
+    # The approved handheld identity levels, longest first (the last, none, is the owner's).
+    for level in ("{title: 'Tuning Deck', hint: 'Your rules, your defaults.'}", "{title: 'Tuning Deck', hint: 'Your rules.'}",
+                  "{title: 'Tuning', hint: 'Your rules.'}", "{title: 'Tune', hint: ''}", "{title: 'Tune', hint: '', artwork: false}"):
+        assert level in runtime, level
     fit = mechanics[mechanics.index("function fitNavigation("):mechanics.index("function navWindow(")]
     assert "getBoundingClientRect().width" in fit and "NAV_SPARE" in fit
     assert "navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact'" in fit

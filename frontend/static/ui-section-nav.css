@@ -10,8 +10,7 @@
 
 /* The navigation keeps the complete strip's own place: the page's header
    centres it (its trailing space) while the copy fits beside it, otherwise
-   it follows the copy. Below 780px the handheld header keeps its own
-   wrapping strip, and there are no First / Last. */
+   it follows the copy. First / Last belong to the compact navigator only. */
 .dp-section-nav {
   flex: 0 0 auto;
   min-width: 0;
@@ -37,7 +36,17 @@
   display: none;
 }
 
-@media (min-width: 780px) {
+/* A handheld header with no identity left (ui-section-nav.js): the navigator
+   alone, centred in the whole header (the page drops its centring space). */
+@media (max-width: 779px) {
+  [data-dp-identity='none'] > .dp-section-nav {
+    margin-inline: auto;
+  }
+}
+
+/* Desktop and tablet (780px and wider) and a handheld (779px and narrower):
+   wherever ui-section-nav.js draws the compact navigator. */
+@media (min-width: 780px), (max-width: 779px) {
   /* Compact: [First][a window onto the same strip][Last] in one control, in
      the strip's own place. The strip spans the control -- the window and,
      one slot (--dp-section-nav-slot) each, the places of First and Last,

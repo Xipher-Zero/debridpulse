@@ -21,13 +21,21 @@
   const state = { activeTab: 'quickstart' };
   const root = () => document.getElementById('view-help');
 
-  /* The header's one row (desktop and tablet, 780px and wider): the
-   * complete strip or the compact navigator, measured and placed by the
-   * shared section navigator (ui-section-nav.js), as in Settings. Below
-   * 780px the handheld header keeps its own wrapping strip. */
+  /* The header's one row: the complete strip or the compact navigator,
+   * measured and placed by the shared section navigator (ui-section-nav.js),
+   * as in Settings. On a handheld (below 780px) the identity beside it gives
+   * way, as the navigator needs, through these approved levels and last to
+   * none at all; from 780px it is always the first. */
   const navigation = window.DPSectionNav.create({
     nav: () => root()?.querySelector('.dp-help-nav'),
     copy: '.dp-help-header-copy',
+    identity: {title: '.dp-help-header-title', hint: '.dp-help-header-subtitle', levels: [
+      {title: 'Field Manual', hint: 'When intuition fails.'},
+      {title: 'Field Manual', hint: 'When stuck.'},
+      {title: 'Manual', hint: 'When stuck.'},
+      {title: 'Help', hint: ''},
+      {title: 'Help', hint: '', artwork: false},
+    ]},
   });
 
   function step(number, title, copy) {

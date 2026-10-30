@@ -436,22 +436,25 @@
 
 
 @media (max-width: 779px) {
+  /* The handheld header is one row, as from 780px: the identity -- as much of
+     it as leaves the section navigator whole (ui-section-nav.js: shorter
+     approved wordings, then no hint, no artwork, none) -- and the navigator,
+     centred in the whole header while the identity fits beside it, else right
+     after it, and centred again with no identity at all. */
   #view-help .dp-help-master-header {
     min-height: 0;
-    align-items: stretch;
+    flex-wrap: nowrap;
   }
 
-  #view-help .dp-help-header-copy {
-    min-width: 0;
+  #view-help .dp-help-header-subtitle {
+    white-space: nowrap;
   }
 
-  /* The complete strip, the header's width, on its own line. */
-  #view-help :is(.dp-help-nav, .dp-help-nav-control, .dp-help-tabs) {
-    width: 100%;
-  }
-
-  #view-help .dp-help-header-title {
-    white-space: normal;
+  #view-help .dp-help-master-header[data-dp-identity~='quiet'] .dp-help-header-subtitle,
+  #view-help .dp-help-master-header[data-dp-identity~='bare'] .dp-help-title-icon,
+  #view-help .dp-help-master-header[data-dp-identity='none'] .dp-help-header-copy,
+  #view-help .dp-help-master-header[data-dp-identity='none']::after {
+    display: none;
   }
 
   #view-help .dp-help-pipeline-row {

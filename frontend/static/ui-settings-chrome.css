@@ -60,7 +60,7 @@
 /* Where the compact navigator could not otherwise hold an end section and
    its neighbour whole, the tabs give up some side padding
    (--dp-section-nav-trim, ui-section-nav.js's). */
-@media (min-width: 780px) {
+@media (min-width: 780px), (max-width: 779px) {
   #view-settings .dp-settings-master-header[data-presentation='compact'] .dp-settings-tabs .stab {
     padding-inline: calc(10px - var(--dp-section-nav-trim, 0px));
   }

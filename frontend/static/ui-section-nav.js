@@ -1,5 +1,7 @@
 /* DebridPulse section navigator: the one owner of how a master-card header
- * presents its section tabs on desktop and tablet (780px and wider).
+ * presents its section tabs -- on desktop and tablet (780px and wider), and
+ * on a handheld (779px and narrower), where the page also gives it its
+ * identity's levels (below).
  *
  * A page owns its header, its tabs (one tablist, each tab its own section),
  * their selection, panels, ARIA and events; it gives each header a
@@ -48,9 +50,16 @@
    * actually drew, never an assumed tab count or a breakpoint. The tabs'
    * widths are measured when the header is drawn and when fonts finish
    * loading; the copy's, which a page may change with its width, at every
-   * fit; a change of the page's width only recomputes from them. Below
-   * 780px the handheld header keeps its own wrapping strip and is not
-   * touched. */
+   * fit; a change of the page's width only recomputes from them.
+   *
+   * On a handheld (below 780px) the same navigator, decided the same way,
+   * shares the header's one row with as much of the page's identity as leaves
+   * it whole: the page gives its identity's levels, longest first (artwork,
+   * title and hint, then shorter approved wordings, no hint, no artwork, and
+   * last none at all); the first level at which the navigator is the complete
+   * strip, or a compact window in which every section still has its three
+   * positions (navWindow), is the one drawn -- else none, the navigator alone.
+   * From 780px the identity is always the page's own, untouched. */
   const NAV_SPARE = 4;
   const NAV_FADE = 0.3;      // the outer share of that part which fades
   const NAV_TARGET = 24;     // the least part of a section that is a position
@@ -58,6 +67,9 @@
   const NAV_CUT = [0.3, 0.9];
   const INDEX_DWELL_MS = 1000;   // the pointer at rest this long before the section index shows
   const navDesktop = window.matchMedia('(min-width: 780px)');
+  const navHandheld = window.matchMedia('(max-width: 779px)');
+  // The widths this owner places a navigator at: desktop and tablet, and a handheld.
+  const navigating = () => navDesktop.matches || navHandheld.matches;
 
   const shown = node => node.checkVisibility?.({visibilityProperty: true})
     ?? (node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden');
@@ -84,16 +96,33 @@
 
   /* One header's navigator. `nav` finds its .dp-section-nav (the page may
    * render it again); `copy` selects the header's identity copy. */
-  function create({nav: locate, copy: copySelector}) {
+  function create({nav: locate, copy: copySelector, identity = null}) {
     let navFit = null;
+    /* A handheld identity level (identity: {title, hint} selectors and
+     * `levels`, longest first, each {title, hint, artwork}; one more, the
+     * last, is none at all). Level 0 is the page's own identity, with no mark
+     * of this owner. A level's title and hint are the lines' own text (an
+     * empty hint: none); the header says what else gives way
+     * (data-dp-identity: 'quiet' without the hint, 'bare' without the
+     * artwork, 'none' without any identity), which the page's CSS draws. */
+    const levels = identity ? identity.levels.length + 1 : 0;
+    function applyIdentity(header, level) {
+      const own = identity.levels[0], each = identity.levels[level];
+      const line = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };
+      line(header.querySelector(identity.title), each?.title || own.title);
+      line(header.querySelector(identity.hint), each?.hint || own.hint);
+      const state = !each ? 'none' : [each.hint === '' && 'quiet', each.artwork === false && 'bare'].filter(Boolean).join(' ');
+      if (state) header.dataset.dpIdentity = state;
+      else delete header.dataset.dpIdentity;
+    }
     // The slide that holds the control's busy mark, and that control: kept
     // apart from navFit, which a re-measure replaces while a slide may still
     // be running (the slide, not the fit, says when it is over).
     let busy = null;
 
-    // The copy's own width: its parts (its box also takes the space that
+    // The copy's own width: its drawn parts (its box also takes the space that
     // centres the navigation).
-    const copyWidth = header => Array.from(header.querySelector(copySelector).children)
+    const copyWidth = header => Array.from(header.querySelector(copySelector).children).filter(part => part.getClientRects().length)
       .reduce((sum, part, index) => sum + part.getBoundingClientRect().width
         + (index ? parseFloat(getComputedStyle(part.parentElement).columnGap) || 0 : 0), 0);
 
@@ -101,8 +130,10 @@
       if (measure) navFit = null;
       const nav = locate();
       const header = nav?.parentElement;
-      if (nav && !navDesktop.matches) describe(nav, [], -1);
-      if (!nav || !header.clientWidth || !navDesktop.matches) return;
+      if (nav && !navigating()) describe(nav, [], -1);
+      // From 780px the page's own identity, untouched.
+      if (header && identity && !navHandheld.matches) applyIdentity(header, 0);
+      if (!nav || !header.clientWidth || !navigating()) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
       if (navFit?.nav !== nav) {
@@ -122,12 +153,27 @@
         const edge = parseFloat(getComputedStyle(tabs[0]).marginInlineStart) || 0;
         navFit = {nav, natural: widths, widths, strip: widths.reduce((sum, width) => sum + width, 0) + frame, copy: 0, chrome, slot, edge, window: 0, trim: 0, left: null};
       }
-      navFit.copy = copyWidth(header);
       // The window as drawn now (none until it has been drawn compact).
       const drawn = navFit.drawn && header.dataset.presentation === 'compact' ? `${navFit.window} ${navFit.trim}` : null;
       const style = getComputedStyle(header);
       const width = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       const gap = parseFloat(style.columnGap);
+      // A handheld: the longest identity level the navigator stays whole beside.
+      if (identity && navHandheld.matches) {
+        const fits = () => {
+          navFit.copy = copyWidth(header);
+          if (navFit.strip + navFit.copy + gap + NAV_SPARE <= width) return true;
+          navFit.widths = navFit.natural;
+          return navWindow(width, gap, {report: true});
+        };
+        let level = 0;
+        for (; level < levels - 1; level += 1) {
+          applyIdentity(header, level);
+          if (fits()) break;
+        }
+        applyIdentity(header, level);
+      }
+      navFit.copy = copyWidth(header);
       const presentation = navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact';
       if (presentation === 'compact') {
         navFit.widths = navFit.natural;
@@ -155,7 +201,7 @@
      * section has a layout (navLayout) of at least three positions; wider --
      * the navigator moving right, never past the copy -- only when there is
      * none. Arithmetic over the measured widths only. */
-    function navWindow(width, gap) {
+    function navWindow(width, gap, {report = false} = {}) {
       const {widths, copy, chrome, edge} = navFit;
       const widest = Math.max(...widths);
       const most = Math.max(widest, Math.floor(Math.min(width - copy - gap - NAV_SPARE - chrome,
@@ -165,9 +211,10 @@
       // (With both travel actions there: the control keeps this width
       // whichever section is selected; an end section's own room is more.)
       const enough = window => widths.every((_, index) => (navLayout(window, index)?.positions ?? 0) >= need);
-      for (let window = centred; window >= widest; window -= 1) if (enough(window)) return window;
-      for (let window = centred + 1; window <= most; window += 1) if (enough(window)) return window;
-      return most;
+      // (`report`: only whether such a window exists, for a handheld's identity.)
+      for (let window = centred; window >= widest; window -= 1) if (enough(window)) return report || window;
+      for (let window = centred + 1; window <= most; window += 1) if (enough(window)) return report || window;
+      return report ? false : most;
     }
 
     /* The side padding each tab gives up so that a window this wide holds
@@ -317,7 +364,7 @@
      * (navFit.left); the slide's commit only draws the latest decision. */
     function placeNavigation(motion = null) {
       const nav = locate();
-      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navDesktop.matches) return;
+      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navigating()) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
       const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
@@ -368,7 +415,7 @@
     // The latest decided window, drawn.
     function drawNavigation() {
       const nav = locate();
-      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navDesktop.matches) return;
+      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navigating()) return;
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
       const {widths, edge, slot, left: target, index, room, side} = navFit;
@@ -413,9 +460,9 @@
     return Object.freeze({
       fit: fitNavigation,
       place: placeNavigation,
-      // Whether this navigator places its strip (desktop and tablet): there,
-      // focus must never scroll the strip itself.
-      placing: () => navDesktop.matches,
+      // Whether this navigator places its strip (desktop and tablet, and a
+      // handheld): there, focus must never scroll the strip itself.
+      placing: navigating,
     });
   }
 

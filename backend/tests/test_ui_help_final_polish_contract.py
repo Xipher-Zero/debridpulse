@@ -78,14 +78,21 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     assert "@media (min-width: 780px) {\n  #view-help .dp-help-master-header {\n    flex-wrap: nowrap;\n  }\n}" in page
     handheld = page[page.index("@media (max-width: 779px) {"):]
     handheld = handheld[:handheld.index("\n}\n")]
-    assert "min-height: 0;" in handheld and "align-items: stretch;" in handheld
-    assert "#view-help :is(.dp-help-nav, .dp-help-nav-control, .dp-help-tabs) {\n    width: 100%;" in handheld
+    # 1.0.14: the handheld header is one row too -- the identity gives way (ui-section-nav.js levels) and
+    # the same compact navigator stays -- no longer the complete strip on a line of its own.
+    assert "min-height: 0;" in handheld and "flex-wrap: nowrap;" in handheld and "align-items: stretch;" not in handheld
+    assert "#view-help :is(.dp-help-nav, .dp-help-nav-control, .dp-help-tabs) {\n    width: 100%;" not in handheld
+    assert "#view-help .dp-help-master-header[data-dp-identity='none'] .dp-help-header-copy," in handheld
     tablet = page[page.index("@media (max-width: 900px) {"):]
     tablet = tablet[:tablet.index("\n}\n")]
     assert ".dp-help-master-header" not in tablet and ".dp-help-tabs" not in tablet
     # The one navigation mechanism: Help creates the shared navigator for its
     # own header and keeps no copy of its fit, window or placement.
-    assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-help-nav'),\n    copy: '.dp-help-header-copy',\n  });" in runtime
+    assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-help-nav'),\n    copy: '.dp-help-header-copy',\n    identity: {title: '.dp-help-header-title', hint: '.dp-help-header-subtitle', levels: [" in runtime
+    # The approved handheld identity levels, longest first (the last, none, is the owner's).
+    for level in ("{title: 'Field Manual', hint: 'When intuition fails.'}", "{title: 'Field Manual', hint: 'When stuck.'}",
+                  "{title: 'Manual', hint: 'When stuck.'}", "{title: 'Help', hint: ''}", "{title: 'Help', hint: '', artwork: false}"):
+        assert level in runtime, level
     for absent in ("function fitNavigation(", "function navLayout(", "navFit", "NAV_TRIM", "scrollLeft"):
         assert absent not in runtime, absent
     assert runtime.count('role="tablist" aria-label="Help sections"') == 1

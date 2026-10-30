@@ -1442,13 +1442,25 @@
 }
 
 @media (max-width: 779px) {
+  /* The handheld header is one row, as from 780px: the identity -- as much of
+     it as leaves the section navigator whole (ui-section-nav.js: shorter
+     approved wordings, then no hint, no artwork, none) -- and the navigator,
+     centred in the whole header while the identity fits beside it, else right
+     after it, and centred again with no identity at all. */
   #view-settings .dp-settings-master-header {
     padding: 12px;
+    flex-wrap: nowrap;
   }
 
-  /* A handheld header may wrap its own copy. */
-  #view-settings .dp-settings-header-copy {
-    min-width: 0;
+  #view-settings :is(.dp-settings-header-title, .dp-settings-header-subtitle) {
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-master-header[data-dp-identity~='quiet'] .dp-settings-header-subtitle,
+  #view-settings .dp-settings-master-header[data-dp-identity~='bare'] .dp-settings-header-icon,
+  #view-settings .dp-settings-master-header[data-dp-identity='none'] .dp-settings-header-copy,
+  #view-settings .dp-settings-master-header[data-dp-identity='none']::after {
+    display: none;
   }
 
   #view-settings .dp-settings-panels {
