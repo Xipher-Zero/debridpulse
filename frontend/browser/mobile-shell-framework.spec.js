@@ -14,8 +14,10 @@ const adminSession = require('./acl-admin-session');
 
 const noFonts = page => page.route(/fonts\.(googleapis|gstatic)\.com/, route => route.abort());
 const noPulse = page => page.route('**/api/events/stream', () => {});
-// The view region's slide (DPMotion) has ended: no surface in flight.
-const still = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface'));
+// The view region's slide (DPMotion) has ended: no surface in flight, and no
+// sheet still closing (a page chosen while More is drawn opens once More has
+// closed: DPShellSheet in app.js).
+const still = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface, [data-dp-sheet-exit]'));
 const dock = page => page.locator('#shell-dock > *').evaluateAll(items => items.map(item => ({
   tag: item.localName, label: item.querySelector('.dp-shell-label')?.textContent || '', name: item.getAttribute('aria-label'),
   view: item.dataset.view || '', current: item.getAttribute('aria-current'), active: item.classList.contains('active'),
@@ -197,20 +199,20 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     await recordClicks(page);
     await page.mouse.click(96, 200);
     expect(await clicks(page)).toEqual(['shell-more']);
-    expect(await sheetOpen(page, 'shell-more')).toBe(false);
+    await expect.poll(() => sheetOpen(page, 'shell-more')).toBe(false);
     expect(await view(page)).toEqual(['view-dashboard']);
     await expect(more).toBeFocused();
     await page.keyboard.press('Enter');
     expect(await sheetOpen(page, 'shell-more')).toBe(true);
     await page.keyboard.press('Escape');
-    expect(await sheetOpen(page, 'shell-more')).toBe(false);
+    await expect.poll(() => sheetOpen(page, 'shell-more')).toBe(false);
     expect(await view(page)).toEqual(['view-dashboard']);
 
     for (const [label, id] of [['Activity Log', 'view-events'], ['Help & License', 'view-help']]) {
       await more.click();
       await page.locator('#shell-more .dp-shell-sheet-item', {hasText: label}).click();
       await still(page);
-      expect(await sheetOpen(page, 'shell-more')).toBe(false);
+      await expect.poll(() => sheetOpen(page, 'shell-more')).toBe(false);
       expect(await view(page)).toEqual([id]);
       expect(await title(page)).toBe(label);
       expect(await more.evaluate(node => [node.classList.contains('active'), node.getAttribute('aria-label')]))
@@ -402,7 +404,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       await expect(page.locator('#theme-picker [aria-checked="true"]')).toBeFocused();
       // The scrim: a tap below the panel closes it and reaches nothing beneath.
       await page.touchscreen.tap(195, sheet.y + sheet.height + 20);
-      expect(await sheetOpen(page, 'theme-picker')).toBe(false);
+      await expect.poll(() => sheetOpen(page, 'theme-picker')).toBe(false);
       expect(await light()).toBe(before);
       // The header stays usable over an open menu: the mode toggle tapped while it
       // is open (after a long press it is the menu's opener) closes it and changes the mode once.
@@ -411,7 +413,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
       await expect.poll(() => sheetOpen(page, 'theme-picker')).toBe(true);
       await page.touchscreen.tap(at.x, at.y);
-      expect(await sheetOpen(page, 'theme-picker')).toBe(false);
+      await expect.poll(() => sheetOpen(page, 'theme-picker')).toBe(false);
       expect(await light()).toBe(!before);
       await page.touchscreen.tap(at.x, at.y);
       expect(await light()).toBe(before);
@@ -434,7 +436,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       expect(await sheetOpen(page, 'theme-picker')).toBe(true);
       const other = before ? 'catppuccin-latte' : 'dracula';
       await page.locator(`#theme-picker [data-palette="${other}"]`).tap();
-      expect(await sheetOpen(page, 'theme-picker')).toBe(false);
+      await expect.poll(() => sheetOpen(page, 'theme-picker')).toBe(false);
       expect(await page.evaluate(() => [document.body.getAttribute('data-dp-palette'), document.body.classList.contains('light')]))
         .toEqual([other, before]);
       await expect(page.locator('#theme-picker-toggle')).toBeFocused();
@@ -551,23 +553,23 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     await recordClicks(page);
     await page.locator('#theme-picker-toggle').click();
     await page.locator('#runtime-cap-toggle').click();
-    expect(await state()).toEqual({theme: false, cap: true, more: false});
+    await expect.poll(state).toEqual({theme: false, cap: true, more: false});
     await page.locator('#shell-dock .dp-shell-dock-more').click();
-    expect(await state()).toEqual({theme: false, cap: false, more: true});
+    await expect.poll(state).toEqual({theme: false, cap: false, more: true});
     await page.locator('#theme-picker-toggle').click();
-    expect(await state()).toEqual({theme: true, cap: false, more: false});
+    await expect.poll(state).toEqual({theme: true, cap: false, more: false});
     // The open menu's own control closes it.
     await page.locator('#theme-picker-toggle').click();
-    expect(await state()).toEqual({theme: false, cap: false, more: false});
+    await expect.poll(state).toEqual({theme: false, cap: false, more: false});
     // A dock destination while More is open: More closes and the page opens.
     await page.locator('#shell-dock .dp-shell-dock-more').click();
     await page.locator('#shell-dock .dp-shell-dock-item', {hasText: 'Stats'}).click();
     await still(page);
-    expect(await state()).toEqual({theme: false, cap: false, more: false});
+    await expect.poll(state).toEqual({theme: false, cap: false, more: false});
     expect(await view(page)).toEqual(['view-stats']);
     // Quick repeats end in one coherent state: open, then closed, nothing left over.
     for (let i = 0; i < 5; i += 1) await page.locator('#runtime-cap-toggle').click();
-    expect(await state()).toEqual({theme: false, cap: true, more: false});
+    await expect.poll(state).toEqual({theme: false, cap: true, more: false});
     await page.locator('#runtime-cap-toggle').click();
     await page.waitForFunction(() => getComputedStyle(document.getElementById('runtime-cap-menu')).display === 'none');
     expect(await page.evaluate(() => getComputedStyle(document.getElementById('runtime-cap-menu')).display)).toBe('none');

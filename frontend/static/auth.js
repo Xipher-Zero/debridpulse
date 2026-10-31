@@ -193,12 +193,12 @@
     mount.hidden = false;
     if (mount.querySelector('#topbar-account-button')) return;
     mount.innerHTML = `
-      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" popovertarget="topbar-account-sheet" aria-label="My account">
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" aria-haspopup="dialog" aria-controls="topbar-account-sheet" aria-expanded="false" aria-label="My account">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
           <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
         </svg>
       </button>
-      <div id="topbar-account-sheet" class="dp-shell-sheet dp-shell-sheet--down" popover role="dialog" aria-labelledby="topbar-account-name">
+      <div id="topbar-account-sheet" class="dp-shell-sheet dp-shell-sheet--down" popover="manual" role="dialog" aria-labelledby="topbar-account-name">
         <div class="dp-shell-sheet-panel">
           <div class="dp-shell-sheet-title dp-topbar-account-copy">
             <span class="dp-topbar-account-name" id="topbar-account-name"></span>
@@ -217,18 +217,22 @@
         </div>
       </div>`;
     const sheet = mount.querySelector('#topbar-account-sheet');
-    const close = () => { if (sheet.matches(':popover-open')) sheet.hidePopover(); };
+    const button = mount.querySelector('#topbar-account-button');
+    // Opened and closed through the shell's one sheet lifetime (app.js
+    // DPShellSheet): closing, it rolls back up to the header before it hides.
+    const close = options => window.DPShellSheet.close(sheet, options);
+    button.addEventListener('click', () => window.DPShellSheet.toggle(sheet, {opener: button}));
     sheet.addEventListener('click', event => {
       if (event.target !== sheet) return;
       close();
-      mount.querySelector('#topbar-account-button').focus();
+      button.focus();
     });
     sheet.addEventListener('keydown', event => { if (event.key === 'Tab') close(); });
     sheet.addEventListener('toggle', event => {
       // Into the sheet without scrolling it while its panel travels in.
       if (event.newState === 'open') sheet.querySelector('.dp-shell-sheet-item')?.focus({preventScroll: true});
     });
-    handheld.addEventListener('change', close);
+    handheld.addEventListener('change', () => close({immediate: true}));
     sheet.querySelector('[data-account-action="profile"]').addEventListener('click', () => {
       close();
       void openAccountDialog(data);

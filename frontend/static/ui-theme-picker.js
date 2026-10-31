@@ -2,8 +2,10 @@
  * of the active mode's palettes. ui-theme-bootstrap.js (window.DPTheme) owns
  * the catalog, the choices and their application; this file only presents
  * them. The menu is a popover in the top layer, so opening it never moves the
- * topbar; the browser's popover gives it light dismiss, Escape and focus
- * return to the chevron.
+ * topbar; it opens and closes through the shell's one sheet lifetime (app.js
+ * DPShellSheet), which gives it its dismissal by a press outside it and by
+ * Escape, focus return to the chevron, and below 780px its whole roll back
+ * up before it hides.
  *
  * Below 780px (the handheld shell) the same menu is a bottom sheet
  * (ui-theme-picker.css): the popover's own box is its scrim, so a press beside
@@ -16,7 +18,7 @@
   const trigger = document.getElementById('theme-picker-toggle');
   const menu = document.getElementById('theme-picker');
   const list = document.getElementById('theme-picker-list');
-  if (!trigger || !menu || !list || !window.DPTheme) return;
+  if (!trigger || !menu || !list || !window.DPTheme || !window.DPShellSheet) return;
   const theme = window.DPTheme;
   const MARGIN = 8;
   const GAP = 8;
@@ -79,30 +81,36 @@
     menu.style.maxHeight = Math.max(120, window.innerHeight - top - MARGIN) + 'px';
   }
 
+  const sheets = window.DPShellSheet;
+  // The control that opened the menu: focus returns there when it closes
+  // (and when a press on the scrim, which took focus out of the sheet, does).
+  let opener = trigger;
+  function show(from) {
+    opener = from;
+    sheets.open(menu, {opener: from, control: trigger});
+  }
+  function close(options) { return sheets.close(menu, options); }
+
   menu.addEventListener('beforetoggle', function (event) {
     if (event.newState === 'open') render();
-    else opener = trigger;
   });
   menu.addEventListener('toggle', function (event) {
-    const open = event.newState === 'open';
-    trigger.setAttribute('aria-expanded', String(open));
-    if (!open) return;
+    if (event.newState !== 'open') return;
     place();
     (rows().find(function (row) { return row.getAttribute('aria-checked') === 'true'; }) || rows()[0])?.focus();
   });
+  trigger.addEventListener('click', function () {
+    if (sheets.isOpen(menu)) close();
+    else show(trigger);
+  });
 
-  // The control that opened the sheet: focus returns there when a press on
-  // the scrim closes it (the press itself took focus out of the sheet).
-  let opener = trigger;
   menu.addEventListener('click', function (event) {
     if (!handheld.matches || event.target !== menu) return;
     const back = opener;
-    menu.hidePopover();
+    close();
     back.focus();
   });
-  handheld.addEventListener('change', function () {
-    if (menu.matches(':popover-open')) menu.hidePopover();
-  });
+  handheld.addEventListener('change', function () { close({immediate: true}); });
 
   /* The long press: held still on the mode toggle for HOLD_MS, the toggle
    * shows it is armed (data-theme-hold), and lifting then opens this menu.
@@ -140,16 +148,16 @@
       endHold();
       if (!armed) return;
       held = true;
-      if (menu.matches(':popover-open')) return;
-      opener = toggle;
-      menu.showPopover({source: toggle});
+      if (sheets.isOpen(menu)) return;
+      show(toggle);
     });
     ['pointercancel', 'pointerleave'].forEach(function (type) { toggle.addEventListener(type, endHold); });
     // A tap on the mode toggle while the menu is open (after a long press the
-    // toggle is its opener, so the browser keeps it open) closes the menu as
-    // the mode changes: the header's controls stay usable, one menu at a time.
+    // toggle is its opener, so a press on it is not a press outside the menu)
+    // closes the menu as the mode changes: the header's controls stay usable,
+    // one menu at a time.
     toggle.addEventListener('click', function () {
-      if (handheld.matches && menu.matches(':popover-open')) menu.hidePopover();
+      if (handheld.matches) close();
     });
     toggle.addEventListener('contextmenu', function (event) {
       if (handheld.matches) event.preventDefault();
@@ -166,7 +174,7 @@
     const row = event.target.closest('.dp-theme-picker-option');
     if (!row) return;
     theme.choose(row.dataset.palette);
-    menu.hidePopover();
+    close();
   });
 
   menu.addEventListener('keydown', function (event) {
@@ -177,7 +185,7 @@
     else if (event.key === 'ArrowUp') next = (at - 1 + all.length) % all.length;
     else if (event.key === 'Home') next = 0;
     else if (event.key === 'End') next = all.length - 1;
-    else if (event.key === 'Tab') { menu.hidePopover(); return; }
+    else if (event.key === 'Tab') { close(); return; }
     if (next < 0) return;
     event.preventDefault();
     all[next].focus();

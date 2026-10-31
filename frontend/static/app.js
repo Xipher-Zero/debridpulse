@@ -202,10 +202,7 @@ function shellDockButton(entry, className) {
   label.textContent = shown;
   button.append(label);
   if (shown !== name) button.setAttribute('aria-label', name);
-  button.addEventListener('click', event => {
-    closeShellMore();
-    nav(entry, event);
-  });
+  button.addEventListener('click', event => chooseShellEntry(entry, event));
   _shellDockButtons.set(button, entry);
   return button;
 }
@@ -233,7 +230,10 @@ function renderShellDock() {
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'dp-shell-dock-item dp-shell-dock-more';
-    more.setAttribute('popovertarget', 'shell-more');
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.setAttribute('aria-controls', 'shell-more');
+    more.setAttribute('aria-expanded', 'false');
+    more.addEventListener('click', () => DPShellSheet.toggle(document.getElementById('shell-more'), {opener: more}));
     more.innerHTML = '<span class="icon" aria-hidden="true"><svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="dp-shell-label">More</span>';
     dock.append(more);
   } else {
@@ -321,9 +321,152 @@ function showDownloadsBadge(count) {
   document.querySelectorAll('[data-dock-badge]').forEach(badge => { badge.textContent = count; badge.hidden = !shown; });
 }
 
-function closeShellMore() {
+/* The shell's sheets and menus -- More, the account sheet, the theme picker
+ * and the speed-cap menu -- open and close through this one lifetime; each
+ * owner keeps its own content and actions. Closing, a sheet stays shown (a
+ * popover in the top layer, the cap menu unhidden) while data-dp-sheet-exit
+ * gives its panel and scrim their closed styles, so their own transitions
+ * carry the panel back to its bar; the sheet is hidden only when that
+ * panel's transform transition has finished. Nothing waits on a timer, and
+ * nothing relies on an engine keeping a dismissed popover drawn (Firefox
+ * never interpolates display). A close with nothing to run (reduced motion,
+ * the desktop menus) hides at once; a cancelled one (the panel's style
+ * replaced, the sheet leaving the document) hides at once too, unless the
+ * sheet was opened again meanwhile, which reverses it from where it is
+ * drawn. While closing, its panel takes no input and its scrim still takes
+ * presses, so none reaches the page. The popovers are manual: a browser's
+ * own dismissal of an auto popover cannot be delayed (its beforetoggle is
+ * not cancellable), so a press outside the sheet and its controls, and
+ * Escape, close it here. One sheet is drawn at a time: a sheet asked for
+ * while another is drawn waits (pending) until that one has finished its
+ * exit, and only the latest request is shown -- the outgoing sheet opened
+ * again, another sheet asked for, or the waiting one dismissed (its control
+ * again, a press outside it, Escape) each drop it. `control` carries
+ * aria-expanded from the moment the sheet is drawn; focus inside a closing
+ * sheet returns to `opener`; `shown` runs once the sheet is drawn. */
+const DPShellSheet = (() => {
+  const sheets = new Map();          // sheet -> {opener, control, panel, shown, abort, flight, pending}
+  const drawn = sheet => (sheet.popover ? sheet.matches(':popover-open') : !sheet.hidden);
+  // Open, or asked for and waiting for another sheet's exit.
+  const isOpen = sheet => {
+    const entry = sheet && sheets.get(sheet);
+    return !!entry && !entry.flight && (entry.pending || drawn(sheet));
+  };
+  function hide(sheet) {
+    if (!sheet.popover) sheet.hidden = true;
+    else if (sheet.matches(':popover-open')) try { sheet.hidePopover(); } catch (_) {}   // already gone from the document
+  }
+  // The end of a close: hidden (closed) or kept open (reversed).
+  function settle(sheet, entry, closed) {
+    const flight = entry.flight;
+    entry.flight = null;
+    delete sheet.dataset.dpSheetExit;
+    entry.panel.inert = false;
+    if (closed) {
+      sheets.delete(sheet);
+      hide(sheet);
+    } else {
+      listen(sheet, entry);
+      entry.control?.setAttribute('aria-expanded', 'true');
+    }
+    flight.resolve(closed);
+  }
+  // What the browser's light dismiss did for an auto popover.
+  function listen(sheet, entry) {
+    if (!sheet.popover) return;
+    const abort = entry.abort = new AbortController();
+    const own = node => node instanceof Node && [sheet, entry.opener, entry.control].some(part => part?.contains(node));
+    document.addEventListener('pointerdown', event => { if (!own(event.target)) close(sheet, {restoreFocus: false}); },
+      {capture: true, signal: abort.signal});
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') close(sheet); }, {signal: abort.signal});
+  }
+  // A waiting sheet that will not be shown after all.
+  function drop(sheet, entry) {
+    entry.abort?.abort();
+    sheets.delete(sheet);
+  }
+  function show(sheet, entry) {
+    entry.pending = false;
+    if (sheet.popover) sheet.showPopover();
+    else sheet.hidden = false;
+    entry.control?.setAttribute('aria-expanded', 'true');
+    entry.shown?.();
+  }
+  function open(sheet, {opener = null, control = opener, panel = sheet.firstElementChild, shown = null} = {}) {
+    const entry = sheets.get(sheet);
+    // The latest request wins: any other sheet still waiting is dropped.
+    sheets.forEach((other, node) => { if (node !== sheet && other.pending) drop(node, other); });
+    if (entry?.flight) { settle(sheet, entry, false); return; }
+    if (entry && (entry.pending || drawn(sheet))) return;
+    entry?.abort?.abort();                           // hidden by its own owner meanwhile (left the document)
+    const next = {opener, control, panel, shown, abort: null, flight: null, pending: true};
+    sheets.set(sheet, next);
+    listen(sheet, next);
+    // Whatever is drawn finishes its exit first; then this one, if still wanted.
+    const outgoing = [...sheets.keys()].filter(node => node !== sheet).map(node => close(node));
+    if (!outgoing.length) { show(sheet, next); return; }
+    Promise.all(outgoing).then(() => {
+      if (sheets.get(sheet) === next && next.pending && ![...sheets.keys()].some(node => node !== sheet)) show(sheet, next);
+    });
+  }
+  // Resolves true once the sheet is hidden, false if it was opened again first.
+  function close(sheet, {immediate = false, restoreFocus = true} = {}) {
+    const entry = sheet && sheets.get(sheet);
+    if (!entry) {
+      if (sheet && drawn(sheet)) hide(sheet);
+      return Promise.resolve(true);
+    }
+    if (entry.pending) {
+      drop(sheet, entry);
+      return Promise.resolve(true);
+    }
+    if (entry.flight) {
+      const {promise} = entry.flight;
+      if (immediate) settle(sheet, entry, true);
+      return promise;
+    }
+    entry.abort?.abort();
+    entry.control?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && sheet.contains(document.activeElement)) entry.opener?.focus({preventScroll: true});
+    let resolve;
+    const flight = entry.flight = {promise: new Promise(done => { resolve = done; }), resolve: closed => resolve(closed)};
+    entry.panel.inert = true;
+    sheet.dataset.dpSheetExit = '';
+    const exit = !immediate && drawn(sheet)
+      && entry.panel.getAnimations().find(motion => motion instanceof CSSTransition && motion.transitionProperty === 'transform');
+    const end = () => { if (entry.flight === flight) settle(sheet, entry, true); };
+    if (exit) exit.finished.then(end, end);
+    else end();
+    return flight.promise;
+  }
+  const toggle = (sheet, options) => (isOpen(sheet) ? close(sheet) : (open(sheet, options), Promise.resolve(false)));
+  return Object.freeze({open, close, toggle, isOpen, drawn});
+})();
+window.DPShellSheet = DPShellSheet;
+
+function closeShellMore(options) {
+  return DPShellSheet.close(document.getElementById('shell-more'), options);
+}
+
+/* A page chosen while More is drawn (from its list or the dock) opens once
+ * More has finished closing, so the page's own work never takes the frames
+ * of that exit: nav() runs once, for the latest choice, and not at all if
+ * More is opened again first. */
+let _shellChoice = null;
+function chooseShellEntry(entry, event) {
   const more = document.getElementById('shell-more');
-  if (more?.matches(':popover-open')) more.hidePopover();
+  if (!more || !DPShellSheet.drawn(more)) {
+    nav(entry, event);
+    return;
+  }
+  const waiting = !!_shellChoice;
+  _shellChoice = {entry, event};
+  if (waiting) return;
+  closeShellMore().then(closed => {
+    const choice = _shellChoice;
+    _shellChoice = null;
+    if (closed && choice) nav(choice.entry, choice.event);
+  });
 }
 
 // More is a sheet over the page: its scrim (the popover's own box around the
@@ -3275,8 +3418,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Crossing 779/780px changes the shell: its open sheets close rather than
   // stay over a presentation that is gone.
   _shellHandheld.addEventListener('change', function() {
-    closeSpeedCapMenu();
-    closeShellMore();
+    closeSpeedCapMenu({immediate: true});
+    closeShellMore({immediate: true});
   });
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') closeSpeedCapMenu();
@@ -3834,32 +3977,34 @@ function updateRuntimeStatusBadge(patch) {
   });
 }
 
+// The cap menu opens and closes through the shell's one sheet lifetime
+// (DPShellSheet): closing, it rolls back up before it is hidden, and a press
+// on its toggle meanwhile opens it again from where it is drawn.
 function toggleSpeedCapMenu(event) {
   if (event) event.stopPropagation();
   var menu = document.getElementById('runtime-cap-menu');
   var toggle = document.getElementById('runtime-cap-toggle');
   if (!menu || !toggle) return;
-  var opening = menu.hidden;
-  menu.hidden = !opening;
-  toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
-  if (opening) {
+  if (DPShellSheet.isOpen(menu)) {
+    closeSpeedCapMenu();
+    return;
+  }
+  // Drawn at once, or once another sheet has finished closing.
+  DPShellSheet.open(menu, {opener: toggle, panel: menu.querySelector('.runtime-cap-panel'), shown: function() {
     var custom = document.getElementById('runtime-cap-custom-mbps');
     if (custom && _runtimeStatusState.limitBps > 0) {
       custom.value = (_runtimeStatusState.limitBps / 1048576).toFixed(1).replace(/\.0$/, '');
     }
     if (_shellHandheld.matches) (menu.querySelector('[data-cap-bps].active') || menu.querySelector('[data-cap-bps]'))?.focus();
-  }
+  }});
 }
 
-function closeSpeedCapMenu() {
+function closeSpeedCapMenu(options) {
   var menu = document.getElementById('runtime-cap-menu');
-  var toggle = document.getElementById('runtime-cap-toggle');
+  if (!menu) return;
   // Below 780px the menu is a sheet over the page: focus inside it returns
   // to the toggle that opened it.
-  var refocus = _shellHandheld.matches && !!menu && !menu.hidden && menu.contains(document.activeElement);
-  if (menu) menu.hidden = true;
-  if (toggle) toggle.setAttribute('aria-expanded', 'false');
-  if (refocus && toggle) toggle.focus();
+  DPShellSheet.close(menu, Object.assign({restoreFocus: _shellHandheld.matches}, options));
 }
 
 async function applyTopbarSpeedCap(bps) {

@@ -126,8 +126,8 @@
     </div>
     <div class="sidebar-theme-control topbar-theme-control">
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" data-tooltip="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
-      <button type="button" class="dp-theme-picker-trigger" id="theme-picker-toggle" popovertarget="theme-picker" aria-haspopup="menu" aria-controls="theme-picker" aria-expanded="false" aria-label="Choose theme" data-tooltip="Choose theme"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
-      <div id="theme-picker" class="dp-theme-picker" popover="auto" role="menu" aria-labelledby="theme-picker-title">
+      <button type="button" class="dp-theme-picker-trigger" id="theme-picker-toggle" aria-haspopup="menu" aria-controls="theme-picker" aria-expanded="false" aria-label="Choose theme" data-tooltip="Choose theme"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div id="theme-picker" class="dp-theme-picker" popover="manual" role="menu" aria-labelledby="theme-picker-title">
         <div class="dp-theme-picker-panel">
         <div class="dp-theme-picker-head">
           <div class="dp-theme-picker-title" id="theme-picker-title">Dark themes</div>
@@ -541,7 +541,7 @@
   <!-- The handheld dock (below 780px): app.js renders it from the authorized
        sidebar entries above, in their data-dock order; More holds the rest. -->
   <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"></nav>
-  <div id="shell-more" class="dp-shell-sheet dp-shell-sheet--up" popover role="dialog" aria-labelledby="shell-more-title">
+  <div id="shell-more" class="dp-shell-sheet dp-shell-sheet--up" popover="manual" role="dialog" aria-labelledby="shell-more-title">
     <div class="dp-shell-sheet-panel">
       <div class="dp-shell-sheet-title" id="shell-more-title">More</div>
       <div class="dp-shell-sheet-list" id="shell-more-list"></div>

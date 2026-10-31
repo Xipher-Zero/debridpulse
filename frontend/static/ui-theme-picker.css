@@ -171,19 +171,20 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    /* Its layout is the menu's own, open or closing: only display changes,
-       so the panel keeps its width and place while it rolls back up. */
+    /* Its layout is the menu's own, open or closing, so the panel keeps
+       its width and place while it rolls back up. */
     flex-direction: column;
     pointer-events: none;
-    transition:
-      background-color var(--dp-motion-collapse) var(--dp-motion-ease),
-      display var(--dp-motion-collapse) allow-discrete,
-      overlay var(--dp-motion-collapse) allow-discrete;
+    transition: background-color var(--dp-motion-collapse) var(--dp-motion-ease);
   }
   .dp-theme-picker:popover-open {
     display: flex;
-    background: var(--dp-chrome-scrim);
     pointer-events: auto;
+  }
+  /* Closing (app.js DPShellSheet), it is still open, [data-dp-sheet-exit]:
+     the scrim clears and the panel rolls back up before it is hidden. */
+  .dp-theme-picker:popover-open:not([data-dp-sheet-exit]) {
+    background: var(--dp-chrome-scrim);
     transition-duration: var(--dp-motion-expand);
   }
   .dp-theme-picker-panel {
@@ -199,13 +200,13 @@
     transform: translateY(-100%);
     transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
   }
-  .dp-theme-picker:popover-open .dp-theme-picker-panel {
+  .dp-theme-picker:popover-open:not([data-dp-sheet-exit]) .dp-theme-picker-panel {
     transform: none;
     transition-duration: var(--dp-motion-expand);
   }
   @starting-style {
-    .dp-theme-picker:popover-open { background-color: transparent; }
-    .dp-theme-picker:popover-open .dp-theme-picker-panel { transform: translateY(-100%); }
+    .dp-theme-picker:popover-open:not([data-dp-sheet-exit]) { background-color: transparent; }
+    .dp-theme-picker:popover-open:not([data-dp-sheet-exit]) .dp-theme-picker-panel { transform: translateY(-100%); }
   }
   .dp-theme-picker-head { padding: 12px 18px 10px; }
   .dp-theme-picker-list {

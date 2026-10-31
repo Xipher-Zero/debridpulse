@@ -145,7 +145,6 @@
     font: inherit;
     cursor: pointer;
   }
-  .dp-topbar-account-button[aria-expanded="true"] { color: var(--dp-text-primary); }
 
   /* The theme control: the mode toggle and its attached palette chevron, two
      separate targets drawn as one control. */
@@ -195,8 +194,10 @@
   /* The speed-cap menu: its own box is the page between the bars, the scrim
      (::before) dims only that, and its panel rolls down from the header's
      edge. A press on the scrim lands on the menu itself (app.js closes it),
-     never on the page; while it closes it takes no input. The dropdown's own
-     material (ui-dropdown-contract.css) is the desktop's. */
+     never on the page. Closing (app.js DPShellSheet: [data-dp-sheet-exit]
+     until its panel is back up, then [hidden]), its panel rolls back up and
+     takes no input. The dropdown's own material (ui-dropdown-contract.css)
+     is the desktop's. */
   .runtime-cap-menu {
     position: fixed;
     top: var(--dp-shell-header);
@@ -212,9 +213,7 @@
     border-radius: 0;
     backdrop-filter: none;
     box-shadow: none;
-    transition: display var(--dp-motion-collapse) allow-discrete;
   }
-  .runtime-cap-menu[hidden] { pointer-events: none; }
   .runtime-cap-menu::before {
     content: '';
     position: absolute;
@@ -222,7 +221,7 @@
     background: var(--dp-chrome-scrim);
     transition: opacity var(--dp-motion-collapse) var(--dp-motion-ease);
   }
-  .runtime-cap-menu[hidden]::before { opacity: 0; }
+  .runtime-cap-menu[data-dp-sheet-exit]::before { opacity: 0; }
   .runtime-cap-panel {
     position: relative;
     box-sizing: border-box;
@@ -237,9 +236,9 @@
     box-shadow: var(--dp-shadow-raised);
     transition: transform var(--dp-motion-collapse) var(--dp-motion-ease);
   }
-  .runtime-cap-menu[hidden] .runtime-cap-panel { transform: translateY(-100%); }
-  .runtime-cap-menu:not([hidden]) .runtime-cap-panel,
-  .runtime-cap-menu:not([hidden])::before { transition-duration: var(--dp-motion-expand); }
+  .runtime-cap-menu[data-dp-sheet-exit] .runtime-cap-panel { transform: translateY(-100%); }
+  .runtime-cap-menu:not([data-dp-sheet-exit]) .runtime-cap-panel,
+  .runtime-cap-menu:not([data-dp-sheet-exit])::before { transition-duration: var(--dp-motion-expand); }
   @starting-style {
     .runtime-cap-menu:not([hidden]) .runtime-cap-panel { transform: translateY(-100%); }
     .runtime-cap-menu:not([hidden])::before { opacity: 0; }
@@ -425,7 +424,9 @@
      the page; Escape closes it and focus returns to its control. Its panel
      travels from its bar's edge -- down from the header (the account), up
      from the dock (More) -- clipped to that box, so neither bar is covered;
-     closing, it returns the same way and takes no input. The panel is
+     closing (app.js DPShellSheet: [data-dp-sheet-exit] while it is still
+     open, hidden once its panel is back), it returns the same way and takes
+     no input, its scrim still taking presses. The panel is
      placed against its bar's edge itself (absolutely, in the sheet's box),
      so where it starts never depends on how the sheet is laid out in the
      frame it opens or closes in. */
@@ -444,15 +445,14 @@
     color: var(--dp-text-primary);
     font-family: var(--dp-font-sans);
     pointer-events: none;
-    transition:
-      background-color var(--dp-motion-collapse) var(--dp-motion-ease),
-      display var(--dp-motion-collapse) allow-discrete,
-      overlay var(--dp-motion-collapse) allow-discrete;
+    transition: background-color var(--dp-motion-collapse) var(--dp-motion-ease);
   }
   .dp-shell-sheet:popover-open {
     display: block;
-    background: var(--dp-chrome-scrim);
     pointer-events: auto;
+  }
+  .dp-shell-sheet:popover-open:not([data-dp-sheet-exit]) {
+    background: var(--dp-chrome-scrim);
     transition-duration: var(--dp-motion-expand);
   }
   .dp-shell-sheet-panel {
@@ -481,14 +481,14 @@
     border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0;
     transform: translateY(100%);
   }
-  .dp-shell-sheet:popover-open .dp-shell-sheet-panel {
+  .dp-shell-sheet:popover-open:not([data-dp-sheet-exit]) .dp-shell-sheet-panel {
     transform: none;
     transition-duration: var(--dp-motion-expand);
   }
   @starting-style {
-    .dp-shell-sheet:popover-open { background-color: transparent; }
-    .dp-shell-sheet--down:popover-open .dp-shell-sheet-panel { transform: translateY(-100%); }
-    .dp-shell-sheet--up:popover-open .dp-shell-sheet-panel { transform: translateY(100%); }
+    .dp-shell-sheet:popover-open:not([data-dp-sheet-exit]) { background-color: transparent; }
+    .dp-shell-sheet--down:popover-open:not([data-dp-sheet-exit]) .dp-shell-sheet-panel { transform: translateY(-100%); }
+    .dp-shell-sheet--up:popover-open:not([data-dp-sheet-exit]) .dp-shell-sheet-panel { transform: translateY(100%); }
   }
   .dp-shell-sheet-title {
     padding: 2px 8px 12px;
@@ -597,7 +597,6 @@
 
 /* Reduced motion: every shell menu opens and closes at once, in place. */
 @media (max-width: 779px) and (prefers-reduced-motion: reduce) {
-  .runtime-cap-menu,
   .runtime-cap-menu::before,
   .runtime-cap-panel,
   .dp-shell-sheet,
