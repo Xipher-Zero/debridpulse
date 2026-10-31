@@ -426,3 +426,26 @@ async def test_the_inline_marks_are_the_canonical_logo(live):
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     assert '<dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo"></dp-logo>' in index
     assert 'src="/logo.svg' not in index
+
+
+# ── the page's artwork and version ──────────────────────────────────────────
+
+async def test_the_wave_field_is_continuous_and_the_version_belongs_to_the_card(live):
+    from api import auth_routes
+
+    backdrop = auth_routes._AUTH_BACKDROP_HTML
+    waves = re.findall(r'<path class="wave [a-z]+" d="M(-?\d+) \d+ (.*?) (-?\d+) -?\d+"/>', backdrop)
+    assert len(waves) == 15 and 'class="wave-field spark"' in backdrop
+    assert "wave-purple spark" not in backdrop and "wave-blue spark" not in backdrop
+    assert all(int(start) < 0 and int(end) > 1600 for start, _middle, end in waves)    # edge to edge, no gap
+    assert 'stroke:url(#auth-wave)' in auth_routes._AUTH_PAGE_STYLE
+    signed = await live.client.get("/login")
+    token = re.search(r'name="csrf_token" value="([^"]+)"', signed.text).group(1)
+    pages = [signed.text,
+             (await live.client.post("/login", data={"username": "nobody", "password": "wrong", "csrf_token": token})).text,
+             (await auth_routes._state_free_auth_page(message="Try again shortly.", status_code=429)).body.decode()]
+    for page in pages:
+        assert page.count('class="version"') == 1
+        card = page.split('<main class="card">', 1)[1].split("</main>", 1)[0]
+        assert re.search(r'<div class="version">v[^<]+</div>\s*$', card)               # the card's last child
+        assert '<div class="version">' not in page.split('<main class="card">', 1)[0]

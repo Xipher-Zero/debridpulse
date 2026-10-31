@@ -158,11 +158,13 @@ body::after {
     radial-gradient(ellipse at 69% 81%,color-mix(in srgb,var(--accent2) 7%,transparent),transparent 25%);
   filter:blur(22px);
 }
-.version { position:fixed;z-index:4;right:30px;bottom:24px;color:var(--text3);font-size:12px;font-weight:600;letter-spacing:.015em; }
+/* The version belongs to the card: its bottom-right corner, inside the card's
+   own bottom padding, so it moves with the card and never covers its content. */
+.card > .version { position:absolute;z-index:1;right:16px;bottom:8px;color:var(--text3);font-size:12px;line-height:15px;font-weight:600;letter-spacing:.015em;pointer-events:none; }
 .auth-backdrop { position:fixed;z-index:1;inset:0;width:100%;height:100%;pointer-events:none;opacity:1; }
 .auth-backdrop .wave { fill:none;stroke-linecap:round;stroke-width:1.05; }
-.auth-backdrop .wave-purple { stroke:var(--wave-purple); }
-.auth-backdrop .wave-blue { stroke:var(--wave-blue); }
+.auth-backdrop .wave-field { stroke:url(#auth-wave); }
+.auth-backdrop .wave-start { stop-color:var(--wave-purple); }.auth-backdrop .wave-end { stop-color:var(--wave-blue); }
 .auth-backdrop .soft { opacity:.25; }.auth-backdrop .mid { opacity:.43; }.auth-backdrop .strong { opacity:.78;stroke-width:1.3; }
 .auth-backdrop .micro { opacity:.14;stroke-width:.72; }.auth-backdrop .filament { opacity:.20;stroke-width:.82; }.auth-backdrop .particle { fill:var(--particle);opacity:.92; }.auth-backdrop .twinkle { filter:drop-shadow(0 0 7px currentColor); }.auth-backdrop .spark { filter:drop-shadow(0 0 7px currentColor); }
 .card {
@@ -231,7 +233,7 @@ body[data-dp-palette] .primary,body[data-dp-palette] .primary .oidc-mark { color
 .foot-icon { flex:0 0 21px;width:21px;height:21px;margin:0;color:var(--icon-accent);filter:drop-shadow(0 0 9px rgba(var(--accent-rgb),.21)); }.foot .https { color:var(--accent);font-weight:700; }
 .auth-only-message { text-align:center;margin:8px 0 0; }
 @media (max-width:700px) {
-  body { min-height:100vh;min-height:100dvh;padding:36px 14px; }.version { right:14px;bottom:12px;font-size:11px; }
+  body { min-height:100vh;min-height:100dvh;padding:36px 14px; }.card > .version { right:12px;bottom:6px;font-size:11px;line-height:14px; }
   .card { width:100%;padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
   .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:26px;height:26px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
@@ -252,39 +254,27 @@ _LUCIDE_ARROW = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 _LUCIDE_SHIELD = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z"/><path d="m9 12 2 2 4-4"/></svg>"""
 
 _AUTH_BACKDROP_HTML = """<svg class="auth-backdrop" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-  <g class="wave-purple spark">
-    <path class="wave filament" d="M-110 382 C38 292 126 482 251 383 S469 305 675 447"/>
-    <path class="wave filament" d="M-110 410 C49 311 133 511 263 407 S474 322 675 463"/>
-    <path class="wave micro" d="M-90 442 C56 324 128 558 274 422 S477 297 666 444"/>
-    <path class="wave soft" d="M-90 468 C62 348 136 580 282 447 S481 319 666 467"/>
-    <path class="wave soft" d="M-90 492 C68 372 146 603 291 470 S487 342 666 489"/>
-    <path class="wave mid" d="M-90 516 C73 397 154 625 300 493 S492 365 666 512"/>
-    <path class="wave mid" d="M-90 540 C79 421 164 647 309 517 S498 389 666 534"/>
-    <path class="wave strong" d="M-90 565 C87 445 174 669 320 541 S505 414 666 556"/>
-    <path class="wave strong" d="M-90 591 C95 470 187 692 332 566 S514 439 666 580"/>
-    <path class="wave mid" d="M-90 617 C106 494 199 714 345 591 S526 465 666 603"/>
-    <path class="wave mid" d="M-90 643 C117 519 213 736 359 617 S538 491 666 626"/>
-    <path class="wave soft" d="M-90 668 C128 544 227 756 374 642 S551 518 666 648"/>
-    <path class="wave soft" d="M-90 694 C141 568 243 775 390 666 S565 545 666 671"/>
-    <path class="wave micro" d="M-90 720 C154 591 260 794 406 689 S580 572 666 694"/>
-    <path class="wave filament" d="M-92 746 C168 617 279 815 431 711 S589 602 674 718"/>
-  </g>
-  <g class="wave-blue spark">
-    <path class="wave filament" d="M925 384 C1047 281 1143 487 1279 385 S1490 308 1712 444"/>
-    <path class="wave filament" d="M927 412 C1057 303 1151 514 1287 409 S1496 326 1712 462"/>
-    <path class="wave micro" d="M934 440 C1066 315 1150 554 1290 422 S1490 306 1694 440"/>
-    <path class="wave soft" d="M934 466 C1072 339 1158 578 1298 446 S1496 330 1694 463"/>
-    <path class="wave soft" d="M934 491 C1078 365 1166 601 1307 470 S1502 353 1694 486"/>
-    <path class="wave mid" d="M934 516 C1084 391 1174 624 1316 494 S1508 377 1694 510"/>
-    <path class="wave mid" d="M934 541 C1090 416 1183 647 1326 518 S1515 401 1694 533"/>
-    <path class="wave strong" d="M934 566 C1097 441 1193 670 1336 542 S1522 425 1694 556"/>
-    <path class="wave strong" d="M934 592 C1104 467 1204 693 1347 567 S1530 450 1694 580"/>
-    <path class="wave mid" d="M934 618 C1111 493 1215 715 1359 592 S1539 475 1694 604"/>
-    <path class="wave mid" d="M934 644 C1118 519 1227 737 1371 618 S1548 501 1694 628"/>
-    <path class="wave soft" d="M934 670 C1125 545 1239 758 1384 643 S1558 528 1694 651"/>
-    <path class="wave soft" d="M934 696 C1133 571 1252 779 1398 668 S1568 555 1694 674"/>
-    <path class="wave micro" d="M934 722 C1141 597 1265 799 1412 692 S1579 582 1694 697"/>
-    <path class="wave filament" d="M926 748 C1149 621 1280 822 1428 714 S1590 605 1710 720"/>
+  <defs>
+    <linearGradient id="auth-wave" gradientUnits="userSpaceOnUse" x1="666" y1="0" x2="934" y2="0">
+      <stop class="wave-start" offset="0"/><stop class="wave-end" offset="1"/>
+    </linearGradient>
+  </defs>
+  <g class="wave-field spark">
+    <path class="wave filament" d="M-110 382 C38 292 126 482 251 383 S469 305 675 447 C746 496 859 439 925 384 C1047 281 1143 487 1279 385 S1490 308 1712 444"/>
+    <path class="wave filament" d="M-110 410 C49 311 133 511 263 407 S474 322 675 463 C745 512 861 467 927 412 C1057 303 1151 514 1287 409 S1496 326 1712 462"/>
+    <path class="wave micro" d="M-90 442 C56 324 128 558 274 422 S477 297 666 444 C737 499 869 501 934 440 C1066 315 1150 554 1290 422 S1490 306 1694 440"/>
+    <path class="wave soft" d="M-90 468 C62 348 136 580 282 447 S481 319 666 467 C736 523 868 526 934 466 C1072 339 1158 578 1298 446 S1496 330 1694 463"/>
+    <path class="wave soft" d="M-90 492 C68 372 146 603 291 470 S487 342 666 489 C735 546 867 550 934 491 C1078 365 1166 601 1307 470 S1502 353 1694 486"/>
+    <path class="wave mid" d="M-90 516 C73 397 154 625 300 493 S492 365 666 512 C734 570 865 573 934 516 C1084 391 1174 624 1316 494 S1508 377 1694 510"/>
+    <path class="wave mid" d="M-90 540 C79 421 164 647 309 517 S498 389 666 534 C734 592 864 597 934 541 C1090 416 1183 647 1326 518 S1515 401 1694 533"/>
+    <path class="wave strong" d="M-90 565 C87 445 174 669 320 541 S505 414 666 556 C733 615 863 620 934 566 C1097 441 1193 670 1336 542 S1522 425 1694 556"/>
+    <path class="wave strong" d="M-90 591 C95 470 187 692 332 566 S514 439 666 580 C732 641 862 645 934 592 C1104 467 1204 693 1347 567 S1530 450 1694 580"/>
+    <path class="wave mid" d="M-90 617 C106 494 199 714 345 591 S526 465 666 603 C730 666 861 670 934 618 C1111 493 1215 715 1359 592 S1539 475 1694 604"/>
+    <path class="wave mid" d="M-90 643 C117 519 213 736 359 617 S538 491 666 626 C728 691 860 694 934 644 C1118 519 1227 737 1371 618 S1548 501 1694 628"/>
+    <path class="wave soft" d="M-90 668 C128 544 227 756 374 642 S551 518 666 648 C725 715 859 719 934 670 C1125 545 1239 758 1384 643 S1558 528 1694 651"/>
+    <path class="wave soft" d="M-90 694 C141 568 243 775 390 666 S565 545 666 671 C722 741 858 744 934 696 C1133 571 1252 779 1398 668 S1568 555 1694 674"/>
+    <path class="wave micro" d="M-90 720 C154 591 260 794 406 689 S580 572 666 694 C718 767 857 768 934 722 C1141 597 1265 799 1412 692 S1579 582 1694 697"/>
+    <path class="wave filament" d="M-92 746 C168 617 279 815 431 711 S589 602 674 718 C724 786 852 790 926 748 C1149 621 1280 822 1428 714 S1590 605 1710 720"/>
   </g>
   <g class="particle twinkle">
     <circle cx="34" cy="94" r="1"/><circle cx="48" cy="132" r="1.2"/><circle cx="72" cy="166" r=".9"/><circle cx="92" cy="207" r="1.7"/><circle cx="118" cy="239" r="1.1"/><circle cx="137" cy="278" r="2.3"/><circle cx="158" cy="316" r="1"/><circle cx="179" cy="352" r="1.2"/><circle cx="202" cy="372" r="1.1"/><circle cx="224" cy="391" r="3"/><circle cx="245" cy="437" r="1.2"/><circle cx="267" cy="246" r="1.5"/><circle cx="289" cy="290" r="1"/><circle cx="315" cy="323" r="1.9"/><circle cx="337" cy="393" r="1.1"/><circle cx="362" cy="476" r="3.4"/><circle cx="384" cy="531" r="1.1"/><circle cx="412" cy="171" r="1.3"/><circle cx="438" cy="228" r=".9"/><circle cx="458" cy="282" r="2.2"/><circle cx="482" cy="348" r="1.1"/><circle cx="506" cy="417" r="1.4"/><circle cx="531" cy="457" r=".9"/><circle cx="553" cy="355" r="2.7"/><circle cx="579" cy="431" r="1"/><circle cx="601" cy="505" r="1.6"/>
@@ -423,7 +413,8 @@ async def _login_appearance() -> dict:
 
 
 def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · DebridPulse") -> str:
-    """The sign-in page in the installation's login appearance, decided here
+    """The sign-in card (``inner``: its content; the card closes with the
+    version, at its bottom-right corner) in the installation's login appearance, decided here
     for the first paint: its mode on the root and the body (``body.light``),
     and an alternative palette as ``body[data-dp-palette]`` with the
     application's palette values. No browser or OS preference takes part."""
@@ -447,9 +438,11 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
 <script>{_AUTH_PAGE_SCRIPT}</script>
 </head>
 <body{body}>
-<div class="version">v{version}</div>
 {_AUTH_BACKDROP_HTML}
+<main class="card">
 {inner}
+<div class="version">v{version}</div>
+</main>
 </body>
 </html>"""
 
@@ -513,12 +506,10 @@ async def _login_page(
         controls.append('<p class="muted auth-only-message">Authentication is not currently required.</p>')
 
     interactive_controls = "\n".join(controls)
-    card = f"""<main class="card">
-  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in to continue</div><span class="sr-only">Secure access</span></div>
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in to continue</div><span class="sr-only">Secure access</span></div>
   {error_html}
   {interactive_controls}
-  <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>Password-only LAN deployments may operate over HTTP.<br>OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.</div></div>
-</main>"""
+  <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>Password-only LAN deployments may operate over HTTP.<br>OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.</div></div>"""
     response = HTMLResponse(content=_login_shell(card, await _login_appearance()), status_code=status_code)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = _auth_csp(allow_form=True)
@@ -532,11 +523,9 @@ async def _state_free_auth_page(
     retry_after: int | None = None,
 ) -> HTMLResponse:
     """Render an authentication error without allocating browser challenge state."""
-    card = f"""<main class="card">
-  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in unavailable</div><span class="sr-only">Secure access</span></div>
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in unavailable</div><span class="sr-only">Secure access</span></div>
   <div class="error" role="alert">{html.escape(message)}</div>
-  <a class="auth-action secondary" href="/login"><span>Return to sign in</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>
-</main>"""
+  <a class="auth-action secondary" href="/login"><span>Return to sign in</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>"""
     response = HTMLResponse(
         content=_login_shell(card, await _login_appearance(), title="Sign in unavailable · DebridPulse"),
         status_code=status_code,

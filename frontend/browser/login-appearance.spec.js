@@ -138,7 +138,14 @@ test('below 701px the card is centred while it fits and scrolls whole when it do
     const facts = {dx: (top.left + top.right) / 2 - innerWidth / 2, dy: (top.top + top.bottom) / 2 - innerHeight / 2,
       fits: top.height <= innerHeight, top: top.top, wide: document.scrollingElement.scrollWidth - innerWidth};
     scrollTo(0, document.scrollingElement.scrollHeight);
-    facts.bottom = document.querySelector('.card').getBoundingClientRect().bottom - innerHeight;
+    const card = document.querySelector('.card').getBoundingClientRect();
+    facts.bottom = card.bottom - innerHeight;
+    // The version is the card's: at its bottom-right corner, inside it, over nothing it holds.
+    const version = document.querySelector('.card > .version').getBoundingClientRect();
+    facts.corner = [Math.round(card.right - version.right), Math.round(card.bottom - version.bottom)];
+    facts.covers = [...document.querySelectorAll('.card input, .card button, .card a, .card label, .card .foot, .card .error, .card .brand-lockup')]
+      .map(el => el.getBoundingClientRect())
+      .filter(r => version.left < r.right && version.right > r.left && version.top < r.bottom && version.bottom > r.top).length;
     scrollTo(0, 0);
     return facts;
   });
@@ -149,6 +156,7 @@ test('below 701px the card is centred while it fits and scrolls whole when it do
     expect(Math.abs(facts.dx), `${width}`).toBeLessThanOrEqual(0.5);
     expect(Math.abs(facts.dy), `${width}`).toBeLessThanOrEqual(0.5);
     expect(facts.wide, `${width}`).toBeLessThanOrEqual(0);
+    expect([facts.corner, facts.covers], `${width}`).toEqual([[13, 7], 0]);
   }
   for (const [width, height] of [[320, 568], [390, 600], [667, 375]]) {
     await page.setViewportSize({width, height});
@@ -157,6 +165,7 @@ test('below 701px the card is centred while it fits and scrolls whole when it do
     expect(facts.top, `${width}x${height}`).toBeGreaterThanOrEqual(0);          // its top is on screen
     expect(facts.bottom, `${width}x${height}`).toBeLessThanOrEqual(0.5);       // and its end is reached by scrolling
     expect(facts.wide, `${width}x${height}`).toBeLessThanOrEqual(0);
+    expect([facts.corner, facts.covers], `${width}x${height}`).toEqual([[13, 7], 0]);
   }
   // From 701px the page's own padding (58px over 42px) places it, as before.
   for (const width of [701, 780, 1024, 1440]) {
@@ -164,6 +173,7 @@ test('below 701px the card is centred while it fits and scrolls whole when it do
     const facts = await place();
     expect(facts.dx, `${width}`).toBeCloseTo(0, 2);
     expect(facts.dy, `${width}`).toBeCloseTo(8, 2);
+    expect([facts.corner, facts.covers], `${width}`).toEqual([[17, 9], 0]);
   }
   await context.close();
 });

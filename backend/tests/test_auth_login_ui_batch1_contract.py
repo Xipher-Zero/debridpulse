@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from api import auth_routes
@@ -57,9 +58,11 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert '--icon-accent:#7868e4;--icon-accent-strong:#3f88f5;' in source
     assert 'body::before {' in source
     assert 'body::after {' in source
-    assert source.count('class="wave micro"') >= 4
-    assert source.count('class="wave strong"') >= 4
-    assert source.count('class="wave filament"') >= 6
+    # One continuous wave field (each wave purple at its left, blue at its right,
+    # edge to edge), in the reviewed order and density of the former two halves.
+    assert re.findall(r'<path class="wave ([a-z]+)"', auth_routes._AUTH_BACKDROP_HTML) == [
+        "filament", "filament", "micro", "soft", "soft", "mid", "mid", "strong", "strong", "mid", "mid",
+        "soft", "soft", "micro", "filament"]
     assert 'class="particle twinkle"' in source
     assert source.count('<circle ') >= 60
 
