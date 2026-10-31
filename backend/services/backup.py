@@ -117,8 +117,8 @@ _COPY_CHUNK = 1024 * 1024
 #   passwords (``auth.accounts._initialize_usernames``);
 # * the 1.0.14 schema immediately before the installation's login appearance
 #   (be62e8d2), which it extends with the one ``login_appearance`` table,
-#   empty: the sign-in page is DebridPulse Dark until an eligible Admin next
-#   selects a theme, and no account's appearance is read to choose one.
+#   empty: the sign-in page is DebridPulse Dark until an Admin publishes a
+#   login theme, and no account's appearance is read to choose one.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",

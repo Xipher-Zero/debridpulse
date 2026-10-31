@@ -125,6 +125,45 @@
 .dp-theme-picker-check svg { width: 15px; height: 15px; }
 .dp-theme-picker-option[aria-checked="true"] .dp-theme-picker-check { visibility: visible; }
 
+/* The Login Theme (ui-theme-picker.js, an Admin's menu only), after the
+   rows: what the sign-in page shows and Set current, the canonical small
+   secondary button (ui-components.css .dp-btn). Layout only here. */
+.dp-theme-picker-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  margin-top: 6px;
+  padding: 10px 10px 4px;
+  border-top: 1px solid var(--dp-divider);
+}
+.dp-theme-picker-login-title {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--dp-text-muted);
+}
+.dp-theme-picker-login-state {
+  display: grid;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.dp-theme-picker-login-label { color: var(--dp-text-muted); }
+.dp-theme-picker-login-value {
+  color: var(--dp-text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dp-theme-picker-login-note {
+  grid-column: 1 / -1;
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.dp-theme-picker-login-note:empty { display: none; }
+
 /* A swatch is the palette's own tokens: the page background, a raised
    surface, the accent and the second accent. */
 .dp-theme-swatch {
@@ -216,6 +255,12 @@
     overscroll-behavior: contain;
   }
   .dp-theme-picker-option { min-height: 46px; }
+  /* Below the scrolling list, always in view at the panel's foot. */
+  .dp-theme-picker-login {
+    flex: none;
+    margin: 0;
+    padding: 10px 18px 14px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

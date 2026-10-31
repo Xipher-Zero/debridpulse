@@ -294,6 +294,29 @@ async def update_own_appearance(body: account_appearance.AppearanceUpdate, reque
     return {"account_id": account_id, **await account_appearance.update(account_id, body)}
 
 
+# ── the installation's login appearance ─────────────────────────────────────
+# Classified ``administer``: an Admin reads what the sign-in page shows and
+# publishes its own active theme there. The publication is checked again in
+# its transaction (an active Admin now; the pair the interface shows is the
+# one saved for that Admin), so a stale role or an unsaved choice is refused.
+
+@router.get("/login-appearance")
+async def login_appearance(request: Request):
+    _appearance_owner(request)
+    return await account_appearance.login()
+
+
+@router.put("/login-appearance")
+async def publish_login_appearance(body: account_appearance.LoginAppearance, request: Request):
+    account_id = _appearance_owner(request)
+    try:
+        return await account_appearance.publish(account_id, body)
+    except account_appearance.LoginAppearanceRefused:
+        raise HTTPException(status_code=403, detail="Forbidden") from None
+    except account_appearance.LoginAppearanceStale:
+        raise HTTPException(status_code=409, detail="Your theme is not saved as shown; the login theme is unchanged") from None
+
+
 # ── the signed-in User's own notifications ──────────────────────────────────
 # Classified ``notifications.self`` (User only). The account is ALWAYS the
 # authenticated principal's: no route here takes an account ID, and the body

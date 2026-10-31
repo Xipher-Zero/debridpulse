@@ -116,6 +116,9 @@ ACTIONS: dict[str, Capability] = {
     # The signed-in human account's own appearance (never another's).
     "api.account_routes.own_appearance": _I,
     "api.account_routes.update_own_appearance": _I,
+    # The installation's login appearance: read and published by an Admin.
+    "api.account_routes.login_appearance": _A,
+    "api.account_routes.publish_login_appearance": _A,
     # A User's own notification configuration (never the global one).
     "api.account_routes.own_notifications": _NS,
     "api.account_routes.update_own_notifications": _NS,

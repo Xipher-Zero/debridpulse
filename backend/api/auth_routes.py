@@ -83,7 +83,7 @@ _AUTH_PAGE_STYLE = """
   --card:rgba(10,16,33,.55);--card2:rgba(7,12,27,.40);--card-edge:rgba(139,105,224,.42);
   --field:rgba(7,13,29,.52);--border:rgba(125,145,195,.24);--border-strong:rgba(151,172,226,.38);
   --text:#f7f8ff;--text2:#bcc6e5;--text3:#8793ba;--accent:#b45cff;--accent2:#3d94ff;
-  --accent-rgb:155,69,255;--danger:#ff5264;
+  --accent-rgb:155,69,255;--danger:#ff5264;--card-width:min(560px,calc(100vw - 48px));
   --icon-accent:#b0a3ff;--icon-accent-strong:#8bbcff;
   --glass-top:rgba(255,255,255,.13);--glass-line:rgba(255,255,255,.075);--glass-purple:rgba(180,92,255,.18);--glass-blue:rgba(42,148,255,.15);
   --primary-gradient:linear-gradient(100deg,#8c22ed 0%,#6c37f5 48%,#1688ff 100%);
@@ -130,7 +130,7 @@ body.light[data-dp-palette] {
 html,body { min-height:100%; }
 body {
   margin:0;min-height:100vh;overflow-x:hidden;position:relative;padding:58px 24px 42px;
-  display:grid;place-items:center;color:var(--text);
+  display:grid;place-items:center;align-content:center;color:var(--text);
   font-family:Outfit,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   background:
     radial-gradient(ellipse at -4% 52%,rgba(var(--accent-rgb),.42) 0%,rgba(var(--accent-rgb),.17) 25%,transparent 45%),
@@ -158,9 +158,13 @@ body::after {
     radial-gradient(ellipse at 69% 81%,color-mix(in srgb,var(--accent2) 7%,transparent),transparent 25%);
   filter:blur(22px);
 }
-/* The version belongs to the card: its bottom-right corner, inside the card's
-   own bottom padding, so it moves with the card and never covers its content. */
-.card > .version { position:absolute;z-index:1;right:16px;bottom:8px;color:var(--text3);font-size:12px;line-height:15px;font-weight:600;letter-spacing:.015em;pointer-events:none; }
+/* The version follows the card, as the application's version follows its
+   master surface (ui-shell-brand.css #sidebar-version): as wide as the card,
+   right-aligned with it and just below its bottom edge, in the page's bottom
+   padding. It takes no height of its own -- its row is empty, so the card is
+   centred exactly as alone (body align-content) -- and it moves and scrolls
+   with the card, never over it. */
+.version { position:relative;z-index:2;width:var(--card-width);height:0;transform:translateY(8px);text-align:right;color:var(--text3);font-size:12px;line-height:15px;font-weight:600;letter-spacing:.015em;white-space:nowrap;pointer-events:none; }
 .auth-backdrop { position:fixed;z-index:1;inset:0;width:100%;height:100%;pointer-events:none;opacity:1; }
 .auth-backdrop .wave { fill:none;stroke-linecap:round;stroke-width:1.05; }
 .auth-backdrop .wave-field { stroke:url(#auth-wave); }
@@ -168,7 +172,7 @@ body::after {
 .auth-backdrop .soft { opacity:.25; }.auth-backdrop .mid { opacity:.43; }.auth-backdrop .strong { opacity:.78;stroke-width:1.3; }
 .auth-backdrop .micro { opacity:.14;stroke-width:.72; }.auth-backdrop .filament { opacity:.20;stroke-width:.82; }.auth-backdrop .particle { fill:var(--particle);opacity:.92; }.auth-backdrop .twinkle { filter:drop-shadow(0 0 7px currentColor); }.auth-backdrop .spark { filter:drop-shadow(0 0 7px currentColor); }
 .card {
-  position:relative;z-index:2;width:min(560px,calc(100vw - 48px));padding:48px 54px 30px;overflow:hidden;isolation:isolate;
+  position:relative;z-index:2;width:var(--card-width);padding:48px 54px 30px;overflow:hidden;isolation:isolate;
   border:1px solid var(--card-edge);border-radius:12px;
   background:linear-gradient(132deg,rgba(255,255,255,.045),transparent 28%),linear-gradient(150deg,var(--card),var(--card2));
   -webkit-backdrop-filter:blur(30px) saturate(165%);backdrop-filter:blur(30px) saturate(165%);
@@ -234,8 +238,8 @@ body[data-dp-palette] .primary,body[data-dp-palette] .primary .oidc-mark { color
 .foot-icon { flex:0 0 21px;width:21px;height:21px;margin:0;color:var(--icon-accent);filter:drop-shadow(0 0 9px rgba(var(--accent-rgb),.21)); }.foot .https { color:var(--accent);font-weight:700; }
 .auth-only-message { text-align:center;margin:8px 0 0; }
 @media (max-width:700px) {
-  body { min-height:100vh;min-height:100dvh;padding:36px 14px; }.card > .version { right:12px;bottom:6px;font-size:11px;line-height:14px; }
-  .card { width:100%;padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
+  body { min-height:100vh;min-height:100dvh;padding:36px 14px; }:root { --card-width:100%; }.version { font-size:11px;line-height:14px; }
+  .card { padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
   .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:26px;height:26px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
 @media (max-width:460px) {
@@ -414,8 +418,8 @@ async def _login_appearance() -> dict:
 
 
 def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · DebridPulse") -> str:
-    """The sign-in card (``inner``: its content; the card closes with the
-    version, at its bottom-right corner) in the installation's login appearance, decided here
+    """The sign-in card (``inner``: its content), followed by the version, in
+    the installation's login appearance, decided here
     for the first paint: its mode on the root and the body (``body.light``),
     and an alternative palette as ``body[data-dp-palette]`` with the
     application's palette values. No browser or OS preference takes part."""
@@ -442,8 +446,8 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
 {_AUTH_BACKDROP_HTML}
 <main class="card">
 {inner}
-<div class="version">v{version}</div>
 </main>
+<div class="version">v{version}</div>
 </body>
 </html>"""
 

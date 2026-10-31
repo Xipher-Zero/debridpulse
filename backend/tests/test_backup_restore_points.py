@@ -1426,8 +1426,10 @@ async def test_a_new_backup_brings_back_the_login_appearance_it_recorded(served)
     admin = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
     await account_appearance.update(admin, account_appearance.AppearanceUpdate(mode="light",
                                                                                light_palette="flexoki-light"))
+    await account_appearance.publish(admin, account_appearance.LoginAppearance(mode="light", palette="flexoki-light"))
     point = await backup.create_restore_point()
     await account_appearance.update(admin, account_appearance.AppearanceUpdate(mode="dark", dark_palette="dracula"))
+    await account_appearance.publish(admin, account_appearance.LoginAppearance(mode="dark", palette="dracula"))
     assert await account_appearance.login() == {"mode": "dark", "palette": "dracula"}
 
     restored = await client.post("/api/admin/backups/restore", json={"id": point.id})

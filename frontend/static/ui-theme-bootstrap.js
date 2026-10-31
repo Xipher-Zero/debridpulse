@@ -103,13 +103,21 @@
   let reading = false;
   // The account's record ({save(changes) -> Promise<ok>, read() -> Promise<record|null>}).
   let store = null;
+  // Who waits for every choice made so far to be saved (settled()): told true
+  // once the queue is empty and acknowledged, false when a save fails.
+  const waiting = [];
+  function settle(ok) {
+    waiting.splice(0).forEach(function (done) { done(ok); });
+  }
 
   function notify(text, kind) {
     try { window.toast(text, kind); } catch (_) {}
   }
 
   function save() {
-    if (saving || !store || !Object.keys(unsaved).length) return;
+    if (saving) return;
+    if (!Object.keys(unsaved).length) { settle(true); return; }
+    if (!store) return;
     const body = Object.assign({}, unsaved);
     Object.keys(body).forEach(function (field) { delete unsaved[field]; });
     saving = true;
@@ -119,6 +127,7 @@
         Object.keys(body).forEach(function (field) { if (!(field in unsaved)) unsaved[field] = body[field]; });
         if (!failing) notify('Theme applied here, but not saved to your account.', 'error');
         failing = true;
+        settle(false);
         return;
       }
       if (failing && !Object.keys(unsaved).length) notify('Theme saved to your account.', 'success');
@@ -185,6 +194,17 @@
       store = next;
       resolve();
       save();
+    },
+    // Resolves true once every choice made here so far is saved to the
+    // account (at once while none is waiting), false if one could not be:
+    // the one order between this page's choices and anything that must act
+    // on the saved theme (ui-theme-picker.js's login theme publication).
+    settled: function () {
+      if (browser || (!saving && !Object.keys(unsaved).length)) return Promise.resolve(true);
+      if (!store) return Promise.resolve(false);
+      const result = new Promise(function (done) { waiting.push(done); });
+      save();   // a choice left unsaved by a failure is tried again now
+      return result;
     },
     // A palette of the active mode, applied before consumers are told.
     choose: function (id) {

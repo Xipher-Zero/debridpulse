@@ -146,9 +146,9 @@ SCHEMA = (
         updated_at TEXT NOT NULL
     )""",
     # The installation's login appearance (``services.account_appearance``):
-    # one row, the mode and active palette of the last effective selection an
-    # eligible Admin committed. It belongs to the installation and names no
-    # account: no account's later change, removal or merge alters it.
+    # one row, the mode and palette an Admin last published. It belongs to the
+    # installation and names no account: no account's later change, removal
+    # or merge alters it.
     """CREATE TABLE IF NOT EXISTS login_appearance (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         mode TEXT NOT NULL CHECK (mode IN ('dark','light')),

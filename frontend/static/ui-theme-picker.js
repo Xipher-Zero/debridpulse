@@ -12,6 +12,14 @@
  * the panel closes it without reaching the page; the chevron stays its
  * visible, separate control, and a long press on the mode toggle opens it too
  * (on the lift) -- that press never also toggles the mode.
+ *
+ * For an Admin the menu ends with the Login Theme: the theme the sign-in page
+ * shows (the installation's, read from the server each time the menu opens)
+ * and Set current, which publishes the theme this page shows. Choosing a row
+ * or the mode never publishes anything. Set current waits for this page's
+ * choices to be saved (DPTheme.settled) and sends the pair it showed when
+ * pressed; the server publishes it only if that is the pair saved for the
+ * Admin, and only the server's answer changes what is shown here.
  */
 (function () {
   'use strict';
@@ -64,6 +72,100 @@
 
   function rows() { return Array.from(list.querySelectorAll('.dp-theme-picker-option')); }
 
+  // ── the Login Theme (an Admin's menu only) ───────────────────────────────
+  const authority = window.debridPulseAuthority || {};
+  const auth = window.debridPulseAuth;
+  const login = auth && authority.authenticated && Array.isArray(authority.capabilities)
+    && authority.capabilities.includes('administer') ? loginSection() : null;
+  // What the server last said is published ({mode, palette}), whether it
+  // could be read, a publication in flight, and the last refusal to report.
+  let published = null;
+  let readState = 'reading';
+  let reads = 0;
+  let publishing = false;
+  let note = '';
+
+  function loginSection() {
+    const section = document.createElement('div');
+    section.className = 'dp-theme-picker-login';
+    section.setAttribute('role', 'group');
+    section.setAttribute('aria-labelledby', 'theme-picker-login-title');
+    section.innerHTML = '<div class="dp-theme-picker-login-title" id="theme-picker-login-title">Login Theme</div>'
+      + '<div class="dp-theme-picker-login-state"><span class="dp-theme-picker-login-label">Current login theme</span>'
+      + '<span class="dp-theme-picker-login-value" aria-live="polite"></span></div>'
+      + '<button type="button" class="dp-btn dp-btn--secondary dp-btn--sm dp-theme-picker-login-set" role="menuitem">Set current</button>'
+      + '<div class="dp-theme-picker-login-note" role="status"></div>';
+    list.after(section);
+    section.querySelector('button').addEventListener('click', publish);
+    return section;
+  }
+
+  function shown() { return {mode: theme.mode(), palette: theme.palette()}; }
+  function named(pair) {
+    const item = (theme.catalog[pair.mode] || []).find(function (entry) { return entry.id === pair.palette; });
+    return (item ? item.label : pair.palette) + ' \u00b7 ' + (pair.mode === 'light' ? 'Light' : 'Dark');
+  }
+  function paintLogin() {
+    if (!login) return;
+    const button = login.querySelector('button');
+    const now = shown();
+    const current = readState === 'ready' && published && published.mode === now.mode && published.palette === now.palette;
+    login.querySelector('.dp-theme-picker-login-value').textContent =
+      readState === 'ready' && published ? named(published) : readState === 'reading' ? 'Checking\u2026' : 'Unavailable';
+    login.querySelector('.dp-theme-picker-login-note').textContent = note;
+    button.textContent = publishing ? 'Setting\u2026' : current ? 'Current' : 'Set current';
+    const off = publishing || !!current;
+    // A control that loses focus as it is disabled hands it to the menu's
+    // chosen row, so the keyboard stays in the menu.
+    if (off && document.activeElement === button) (rows().find(function (row) { return row.getAttribute('aria-checked') === 'true'; }) || rows()[0])?.focus();
+    button.disabled = off;
+  }
+  function readPublished() {
+    if (!login) return Promise.resolve();
+    const read = ++reads;
+    readState = 'reading';
+    paintLogin();
+    return auth.fetch('/api/login-appearance').then(function (response) {
+      return response.ok ? response.json() : null;
+    }).catch(function () { return null; }).then(function (pair) {
+      if (read !== reads) return;
+      published = pair && pair.mode && pair.palette ? pair : null;
+      readState = published ? 'ready' : 'unavailable';
+      paintLogin();
+    });
+  }
+  function publish() {
+    if (publishing) return;
+    const pair = shown();
+    publishing = true;
+    note = '';
+    paintLogin();
+    theme.settled().then(function (saved) {
+      if (!saved) return 'Your theme is not saved yet, so the login theme is unchanged.';
+      return auth.fetch('/api/login-appearance', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(pair)}).then(function (response) {
+        if (!response.ok) {
+          return response.status === 409 ? 'Your theme changed before it was saved, so the login theme is unchanged.'
+            : 'The login theme could not be set; it is unchanged.';
+        }
+        return response.json().then(function (answer) {
+          reads += 1;   // the server's answer is newer than any read in flight
+          published = answer;
+          readState = 'ready';
+          return '';
+        });
+      });
+    }).catch(function () {
+      return 'The login theme could not be set; it is unchanged.';
+    }).then(function (message) {
+      publishing = false;
+      note = message;
+      // After a refusal, show what the sign-in page actually shows now.
+      if (message) readPublished();
+      else paintLogin();
+    });
+  }
+
   // Below the chevron, its right edge on the chevron's and never past the
   // window; taller than the room below, it scrolls on its own.
   function place() {
@@ -92,8 +194,12 @@
   function close(options) { return sheets.close(menu, options); }
 
   menu.addEventListener('beforetoggle', function (event) {
-    if (event.newState === 'open') render();
+    if (event.newState !== 'open') return;
+    render();
+    note = '';
+    readPublished();
   });
+  document.addEventListener('debridpulse:theme-changed', paintLogin);
   menu.addEventListener('toggle', function (event) {
     if (event.newState !== 'open') return;
     place();
@@ -179,6 +285,8 @@
 
   menu.addEventListener('keydown', function (event) {
     const all = rows();
+    const set = login && login.querySelector('button');
+    if (set && !set.disabled) all.push(set);
     const at = all.indexOf(document.activeElement);
     let next = -1;
     if (event.key === 'ArrowDown') next = (at + 1) % all.length;

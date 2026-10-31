@@ -2,23 +2,26 @@
 
 Narrow proofs, each at its owner:
 
-* the write (``services.account_appearance.update``), through the real API and
-  sessions: only an eligible Admin's effective selection -- a change of its
-  active mode + palette pair -- replaces the one shared row, in the same
-  transaction as the Admin's own record; sign-in, browsing, inactive-palette
-  edits, repeated pairs and every other role leave it; eligibility is read at
-  the write; a failure between the two writes commits neither; two Admins
-  writing at once serialize, and the last to commit wins with its whole pair;
-* the row's lifetime: it names no account, survives the selecting Admin's
+* personal appearance (``services.account_appearance.update``), through the
+  real API and sessions: a mode or palette choice by any account -- an Admin's
+  included -- is that account's alone and never changes the login appearance;
+* publication (``account_appearance.publish``, ``PUT /api/login-appearance``):
+  the one writer of the shared row. An active Admin now (read in the
+  publishing transaction, whatever the session says) publishes its own saved
+  active pair, and only while that is the pair its interface sends; every
+  other caller, a stale pair, a missing CSRF token and a failure inside the
+  transaction leave the row as it was; two Admins publishing at once
+  serialize, and the last to commit wins with its whole pair;
+* the row's lifetime: it names no account, survives the publishing Admin's
   demotion, disabling, removal and merge, and stays one row however often it
-  is replaced; the wipe keeps it;
+  is republished; the wipe keeps it;
 * the anonymous read (``api.auth_routes``): every server-rendered sign-in
   page carries exactly the validated mode and palette at first paint, reads
   the one row and no account table, falls back to DebridPulse Dark, and keeps
   its CSP, hash-pinned shim and ``no-store``;
 * one palette catalog and one logo source: every catalog palette resolves
   through the application's own palette stylesheet; the inline marks are
-  ``logo.svg``.
+  ``logo.svg``; the waves are one field and the version follows the card.
 """
 from __future__ import annotations
 
@@ -48,6 +51,7 @@ from account_support import admin_with_password
 pytestmark = pytest.mark.asyncio
 
 OWN = "/api/account/appearance"
+PUBLISH = "/api/login-appearance"
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 NATIVE_DARK = {"mode": "dark", "palette": "debridpulse-dark"}
 _SINGLE_READ = "SELECT mode, palette FROM login_appearance WHERE id=1"
@@ -93,7 +97,10 @@ async def live(tmp_path, monkeypatch):
         async def choose(name, **change):
             return await client.patch(OWN, headers=as_(name), json=change)
 
-        yield SimpleNamespace(client=client, as_=as_, choose=choose, people=people)
+        async def publish(name, mode, palette):
+            return await client.put(PUBLISH, headers=as_(name), json={"mode": mode, "palette": palette})
+
+        yield SimpleNamespace(client=client, as_=as_, choose=choose, publish=publish, people=people)
     session_store.clear()
 
 
@@ -123,115 +130,112 @@ async def _login(client) -> dict:
     return _shown(page.text)
 
 
-# ── the write ───────────────────────────────────────────────────────────────
+# ── personal appearance and publication ─────────────────────────────────────
 
-async def test_only_an_eligible_admins_effective_selection_becomes_the_login_appearance(live, monkeypatch):
+async def test_no_personal_choice_changes_the_login_appearance(live):
     client, choose = live.client, live.choose
-    projected = []
-    project = account_appearance._project
-
-    async def counted(db, pair):
-        projected.append(pair)
-        await project(db, pair)
-
-    monkeypatch.setattr(account_appearance, "_project", counted)
-
-    assert await _row() == [] and await _login(client) == NATIVE_DARK          # never selected: native Dark
-
-    # Admin A chooses Light + Catppuccin Latte in one change: one selection of the final pair.
-    assert (await choose("ann", mode="light", light_palette="catppuccin-latte")).status_code == 200
-    assert await _login(client) == {"mode": "light", "palette": "catppuccin-latte"}
-    assert projected == [("light", "catppuccin-latte")]
-
-    # Admin B signs in with its native Dark and browses: nothing is selected.
-    signed = await client.get("/login")
-    token = re.search(r'name="csrf_token" value="([^"]+)"', signed.text).group(1)
-    response = await client.post("/login", data={"username": "operator", "password": "secret", "csrf_token": token,
-                                                 "next": "/"})
-    assert response.status_code == 303
-    for path in (OWN, "/ui-theme-bootstrap.js", "/api/auth/session"):
-        assert (await client.get(path, headers=live.as_("admin"))).status_code == 200
-    assert await _login(client) == {"mode": "light", "palette": "catppuccin-latte"} and len(projected) == 1
-
-    # B changes its active Dark palette, then switches to Light (its own saved Light palette), then that palette.
-    await choose("admin", dark_palette="dracula")
-    assert await _login(client) == {"mode": "dark", "palette": "dracula"}
-    await choose("admin", mode="light")
-    assert await _login(client) == {"mode": "light", "palette": "debridpulse-light"}
-    await choose("admin", light_palette="nord-light")
-    assert await _login(client) == {"mode": "light", "palette": "nord-light"}
-    assert len(projected) == 4
-
-    # The same active pair again, and an edit of the inactive palette alone: no selection.
-    await choose("admin", mode="light", light_palette="nord-light")
-    await choose("admin", dark_palette="gruvbox-dark")
-    assert len(projected) == 4 and await _row() == [(1, "light", "nord-light")]
-    # Activating that mode projects its saved palette.
-    await choose("admin", mode="dark")
-    assert await _login(client) == {"mode": "dark", "palette": "gruvbox-dark"} and len(projected) == 5
-
-    # Every other role keeps its own choice and never the installation's.
-    assert (await choose("alice", mode="light", light_palette="flexoki-light")).status_code == 200
-    assert (await choose("reader", dark_palette="rose-pine")).status_code == 200
-    assert (await choose("integration", dark_palette="dracula")).status_code == 403
-    await account_appearance.update(DEFAULT_INTEGRATION_ID, account_appearance.AppearanceUpdate(dark_palette="dracula"))
-    assert len(projected) == 5 and await _row() == [(1, "dark", "gruvbox-dark")]
-
-    # Each account keeps its own three choices.
-    assert await account_appearance.load(live.people["alice"].id) == {
-        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "flexoki-light"}
+    assert await _row() == [] and await _login(client) == NATIVE_DARK          # never published: native Dark
+    # Admins and every other role choose modes and palettes: each its own, never the installation's.
+    for name, change in (("ann", {"mode": "light", "light_palette": "catppuccin-latte"}),
+                         ("admin", {"dark_palette": "dracula"}), ("admin", {"mode": "light"}),
+                         ("alice", {"mode": "light", "light_palette": "flexoki-light"}),
+                         ("reader", {"dark_palette": "rose-pine"})):
+        assert (await choose(name, **change)).status_code == 200
+    assert await _row() == [] and await _login(client) == NATIVE_DARK
     assert await account_appearance.load(live.people["ann"].id) == {
         "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
-    assert await account_appearance.load(DEFAULT_ADMIN_ID) == {
-        "mode": "dark", "dark_palette": "gruvbox-dark", "light_palette": "nord-light"}
+    # Published once, a later personal choice still leaves it.
+    assert (await live.publish("ann", "light", "catppuccin-latte")).json() == {"mode": "light", "palette": "catppuccin-latte"}
+    await choose("ann", mode="dark")
+    await choose("admin", light_palette="nord-light")
+    assert await _row() == [(1, "light", "catppuccin-latte")]
+    assert await _login(client) == {"mode": "light", "palette": "catppuccin-latte"}
 
 
-async def test_eligibility_is_the_accounts_own_at_the_write(live):
+async def test_only_an_active_admin_publishes_its_own_saved_theme(live):
+    client = live.client
+    # Reading it is an Admin's too.
+    assert (await client.get(PUBLISH, headers=live.as_("ann"))).json() == NATIVE_DARK
+    for name in ("alice", "reader", "integration"):
+        assert (await client.get(PUBLISH, headers=live.as_(name))).status_code == 403
+    client.cookies.clear()
+    assert (await client.get(PUBLISH)).status_code == 401
+    assert (await client.put(PUBLISH, json={"mode": "dark", "palette": "dracula"})).status_code == 401
+    # Other roles, even sending their own saved pair, are refused before anything is written.
+    await live.choose("alice", dark_palette="dracula")
+    for name in ("alice", "reader", "integration"):
+        assert (await live.publish(name, "dark", "dracula")).status_code == 403
+    # Without the session's CSRF token: refused.
+    headers = dict(live.as_("ann"))
+    headers.pop("X-CSRF-Token")
+    assert (await client.put(PUBLISH, headers=headers, json={"mode": "dark", "palette": "debridpulse-dark"})).status_code == 403
+    # A pair outside the catalog, or another field: refused.
+    for body in ({"mode": "dark", "palette": "nord-light"}, {"mode": "dark", "palette": "x"},
+                 {"mode": "dark", "palette": "dracula", "account_id": "x"}):
+        assert (await client.put(PUBLISH, headers=live.as_("ann"), json=body)).status_code == 422
+    assert await _row() == []
+    # A pair that is not the Admin's saved active pair (unsaved, or overtaken): refused, unchanged.
+    assert (await live.publish("ann", "dark", "dracula")).status_code == 409
+    assert await _row() == []
+    # The Admin's own saved active pair: published, and the server's answer is what is published.
+    await live.choose("ann", dark_palette="dracula")
+    response = await live.publish("ann", "dark", "dracula")
+    assert response.status_code == 200 and response.json() == {"mode": "dark", "palette": "dracula"}
+    assert await _row() == [(1, "dark", "dracula")]
+    assert (await client.get(PUBLISH, headers=live.as_("admin"))).json() == {"mode": "dark", "palette": "dracula"}
+    assert await _login(client) == {"mode": "dark", "palette": "dracula"}
+    # Republishing the same pair is the same single row.
+    assert (await live.publish("ann", "dark", "dracula")).status_code == 200
+    assert await _row() == [(1, "dark", "dracula")]
+
+
+async def test_eligibility_is_the_accounts_own_at_the_publication(live):
     ann = live.people["ann"].id
     await live.choose("ann", dark_palette="dracula")
-    assert await _row() == [(1, "dark", "dracula")]
-
-    # Demoted after its session began: whatever the session says, the write is a User's.
+    await live.publish("ann", "dark", "dracula")
+    await live.choose("ann", dark_palette="kanagawa-wave")
+    # Demoted after its session began: whatever the session says, it no longer publishes.
     await accounts.set_role(DEFAULT_ADMIN_ID, ann, "user")
-    response = await live.choose("ann", dark_palette="kanagawa-wave")
-    assert response.status_code in {200, 401, 403}
-    assert await _row() == [(1, "dark", "dracula")]
-    # Disabled, removed or merged: never an eligible writer, even called directly.
+    assert (await live.publish("ann", "dark", "kanagawa-wave")).status_code in {401, 403}
+    with pytest.raises(account_appearance.LoginAppearanceRefused):
+        await account_appearance.publish(ann, account_appearance.LoginAppearance(mode="dark", palette="kanagawa-wave"))
+    # Disabled, or no such account: never a publisher, even called directly.
     await accounts.set_role(DEFAULT_ADMIN_ID, ann, "admin")
     await accounts.set_enabled(DEFAULT_ADMIN_ID, ann, False)
-    await account_appearance.update(ann, account_appearance.AppearanceUpdate(dark_palette="ayu-mirage"))
-    assert await _row() == [(1, "dark", "dracula")]
-    with pytest.raises(sqlite3.IntegrityError):                       # no such account: nothing commits
-        await account_appearance.update("00000000-0000-4000-8000-00000000dead",
-                                        account_appearance.AppearanceUpdate(mode="light"))
+    for account in (ann, "00000000-0000-4000-8000-00000000dead"):
+        with pytest.raises(account_appearance.LoginAppearanceRefused):
+            await account_appearance.publish(account, account_appearance.LoginAppearance(mode="dark", palette="kanagawa-wave"))
     assert await _row() == [(1, "dark", "dracula")]
 
 
-async def test_a_failure_between_the_two_writes_commits_neither(live, monkeypatch):
-    ann = live.people["ann"].id
+async def test_a_failed_publication_leaves_the_published_theme(live, monkeypatch):
     await live.choose("ann", dark_palette="dracula")
+    await live.publish("ann", "dark", "dracula")
+    await live.choose("ann", mode="light")
 
     async def broken(_db, _pair):
         raise sqlite3.OperationalError("disk I/O error")
 
     monkeypatch.setattr(account_appearance, "_project", broken)
-    with pytest.raises(sqlite3.OperationalError):
-        await account_appearance.update(ann, account_appearance.AppearanceUpdate(mode="light"))
-    assert await account_appearance.load(ann) == {
-        "mode": "dark", "dark_palette": "dracula", "light_palette": "debridpulse-light"}
+    response = await live.publish("ann", "light", "debridpulse-light")
+    assert response.status_code >= 500
     assert await _row() == [(1, "dark", "dracula")]
+    assert await account_appearance.load(live.people["ann"].id) == {
+        "mode": "light", "dark_palette": "dracula", "light_palette": "debridpulse-light"}
 
 
 @pytest.mark.parametrize("first", ["ann", "admin"])
-async def test_two_admins_writing_at_once_serialize_and_the_last_commit_wins_whole(live, monkeypatch, first):
+async def test_two_admins_publishing_at_once_serialize_and_the_last_commit_wins_whole(live, monkeypatch, first):
     """Real concurrent transactions on the real database: the first Admin's
-    write holds SQLite's write lock while the second Admin's write waits in
+    publication holds SQLite's write lock while the second waits in
     ``BEGIN IMMEDIATE``; the second commits last and its whole pair is the
     login appearance -- never one Admin's mode with the other's palette."""
     second = "admin" if first == "ann" else "ann"
     ids = {name: live.people[name].id for name in ("ann", "admin")}
-    pairs = {first: account_appearance.AppearanceUpdate(mode="light", light_palette="rose-pine-dawn"),
-             second: account_appearance.AppearanceUpdate(dark_palette="synthwave-84")}
+    await account_appearance.update(ids[first], account_appearance.AppearanceUpdate(mode="light", light_palette="rose-pine-dawn"))
+    await account_appearance.update(ids[second], account_appearance.AppearanceUpdate(dark_palette="synthwave-84"))
+    shown = {first: account_appearance.LoginAppearance(mode="light", palette="rose-pine-dawn"),
+             second: account_appearance.LoginAppearance(mode="dark", palette="synthwave-84")}
     holding, release = asyncio.Event(), asyncio.Event()
     commits = []
     project = account_appearance._project
@@ -244,9 +248,9 @@ async def test_two_admins_writing_at_once_serialize_and_the_last_commit_wins_who
         commits.append(pair)
 
     monkeypatch.setattr(account_appearance, "_project", paced)
-    one = asyncio.create_task(account_appearance.update(ids[first], pairs[first]))
+    one = asyncio.create_task(account_appearance.publish(ids[first], shown[first]))
     await asyncio.wait_for(holding.wait(), 5)
-    two = asyncio.create_task(account_appearance.update(ids[second], pairs[second]))
+    two = asyncio.create_task(account_appearance.publish(ids[second], shown[second]))
     await asyncio.sleep(0.3)
     assert not two.done()                                  # serialized behind the first transaction
     release.set()
@@ -255,15 +259,47 @@ async def test_two_admins_writing_at_once_serialize_and_the_last_commit_wins_who
     assert commits == [("light", "rose-pine-dawn"), ("dark", "synthwave-84")]
     assert await _row() == [(1, "dark", "synthwave-84")]
     assert await _login(live.client) == {"mode": "dark", "palette": "synthwave-84"}
-    assert (await account_appearance.load(ids[first]))["light_palette"] == "rose-pine-dawn"
-    assert (await account_appearance.load(ids[second]))["dark_palette"] == "synthwave-84"
+
+
+async def test_a_choice_saved_while_a_publication_waits_is_not_published_in_its_place(live, monkeypatch):
+    """The fence: the publication carries the pair the interface showed; a
+    newer choice that commits first makes it stale, and it is refused rather
+    than publishing a pair other than the one on screen."""
+    ann = live.people["ann"].id
+    await account_appearance.update(ann, account_appearance.AppearanceUpdate(dark_palette="dracula"))
+    entered, release = asyncio.Event(), asyncio.Event()
+    publishes = account_appearance._publishes_login
+
+    async def held(db, account_id):
+        entered.set()
+        await release.wait()
+        return await publishes(db, account_id)
+
+    # A newer choice commits before the publication's transaction begins.
+    await account_appearance.update(ann, account_appearance.AppearanceUpdate(dark_palette="gruvbox-dark"))
+    with pytest.raises(account_appearance.LoginAppearanceStale):
+        await account_appearance.publish(ann, account_appearance.LoginAppearance(mode="dark", palette="dracula"))
+    # A newer choice waiting on the publication's lock commits after it: the published pair is the shown one.
+    monkeypatch.setattr(account_appearance, "_publishes_login", held)
+    publication = asyncio.create_task(account_appearance.publish(ann, account_appearance.LoginAppearance(
+        mode="dark", palette="gruvbox-dark")))
+    await asyncio.wait_for(entered.wait(), 5)
+    later = asyncio.create_task(account_appearance.update(ann, account_appearance.AppearanceUpdate(dark_palette="ayu-mirage")))
+    await asyncio.sleep(0.3)
+    assert not later.done()
+    release.set()
+    assert await asyncio.wait_for(publication, 30) == {"mode": "dark", "palette": "gruvbox-dark"}
+    await asyncio.wait_for(later, 30)
+    assert await _row() == [(1, "dark", "gruvbox-dark")]
+    assert (await account_appearance.load(ann))["dark_palette"] == "ayu-mirage"
 
 
 # ── the row's lifetime ──────────────────────────────────────────────────────
 
-async def test_the_selection_is_the_installations_after_the_admin_is_gone(live):
+async def test_the_publication_is_the_installations_after_the_admin_is_gone(live):
     ann = live.people["ann"].id
     await live.choose("ann", mode="light", light_palette="everforest-light")
+    await live.publish("ann", "light", "everforest-light")
     chosen = {"mode": "light", "palette": "everforest-light"}
     await accounts.set_role(DEFAULT_ADMIN_ID, ann, "user")
     assert await _login(live.client) == chosen
@@ -276,19 +312,19 @@ async def test_the_selection_is_the_installations_after_the_admin_is_gone(live):
     await accounts.merge_accounts(DEFAULT_ADMIN_ID, [duplicate], ann)
     await accounts.delete_account(DEFAULT_ADMIN_ID, ann)
     assert await _login(live.client) == chosen
-    # A later eligible Admin's selection replaces it.
+    # A later Admin's publication replaces it.
     await live.choose("admin", dark_palette="oxocarbon-dark")
+    await live.publish("admin", "dark", "oxocarbon-dark")
     assert await _login(live.client) == {"mode": "dark", "palette": "oxocarbon-dark"}
 
 
-async def test_years_of_selections_are_one_row_of_mode_and_palette(live):
+async def test_years_of_publications_are_one_row_of_mode_and_palette(live):
     admin = DEFAULT_ADMIN_ID
     for index in range(120):
-        light = index % 2 == 0
-        await account_appearance.update(admin, account_appearance.AppearanceUpdate(
-            mode="light" if light else "dark",
-            **({"light_palette": account_appearance.PALETTES["light"][index % 10]} if light
-               else {"dark_palette": account_appearance.PALETTES["dark"][index % 10]})))
+        mode = "light" if index % 2 == 0 else "dark"
+        palette = account_appearance.PALETTES[mode][index % 10]
+        await account_appearance.update(admin, account_appearance.AppearanceUpdate(mode=mode, **{f"{mode}_palette": palette}))
+        await account_appearance.publish(admin, account_appearance.LoginAppearance(mode=mode, palette=palette))
     with sqlite3.connect(database.DB_PATH) as conn:
         assert [row[1] for row in conn.execute("PRAGMA table_info(login_appearance)")] == ["id", "mode", "palette"]
         assert conn.execute("SELECT count(*) FROM login_appearance").fetchone() == (1,)
@@ -297,6 +333,7 @@ async def test_years_of_selections_are_one_row_of_mode_and_palette(live):
 
 async def test_the_wipe_keeps_the_login_appearance(live):
     await live.choose("ann", mode="light", light_palette="ayu-light")
+    await live.publish("ann", "light", "ayu-light")
     result = await db_maintenance.wipe_database(verified_quiesced=True)
     assert result["ok"] is True and "login_appearance" not in result["wiped_tables"]
     assert await _row() == [(1, "light", "ayu-light")]
@@ -306,6 +343,7 @@ async def test_the_wipe_keeps_the_login_appearance(live):
 
 async def test_the_sign_in_pages_read_the_one_row_and_no_account(live, monkeypatch):
     await live.choose("ann", dark_palette="kanagawa-wave")
+    await live.publish("ann", "dark", "kanagawa-wave")
     await accounts.delete_account(DEFAULT_ADMIN_ID, live.people["ann"].id)    # its selector is gone
     statements = []
     configure = database._configure_sqlite_connection
@@ -367,6 +405,7 @@ async def test_the_page_keeps_its_security_contract_and_no_browser_authority(liv
     from api import auth_routes
 
     await live.choose("ann", mode="light", light_palette="bluloco-light")
+    await live.publish("ann", "light", "bluloco-light")
     page = await live.client.get("/login")
     csp = page.headers["content-security-policy"]
     script = auth_routes._AUTH_PAGE_SCRIPT
@@ -430,7 +469,7 @@ async def test_the_inline_marks_are_the_canonical_logo(live):
 
 # ── the page's artwork and version ──────────────────────────────────────────
 
-async def test_the_wave_field_is_continuous_and_the_version_belongs_to_the_card(live):
+async def test_the_wave_field_is_continuous_and_the_version_follows_the_card(live):
     from api import auth_routes
 
     backdrop = auth_routes._AUTH_BACKDROP_HTML
@@ -446,6 +485,6 @@ async def test_the_wave_field_is_continuous_and_the_version_belongs_to_the_card(
              (await auth_routes._state_free_auth_page(message="Try again shortly.", status_code=429)).body.decode()]
     for page in pages:
         assert page.count('class="version"') == 1
-        card = page.split('<main class="card">', 1)[1].split("</main>", 1)[0]
-        assert re.search(r'<div class="version">v[^<]+</div>\s*$', card)               # the card's last child
-        assert '<div class="version">' not in page.split('<main class="card">', 1)[0]
+        before, card, after = re.split(r'<main class="card">|</main>', page)
+        assert 'class="version"' not in before + card                                  # not in the card
+        assert re.match(r'\s*<div class="version">v[^<]+</div>\s*</body>', after)      # the card's next sibling
