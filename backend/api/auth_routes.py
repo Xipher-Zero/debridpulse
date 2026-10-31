@@ -192,7 +192,7 @@ body::after {
 }
 .card > * { position:relative;z-index:1; }
 .brand-lockup { position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 0 22px; }
-.brand-pulse { position:absolute;z-index:0;top:3px;left:50%;transform:translateX(-50%);width:min(620px,96%);height:118px;opacity:.98; }
+.brand-pulse { position:absolute;z-index:0;top:3px;left:50%;transform:translateX(-50%);width:min(620px,96%);height:118px;opacity:.98;-webkit-mask-image:linear-gradient(90deg,transparent,#000 16%,#000 84%,transparent);mask-image:linear-gradient(90deg,transparent,#000 16%,#000 84%,transparent); }
 .brand-pulse .grid { stroke:var(--border);stroke-width:.65;opacity:.18; }.brand-pulse .pulse-left { stroke:var(--wave-purple); }.brand-pulse .pulse-right { stroke:var(--wave-blue); }
 .brand-pulse .pulse-left,.brand-pulse .pulse-right { fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 8px currentColor) drop-shadow(0 0 15px currentColor); }
 .brand-pulse .pulse-ghost { fill:none;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;opacity:.11;filter:blur(2px); }
@@ -289,8 +289,13 @@ _AUTH_BACKDROP_HTML = """<svg class="auth-backdrop" viewBox="0 0 1600 900" prese
   </g>
 </svg>"""
 
-_BRAND_PULSE_LEFT = "M8 60 H118 L130 60 L140 69 L152 47 L164 67 L177 42 L190 63 L202 54 L211 60 L219 25 L228 101 L239 13 L249 108 L261 32 L272 82 L283 49 L292 60"
-_BRAND_PULSE_RIGHT = "M308 60 L318 60 L327 37 L337 86 L348 19 L359 103 L370 31 L382 79 L394 46 L407 67 L420 51 L434 62 L449 43 L463 60 H592"
+# The ECG trace behind the sign-in mark: one rhythm strip on its baseline
+# (y 60), a heartbeat on each side -- P wave, QRS, T wave -- clear of the mark
+# at every width, its baseline running on under the mark to the centre, where
+# the purple and blue halves meet unseen. The strip's ends fade out with it
+# (.brand-pulse mask), so neither the line nor its glow stops at an edge.
+_BRAND_PULSE_LEFT = "M0 60 H104 C108 60 110 51 114 51 C118 51 120 60 124 60 H132 L136 66 L143 24 L150 84 L155 60 H166 C172 60 175 46 182 46 C189 46 192 60 198 60 H300"
+_BRAND_PULSE_RIGHT = "M300 60 H402 C406 60 408 51 412 51 C416 51 418 60 422 60 H430 L434 66 L441 24 L448 84 L453 60 H464 C470 60 473 46 480 46 C487 46 490 60 496 60 H600"
 _BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidden="true">
   <g class="grid"><path d="M0 60h600"/><path d="M60 14v92M120 14v92M180 14v92M240 14v92M300 14v92M360 14v92M420 14v92M480 14v92M540 14v92"/></g>
   <path class="pulse-left pulse-ghost" d="{_BRAND_PULSE_LEFT}"/>

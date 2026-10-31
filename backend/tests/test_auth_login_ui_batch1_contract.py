@@ -66,11 +66,34 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'class="particle twinkle"' in source
     assert source.count('<circle ') >= 60
 
-    # The brand sparkline is deliberately dramatic rather than a small squiggle:
-    # tall ECG-like excursions approach the logo from both sides and a broad
+    # The brand trace is one ECG rhythm strip: a heartbeat (P wave, QRS, T
+    # wave) on each side of the mark, clear of it, on one baseline that runs
+    # on under the mark to the centre where the halves meet; its excursions
+    # stay inside the drawing (the glow is never cut at its box), and the
+    # strip's ends fade out with it rather than stopping at an edge. A broad
     # ghost stroke provides the luminous mockup-style halo.
-    assert '_BRAND_PULSE_LEFT = "M8 60 H118' in source
-    assert '_BRAND_PULSE_RIGHT = "M308 60' in source
+    def points(path):
+        drawn, y = [], None
+        for command, args in re.findall(r"([MHLC])([^MHLC]*)", path):
+            values = [float(n) for n in args.split()]
+            if command == "H":
+                drawn.append((values[0], y))
+            else:
+                pairs = list(zip(values[0::2], values[1::2]))
+                drawn.extend(pairs)
+                y = pairs[-1][1]
+        return drawn
+    left, right = points(auth_routes._BRAND_PULSE_LEFT), points(auth_routes._BRAND_PULSE_RIGHT)
+    assert (left[0], left[-1], right[0], right[-1]) == ((0, 60), (300, 60), (300, 60), (600, 60))
+    for half in (left, right):
+        xs = [x for x, _ in half]
+        assert xs == sorted(xs)                                   # a strip only runs forward
+        assert all(24 <= y <= 84 for _, y in half)                # glow never meets the drawing's edge
+    beat = lambda half: [(x - half[1][0], y) for x, y in half[1:-1]]
+    assert beat(left) == beat(right) and len(beat(left)) == 19    # the same heartbeat each side
+    assert left[-2][0] <= 210 and right[1][0] >= 390               # clear of the mark, the baseline running on under it
+    pulse = source[source.index(".brand-pulse { "):].split("}", 1)[0]
+    assert "mask-image:linear-gradient(90deg,transparent,#000 16%,#000 84%,transparent)" in pulse
     assert 'class="pulse-left pulse-ghost"' in source
     assert 'class="pulse-right pulse-ghost"' in source
     assert 'stroke-width:2.6' in source
