@@ -292,6 +292,18 @@ body.light,
   --dp-chrome-version-text: #aeb5d1;
   --dp-chrome-version-glow: 0 1px 5px rgba(0, 0, 0, .42), 0 0 8px rgba(124, 92, 246, .10);
   --dp-chrome-signal-filter: saturate(1.10) drop-shadow(0 0 10px rgba(124, 58, 237, .12));
+  /* The sidebar signal field's tones and the title waveform's colours
+     (ui-shell-signal-field.css, ui-shell.css): the artwork's own, in both
+     native modes; an alternative palette states its own (ui-theme-palettes.css). */
+  --dp-chrome-signal-purple: #8b5cf6;
+  --dp-chrome-signal-purple-bright: #a855f7;
+  --dp-chrome-signal-purple-deep: #7c3aed;
+  --dp-chrome-signal-blue: #3b82f6;
+  --dp-chrome-signal-blue-bright: #4f8cff;
+  --dp-chrome-signal-blue-deep: #2563eb;
+  --dp-chrome-pulse-start: #b45cff;
+  --dp-chrome-pulse-mid: #7a4dff;
+  --dp-chrome-pulse-end: #3d94ff;
   --dp-chrome-sidebar-divider: rgba(118, 131, 185, .15);
   --dp-chrome-scrim: rgba(5, 8, 20, .74);
 }

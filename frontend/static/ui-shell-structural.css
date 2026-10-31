@@ -38,8 +38,7 @@ body {
   overflow: hidden;
 }
 
-#sidebar::before {
-  content: '';
+#sidebar > .dp-signal-field {
   position: absolute;
   left: -72px;
   right: -45px;
@@ -244,7 +243,8 @@ body.light .conn-row .dot {
   height: 19px;
   margin-left: 4px;
   opacity: .85;
-  filter: saturate(1.15) drop-shadow(0 0 6px rgba(155, 78, 255, .34));
+  /* Its glow is the mask's #glow halo (ui-shell.css). */
+  filter: saturate(1.15);
 }
 .dp-page-subtitle {
   margin: 9px 0 0;
@@ -702,11 +702,11 @@ body.light #page-title {
     0 2px 5px rgba(58, 64, 96, .17),
     0 1px 0 rgba(255,255,255,.78);
 }
+/* Light's shade and glow: the mask's #glow-light halo (ui-shell.css). */
 body.light #page-title::after {
-  filter:
-    saturate(1.16)
-    drop-shadow(0 2px 3px rgba(103, 67, 205, .18))
-    drop-shadow(0 0 7px rgba(156, 78, 255, .25)) !important;
+  filter: saturate(1.16) !important;
+  -webkit-mask-image: url('/icons/dp/shell-pulse.svg?v=2'), url('/icons/dp/shell-pulse.svg?v=2#glow-light');
+  mask-image: url('/icons/dp/shell-pulse.svg?v=2'), url('/icons/dp/shell-pulse.svg?v=2#glow-light');
 }
 
 /* Canonical viewport canvas and selected-rail base retained from Dashboard
@@ -735,7 +735,7 @@ body.light {
 #content {
   background: transparent !important;
 }
-#sidebar::before {
+#sidebar > .dp-signal-field {
   z-index: 0;
   left: 0;
   right: 0;

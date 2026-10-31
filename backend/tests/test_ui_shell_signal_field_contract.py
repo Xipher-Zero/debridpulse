@@ -1,5 +1,6 @@
 """Final-state contract for the shell version datum and signal field."""
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -61,11 +62,26 @@ def test_the_one_version_datum_follows_the_active_master_surface_never_the_windo
 def test_sidebar_signal_field_keeps_accepted_vector_geometry() -> None:
     css = read(SIGNAL)
     wave = read(WAVE)
-    assert "url('/icons/dp/sidebar-wave-accent.svg?v=3')" in css
+    # 1.0.14: the file is drawn inline (<dp-signal-field>, one in the sidebar
+    # and one in the dock), so the palette in force colours it; no stylesheet
+    # draws it as an image, and the former pseudo-elements are gone.
+    index = read(STATIC / "index.html")
+    assert index.count('<dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>') == 2
+    assert '<aside id="sidebar">\n  <dp-signal-field' in index
+    assert '<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"><dp-signal-field' in index
+    for name in ("ui-shell-signal-field.css", "ui-shell-structural.css", "ui-shell-mobile.css"):
+        sheet = read(STATIC / name)
+        assert "url('/icons/dp/sidebar-wave-accent.svg" not in sheet and "#sidebar::before" not in sheet and "dock::before" not in sheet, name
+    assert "#sidebar > .dp-signal-field {" in css and "background: none !important" in css
     assert "height: 300px !important" in css
     assert "opacity: .72 !important" in css
-    assert "body.light #sidebar::before" in css
+    assert "body.light #sidebar > .dp-signal-field" in css
     assert "opacity: .34 !important" in css
+    # Every colour of the artwork is a tone the stylesheet colours, and nothing else.
+    tones = set(re.findall(r'class="(dp-signal-[a-z-]+)"', wave))
+    assert tones == {"dp-signal-purple", "dp-signal-purple-bright", "dp-signal-purple-deep",
+                     "dp-signal-blue", "dp-signal-blue-bright", "dp-signal-blue-deep"}
+    assert tones == set(re.findall(r"^\.(dp-signal-[a-z-]+) \{", css, re.M))
     assert "mask-image:" in css
     assert wave.count("<path ") >= 7
     assert wave.count("<circle ") >= 32

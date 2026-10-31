@@ -85,6 +85,9 @@ def _projection(script: str) -> dict:
     # The product logo is served first (its proof: test_login_appearance.py).
     logo, _, script = script.partition("\n")
     assert re.fullmatch(r'window\.debridPulseLogo=".*";', logo), logo[:80]
+    # Then the sidebar's signal field (its proof: test_ui_shell_signal_field_contract.py).
+    field, _, script = script.partition("\n")
+    assert re.fullmatch(r'window\.debridPulseSignalField=".*";', field), field[:80]
     head, _, rest = script.partition("\n")
     match = re.fullmatch(r"window\.debridPulseAppearance=Object\.freeze\((.*)\);", head)
     assert match, head

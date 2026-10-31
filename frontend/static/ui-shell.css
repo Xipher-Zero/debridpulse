@@ -277,6 +277,14 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
   letter-spacing: -.025em;
   color: var(--dp-text-primary);
 }
+/* The title's waveform: icons/dp/shell-pulse.svg is its shape, fade and
+   halo, as a mask -- the file itself (sharp) over its #glow state (the halo
+   alone; DebridPulse Light's is #glow-light, ui-shell-structural.css) -- and
+   the palette in force is its colour (--dp-chrome-pulse-*: the file's own
+   purple to blue natively). An image cannot take the page's colours, and a
+   drop-shadow would be masked away, so the halo is the file's. The stops sit
+   where the file's own lie in the drawn box (contain, 105 x 19: 9.3% each
+   side). */
 #page-title::after {
   content: '';
   display: inline-block;
@@ -285,7 +293,9 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
   margin-left: 8px;
   vertical-align: -1px;
   opacity: .52;
-  background: url('/icons/dp/shell-pulse.svg') center / contain no-repeat;
+  background: linear-gradient(90deg, var(--dp-chrome-pulse-start) 27.2%, var(--dp-chrome-pulse-mid) 59.8%, var(--dp-chrome-pulse-end) 90.7%);
+  -webkit-mask: url('/icons/dp/shell-pulse.svg?v=2') center / contain no-repeat, url('/icons/dp/shell-pulse.svg?v=2#glow') center / contain no-repeat;
+  mask: url('/icons/dp/shell-pulse.svg?v=2') center / contain no-repeat, url('/icons/dp/shell-pulse.svg?v=2#glow') center / contain no-repeat;
 }
 
 #topbar-actions {

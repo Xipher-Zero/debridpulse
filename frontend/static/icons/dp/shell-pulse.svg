@@ -6,6 +6,28 @@
       <stop offset="0.62" stop-color="#7A4DFF"/>
       <stop offset="1" stop-color="#3D94FF" stop-opacity="0"/>
     </linearGradient>
+    <!-- The waveform's halo alone, for the application, which colours the
+         waveform through this file as a mask (ui-shell.css #page-title::after)
+         and lays the halo under it: opened as #glow (DebridPulse Dark's soft
+         glow) or #glow-light (Light's shade and glow), the path draws only the
+         glow the title's drop-shadows drew at 105 x 19. Opened without a
+         fragment the file is drawn exactly as before. -->
+    <filter id="halo" x="-10%" y="-60%" width="120%" height="220%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2.53"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".34"/></feComponentTransfer>
+    </filter>
+    <filter id="halo-light" x="-10%" y="-60%" width="120%" height="220%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.26"/>
+      <feOffset dy="1.68"/>
+      <feComponentTransfer result="shade"><feFuncA type="linear" slope=".18"/></feComponentTransfer>
+      <feMerge result="shaded"><feMergeNode in="shade"/><feMergeNode in="SourceGraphic"/></feMerge>
+      <feGaussianBlur in="shaded" stdDeviation="2.95"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".25"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="shade"/></feMerge>
+    </filter>
+    <style>#glow:target ~ path { filter: url(#halo); } #glow-light:target ~ path { filter: url(#halo-light); }</style>
   </defs>
+  <g id="glow"/>
+  <g id="glow-light"/>
   <path d="M1 8h12l3-4 4 9 4-12 4 14 5-9 4 4 4-7 4 10 5-5h17" stroke="url(#pulse)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

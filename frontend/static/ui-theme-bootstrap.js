@@ -30,7 +30,9 @@
  * The product logo is drawn here too, inline, so it follows the theme in force
  * (ui-logo.css): its one source, logo.svg, is served with this script
  * (window.debridPulseLogo) and <dp-logo> is defined before the body below is
- * parsed, so the sidebar's mark is drawn at first paint.
+ * parsed, so the sidebar's mark is drawn at first paint. The sidebar's signal
+ * field (icons/dp/sidebar-wave-accent.svg, window.debridPulseSignalField) is
+ * drawn the same way, as <dp-signal-field>, in the sidebar and the dock.
  */
 (function () {
   'use strict';
@@ -226,6 +228,22 @@
     customElements.define('dp-logo', class extends HTMLElement {
       connectedCallback() {
         if (!this.firstElementChild) this.innerHTML = LOGO;
+      }
+    });
+  }
+
+  // The sidebar's signal field, drawn inline the same way in the sidebar
+  // and the dock (ui-shell-signal-field.css colours it in the palette in
+  // force); each copy renames its ids, so neither draws with the other's
+  // gradients or filter.
+  const FIELD = typeof window.debridPulseSignalField === 'string' ? window.debridPulseSignalField : '';
+  if (FIELD && window.customElements && !customElements.get('dp-signal-field')) {
+    let copies = 0;
+    customElements.define('dp-signal-field', class extends HTMLElement {
+      connectedCallback() {
+        if (this.firstElementChild) return;
+        copies += 1;
+        this.innerHTML = FIELD.replace(/(id="|url\(#)dp-signal-field-/g, `$1dp-signal-field-${copies}-`);
       }
     });
   }

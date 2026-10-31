@@ -7,9 +7,10 @@
  * and only ever recolours decorative tokens: surfaces, text, borders and the
  * interaction accent. Semantic state colours (--dp-state-*), progress state,
  * provider and protocol identities (--dp-identity-*) and --dp-accent-cyan
- * (Statistics' Network series) are never declared here; nor is the sidebar
- * signal field's filter (--dp-chrome-signal-filter): that artwork is
- * DebridPulse's own, and keeps its native colours and per-mode emphasis.
+ * (Statistics' Network series) are never declared here. The decorative
+ * artwork -- the sidebar's signal field and the title's waveform -- takes the
+ * palette's accents (the derived blocks below), keeping its own shapes,
+ * opacities and per-mode emphasis.
  *
  * Each palette states its core tokens once, on the body that carries it and
  * on its own swatch in the theme picker, so the swatch shows the applied
@@ -749,6 +750,19 @@ body[data-dp-palette] {
   --dp-chrome-progress-track: var(--dp-surface-3);
   --dp-chrome-input-surface: var(--dp-surface-input);
   --dp-chrome-notice-region: var(--dp-surface-2);
+  /* The signal field's purple and blue tones are the accents; a deep tone is
+     its accent 12% darker in OKLab, as the artwork's own deep tones are
+     10.6% (purple) and 12.4% (blue) below their base in OKLab lightness. The
+     title waveform runs the bright accents, through their mix. */
+  --dp-chrome-signal-purple: var(--dp-accent-purple);
+  --dp-chrome-signal-purple-bright: var(--dp-accent-purple-bright);
+  --dp-chrome-signal-purple-deep: color-mix(in oklab, var(--dp-accent-purple), #000 12%);
+  --dp-chrome-signal-blue: var(--dp-accent-blue);
+  --dp-chrome-signal-blue-bright: var(--dp-accent-blue-bright);
+  --dp-chrome-signal-blue-deep: color-mix(in oklab, var(--dp-accent-blue), #000 12%);
+  --dp-chrome-pulse-start: var(--dp-accent-purple-bright);
+  --dp-chrome-pulse-mid: color-mix(in srgb, var(--dp-accent-purple-bright), var(--dp-accent-blue-bright));
+  --dp-chrome-pulse-end: var(--dp-accent-blue-bright);
 }
 
 /* Depth differs by mode: a dark palette darkens, a light one tints. */
@@ -764,6 +778,7 @@ body:not(.light)[data-dp-palette] {
   --dp-segment-active-text: var(--dp-accent-contrast);
   --dp-chrome-sidebar-panel-shadow: 0 10px 28px rgba(0, 0, 0, .25);
   --dp-chrome-scrim: color-mix(in srgb, var(--dp-bg-app) 74%, transparent);
+  --dp-chrome-signal-filter: saturate(1.10) drop-shadow(0 0 10px color-mix(in srgb, var(--dp-chrome-signal-purple-deep) 12%, transparent));
 }
 
 body.light[data-dp-palette] {
@@ -778,4 +793,5 @@ body.light[data-dp-palette] {
   --dp-segment-active-text: var(--dp-accent-purple);
   --dp-chrome-sidebar-panel-shadow: var(--dp-shadow-raised);
   --dp-chrome-scrim: color-mix(in srgb, var(--dp-text-primary) 28%, transparent);
+  --dp-chrome-signal-filter: saturate(.92) drop-shadow(0 0 8px color-mix(in srgb, var(--dp-chrome-signal-purple-deep) 5.5%, transparent));
 }

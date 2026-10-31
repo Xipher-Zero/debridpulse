@@ -14,6 +14,7 @@
 <script src="/ui-theme-bootstrap.js?v=21"></script>
 
 <aside id="sidebar">
+  <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
   <div class="logo" onclick="nav(document.querySelector('#sidebar .nav-item[data-view=dashboard]'), event)">
     <dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo"></dp-logo>
     <div class="logo-text">
@@ -540,7 +541,7 @@
   </div>
   <!-- The handheld dock (below 780px): app.js renders it from the authorized
        sidebar entries above, in their data-dock order; More holds the rest. -->
-  <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"></nav>
+  <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"><dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field></nav>
   <div id="shell-more" class="dp-shell-sheet dp-shell-sheet--up" popover="manual" role="dialog" aria-labelledby="shell-more-title">
     <div class="dp-shell-sheet-panel">
       <div class="dp-shell-sheet-title" id="shell-more-title">More</div>

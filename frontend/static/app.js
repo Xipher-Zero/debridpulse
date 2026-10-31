@@ -213,7 +213,10 @@ function renderShellDock() {
   if (!dock || !list) return;
   const overflow = _shellMoreEntries.length > 0;
   const direct = overflow ? _shellDockEntries.slice(0, 4) : _shellDockEntries;
-  dock.replaceChildren(...direct.map(entry => {
+  // The dock's signal field (index.html, <dp-signal-field>) stays its first
+  // child through every rebuild: one field, drawn once.
+  const field = dock.querySelector(':scope > dp-signal-field');
+  dock.replaceChildren(...(field ? [field] : []), ...direct.map(entry => {
     const button = shellDockButton(entry, 'dp-shell-dock-item');
     // The Downloads count is the sidebar's (#nb-active): showDownloadsBadge() writes both.
     if (entry.querySelector('#nb-active')) {

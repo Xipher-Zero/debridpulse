@@ -340,9 +340,15 @@ def _logo_svg(prefix: str, *, class_name: str = "") -> str:
     gradients. Beside the DebridPulse wordmark (or a labelled host) it is
     decorative: hidden from assistive technology, without its title or
     description, which would also draw a native tooltip."""
-    source = _static_asset("logo.svg").read_text(encoding="utf-8").strip()
+    return _inline_svg(_static_asset("logo.svg"), prefix, class_name=class_name)
+
+
+def _inline_svg(asset: Path, prefix: str, *, class_name: str = "") -> str:
+    """A shipped, decorative drawing made inline (the logo; the sidebar's
+    signal field, which ui-shell-signal-field.css colours the same way)."""
+    source = asset.read_text(encoding="utf-8").strip()
     if not source.startswith("<svg ") or not source.endswith("</svg>") or _LOGO_REFUSED.search(source):
-        raise RuntimeError("logo.svg holds content that cannot be drawn inline")
+        raise RuntimeError(f"{asset.name} holds content that cannot be drawn inline")
     source = re.sub(r"<(title|desc)\b[^>]*>.*?</\1>\s*", "", source, flags=re.S)
     for name in re.findall(r'\sid="([A-Za-z][\w-]*)"', source):
         source = source.replace(f'id="{name}"', f'id="{prefix}-{name}"').replace(f"url(#{name})", f"url(#{prefix}-{name})")
@@ -385,6 +391,9 @@ def _auth_favicon_html() -> str:
 _AUTH_MARK_HTML = _logo_svg("dp-login-logo", class_name="brand-mark")
 # The sidebar's mark, served with the first-paint script (``theme_bootstrap_script``).
 _APP_LOGO_SVG = _logo_svg("dp-app-logo")
+# The sidebar's signal field, served with it; each <dp-signal-field> renames
+# the "dp-signal-field" ids for itself (ui-theme-bootstrap.js).
+_SIGNAL_FIELD_SVG = _inline_svg(_static_asset("icons/dp/sidebar-wave-accent.svg"), "dp-signal-field")
 # The logo's colours, and the alternative palettes' values (inlined only while
 # one is the login appearance): the application's own stylesheets.
 _AUTH_LOGO_STYLE = _style_source("ui-logo.css")
@@ -664,13 +673,16 @@ async def theme_bootstrap_script(request: Request):
     palette -- no native-dark frame for a Light account, and no other
     account's or browser's choice. It is per-request and never stored. The
     product logo's one source comes with it (``window.debridPulseLogo``), so
-    the sidebar draws it inline, in the theme in force, at first paint."""
+    the sidebar draws it inline, in the theme in force, at first paint; so
+    does the sidebar's signal field (``window.debridPulseSignalField``)."""
     principal = getattr(request.state, "principal", Principal.anonymous())
     appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
     script = _static_asset("ui-theme-bootstrap.js").read_text(encoding="utf-8")
     logo = json.dumps(_APP_LOGO_SVG).replace("<", "\\u003c")
+    field = json.dumps(_SIGNAL_FIELD_SVG).replace("<", "\\u003c")
     response = Response(
-        content=f"window.debridPulseLogo={logo};\nwindow.debridPulseAppearance=Object.freeze({appearance});\n{script}",
+        content=(f"window.debridPulseLogo={logo};\nwindow.debridPulseSignalField={field};\n"
+                 f"window.debridPulseAppearance=Object.freeze({appearance});\n{script}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"

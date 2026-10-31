@@ -29,21 +29,26 @@ body.light #content > #sidebar-version.dp-app-version {
 /* One authored signal field with mixed amplitudes/frequencies, crossing paths,
    sparse bright nodes and an intentional lower-left to upper-right envelope.
    The paths remain vertically separated rather than collapsing into a single
-   fibre bundle. Both themes share the same geometry; only emphasis changes. */
-#sidebar::before {
+   fibre bundle. Both themes share the same geometry; only emphasis changes.
+   It is icons/dp/sidebar-wave-accent.svg drawn inline (<dp-signal-field>,
+   ui-theme-bootstrap.js), here and in the handheld dock (ui-shell-mobile.css),
+   so the palette in force colours it: each of its colours is a tone, purple
+   or blue, base, bright or deep (--dp-chrome-signal-*, ui-language-tokens.css
+   natively, ui-theme-palettes.css for an alternative palette). */
+#sidebar > .dp-signal-field {
   left: -28px !important;
   right: -20px !important;
   bottom: 205px !important;
   height: 300px !important;
   opacity: .72 !important;
-  background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center / 100% 100% no-repeat !important;
+  background: none !important;
   transform: none !important;
   mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
   filter: var(--dp-chrome-signal-filter);
 }
 
-body.light #sidebar::before {
+body.light #sidebar > .dp-signal-field {
   opacity: .34 !important;
   filter: var(--dp-chrome-signal-filter);
 }
@@ -52,8 +57,18 @@ body.light #sidebar::before {
    sidebar width: the compact rail (ui-shell-structural.css) and its width
    transitions clip it, never squeeze it. */
 @media (min-width: 780px) {
-  #sidebar::before {
+  #sidebar > .dp-signal-field {
     right: auto !important;
     width: calc(var(--dp-shell-sidebar-full) + 48px);
   }
 }
+
+/* The field's drawing fills its box (the file's own preserveAspectRatio:
+   none, as the former 100% 100% background), and each tone takes its token. */
+.dp-signal-field > svg { display: block; width: 100%; height: 100%; }
+.dp-signal-purple { stop-color: var(--dp-chrome-signal-purple); fill: var(--dp-chrome-signal-purple); }
+.dp-signal-purple-bright { stop-color: var(--dp-chrome-signal-purple-bright); fill: var(--dp-chrome-signal-purple-bright); }
+.dp-signal-purple-deep { stop-color: var(--dp-chrome-signal-purple-deep); fill: var(--dp-chrome-signal-purple-deep); }
+.dp-signal-blue { stop-color: var(--dp-chrome-signal-blue); fill: var(--dp-chrome-signal-blue); }
+.dp-signal-blue-bright { stop-color: var(--dp-chrome-signal-blue-bright); fill: var(--dp-chrome-signal-blue-bright); }
+.dp-signal-blue-deep { stop-color: var(--dp-chrome-signal-blue-deep); fill: var(--dp-chrome-signal-blue-deep); }

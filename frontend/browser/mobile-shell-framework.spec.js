@@ -585,21 +585,31 @@ test.describe('handheld shell, open runtime (every capability)', () => {
         document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light}}));
       }, [light, palette]);
       const art = await page.locator('#shell-dock').evaluate(dock => {
-        const field = getComputedStyle(dock, '::before');
+        // The field is the artwork drawn inline (<dp-signal-field>), the dock's
+        // only one, so the palette in force colours it.
+        const host = dock.querySelector(':scope > .dp-signal-field');
+        const field = getComputedStyle(host);
+        const drawn = host.querySelector('svg').getBoundingClientRect(), own = host.getBoundingClientRect();
         const box = dock.getBoundingClientRect();
         const buttons = [...dock.querySelectorAll('button')];
         const turn = new DOMMatrixReadOnly(field.transform);
-        return {image: (field.backgroundImage.match(/sidebar-wave-accent\.svg/g) || []).length, size: field.backgroundSize,
+        const tone = name => getComputedStyle(host.querySelector(`stop.dp-signal-${name}`)).stopColor;
+        const accent = name => { const probe = document.createElement('i'); probe.style.color = `var(--dp-accent-${name})`; document.body.append(probe);
+          const value = getComputedStyle(probe).color; probe.remove(); return value; };
+        return {image: dock.querySelectorAll('dp-signal-field').length, size: `${Math.round(drawn.width / own.width * 100)}% ${Math.round(drawn.height / own.height * 100)}%`,
+          tones: [tone('purple'), tone('blue-bright')], accents: [accent('purple'), accent('blue-bright')],
           ratio: Math.round(parseFloat(field.width) / parseFloat(field.height) * 1000) / 1000,
           degrees: Math.round(Math.atan2(turn.b, turn.a) * 180 / Math.PI),
           covers: parseFloat(field.width) >= Math.min(box.width * 1.12, 440) - 0.5 && parseFloat(field.width) <= 440.5,
           events: field.pointerEvents, z: field.zIndex, opacity: Number(field.opacity), animation: field.animationName,
           height: Math.round(box.height), hits: buttons.every(b => { const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }),
-          sidebar: getComputedStyle(document.getElementById('sidebar'), '::before').backgroundImage.includes('sidebar-wave-accent.svg')};
+          sidebar: document.querySelectorAll('#sidebar > dp-signal-field').length === 1};
       });
       expect(art, `${light ? 'light' : 'dark'} ${palette || 'native'}`).toMatchObject({image: 1, size: '100% 100%', ratio: Math.round(320 / 300 * 1000) / 1000, degrees: 15, covers: true, events: 'none', z: '-2',
         animation: 'none', height: 59, hits: true, sidebar: true});
       expect(art.opacity).toBeLessThanOrEqual(light ? 0.13 : 0.22);   // faint: the artwork's own thin, translucent lines at about a third
+      // Natively the artwork's own purple and bright blue; in a palette, its accents.
+      expect(art.tones).toEqual(palette ? art.accents : ['rgb(139, 92, 246)', 'rgb(79, 140, 255)']);
       await page.screenshot({path: `test-results/checkpoint-mobile-dock-wave-${light ? 'light' : 'dark'}-${palette || 'native'}.png`,
         clip: {x: 0, y: 844 - 90, width: 390, height: 90}});
     }
