@@ -223,6 +223,7 @@ body[data-dp-palette] .primary { box-shadow:0 11px 28px color-mix(in srgb,var(--
 :root[data-theme="light"] .secondary { background:rgba(255,255,255,.40); }
 body:not(.light)[data-dp-palette] .secondary { background:color-mix(in srgb,var(--dp-bg-app) 27%,transparent); }
 .action-arrow { position:absolute;right:20px;width:21px;height:21px;color:var(--icon-accent-strong);opacity:.96; }
+.auth-action.primary .action-arrow { color:inherit;opacity:1; }
 .oidc-mark { position:absolute;left:18px;width:28px;height:28px;color:#fff;opacity:1; }
 .oidc.secondary .oidc-mark { color:var(--text); }
 body[data-dp-palette] .primary,body[data-dp-palette] .primary .oidc-mark { color:var(--dp-accent-contrast); }
