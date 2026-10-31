@@ -66,10 +66,11 @@ logger = logging.getLogger("debridpulse.auth")
 
 
 # The login page remains server-rendered and self-contained. The only executable
-# code is this tiny hash-pinned interaction shim: it restores the user's stored
-# palette and provides press-and-hold password reveal. It performs no network,
-# cookie, authentication-state, or token operations.
-_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";try{const t=localStorage.getItem(\"theme\");if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}catch(_){}document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-reveal]\"),p=document.getElementById(\"password\");if(!b||!p)return;const s=()=>{p.type=\"text\";b.setAttribute(\"aria-pressed\",\"true\");b.setAttribute(\"aria-label\",\"Release to hide password\")},h=()=>{p.type=\"password\";b.setAttribute(\"aria-pressed\",\"false\");b.setAttribute(\"aria-label\",\"Hold to show password\")};b.addEventListener(\"pointerdown\",a=>{if(a.pointerType===\"mouse\"&&a.button!==0)return;a.preventDefault();try{b.setPointerCapture(a.pointerId)}catch(_){}s()});b.addEventListener(\"pointerup\",a=>{h();try{b.releasePointerCapture(a.pointerId)}catch(_){}});b.addEventListener(\"pointercancel\",h);b.addEventListener(\"pointerleave\",()=>{if(b.getAttribute(\"aria-pressed\")==\"true\")h()});document.addEventListener(\"pointerup\",h,true);b.addEventListener(\"keydown\",a=>{if((a.key===\" \"||a.key===\"Enter\")&&!a.repeat){a.preventDefault();s()}});b.addEventListener(\"keyup\",a=>{if(a.key===\" \"||a.key===\"Enter\"){a.preventDefault();h()}});b.addEventListener(\"blur\",h);window.addEventListener(\"blur\",h);document.addEventListener(\"visibilitychange\",()=>{if(document.hidden)h()})})})();"""
+# code is this tiny hash-pinned interaction shim: press-and-hold password
+# reveal. It reads no stored state and performs no network, cookie,
+# authentication-state, or token operations. The page's theme is the
+# installation's login appearance, rendered by the server (``_login_shell``).
+_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-reveal]\"),p=document.getElementById(\"password\");if(!b||!p)return;const s=()=>{p.type=\"text\";b.setAttribute(\"aria-pressed\",\"true\");b.setAttribute(\"aria-label\",\"Release to hide password\")},h=()=>{p.type=\"password\";b.setAttribute(\"aria-pressed\",\"false\");b.setAttribute(\"aria-label\",\"Hold to show password\")};b.addEventListener(\"pointerdown\",a=>{if(a.pointerType===\"mouse\"&&a.button!==0)return;a.preventDefault();try{b.setPointerCapture(a.pointerId)}catch(_){}s()});b.addEventListener(\"pointerup\",a=>{h();try{b.releasePointerCapture(a.pointerId)}catch(_){}});b.addEventListener(\"pointercancel\",h);b.addEventListener(\"pointerleave\",()=>{if(b.getAttribute(\"aria-pressed\")==\"true\")h()});document.addEventListener(\"pointerup\",h,true);b.addEventListener(\"keydown\",a=>{if((a.key===\" \"||a.key===\"Enter\")&&!a.repeat){a.preventDefault();s()}});b.addEventListener(\"keyup\",a=>{if(a.key===\" \"||a.key===\"Enter\"){a.preventDefault();h()}});b.addEventListener(\"blur\",h);window.addEventListener(\"blur\",h);document.addEventListener(\"visibilitychange\",()=>{if(document.hidden)h()})})})();"""
 _AUTH_PAGE_SCRIPT_HASH = base64.b64encode(
     hashlib.sha256(_AUTH_PAGE_SCRIPT.encode("utf-8")).digest()
 ).decode("ascii")
@@ -82,12 +83,13 @@ _AUTH_PAGE_STYLE = """
   --card:rgba(10,16,33,.55);--card2:rgba(7,12,27,.40);--card-edge:rgba(139,105,224,.42);
   --field:rgba(7,13,29,.52);--border:rgba(125,145,195,.24);--border-strong:rgba(151,172,226,.38);
   --text:#f7f8ff;--text2:#bcc6e5;--text3:#8793ba;--accent:#b45cff;--accent2:#3d94ff;
-  --accent-rgb:155,69,255;--blue-rgb:61,148,255;--danger:#ff5264;
+  --accent-rgb:155,69,255;--danger:#ff5264;
   --icon-accent:#b0a3ff;--icon-accent-strong:#8bbcff;
   --glass-top:rgba(255,255,255,.13);--glass-line:rgba(255,255,255,.075);--glass-purple:rgba(180,92,255,.18);--glass-blue:rgba(42,148,255,.15);
   --primary-gradient:linear-gradient(100deg,#8c22ed 0%,#6c37f5 48%,#1688ff 100%);
   --primary-gradient-hover:linear-gradient(100deg,#a038ff 0%,#764cff 48%,#2497ff 100%);
   --wave-purple:#c13cff;--wave-blue:#1a98ff;--particle:rgba(142,157,255,.94);
+  --dust-1:rgba(176,133,255,.90);--dust-2:rgba(77,163,255,.78);--dust-3:rgba(198,208,255,.58);
   --shadow:0 32px 90px rgba(0,0,12,.52),0 12px 34px rgba(0,0,10,.30);--input-shadow:inset 0 1px 0 rgba(255,255,255,.035);
 }
 :root[data-theme="light"] {
@@ -96,7 +98,7 @@ _AUTH_PAGE_STYLE = """
   --card:rgba(255,255,255,.55);--card2:rgba(249,251,255,.35);--card-edge:rgba(126,98,216,.27);
   --field:rgba(255,255,255,.50);--border:rgba(111,132,183,.24);--border-strong:rgba(103,132,203,.38);
   --text:#111a34;--text2:#526184;--text3:#7583a8;--accent:#9637f5;--accent2:#2f86ff;
-  --accent-rgb:132,40,237;--blue-rgb:47,134,255;--danger:#e64255;
+  --accent-rgb:132,40,237;--danger:#e64255;
   --icon-accent:#7868e4;--icon-accent-strong:#3f88f5;
   --glass-top:rgba(255,255,255,.88);--glass-line:rgba(255,255,255,.66);--glass-purple:rgba(161,91,255,.13);--glass-blue:rgba(66,150,255,.14);
   --primary-gradient:linear-gradient(100deg,#8f25ee 0%,#6d42f4 48%,#1688ff 100%);
@@ -104,21 +106,25 @@ _AUTH_PAGE_STYLE = """
   --wave-purple:#a94cf8;--wave-blue:#4b94ff;--particle:rgba(94,108,218,.66);
   --shadow:0 28px 72px rgba(56,76,122,.16),0 8px 24px rgba(57,76,119,.09);--input-shadow:inset 0 1px 0 rgba(255,255,255,.90);
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg:#f8f9ff;--bg2:#eef4ff;
-    --card:rgba(255,255,255,.55);--card2:rgba(249,251,255,.35);--card-edge:rgba(126,98,216,.27);
-    --field:rgba(255,255,255,.50);--border:rgba(111,132,183,.24);--border-strong:rgba(103,132,203,.38);
-    --text:#111a34;--text2:#526184;--text3:#7583a8;--accent:#9637f5;--accent2:#2f86ff;
-    --accent-rgb:132,40,237;--blue-rgb:47,134,255;--danger:#e64255;
-    --icon-accent:#7868e4;--icon-accent-strong:#3f88f5;
-    --glass-top:rgba(255,255,255,.88);--glass-line:rgba(255,255,255,.66);--glass-purple:rgba(161,91,255,.13);--glass-blue:rgba(66,150,255,.14);
-    --primary-gradient:linear-gradient(100deg,#8f25ee 0%,#6d42f4 48%,#1688ff 100%);
-    --primary-gradient-hover:linear-gradient(100deg,#7d1ed6 0%,#5d36df 48%,#0875e9 100%);
-    --wave-purple:#a94cf8;--wave-blue:#4b94ff;--particle:rgba(94,108,218,.66);
-    --shadow:0 28px 72px rgba(56,76,122,.16),0 8px 24px rgba(57,76,119,.09);--input-shadow:inset 0 1px 0 rgba(255,255,255,.90);
-  }
+/* An alternative palette (ui-theme-palettes.css, inlined with it) gives the
+   page's shared names (--bg, --text, --accent, --accent2, --border ...) its
+   own; these are the page's other decorative names, from the same core. The
+   error material and --danger keep DebridPulse's meaning. */
+body[data-dp-palette] {
+  --card:color-mix(in srgb,var(--dp-surface-1) 55%,transparent);--card2:color-mix(in srgb,var(--dp-bg-app) 40%,transparent);
+  --card-edge:color-mix(in srgb,var(--dp-accent-purple) 42%,transparent);
+  --field:color-mix(in srgb,var(--dp-surface-input) 52%,transparent);--border-strong:var(--dp-border-strong);
+  --icon-accent:var(--dp-accent-purple-bright);--icon-accent-strong:var(--dp-accent-blue-bright);
+  --glass-purple:color-mix(in srgb,var(--dp-accent-purple) 18%,transparent);--glass-blue:color-mix(in srgb,var(--dp-accent-blue) 15%,transparent);
+  --wave-purple:var(--dp-accent-purple);--wave-blue:var(--dp-accent-blue);
+  --particle:color-mix(in srgb,var(--dp-accent-blue-bright) 90%,transparent);
+  --dust-1:color-mix(in srgb,var(--dp-accent-purple-bright) 90%,transparent);--dust-2:color-mix(in srgb,var(--dp-accent-blue-bright) 78%,transparent);
+  --dust-3:color-mix(in srgb,var(--dp-text-secondary) 58%,transparent);
+}
+body.light[data-dp-palette] {
+  --card-edge:color-mix(in srgb,var(--dp-accent-purple) 27%,transparent);
+  --glass-purple:color-mix(in srgb,var(--dp-accent-purple) 13%,transparent);--glass-blue:color-mix(in srgb,var(--dp-accent-blue) 14%,transparent);
+  --particle:color-mix(in srgb,var(--dp-accent-blue) 66%,transparent);
 }
 * { box-sizing:border-box; }
 html,body { min-height:100%; }
@@ -128,18 +134,18 @@ body {
   font-family:Outfit,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   background:
     radial-gradient(ellipse at -4% 52%,rgba(var(--accent-rgb),.42) 0%,rgba(var(--accent-rgb),.17) 25%,transparent 45%),
-    radial-gradient(ellipse at 104% 50%,rgba(var(--blue-rgb),.40) 0%,rgba(var(--blue-rgb),.16) 27%,transparent 47%),
+    radial-gradient(ellipse at 104% 50%,color-mix(in srgb,var(--accent2) 40%,transparent) 0%,color-mix(in srgb,var(--accent2) 16%,transparent) 27%,transparent 47%),
     radial-gradient(circle at 22% 13%,rgba(var(--accent-rgb),.10),transparent 25%),
-    radial-gradient(circle at 78% 10%,rgba(var(--blue-rgb),.10),transparent 26%),
+    radial-gradient(circle at 78% 10%,color-mix(in srgb,var(--accent2) 10%,transparent),transparent 26%),
     radial-gradient(circle at 50% 108%,rgba(var(--accent-rgb),.08),transparent 32%),
     linear-gradient(145deg,var(--bg2),var(--bg) 52%,var(--bg2));
 }
 body::before {
   content:"";position:fixed;z-index:0;inset:0;pointer-events:none;opacity:.40;
   background-image:
-    radial-gradient(circle,rgba(176,133,255,.90) 0 1px,transparent 1.55px),
-    radial-gradient(circle,rgba(77,163,255,.78) 0 1px,transparent 1.55px),
-    radial-gradient(circle,rgba(198,208,255,.58) 0 .8px,transparent 1.25px);
+    radial-gradient(circle,var(--dust-1) 0 1px,transparent 1.55px),
+    radial-gradient(circle,var(--dust-2) 0 1px,transparent 1.55px),
+    radial-gradient(circle,var(--dust-3) 0 .8px,transparent 1.25px);
   background-size:58px 58px,91px 91px,137px 137px;background-position:0 0,29px 17px,51px 33px;
   -webkit-mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.48) 34%,rgba(0,0,0,.20) 47%,rgba(0,0,0,.20) 53%,rgba(0,0,0,.48) 66%,#000 100%);mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.48) 34%,rgba(0,0,0,.20) 47%,rgba(0,0,0,.20) 53%,rgba(0,0,0,.48) 66%,#000 100%);
 }
@@ -147,9 +153,9 @@ body::after {
   content:"";position:fixed;z-index:0;inset:-12%;pointer-events:none;opacity:.82;
   background:
     radial-gradient(ellipse at 15% 54%,rgba(var(--accent-rgb),.18),transparent 30%),
-    radial-gradient(ellipse at 85% 52%,rgba(var(--blue-rgb),.17),transparent 31%),
+    radial-gradient(ellipse at 85% 52%,color-mix(in srgb,var(--accent2) 17%,transparent),transparent 31%),
     radial-gradient(ellipse at 31% 83%,rgba(var(--accent-rgb),.08),transparent 24%),
-    radial-gradient(ellipse at 69% 81%,rgba(var(--blue-rgb),.07),transparent 25%);
+    radial-gradient(ellipse at 69% 81%,color-mix(in srgb,var(--accent2) 7%,transparent),transparent 25%);
   filter:blur(22px);
 }
 .version { position:fixed;z-index:4;right:30px;bottom:24px;color:var(--text3);font-size:12px;font-weight:600;letter-spacing:.015em; }
@@ -176,7 +182,7 @@ body::after {
 }
 .card::after {
   content:"";position:absolute;z-index:0;left:7%;right:7%;top:-66px;height:140px;pointer-events:none;
-  background:radial-gradient(ellipse at 40% 55%,rgba(var(--accent-rgb),.18),transparent 56%),radial-gradient(ellipse at 66% 55%,rgba(var(--blue-rgb),.13),transparent 58%);filter:blur(19px);
+  background:radial-gradient(ellipse at 40% 55%,rgba(var(--accent-rgb),.18),transparent 56%),radial-gradient(ellipse at 66% 55%,color-mix(in srgb,var(--accent2) 13%,transparent),transparent 58%);filter:blur(19px);
 }
 .card > * { position:relative;z-index:1; }
 .brand-lockup { position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 0 22px; }
@@ -210,12 +216,14 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 .auth-action:hover { filter:brightness(1.07); }.auth-action:active { transform:translateY(1px); }
 .primary { border:0;background:var(--primary-gradient);color:#fff;box-shadow:0 11px 28px rgba(65,72,255,.23),inset 0 1px 0 rgba(255,255,255,.18); }.primary:hover { background:var(--primary-gradient-hover); }
 .auth-action.primary[type="submit"] { width:70%;margin-left:auto;margin-right:auto; }
+body[data-dp-palette] .primary { box-shadow:0 11px 28px color-mix(in srgb,var(--dp-accent-purple) 23%,transparent),inset 0 1px 0 rgba(255,255,255,.18); }
 .secondary { background:rgba(8,15,31,.27);color:var(--text);border:1px solid var(--border);box-shadow:var(--input-shadow);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px); }.secondary:hover { border-color:var(--border-strong); }
 :root[data-theme="light"] .secondary { background:rgba(255,255,255,.40); }
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .secondary { background:rgba(255,255,255,.40); } }
+body:not(.light)[data-dp-palette] .secondary { background:color-mix(in srgb,var(--dp-bg-app) 27%,transparent); }
 .action-arrow { position:absolute;right:20px;width:21px;height:21px;color:var(--icon-accent-strong);opacity:.96; }
 .oidc-mark { position:absolute;left:18px;width:28px;height:28px;color:#fff;opacity:1; }
 .oidc.secondary .oidc-mark { color:var(--text); }
+body[data-dp-palette] .primary,body[data-dp-palette] .primary .oidc-mark { color:var(--dp-accent-contrast); }
 .oidc.secondary .oidc-separator { position:absolute;left:66px;top:10px;bottom:10px;width:1px;background:var(--border); }
 .divider { display:flex;align-items:center;gap:18px;color:var(--text3);font-size:13px;margin:27px 0 0;white-space:nowrap; }.divider:before,.divider:after { content:"";height:1px;background:var(--border);flex:1; }
 .muted { color:var(--text3);font-size:13px;line-height:1.55; }
@@ -223,7 +231,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 .foot-icon { flex:0 0 21px;width:21px;height:21px;margin:0;color:var(--icon-accent);filter:drop-shadow(0 0 9px rgba(var(--accent-rgb),.21)); }.foot .https { color:var(--accent);font-weight:700; }
 .auth-only-message { text-align:center;margin:8px 0 0; }
 @media (max-width:700px) {
-  body { padding:48px 14px 24px;align-items:start; }.version { right:14px;bottom:12px;font-size:11px; }
+  body { min-height:100vh;min-height:100dvh;padding:36px 14px; }.version { right:14px;bottom:12px;font-size:11px; }
   .card { width:100%;padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
   .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:26px;height:26px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
@@ -325,13 +333,36 @@ def _static_asset(name: str) -> Path:
     return asset
 
 
-def _auth_mark_html() -> str:
-    """Build the self-contained login mark from the reviewed large-format asset."""
-    encoded = base64.b64encode(_static_asset("logo-128.png").read_bytes()).decode("ascii")
-    return (
-        '<img class="brand-mark" alt="" aria-hidden="true" '
-        f'src="data:image/png;base64,{encoded}"/>'
-    )
+# What the product logo's one source may hold to be drawn inline: drawing
+# elements and their own paint, never script, styles, links or handlers.
+_LOGO_REFUSED = re.compile(r"<\s*(?:script|style|foreignObject|a|image|use)\b|\son[a-z]+\s*=|href\s*=", re.I)
+
+
+def _logo_svg(prefix: str, *, class_name: str = "") -> str:
+    """The product logo for drawing inline: ``logo.svg``, its one geometry
+    source, so ``ui-logo.css`` gives it the colours of the theme in force.
+    Its ids are prefixed, so another inline copy cannot capture its
+    gradients. Beside the DebridPulse wordmark (or a labelled host) it is
+    decorative: hidden from assistive technology, without its title or
+    description, which would also draw a native tooltip."""
+    source = _static_asset("logo.svg").read_text(encoding="utf-8").strip()
+    if not source.startswith("<svg ") or not source.endswith("</svg>") or _LOGO_REFUSED.search(source):
+        raise RuntimeError("logo.svg holds content that cannot be drawn inline")
+    source = re.sub(r"<(title|desc)\b[^>]*>.*?</\1>\s*", "", source, flags=re.S)
+    for name in re.findall(r'\sid="([A-Za-z][\w-]*)"', source):
+        source = source.replace(f'id="{name}"', f'id="{prefix}-{name}"').replace(f"url(#{name})", f"url(#{prefix}-{name})")
+    root, rest = source.split(">", 1)
+    root = re.sub(r'\s(?:role|aria-labelledby|aria-label)="[^"]*"', "", root)
+    hint = f' class="{html.escape(class_name, quote=True)}"' if class_name else ""
+    return f'{root}{hint} aria-hidden="true" focusable="false">{rest}'
+
+
+def _style_source(name: str) -> str:
+    """A shipped stylesheet the sign-in page inlines whole."""
+    source = _static_asset(name).read_text(encoding="utf-8")
+    if "</" in source:
+        raise RuntimeError(f"{name} cannot be inlined in a style element")
+    return source
 
 
 def _lucide_inline_html(name: str, class_name: str) -> str:
@@ -356,7 +387,13 @@ def _auth_favicon_html() -> str:
     return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{encoded}">'
 
 
-_AUTH_MARK_HTML = _auth_mark_html()
+_AUTH_MARK_HTML = _logo_svg("dp-login-logo", class_name="brand-mark")
+# The sidebar's mark, served with the first-paint script (``theme_bootstrap_script``).
+_APP_LOGO_SVG = _logo_svg("dp-app-logo")
+# The logo's colours, and the alternative palettes' values (inlined only while
+# one is the login appearance): the application's own stylesheets.
+_AUTH_LOGO_STYLE = _style_source("ui-logo.css")
+_AUTH_PALETTE_STYLE = _style_source("ui-theme-palettes.css")
 _AUTH_OIDC_MARK_HTML = _auth_oidc_mark_html()
 _AUTH_FAVICON_HTML = _auth_favicon_html()
 
@@ -374,20 +411,42 @@ def _auth_csp(*, allow_form: bool) -> str:
     return "; ".join(directives)
 
 
-def _login_shell(inner: str, *, title: str = "Sign in · DebridPulse") -> str:
+async def _login_appearance() -> dict:
+    """The installation's login appearance (``account_appearance.login``: its
+    one row and nothing else), or DebridPulse Dark for this response when it
+    cannot be read in time; sign-in never waits on it."""
+    try:
+        return await asyncio.wait_for(account_appearance.login(), _APPEARANCE_READ_SECONDS)
+    except Exception as exc:
+        logger.warning("Login appearance unavailable: %s", type(exc).__name__)
+        return account_appearance.public(None)
+
+
+def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · DebridPulse") -> str:
+    """The sign-in page in the installation's login appearance, decided here
+    for the first paint: its mode on the root and the body (``body.light``),
+    and an alternative palette as ``body[data-dp-palette]`` with the
+    application's palette values. No browser or OS preference takes part."""
     version = html.escape(read_version())
+    chosen = account_appearance.public(appearance)
+    mode, palette = chosen["mode"], chosen["palette"]
+    native = palette == account_appearance.PALETTES[mode][0]
+    body = ' class="light"' if mode == "light" else ""
+    if not native:
+        body += f' data-dp-palette="{html.escape(palette, quote=True)}"'
+    style = _AUTH_PAGE_STYLE + _AUTH_LOGO_STYLE + ("" if native else _AUTH_PALETTE_STYLE)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{mode}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark light">
+<meta name="color-scheme" content="{mode}">
 <title>{html.escape(title)}</title>
 {_AUTH_FAVICON_HTML}
-<style>{_AUTH_PAGE_STYLE}</style>
+<style>{style}</style>
 <script>{_AUTH_PAGE_SCRIPT}</script>
 </head>
-<body>
+<body{body}>
 <div class="version">v{version}</div>
 {_AUTH_BACKDROP_HTML}
 {inner}
@@ -395,7 +454,7 @@ def _login_shell(inner: str, *, title: str = "Sign in · DebridPulse") -> str:
 </html>"""
 
 
-def _login_page(
+async def _login_page(
     request: Request,
     *,
     csrf_token: str,
@@ -460,13 +519,13 @@ def _login_page(
   {interactive_controls}
   <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>Password-only LAN deployments may operate over HTTP.<br>OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.</div></div>
 </main>"""
-    response = HTMLResponse(content=_login_shell(card), status_code=status_code)
+    response = HTMLResponse(content=_login_shell(card, await _login_appearance()), status_code=status_code)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = _auth_csp(allow_form=True)
     return response
 
 
-def _state_free_auth_page(
+async def _state_free_auth_page(
     *,
     message: str,
     status_code: int,
@@ -479,7 +538,7 @@ def _state_free_auth_page(
   <a class="auth-action secondary" href="/login"><span>Return to sign in</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>
 </main>"""
     response = HTMLResponse(
-        content=_login_shell(card, title="Sign in unavailable · DebridPulse"),
+        content=_login_shell(card, await _login_appearance(), title="Sign in unavailable · DebridPulse"),
         status_code=status_code,
     )
     response.headers["Cache-Control"] = "no-store"
@@ -489,7 +548,7 @@ def _state_free_auth_page(
     return response
 
 
-def _issue_login_page(
+async def _issue_login_page(
     request: Request,
     *,
     return_to: str,
@@ -497,13 +556,13 @@ def _issue_login_page(
     status_code: int = 200,
 ) -> HTMLResponse:
     if not login_challenge_rate_limiter.allow(peer_key(request)):
-        return _state_free_auth_page(
+        return await _state_free_auth_page(
             message="Too many sign-in challenges have been requested. Try again shortly.",
             status_code=429,
             retry_after=60,
         )
     browser_nonce, form_token = login_csrf_store.issue()
-    response = _login_page(
+    response = await _login_page(
         request,
         csrf_token=form_token,
         return_to=safe_return_path(return_to),
@@ -609,12 +668,15 @@ async def theme_bootstrap_script(request: Request):
     The parser-blocking script starts with the caller's appearance
     (``_appearance``), so the first paint already has the account's mode and
     palette -- no native-dark frame for a Light account, and no other
-    account's or browser's choice. It is per-request and never stored."""
+    account's or browser's choice. It is per-request and never stored. The
+    product logo's one source comes with it (``window.debridPulseLogo``), so
+    the sidebar draws it inline, in the theme in force, at first paint."""
     principal = getattr(request.state, "principal", Principal.anonymous())
     appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
     script = _static_asset("ui-theme-bootstrap.js").read_text(encoding="utf-8")
+    logo = json.dumps(_APP_LOGO_SVG).replace("<", "\\u003c")
     response = Response(
-        content=f"window.debridPulseAppearance=Object.freeze({appearance});\n{script}",
+        content=f"window.debridPulseLogo={logo};\nwindow.debridPulseAppearance=Object.freeze({appearance});\n{script}",
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"
@@ -635,7 +697,7 @@ async def login_page(request: Request, next: str = "/"):
     if existing_token:
         session_store.revoke(existing_token)
 
-    response = _issue_login_page(request, return_to=return_to)
+    response = await _issue_login_page(request, return_to=return_to)
     if existing_token:
         clear_session_cookie(response, request)
     return response
@@ -645,7 +707,7 @@ async def login_page(request: Request, next: str = "/"):
 async def password_login(request: Request):
     cfg = get_settings()
     if not password_auth_enabled(cfg):
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to="/",
             error="Username & Password authentication is disabled.",
@@ -658,7 +720,7 @@ async def password_login(request: Request):
     return_to = safe_return_path(str(form.get("next") or "/"))
 
     if len(username) > 256 or len(password) > 4096 or len(csrf_token) > 256:
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to=return_to,
             error="Invalid sign-in request.",
@@ -667,7 +729,7 @@ async def password_login(request: Request):
 
     browser_nonce = str(request.cookies.get(login_csrf_cookie_name(request), "") or "")
     if not login_csrf_store.consume(browser_nonce, csrf_token):
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to=return_to,
             error="The sign-in form expired. Try again.",
@@ -682,7 +744,7 @@ async def password_login(request: Request):
             settings=cfg,
         )
     except PasswordAuthenticationBusy:
-        response = _issue_login_page(
+        response = await _issue_login_page(
             request,
             return_to=return_to,
             error="Too many sign-in attempts are already being processed. Try again shortly.",
@@ -691,7 +753,7 @@ async def password_login(request: Request):
         response.headers["Retry-After"] = "2"
         return response
     if proven is None:
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to=return_to,
             error="Invalid username or password.",
@@ -702,14 +764,14 @@ async def password_login(request: Request):
         current = get_settings()
         account = await password_proof_current(proven, current)
         if account is None:
-            return _issue_login_page(
+            return await _issue_login_page(
                 request,
                 return_to=return_to,
                 error="Authentication configuration changed while sign-in was in progress. Try again.",
                 status_code=409,
             )
         if not admitted(account):
-            return _issue_login_page(
+            return await _issue_login_page(
                 request,
                 return_to=return_to,
                 error=_NOT_OPERATIONAL,
@@ -739,14 +801,14 @@ async def oidc_start(request: Request, next: str = "/"):
     cfg = get_settings()
     return_to = safe_return_path(next)
     if not oidc_auth_enabled(cfg):
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to=return_to,
             error="OpenID Connect authentication is disabled.",
             status_code=404,
         )
     if not oidc_start_rate_limiter.allow(peer_key(request)):
-        return _state_free_auth_page(
+        return await _state_free_auth_page(
             message="Too many OpenID Connect sign-in attempts have been started. Try again shortly.",
             status_code=429,
             retry_after=60,
@@ -754,7 +816,7 @@ async def oidc_start(request: Request, next: str = "/"):
     try:
         authorization_url, correlation = await begin_oidc_login(cfg, return_to=return_to)
     except OidcError:
-        return _issue_login_page(
+        return await _issue_login_page(
             request,
             return_to=return_to,
             error="OpenID Connect is currently unavailable or misconfigured.",
@@ -776,7 +838,7 @@ async def oidc_callback(
     correlation = str(request.cookies.get(OIDC_CORRELATION_COOKIE, "") or "")
     if error:
         oidc_transaction_store.consume(state, correlation)
-        response = _issue_login_page(
+        response = await _issue_login_page(
             request,
             return_to="/",
             error="OpenID Connect sign-in was not completed.",
@@ -792,7 +854,7 @@ async def oidc_callback(
             correlation=correlation,
         )
     except OidcError:
-        response = _issue_login_page(
+        response = await _issue_login_page(
             request,
             return_to="/",
             error="OpenID Connect sign-in could not be validated or authorized.",
@@ -809,7 +871,7 @@ async def oidc_callback(
             proof_version,
             current_version,
         ):
-            response = _issue_login_page(
+            response = await _issue_login_page(
                 request,
                 return_to="/",
                 error="Authentication configuration changed while sign-in was in progress. Start a new sign-in.",
@@ -825,7 +887,7 @@ async def oidc_callback(
             default_role=getattr(cfg, "auth_oidc_default_role", "user"),
         )
         if not admitted(account):
-            response = _issue_login_page(
+            response = await _issue_login_page(
                 request,
                 return_to="/",
                 error=_NOT_OPERATIONAL,

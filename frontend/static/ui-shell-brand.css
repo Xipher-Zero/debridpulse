@@ -59,7 +59,7 @@ body.light #sidebar .logo-icon {
   outline: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  filter: drop-shadow(0 0 8px rgba(124, 58, 237, .16)) !important;
+  filter: drop-shadow(0 0 8px rgba(var(--dp-logo-halo-rgb), .16)) !important;
 }
 
 @media (max-width: 1179px) {

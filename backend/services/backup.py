@@ -114,7 +114,11 @@ _COPY_CHUNK = 1024 * 1024
 #   (0f2c2825), whose local credentials held them: each credential's name
 #   becomes its account's username, every other human account's username is
 #   its stored display name made unique, and the credentials keep only their
-#   passwords (``auth.accounts._initialize_usernames``).
+#   passwords (``auth.accounts._initialize_usernames``);
+# * the 1.0.14 schema immediately before the installation's login appearance
+#   (be62e8d2), which it extends with the one ``login_appearance`` table,
+#   empty: the sign-in page is DebridPulse Dark until an eligible Admin next
+#   selects a theme, and no account's appearance is read to choose one.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -126,6 +130,7 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:c12ccc8158d94390c994fd49ef8a86a4ed4d895839fcf062b8379eae58f44f0e",
     "sha256:937ed58caa1cc42c91d6e47e917e020f8025f27e7ec596aef13d4cc456e76ac6",
     "sha256:c51de6ae14c6185ac650bd1f5f02d93c88ac21b676799494e7418a8022d26239",
+    "sha256:fc440366772ce843ce91851b8be5894e1c6b3aff63fb75e873fcfbfee64697a4",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

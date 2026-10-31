@@ -87,9 +87,15 @@ async def test_oidc_start_rate_limit_fails_before_discovery(monkeypatch):
     assert calls == ["/"]
 
 
-def test_login_challenge_limit_rejects_without_allocating_csrf_state(monkeypatch):
+async def _native_login_appearance():
+    return {"mode": "dark", "palette": "debridpulse-dark"}
+
+
+@pytest.mark.asyncio
+async def test_login_challenge_limit_rejects_without_allocating_csrf_state(monkeypatch):
     cfg = _oidc_settings()
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
+    monkeypatch.setattr(auth_routes.account_appearance, "login", _native_login_appearance)
     limiter = DualWindowRateLimiter(per_peer_limit=1, global_limit=1, window_seconds=60)
     monkeypatch.setattr(auth_routes, "login_challenge_rate_limiter", limiter)
 
@@ -99,8 +105,8 @@ def test_login_challenge_limit_rejects_without_allocating_csrf_state(monkeypatch
         "issue",
         lambda: issued.append(True) or ("nonce", "token"),
     )
-    first = auth_routes._issue_login_page(_request("/login"), return_to="/")
-    second = auth_routes._issue_login_page(_request("/login"), return_to="/")
+    first = await auth_routes._issue_login_page(_request("/login"), return_to="/")
+    second = await auth_routes._issue_login_page(_request("/login"), return_to="/")
 
     assert first.status_code == 200
     assert second.status_code == 429

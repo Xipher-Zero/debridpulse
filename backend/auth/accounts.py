@@ -145,9 +145,18 @@ SCHEMA = (
         light_palette TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""",
+    # The installation's login appearance (``services.account_appearance``):
+    # one row, the mode and active palette of the last effective selection an
+    # eligible Admin committed. It belongs to the installation and names no
+    # account: no account's later change, removal or merge alters it.
+    """CREATE TABLE IF NOT EXISTS login_appearance (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        mode TEXT NOT NULL CHECK (mode IN ('dark','light')),
+        palette TEXT NOT NULL
+    )""",
 )
 TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens",
-          "account_notifications", "account_appearance")
+          "account_notifications", "account_appearance", "login_appearance")
 TOKEN_PREFIX = "dp_"
 _TOKEN_RANDOM_BYTES = 32
 

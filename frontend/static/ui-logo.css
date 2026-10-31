@@ -1,0 +1,57 @@
+/* DebridPulse product logo: its colours, for every page that draws it.
+ *
+ * The logo's geometry has one source, logo.svg; its square and gradient stops
+ * carry a dp-logo-* class each, and keep their own colours as attributes, so
+ * the file opened on its own is drawn exactly as before. Drawn inline -- the
+ * sidebar mark (ui-theme-bootstrap.js <dp-logo>) and the sign-in page's mark
+ * (api/auth_routes.py, which inlines this file) -- these rules give each part
+ * the colour of the theme in force. An <img> of the file cannot follow a theme:
+ * it does not inherit the page's custom properties.
+ *
+ * DebridPulse Dark is the logo's own colours. DebridPulse Light lifts the
+ * square to the native light surface. An alternative palette
+ * (ui-theme-palettes.css, body[data-dp-palette]) draws the square in its first
+ * surface and the outline, arrow and tray in its accents. Only decorative
+ * tokens are read: no state or identity colour.
+ */
+:root {
+  --dp-logo-surface: #080b18;
+  --dp-logo-outline-start: #a62cff;
+  --dp-logo-outline-end: #208cff;
+  --dp-logo-arrow-start: #b532ff;
+  --dp-logo-arrow-mid: #7855ff;
+  --dp-logo-arrow-end: #08a8ff;
+  --dp-logo-tray-start: #9b32ff;
+  --dp-logo-tray-end: #149fff;
+  /* The halo around the mark (ui-shell-structural.css, ui-shell-brand.css). */
+  --dp-logo-halo-rgb: 117, 72, 255;
+}
+
+body.light {
+  --dp-logo-surface: #ffffff;
+  --dp-logo-halo-rgb: 124, 58, 237;
+}
+
+body[data-dp-palette] {
+  --dp-logo-surface: var(--dp-surface-1);
+  --dp-logo-outline-start: var(--dp-accent-purple);
+  --dp-logo-outline-end: var(--dp-accent-blue);
+  --dp-logo-arrow-start: var(--dp-accent-purple-bright);
+  --dp-logo-arrow-mid: color-mix(in srgb, var(--dp-accent-purple-bright), var(--dp-accent-blue-bright));
+  --dp-logo-arrow-end: var(--dp-accent-blue-bright);
+  --dp-logo-tray-start: var(--dp-accent-purple);
+  --dp-logo-tray-end: var(--dp-accent-blue-bright);
+  --dp-logo-halo-rgb: var(--dp-accent-rgb);
+}
+
+.dp-logo-surface { fill: var(--dp-logo-surface); }
+.dp-logo-outline-start { stop-color: var(--dp-logo-outline-start); }
+.dp-logo-outline-end { stop-color: var(--dp-logo-outline-end); }
+.dp-logo-arrow-start { stop-color: var(--dp-logo-arrow-start); }
+.dp-logo-arrow-mid { stop-color: var(--dp-logo-arrow-mid); }
+.dp-logo-arrow-end { stop-color: var(--dp-logo-arrow-end); }
+.dp-logo-tray-start { stop-color: var(--dp-logo-tray-start); }
+.dp-logo-tray-end { stop-color: var(--dp-logo-tray-end); }
+
+dp-logo { display: block; }
+dp-logo > svg { display: block; width: 100%; height: 100%; }

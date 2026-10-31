@@ -214,7 +214,14 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
     assert request_is_secure(request) is False
 
 
-def test_auth_pages_use_reviewed_debridpulse_login_palettes():
+@pytest.mark.asyncio
+async def test_auth_pages_use_reviewed_debridpulse_login_palettes(monkeypatch):
+    from services import account_appearance
+
+    async def native():
+        return {"mode": "dark", "palette": "debridpulse-dark"}
+
+    monkeypatch.setattr(account_appearance, "login", native)
     assert "--bg:#030612" in _AUTH_PAGE_STYLE
     assert "--bg2:#081126" in _AUTH_PAGE_STYLE
     assert "--card:rgba(10,16,33,.55)" in _AUTH_PAGE_STYLE
@@ -245,7 +252,7 @@ def test_auth_pages_use_reviewed_debridpulse_login_palettes():
     assert "body::before" in _AUTH_PAGE_STYLE
     assert "body::after" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
-    response = _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
+    response = await _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
     assert "style-src 'unsafe-inline'" in response.headers["Content-Security-Policy"]
 

@@ -774,7 +774,7 @@ body.light .logo {
 .logo-icon {
   box-shadow:
     0 5px 12px rgba(0,0,0,.18),
-    0 0 27px rgba(117,72,255,.25) !important;
+    0 0 27px rgba(var(--dp-logo-halo-rgb),.25) !important;
 }
 body.light .logo-icon {
   box-shadow:

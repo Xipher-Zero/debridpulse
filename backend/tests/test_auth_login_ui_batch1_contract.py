@@ -104,7 +104,6 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
     # Password reveal is momentary: closed eye at rest, open eye only while the
     # user is actively holding mouse/touch/pen or Space/Enter. It always fails
     # back to hidden on release/cancel/leave/focus loss and never click-toggles.
-    assert 'localStorage.getItem("theme")' in script
     assert 'data-password-reveal' in script
     assert 'pointerdown' in script
     assert 'pointerup' in script
@@ -124,9 +123,11 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
     assert '.password-reveal[aria-pressed="true"] .eye { display:block; }.password-reveal[aria-pressed="true"] .eye-off { display:none; }' in source
     assert 'aria-label="Hold to show password"' in source
 
-    # The only state it reads is the existing local theme preference. It must
-    # never become an authentication/network helper merely for password reveal.
+    # It reads no stored state -- the page's theme is the server-rendered login
+    # appearance -- and must never become an authentication/network helper
+    # merely for password reveal.
     for forbidden in (
+        "localStorage",
         "fetch(",
         "XMLHttpRequest",
         "WebSocket",
@@ -157,5 +158,5 @@ def test_login_oidc_mark_is_the_white_lucide_shield_user() -> None:
     assert ".oidc.secondary .oidc-mark { color:var(--text); }" in source
     css = source.split(".oidc-mark {", 1)[1].split("}", 1)[0]
     assert "filter" not in css and "opacity:1" in css
-    assert '_static_asset("logo-128.png")' in source
+    assert '_static_asset("logo.svg")' in source
     assert '_static_asset("favicon.svg")' in source

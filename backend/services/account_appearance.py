@@ -17,6 +17,19 @@ palette) reads as that mode's native palette and is never rewritten by a read.
 While interactive sign-in is off there is no account to own an appearance:
 the installation's one standalone principal never reads or writes here, and
 the interface keeps its choices in the browser (``ui-theme-bootstrap.js``).
+
+The sign-in page has one appearance of its own, the installation's
+(``auth.accounts`` table ``login_appearance``, one row): a mode and that
+mode's palette, nothing else. Only an effective selection by an eligible
+Admin replaces it -- a change of that Admin's active pair (its mode, and the
+palette of the mode active after the change) -- and it is replaced in the
+same transaction that saves the Admin's own choice, so the last such write
+to commit is the one the page shows. Eligibility is the account's own
+current role and state, read in that transaction. Once written the value is
+the installation's: it names no account, and nothing an account later does
+-- signing in, a change to its inactive palette, its demotion, removal or
+merge -- changes it. The anonymous page reads that one row and nothing else
+(``login``). Without one it is DebridPulse Dark.
 """
 from __future__ import annotations
 
@@ -122,11 +135,34 @@ async def load(account_id: str) -> dict:
         return await _read(db, account_id)
 
 
+def _active(choices: dict) -> tuple[str, str]:
+    """The pair an appearance shows: its mode and that mode's palette."""
+    return choices["mode"], choices[f"{choices['mode']}_palette"]
+
+
+async def _selects_login(db, account_id: str) -> bool:
+    """Whether this account's selection is the installation's: it is an
+    active Admin now, in the transaction that would record it."""
+    from auth.accounts import Role, _fetch
+
+    account = await _fetch(db, account_id)
+    return account is not None and account.active and account.role is Role.ADMIN
+
+
+async def _project(db, pair: tuple[str, str]) -> None:
+    await db.execute(
+        "INSERT INTO login_appearance(id,mode,palette) VALUES(1,?,?) "
+        "ON CONFLICT(id) DO UPDATE SET mode=excluded.mode, palette=excluded.palette", pair)
+
+
 async def update(account_id: str, change: AppearanceUpdate) -> dict:
     """Apply one account's change to its own record, atomically: only the
-    named choices change; the others keep what is stored (or their default)."""
+    named choices change; the others keep what is stored (or their default).
+    An eligible Admin's change of its active pair is, in the same
+    transaction, the installation's login appearance."""
     async with _transaction() as db:
-        saved = {**await _read(db, account_id), **change.model_dump(exclude_unset=True)}
+        before = await _read(db, account_id)
+        saved = {**before, **change.model_dump(exclude_unset=True)}
         await db.execute(
             "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,updated_at) "
             "VALUES(?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET mode=excluded.mode, "
@@ -134,4 +170,25 @@ async def update(account_id: str, change: AppearanceUpdate) -> dict:
             "updated_at=excluded.updated_at",
             (str(account_id), saved["mode"], saved["dark_palette"], saved["light_palette"],
              datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
+        if _active(saved) != _active(before) and await _selects_login(db, account_id):
+            await _project(db, _active(saved))
     return saved
+
+
+def public(row) -> dict:
+    """The sign-in page's appearance from its stored row: a known mode and a
+    palette of that mode. No row, or an unknown mode, is DebridPulse Dark; a
+    palette the catalog no longer holds is that mode's native palette."""
+    if row is None or row["mode"] not in PALETTES:
+        return {"mode": DEFAULT["mode"], "palette": DEFAULT["dark_palette"]}
+    mode = row["mode"]
+    return {"mode": mode, "palette": row["palette"] if row["palette"] in PALETTES[mode] else PALETTES[mode][0]}
+
+
+async def login() -> dict:
+    """The installation's login appearance: the one ``login_appearance`` row
+    and no other table -- no account, no account appearance, no role."""
+    from db.database import get_db
+
+    async with get_db() as db:
+        return public(await db.fetchone("SELECT mode, palette FROM login_appearance WHERE id=1"))

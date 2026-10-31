@@ -16,6 +16,7 @@ import sqlite3
 import time
 import uuid
 import zipfile
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1307,8 +1308,10 @@ async def test_the_released_1013_backup_restores_every_account_with_the_native_a
         assert {name: facts[:2] for name, facts in people.items()} == {
             "Operator": ("admin", "local"), "Reader": ("user", "local"), "Viewer": ("readonly", "local")}
         assert conn.execute("SELECT count(*) FROM account_appearance").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM login_appearance").fetchone() == (0,)
     finally:
         conn.close()
+    assert await account_appearance.login() == {"mode": "dark", "palette": "debridpulse-dark"}
     operator, password_hash = await accounts.local_credential("operator")
     assert operator.role is accounts.Role.ADMIN and verify_password(password_hash, "pre-appearance-secret")
     reader_id = people["Reader"][2]
@@ -1367,6 +1370,73 @@ async def test_a_backup_from_before_account_usernames_restores_every_account_wit
             "account_id", "password_hash", "updated_at"]
     finally:
         conn.close()
+
+
+# Written by the 1.0.14 build immediately before the installation's login
+# appearance (be62e8d2) with its own backup service: the default Admin with a
+# password (operator / pre-login-appearance-secret), an Admin (ann) whose own
+# appearance is Light / Catppuccin Latte, and a User (reader) with Dracula.
+PRE_LOGIN_APPEARANCE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-be62e8d2.zip"
+
+
+async def test_a_backup_from_before_the_login_appearance_restores_with_the_native_one(served):
+    """Upgraded on the private staged copy only through the canonical
+    bootstrap: the new ``login_appearance`` table arrives empty, so the sign-in
+    page is DebridPulse Dark -- no Admin's own appearance is read to choose
+    one -- and every account keeps its own appearance and password."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from services import account_appearance
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_LOGIN_APPEARANCE_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "login_appearance" not in {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert conn.execute("SELECT count(*) FROM login_appearance").fetchone() == (0,)
+    assert await account_appearance.login() == {"mode": "dark", "palette": "debridpulse-dark"}
+    people = {row["username"]: row["id"] for row in await accounts.list_accounts() if row["username"]}
+    assert await account_appearance.load(people["ann"]) == {
+        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
+    assert (await account_appearance.load(people["reader"]))["dark_palette"] == "dracula"
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-login-appearance-secret")
+
+
+async def test_a_new_backup_brings_back_the_login_appearance_it_recorded(served):
+    from auth import accounts
+    from services import account_appearance
+
+    _app, client, _composed, _calls = served
+    admin = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
+    await account_appearance.update(admin, account_appearance.AppearanceUpdate(mode="light",
+                                                                               light_palette="flexoki-light"))
+    point = await backup.create_restore_point()
+    await account_appearance.update(admin, account_appearance.AppearanceUpdate(mode="dark", dark_palette="dracula"))
+    assert await account_appearance.login() == {"mode": "dark", "palette": "dracula"}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert await account_appearance.login() == {"mode": "light", "palette": "flexoki-light"}
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert conn.execute("SELECT id, mode, palette FROM login_appearance").fetchall() == [
+            (1, "light", "flexoki-light")]
 
 
 async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):

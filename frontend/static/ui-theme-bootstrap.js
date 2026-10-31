@@ -26,6 +26,11 @@
  * (ui-theme-palettes.css declares only the alternatives). A missing or unknown
  * choice -- a retired palette included -- is the native palette of that mode,
  * for that mode only, and is never written back: only a choice is saved.
+ *
+ * The product logo is drawn here too, inline, so it follows the theme in force
+ * (ui-logo.css): its one source, logo.svg, is served with this script
+ * (window.debridPulseLogo) and <dp-logo> is defined before the body below is
+ * parsed, so the sidebar's mark is drawn at first paint.
  */
 (function () {
   'use strict';
@@ -195,4 +200,13 @@
 
   if (light) document.body.classList.add('light');
   paint();
+
+  const LOGO = typeof window.debridPulseLogo === 'string' ? window.debridPulseLogo : '';
+  if (LOGO && window.customElements && !customElements.get('dp-logo')) {
+    customElements.define('dp-logo', class extends HTMLElement {
+      connectedCallback() {
+        if (!this.firstElementChild) this.innerHTML = LOGO;
+      }
+    });
+  }
 })();
