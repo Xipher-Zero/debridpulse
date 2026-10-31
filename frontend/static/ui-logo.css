@@ -11,8 +11,10 @@
  * DebridPulse Dark is the logo's own colours. DebridPulse Light lifts the
  * square to the native light surface. An alternative palette
  * (ui-theme-palettes.css, body[data-dp-palette]) draws the square in its first
- * surface and the outline, arrow and tray in its accents. Only decorative
- * tokens are read: no state or identity colour.
+ * surface and the outline, arrow and pulse line in its accents: the line runs
+ * from the bright purple through the bright blue to the blue, as the logo's own
+ * line runs violet, cyan, blue. Only decorative tokens are read: no state or
+ * identity colour.
  */
 :root {
   --dp-logo-surface: #080b18;
@@ -21,8 +23,9 @@
   --dp-logo-arrow-start: #b532ff;
   --dp-logo-arrow-mid: #7855ff;
   --dp-logo-arrow-end: #08a8ff;
-  --dp-logo-tray-start: #9b32ff;
-  --dp-logo-tray-end: #149fff;
+  --dp-logo-ekg-start: #b532ff;
+  --dp-logo-ekg-mid: #00d4ff;
+  --dp-logo-ekg-end: #149fff;
   /* The halo around the mark (ui-shell-structural.css, ui-shell-brand.css). */
   --dp-logo-halo-rgb: 117, 72, 255;
 }
@@ -39,8 +42,9 @@ body[data-dp-palette] {
   --dp-logo-arrow-start: var(--dp-accent-purple-bright);
   --dp-logo-arrow-mid: color-mix(in srgb, var(--dp-accent-purple-bright), var(--dp-accent-blue-bright));
   --dp-logo-arrow-end: var(--dp-accent-blue-bright);
-  --dp-logo-tray-start: var(--dp-accent-purple);
-  --dp-logo-tray-end: var(--dp-accent-blue-bright);
+  --dp-logo-ekg-start: var(--dp-accent-purple-bright);
+  --dp-logo-ekg-mid: var(--dp-accent-blue-bright);
+  --dp-logo-ekg-end: var(--dp-accent-blue);
   --dp-logo-halo-rgb: var(--dp-accent-rgb);
 }
 
@@ -50,8 +54,9 @@ body[data-dp-palette] {
 .dp-logo-arrow-start { stop-color: var(--dp-logo-arrow-start); }
 .dp-logo-arrow-mid { stop-color: var(--dp-logo-arrow-mid); }
 .dp-logo-arrow-end { stop-color: var(--dp-logo-arrow-end); }
-.dp-logo-tray-start { stop-color: var(--dp-logo-tray-start); }
-.dp-logo-tray-end { stop-color: var(--dp-logo-tray-end); }
+.dp-logo-ekg-start { stop-color: var(--dp-logo-ekg-start); }
+.dp-logo-ekg-mid { stop-color: var(--dp-logo-ekg-mid); }
+.dp-logo-ekg-end { stop-color: var(--dp-logo-ekg-end); }
 
 dp-logo { display: block; }
 dp-logo > svg { display: block; width: 100%; height: 100%; }

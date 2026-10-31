@@ -455,7 +455,12 @@ async def test_the_inline_marks_are_the_canonical_logo(live):
         assert mark.startswith("<svg ") and 'aria-hidden="true"' in mark and "<title" not in mark
         assert [re.sub(rf"#{prefix}-", "#", tag) for tag in re.findall(r'<(?:rect|path)\b[^>]*>', mark)] == geometry
         assert set(re.findall(r'id="([^"]+)"', mark)) == {f"{prefix}-{name}" for name in
-                                                         ("dp-outline", "dp-arrow", "dp-tray", "dp-glow")}
+                                                         ("dp-outline", "dp-arrow", "dp-ekg", "dp-glow")}
+    # ui-logo.css colours every hooked part of the mark, the pulse line's three stops included, and nothing else.
+    hooks = re.findall(r'class="(dp-logo-[\w-]+)"', source)
+    style = (STATIC / "ui-logo.css").read_text(encoding="utf-8")
+    assert sorted(hooks) == sorted(re.findall(r"^\.(dp-logo-[\w-]+) \{", style, re.M))
+    assert {"dp-logo-ekg-start", "dp-logo-ekg-mid", "dp-logo-ekg-end"} <= set(hooks) and "tray" not in source + style
     login = (await live.client.get("/login")).text
     assert auth_routes._AUTH_MARK_HTML in login and "data:image/png" not in login
     assert (STATIC / "ui-logo.css").read_text(encoding="utf-8") in login

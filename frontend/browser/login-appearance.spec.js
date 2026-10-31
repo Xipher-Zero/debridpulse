@@ -213,19 +213,20 @@ test('the sidebar logo is logo.svg drawn inline in the signed-in account\'s own 
         hidden: svg.getAttribute('aria-hidden'), size: [box.width, box.height],
         square: getComputedStyle(svg.querySelector('.dp-logo-surface')).fill,
         outline: getComputedStyle(svg.querySelector('.dp-logo-outline-start')).stopColor,
-        tray: getComputedStyle(svg.querySelector('.dp-logo-tray-end')).stopColor};
+        ekg: ['start', 'mid', 'end'].map(stop => getComputedStyle(svg.querySelector(`.dp-logo-ekg-${stop}`)).stopColor)};
     });
     const native = await logo();
     expect(native).toMatchObject({img: false, label: 'DebridPulse logo', hidden: 'true', square: 'rgb(8, 11, 24)',
-      outline: 'rgb(166, 44, 255)', tray: 'rgb(20, 159, 255)'});
+      outline: 'rgb(166, 44, 255)', ekg: ['rgb(181, 50, 255)', 'rgb(0, 212, 255)', 'rgb(20, 159, 255)']});
     await own.page.evaluate(() => window.DPTheme.choose('gruvbox-dark'));
-    expect(await logo()).toMatchObject({square: 'rgb(40, 40, 40)', outline: 'rgb(211, 134, 155)', tray: 'rgb(131, 165, 152)', size: native.size});
+    expect(await logo()).toMatchObject({square: 'rgb(40, 40, 40)', outline: 'rgb(211, 134, 155)', ekg: ['rgb(211, 134, 155)', 'rgb(131, 165, 152)', 'rgb(131, 165, 152)'], size: native.size});
     await own.page.evaluate(() => window.DPTheme.setMode(true));
-    expect(await logo()).toMatchObject({square: 'rgb(255, 255, 255)', outline: 'rgb(166, 44, 255)', size: native.size});
+    expect(await logo()).toMatchObject({square: 'rgb(255, 255, 255)', outline: 'rgb(166, 44, 255)', ekg: native.ekg, size: native.size});
     await own.page.evaluate(() => window.DPTheme.choose('flexoki-light'));
     const flexoki = await logo();
     expect(flexoki.square).not.toBe('rgb(255, 255, 255)');
     expect(flexoki.outline).not.toBe('rgb(166, 44, 255)');
+    expect(flexoki.ekg).toEqual(['rgb(157, 67, 16)', 'rgb(32, 94, 166)', 'rgb(32, 94, 166)']);
   } finally {
     await own.context.close();
     await api(admin.page, 'DELETE', `/accounts/${viewer.id}`);

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">DebridPulse</title>
-  <desc id="desc">A violet and blue download arrow entering a bucket on a rounded square.</desc>
+  <desc id="desc">A violet and blue download arrow above a horizontal baseline carrying a sinus-style EKG pulse. The deep negative spike is centered under the arrow tip; both the long downstroke and the rebound up match the 45° angles of the arrowhead edges.</desc>
   <defs>
     <linearGradient id="dp-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
       <stop class="dp-logo-outline-start" offset="0" stop-color="#a62cff"/>
@@ -8,21 +8,50 @@
     </linearGradient>
     <linearGradient id="dp-arrow" x1="64" y1="24" x2="64" y2="86" gradientUnits="userSpaceOnUse">
       <stop class="dp-logo-arrow-start" offset="0" stop-color="#b532ff"/>
-      <stop class="dp-logo-arrow-mid" offset=".48" stop-color="#7855ff"/>
+      <stop class="dp-logo-arrow-mid" offset="0.48" stop-color="#7855ff"/>
       <stop class="dp-logo-arrow-end" offset="1" stop-color="#08a8ff"/>
     </linearGradient>
-    <linearGradient id="dp-tray" x1="28" y1="86" x2="101" y2="98" gradientUnits="userSpaceOnUse">
-      <stop class="dp-logo-tray-start" offset="0" stop-color="#9b32ff"/>
-      <stop class="dp-logo-tray-end" offset="1" stop-color="#149fff"/>
+    <linearGradient id="dp-ekg" x1="24" y1="78" x2="104" y2="102" gradientUnits="userSpaceOnUse">
+      <stop class="dp-logo-ekg-start" offset="0" stop-color="#b532ff"/>
+      <stop class="dp-logo-ekg-mid" offset="0.45" stop-color="#00d4ff"/>
+      <stop class="dp-logo-ekg-end" offset="1" stop-color="#149fff"/>
     </linearGradient>
-    <filter id="dp-glow" x="-35%" y="-35%" width="170%" height="170%">
-      <feGaussianBlur stdDeviation="2.4" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <filter id="dp-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.0" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
   </defs>
   <g transform="scale(4)">
+    <!-- Background rounded square -->
     <rect class="dp-logo-surface" x="14" y="13" width="100" height="102" rx="23" fill="#080b18" stroke="url(#dp-outline)" stroke-width="2.5"/>
-    <path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z" fill="url(#dp-arrow)" filter="url(#dp-glow)"/>
-    <path d="M28 79v12.5c0 5 4 9 9 9h54c5 0 9-4 9-9V79" fill="none" stroke="url(#dp-tray)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#dp-glow)"/>
+
+    <!-- Download arrow (unchanged) -->
+    <path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z"
+          fill="url(#dp-arrow)" filter="url(#dp-glow)"/>
+
+    <!-- EKG: cleaned the small knob at the base of the R rise.
+         Path now flows smoothly from the P-wave into the gradual up-spike.
+         No other geometry changed.
+    -->
+    <path d="M 24 90
+             L 28 90
+             C 30 90 31.5 87.8 33.5 87.8
+             C 35.5 87.8 37 90 38.5 90
+             L 41 78
+             L 65 102
+             L 77 90
+             L 81 90
+             C 84 90 86.5 85.5 89.5 85.5
+             C 92.5 85.5 95 90 98 90
+             L 104 90"
+          fill="none"
+          stroke="url(#dp-ekg)"
+          stroke-width="3.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          filter="url(#dp-glow)"/>
   </g>
 </svg>
