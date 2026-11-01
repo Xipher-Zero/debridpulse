@@ -26,15 +26,14 @@
        two bars: from the header's bottom edge to the dock's top edge. */
     --dp-shell-header-top: max(7px, env(safe-area-inset-top, 0px));
     --dp-shell-header: calc(var(--dp-shell-header-top) + var(--dp-shell-control) + 2px + 7px + 1px);
-    --dp-shell-dock-edge: calc(var(--dp-shell-dock-height) + 1px + env(safe-area-inset-bottom, 0px));
-    /* Over a bottom safe area (the home indicator's band) the row's drawing
-       sits low in its row: down by the row's free space under its centred
-       content -- the tallest item's 24px icon, 4px gap and one 10px label
-       line -- never more than that inset, so the labels end on the row's
-       lower edge. Only the drawing moves: every button keeps its whole 58px
-       row above the safe area, and without an inset nothing moves. */
-    --dp-shell-dock-content: calc(24px + 4px + 10px * 1.15);
-    --dp-shell-dock-drop: min(env(safe-area-inset-bottom, 0px), (var(--dp-shell-dock-height) - var(--dp-shell-dock-content)) / 2);
+    /* The dock's reservation below its row (trial): half the reported bottom
+       safe area -- the home indicator's band -- and none without one. The
+       one amount for the dock's own padding, so its height, and for the edge
+       every shell menu and sheet ends at. The row's lower part lies inside
+       the reported inset by the other half; whether iOS keeps that clear of
+       its home gesture is for the device to show. */
+    --dp-shell-dock-inset: calc(env(safe-area-inset-bottom, 0px) / 2);
+    --dp-shell-dock-edge: calc(var(--dp-shell-dock-height) + 1px + var(--dp-shell-dock-inset));
     /* The page title's one size per header width (the heading is its
        container): the longest titles (Dashboard, Downloads) fill its room at
        16.5cqi, never above 18px or below 13px. */
@@ -272,7 +271,7 @@
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     flex: none;
-    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    padding: 0 env(safe-area-inset-right, 0px) var(--dp-shell-dock-inset) env(safe-area-inset-left, 0px);
     border-top: 1px solid var(--dp-chrome-sidebar-edge);
     background: var(--dp-chrome-sidebar-surface);
     box-shadow: var(--dp-shell-bar-shadow-up);
@@ -333,9 +332,6 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
-  .dp-shell-dock-item > .icon,
-  .dp-shell-dock-item > .dp-shell-label,
-  .dp-shell-dock-item > .dp-shell-dock-badge { translate: 0 var(--dp-shell-dock-drop); }
   .dp-shell-dock-item .icon,
   .dp-shell-sheet-item .icon {
     display: grid;
@@ -357,14 +353,16 @@
   /* The selected destination: the sidebar's active surface, turned to rise
      from the dock's top edge, under the sidebar's rail along that edge, and
      the sidebar's active icon and label. The rail and the heavier label mark
-     it without colour. */
+     it without colour. The surface runs on through the dock's reservation
+     below the row to the dock's lower edge, in its own column: painted only
+     (the button's box and hit area stay its 58px row). */
   .dp-shell-dock-item::before {
     content: '';
     position: absolute;
-    top: 50%;
+    top: calc(50% + var(--dp-shell-dock-inset) / 2);
     left: 50%;
     z-index: -1;
-    width: 100cqh;
+    width: calc(100cqh + var(--dp-shell-dock-inset));
     height: 100cqw;
     transform: translate(-50%, -50%) rotate(90deg);
     background: var(--dp-chrome-nav-active-surface);
