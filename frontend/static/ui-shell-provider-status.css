@@ -54,6 +54,18 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
   padding: 0 0 9px !important;
 }
 
+/* Under height pressure (app.js fitSidebarScale) the whole crown section --
+   the crown, every account line beside it and the separator beneath it --
+   gives up its place before the sidebar is scaled: it leaves the flow and is
+   not drawn, read or reachable, while keeping the size it would take, so the
+   sidebar knows when it fits again; it returns as soon as it does. The
+   premium services' own indicators stay. */
+#sidebar[data-sidebar-crown-yield] .sidebar-footer #premium-row {
+  position: absolute !important;
+  visibility: hidden !important;
+  pointer-events: none;
+}
+
 #sidebar .sidebar-footer #premium-row::before {
   position: static !important;
   inset: auto !important;

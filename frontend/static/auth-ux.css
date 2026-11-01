@@ -1,32 +1,32 @@
-/* Authenticated sidebar session stack.
+/* The sidebar's bottom stack.
  *
- * #sidebar-bottom-stack is static shell markup that wraps the sidebar footer and
- * the auth owner's mount. Unauthenticated it is layout-transparent; when the
- * session owner marks it data-session="authenticated", Provider Status and Log
- * Out occupy one bottom-anchored flow so they cannot overlap as independent
- * positioned items.
+ * #sidebar-bottom-stack is static shell markup that wraps the sidebar footer
+ * (Provider Status) and the auth owner's mount. It is the last item of the
+ * sidebar's column, below the navigation and pushed to the bottom by its own
+ * auto top margin, so the navigation always ends above it: nothing in the
+ * stack is positioned over the sidebar, in either session state. When the
+ * session owner marks it data-session="authenticated", Provider Status and
+ * the session row are one flow inside it.
  */
 #sidebar .sidebar-bottom-stack {
-  display: contents;
-}
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] {
   --dp-sidebar-stack-inset: 10px;
-  position: absolute;
-  left: var(--dp-sidebar-stack-inset);
-  right: var(--dp-sidebar-stack-inset);
-  bottom: 12px;
+  position: relative;
   z-index: 3;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin: auto var(--dp-sidebar-stack-inset) 12px;
 }
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] .sidebar-footer {
-  position: static !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  width: 100%;
+/* Provider Status keeps its own composition at any sidebar scale: it is as
+   wide, in its own terms, as it is at full size, centred, so its indicators
+   and lines wrap exactly as they do unscaled (ui-shell-structural.css,
+   --dp-sidebar-scale). Scaled, the stack is wider in its own terms by the
+   scale's inverse while its insets are not, which this width undoes; at full
+   size it is the stack's own width. */
+#sidebar .sidebar-bottom-stack .sidebar-footer {
+  align-self: center;
+  width: calc(100% * var(--dp-sidebar-scale, 1) - 2 * var(--dp-sidebar-stack-inset) * (1 - var(--dp-sidebar-scale, 1)));
   flex: 0 0 auto;
 }
 #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
@@ -104,8 +104,8 @@ body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sideba
   white-space: nowrap;
 }
 @media (min-width: 780px) {
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] {
-    bottom: 24px;
+  #sidebar .sidebar-bottom-stack {
+    margin-bottom: 24px;
   }
 }
 /* Log Out is a navigation item inside the inset stack: its leading padding

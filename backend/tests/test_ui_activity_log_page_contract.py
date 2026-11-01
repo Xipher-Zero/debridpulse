@@ -189,10 +189,16 @@ def test_transfer_row_actions_have_equal_footprint_and_shared_pause_material() -
 
 def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     shell = read("ui-shell-structural.css")
+    stack = read("auth-ux.css")
     activity = read("ui-activity-log-page.css")
 
-    # The desktop datum is the shell's from its one 780px mode change.
-    assert "@media (min-width: 780px) {\n  .sidebar-footer {\n    bottom: 24px !important;" in shell
+    # The desktop datum is the shell's from its one 780px mode change: the
+    # sidebar's bottom stack (Provider Status and the session row) is the
+    # last item of the sidebar's column, 24px above its end; Provider Status
+    # is placed by that stack, never positioned over the sidebar itself.
+    assert "@media (min-width: 780px) {\n  #sidebar .sidebar-bottom-stack {\n    margin-bottom: 24px;" in stack
+    footer = shell[shell.index(".sidebar-footer {"):].split("}", 1)[0]
+    assert "position:" not in footer and "bottom:" not in footer
     assert ":has(#view-torrents.active) .sidebar-footer" not in shell
     assert ".sidebar-footer" not in activity
 

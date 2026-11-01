@@ -58,9 +58,26 @@ body {
    item inset + icon size / 2; the brand glyph and the Log Out glyph derive
    their position from these same values, so the rail cannot drift apart. */
 :root {
-  --dp-sidebar-item-inset: 23px;
+  --dp-sidebar-inset: 23px;
   --dp-sidebar-icon-size: 20px;
   --dp-sidebar-brand-glyph: 48px;
+}
+
+/* The sidebar's magnification. Its contents -- the brand, the navigation and
+   the bottom stack -- magnify with the page until together they would no
+   longer fit the sidebar's height; from there app.js (fitSidebarScale) sets
+   --dp-sidebar-scale below 1, from the measured height and the contents'
+   own, so the sidebar alone stops growing while the page goes on zooming. The
+   sidebar's own box (its width, the rail and the shell's mode changes) is
+   never scaled. The icon rail stays where it is at any scale: the inset every
+   rail position derives from (--dp-sidebar-item-inset) is the one that puts
+   the scaled icon's centre where the unscaled one's is. */
+#sidebar > :is(.logo, nav, .sidebar-bottom-stack) {
+  zoom: var(--dp-sidebar-scale, 1);
+  --dp-sidebar-item-inset: calc((var(--dp-sidebar-inset) + var(--dp-sidebar-icon-size) / 2) / var(--dp-sidebar-scale, 1) - var(--dp-sidebar-icon-size) / 2);
+}
+#sidebar[data-sidebar-rescaling] :is(.logo, .nav-item) {
+  transition: none;
 }
 
 .logo {
@@ -153,11 +170,6 @@ body.light .logo-name span { color: var(--dp-chrome-brand-text); }
 .nav-item.active .icon { color: #c9a3ff; }
 
 .sidebar-footer {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 12px;
-  z-index: 3;
   margin: 0;
   padding: 14px 14px 12px;
   border-radius: 11px;
@@ -168,12 +180,6 @@ body.light .logo-name span { color: var(--dp-chrome-brand-text); }
 }
 .sidebar-footer::before {
   text-align: center !important;
-}
-/* Desktop shell owns one lower datum for every page. */
-@media (min-width: 780px) {
-  .sidebar-footer {
-    bottom: 24px !important;
-  }
 }
 .conn-row {
   min-height: 22px;
@@ -382,7 +388,7 @@ body.light .theme-toggle {
 }
 
 @media (max-width: 1180px) {
-  :root { --dp-shell-sidebar: 220px; --dp-sidebar-item-inset: 18px; }
+  :root { --dp-shell-sidebar: 220px; --dp-sidebar-inset: 18px; }
 }
 
 /* The brand glyph is centred on the navigation icon rail at every width (the
@@ -466,7 +472,7 @@ body.light .theme-toggle {
 @media (min-width: 780px) and (max-width: 1559px) {
   :root {
     --dp-shell-sidebar: var(--dp-shell-rail);
-    --dp-sidebar-item-inset: 26px;
+    --dp-sidebar-inset: 26px;
   }
 
   #sidebar:not(.sidebar-overlay-open) {

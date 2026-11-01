@@ -958,3 +958,111 @@ test('negative control: an unresized chart fails the Statistics fit check', asyn
   expect(after.width).toBe(before);
   expect(Math.abs(after.parent - after.width)).toBeGreaterThan(50);
 });
+
+/* DP 1.0.14 sidebar magnification. The sidebar's contents magnify with the
+ * page until the brand, every navigation entry, Provider Status and the
+ * session controls would no longer fit its height together; from there the
+ * crown section yields first and only then the contents stop magnifying --
+ * the sidebar never overlaps itself, never scrolls its navigation and keeps
+ * its width, and the page goes on zooming. The heights are the CSS viewports
+ * of browser zoom on ordinary desktops (1600x900 at 133%, 1920x1080 and
+ * 1600x900 at 200%); the Admin's six destinations, two premium accounts under
+ * the crown and a degraded provider make the recorded composition. */
+const AUTH_BASE = process.env.DP_AUTH_BASE_URL;
+const adminSession = require('./acl-admin-session');
+
+async function signedInAdmin(browser) {
+  const context = await browser.newContext({baseURL: AUTH_BASE, viewport: {width: 1440, height: 900},
+    storageState: adminSession.get() || undefined, reducedMotion: 'reduce'});
+  const page = await context.newPage();
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  if (adminSession.get()) await page.goto('/');
+  else {
+    await page.goto('/login');
+    await page.locator('#username').fill('browser');
+    await page.locator('#password').fill('browser-secret');
+    await page.locator('button[type="submit"]').click();
+    await expect(page).not.toHaveURL(/\/login/);
+    adminSession.remember(await context.storageState());
+  }
+  await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeAttached();
+  return {context, page};
+}
+
+async function recordedProviderStatus(page) {
+  const expires = Math.floor(Date.now() / 1000) + 60 * 86400;
+  const account = functional => ({state: 'healthy', account: {entitlement: 'ready', service_class: 'premium',
+    functional, plan: 'Premium', request_types: [], expires_at: expires}});
+  const statuses = {alldebrid: account('usable'), realdebrid: account('usable'), torbox: account('degraded')};
+  await page.route(url => url.pathname.startsWith('/api/integration-status/'), route => {
+    const id = new URL(route.request().url()).pathname.split('/').pop();
+    return statuses[id] ? route.fulfill({json: statuses[id]}) : route.continue();
+  });
+  await page.evaluate(ids => {
+    const integrations = structuredClone(settingsData.integrations);
+    for (const id of ids) Object.assign(integrations[id], {enabled: true, configured: true, verified: true, verification_applicable: true});
+    settingsData = {...settingsData, integrations};
+  }, Object.keys(statuses));
+  await page.evaluate(() => window.DPProviderStatus.refresh());
+  await expect(page.locator('#premium-row .dp-provider-premium-account')).toHaveCount(2);
+}
+
+// Every control the sidebar offers, read from the rendered page.
+const sidebarFit = page => page.evaluate(() => {
+  const sidebar = document.getElementById('sidebar');
+  const nav = sidebar.querySelector(':scope > nav');
+  const stack = document.getElementById('sidebar-bottom-stack');
+  const shown = node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+  const reach = node => {
+    const r = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 24), r.top + r.height / 2);
+    return {top: r.top, bottom: r.bottom, centre: r.left + r.width / 2, reached: !!hit && node.contains(hit)};
+  };
+  const items = [...nav.querySelectorAll('.nav-item')].filter(shown);
+  const dots = [...sidebar.querySelectorAll('.sidebar-footer .dp-provider-status-list .conn-row .dot')].filter(shown);
+  const controls = [...items, ...dots, sidebar.querySelector('.dp-sidebar-logout'), sidebar.querySelector('.dp-sidebar-profile')];
+  const stackTop = stack.getBoundingClientRect().top;
+  return {
+    width: sidebar.getBoundingClientRect().width,
+    entries: items.map(item => item.dataset.tooltip),
+    icons: items.map(item => { const r = item.querySelector('.icon').getBoundingClientRect(); return Math.round((r.left + r.width / 2) * 10) / 10; }),
+    unreached: controls.filter(node => !node || !reach(node).reached).map(node => node?.getAttribute('data-tooltip') || node?.className),
+    outside: controls.filter(node => { const r = node.getBoundingClientRect(); return r.top < 0 || r.bottom > innerHeight + 0.5; }).length,
+    underStack: items.filter(item => item.getBoundingClientRect().bottom > stackTop + 0.5).length,
+    navScrolls: nav.scrollHeight > nav.clientHeight + 1,
+    crown: shown(document.getElementById('premium-row')),
+    scaled: sidebar.style.getPropertyValue('--dp-sidebar-scale') !== '',
+  };
+});
+
+test('the sidebar stops magnifying at its height: every destination, indicator and session control at once, never overlapping or scrolling', async ({browser}) => {
+  expect(AUTH_BASE, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
+  const {context, page} = await signedInAdmin(browser);
+  try {
+    await recordedProviderStatus(page);
+    const at = async (width, height, overlay = false) => {
+      await page.setViewportSize({width, height});
+      await page.evaluate(open => setSidebarOverlay(open), overlay);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      return sidebarFit(page);
+    };
+    const roomy = await at(1440, 900);
+    expect(roomy).toMatchObject({width: RAIL, unreached: [], outside: 0, underStack: 0, navScrolls: false, crown: true, scaled: false});
+    expect(roomy.entries).toEqual(['Dashboard', 'Downloads', 'Activity Log', 'Statistics', 'Settings', 'Help & License']);
+    for (const [width, height] of [[1203, 676], [960, 540], [800, 450]]) {
+      for (const overlay of [false, true]) {
+        const fit = await at(width, height, overlay);
+        const where = `${width}x${height}${overlay ? ' overlay' : ''}`;
+        expect(fit, where).toMatchObject({width: overlay ? FULL : RAIL, entries: roomy.entries, unreached: [], outside: 0,
+          underStack: 0, navScrolls: false, crown: false});
+        // The icon rail stays where it is, scaled or not: every icon's centre.
+        if (!overlay) for (const [i, centre] of fit.icons.entries()) expect(Math.abs(centre - roomy.icons[i]), where).toBeLessThan(0.75);
+      }
+    }
+    expect((await at(800, 450)).scaled).toBe(true);
+    // Room again: the crown section returns and the contents are full size.
+    expect(await at(1440, 900)).toMatchObject({crown: true, scaled: false, unreached: [], navScrolls: false});
+  } finally {
+    await context.close();
+  }
+});

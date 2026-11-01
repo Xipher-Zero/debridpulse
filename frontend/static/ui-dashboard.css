@@ -1459,16 +1459,6 @@ body.light .nav-item.active::after {
   opacity: .92;
 }
 
-/* ── Dashboard bottom datum ───────────────────────────────────────────── */
-/* Sidebar and viewport remain independent components. On the desktop
-   Dashboard only, share the same 24px lower gutter so Provider Status and the
-   fully extended Recent Activity card finish on one visual baseline. */
-@media (min-width: 780px) {
-  body:has(#content.dashboard-active) .sidebar-footer {
-    bottom: 24px !important;
-  }
-}
-
 /* ── Provider crown ───────────────────────────────────────────────────── */
 /* Nudge the statement icon slightly higher again and make it emit the same DP
    purple energy used elsewhere, without touching the already-approved text. */

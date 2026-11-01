@@ -208,8 +208,6 @@ def test_canonical_dashboard_keeps_provider_baseline_crown_and_metric_icon_light
     require(
         dashboard_css(),
         (
-            ":has(#content.dashboard-active) .sidebar-footer",
-            "bottom: 24px !important",
             "#premium-row::before",
             "top: 15px !important",
             "drop-shadow(0 0 11px rgba(153,65,239,.42))",
@@ -219,6 +217,11 @@ def test_canonical_dashboard_keeps_provider_baseline_crown_and_metric_icon_light
         ),
         "provider and metric lighting contract",
     )
+    # The 24px lower datum Provider Status shares with the extended Download
+    # Activity card is the sidebar stack's on every desktop page (auth-ux.css),
+    # so the Dashboard keeps no positional override of its own.
+    assert ".sidebar-footer" not in dashboard_css()
+    assert "@media (min-width: 780px) {\n  #sidebar .sidebar-bottom-stack {\n    margin-bottom: 24px;" in (STATIC / "auth-ux.css").read_text(encoding="utf-8")
 
 
 def test_canonical_dashboard_keeps_original_progress_percentage_geometry() -> None:

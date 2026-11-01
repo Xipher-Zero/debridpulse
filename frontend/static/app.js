@@ -3371,6 +3371,64 @@ document.getElementById('sidebar')?.addEventListener('animationend', event => {
 document.getElementById('sidebar')?.addEventListener('animationcancel', event => {
   if (event.animationName === 'dp-sidebar-reveal' && !sidebarRevealing(event.currentTarget)) endSidebarReflow(event.currentTarget);
 });
+/* The sidebar's magnification (ui-shell-structural.css): its contents grow with
+ * the page's zoom only while the brand, every navigation entry and the whole
+ * bottom stack fit its height together. Measured at full size, from the
+ * sidebar's own height and the contents' own: when they do not fit, the
+ * premium crown section yields first (ui-shell-provider-status.css), and
+ * only what still does not fit scales the contents down, to exactly the
+ * sidebar's height. A change of either size -- the sidebar's box, or what
+ * its contents hold -- fits it again; the sidebar's box and the rest of the
+ * page are never touched. */
+function fitSidebarScale(sidebar) {
+  const logo = sidebar.querySelector(':scope > .logo');
+  const nav = sidebar.querySelector(':scope > nav');
+  const stack = sidebar.querySelector(':scope > .sidebar-bottom-stack');
+  if (_shellHandheld.matches || !logo || !nav || !stack) return;
+  // Every size here is the contents' own, at full size: a scaled box reports
+  // its unscaled offset and scroll sizes, and the yielded crown section keeps
+  // its size out of the flow, so nothing has to be undone to be measured.
+  const crown = document.getElementById('premium-row');
+  const yielded = sidebar.hasAttribute('data-sidebar-crown-yield');
+  const crownStyle = crown && getComputedStyle(crown);
+  const crownSize = crownStyle && crownStyle.display !== 'none'
+    ? crown.offsetHeight + parseFloat(crownStyle.marginTop) + parseFloat(crownStyle.marginBottom) : 0;
+  const contents = logo.offsetHeight + nav.scrollHeight + stack.offsetHeight
+    + (parseFloat(getComputedStyle(stack).marginBottom) || 0);
+  const withCrown = yielded ? contents + crownSize : contents;
+  const withoutCrown = withCrown - crownSize;
+  const available = sidebar.clientHeight;
+  const yieldCrown = crownSize > 0 && withCrown > available;
+  const needed = yieldCrown ? withoutCrown : withCrown;
+  // Scaled layout rounds each box to the device pixel grid, so a few pixels
+  // are kept back for it: the scaled contents must never overflow.
+  const scale = needed > available ? String(Math.floor((available - 4) / needed * 1000) / 1000) : '';
+  if (yieldCrown !== yielded) sidebar.toggleAttribute('data-sidebar-crown-yield', yieldCrown);
+  if (scale === sidebar.style.getPropertyValue('--dp-sidebar-scale')) return;
+  // A new scale is the sidebar's size at once, never an animation of the
+  // rail's inset (ui-shell-structural.css [data-sidebar-rescaling]).
+  sidebar.toggleAttribute('data-sidebar-rescaling', true);
+  if (scale) sidebar.style.setProperty('--dp-sidebar-scale', scale);
+  else sidebar.style.removeProperty('--dp-sidebar-scale');
+  void sidebar.offsetWidth;
+  sidebar.toggleAttribute('data-sidebar-rescaling', false);
+}
+{
+  // The sidebar's own box (unscaled) is observed for its size; its scaled
+  // contents for what they hold (a resize of a scaled box is not reliably
+  // reported), and the sidebar's class for the overlay. Webfonts can change
+  // every height once loaded.
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar && 'ResizeObserver' in window) {
+    const refit = () => fitSidebarScale(sidebar);
+    new ResizeObserver(refit).observe(sidebar);
+    const contents = new MutationObserver(refit);
+    contents.observe(sidebar, {attributes: true, attributeFilter: ['class']});
+    sidebar.querySelectorAll(':scope > :is(.logo, nav, .sidebar-bottom-stack)').forEach(part =>
+      contents.observe(part, {childList: true, subtree: true, attributes: true, characterData: true}));
+    document.fonts?.ready.then(refit);
+  }
+}
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.defaultPrevented || !sidebarOverlayOpen()) return;
   setSidebarOverlay(false, {focusHandle: true});
