@@ -1018,6 +1018,10 @@ class ExecutorCapabilities:
     per_execution_pause: bool = False
     acquisition_gate: bool = False
     aggregate_bandwidth_ceiling: bool = False
+    # The smallest positive bytes/second the executor can enforce as an
+    # aggregate ceiling (with ``aggregate_bandwidth_ceiling``); core never
+    # assigns a finite cap below it.
+    minimum_bandwidth_ceiling: int = 1
     native_assisted_retry: bool = False
     transient_input: bool = False
     # Read-only listing of one remote directory before any candidate exists,
@@ -1044,6 +1048,8 @@ class ExecutorCapabilities:
             raise ValueError("Executors must declare canonical continuation capabilities, FULL_RESTART included")
         if isinstance(self.continuation_alignment, bool) or int(self.continuation_alignment) < 1:
             raise ValueError("Continuation alignment is a positive byte count")
+        if isinstance(self.minimum_bandwidth_ceiling, bool) or int(self.minimum_bandwidth_ceiling) < 1:
+            raise ValueError("The minimum bandwidth ceiling is a positive byte rate")
 
 
 class ExecutorRuntimeCapability(StrEnum):

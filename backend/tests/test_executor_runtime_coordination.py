@@ -1,8 +1,9 @@
 """Core-owned global bandwidth allocation and global execution concurrency.
 
-``execution_runtime_limits.max_download_bytes_per_second`` is split equally
-across the executors that currently hold a bandwidth reservation; each
-executor only enforces the ceiling core assigns it. Global concurrency is a
+``execution_runtime_limits.max_download_bytes_per_second`` is a maximum for the
+aggregate, allocated work-conservingly from observed demand across the
+executors that currently hold a bandwidth reservation; each executor only
+enforces the ceiling core assigns it. Global concurrency is a
 single core admission count across every executor.
 """
 from __future__ import annotations
@@ -57,6 +58,61 @@ def _ceilings(log, identity):
     return [entry[2] for entry in log if entry[0] == identity and entry[1] == "ceiling"]
 
 
+FLOOR = CAP // 32
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 1_000.0
+
+    def __call__(self):
+        return self.now
+
+
+def _clocked(core) -> _Clock:
+    """The engine's throughput meter (and so the bandwidth owner) on a test clock."""
+    clock = _Clock()
+    core.engine.throughput.clock = clock
+    return clock
+
+
+async def _flow(core, clock, demands, *, seconds=12.0, step=1.0):
+    """Run reconcile passes while each [executor, handle, demand] acquires at
+    min(demand, the ceiling it currently enforces) -- None = not acquiring."""
+    for _ in range(int(seconds / step)):
+        clock.now += step
+        for executor, handle, demand in demands:
+            job = executor.job_for(handle)
+            if demand is None:
+                executor.run(handle, network_active=False)
+                continue
+            ceiling = executor.ceilings[-1] if executor.ceilings else 0
+            rate = min(demand, ceiling) if ceiling else demand
+            executor.run(handle, completed=int(job.progress.completed_bytes + rate * step))
+        await core.engine.reconcile_executions()
+
+
+def _in_effect_never_exceeds(log, cap):
+    """Replaying every ceiling call in order (a failed one counted as applied),
+    the ceilings executors may hold never add up to more than ``cap``."""
+    current = {}
+    for identity, kind, *value in log:
+        if kind != "ceiling":
+            continue
+        current[identity] = value[0] or float("inf")
+        assert sum(current.values()) <= cap, (identity, value[0], dict(current))
+
+
+async def _saturating(core, transfers):
+    """[executor, handle, demand] with a demand far above the cap, per transfer id."""
+    demands = []
+    for transfer_id in transfers:
+        artifact = await artifact_of(core, transfer_id)
+        executor = next(item for item in core.executors if item.descriptor.id == artifact.execution.executor_id)
+        demands.append([executor, artifact.execution, CAP * 4])
+    return demands
+
+
 async def test_unlimited_cap_requires_no_executor_ceiling_capability(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log, cap=0, a_caps=ledger_capabilities())
@@ -76,56 +132,94 @@ async def test_single_reserved_executor_receives_full_cap(tmp_path, monkeypatch)
     assert core.engine.runtime.reserved == frozenset({"exec-a"})
 
 
-async def test_two_reserved_executors_receive_equal_halves(tmp_path, monkeypatch):
+async def test_two_saturated_executors_share_the_cap_equally(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
-    await submit_ledger(core, "item")
-    await submit_ledger(core, "other", kind="tome")
+    clock = _clocked(core)
+    first = await submit_ledger(core, "item")
+    other = await submit_ledger(core, "other", kind="tome")
+    await _flow(core, clock, await _saturating(core, [first.id, other.id]))
     assert _ceilings(log, "exec-a")[-1] == CAP // 2
     assert _ceilings(log, "exec-b")[-1] == CAP // 2
     assert core.engine.runtime.reserved == frozenset({"exec-a", "exec-b"})
+    _in_effect_never_exceeds(log, CAP)
 
 
 async def test_transfer_count_within_executor_does_not_change_share(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
-    for index in range(3):
-        await submit_ledger(core, f"item-{index}")
-    await submit_ledger(core, "other", kind="tome")
+    clock = _clocked(core)
+    transfers = [await submit_ledger(core, f"item-{index}") for index in range(3)]
+    transfers.append(await submit_ledger(core, "other", kind="tome"))
+    await _flow(core, clock, await _saturating(core, [transfer.id for transfer in transfers]))
     assert _ceilings(log, "exec-a")[-1] == CAP // 2 == _ceilings(log, "exec-b")[-1]
 
 
-async def test_third_reserved_executor_rebalances_equal_thirds(tmp_path, monkeypatch):
+async def test_third_saturated_executor_rebalances_equal_thirds(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log, c=True)
-    await submit_ledger(core, "item")
-    await submit_ledger(core, "other", kind="tome")
-    await submit_ledger(core, "third", kind="scroll")
+    clock = _clocked(core)
+    transfers = [await submit_ledger(core, "item"), await submit_ledger(core, "other", kind="tome"),
+                 await submit_ledger(core, "third", kind="scroll")]
+    await _flow(core, clock, await _saturating(core, [transfer.id for transfer in transfers]))
     for identity in ("exec-a", "exec-b", "exec-c"):
         assert _ceilings(log, identity)[-1] == CAP // 3
+    _in_effect_never_exceeds(log, CAP)
 
 
-async def test_unused_share_is_not_borrowed(tmp_path, monkeypatch):
+async def test_unused_share_is_lent_and_reclaimed_when_its_demand_returns(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
+    clock = _clocked(core)
     first = await submit_ledger(core, "item")
-    await submit_ledger(core, "other", kind="tome")
-    idle = await artifact_of(core, first.id)
-    core.executors[0].run(idle.execution, network_active=False)  # reserved but momentarily idle
-    for _ in range(3):
-        await core.engine.reconcile_executions()
-    assert _ceilings(log, "exec-b")[-1] == CAP // 2
-    assert CAP not in _ceilings(log, "exec-b")
+    other = await submit_ledger(core, "other", kind="tome")
+    demands = await _saturating(core, [first.id, other.id])
+    demands[0][2] = None                                   # reserved but idle
+    await _flow(core, clock, demands)
+    # The idle executor keeps only the floor it enforces; the busy one borrows the rest.
+    assert _ceilings(log, "exec-a")[-1] == FLOOR
+    assert _ceilings(log, "exec-b")[-1] == CAP - FLOOR
+    # Its demand returns: it runs at its floor, is seen saturated, and the
+    # borrower is reduced (and confirmed) before it is raised.
+    log.clear()
+    demands[0][2] = CAP * 4
+    await _flow(core, clock, demands)
+    assert _ceilings(log, "exec-a")[-1] == CAP // 2 == _ceilings(log, "exec-b")[-1]
+    assert log.index(("exec-b", "ceiling", CAP // 2)) < log.index(("exec-a", "ceiling", CAP // 2))
+    _in_effect_never_exceeds([("exec-a", "ceiling", FLOOR), ("exec-b", "ceiling", CAP - FLOOR)] + log, CAP)
+
+
+async def test_low_demand_executor_keeps_its_need_and_the_rest_is_lent(tmp_path, monkeypatch):
+    log = []
+    core = await _core(tmp_path, monkeypatch, log)
+    clock = _clocked(core)
+    first = await submit_ledger(core, "item")
+    other = await submit_ledger(core, "other", kind="tome")
+    demands = await _saturating(core, [first.id, other.id])
+    demands[0][2] = CAP // 10                              # a consumer that can only use a tenth
+    await _flow(core, clock, demands, seconds=20)
+    low, busy = _ceilings(log, "exec-a")[-1], _ceilings(log, "exec-b")[-1]
+    assert CAP // 10 <= low <= CAP // 10 * 1.25 + 1       # its measured need, with headroom
+    assert busy == CAP - low                               # nothing stranded, nothing over
+    # Its source speeds up: it is seen saturated and grows to a fair share.
+    demands[0][2] = CAP * 4
+    await _flow(core, clock, demands, seconds=20)
+    assert _ceilings(log, "exec-a")[-1] == CAP // 2 == _ceilings(log, "exec-b")[-1]
+    _in_effect_never_exceeds(log, CAP)
 
 
 async def test_adding_executor_reduces_existing_ceiling_before_new_native_start(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
     await submit_ledger(core, "item")
+    assert _ceilings(log, "exec-a") == [CAP]
     log.clear()
     await submit_ledger(core, "other", kind="tome")
-    shrink = log.index(("exec-a", "ceiling", CAP // 2))
-    newcomer = log.index(("exec-b", "ceiling", CAP // 2))
+    (shrunk,) = _ceilings(log, "exec-a")
+    (granted,) = _ceilings(log, "exec-b")
+    assert shrunk < CAP and shrunk + granted <= CAP and granted >= FLOOR
+    shrink = log.index(("exec-a", "ceiling", shrunk))
+    newcomer = log.index(("exec-b", "ceiling", granted))
     start = log.index(("exec-b", "start"))
     assert shrink < newcomer < start
 
@@ -133,8 +227,10 @@ async def test_adding_executor_reduces_existing_ceiling_before_new_native_start(
 async def test_removing_executor_raises_remaining_ceiling_only_after_positive_release_truth(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
-    await submit_ledger(core, "item")
+    clock = _clocked(core)
+    first = await submit_ledger(core, "item")
     other = await submit_ledger(core, "other", kind="tome")
+    await _flow(core, clock, await _saturating(core, [first.id, other.id]))
     b_artifact = await artifact_of(core, other.id)
     executor_b = core.executors[1]
     executor_b.observe_failure = NormalizedError(Domain.EXECUTOR, Category.EXECUTOR_UNAVAILABLE,
@@ -154,31 +250,39 @@ async def test_removing_executor_raises_remaining_ceiling_only_after_positive_re
 async def test_failed_observation_retains_previous_executor_reservation(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
-    await submit_ledger(core, "item")
-    await submit_ledger(core, "other", kind="tome")
+    clock = _clocked(core)
+    first = await submit_ledger(core, "item")
+    other = await submit_ledger(core, "other", kind="tome")
+    demands = await _saturating(core, [first.id, other.id])
+    await _flow(core, clock, demands)
     core.executors[1].observe_failure = NormalizedError(Domain.EXECUTOR, Category.EXECUTOR_UNAVAILABLE,
                                                         Stage.RECONCILIATION, retryability=Retryability.BACKOFF)
-    for _ in range(3):
-        await core.engine.reconcile_executions()
+    await _flow(core, clock, [entry for entry in demands if entry[0] is core.executors[0]])
     assert core.engine.runtime.reserved == frozenset({"exec-a", "exec-b"})
-    assert _ceilings(log, "exec-a")[-1] == CAP // 2
+    # Nothing is lent from what the unobservable executor may hold.
+    assert _ceilings(log, "exec-a")[-1] == CAP // 2 == _ceilings(log, "exec-b")[-1]
 
 
-async def test_unreachable_executor_share_is_not_redistributed(tmp_path, monkeypatch):
+async def test_unreachable_executor_ceiling_is_retained_never_lent(tmp_path, monkeypatch):
     log = []
     core = await _core(tmp_path, monkeypatch, log)
-    await submit_ledger(core, "item")
+    clock = _clocked(core)
+    first = await submit_ledger(core, "item")
     other = await submit_ledger(core, "other", kind="tome")
+    await _flow(core, clock, await _saturating(core, [first.id, other.id]))
     b_artifact = await artifact_of(core, other.id)
+    calls = len(_ceilings(log, "exec-b"))
     core.executors[1].jobs.clear()  # native work may be gone, but core cannot observe that
     core.executors[1].observe_failure = NormalizedError(Domain.EXECUTOR, Category.EXECUTOR_UNAVAILABLE,
                                                         Stage.RECONCILIATION, retryability=Retryability.BACKOFF)
+    await core.engine.reconcile_executions()
     core.engine.configure_runtime_limits(CAP * 2)
-    status = await core.engine.converge_runtime_limits()
-    assert _ceilings(log, "exec-a")[-1] == CAP  # the new cap is still split in two
+    await core.engine.converge_runtime_limits()
+    # exec-b keeps the ceiling it may hold; the raise for exec-a fits beside it.
+    assert len(_ceilings(log, "exec-b")) == calls and _ceilings(log, "exec-b")[-1] == CAP // 2
+    assert _ceilings(log, "exec-a")[-1] == CAP * 2 - CAP // 2
     assert "exec-b" in core.engine.runtime.reserved
     assert (await artifact_of(core, other.id)).execution.attempt_id == b_artifact.execution.attempt_id
-    del status
 
 
 async def test_finite_cap_blocks_new_work_on_executor_without_aggregate_ceiling(tmp_path, monkeypatch):
@@ -385,6 +489,7 @@ async def test_failed_newcomer_admission_restores_the_unchanged_reserved_split(t
     assert (await artifact_of(core, blocked.id)).execution is None
     assert ("exec-b", "start") not in log
     assert core.engine.runtime.reserved == frozenset({"exec-a"})
-    assert _ceilings(log, "exec-a")[-2:] == [CAP // 2, CAP]  # shrunk for the newcomer, then restored
+    shrunk, restored = _ceilings(log, "exec-a")[-2:]
+    assert shrunk < CAP and restored == CAP  # shrunk for the newcomer, then restored
     status = core.engine.runtime.status()
     assert status.ok and status.effective == CAP  # the current reserved set is still provably enforced

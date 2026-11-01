@@ -174,7 +174,8 @@ def test_engines_are_presented_as_four_managed_engines_not_one():
     for phrase in (
         "there is nothing to install or connect",
         "one limit for all engines together",
-        "shared equally between the engines that are downloading",
+        "shared between the engines that are downloading",
+        "the rest goes to the engines that can use it",
         "Transfer Method Settings → Network Sources",
         "Download Engine Activity",
     ):

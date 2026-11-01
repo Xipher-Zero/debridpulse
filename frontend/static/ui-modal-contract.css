@@ -225,7 +225,6 @@ body.light #modal.dp-detail-modal {
 @media (max-width: 779px) {
   #overlay { padding: 12px; }
   #modal.dp-detail-modal { width: 100%; max-height: 90vh; }
-  #modal .detail-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Application dialog shell ─────────────────────────────────────────────
@@ -501,7 +500,6 @@ body.light .dp-modal-dialog {
 .dv { font-size: 13px; font-family: var(--mono); word-break: break-all; }
 @media (max-width: 779px) {
   #modal { width: 95vw !important; max-height: 85vh; }
-  .detail-grid { grid-template-columns: 1fr !important; }
 }
 
 /* ── Fullscreen modal entry and exit (ui-motion.js) ─────────────────────────

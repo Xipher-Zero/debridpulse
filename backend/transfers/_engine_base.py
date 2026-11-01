@@ -164,7 +164,7 @@ from transfers.policy import (
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers._repository_base import KnownProviderResource, terminal_cleanup_authority
-from transfers.runtime_coordination import ExecutionRuntimeCoordinator
+from transfers.runtime_coordination import ExecutionRuntimeCoordinator, ExecutorDemand
 from transfers.runtime_telemetry import EtaPresentation, ExecutionThroughputMeter, acquisition_eta
 
 
@@ -477,9 +477,11 @@ class TransferEngine:
         # Aggregate counts of the reconcile_executions() pass in progress, for
         # its one diagnostic summary line; ``None`` between passes.
         self._pass_counts: collections.Counter | None = None
-        # The one core owner of executor runtime limits (global download
-        # bandwidth split across reserved executors).
-        self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository)
+        # The one core owner of executor runtime limits (the global download
+        # bandwidth, allocated across reserved executors from their demand),
+        # on the throughput meter's clock.
+        self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository,
+                                                   clock=lambda: self.throughput.clock())
         # The one core owner of download throughput, per execution and
         # aggregate: fed every acquiring execution's byte counter by each
         # complete observation pass -- the reconcile cycle and, between cycles,
@@ -1305,11 +1307,19 @@ class TransferEngine:
                 observed = [observations[handle.attempt_id] for handle in handles]
                 reservation_facts[executor_id] = (certain, any(
                     item.resumable and item.activity.bandwidth_reservation_required
-                    for item in observed))
-            await self.runtime.observe(reservation_facts)
+                    for item in observed), any(
+                    item.state == ExecutionState.RUNNING and item.error is None and item.activity.network_active
+                    for item in observed), handles)
             # A complete pass over the executions that actually hold live
             # handles: one that is gone, paused or finished leaves no rate.
             self.throughput.record(throughput_samples)
+            # The bandwidth owner's demand facts read the rates this pass just
+            # recorded; it mutates ceilings only under the admission lock.
+            async with self._dispatch_lock:
+                await self.runtime.observe({
+                    executor_id: ExecutorDemand(certain, required, acquiring,
+                                                sum(self.throughput.rate(handle.attempt_id) for handle in handles))
+                    for executor_id, (certain, required, acquiring, handles) in reservation_facts.items()})
             for transfer in transfers:
                 challenge = challenges[transfer.id]
                 # A pre-writer question (provider or evidence origin) concerns a

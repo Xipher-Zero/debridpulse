@@ -70,6 +70,19 @@ _RECOVERY_FIRST_DELAY_SECONDS = 60.0
 _RECOVERY_MAX_DELAY_SECONDS = 900.0
 
 
+def native_download_limit(share: int) -> int:
+    """aria2's own daemon-wide ``max-overall-download-limit`` for the share core
+    assigned it: 1.5 x the share, rounded up (0 = unlimited stays 0). The
+    authoritative limit is the share on aria2's egress download budget, which
+    every job connection crosses; aria2's limiter only bounds what it reads
+    from those connections, and at the same rate it would keep bytes the
+    budget already paid for waiting, so after a lower share it would hold
+    delivery below the share. With headroom the budget alone binds. The one
+    calculation for a live change and a daemon (re)start alike."""
+    share = max(0, int(share))
+    return (share * 3 + 1) // 2
+
+
 def build_aria2_global_options(options, *, include_safety: bool = False, live: bool = False) -> Dict[str, str]:
     """Pure translation of aria2-owned typed tuning into the native aria2
     global-option dict -- no settings access of any kind, and no DebridPulse
@@ -277,7 +290,7 @@ class Aria2Runtime:
         download_dir = self._download_dir()
         download_dir.mkdir(parents=True, exist_ok=True)
         options = build_aria2_global_options(aria2, include_safety=True)
-        options["max-overall-download-limit"] = str(self._bandwidth_ceiling)
+        options["max-overall-download-limit"] = str(native_download_limit(self._bandwidth_ceiling))
         cmd = [
             "aria2c",
             "--enable-rpc=true",

@@ -1,12 +1,12 @@
 """DP 1.0.13: the one global download ceiling governs every executor, measured.
 
 ``execution_runtime_limits.max_download_bytes_per_second`` has one owner --
-``transfers.runtime_coordination`` -- which splits it across the executors
-holding a bandwidth reservation and tells each only its own share. aria2
-enforces its share natively (its daemon-wide limit); rsync enforces its share
-on the one DebridPulse download budget every rsync connection draws on in the
-egress guard, so its concurrent transfers together -- never each -- stay
-within it, whatever the server does.
+``transfers.runtime_coordination`` -- which allocates it across the executors
+holding a bandwidth reservation and tells each only its own share. aria2 and
+rsync each enforce their share on the one DebridPulse download budget every
+one of their connections draws on in the egress guard (aria2's daemon-wide
+limit keeps headroom over it), so their concurrent transfers together --
+never each -- stay within it, whatever the server does.
 
 Everything is real: the convergence engine and coordinator, the rsync and
 aria2 executors, the egress guard, a real rsync daemon and a Range-capable
@@ -24,6 +24,7 @@ import time
 
 import pytest
 
+from executors.aria2.runtime import native_download_limit
 from rsync_origins import RsyncDaemon, write_tree
 from test_v113_continuation_runtime import BODY, start_origin
 from test_v113_rsync_runtime import MIB, _runtime
@@ -224,7 +225,8 @@ async def test_mixed_aria2_and_rsync_work_stays_under_the_one_ceiling_and_a_fini
         # DP split the one ceiling: each executor enforces only its own half.
         assert runtime.guard.budget("rsync").rate == ceiling // 2
         aria2_limit = int((await runtime.aria2_service.get_global_options())["max-overall-download-limit"])
-        assert aria2_limit == ceiling // 2 and runtime.guard.budget("aria2").rate == ceiling // 2
+        assert runtime.guard.budget("aria2").rate == ceiling // 2
+        assert aria2_limit == native_download_limit(ceiling // 2)  # headroom over the budget, which binds
         await _drive(runtime, meter, until=lambda: _all_completed(runtime, [rsync.id]))
         overlap_ended = time.monotonic()
         assert _within(meter.peak(since=overlap_started, until=overlap_ended), ceiling), meter.peak()
@@ -233,7 +235,7 @@ async def test_mixed_aria2_and_rsync_work_stays_under_the_one_ceiling_and_a_fini
         # whole ceiling -- never more.
         async def aria2_alone():
             limit = int((await runtime.aria2_service.get_global_options())["max-overall-download-limit"])
-            return runtime.engine.runtime.reserved == frozenset({"aria2"}) and limit == ceiling
+            return runtime.engine.runtime.reserved == frozenset({"aria2"}) and limit == native_download_limit(ceiling)
 
         await _drive(runtime, meter, until=aria2_alone, seconds=30)
         assert runtime.guard.budget("aria2").rate == ceiling

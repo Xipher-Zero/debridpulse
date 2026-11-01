@@ -128,6 +128,7 @@ class SabnzbdExecutor:
     capabilities = ExecutorCapabilities(
         per_execution_pause=True,
         aggregate_bandwidth_ceiling=True,
+        minimum_bandwidth_ceiling=_MINIMUM_EXPRESSIBLE_CEILING,
         materialization_kinds=frozenset({MaterializationKind.COLLECTION}),
         # SAB exports no final-file ranges, so the only reusable progress is
         # SAB's own job: it quiesces natively and a paused job resumes

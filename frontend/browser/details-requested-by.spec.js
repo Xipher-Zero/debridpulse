@@ -123,7 +123,7 @@ test('without a Requested By projection, Original Resource keeps the full row', 
   await expect(page.locator('#modal-body .dp-detail-original-resource')).toHaveAttribute('style', /grid-column:\s*1\s*\/\s*-1/);
 });
 
-test('narrow Details: one column, long names wrap, no horizontal scroll', async ({page}) => {
+test('narrow Details: two columns, long names wrap, no horizontal scroll', async ({page}) => {
   const long = 'An Account With A Remarkably Long Display Name That Must Wrap Rather Than Widen The Grid';
   const field = await details(page, {requests: [request(long, 0), request('Bob', 1)]}, 390);
   await field.locator('summary').click();
@@ -135,7 +135,7 @@ test('narrow Details: one column, long names wrap, no horizontal scroll', async 
       inside: field.getBoundingClientRect().right <= grid.getBoundingClientRect().right + 0.5,
       noScroll: body.scrollWidth <= body.clientWidth + 1};
   });
-  expect(layout).toEqual({columns: 1, inside: true, noScroll: true});
+  expect(layout).toEqual({columns: 2, inside: true, noScroll: true});
   await expect(names(field)).toHaveText([long, 'Bob']);
   await shot(page, 'requested-by-narrow');
 });

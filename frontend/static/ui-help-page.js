@@ -488,7 +488,7 @@
         ${inset('Limits that apply to every engine', `
           <ul>
             <li><b>Maximum Concurrent Downloads</b> (<b>Settings → Downloads → Download Behavior &amp; Limits</b>, 3 by default) is one limit for all engines together.</li>
-            <li>The <b>speed cap</b> in the header is shared equally between the engines that are downloading at that moment, and together they never exceed it. An engine's unused share is not passed to the others.</li>
+            <li>The <b>speed cap</b> in the header is shared between the engines that are downloading at that moment, and together they never exceed it. An engine that needs less keeps what it uses and the rest goes to the engines that can use it; engines that all want more share it equally. An engine with work waiting keeps a small part, so it can never start above the cap.</li>
             <li><b>Disk Space &amp; Recovery</b> settings (free space, retries, stalled downloads) apply to every engine.</li>
           </ul>`)}
 

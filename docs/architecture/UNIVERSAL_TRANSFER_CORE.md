@@ -284,13 +284,21 @@ fenced to the exact executor identity that raised it; if the selected claimant
 changes, the challenge is retired and the input dies unused.
 
 `transfers.runtime_coordination.ExecutionRuntimeCoordinator` is the one global
-download-bandwidth owner: `execution_runtime_limits` is split equally across the
-executors currently holding a reservation, shrinking existing shares before a new
-executor may acquire, never borrowing idle share, retaining an uncertain executor's
-share, and failing closed for new acquisition through an executor that cannot
-enforce a finite cap. A positive cap is never assigned as 0 (unlimited): if it cannot
-give every reserved executor a positive share, admission fails closed and enforcement
-is reported unproven. Every admission re-reads current executor health (reachable,
+download-bandwidth owner. `execution_runtime_limits` is a maximum for the aggregate,
+allocated work-conservingly across the executors currently holding a reservation:
+each keeps a floor it already enforces (so work it can start on its own stays
+bounded), and the rest follows the reconcile pass's demand facts (`ExecutorDemand`:
+acquiring, measured rate) -- a consumer below 90% of its ceiling keeps 1.25x its
+rate, saturated ones share the remainder equally, and nothing stays unlent. Ceilings
+are lowered and confirmed before any is raised, every raise fits within the cap less
+every other executor's exposure (the highest ceiling that may be in effect; an
+unconfirmed or ambiguous apply counts the worse value), and an uncertain executor
+keeps what it may hold, which is never lent. Admission still shrinks the others
+before a new executor may acquire, and fails closed for new acquisition through an
+executor that cannot enforce a finite cap. A positive cap is never assigned as 0
+(unlimited) nor below an executor's `minimum_bandwidth_ceiling`: if it cannot give
+every reserved executor one, admission fails closed and enforcement is reported
+unproven. Every admission re-reads current executor health (reachable,
 ready, ceiling available); an earlier confirmation never authorizes a new start or
 resume. Global concurrency is enforced only by core admission.
 Managed executors reach the application lifecycle and their own administration

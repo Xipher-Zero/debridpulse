@@ -25,6 +25,7 @@ from typing import Awaitable, Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from executors.aria2.client import Aria2ResponseError, Aria2Service
+from executors.aria2.runtime import native_download_limit
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
     SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, Located, Opaque,
@@ -1405,20 +1406,25 @@ class Aria2Executor:
         return ExecutorHealth(True, True, frozenset({ExecutorRuntimeCapability.AGGREGATE_BANDWIDTH_CEILING}))
 
     async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult:
-        """Enforce the core-assigned aggregate ceiling as aria2's daemon-wide
-        download limit (every job in the managed daemon is DP-owned), and
-        confirm it by reading the native option back. aria2's own limiter
-        averages over a trailing window and, after its limit is raised, runs
-        ahead of it until the average catches up; every job's connections also
-        draw on aria2's egress download budget at the same rate, which holds
-        the share at every moment."""
+        """Enforce the core-assigned aggregate ceiling on aria2's egress
+        download budget, which every connection of every DP-owned job draws on
+        (``job_options(..., budget=...)``): that budget is the authoritative
+        limit and holds the share at every moment. aria2's daemon-wide download
+        limit gets ``native_download_limit`` headroom over it -- the same
+        calculation a daemon (re)start uses -- so aria2's own trailing-average
+        limiter never holds back bytes the budget already delivered. The share
+        is confirmed only when the budget holds it and the native option reads
+        back as that headroom value."""
         requested = max(0, int(bytes_per_second))
-        self.egress.budget(self.descriptor.id).set_rate(requested)
+        native = native_download_limit(requested)
+        budget = self.egress.budget(self.descriptor.id)
+        budget.set_rate(requested)
         if self.runtime is not None:
             self.runtime.assign_bandwidth_ceiling(requested)
         try:
-            await self.client.change_global_options({_OVERALL_DOWNLOAD_LIMIT: str(requested)})
+            await self.client.change_global_options({_OVERALL_DOWNLOAD_LIMIT: str(native)})
             effective = int((await self.client.get_global_options()).get(_OVERALL_DOWNLOAD_LIMIT) or 0)
         except Exception as exc:
             return ExecutorRuntimeControlResult(requested, None, exception_failure(exc, secrets=self.configuration.secrets))
-        return ExecutorRuntimeControlResult(requested, effective if effective == requested else None)
+        return ExecutorRuntimeControlResult(requested, requested if effective == native and budget.rate == requested
+                                            else None)
