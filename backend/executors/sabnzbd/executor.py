@@ -55,10 +55,12 @@ the existing observation machinery to converge.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 import base64
 import hashlib
 from pathlib import Path
+import time
 from typing import Awaitable, Callable
 
 from executors.sabnzbd import topology
@@ -105,6 +107,21 @@ _MAXIMUM_DISPLAY_NAME = 200
 # Below this, SABnzbd parses the figure as a percentage rather than a byte rate
 # (characterized against 5.1.3), so an absolute ceiling cannot be expressed.
 _MINIMUM_EXPRESSIBLE_CEILING = 101
+# A batch whose bulk history page is not complete resolves at most this many
+# missing bound jobs by exact-id reads (two each: history, archived history);
+# the rest stay UNKNOWN until a later observation.
+_EXACT_LOOKUPS_PER_BATCH = 8
+# SAB hands a finishing job from its queue to post-processing with a queue save
+# in between (``assembler.py``: ``NzbQueue.remove`` then
+# ``PostProcessor.process``), and a job with no files goes through the
+# assembler before it is listed anywhere: briefly, a live job can be in
+# neither listing. A negative exact-id answer is therefore absence only when
+# it is seen again at least this long after the first, which no such hand-off
+# spans.
+ABSENCE_CONFIRMATION_SECONDS = 60.0
+# Bound on the unconfirmed negatives, and on the jobs DebridPulse itself
+# removed, remembered between observations.
+_UNCONFIRMED_ABSENCES = 1024
 
 
 @dataclass(frozen=True)
@@ -155,6 +172,12 @@ class SabnzbdExecutor:
         # repository handle. Absent simply means an execution carrying the
         # obsolete inline representation cannot be converged here.
         self.converge = converge
+        # nzo_id -> when an authoritative read first found the job in neither
+        # listing (``_absence_confirmed``); and the jobs SAB reported removed
+        # by DebridPulse's own delete. Process-lifetime only, both bounded.
+        self._unconfirmed_absence: OrderedDict[str, float] = OrderedDict()
+        self._removed_by_us: OrderedDict[str, None] = OrderedDict()
+        self._clock = time.monotonic
 
     # --- pure contract ---------------------------------------------------
 
@@ -367,7 +390,10 @@ class SabnzbdExecutor:
 
         ``None`` means a VALID SAB answer that contains the job in neither
         queue nor history -- the only evidence of genuine absence. Transport
-        and API errors propagate; they are never absence.
+        and API errors propagate; they are never absence. For a bound job that
+        answer needs a complete queue, its exact history and archive, and the
+        confirmation of ``_absence_confirmed``; short of that it is an API
+        error ("not authoritative" / "not yet confirmed"), never absence.
 
         The narrowing search is by NAME only while the job is still unbound,
         because the token is the job's name only in that window. Once the
@@ -375,16 +401,83 @@ class SabnzbdExecutor:
         its release name -- so searching for the token then would prove
         "absent" about a job that is present.
         """
-        search = None if nzo_id else (token or None)
+        if nzo_id:
+            # A bound job: the complete queue first, then its exact history.
+            # Absence needs both to be authoritative.
+            queue = await self.client.queue_snapshot()
+            for slot in queue.slots:
+                if self._matches(slot, token, nzo_id):
+                    self._unconfirmed_absence.pop(nzo_id, None)
+                    return slot, False
+            slot = await self._exact_history(nzo_id)
+            if slot is not None:
+                self._unconfirmed_absence.pop(nzo_id, None)
+                return slot, True
+            if not queue.complete:
+                raise SabApiError("SAB queue listing was not authoritative")
+            if not self._absence_confirmed(nzo_id):
+                raise SabApiError("SAB absence not yet confirmed")
+            return None
+        search = token or None
         for slot in await self.client.queue_slots(search=search):
             if self._matches(slot, token, nzo_id):
                 return slot, False
-        history = await self.client.history_slots(search=search,
-                                                  nzo_id=nzo_id or None)
-        for slot in history:
+        for slot in await self.client.history_slots(search=search):
             if self._matches(slot, token, nzo_id):
                 return slot, True
         return None
+
+    async def _exact_history(self, nzo_id: str):
+        """This native job's history slot -- its live history, then SAB's
+        archive -- or ``None`` when SAB positively reports it in neither.
+        Raises ``SabApiError`` / ``SabTransportError`` when it cannot tell."""
+        slot = await self.client.history_entry(nzo_id)
+        if slot is None:
+            slot = await self.client.history_entry(nzo_id, archive=True)
+        return slot
+
+    def _absence_confirmed(self, nzo_id: str) -> bool:
+        """May this authoritative "in neither listing" answer be absence?
+
+        Yes when SAB reported this exact job removed by DebridPulse's own
+        delete, or when the same answer was first seen at least
+        ``ABSENCE_CONFIRMATION_SECONDS`` ago -- past any queue ->
+        post-processing hand-off. Otherwise the first sighting is remembered
+        and the answer is not yet absence. Any later sighting of the job
+        forgets it."""
+        if nzo_id in self._removed_by_us:
+            return True
+        now = self._clock()
+        first = self._unconfirmed_absence.get(nzo_id)
+        if first is not None and now - first >= ABSENCE_CONFIRMATION_SECONDS:
+            del self._unconfirmed_absence[nzo_id]
+            return True
+        if first is None:
+            self._unconfirmed_absence[nzo_id] = now
+            while len(self._unconfirmed_absence) > _UNCONFIRMED_ABSENCES:
+                self._unconfirmed_absence.popitem(last=False)
+        return False
+
+    async def _exact_observation(self, handle: ExecutionHandle) -> ExecutionObservation:
+        """A bound job missing from a COMPLETE queue snapshot and from a history
+        page that is not: read its exact identity. Found, it is reported as
+        SAB has it; positively in neither listing, it is ABSENT only once that
+        is seen again ``ABSENCE_CONFIRMATION_SECONDS`` after the first time
+        (see the constant). Every uncertainty is UNKNOWN."""
+        nzo_id = self._nzo(handle)
+        try:
+            slot = await self._exact_history(nzo_id)
+        except (SabTransportError, SabApiError) as exc:
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                                        error=unreachable(sanitize(str(exc), self._secrets())))
+        if slot is not None:
+            self._unconfirmed_absence.pop(nzo_id, None)
+            native_name = await self._converge_display_name(handle, slot, True)
+            return self._observation(handle, slot, True, native_name, await self._server_names())
+        if self._absence_confirmed(nzo_id):
+            return ExecutionObservation(handle, ExecutionState.ABSENT)
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                                    error=unreachable("SAB absence not yet confirmed"))
 
     @staticmethod
     def _matches(slot, token: str, nzo_id: str) -> bool:
@@ -577,16 +670,23 @@ class SabnzbdExecutor:
         # The service's server names: read once per batch, and only once a job
         # has reached history.
         servers, servers_read = None, False
+        exact_lookups = 0
         for item in permitted:
             found = located.get(self._key(item))
             if found is None:
                 if authoritative:
                     results.append(ExecutionObservation(item, ExecutionState.ABSENT))
+                elif queue.complete and self._nzo(item) and exact_lookups < _EXACT_LOOKUPS_PER_BATCH:
+                    # The complete queue was read first; only the history page
+                    # was partial. Its exact identity decides, never the page.
+                    exact_lookups += 1
+                    results.append(await self._exact_observation(item))
                 else:
                     results.append(ExecutionObservation(
                         item, ExecutionState.UNKNOWN,
                         error=unreachable("SAB listing was not authoritative")))
                 continue
+            self._unconfirmed_absence.pop(self._nzo(item), None)
             slot, in_history = found if isinstance(found, tuple) else (found, False)
             bound = self._bind(item, str(_get(slot, "nzo_id") or ""))
             native_name = await self._converge_display_name(bound, slot, in_history)
@@ -777,7 +877,14 @@ class SabnzbdExecutor:
             return before
         nzo_id = self._nzo(before.handle) or self._nzo(handle)
         try:
-            await self.client.delete(nzo_id)
+            removed = await self.client.delete(nzo_id)
+            # SAB names exactly the jobs it removed from its queue
+            # (``api._api_queue_delete``): this one gone is then our own doing,
+            # positive truth, not a job between two listings.
+            if nzo_id and nzo_id in {str(item) for item in (removed or {}).get("nzo_ids") or ()}:
+                self._removed_by_us[nzo_id] = None
+                while len(self._removed_by_us) > _UNCONFIRMED_ABSENCES:
+                    self._removed_by_us.popitem(last=False)
         except Exception as exc:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                                         error=unreachable(sanitize(str(exc), self._secrets())))

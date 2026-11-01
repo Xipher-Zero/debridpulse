@@ -43,16 +43,29 @@ class SabSnapshot:
     complete: bool
 
 
-def _reported_total(section: dict, fallback: int) -> int:
-    """How many entries SAB says exist in total for this listing."""
+def _covers(section: dict, slots: list) -> bool:
+    """Whether this page is SAB's WHOLE listing -- the only basis for absence.
+
+    Every count SAB reports for the listing (the queue's ``noofslots_total``
+    and ``noofslots``, the history's ``noofslots``) must be a whole number,
+    not negative, they must agree, and they must equal the slots returned. A
+    missing, negative (a failed native count reports ``-1``), malformed or
+    conflicting count proves nothing, so the page is not complete."""
+    counts = []
     for key in ("noofslots_total", "noofslots"):
-        value = section.get(key)
-        if value is not None:
-            try:
-                return max(0, int(value))
-            except (TypeError, ValueError):
-                continue
-    return fallback
+        if key not in section:
+            continue
+        value = section[key]
+        if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+            return False
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return False
+        if count < 0:
+            return False
+        counts.append(count)
+    return bool(counts) and len(set(counts)) == 1 and counts[0] == len(slots)
 
 
 class SabTransportError(Exception):
@@ -231,13 +244,13 @@ class SabnzbdClient:
         payload = await self._call({"mode": "queue", "limit": int(limit), "start": 0})
         section = self._section(payload, "queue")
         slots = self._slots(section, "queue")
-        return SabSnapshot(tuple(slots), _reported_total(section, len(slots)) <= len(slots))
+        return SabSnapshot(tuple(slots), _covers(section, slots))
 
     async def history_snapshot(self, limit: int = SNAPSHOT_LIMIT) -> SabSnapshot:
         payload = await self._call({"mode": "history", "limit": int(limit), "start": 0})
         section = self._section(payload, "history")
         slots = self._slots(section, "history")
-        return SabSnapshot(tuple(slots), _reported_total(section, len(slots)) <= len(slots))
+        return SabSnapshot(tuple(slots), _covers(section, slots))
 
     async def queue_slots(self, search: str | None = None) -> list[dict]:
         """A narrow search, used only for correlation-token reconciliation."""
@@ -247,14 +260,41 @@ class SabnzbdClient:
         section = self._section(await self._call(params), "queue")
         return self._slots(section, "queue")
 
-    async def history_slots(self, search: str | None = None, nzo_id: str | None = None) -> list[dict]:
+    async def history_slots(self, search: str | None = None) -> list[dict]:
+        """A narrow search, used only for correlation-token reconciliation."""
         params: dict[str, Any] = {"mode": "history", "limit": SNAPSHOT_LIMIT}
         if search:
             params["search"] = search
-        if nzo_id:
-            params["nzo_ids"] = nzo_id
         section = self._section(await self._call(params), "history")
         return self._slots(section, "history")
+
+    async def history_entry(self, nzo_id: str, *, archive: bool = False) -> dict | None:
+        """THE exact-identity history read: this one native job's history slot
+        (``archive`` reads SAB's archived history, which the default listing
+        hides), or ``None`` when SAB positively reports it has none.
+
+        ``nzo_ids`` filters both SAB's post-processing jobs and its history
+        database, and ``noofslots`` is then the filtered count (characterized
+        against the bundled 5.1.3: ``api.build_history``,
+        ``database.fetch_history``). The answer is authoritative only when it
+        proves that scope: every slot carries exactly this id and the page
+        covers the filtered listing (``_covers``). Anything else -- an ignored
+        filter, a missing, negative or partial count -- is an API failure,
+        never "not found".
+        """
+        nzo_id = str(nzo_id or "")
+        if not nzo_id:
+            raise SabApiError("An exact history lookup needs a native id")
+        params: dict[str, Any] = {"mode": "history", "nzo_ids": nzo_id, "start": 0, "limit": SNAPSHOT_LIMIT}
+        if archive:
+            params["archive"] = 1
+        section = self._section(await self._call(params), "history")
+        slots = self._slots(section, "history")
+        if any(str(slot.get("nzo_id") or "") != nzo_id for slot in slots):
+            raise SabApiError("SAB did not apply the history id filter")
+        if not _covers(section, slots):
+            raise SabApiError("SAB's filtered history did not prove its scope")
+        return slots[0] if slots else None
 
     async def pause(self, nzo_id: str):
         return await self._call({"mode": "queue", "name": "pause", "value": nzo_id})

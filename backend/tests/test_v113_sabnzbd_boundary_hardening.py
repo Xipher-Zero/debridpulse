@@ -139,9 +139,13 @@ class CountingSab(FakeSab):
         self.per_handle_lookups += 1
         return await super().queue_slots(search)
 
-    async def history_slots(self, search=None, nzo_id=None):
+    async def history_slots(self, search=None):
         self.per_handle_lookups += 1
-        return await super().history_slots(search, nzo_id)
+        return await super().history_slots(search)
+
+    async def history_entry(self, nzo_id, *, archive=False):
+        self.per_handle_lookups += 1
+        return await super().history_entry(nzo_id, archive=archive)
 
 
 @pytest.fixture

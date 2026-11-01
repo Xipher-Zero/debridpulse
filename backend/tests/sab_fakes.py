@@ -102,6 +102,9 @@ class FakeSab:
     authorized: bool = True
     queue: dict = field(default_factory=dict)
     history: dict = field(default_factory=dict)
+    # SAB's archived history: hidden from the default history listing and
+    # read only with ``archive=1``.
+    archive: dict = field(default_factory=dict)
     submissions: list = field(default_factory=list)
     complete_dir: str = "/download/.dpwork/complete"
     download_dir: str = "/download/.dpwork/incomplete"
@@ -262,13 +265,21 @@ class FakeSab:
         return [j.queue_slot() for j in self.queue.values()
                 if search is None or search in j.name]
 
-    async def history_slots(self, search: str | None = None, nzo_id: str | None = None):
+    async def history_slots(self, search: str | None = None):
         self._guard()
         if search is not None:
             self.searches.append(search)
         # Search matches the job name only: ``nzb_name`` is not searchable.
         return [j.history_slot() for j in self.history.values()
-                if (search is None or search in j.name) and (nzo_id is None or j.nzo_id == nzo_id)]
+                if search is None or search in j.name]
+
+    async def history_entry(self, nzo_id: str, *, archive: bool = False):
+        """``mode=history&nzo_ids=<id>`` (``archive=1`` for the archive): the
+        filter is exact and the answer complete, as SAB 5.1.3 gives it, so the
+        page truncation of the bulk listing never applies here."""
+        self._guard()
+        job = (self.archive if archive else self.history).get(nzo_id)
+        return job.history_slot() if job is not None else None
 
     async def pause(self, nzo_id):
         self._guard()
@@ -285,9 +296,13 @@ class FakeSab:
         return {"status": True, "nzo_ids": [nzo_id]}
 
     async def delete(self, nzo_id):
+        """SAB 5.1.3 answers with exactly the ids it removed from its queue
+        (``api._api_queue_delete``); none removed is ``{"status": false}``,
+        which the real client raises as an API error."""
         self._guard()
-        self.queue.pop(nzo_id, None)
-        return {"status": True}
+        if self.queue.pop(nzo_id, None) is None:
+            raise SabApiError("SAB rejected the request")
+        return {"status": True, "nzo_ids": [nzo_id]}
 
     # --- the native worker ------------------------------------------------
     def run_native_worker(self, *, member="b082fa0beaa644d3aa01045d5b8d0b36.mp4"):
