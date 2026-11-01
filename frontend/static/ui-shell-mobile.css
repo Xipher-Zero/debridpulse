@@ -27,6 +27,14 @@
     --dp-shell-header-top: max(7px, env(safe-area-inset-top, 0px));
     --dp-shell-header: calc(var(--dp-shell-header-top) + var(--dp-shell-control) + 2px + 7px + 1px);
     --dp-shell-dock-edge: calc(var(--dp-shell-dock-height) + 1px + env(safe-area-inset-bottom, 0px));
+    /* Over a bottom safe area (the home indicator's band) the row's drawing
+       sits low in its row: down by the row's free space under its centred
+       content -- the tallest item's 24px icon, 4px gap and one 10px label
+       line -- never more than that inset, so the labels end on the row's
+       lower edge. Only the drawing moves: every button keeps its whole 58px
+       row above the safe area, and without an inset nothing moves. */
+    --dp-shell-dock-content: calc(24px + 4px + 10px * 1.15);
+    --dp-shell-dock-drop: min(env(safe-area-inset-bottom, 0px), (var(--dp-shell-dock-height) - var(--dp-shell-dock-content)) / 2);
     /* The page title's one size per header width (the heading is its
        container): the longest titles (Dashboard, Downloads) fill its room at
        16.5cqi, never above 18px or below 13px. */
@@ -325,6 +333,9 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
+  .dp-shell-dock-item > .icon,
+  .dp-shell-dock-item > .dp-shell-label,
+  .dp-shell-dock-item > .dp-shell-dock-badge { translate: 0 var(--dp-shell-dock-drop); }
   .dp-shell-dock-item .icon,
   .dp-shell-sheet-item .icon {
     display: grid;

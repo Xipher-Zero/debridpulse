@@ -160,6 +160,54 @@ const versionAtEnd = page => page.evaluate(() => {
 });
 
 test.describe('handheld shell, open runtime (every capability)', () => {
+  // Over a bottom safe area (iOS: the home indicator's band) every dock
+  // button keeps its whole row above the inset; only its drawing (icon,
+  // label, badge) sits lower in that row. No engine here reports iOS's
+  // env(), so the inset is substituted into the shell stylesheet as served.
+  test('the dock over a bottom safe area: every hit rectangle ends at or above the inset, the drawing lowered within its row', async ({page}) => {
+    const measure = () => page.evaluate(() => {
+      const box = node => node.getBoundingClientRect();
+      const bar = box(document.getElementById('shell-dock'));
+      return {vh: innerHeight, barHeight: bar.height, barBottom: bar.bottom, items: [...document.querySelectorAll('#shell-dock .dp-shell-dock-item')].map(item => {
+        const own = box(item), parts = [...item.querySelectorAll(':scope > .icon, :scope > .dp-shell-label, :scope > .dp-shell-dock-badge:not([hidden])')].map(box);
+        return {bottom: own.bottom, height: own.height, labelGap: own.bottom - box(item.querySelector('.dp-shell-label')).bottom,
+          inside: parts.every(part => part.top >= own.top - 0.5 && part.bottom <= own.bottom + 0.5),
+          own: document.elementFromPoint(own.left + own.width / 2, own.top + own.height / 2)?.closest('.dp-shell-dock-item') === item};
+      })};
+    });
+    let inset = 0;
+    await page.route('**/ui-shell-mobile.css*', async route => {
+      const response = await route.fetch();
+      const body = (await response.text()).replaceAll('env(safe-area-inset-bottom, 0px)', `${inset}px`);
+      await route.fulfill({response, body});
+    });
+    await open(page, {width: 320, height: 844});
+    for (const width of [320, 430]) {
+      let free = null;
+      for (inset of [0, 5, 21, 34]) {
+        await page.setViewportSize({width, height: 844});
+        await page.reload();
+        await page.waitForFunction(() => document.querySelector('#shell-dock > *') && window.DPTheme);
+        const m = await measure();
+        expect(m.barBottom).toBeCloseTo(m.vh, 1);                       // the dock still reaches the bottom edge
+        expect(m.barHeight).toBeCloseTo(58 + 1 + inset, 1);             // the whole inset is reserved below the row
+        expect(m.items).toHaveLength(5);
+        for (const item of m.items) {
+          expect(item.bottom).toBeLessThanOrEqual(m.vh - inset + 0.5);  // no hit rectangle enters the safe area
+          expect(item.height).toBeCloseTo(58, 1);
+          expect(item.inside).toBe(true);
+          expect(item.own).toBe(true);
+        }
+        if (inset === 0) free = m.items.map(item => item.labelGap);
+        // The drawing drops by the row's free space under its tallest content
+        // (Dashboard's), never by more than the inset; so it visibly lowers.
+        const drop = Math.min(inset, ...free);
+        m.items.forEach((item, index) => expect(item.labelGap).toBeCloseTo(free[index] - drop, 1));
+        if (inset >= 21) expect(Math.min(...m.items.map(item => item.labelGap))).toBeLessThan(0.5);
+      }
+    }
+  });
+
   test('the dock: five positions, Dashboard in the middle, More holding Activity Log and Help, following the active page', async ({page}) => {
     await open(page, {width: 320, height: 760});
     let items = await dock(page);
