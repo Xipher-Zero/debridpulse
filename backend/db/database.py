@@ -1360,6 +1360,38 @@ async def validate_runtime_state_schema() -> None:
     await _validate_schema_readonly({"integration_runtime_state": _RUNTIME_STATE_COLUMNS}, owner="integration runtime state")
 
 
+# The transfer-scoped recovery-audit index and the ``schema_migrations``
+# version that records it. Indexes are not part of a restore point's schema
+# fingerprint (``services.backup``), so this step is recorded as a version: a
+# backup taken before it then upgrades through this bootstrap, which creates
+# the index, instead of being refused for lacking it.
+TRANSFER_AUDIT_INDEX_NAME = "idx_application_events_transfer_kind"
+TRANSFER_AUDIT_INDEX = f"CREATE INDEX IF NOT EXISTS {TRANSFER_AUDIT_INDEX_NAME} ON application_events (transfer_id, kind)"
+TRANSFER_AUDIT_INDEX_STEP = "1.0.14-transfer-audit-index"
+# The version the 1.0.12 migration (``db.migrations.v112``) records once it has
+# declared a database current; only such a database has a version ledger.
+MIGRATION_MARKER = "1.0.12"
+
+
+async def record_schema_steps(db) -> None:
+    """Record each schema step this bootstrap has completed, in a database the
+    1.0.12 migration has declared current, idempotently. Nothing is recorded in
+    a database without that declaration -- its migration records the steps when
+    it makes it -- and a step is recorded only once its object exists, so a
+    failed index creation never leaves a version claiming it. The caller
+    commits."""
+    ledger = await (await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'")).fetchone()
+    if not ledger:
+        return
+    await db.execute(
+        """INSERT OR IGNORE INTO schema_migrations(version) SELECT ?
+            WHERE EXISTS (SELECT 1 FROM schema_migrations WHERE version=?)
+            AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='index' AND name=?)""",
+        (TRANSFER_AUDIT_INDEX_STEP, MIGRATION_MARKER, TRANSFER_AUDIT_INDEX_NAME),
+    )
+
+
 async def init_db(path: Path | None = None):
     """THE schema bootstrap and upgrade: the live database, or -- for a
     restore -- the private staged copy at ``path``."""
@@ -1552,11 +1584,18 @@ async def _init_db_sqlite(path: Path):
             # ``candidate_activation``) and for the one-time legacy-snapshot
             # migration reader (``_migrate_recovery_state_from_events``).
             "CREATE INDEX IF NOT EXISTS idx_application_events_kind_id ON application_events (kind, id DESC)",
+            # One transfer's recovery-audit trail (``TransferRepository.
+            # _historical_audit_facts``, read for active artifacts during
+            # reconciliation) is a seek on this index, in id order through the
+            # rowid, instead of a walk over every transfer's ``recovery_audit``
+            # rows. A schema step: recorded as ``TRANSFER_AUDIT_INDEX_STEP``.
+            TRANSFER_AUDIT_INDEX,
             RUNTIME_STATE_SCHEMA[1],
             INPUT_CHALLENGE_SCHEMA[1],
             INPUT_CHALLENGE_SCHEMA[2],
         ]:
             await idx_db.execute(ddl)
+        await record_schema_steps(idx_db)
         await idx_db.commit()
     logger.debug("SQLite indexes ensured")
 

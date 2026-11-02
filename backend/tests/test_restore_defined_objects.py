@@ -63,8 +63,19 @@ def _drop_one_index(conn) -> None:
     conn.execute(f'DROP INDEX "{name}"')
 
 
-@pytest.mark.parametrize("change", [lambda conn: conn.execute(SWALLOW), _drop_one_index],
-                         ids=["an_extra_trigger", "a_missing_index"])
+def _drop_the_transfer_audit_index(conn) -> None:
+    conn.execute("DROP INDEX idx_application_events_transfer_kind")
+
+
+def _alter_the_transfer_audit_index(conn) -> None:
+    conn.execute("DROP INDEX idx_application_events_transfer_kind")
+    conn.execute("CREATE INDEX idx_application_events_transfer_kind ON application_events (kind, transfer_id)")
+
+
+@pytest.mark.parametrize("change", [lambda conn: conn.execute(SWALLOW), _drop_one_index,
+                                    _drop_the_transfer_audit_index, _alter_the_transfer_audit_index],
+                         ids=["an_extra_trigger", "a_missing_index", "the_transfer_audit_index_missing",
+                              "the_transfer_audit_index_altered"])
 async def test_a_point_whose_indexes_triggers_or_views_differ_is_refused_and_changes_nothing(  # noqa: F811
         served, change):  # noqa: F811
     app, client, _composed, _calls = served
@@ -89,3 +100,41 @@ async def test_an_unaltered_point_still_restores(served):  # noqa: F811
     point = await _altered_point(client, lambda conn: None)
     restored = await client.post("/api/admin/backups/restore", json={"id": point})
     assert restored.status_code == 200, restored.text
+
+
+UNEXPECTED_INDEX = "CREATE INDEX dp_unexpected ON application_events (created_at)"
+
+
+@pytest.mark.parametrize("change", [SWALLOW, UNEXPECTED_INDEX], ids=["an_extra_trigger", "an_unexpected_index"])
+async def test_a_pre_index_point_with_other_rules_is_refused_after_its_staged_upgrade(served, change):  # noqa: F811
+    """The staged upgrade of a backup from before the transfer-scoped audit
+    index adds that index and nothing else: whatever else the backup's database
+    defines differently is still refused, and the live state is unchanged."""
+    from test_backup_restore_points import PRE_INDEX_BACKUP
+
+    app, client, _composed, _calls = served
+    kept = await _submit(app, client, "kept")
+    before = _defined(database.DB_PATH)
+    source, out = zipfile.ZipFile(PRE_INDEX_BACKUP), io.BytesIO()
+    with zipfile.ZipFile(out, "w") as target:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename == "debridpulse.db":
+                scratch = database.DB_PATH.parent / "altered-pre-index.db"
+                scratch.write_bytes(data)
+                with sqlite3.connect(scratch) as conn:
+                    conn.execute(change)
+                data = scratch.read_bytes()
+                scratch.unlink()
+            target.writestr(info, data)
+    added = await client.post("/api/admin/backups", content=out.getvalue(), headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": added.json()["backup"]["id"]})
+
+    assert restored.status_code == 400
+    assert restored.json()["detail"] == ("Backup could not be restored. The backup is not a valid "
+                                         "DebridPulse backup. The current DebridPulse state was left unchanged.")
+    assert _defined(database.DB_PATH) == before
+    later = await _submit(app, client, "later")
+    assert sorted(item.id for item in await app.state.application.repository.active()) == sorted([kept, later])

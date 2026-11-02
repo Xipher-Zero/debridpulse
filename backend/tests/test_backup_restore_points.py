@@ -2031,3 +2031,177 @@ async def test_add_backup_and_a_concurrent_scheduled_backup_report_truthfully_un
         ("administration.backup_created", scheduled.id,
          "1 older backup(s) removed by retention (0 by age, 1 by count)"),
     ])
+
+
+# ── the transfer-scoped recovery-audit index: one schema step, recorded ──────
+
+TRANSFER_AUDIT_INDEX = "idx_application_events_transfer_kind"
+# Written by the 1.0.14 build immediately before the transfer-scoped
+# recovery-audit index (523d3c7b) with its own backup service: a password Admin
+# (operator / pre-index-secret) and two transfers whose recovery-audit rows
+# interleave (7 for transfer 1, 3 for transfer 2).
+PRE_INDEX_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-523d3c7b.zip"
+# The same build and backup service, on an installation that, like one migrated
+# from before 1.0.12, still holds the four tables that migration keeps (empty
+# here; their definitions are the October 31 2026 production backup's, so this
+# schema is exactly that backup's).
+PRE_INDEX_RETAINED_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-523d3c7b-retained-legacy-tables.zip"
+
+
+def _versions(path) -> list[str]:
+    with closing(sqlite3.connect(path)) as conn:
+        return sorted(row[0] for row in conn.execute("SELECT version FROM schema_migrations"))
+
+
+def _has_audit_index(path) -> bool:
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                            (TRANSFER_AUDIT_INDEX,)).fetchone() is not None
+
+
+def _audit_rows(conn) -> list[tuple]:
+    return conn.execute("SELECT id, transfer_id, detail, claimed, created_at FROM application_events "
+                        "WHERE kind='recovery_audit' ORDER BY id").fetchall()
+
+
+async def test_a_fresh_installation_holds_the_index_and_its_version(installation):
+    assert _has_audit_index(database.DB_PATH)
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+    await database.init_db()                                  # every later start: idempotent
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        plan = [row[3] for row in conn.execute(
+            "EXPLAIN QUERY PLAN SELECT detail FROM application_events WHERE transfer_id=? "
+            "AND kind='recovery_audit' ORDER BY id DESC", (1,))]
+    assert plan == [f"SEARCH application_events USING INDEX {TRANSFER_AUDIT_INDEX} (transfer_id=? AND kind=?)"]
+
+
+async def test_a_failed_index_creation_records_no_version(installation):
+    """The version is written only after its index exists: when the index
+    cannot be created the bootstrap fails and claims nothing."""
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        conn.execute(f"DROP INDEX {TRANSFER_AUDIT_INDEX}")
+        conn.execute("DELETE FROM schema_migrations WHERE version=?", (database.TRANSFER_AUDIT_INDEX_STEP,))
+        conn.execute(f"CREATE TABLE {TRANSFER_AUDIT_INDEX}(x)")   # the name is taken: CREATE INDEX fails
+        conn.commit()
+    with pytest.raises(sqlite3.OperationalError):
+        await database.init_db()
+    assert _versions(database.DB_PATH) == ["1.0.12"]
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        conn.execute(f"DROP TABLE {TRANSFER_AUDIT_INDEX}")
+        conn.commit()
+    await database.init_db()
+    assert _has_audit_index(database.DB_PATH)
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+
+
+async def _restore_pre_index(client, fixture) -> tuple[Path, str, str]:
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=fixture.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (TRANSFER_AUDIT_INDEX,)).fetchone() is None
+    return managed, live, point.id
+
+
+async def test_a_backup_from_before_the_audit_index_restores_through_the_staged_upgrade(served):
+    """Upgraded on the private staged copy only, through the canonical
+    bootstrap: the index and its version arrive, every recovery-audit row comes
+    back byte for byte in its order, and each transfer's trail reads only its
+    own rows."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from transfers.repository import TransferRepository
+
+    _app, client, _composed, _calls = served
+    managed, live, point_id = await _restore_pre_index(client, PRE_INDEX_BACKUP)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded_rows = _audit_rows(conn)
+        recorded_markers = sorted(row[0] for row in conn.execute("SELECT version FROM schema_migrations"))
+    assert recorded_markers == ["1.0.12"] and len(recorded_rows) == 10
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point_id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _has_audit_index(database.DB_PATH)
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert _audit_rows(conn) == recorded_rows
+    async with database.get_db() as db:
+        for transfer_id in (1, 2):
+            own = [row for row in recorded_rows if row[1] == transfer_id]
+            rows = await db.fetchall("SELECT detail FROM application_events WHERE transfer_id=? "
+                                     "AND kind='recovery_audit' ORDER BY id DESC", (transfer_id,))
+            assert [row["detail"] for row in rows] == [row[2] for row in reversed(own)]
+        facts = await TransferRepository._historical_audit_facts(db, 1001, 1)
+    assert facts["candidate_generation"] == 2                # finish_claim rows 0 and 4 changed the candidate
+    _operator, password_hash = await accounts.local_credential("operator")
+    assert verify_password(password_hash, "pre-index-secret")
+
+
+async def test_the_october_31_schema_restores_on_the_installation_that_holds_its_tables(served):
+    """An installation migrated from before 1.0.12 keeps four tables a fresh
+    one never has, so its own schema -- the October 31 2026 production
+    backup's -- is pinned too; its backup restores through the same staged
+    upgrade, the kept tables untouched."""
+    _app, client, _composed, _calls = served
+    with zipfile.ZipFile(PRE_INDEX_RETAINED_BACKUP) as package, closing(sqlite3.connect(":memory:")) as scratch:
+        scratch.deserialize(package.read("debridpulse.db"))
+        kept = [row[0] for row in scratch.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('adc_aria2_owned_gids',"
+            "'debridpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
+        fingerprint = backup._fingerprint(scratch)
+    assert len(kept) == 4
+    assert fingerprint == "sha256:fcb6f8e75a4f3a01093996722832bea1ad177b78c68a384316469a1a63a5688b"
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:   # the live installation holds them as well
+        for ddl in kept:
+            conn.execute(ddl)
+        conn.commit()
+    _managed, live, point_id = await _restore_pre_index(client, PRE_INDEX_RETAINED_BACKUP)
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point_id})
+
+    assert restored.status_code == 200, restored.text
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _has_audit_index(database.DB_PATH)
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert conn.execute("SELECT count(*) FROM saved_searches").fetchone() == (0,)
+        assert len(_audit_rows(conn)) == 4
+
+
+async def test_a_backup_taken_with_the_index_restores_without_an_upgrade(served):
+    app, client, _composed, _calls = served
+    kept = await _submit(app, client, "kept")
+    point = await backup.create_restore_point()
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) == backup.schema_version(database.DB_PATH)
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (TRANSFER_AUDIT_INDEX,)).fetchone()
+    await _submit(app, client, "later")
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+    assert restored.status_code == 200, restored.text
+    assert await _ids(app) == [kept]
+    assert _has_audit_index(database.DB_PATH)
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+
+
+async def test_a_wipe_keeps_the_index_and_its_version(served):
+    from services import db_maintenance
+
+    app, client, _composed, _calls = served
+    await _submit(app, client, "wiped")
+    live = backup.schema_version(database.DB_PATH)
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _has_audit_index(database.DB_PATH)
+    assert _versions(database.DB_PATH) == ["1.0.12", database.TRANSFER_AUDIT_INDEX_STEP]
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert conn.execute("SELECT count(*) FROM application_events").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM torrents").fetchone() == (0,)

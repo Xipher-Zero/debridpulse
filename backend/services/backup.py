@@ -118,7 +118,14 @@ _COPY_CHUNK = 1024 * 1024
 # * the 1.0.14 schema immediately before the installation's login appearance
 #   (be62e8d2), which it extends with the one ``login_appearance`` table,
 #   empty: the sign-in page is DebridPulse Dark until an Admin publishes a
-#   login theme, and no account's appearance is read to choose one.
+#   login theme, and no account's appearance is read to choose one;
+# * the 1.0.14 schema immediately before the transfer-scoped recovery-audit
+#   index (523d3c7b), which it extends with that index and its version
+#   (``db.database.TRANSFER_AUDIT_INDEX_STEP``) -- no row is added, changed or
+#   removed -- both as a fresh installation holds it and as an installation
+#   migrated from before 1.0.12 holds it, with the four tables that migration
+#   keeps (adc_aria2_owned_gids, debridpulse_aria2_owned_gids, flexget_runs,
+#   saved_searches), which the bootstrap keeps as they are.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -131,6 +138,8 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:937ed58caa1cc42c91d6e47e917e020f8025f27e7ec596aef13d4cc456e76ac6",
     "sha256:c51de6ae14c6185ac650bd1f5f02d93c88ac21b676799494e7418a8022d26239",
     "sha256:fc440366772ce843ce91851b8be5894e1c6b3aff63fb75e873fcfbfee64697a4",
+    "sha256:6941fac3b88a35fdaa4d2f2f1f5436b0227c2ef99d4ef22e7567a889231e70b8",
+    "sha256:fcb6f8e75a4f3a01093996722832bea1ad177b78c68a384316469a1a63a5688b",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

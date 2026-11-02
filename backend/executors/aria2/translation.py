@@ -181,18 +181,19 @@ def material_ranges(native) -> tuple[tuple[int, int], ...] | None:
     if not bitfield or piece <= 0 or pieces <= 0 or total <= 0 or len(getattr(native, "files", None) or ()) > 1:
         return None
     try:
-        bits = int(bitfield, 16)
+        value = int(bitfield, 16)
     except ValueError:
         return None
     width = len(bitfield) * 4
+    # One pass, linear in the piece count: the bitfield as ``width`` binary
+    # digits, piece 0 first, of which only the job's own pieces count. Each run
+    # of complete pieces is one range; a range never extends past the total.
+    bits = format(value & ((1 << width) - 1), f"0{width}b")[:pieces]
     ranges = []
-    for index in range(min(pieces, width)):
-        if bits >> (width - 1 - index) & 1:
-            start, end = index * piece, min((index + 1) * piece, total)
-            if ranges and ranges[-1][1] == start:
-                ranges[-1] = (ranges[-1][0], end)
-            elif end > start:
-                ranges.append((start, end))
+    for run in re.finditer("1+", bits):
+        start, end = run.start() * piece, min(run.end() * piece, total)
+        if end > start:
+            ranges.append((start, end))
     return tuple(ranges)
 
 

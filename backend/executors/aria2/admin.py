@@ -34,14 +34,14 @@ class Aria2Administration:
         return await self.client.get_all(*args, **kwargs)
 
     async def _owned(self):
-        result = {}
-        for attempt in await self.repository.executions():
-            handle = attempt.handle
-            if (handle.executor_id == self.executor.descriptor.id
-                    and handle.correlation.get("binding") == self.executor.binding
-                    and await self.repository.authorize_execution(handle, "observe")):
-                result[self.executor._handle_gid(handle)] = attempt
-        return result
+        attempts = [attempt for attempt in await self.repository.executions()
+                    if attempt.handle.executor_id == self.executor.descriptor.id
+                    and attempt.handle.correlation.get("binding") == self.executor.binding]
+        # Every candidate is authorized by the core's own decision, read for
+        # all of them at once rather than one query per historical attempt.
+        authorized = await self.repository.authorize_executions([attempt.handle for attempt in attempts], "observe")
+        return {self.executor._handle_gid(attempt.handle): attempt
+                for attempt, allowed in zip(attempts, authorized, strict=True) if allowed}
 
     async def filter_owned(self, downloads):
         owned = await self._owned()

@@ -34,6 +34,9 @@ async def test_fresh_database_becomes_current_without_predecessor_backup(tmp_pat
     assert not Path(str(path) + ".pre-v112.sqlite3").exists()
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT 1 FROM schema_migrations WHERE version='1.0.12'").fetchone() == (1,)
+        # its schema steps are recorded when it becomes current, not at its next start
+        assert conn.execute("SELECT 1 FROM schema_migrations WHERE version=?",
+                            (database.TRANSFER_AUDIT_INDEX_STEP,)).fetchone() == (1,)
     assert v112._CURRENT_CANONICAL_TABLES.issubset(tables(path))
 
 
@@ -139,6 +142,8 @@ async def test_predecessor_backup_is_restorable_and_reupgradeable(tmp_path, monk
     with sqlite3.connect(restored) as conn:
         assert conn.execute("SELECT name FROM torrents WHERE id=52").fetchone() == ("restore-me",)
         assert conn.execute("SELECT 1 FROM schema_migrations WHERE version='1.0.12'").fetchone() == (1,)
+        assert conn.execute("SELECT 1 FROM schema_migrations WHERE version=?",
+                            (database.TRANSFER_AUDIT_INDEX_STEP,)).fetchone() == (1,)
 
 
 @pytest.mark.asyncio

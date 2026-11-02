@@ -26,7 +26,7 @@ from transfers.repository import TransferRepository
 
 
 
-_CURRENT_MARKER = "1.0.12"
+_CURRENT_MARKER = database.MIGRATION_MARKER
 _LEGACY_REQUIRED_TABLES = frozenset({"torrents", "download_files", "events"})
 _CURRENT_CANONICAL_TABLES = frozenset({
     "transfer_requests", "provider_resources", "execution_attempts", "route_attempt_provenance",
@@ -119,6 +119,7 @@ async def _mark_current() -> None:
             "CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY,applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
         await db.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES(?)", (_CURRENT_MARKER,))
+        await database.record_schema_steps(db)
         violations = await db.fetchall("PRAGMA foreign_key_check")
         if violations:
             raise RuntimeError("Current schema refused: database contains foreign-key violations")
@@ -301,5 +302,6 @@ async def migrate(*, globally_paused: bool = False) -> dict:
         if violations:
             raise RuntimeError("Migration refused: database contains foreign-key violations")
         await db.execute("INSERT INTO schema_migrations(version) VALUES(?)", (_CURRENT_MARKER,))
+        await database.record_schema_steps(db)
         await db.commit()
     return {"migrated": True, "transfers": count, "backup": str(backup)}

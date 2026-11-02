@@ -5212,13 +5212,48 @@ class TransferRepository:
             )
         return bool(row) and bool(row.get("material_owner_attempt_id"))
 
-    async def authorize_execution(self, handle: ExecutionHandle, action: str) -> bool:
-        async with get_db() as db:
-            row = await db.fetchone("""SELECT e.*,t.status AS transfer_status,COALESCE(p.paused,0) AS paused_intent,
+    # The facts an execution authorization is decided from, one row per
+    # attempt: the attempt itself, its transfer's lifecycle and pause intent,
+    # and its artifact's current execution.
+    _EXECUTION_AUTHORITY = """SELECT e.*,t.status AS transfer_status,COALESCE(p.paused,0) AS paused_intent,
                 f.execution_attempt_id AS current_execution_id
                 FROM execution_attempts e JOIN torrents t ON t.id=e.transfer_id
                 JOIN download_files f ON f.id=e.artifact_id
-                LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE e.id=?""", (handle.attempt_id,))
+                LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id"""
+
+    async def authorize_execution(self, handle: ExecutionHandle, action: str) -> bool:
+        async with get_db() as db:
+            row = await db.fetchone(self._EXECUTION_AUTHORITY + " WHERE e.id=?", (handle.attempt_id,))
+        return await self._execution_authorized(row, handle, action)
+
+    async def authorize_executions(self, handles, action: str) -> tuple[bool, ...]:
+        """``authorize_execution`` for many handles, answered in their order:
+        the same decision (``_execution_authorized``) from the same facts, read
+        in one query for every executor the handles name rather than one query
+        per handle. A row of another executor never authorizes a handle, so
+        reading only the named executors' rows changes no answer. A handle
+        whose attempt id is not text (no writer creates one) is answered by
+        ``authorize_execution`` itself, whose query compares it as SQLite does."""
+        handles = tuple(handles)
+        if not handles:
+            return ()
+        executors = sorted({handle.executor_id for handle in handles}, key=repr)
+        async with get_db() as db:
+            rows = await db.fetchall(
+                self._EXECUTION_AUTHORITY + f" WHERE e.executor_id IN ({','.join('?' * len(executors))})",
+                tuple(executors),
+            )
+        by_id = {row["id"]: row for row in rows}
+        return tuple([
+            await self._execution_authorized(by_id.get(handle.attempt_id), handle, action)
+            if isinstance(handle.attempt_id, str) else await self.authorize_execution(handle, action)
+            for handle in handles
+        ])
+
+    async def _execution_authorized(self, row, handle: ExecutionHandle, action: str) -> bool:
+        """The one execution-authorization decision, for ``handle`` and
+        ``action``, from its attempt's ``_EXECUTION_AUTHORITY`` row (``None``
+        when there is none)."""
         if not row or not row["authorized"] or row["executor_id"] != handle.executor_id or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
             return False
         is_current = row.get("current_execution_id") == handle.attempt_id
