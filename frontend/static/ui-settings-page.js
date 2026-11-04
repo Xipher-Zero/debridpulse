@@ -162,9 +162,11 @@
     torbox_host_refresh_interval_hours: {scope: 'integration:torbox', option: 'host_refresh_interval_hours'},
 
     // Downloads -> Network Sources tuning
-    aria2_max_connection_per_server: {scope: 'integration:aria2', option: 'max_connection_per_server'},
-    aria2_split: {scope: 'integration:aria2', option: 'split'},
-    aria2_min_split_size: {scope: 'integration:aria2', option: 'min_split_size'},
+    // ``liveTuning``: a saved change also reaches existing downloads (the
+    // backend applies it to them in place); see confirmLiveTuning.
+    aria2_max_connection_per_server: {scope: 'integration:aria2', option: 'max_connection_per_server', liveTuning: true},
+    aria2_split: {scope: 'integration:aria2', option: 'split', liveTuning: true},
+    aria2_min_split_size: {scope: 'integration:aria2', option: 'min_split_size', liveTuning: true},
     aria2_continue_downloads: {scope: 'integration:aria2', option: 'continue_downloads', commit: 'immediate'},
     aria2_lowest_speed_limit: {scope: 'integration:aria2', option: 'lowest_speed_limit'},
     aria2_disk_cache: {scope: 'integration:aria2', option: 'disk_cache'},
@@ -6274,11 +6276,14 @@
         // A secret is declared by the page's own table of integration-owned
         // secret controls; the generic persistence owner knows nothing about it.
         const secret = INTEGRATION_SECRET_CONTROLS[key];
+        const live = !!COMMIT_FIELDS[key].liveTuning;
+        if (live && !(await confirmLiveTuning())) throw cancelledCommit();
         const result = await request('PATCH', `/integrations/${identity}/configuration`,
           secret
             ? withTestedDrafts(identity, {options: {[option]: String(draft ?? '')}})
-            : {options: {[option]: committedValue(key, draft)}}, 15000);
+            : {options: {[option]: committedValue(key, draft)}}, live ? 60000 : 15000);
         adoptIntegration(identity, result);
+        if (live) reportLiveTuning(result?.job_tuning);
         if (!secret) {
           const accepted = (state.settings?.integrations?.[identity]?.options || {})[option];
           return acceptedValue(key, accepted, draft);
@@ -6298,6 +6303,83 @@
         return '';
       },
     });
+  }
+
+  /* What a saved Network Sources tuning change does to downloads that already
+   * exist, said before it is saved and again in Help. */
+  const LIVE_TUNING_NOTICE = 'Changes also apply to existing downloads. '
+    + 'Active downloads may briefly reconnect; their progress is preserved.';
+
+  /* Before a tuning change is saved: running downloads will reconnect, so the
+   * operator confirms it first. The count is DebridPulse's own downloads that
+   * aria2 reports running right now (``/aria2/downloads`` lists only owned
+   * ones) -- a snapshot: the save itself decides which downloads it reaches.
+   * When that cannot be read, nothing is assumed idle. */
+  async function confirmLiveTuning() {
+    let running = null;
+    try {
+      const listing = await request('GET', '/aria2/downloads', undefined, 10000);
+      const count = Number(listing?.summary?.active);
+      if (Number.isInteger(count) && count >= 0) running = count;
+    } catch (_) {
+      running = null;
+    }
+    if (running === 0) return true;
+    const which = running === null
+      ? 'Downloads that are running now will briefly reconnect.'
+      : `${running} running download${running === 1 ? '' : 's'} will briefly reconnect.`;
+    return window.DPSettingsModal.confirm({
+      title: 'Apply to existing downloads?',
+      message: `${LIVE_TUNING_NOTICE} ${which}`,
+      confirmLabel: 'Save and Apply',
+    });
+  }
+
+  // A commit the operator declined: the persistence owner returns the field to
+  // its saved value and reports nothing.
+  function cancelledCommit() {
+    const error = new Error('Not saved');
+    error.cancelled = true;
+    return error;
+  }
+
+  /* What the save did to existing downloads, as the server observed it per
+   * download. Saving and reaching the downloads are reported separately:
+   * success only when every download it found took the new values. */
+  function reportLiveTuning(outcome) {
+    if (!outcome) return;
+    if (outcome.daemon === 'unavailable') {
+      notify('Saved. aria2 is not running, so existing downloads were not updated.', 'warning');
+      return;
+    }
+    // Which downloads exist could not be read in time: unknown, never zero.
+    if (outcome.selection === 'unavailable') {
+      notify('Saved. Existing downloads could not be checked in time, so they may still use the earlier values.',
+        'warning');
+      return;
+    }
+    const selected = Number(outcome.selected) || 0;
+    const applied = Number(outcome.applied) || 0;
+    const settled = applied + (Number(outcome.unchanged) || 0);
+    const plural = count => `${count} existing download${count === 1 ? '' : 's'}`;
+    if (selected === 0) return;
+    if (settled === selected) {
+      if (applied) notify(`Applied to ${plural(selected)}.`, 'success');
+      return;
+    }
+    const parts = [`Saved. Applied to ${settled} of ${plural(selected)}.`];
+    const refused = Number(outcome.refused) || 0;
+    const interrupted = Number(outcome.interrupted) || 0;
+    const ended = Number(outcome.gone) || 0;
+    const unknown = (Number(outcome.uncertain) || 0) + (Number(outcome.unavailable) || 0)
+      + (Number(outcome.not_reached) || 0);
+    if (refused) parts.push(`aria2 refused the change for ${refused}; ${refused === 1 ? 'it keeps its' : 'they keep their'} earlier values.`);
+    if (unknown) parts.push(`${unknown} could not be confirmed and may still use the earlier values.`);
+    if (interrupted) parts.push(`${interrupted} stopped after reconnecting; DebridPulse is recovering ${interrupted === 1 ? 'it' : 'them'}.`);
+    if (ended) parts.push(`${ended} ended before ${ended === 1 ? 'it' : 'they'} could be updated.`);
+    const later = Number(outcome.superseded) || 0;
+    if (later) parts.push(`${later} ${later === 1 ? 'was' : 'were'} left to a newer change of these settings.`);
+    notify(parts.join(' '), 'warning');
   }
 
   /* An accepted canonical value in the SIGNATURE shape the control shows, so a

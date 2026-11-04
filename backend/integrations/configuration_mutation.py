@@ -74,6 +74,9 @@ class MutationResult:
     applied: object = None
     # What the integration's native apply reported (``apply_native``'s result).
     native: object = None
+    # The settings this mutation replaced, read under the config-write lock:
+    # what was in effect at the serialized boundary, not a caller's earlier read.
+    previous: object = None
 
 
 async def mutate_integration_configuration(
@@ -218,4 +221,4 @@ async def mutate_integration_configuration(
         # owner, like the write: no caller's admission is assumed.
         async with application.application_operation():
             await application.refresh_account_entitlement(integration_id)
-    return MutationResult(clean, entry, applied, native)
+    return MutationResult(clean, entry, applied, native, previous)

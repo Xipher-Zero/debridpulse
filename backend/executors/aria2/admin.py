@@ -1,9 +1,19 @@
 """Explicit aria2 administration boundary, separate from transfer policy."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 
+from executors.aria2.executor import _JOB_TUNING_SECONDS, TuningOutcome
 from executors.aria2.runtime import build_aria2_global_options
+
+# How long one pass applying saved tuning to existing jobs may run when its
+# caller sets no deadline (``Aria2Administration.converge_job_tuning``); the
+# Settings request sets its own (``api.routes._JOB_TUNING_REQUEST_SECONDS``).
+_TUNING_PASS_SECONDS = 40.0
+
+logger = logging.getLogger("alldebrid.aria2")
 
 
 class Aria2Administration:
@@ -85,6 +95,83 @@ class Aria2Administration:
 
     async def test(self):
         return {**await self.client.test(), "diagnostics": await self.memory_diagnostics()}
+
+    async def converge_job_tuning(self, *, deadline: float | None = None) -> dict:
+        """Give every existing DP-owned job the per-download tuning just saved
+        (Settings -> Network Sources), in place, one job at a time, ending by
+        ``deadline`` (event-loop time; ``_TUNING_PASS_SECONDS`` from now when
+        not given).
+
+        The jobs are selected from the core's own execution truth at this
+        moment -- live executions of non-terminal transfers, this daemon's
+        binding, authorized as CURRENT by the one canonical predicate -- never
+        from the daemon's own list, so no unrelated or stale job is ever
+        touched; each is authorized again at its own change
+        (``Aria2Executor.apply_tuning``). Each job is given the values current
+        when it is reached, under the daemon's tuning lock; a pass that sees a
+        newer one waiting stops and leaves its remaining jobs to it
+        (``superseded``), so the newest Save wins and waits at most for one
+        job (``_JOB_TUNING_SECONDS``). Every wait -- for the lock and for each
+        job -- ends at ``deadline``: jobs not reached by then are
+        ``not_reached``, a change sent but not answered is ``uncertain``.
+
+        Selecting the jobs is bounded by the same deadline. When the lock or
+        the selection is not had in time -- or the selection fails -- no job
+        is touched, the lock is released at once, and the answer is
+        ``{"selection": "unavailable"}`` with no counts: which jobs exist is
+        then unknown, not zero.
+
+        Otherwise returns ``selection: "complete"`` and the count of each
+        observed outcome; ``selected`` counts the jobs that were, or would have
+        been, considered."""
+        executor = self.executor
+        tuning = executor.tuning
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _TUNING_PASS_SECONDS if deadline is None else deadline
+        tuning.revision += 1
+        revision = tuning.revision
+        outcomes = {outcome.value: 0 for outcome in TuningOutcome}
+        unavailable = {"selection": "unavailable"}
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return unavailable
+        try:
+            await asyncio.wait_for(tuning.lock.acquire(), remaining)
+        except TimeoutError:
+            return unavailable
+        try:
+            try:
+                attempts, current = await asyncio.wait_for(self._tuning_candidates(), max(0.0, deadline - loop.time()))
+            except TimeoutError:
+                return unavailable
+            except Exception as exc:
+                logger.warning("aria2 tuning could not select existing jobs: %s", type(exc).__name__)
+                return unavailable
+            for attempt, allowed in zip(attempts, current, strict=True):
+                if not allowed:
+                    outcome = TuningOutcome.NOT_OWNED
+                elif loop.time() >= deadline:
+                    outcome = TuningOutcome.NOT_REACHED
+                elif tuning.revision != revision:
+                    outcome = TuningOutcome.SUPERSEDED
+                else:
+                    outcome = await executor.apply_tuning(
+                        attempt.handle, deadline=min(deadline, loop.time() + _JOB_TUNING_SECONDS))
+                outcomes[outcome.value] += 1
+        finally:
+            tuning.lock.release()
+        selected = sum(count for name, count in outcomes.items()
+                       if name not in {TuningOutcome.NOT_LIVE.value, TuningOutcome.NOT_OWNED.value})
+        return {"selection": "complete", "selected": selected, **outcomes}
+
+    async def _tuning_candidates(self):
+        """This daemon's live executions and, for each, whether the core
+        authorizes it as the CURRENT one (``converge_job_tuning``)."""
+        executor = self.executor
+        attempts = [attempt for attempt in await self.repository.live_executions()
+                    if attempt.handle.executor_id == executor.descriptor.id
+                    and attempt.handle.correlation.get("binding") == executor.binding]
+        return attempts, await self.repository.authorize_executions([attempt.handle for attempt in attempts], "pause")
 
     async def apply_memory_tuning(self):
         options = build_aria2_global_options(self.runtime.options, include_safety=True, live=True)

@@ -259,17 +259,30 @@ class Aria2Service:
         return downloads
 
     async def get_option(self, gid: str, name: str) -> str:
-        """Return one named option of one job.
+        """Return one named option of one job."""
+        return (await self.get_options(gid, (name,)))[name]
+
+    async def get_options(self, gid: str, names: Sequence[str]) -> Dict[str, str]:
+        """Return the named options of one job (``""`` for one it does not hold).
 
         aria2's full option map can carry plaintext credentials; it is cleared
         before returning and never logged, cached or returned.
         """
         options = await self._call("aria2.getOption", [gid])
         try:
-            return str(options.get(name) or "") if isinstance(options, dict) else ""
+            if not isinstance(options, dict):
+                return {name: "" for name in names}
+            return {name: str(options.get(name) or "") for name in names}
         finally:
             if isinstance(options, dict):
                 options.clear()
+
+    async def change_option(self, gid: str, options: Dict[str, str]) -> Any:
+        """Change the named per-download options of one existing job
+        (``aria2.changeOption``). The caller passes only what it changes: aria2
+        keeps every other option of the job, its GID and its progress, and
+        restarts an active job itself to apply most of them."""
+        return await self._call("aria2.changeOption", [gid, options])
 
     async def tell_status(self, gid: str) -> Aria2DownloadStatus:
         result = await self._call("aria2.tellStatus", [gid, self._keys()])

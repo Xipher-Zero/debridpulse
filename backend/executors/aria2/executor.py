@@ -11,7 +11,9 @@ import asyncio
 import base64
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
+from functools import partial
 from datetime import datetime
+from enum import StrEnum
 import hashlib
 import json
 import logging
@@ -25,7 +27,8 @@ from typing import Awaitable, Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from executors.aria2.client import Aria2ResponseError, Aria2Service
-from executors.aria2.runtime import native_download_limit
+from executors.aria2.definition import aria2_size_bytes
+from executors.aria2.runtime import TuningState, native_download_limit
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
     SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, Located, Opaque,
@@ -81,6 +84,51 @@ _OVERALL_DOWNLOAD_LIMIT = "max-overall-download-limit"
 # refused before anything is fetched).
 _IMPORT_PIECE_BYTES = mat.CHUNK_BYTES
 _IMPORT_PIECE_OPTION = "1M"
+# The per-download tuning an operator may change for DP-owned jobs that
+# already exist (Settings -> Network Sources): applied in place to such a job
+# by ``Aria2Executor.apply_tuning``, never by resubmitting it. Characterized
+# on the packaged aria2 1.37.0+dp2: ``aria2.changeOption`` keeps the job's
+# GID, its every other option (the guarded route among them) and its progress;
+# a paused or waiting job stays where it is, and an active one is restarted by
+# aria2 itself, each segment reconnecting at its own progress.
+JOB_TUNING_OPTIONS = ("max-connection-per-server", "split", "min-split-size")
+
+
+class TuningOutcome(StrEnum):
+    """What ``Aria2Executor.apply_tuning`` observed for one job."""
+    APPLIED = "applied"            # changed, read back, and the job still runs, waits or is paused
+    UNCHANGED = "unchanged"        # it already held the tuning: nothing was sent
+    REFUSED = "refused"            # aria2 answered the change with its own refusal
+    UNCERTAIN = "uncertain"        # no answer, or the job's options did not read back as sent
+    INTERRUPTED = "interrupted"    # applied, and the job stopped right after (its recovery follows)
+    GONE = "gone"                  # the job ended or disappeared before it could be confirmed
+    UNAVAILABLE = "unavailable"    # the daemon could not be asked
+    NOT_LIVE = "not_live"          # the job is complete, failed or removed: not tuned
+    NOT_OWNED = "not_owned"        # not this daemon's current, authorized execution: never touched
+    NOT_REACHED = "not_reached"    # time ran out before any change of it was sent
+    SUPERSEDED = "superseded"      # left to a newer Save's pass, which gives it the newer values
+
+
+# How long the change of one job may take, at most: a pass moves on (and a
+# newer pass waiting for the daemon's tuning lock gets it) within this.
+_JOB_TUNING_SECONDS = 10.0
+# How long a catch-up change (``Aria2Executor._follow_up``) waits for a pass
+# to release the daemon's tuning lock.
+_FOLLOW_UP_LOCK_SECONDS = 120.0
+
+
+class _TuningDeadline(Exception):
+    """The deadline of one job's tuning change passed."""
+
+
+def _same_tuning(name: str, held: str, wanted: str) -> bool:
+    """aria2 reads a size back in bytes (``10M`` -> ``10485760``)."""
+    try:
+        if name == "min-split-size":
+            return aria2_size_bytes(held) == aria2_size_bytes(wanted)
+        return int(held) == int(wanted)
+    except (TypeError, ValueError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -218,6 +266,9 @@ class Aria2Executor:
         self._asked: OrderedDict[str, InputRequirement] = OrderedDict()
         # gid -> the daemon identity around its accepted submission (diagnostic).
         self._submitted: OrderedDict[str, _Submission] = OrderedDict()
+        # Changes of existing jobs' tuning: the daemon owner's, shared by every
+        # executor instance a Save builds; without one, this executor's own.
+        self.tuning = runtime.tuning if runtime is not None else TuningState()
         if not configuration.continue_downloads:
             # The operator disabled continuing partial downloads with aria2:
             # declare it, so core plans restarts for it rather than offsets.
@@ -912,7 +963,6 @@ class Aria2Executor:
         except Exception as exc:
             raise self._failure(Category.EGRESS_POLICY_VIOLATION, domain=Domain.SECURITY) from exc
         target = self._target(self._plan_target(request))
-        cfg = self.configuration
         options = {
             "gid": self._handle_gid(handle), "dir": str(target.parent), "out": target.name,
             "allow-overwrite": "true", "auto-file-renaming": "false",
@@ -920,8 +970,7 @@ class Aria2Executor:
             "max-http-redirection": "0", "check-certificate": "true",
             "max-tries": "1", "no-netrc": "true", "http-auth-challenge": "true",
             "http-user": "", "http-passwd": "",
-            "split": str(max(1, cfg.split)), "min-split-size": cfg.minimum_split_size,
-            "max-connection-per-server": str(max(1, cfg.connections_per_server)),
+            **self._job_tuning(),
             # Set per start from the core continuation plan, never from config.
             "continue": "false",
             "pause": "true" if request.paused else "false", **guarded,
@@ -1033,7 +1082,33 @@ class Aria2Executor:
         accepted_at = time.time()
         self._remember_submission(str(returned), _Submission(
             str(handle.attempt_id), before, await self._session_identity(), accepted_at))
-        return await self._admitted(handle, paused=paused)
+        admitted = await self._admitted(handle, paused=paused)
+        if (self.runtime is not None
+                and admitted.state in {ExecutionState.RUNNING, ExecutionState.QUEUED, ExecutionState.PAUSED}
+                and any(options.get(name) != value for name, value in self._job_tuning().items())):
+            # A Save changed the tuning while this job was being submitted with
+            # the values before it: the Save's own convergence may have passed
+            # over a job that did not exist yet, so it converges here, under
+            # the same per-daemon lock, to the values current now. The
+            # submission waits for that lock only briefly; when a pass still
+            # holds it, the job is left to the bounded catch-up (``_follow_up``)
+            # rather than to chance -- never resubmitted, never waited on here.
+            loop = asyncio.get_running_loop()
+            try:
+                await asyncio.wait_for(self.tuning.lock.acquire(), _JOB_TUNING_SECONDS)
+            except TimeoutError:
+                self._defer_tuning(handle)
+                return admitted
+            else:
+                try:
+                    outcome = await self.apply_tuning(handle, deadline=loop.time() + _JOB_TUNING_SECONDS)
+                finally:
+                    self.tuning.lock.release()
+            if outcome in {TuningOutcome.REFUSED, TuningOutcome.UNCERTAIN, TuningOutcome.UNAVAILABLE,
+                           TuningOutcome.NOT_REACHED}:
+                logger.warning("aria2 job submitted during a tuning change did not confirm the current tuning: "
+                               "attempt=%s outcome=%s", handle.attempt_id, outcome.value)
+        return admitted
 
     async def _session_identity(self) -> str | None:
         """One bounded, best-effort daemon identity read; never raises."""
@@ -1337,6 +1412,189 @@ class Aria2Executor:
                     diagnostic=error.diagnostic,
                 )
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
+
+    def _job_tuning(self) -> dict[str, str]:
+        """The per-download tuning (``JOB_TUNING_OPTIONS``) a job of this
+        daemon gets now: the daemon owner's current configuration -- every Save
+        reconfigures it before anything else runs -- so an executor built
+        before a Save never hands a job, or a convergence, older values;
+        without a daemon owner, this executor's own configuration."""
+        options = self.runtime.options if self.runtime is not None else None
+        if options is not None:
+            split, minimum, connections = options.split, options.min_split_size, options.max_connection_per_server
+        else:
+            cfg = self.configuration
+            split, minimum, connections = cfg.split, cfg.minimum_split_size, cfg.connections_per_server
+        return {"max-connection-per-server": str(max(1, int(connections))), "split": str(max(1, int(split))),
+                "min-split-size": str(minimum)}
+
+    async def apply_tuning(self, handle: ExecutionHandle, *, deadline: float) -> TuningOutcome:
+        """Give one existing job the per-download tuning a job gets now
+        (``_job_tuning``), in place, by ``deadline`` (event-loop time).
+
+        Only this daemon's CURRENT, authorized execution is touched (the same
+        authority its Pause holds), only while it is live -- running, waiting
+        or paused -- and only with the options that differ: never a
+        resubmission, never another option, never a job it does not own. A
+        job that already holds the tuning is not sent anything (an active one
+        is not restarted). A paused or waiting job stays paused or waiting.
+
+        aria2's ``OK`` is not the answer: the job's options must read back as
+        sent, and the job must still be owned and live. A refusal is reported
+        as one. A change without an answer may still take effect, so it is
+        never sent again: it stays in ``self.tuning.inflight`` until aria2
+        answers, no other change of the job is sent before then, and an answer
+        that arrives after a newer Save is followed by bringing the job to the
+        newer values (``_change_settled``). Every wait ends at ``deadline``:
+        before the change was sent that is ``NOT_REACHED``, after it
+        ``UNCERTAIN``. Nothing here decides anything about the transfer: a job
+        that stops after reconnecting is reported ``INTERRUPTED`` and its
+        ordinary recovery follows from the core's own observation.
+
+        The caller holds ``self.tuning.lock``."""
+        loop = asyncio.get_running_loop()
+
+        async def bounded(awaitable):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                if asyncio.iscoroutine(awaitable):
+                    awaitable.close()
+                raise _TuningDeadline()
+            try:
+                return await asyncio.wait_for(awaitable, remaining)
+            except TimeoutError:
+                if loop.time() >= deadline:
+                    raise _TuningDeadline() from None
+                raise
+
+        live = {ExecutionState.RUNNING, ExecutionState.QUEUED, ExecutionState.PAUSED}
+        try:
+            gid = await bounded(self._check(handle, "pause"))
+        except _TuningDeadline:
+            return TuningOutcome.NOT_REACHED
+        except Exception:
+            return TuningOutcome.NOT_OWNED
+        try:
+            before = await bounded(self.observe(handle))
+        except _TuningDeadline:
+            return TuningOutcome.NOT_REACHED
+        if before.state == ExecutionState.UNKNOWN:
+            return TuningOutcome.UNAVAILABLE
+        if before.state == ExecutionState.ABSENT:
+            return TuningOutcome.GONE
+        if before.state not in live:
+            return TuningOutcome.NOT_LIVE
+        # An earlier change of this job that aria2 has not answered may still
+        # take effect: nothing more is sent before it has answered.
+        pending = self.tuning.inflight.get(gid)
+        if pending is not None and not pending.done():
+            try:
+                await bounded(asyncio.shield(pending))
+            except _TuningDeadline:
+                return TuningOutcome.UNCERTAIN
+            except Exception:
+                pass
+        wanted = self._job_tuning()
+        try:
+            held = await bounded(self.client.get_options(gid, JOB_TUNING_OPTIONS))
+        except _TuningDeadline:
+            return TuningOutcome.NOT_REACHED
+        except Exception as exc:
+            return TuningOutcome.GONE if is_missing(exc, gid) else TuningOutcome.UNAVAILABLE
+        changes = {name: value for name, value in wanted.items() if not _same_tuning(name, held[name], value)}
+        if not changes:
+            return TuningOutcome.UNCHANGED
+        # Authority is decided again at the mutation itself: a deletion or a
+        # replaced writer may have revoked it while the job was being read.
+        try:
+            await bounded(self._check(handle, "pause"))
+        except _TuningDeadline:
+            return TuningOutcome.NOT_REACHED
+        except Exception:
+            return TuningOutcome.NOT_OWNED
+        sent = asyncio.ensure_future(self.client.change_option(gid, changes))
+        self.tuning.inflight[gid] = sent
+        sent.add_done_callback(partial(self._change_settled, handle, gid, dict(changes)))
+        try:
+            await bounded(asyncio.shield(sent))
+        except _TuningDeadline:
+            return TuningOutcome.UNCERTAIN
+        except Aria2ResponseError as exc:
+            return TuningOutcome.GONE if is_missing(exc, gid) else TuningOutcome.REFUSED
+        except Exception:
+            # The change may have reached aria2: only its read-back decides.
+            pass
+        confirm_by = min(deadline, loop.time() + max(0.01, float(self.configuration.control_confirmation_timeout)))
+        while True:
+            try:
+                held = await bounded(self.client.get_options(gid, JOB_TUNING_OPTIONS))
+            except _TuningDeadline:
+                return TuningOutcome.UNCERTAIN
+            except Exception as exc:
+                if is_missing(exc, gid):
+                    return TuningOutcome.GONE
+                held = {}
+            if held and all(_same_tuning(name, held[name], value) for name, value in wanted.items()):
+                break
+            remaining = confirm_by - loop.time()
+            if remaining <= 0:
+                return TuningOutcome.UNCERTAIN
+            await asyncio.sleep(min(max(0.01, float(self.configuration.confirmation_delay)), remaining))
+        try:
+            after = await bounded(self.observe(handle))
+        except _TuningDeadline:
+            return TuningOutcome.UNCERTAIN
+        if after.state in live or after.state == ExecutionState.SUCCEEDED:
+            return TuningOutcome.APPLIED
+        if after.state in {ExecutionState.FAILED, ExecutionState.CANCELLED}:
+            return TuningOutcome.INTERRUPTED
+        if after.state == ExecutionState.ABSENT:
+            return TuningOutcome.GONE
+        return TuningOutcome.UNCERTAIN
+
+    def _change_settled(self, handle: ExecutionHandle, gid: str, sent: dict, change: asyncio.Future) -> None:
+        """aria2 answered (or the client gave up on) one tuning change. If a
+        newer Save wants other values than it sent, the job may now hold the
+        older ones: it is brought to the current values (``_follow_up``).
+        Nothing is resent for its own sake."""
+        if self.tuning.inflight.get(gid) is change:
+            del self.tuning.inflight[gid]
+        if not change.cancelled():
+            change.exception()  # retrieved: its outcome was judged by whoever waited
+        wanted = self._job_tuning()
+        if all(_same_tuning(name, value, wanted[name]) for name, value in sent.items()):
+            return
+        self._defer_tuning(handle)
+
+    def _defer_tuning(self, handle: ExecutionHandle) -> None:
+        """Leave one job to a bounded catch-up (``_follow_up``), held by the
+        daemon's tuning state so it outlives the caller."""
+        follow = asyncio.ensure_future(self._follow_up(handle))
+        self.tuning.followups.add(follow)
+        follow.add_done_callback(self.tuning.followups.discard)
+
+    async def _follow_up(self, handle: ExecutionHandle) -> None:
+        """Bring one job that may hold superseded tuning -- an earlier change
+        of it answered after a newer Save, or it was submitted with values a
+        Save replaced while a pass held the lock -- to the values current now,
+        as a pass would: under its lock (waited for at most
+        ``_FOLLOW_UP_LOCK_SECONDS``), within ``_JOB_TUNING_SECONDS``, and only
+        while it is still this daemon's current authorized execution
+        (``apply_tuning`` decides that again)."""
+        loop = asyncio.get_running_loop()
+        try:
+            await asyncio.wait_for(self.tuning.lock.acquire(), _FOLLOW_UP_LOCK_SECONDS)
+        except TimeoutError:
+            logger.warning("aria2 tuning catch-up did not run: attempt=%s", handle.attempt_id)
+            return
+        try:
+            outcome = await self.apply_tuning(handle, deadline=loop.time() + _JOB_TUNING_SECONDS)
+        finally:
+            self.tuning.lock.release()
+        if outcome in {TuningOutcome.REFUSED, TuningOutcome.UNCERTAIN, TuningOutcome.UNAVAILABLE,
+                       TuningOutcome.NOT_REACHED}:
+            logger.warning("aria2 tuning catch-up did not confirm: attempt=%s outcome=%s",
+                           handle.attempt_id, outcome.value)
 
     async def pause(self, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._control(handle, resume=False)

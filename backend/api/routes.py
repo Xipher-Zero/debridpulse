@@ -2516,6 +2516,9 @@ async def patch_integration_configuration(
     async def apply_aria2():
         return await _apply_aria2_settings(application, strict=True)
 
+    # The whole request -- save, then existing downloads -- ends well inside
+    # the 60 s the Settings page waits for one of these fields.
+    tuning_deadline = asyncio.get_running_loop().time() + _JOB_TUNING_REQUEST_SECONDS
     try:
         result = await mutate_integration_configuration(
             application, definition, options=body.options, enabled=body.enabled, priority=body.priority,
@@ -2538,8 +2541,46 @@ async def patch_integration_configuration(
     # never told the service is configured when it is not.
     # The daemon's own outcome (aria2): running, applied live, and what waits
     # for its next start -- validation success is not reported as more.
+    # Changed per-download tuning also reaches the jobs that already exist,
+    # after the save and outside the config-write lock; what each job actually
+    # took is reported beside what was saved, never folded into it. "Changed"
+    # is decided against what this save actually replaced, read under the
+    # lock (``result.previous``), never against an earlier unserialized read.
+    job_tuning = None
+    if integration_id == "aria2" and _aria2_job_tuning(clean) != _aria2_job_tuning(result.previous):
+        job_tuning = await _converge_aria2_job_tuning(application, runtime, tuning_deadline)
     return {"ok": True, **public, **({"native": applied.public()} if applied is not None else {}),
-            **({"runtime": runtime} if runtime is not None else {})}
+            **({"runtime": runtime} if runtime is not None else {}),
+            **({"job_tuning": job_tuning} if job_tuning is not None else {})}
+
+
+# A Settings save of aria2 per-download tuning, including applying it to the
+# existing downloads, ends within this many seconds of the request arriving;
+# the page waits 60 s for it (ui-settings-page.js, ``liveTuning`` fields).
+_JOB_TUNING_REQUEST_SECONDS = 45.0
+
+
+def _aria2_job_tuning(settings) -> tuple:
+    """The saved per-download tuning existing aria2 jobs are given
+    (``executors.aria2.executor.JOB_TUNING_OPTIONS``), normalized."""
+    from executors.aria2.definition import aria2_size_bytes
+    options = _canonical_aria2_options(settings)
+    return (int(options.max_connection_per_server), int(options.split), aria2_size_bytes(options.min_split_size))
+
+
+async def _converge_aria2_job_tuning(application: ApplicationService, runtime: dict | None, deadline: float) -> dict:
+    """Apply just-saved tuning to the existing DP-owned aria2 jobs
+    (``Aria2Administration.converge_job_tuning``), by ``deadline`` (event-loop
+    time). Without a running daemon nothing can be applied, and that is what
+    is reported."""
+    if not (runtime or {}).get("running"):
+        return {"daemon": "unavailable", "selected": 0}
+    try:
+        return {"daemon": "running",
+                **await application.integration_admin("aria2").converge_job_tuning(deadline=deadline)}
+    except Exception as exc:
+        logger.warning("Could not apply aria2 tuning to existing downloads: %s", sanitize_exception(exc))
+        return {"daemon": "unavailable", "selected": 0}
 
 
 class IntegrationGroupConfigurationUpdate(BaseModel):

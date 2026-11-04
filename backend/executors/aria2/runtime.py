@@ -123,6 +123,26 @@ def build_aria2_global_options(options, *, include_safety: bool = False, live: b
     return options_dict
 
 
+class TuningState:
+    """One daemon's changes of existing jobs' per-download tuning.
+
+    ``lock``: one job is changed at a time, by one pass at a time.
+    ``revision``: the newest pass; an older pass that sees a newer one waiting
+    stops, leaving its remaining jobs to it (each job is always given the
+    values current when it is reached, so the newest Save wins).
+    ``inflight``: per GID, a change sent to aria2 whose answer has not arrived.
+    It may still take effect, so no other change of that job is sent until it
+    has answered; and when it answers after a newer Save, that job is brought
+    to the newer values then (``Aria2Executor._change_settled``).
+    ``followups``: those catch-up changes while they run."""
+
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+        self.revision = 0
+        self.inflight: Dict[str, asyncio.Task] = {}
+        self.followups: set[asyncio.Task] = set()
+
+
 def _default_aria2_options():
     from executors.aria2.definition import Aria2Options
     return Aria2Options()
@@ -147,6 +167,9 @@ class Aria2Runtime:
         self._stdout_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        # Changes of existing jobs' per-download tuning on this daemon, whichever
+        # executor instance makes them (``Aria2Executor.apply_tuning``).
+        self.tuning = TuningState()
         self._config = Aria2RuntimeConfiguration()
         # The exit status of the last daemon that exited before becoming
         # healthy (None once one started), and the native options a running

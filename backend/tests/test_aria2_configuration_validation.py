@@ -283,6 +283,150 @@ async def test_no_daemon_by_choice_or_a_lost_connection_is_reported_never_refuse
         assert saved[-1].integrations["aria2"].options["split"] == 7
 
 
+# ── saved per-download tuning reaches existing downloads ────────────────────
+
+def _admin_world(runtime, outcome=None):
+    application, saved, patches = _route_world(_current(), runtime)
+    order = []
+    # Each step records whether the config-write lock is held while it runs:
+    # the per-job pass must never run under it.
+    held = config.config_write_lock().locked
+    converge = AsyncMock(side_effect=lambda **kwargs: order.append(("converge", len(saved), held())) or (
+        outcome or {"selected": 2, "applied": 2}))
+    application.integration_admin = lambda _id: SimpleNamespace(
+        apply_memory_tuning=AsyncMock(side_effect=lambda: order.append(("daemon", len(saved), held()))),
+        converge_job_tuning=converge)
+    return application, saved, patches, converge, order
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("options", [{"split": 5}, {"max_connection_per_server": 5}, {"min_split_size": "64M"},
+                                     {"split": 5, "disk_cache": "32M"}])
+async def test_a_saved_tuning_change_is_applied_to_existing_downloads_and_reported_beside_the_save(options):
+    application, saved, patches, converge, order = _admin_world(_fake_runtime(), {"selected": 3, "applied": 2,
+                                                                                    "refused": 1})
+    result = await _patch(application, patches, options)
+    assert result["ok"] is True
+    for name, value in options.items():
+        assert saved[-1].integrations["aria2"].options[name] == value
+    converge.assert_awaited_once()
+    # Saved and applied to the daemon under the config-write lock first; the
+    # existing jobs only after, with the lock released.
+    assert order == [("daemon", 1, True), ("converge", 1, False)]
+    # The pass is bounded by the request: it ends within 45 s of the request
+    # arriving, inside the 60 s the Settings page waits.
+    left = converge.await_args.kwargs["deadline"] - asyncio.get_running_loop().time()
+    assert 0 < left <= 45
+    assert result["job_tuning"] == {"daemon": "running", "selected": 3, "applied": 2, "refused": 1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("options", [{"disk_cache": "32M"}, {"lowest_speed_limit": "1M"},
+                                     {"split": 16, "max_connection_per_server": 16, "min_split_size": "10M"},
+                                     {"min_split_size": "10240K"}])
+async def test_a_save_that_changes_no_per_download_tuning_never_touches_existing_downloads(options):
+    stored = Aria2Options(**_current().integrations["aria2"].options)
+    assert (stored.split, stored.min_split_size, stored.max_connection_per_server) == (16, "10M", 16)
+    application, saved, patches, converge, _order = _admin_world(_fake_runtime())
+    result = await _patch(application, patches, options)
+    assert result["ok"] is True and "job_tuning" not in result
+    converge.assert_not_awaited()
+
+
+class _FirstWaitsAtTheLock:
+    """The config-write lock, except that the FIRST request to reach it waits
+    there -- having done everything it does before the lock -- until let in."""
+
+    def __init__(self):
+        self.lock = asyncio.Lock()
+        self.entered = 0
+        self.first_waiting = asyncio.Event()
+        self.let_first_in = asyncio.Event()
+
+    def __call__(self):
+        return self
+
+    async def __aenter__(self):
+        self.entered += 1
+        if self.entered == 1:
+            self.first_waiting.set()
+            await self.let_first_in.wait()
+        await self.lock.acquire()
+
+    async def __aexit__(self, *_exc):
+        self.lock.release()
+
+
+@pytest.mark.asyncio
+async def test_a_save_restoring_values_another_save_changed_meanwhile_reaches_the_existing_downloads():
+    """Request A (a page still showing split 16) reaches the server first and
+    waits at the config-write lock; request B saves split 5 and applies it to
+    the existing downloads; then A saves 16. A replaced 5, not the 16 it might
+    have read before the lock: the downloads must end on 16, as saved."""
+    import api.routes as routes
+
+    state = {"settings": _current()}
+    native = {}
+    gate = _FirstWaitsAtTheLock()
+
+    async def converge(**_kwargs):
+        # A pass gives each job the values current when it runs.
+        native["split"] = Aria2Options(**state["settings"].integrations["aria2"].options).split
+        return {"selected": 1, "applied": 1}
+
+    application, _saved, _patches = _route_world(_current(), _fake_runtime())
+    application.integration_admin = lambda _id: SimpleNamespace(apply_memory_tuning=AsyncMock(),
+                                                                converge_job_tuning=converge)
+    patches = (patch("api.routes.get_settings", side_effect=lambda: state["settings"]),
+               patch("api.routes.load_settings", side_effect=lambda: state["settings"].model_copy(deep=True)),
+               patch("api.routes.save_settings", side_effect=lambda settings: state.update(settings=settings)),
+               patch("api.routes.apply_settings"), patch("api.routes.aria2_runtime", _fake_runtime()),
+               patch("api.routes.config_write_lock", gate))
+    native["split"] = Aria2Options(**state["settings"].integrations["aria2"].options).split
+    assert native["split"] == 16
+    for item in patches:
+        item.start()
+    try:
+        save = lambda split: routes.patch_integration_configuration(  # noqa: E731
+            "aria2", routes.IntegrationConfigurationUpdate(options={"split": split}), application=application)
+        request_a = asyncio.create_task(save(16))
+        await gate.first_waiting.wait()
+        result_b = await save(5)
+        assert result_b["job_tuning"]["applied"] == 1 and native["split"] == 5
+        gate.let_first_in.set()
+        result_a = await request_a
+    finally:
+        for item in reversed(patches):
+            item.stop()
+    assert state["settings"].integrations["aria2"].options["split"] == 16
+    assert "job_tuning" in result_a and native["split"] == 16
+
+
+@pytest.mark.asyncio
+async def test_an_unavailable_selection_is_reported_as_such_never_as_no_downloads():
+    application, saved, patches, converge, _order = _admin_world(_fake_runtime(), {"selection": "unavailable"})
+    result = await _patch(application, patches, {"split": 5})
+    assert saved[-1].integrations["aria2"].options["split"] == 5
+    assert result["job_tuning"] == {"daemon": "running", "selection": "unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_without_a_running_daemon_the_save_says_existing_downloads_were_not_updated():
+    application, saved, patches, converge, _order = _admin_world(_fake_runtime(process_running=False))
+    result = await _patch(application, patches, {"split": 5})
+    assert saved[-1].integrations["aria2"].options["split"] == 5
+    assert result["job_tuning"] == {"daemon": "unavailable", "selected": 0}
+    converge.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_save_applies_nothing_to_existing_downloads():
+    application, saved, patches, converge, _order = _admin_world(_fake_runtime())
+    refused = await _patch(application, patches, {"split": 65})
+    assert refused.status_code == 400 and saved == []
+    converge.assert_not_awaited()
+
+
 # ── startup diagnostics ─────────────────────────────────────────────────────
 
 ARIA2_REFUSAL = ("echo \"Exception: [AbstractOptionHandler.cc:69] errorCode=28 We encountered a problem while "

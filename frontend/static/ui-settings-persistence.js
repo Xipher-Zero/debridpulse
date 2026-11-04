@@ -380,7 +380,9 @@
         if (control.isConnected && signature(control) === draft) {
           present(control, baselines.has(key) ? baselines.get(key) : fallback);
         }
-        report(error, control, draft);
+        // A commit the operator declined in its scope's own confirmation is
+        // no failure: the field simply returns to what the server holds.
+        if (!(error && error.cancelled)) report(error, control, draft);
       }
     }).finally(() => {
       outstanding -= 1;

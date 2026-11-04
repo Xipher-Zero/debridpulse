@@ -317,6 +317,7 @@
           'Connections per Server is how many connections one download may open to the same server, from 1 to 16 (default 16).',
           'Segments per File is how many parts of one file may download in parallel, from 1 to 64 (default 16). The server, Connections per Server and Minimum Split Size can allow fewer.',
           'Minimum Split Size is the smallest part a file is split into, from 1M to 1024M (default 10M); a larger value gives fewer parallel parts.',
+          'Changes also apply to existing downloads. Active downloads may briefly reconnect; their progress is preserved. When downloads are running, Settings asks before saving, and then says how many existing downloads took the new values.',
         ]},
         {heading: 'Interrupted and slow downloads', list: [
           'Continue Partial Downloads (on by default) resumes a partly downloaded file where possible instead of starting it again.',
