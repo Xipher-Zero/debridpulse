@@ -453,7 +453,13 @@ class TransferRepository(_QualifiedRepository):
         error: NormalizedError,
         failure_identity: str,
     ) -> tuple[int, int, bool]:
-        """Consume one no-progress failure for one durable failure identity."""
+        """Consume one no-progress failure for one durable failure identity.
+
+        ``<identity>#<occurrence>`` is one distinct occurrence of the failure
+        ``<identity>`` (a provider's refusal of one dispatch,
+        ``TransferEngine._failure_identity``) and counts once; a bare
+        ``<identity>`` reported again is the failure last counted -- whichever
+        occurrence of it that was -- and counts nothing."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone(
@@ -467,7 +473,8 @@ class TransferRepository(_QualifiedRepository):
             identity = f"{int(snapshot.get('recovery_epoch') or 0)}:{failure_identity}"
             failures_before = int(row.get("recovery_failures") or 0)
             refreshes = int(row.get("recovery_refreshes") or 0)
-            if snapshot.get("last_failure_identity") == identity:
+            last = snapshot.get("last_failure_identity")
+            if last == identity or ("#" not in identity and str(last or "").partition("#")[0] == identity):
                 await db.rollback()
                 return failures_before, refreshes, False
             cursor = await db.execute(

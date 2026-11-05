@@ -201,10 +201,21 @@ class TransferEngine(_QualifiedTransferEngine):
         artifact: Artifact,
         error: NormalizedError,
         observed: ExecutionObservation | None = None,
+        *,
+        occurrence: str | None = None,
     ) -> str:
+        """Which failure this is, for ``record_source_failure_once``: the same
+        identity is the same failure, counted once. An execution's failure is
+        its attempt's. Before any execution exists, a provider's refusal of a
+        new dispatch (``occurrence``: the dispatching claim's generation and
+        the refused candidate) is one occurrence of the ``no-execution``
+        failure (``#<occurrence>``), so consecutive refusals of the same
+        source each spend the same-source budget once; a report without an
+        occurrence is the one last counted."""
         attempt = artifact.execution.attempt_id if artifact.execution else "no-execution"
         completed = observed.progress.completed_bytes if observed is not None else 0
-        return f"{attempt}:{completed}:{failure_signature(error)}"
+        identity = f"{attempt}:{completed}:{failure_signature(error)}"
+        return f"{identity}#{occurrence}" if occurrence is not None and not artifact.execution else identity
 
     def _counts_recovery_failure(self, error: NormalizedError, *, observed: ExecutionObservation | None = None) -> bool:
         """Whether this failure consumes the source's bounded no-progress
@@ -301,6 +312,7 @@ class TransferEngine(_QualifiedTransferEngine):
         force_storage_not_ready: bool = False,
         outcome: str = "decision_applied",
         retirement_reason: str | None = None,
+        refused_candidate: str | None = None,
     ) -> _Step:
         applied, action, reason, candidate_changed = await self._decide_and_apply(
             claim,
@@ -311,6 +323,7 @@ class TransferEngine(_QualifiedTransferEngine):
             force_provider_not_ready=force_provider_not_ready,
             force_executor_not_ready=force_executor_not_ready,
             force_storage_not_ready=force_storage_not_ready,
+            refused_candidate=refused_candidate,
         )
         return _Step(
             True,
@@ -333,10 +346,18 @@ class TransferEngine(_QualifiedTransferEngine):
         force_provider_not_ready: bool = False,
         force_executor_not_ready: bool = False,
         force_storage_not_ready: bool = False,
+        refused_candidate: str | None = None,
     ) -> tuple[bool, str, str, bool]:
-        """Use canonical policy; this method owns application context, not policy."""
+        """Use canonical policy; this method owns application context, not policy.
+
+        ``refused_candidate``: ``error`` is the bound provider's refusal of
+        fresh execution material for that candidate, asked for by a dispatch
+        under ``claim`` (``ProviderIssuanceRefusal``) -- one new failure
+        occurrence, however often this claim reports it, and attributed to the
+        candidate refused even when a decision has since selected another."""
         error = self.policy.compatibility(error)
-        failure_identity = self._failure_identity(artifact, error, observed)
+        occurrence = f"{claim.generation}/{refused_candidate}" if refused_candidate is not None else None
+        failure_identity = self._failure_identity(artifact, error, observed, occurrence=occurrence)
         completed_bytes = observed.progress.completed_bytes if observed is not None else 0
         if count_failure:
             _failures, _refreshes, consumed = await self.repository.record_source_failure_once(
@@ -802,6 +823,8 @@ class TransferEngine(_QualifiedTransferEngine):
         error: NormalizedError | None,
         observed: ExecutionObservation | None,
         retirement_reason: str | None,
+        *,
+        refused_candidate: str | None = None,
     ) -> _Step:
         current = await self._current_artifact(artifact.transfer_id, artifact.id)
         if current is None:
@@ -913,6 +936,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 observed=observed,
                 count_failure=self._counts_recovery_failure(error, observed=observed),
                 retirement_reason=retirement_reason,
+                refused_candidate=refused_candidate,
             )
 
         if stored.get("quiescence_reason") in {
@@ -1915,12 +1939,15 @@ class TransferEngine(_QualifiedTransferEngine):
         trigger: RecoveryTrigger,
         error: NormalizedError | None,
         observed: ExecutionObservation | None,
+        *,
+        refused_candidate: str | None = None,
     ) -> _Step:
         current, error, observed, handled, retirement = await self._reconcile_current(
             claim, artifact, trigger, error, observed,
         )
         return handled or await self._plan_after_reconcile(
             claim, current or artifact, trigger, error, observed, retirement,
+            refused_candidate=refused_candidate,
         )
 
     async def recover_artifact(
@@ -1930,8 +1957,13 @@ class TransferEngine(_QualifiedTransferEngine):
         trigger: RecoveryTrigger,
         error: NormalizedError | None = None,
         observed: ExecutionObservation | None = None,
+        refused_candidate: str | None = None,
     ) -> bool:
-        """One durable claim per artifact; same-task nested failure reuses it."""
+        """One durable claim per artifact; same-task nested failure reuses it.
+
+        ``refused_candidate``: ``error`` is a provider's refusal of the fresh
+        execution material a dispatch just asked for, for that candidate
+        (``_engine_base._dispatch``)."""
         trigger = RecoveryTrigger(trigger)
         artifact = await self._artifact_ref(artifact)
         if artifact is None:
@@ -1944,7 +1976,7 @@ class TransferEngine(_QualifiedTransferEngine):
             if not await self.repository.recovery_claim_current(existing, now=self.clock()):
                 return False
             step = await self._run_claimed_recovery(
-                existing, artifact, trigger, error, observed,
+                existing, artifact, trigger, error, observed, refused_candidate=refused_candidate,
             )
             nested_steps[key] = step
             return step.applied
@@ -1962,7 +1994,7 @@ class TransferEngine(_QualifiedTransferEngine):
                      "reconciled_current_state", "coalesced")
         try:
             step = await self._run_claimed_recovery(
-                claim, artifact, trigger, error, observed,
+                claim, artifact, trigger, error, observed, refused_candidate=refused_candidate,
             )
             nested = nested_steps.pop(key, None)
             if nested is not None:
@@ -2004,11 +2036,13 @@ class TransferEngine(_QualifiedTransferEngine):
             error=self.policy.compatibility(error),
         )
 
-    async def _schedule_refresh(self, artifact: Artifact, error: NormalizedError):
+    async def _schedule_refresh(self, artifact: Artifact, error: NormalizedError, *,
+                                refused_candidate: str | None = None):
         return await self.recover_artifact(
             artifact,
             trigger=RecoveryTrigger.AUTO_RETRY,
             error=self.policy.compatibility(error),
+            refused_candidate=refused_candidate,
         )
 
     async def _refresh(self, artifact: Artifact):

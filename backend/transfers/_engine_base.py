@@ -186,6 +186,14 @@ class _CleanupOwnershipLost(Exception):
     was running; the call has been aborted and nothing may be finalized."""
 
 
+class ProviderIssuanceRefusal(TransferError):
+    """The bound provider's own answer to one request for fresh execution
+    material (``TransferEngine._issued_material``): a failure that happened
+    just now, at the provider -- never a stored error read again, and never a
+    finding core made without asking (no provider able to issue, no issuing
+    request). Its error is exactly the provider's normalized error."""
+
+
 # Request states the resolution scheduler may admit; every other state is
 # owned by a later lifecycle stage (or is terminal) and is never resolution work.
 _SCHEDULABLE_REQUEST_STATES = frozenset({"pending", "waiting", "materializing", "resolving"})
@@ -3332,8 +3340,12 @@ class TransferEngine:
                 executable = await self._executable_candidate(artifact, candidate)
             except TransferError as exc:
                 # Fresh material could not be issued now: the ordinary
-                # candidate refresh/recovery path owns the retry.
-                await self._schedule_refresh(artifact, exc.error)
+                # candidate refresh/recovery path owns the retry. A provider's
+                # refusal of THIS dispatch is a new failure occurrence of its
+                # own, though no execution exists yet.
+                await self._schedule_refresh(
+                    artifact, exc.error,
+                    refused_candidate=str(candidate.id) if isinstance(exc, ProviderIssuanceRefusal) else None)
                 return
             if executable is None:
                 # No longer the artifact's current candidate for its current
@@ -3510,7 +3522,11 @@ class TransferEngine:
         bound provider's refresh contract for ``request``, validated exactly as
         any provider output is -- for an execution (``_executable_candidate``)
         or for one evidence decision's bounded sample (``_EvidenceAuth``).
-        In memory only; the caller never persists what this returns."""
+        In memory only; the caller never persists what this returns.
+
+        Every failure once the provider has been asked is its answer to this
+        one request (``ProviderIssuanceRefusal``); a provider unable to issue
+        at all is core's own finding (a plain ``TransferError``)."""
         expired = self._candidate_expired()
         provider = self.registry.providers.get(candidate.provider_id)
         if not isinstance(provider, CandidateRefresh):
@@ -3521,23 +3537,24 @@ class TransferEngine:
             result = self._authoritative_provider_result(
                 provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=request)),
                 request_kind=request.kind, lan_host=lan_host)
-        except TransferError:
+        except TransferError as exc:
             self._count("refresh_failed")
-            raise
+            raise ProviderIssuanceRefusal(exc.error) from exc
         except Exception as exc:
             self._count("refresh_failed")
-            raise TransferError(unknown_failure(exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
-                                                stage=Stage.CANDIDATE_PREPARATION)) from None
+            raise ProviderIssuanceRefusal(unknown_failure(
+                exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
+                stage=Stage.CANDIDATE_PREPARATION)) from None
         finally:
             self._count("refresh_time", time.monotonic() - asked)
         if result.error:
             self._count("refresh_failed")
-            raise TransferError(result.error)
+            raise ProviderIssuanceRefusal(result.error)
         fresh = result.candidates[0] if result.candidates else None
         if (fresh is None or not fresh.endpoints or not all(endpoint.address for endpoint in fresh.endpoints)
                 or (fresh.expires_at is not None and fresh.expires_at <= self.clock())):
             self._count("refresh_failed")
-            raise TransferError(expired)
+            raise ProviderIssuanceRefusal(expired)
         self._count("refreshed")
         return replace(candidate, endpoints=fresh.endpoints, expires_at=fresh.expires_at)
 
