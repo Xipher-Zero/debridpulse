@@ -645,14 +645,27 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
     for module in (repository, details, listed):
         assert not hasattr(module, "_SWITCHABLE_ARTIFACT_STATES") and not hasattr(module, "_SWITCHABLE_STATES")
     # The rule itself: every listed state, and a recovery_wait only while it
-    # waits out a timed retry of the route that failed.
+    # waits out a timed retry of the route that failed or a provider quota
+    # hold on the selected source's scope.
     assert all(switch_eligible(state) for state in SWITCH_ELIGIBLE_LIFECYCLE_STATES)
     assert switch_eligible("recovery_wait", "retry_backoff")
-    for reason in (None, "storage_unavailable", "executor_unavailable", "provider_disabled",
-                   "input_required", "materialization_hold"):
+    assert switch_eligible("recovery_wait", "provider_quota")
+    refused_waits = (None, "storage_unavailable", "executor_unavailable", "provider_disabled",
+                     "input_required", "materialization_hold", "recovery_exhausted")
+    for reason in refused_waits:
         assert not switch_eligible("recovery_wait", reason)
     for state in ("completed", "cancelled", "duplicate", "input_required", "lost"):
         assert not switch_eligible(state, "retry_backoff")
+        assert not switch_eligible(state, "provider_quota")
+    # The SQL form answers exactly as the rule does, case and padding included.
+    import sqlite3
+    states = (*sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES), "recovery_wait", " Recovery_Wait ", "completed", "lost", None)
+    reasons = ("retry_backoff", "provider_quota", " PROVIDER_QUOTA ", *refused_waits)
+    with sqlite3.connect(":memory:") as conn:
+        for state in states:
+            for reason in reasons:
+                [(answer,)] = conn.execute(f"SELECT {switch_eligible_sql('?1', '?2')}", (state, reason)).fetchall()
+                assert bool(answer) is switch_eligible(state, reason), (state, reason)
 
 
 @pytest.mark.asyncio

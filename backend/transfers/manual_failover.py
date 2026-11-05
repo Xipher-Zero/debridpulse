@@ -50,22 +50,27 @@ SWITCH_ELIGIBLE_LIFECYCLE_STATES = frozenset({
     "pending", "processing", "ready", "queued", "downloading", "paused",
     "refresh_pending", "error",
 })
-# A file waiting out a timed retry of the route that failed (``recovery_wait``
-# quiesced for ``retry_backoff``): no writer is attached and no recovery
-# claim is held -- only a timer on that route -- so the operator may choose
-# another eligible route now, through the ordinary activation admission
-# (the exclusive claim, one writer, discard confirmation, pause). Every other
-# ``recovery_wait`` -- storage, executor or provider unavailable, a provider
-# disabled, input required, a materialization hold -- stays refused.
-SWITCH_ELIGIBLE_BACKOFF = ("recovery_wait", "retry_backoff")
+# A ``recovery_wait`` the operator may switch out of, by its quiescence
+# reason. Waiting out a timed retry of the route that failed
+# (``retry_backoff``), or a provider quota hold on the selected source's scope
+# (``provider_quota``): the wait belongs to that route or scope, not to the
+# file, and no recovery claim is held while it lasts, so the operator may
+# choose another eligible route now, through the ordinary activation
+# admission (the exclusive claim, one writer, discard confirmation, pause). A
+# quota hold stays with its scope: a switch onto a source under it parks
+# again. Every other ``recovery_wait`` -- storage, executor or provider
+# unavailable, a provider disabled, input required, a materialization hold --
+# stays refused.
+SWITCH_ELIGIBLE_WAIT = ("recovery_wait", frozenset({"retry_backoff", "provider_quota"}))
 
 
 def switch_eligible(state, quiescence_reason=None) -> bool:
     """Whether a file in lifecycle ``state`` (quiesced for
     ``quiescence_reason``, its recovery state's) may switch candidates."""
     state = str(state or "").strip().lower()
+    waiting, reasons = SWITCH_ELIGIBLE_WAIT
     return state in SWITCH_ELIGIBLE_LIFECYCLE_STATES or (
-        (state, str(quiescence_reason or "").strip().lower()) == SWITCH_ELIGIBLE_BACKOFF)
+        state == waiting and str(quiescence_reason or "").strip().lower() in reasons)
 
 
 def switch_eligible_sql(status: str, quiescence_reason: str) -> str:
@@ -73,9 +78,10 @@ def switch_eligible_sql(status: str, quiescence_reason: str) -> str:
     (never NULL)."""
     state = f"LOWER(TRIM(COALESCE({status}, '')))"
     states = ", ".join(f"'{item}'" for item in sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES))
-    waiting, reason = SWITCH_ELIGIBLE_BACKOFF
+    waiting, reasons = SWITCH_ELIGIBLE_WAIT
+    reasons = ", ".join(f"'{item}'" for item in sorted(reasons))
     return (f"({state} IN ({states}) OR ({state} = '{waiting}' "
-            f"AND LOWER(TRIM(COALESCE({quiescence_reason}, ''))) = '{reason}'))")
+            f"AND LOWER(TRIM(COALESCE({quiescence_reason}, ''))) IN ({reasons})))")
 
 
 def _error(
@@ -276,7 +282,7 @@ class DiscardConfirmationRequired(Exception):
 async def _quiescence(engine, artifact) -> str | None:
     """Why ``artifact`` is quiesced, when its lifecycle state alone does not
     answer ``switch_eligible`` (a ``recovery_wait``); else ``None``."""
-    if str(artifact.state or "").strip().lower() != SWITCH_ELIGIBLE_BACKOFF[0]:
+    if str(artifact.state or "").strip().lower() != SWITCH_ELIGIBLE_WAIT[0]:
         return None
     return (await engine.repository.recovery_context(artifact.id)).get("quiescence_reason")
 

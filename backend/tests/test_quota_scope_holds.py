@@ -36,7 +36,8 @@ from providers.debridlink.host_runtime import (
 from providers.debridlink.provider import DebridLinkProvider
 from test_v113_debridlink_engine import HOSTS, KEY, SIZE, Elsewhere, Sampler
 from transfers.convergence_engine import TransferEngine
-from transfers.errors import QUOTA_SCOPE
+from transfers.errors import QUOTA_SCOPE, TransferError
+from transfers.manual_failover import manual_candidate_failover, preview_candidate_switch
 from transfers.models import ResolverArtifactIdentityEvidence, TransferRequest
 from transfers.policy import RecoveryAction, TransferPolicy
 from transfers.recovery_repository import TransferRepository
@@ -428,35 +429,240 @@ async def test_each_refused_probe_is_still_one_counted_occurrence(tmp_path, monk
     assert http.asked(HERE, refused=True) == 2 and len(failures) == 2
 
 
-# -- 9. operator authority: a switch onto a held source is not frozen or misreported
+# -- 9. operator authority: the per-file switch through the operator's own path
+# (``transfers.manual_failover.manual_candidate_failover``, the API's), from
+# and onto sources under a hold; the hold stays with its scope.
 
-async def test_an_operator_switch_onto_a_held_source_waits_truthfully_and_can_switch_away(tmp_path, monkeypatch):
+async def running_jobs(executor):
+    return [job for job in executor.jobs.values() if job.state.value in {"running", "queued", "paused"}]
+
+
+async def authorized_attempts(artifact_id):
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempts WHERE artifact_id=? AND authorized=1",
+                                (artifact_id,))
+    return int(row["n"])
+
+
+async def switchable(transfer_id):
+    """``switch_eligible`` as Details presents it: the per-file candidates (by
+    provider) and the source-group candidates (by host) -- the two
+    projections the switch controls render from."""
+    from transfers.presentation_repository import TransferRepository as Presentation
+    files = (await Presentation().presentation(transfer_id, details=True))["files"]
+    return ({item["provider_id"]: item["switch_eligible"] for file in files
+             for item in file.get("acquisition_candidates") or ()},
+            {item["source_host"]: item["switch_eligible"] for file in files
+             for item in file.get("source_candidates") or ()})
+
+
+async def quota_wait_on_debridlink(tmp_path, monkeypatch, *sources):
+    """The other provider downloading after Debrid-Link's account refused;
+    then the operator switches the file onto Debrid-Link (allowed from
+    ``downloading``): it parks on the hold, Debrid-Link is not asked."""
     http = DebridLinkHTTP("maxData", warm={HERE: 1})
     engine, repository, executor, clock = await start(tmp_path, monkeypatch, http)
-    transfer = await engine.submit((TransferRequest("https", HERE, "movie.bin"),
-                                    TransferRequest("https", THERE, "movie.bin")), name="movie", deduplicate=False)
+    transfer = await engine.submit(tuple(TransferRequest("https", url, "movie.bin") for url in (HERE, *sources, THERE)),
+                                   name="movie", deduplicate=False)
     await engine.tick()
     for _ in range(3):
         await cycle(engine, clock)
     artifact = await only_artifact(repository, transfer.id)
     assert artifact.candidates[artifact.selected].provider_id == "elsewhere"
-    held = next(index for index, item in enumerate(artifact.candidates) if item.provider_id == "debridlink")
+    held = next(item for item in artifact.candidates if item.provider_id == "debridlink"
+                and item.source_identity.key == "hoster.example")
     asked = http.asked()
-    result = await engine.activate_candidate_command(transfer.id, artifact.id, held)
-    assert result is not None and result.committed
+    assert (await manual_candidate_failover(engine, transfer.id, artifact.id, str(held.id)))["ok"]
     for _ in range(3):
         await cycle(engine, clock)
     artifact = await only_artifact(repository, transfer.id)
-    assert artifact.selected == held and http.asked() == asked     # Debrid-Link is not asked while held
-    assert artifact.execution is None or artifact.execution.executor_id != "debridlink"
-    back = next(index for index, item in enumerate(artifact.candidates) if item.provider_id == "elsewhere")
-    result = await engine.activate_candidate_command(transfer.id, artifact.id, back)
-    assert result is not None and result.committed
+    assert artifact.candidates[artifact.selected].id == held.id and artifact.state == "recovery_wait"
+    assert (await state(artifact.id))["quiescence_reason"] == "provider_quota"
+    assert http.asked() == asked and not await running_jobs(executor)
+    return http, engine, repository, executor, clock, transfer, artifact
+
+
+async def test_an_operator_switch_onto_a_held_source_waits_truthfully_and_switches_back_through_the_operator_path(
+        tmp_path, monkeypatch):
+    http, engine, repository, executor, clock, transfer, artifact = await quota_wait_on_debridlink(tmp_path, monkeypatch)
+    [before] = await holds()
+    asked = http.asked()
+    # The projections say what the command will do: the other source is switchable.
+    assert await switchable(transfer.id) == ({"debridlink": False, "elsewhere": True},
+                                             {"hoster.example": False, "other.example": True})
+    # A restart keeps both the wait and its switchability (durable state only).
+    engine, repository, executor = build(tmp_path, http, clock)
+    await engine.initialize()
+    assert (await state(artifact.id))["quiescence_reason"] == "provider_quota"
+    back = next(item for item in artifact.candidates if item.provider_id == "elsewhere")
+    with pytest.raises(TransferError) as unknown:
+        await manual_candidate_failover(engine, transfer.id, artifact.id, "no-such-candidate")
+    assert unknown.value.error.category.value == "source_not_found"
+    preview = await preview_candidate_switch(engine, transfer.id, artifact.id, str(back.id))
+    assert preview["discarded_bytes"] == 0
+    result = await manual_candidate_failover(engine, transfer.id, artifact.id, str(back.id))
+    assert result["ok"] and (result["transfer_id"], result["artifact_id"]) == (transfer.id, artifact.id)
+    for _ in range(3):
+        await cycle(engine, clock)
+    artifact = await only_artifact(repository, transfer.id)
+    assert artifact.candidates[artifact.selected].provider_id == "elsewhere" and artifact.state == "downloading"
+    assert len(await running_jobs(executor)) == 1 and await authorized_attempts(artifact.id) == 1
+    assert http.asked() == asked
+    [after] = await holds()      # the hold is its scope's: a switch neither lifts nor renews it
+    assert (after["refusals"], after["requalify_at"], after["cleared_at"]) == (
+        before["refusals"], before["requalify_at"], before["cleared_at"])
+
+
+async def test_a_switch_from_a_quota_wait_onto_another_held_source_parks_again_without_asking(tmp_path, monkeypatch):
+    http, engine, repository, executor, clock, transfer, artifact = await quota_wait_on_debridlink(
+        tmp_path, monkeypatch, HERE2)
+    [before] = await holds()
+    asked = http.asked()
+    mirror = next(item for item in artifact.candidates if item.source_identity.key == "mirror.example")
+    assert (await manual_candidate_failover(engine, transfer.id, artifact.id, str(mirror.id)))["ok"]
+    for _ in range(3):
+        await cycle(engine, clock)
+    artifact = await only_artifact(repository, transfer.id)
+    assert artifact.candidates[artifact.selected].id == mirror.id and artifact.state == "recovery_wait"
+    assert (await state(artifact.id))["quiescence_reason"] == "provider_quota"
+    assert http.asked() == asked and not await running_jobs(executor)
+    assert await holds() == [before]
+
+
+async def test_a_switch_while_the_requalification_probe_is_in_flight_is_fenced_and_lands_once(tmp_path, monkeypatch):
+    import asyncio
+    http, engine, repository, executor, clock, transfer, artifact = await quota_wait_on_debridlink(tmp_path, monkeypatch)
+    back = next(item for item in artifact.candidates if item.provider_id == "elsewhere")
+    service = next(value for value in vars(engine.registry.providers["debridlink"]).values()
+                   if hasattr(value, "_transport"))
+    inner, entered, release = service._transport, asyncio.Event(), asyncio.Event()
+
+    async def held_open(method, url, **kwargs):
+        if url.endswith("downloader/add"):
+            entered.set()
+            await release.wait()
+        return await inner(method, url, **kwargs)
+    service._transport = held_open
+    asked = http.asked()
+    clock.now += INTERVAL + 1
+
+    async def requalify():
+        await engine.reconcile_executions()
+        await engine.tick()
+    probe = asyncio.create_task(requalify())
+    await asyncio.wait_for(entered.wait(), 10)
+    # The probe's recovery claim fences the switch: a retryable "busy", nothing moved.
+    with pytest.raises(TransferError) as busy:
+        await manual_candidate_failover(engine, transfer.id, artifact.id, str(back.id))
+    assert (busy.value.error.category.value, busy.value.error.retryability.value) == (
+        "resource_state_conflict", "immediate")
+    release.set()
+    await probe
+    assert http.asked(HERE, refused=True) == 2 and http.asked() == asked + 1      # the one probe, refused
+    for _ in range(2):
+        await cycle(engine, clock)
+    assert (await state(artifact.id))["quiescence_reason"] == "provider_quota"
+    assert (await manual_candidate_failover(engine, transfer.id, artifact.id, str(back.id)))["ok"]
     for _ in range(3):
         await cycle(engine, clock)
     artifact = await only_artifact(repository, transfer.id)
     assert artifact.candidates[artifact.selected].provider_id == "elsewhere"
-    assert artifact.execution is not None and artifact.state in {"downloading", "queued"}
+    assert len(await running_jobs(executor)) == 1 and await authorized_attempts(artifact.id) == 1
+    assert http.asked() == asked + 1
+
+
+async def test_concurrent_switches_from_a_quota_wait_never_make_a_second_writer(tmp_path, monkeypatch):
+    import asyncio
+    http, engine, repository, executor, clock, transfer, artifact = await quota_wait_on_debridlink(
+        tmp_path, monkeypatch, HERE2)
+    asked = http.asked()
+    targets = [str(item.id) for item in artifact.candidates if item.source_identity.key in {"other.example",
+                                                                                          "mirror.example"}]
+    outcomes = await asyncio.gather(*(manual_candidate_failover(engine, transfer.id, artifact.id, target)
+                                      for target in targets), return_exceptions=True)
+    assert any(isinstance(item, dict) and item["ok"] for item in outcomes)
+    assert all(isinstance(item, (dict, TransferError)) for item in outcomes)
+    for _ in range(3):
+        await cycle(engine, clock)
+    artifact = await only_artifact(repository, transfer.id)
+    assert len(await running_jobs(executor)) <= 1 and await authorized_attempts(artifact.id) <= 1
+    assert http.asked() == asked
+
+
+@pytest.mark.parametrize("continues", [False, True])
+async def test_a_quota_wait_that_kept_a_paused_writer_switches_only_as_confirmed_with_one_writer(
+        tmp_path, monkeypatch, continues):
+    """The quota wait can keep the file's native writer, paused, with its
+    checkpointed material (``_park_existing_execution`` keeps a writer it
+    can pause; recovery reaches the quota decision only once a writer is not
+    resumable, so this is the window in which it became resumable again).
+    The switch out of it is the ordinary one: the same preview, the discard
+    confirmation, the writer retired before the next is admitted."""
+    from continuation_fakes import MIB
+    from test_v113_material_continuation import TWO, admit, attach_alternate, checkpoint
+    from test_v113_material_continuation import build as spools
+
+    from transfers.continuation import ContinuationCapability, ContinuationStrategy
+    from transfers.manual_failover import DiscardConfirmationRequired
+    from transfers.recovery_execution import RecoveryTrigger
+    restart_only = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.EXPORT_MATERIAL_RANGES})
+    ctx = await spools(tmp_path, monkeypatch, executors=TWO,
+                       continuations=None if continues else {"spool-b": restart_only})
+    transfer, artifact = await admit(ctx)
+    current = await attach_alternate(ctx, transfer)
+    ctx.spools["spool-a"].step(artifact.execution.attempt_id, 3 * MIB)
+    await checkpoint(ctx)
+    ctx.registry.providers["src-spool-a"].account_identity = lambda: "spool-account"
+    [key] = ctx.engine._quota_keys(current.candidates[0])
+    await ctx.repository.hold_quota(key, asked_at=ctx.clock[0], now=ctx.clock[0], requalify_seconds=INTERVAL)
+    claim = await ctx.repository.claim_recovery(artifact.id, RecoveryTrigger.AUTO_RETRY, ctx.clock[0], lease_seconds=300.0)
+    assert await ctx.engine._park_existing_execution(
+        claim, (await ctx.repository.artifacts(transfer.id))[0], reason="provider_quota", wake="quota_requalify")
+    await ctx.engine._finish_claim(claim, action="auto_retry", reason="provider_quota_hold", outcome="parked")
+    parked = (await ctx.repository.artifacts(transfer.id))[0]
+    writer = ctx.spools["spool-a"].jobs[artifact.execution.attempt_id]
+    assert (parked.state, (await state(artifact.id))["quiescence_reason"]) == ("recovery_wait", "provider_quota")
+    assert parked.execution == artifact.execution and writer.state.value == "paused"
+    async with database.get_db() as db:
+        [held] = [dict(row) for row in await db.fetchall("SELECT * FROM provider_quota_holds")]
+    target = str(current.candidates[1].id)
+    preview = await preview_candidate_switch(ctx.engine, transfer.id, artifact.id, target)
+    assert (preview["retained_bytes"], preview["discarded_bytes"]) == ((3 * MIB, 0) if continues else (0, 3 * MIB))
+
+    if not continues:
+        # Unconfirmed, or confirmed against another consequence: refused with
+        # the preview's own numbers, and nothing moves -- the writer stays
+        # parked on its material, the file in its wait.
+        with pytest.raises(DiscardConfirmationRequired) as refused:
+            await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, target)
+        assert (refused.value.discarded_bytes, refused.value.changed) == (3 * MIB, False)
+        with pytest.raises(DiscardConfirmationRequired) as stale:
+            await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, target, discard_confirmed=True,
+                                            discard_confirmation={"material_generation": preview["material_generation"] + 1,
+                                                                  "retained_bytes": 0})
+        assert stale.value.changed is True
+        unchanged = (await ctx.repository.artifacts(transfer.id))[0]
+        assert unchanged.selected == 0 and unchanged.execution == artifact.execution and writer.state.value == "paused"
+        assert (await ctx.repository.material_state(artifact.id)).valid == ((0, 3 * MIB),)
+    confirmation = {"material_generation": preview["material_generation"], "retained_bytes": preview["retained_bytes"]}
+    result = await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, target,
+                                             discard_confirmed=not continues,
+                                             discard_confirmation=None if continues else confirmation)
+    assert result["ok"] and result["provider_id"] == "src-spool-b"
+    assert writer.state.value == "cancelled"
+    await ctx.engine.reconcile_executions()
+    await ctx.engine.tick()
+    await ctx.engine.reconcile_executions()
+    switched = (await ctx.repository.artifacts(transfer.id))[0]
+    [plan] = ctx.spools["spool-b"].plans
+    if continues:
+        assert plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET and plan.retained == ((0, 3 * MIB),)
+    else:
+        assert plan.strategy == ContinuationStrategy.FULL_RESTART and plan.discarded == ((0, 3 * MIB),)
+    live = [job for spool in ctx.spools.values() for job in spool.jobs.values() if job.state.value in {"running", "paused"}]
+    assert len(live) == 1 and switched.execution is not None and await authorized_attempts(artifact.id) == 1
+    async with database.get_db() as db:
+        assert [dict(row) for row in await db.fetchall("SELECT * FROM provider_quota_holds")] == [held]
 
 
 # -- Gate 9 rejection of 001e3848, blocker 2: one issuance per turn, not per artifact
