@@ -430,6 +430,13 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   text-align: right; justify-self: end;
 }
 .dp-detail-route-relation:empty { display:none; }
+/* An unverified contributed source's status with its Retry: one grid item in
+   the status column, so the row keeps its five tracks. */
+.dp-detail-route-outcome-cell {
+  display:inline-flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0;
+  margin-inline-start: calc(var(--dp-route-provenance-gap) - var(--dp-route-column-gap));
+}
+.dp-detail-route-outcome-cell > .dp-detail-route-outcome { margin-inline-start: 0; }
 .dp-detail-route-empty { color:var(--dp-text-muted, var(--text3)); font-size:11px; line-height:1.45; }
 /* Details' ERROR as a disclosure (dpRenderErrorDisclosure, app.js): the
    message keeps its colour and size, a small chevron after it; the facts open
@@ -464,6 +471,7 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   /* Stacked: the rows sit under one another, so the horizontal separation the
      desktop row declares has nothing to separate. */
   .dp-detail-route-outcome { margin-inline-start: 0; }
+  .dp-detail-route-outcome-cell { grid-column:2; justify-content:flex-start; flex-wrap:wrap; margin-inline-start: 0; }
   .dp-detail-advanced-grid > div { grid-template-columns:1fr; gap:2px; }
   .dp-detail-error-disclosure > dl { grid-template-columns:1fr; gap:2px; }
   .dp-detail-error-disclosure dd + dt { margin-top:4px; }

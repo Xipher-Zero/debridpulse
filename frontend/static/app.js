@@ -870,14 +870,37 @@ function renderRouteHistory(t) {
     const relation = relationOf(attempt);
     const identity = attempt.route_identity || '—';
     const identityTitle = attempt.route_location || attempt.route_identity || '';
+    const outcomeMarkup = `<span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" data-tooltip="${esc(outcomeTitle)}">${esc(outcome.label)}</span>`;
+    // A contributed source still unproven (``reconsider_available``, the
+    // backend's statement) offers its contributor's own operator Retry, which
+    // checks the source again; the server re-checks everything when it runs.
+    const contributor = Number(attempt.contributing_transfer_id);
+    const retry = unverified && attempt.reconsider_available === true && Number.isInteger(contributor)
+      && contributor > 0 && contributor !== Number(t?.id) && dpCan('transfers.operate');
+    const outcomeCell = retry
+      ? `<span class="dp-detail-route-outcome-cell">${outcomeMarkup}<button type="button" class="btn btn-blue btn-sm dp-detail-route-retry" data-default-label="Retry" onclick="retryUnverifiedContribution(${contributor},${Number(t.id)},this)" data-tooltip="Check again whether this source is the same file" aria-label="Retry verifying the source from #${contributor}">${window.DPIcons.iconLabel('refresh', 'Retry')}</button></span>`
+      : outcomeMarkup;
     return `<div class="dp-detail-route-row" data-route-relation="${esc(relation.state)}">
       <span class="dp-detail-route-order">${esc(attempt.presentation_ordinal ?? attempt.ordinal ?? '')}</span>
       <span class="dp-detail-route-provider">${esc(provider)}</span>
       <span class="dp-detail-route-identity" data-tooltip="${esc(identityTitle)}">${esc(identity)}</span>
       <span class="dp-detail-route-relation">${esc(originLabel(relation.label))}</span>
-      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" data-tooltip="${esc(outcomeTitle)}">${esc(outcome.label)}</span>
+      ${outcomeCell}
     </div>`;
   }).join('')}</div>`;
+}
+
+// An unverified contribution's Retry is its contributor's own operator Retry
+// (POST /torrents/{contributor}/retry: the engine reconsiders a consolidated
+// contributor's unverified association); then Details shows the server's state.
+async function retryUnverifiedContribution(contributorId, targetId, button) {
+  setButtonPending(button, true, 'Retrying…');
+  try {
+    await api('POST', `/torrents/${contributorId}/retry`);
+    toast('Checking the source again', 'success');
+  } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
+  if (DPModal.mode === 'details') showDetail(targetId);
+  else setButtonPending(button, false);
 }
 
 function sanitizeErrorMsg(message) {

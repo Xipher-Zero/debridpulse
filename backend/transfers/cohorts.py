@@ -487,15 +487,22 @@ async def _invalidate_stale_target(request_id: str, target_artifact_id: int) -> 
     return bool(cursor.rowcount)
 
 
+def unverified_association_sql(alias: str = "") -> str:
+    """The one predicate of an UNVERIFIED association still owed proof, over
+    ``transfer_requests`` columns (``alias``-qualified): what an operator
+    reconsideration reopens, and what every projection of it reads."""
+    column = f"{alias}." if alias else ""
+    return f"{column}state='materializing' AND {column}equivalence_disposition='{_UNVERIFIED_DISPOSITION}'"
+
+
 async def unverified_association_count(transfer_id: int) -> int:
     """How many of ``transfer_id``'s requests are terminal UNVERIFIED
     associations -- the one fact an operator-reconsideration trigger needs to
     decide whether there is anything to reconsider at all."""
     async with get_db() as db:
         row = await db.fetchone(
-            """SELECT COUNT(*) AS n FROM transfer_requests
-                WHERE transfer_id=? AND state='materializing' AND equivalence_disposition=?""",
-            (int(transfer_id), _UNVERIFIED_DISPOSITION),
+            f"SELECT COUNT(*) AS n FROM transfer_requests WHERE transfer_id=? AND {unverified_association_sql()}",
+            (int(transfer_id),),
         )
     return int((row or {}).get("n") or 0)
 

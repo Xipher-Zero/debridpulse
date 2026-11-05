@@ -299,7 +299,7 @@
               <li><b>Awaiting confirmation:</b> DebridPulse is confirming the download's real state with the engine or service, for example after a restart.</li>
               <li><b>Paused, Recovering:</b> held on purpose, or being picked up again.</li>
               <li><b>Extracting:</b> archives are being unpacked.</li>
-              <li><b>Done:</b> finished. <b>Completed with errors</b> or <b>Partial:</b> finished, but some files did not arrive. <b>Consolidated:</b> merged into another download of the same thing.</li>
+              <li><b>Done:</b> finished. <b>Completed with errors</b> or <b>Partial:</b> finished, but some files did not arrive. <b>Consolidated:</b> merged into another download of the same thing. <b>Consolidated · Unverified:</b> DebridPulse could not prove it is the same thing, so nothing was downloaded for it yet; <b>Retry</b> on its unverified source in the other download's details checks again.</li>
               <li><b>Failed, Requires attention, Cancelled:</b> stopped. The details explain why.</li>
             </ul>`)}
 
@@ -341,7 +341,7 @@
             <p>An Admin can remove, cancel or switch the source of any download. A User can do so only when no other account still needs that download, including downloads merged into it; otherwise the User withdraws their own request in <b>Requested By</b>, and the download continues for the others.</p>`)}
 
           ${accordion('Adding the same thing twice', `
-            <p>If you add a magnet, <code>.torrent</code>, NZB or Metalink file that DebridPulse is already working on (including one that failed and has not been removed), it shows <b>Already in queue</b> and keeps the existing download instead of starting a second one. Web links are always added as a new download. Once a download is finished, cancelled or removed, adding the same source again starts a new download. When two downloads turn out to fetch the same content, DebridPulse may merge them; the merged one shows <b>Consolidated</b>. Merging does not change who asked for it: each account's request stays its own.</p>`)}
+            <p>If you add a magnet, <code>.torrent</code>, NZB or Metalink file that DebridPulse is already working on (including one that failed and has not been removed), it shows <b>Already in queue</b> and keeps the existing download instead of starting a second one. Web links are always added as a new download. Once a download is finished, cancelled or removed, adding the same source again starts a new download. When two downloads turn out to fetch the same content, DebridPulse may merge them; the merged one shows <b>Consolidated</b>. When DebridPulse cannot prove that they match, the merged one shows <b>Consolidated · Unverified</b> instead. Merging does not change who asked for it: each account's request stays its own.</p>`)}
 
           ${accordion('What survives a restart', `
             <p>Downloads, their history, the queue order, Pause All and the speed cap are saved and survive a restart; DebridPulse reconnects to its engines and continues. Browser sign-ins do not survive a restart, so you sign in again. Passwords typed into a prompt or written into a link are never saved and are forgotten on restart.</p>`)}

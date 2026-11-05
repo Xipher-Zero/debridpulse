@@ -17,6 +17,7 @@ from transfers._repository_base import (
     active_execution_progress_sql, active_execution_projection, canonical_artifact_membership_sql,
     is_canonical_artifact_row,
 )
+from transfers.cohorts import unverified_association_count
 from transfers.display_name import normalized_transfer_display_name
 from transfers.manual_failover import switch_eligible
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
@@ -105,6 +106,8 @@ def waiting_for_provider_override(presentation_status, current_resource_state):
         "presentation_badge_status": badge,
     }
 
+
+_UNVERIFIED_CONSOLIDATION_LABEL = "Consolidated · Unverified"
 
 _RAW_PRESENTATION = {
     "completed": ("completed", "Done", "completed"),
@@ -815,6 +818,18 @@ class TransferRepository(_CanonicalTransferRepository):
             paused=paused, input_required=challenge,
             current_resource_state=current_resource_state,
         ))
+        if str(result.get("status") or "").lower() == "consolidated":
+            # A settled contributor whose association is still owed proof
+            # (``transfers.cohorts.unverified_association_sql``) is not a
+            # verified merge: the same terminal ``consolidated`` presentation
+            # status (filters, Statistics and notifications read the raw
+            # status, untouched), shown with the caution tone and saying so.
+            # Its operator Retry reconsiders it.
+            unverified = await unverified_association_count(transfer_id)
+            result["unverified_association_count"] = unverified
+            if unverified:
+                result["presentation_label"] = _UNVERIFIED_CONSOLIDATION_LABEL
+                result["presentation_badge_status"] = "partial"
         result["retained_bytes"] = total_retained
         result["active_execution_progress"], result["active_execution_basis"] = active_execution_projection(
             execution_row)

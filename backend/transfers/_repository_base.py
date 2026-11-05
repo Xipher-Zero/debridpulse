@@ -25,7 +25,7 @@ from transfers import journal_events as je
 from transfers import material as mat
 from transfers.cohorts import (
     _FAILED_CONTRIBUTION_DISPOSITION, _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
-    artifact_withdrawn, target_gone_sql,
+    artifact_withdrawn, target_gone_sql, unverified_association_sql,
 )
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.filesystem import safe_name
@@ -1798,9 +1798,17 @@ class TransferRepository:
             JOIN canonical_candidate_origins o ON o.binding_id=b.id
             WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby' AND o.contributing_transfer_id!=?
             ORDER BY b.canonical_artifact_id,b.candidate_order,o.id""", (transfer_id, transfer_id))
-        unverified = await db.fetchall("""SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
-            r.equivalence_reason FROM transfer_requests r
+        # ``reconsider_available``: the contributor settled CONSOLIDATED on an
+        # association still owed proof -- exactly what its operator Retry
+        # reconsiders (``TransferEngine._reconsider_unverified_associations``,
+        # which re-checks it when the Retry commits).
+        unverified = await db.fetchall(f"""SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
+            r.equivalence_reason,
+            CASE WHEN c.status='consolidated' AND {unverified_association_sql('r')} THEN 1 ELSE 0 END
+                AS reconsider_available
+            FROM transfer_requests r
             JOIN download_files f ON f.id=r.equivalence_target_artifact_id
+            JOIN torrents c ON c.id=r.transfer_id
             WHERE r.equivalence_disposition='unverified' AND r.transfer_id!=?
             AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
             ORDER BY r.transfer_id,r.ordinal,r.id""", (transfer_id, transfer_id))
@@ -1844,6 +1852,7 @@ class TransferRepository:
                     "request_id": row["request_id"], "relation": "unverified", "verification_state": "unverified",
                     "unverified_reason": row["equivalence_reason"] or None,
                     "contributing_transfer_id": int(row["contributing_transfer_id"]),
+                    "reconsider_available": bool(row["reconsider_available"]),
                 })
         for row in failed:
             # Its last route attempt is the one whose failure made it dead.
