@@ -414,6 +414,12 @@ textarea.input { resize: vertical; }
   color: var(--dp-state-caution);
   box-shadow: none;
 }
+:is(.dp-btn--accent) {
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 34%, transparent);
+  background: color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent);
+  color: var(--dp-accent-purple-bright);
+  box-shadow: none;
+}
 :is(.btn-sm, .dp-btn--sm) {
   min-height: var(--dp-control-height-sm);
   padding-inline: 10px;
@@ -590,6 +596,7 @@ textarea.input { resize: vertical; }
 .btn-danger:hover { background: rgba(239,68,68,.22); }
 .btn-blue:hover { background: rgba(59,130,246,.25); }
 .btn-success:hover { background: color-mix(in srgb, var(--dp-state-success) 22%, transparent); }
+.dp-btn--accent:hover { background: color-mix(in srgb, var(--dp-accent-purple-bright) 22%, transparent); }
 body.light :disabled { opacity: .55; }
 body.light :is(.dp-field, .input)::placeholder,
 body.light select.input::placeholder,

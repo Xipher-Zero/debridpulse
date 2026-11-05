@@ -69,14 +69,25 @@ const header = (page, card) => page.locator(`#view-settings ${card} > .card-head
 const trigger = head => head.locator('.dp-settings-header-test-trigger');
 const menu = head => head.locator('.dp-settings-header-test-menu');
 const isOpen = locator => locator.evaluate(el => el.matches(':popover-open'));
-const token = (page, name) => page.evaluate(variable => {
+const token = (page, name, property = 'color', read = property) => page.evaluate(([variable, prop, out]) => {
   const probe = document.createElement('span');
-  probe.style.color = `var(${variable})`;
+  probe.style[prop] = `var(${variable})`;
   document.querySelector('#view-settings').appendChild(probe);
-  const color = getComputedStyle(probe).color;
+  const color = getComputedStyle(probe)[out];
   probe.remove();
   return color;
-}, name);
+}, [name, property, read]);
+// An off section's Test: the neutral DP ghost button -- no status colour in its
+// text, border or background, drawn at full strength (not faded) and enabled.
+async function expectNeutral(page, button) {
+  await expect(button).toHaveCSS('color', await token(page, '--dp-text-muted'));
+  await expect(button).toHaveCSS('border-top-color', await token(page, '--dp-secondary-border', 'borderTopColor'));
+  // The DP secondary surface (a gradient in some palettes), not a tinted fill.
+  await expect(button).toHaveCSS('background-image', await token(page, '--dp-secondary-surface', 'background', 'backgroundImage'));
+  await expect(button).toHaveCSS('background-color', await token(page, '--dp-secondary-surface', 'background', 'backgroundColor'));
+  await expect(button).toHaveCSS('opacity', '1');
+  await expect(button).toBeEnabled();
+}
 
 test.describe('below 780px', () => {
   test.use({viewport: {width: 390, height: 844}});
@@ -185,32 +196,56 @@ test.describe('below 780px', () => {
     expect(report).toEqual(['POST']);
   });
 
-  test('the trigger colours the configuration; an off section is muted yet still opens and tests', async ({page}) => {
+  test('the trigger is a DP button coloured by the configuration; an off section is the neutral ghost yet still opens and tests', async ({page}) => {
     await fonts(page);
     await withState(page, {integrations: {
       alldebrid: {enabled: true, configured: true, verified: true},
       debridlink: {enabled: true, configured: true, verified: false},
+      realdebrid: {enabled: true, configured: false, verified: false},
+      torbox: {enabled: false, configured: true, verified: true},
       premiumize: {enabled: false, configured: false, verified: false}}});
     const tests = answer(page, '/api/settings/validate-premiumize', () => [400, {detail: 'Premiumize is disabled'}]);
     await page.goto('/');
     await openTab(page, 'sources');
     const cases = [['alldebrid', 'verified', '--dp-state-success'], ['debridlink', 'unverified', '--dp-state-caution'],
-                   ['premiumize', 'unconfigured', '--dp-accent-purple-bright']];
+                   ['realdebrid', 'unconfigured', '--dp-accent-purple-bright']];
     for (const theme of ['dark', 'light']) {
       if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
       for (const [id, state, variable] of cases) {
         const head = header(page, `.dp-settings-provider-card--${id}`);
         await expect(trigger(head)).toHaveAttribute('data-verification', state);
+        await expect(trigger(head)).toHaveClass(/\bbtn\b.*\bbtn-sm\b/);
+        await expect(trigger(head)).toHaveText('Test');
+        await expect(trigger(head).locator('svg')).toHaveCount(0);
         await expect(trigger(head)).toHaveCSS('color', await token(page, variable));
+        await expect(trigger(head)).toHaveCSS('opacity', '1');
+      }
+      // Off: verification stays (verified, unconfigured), the colour does not.
+      for (const [id, state] of [['torbox', 'verified'], ['premiumize', 'unconfigured']]) {
+        const head = header(page, `.dp-settings-provider-card--${id}`);
+        await expect(trigger(head)).toHaveAttribute('data-verification', state);
+        await expectNeutral(page, trigger(head));
       }
     }
     const off = header(page, '.dp-settings-provider-card--premiumize');
-    await expect(trigger(off)).toHaveCSS('opacity', '0.6');
-    await expect(header(page, '.dp-settings-provider-card--alldebrid').locator('.dp-settings-header-test-trigger'))
-      .toHaveCSS('opacity', '1');
     // Off is participation, not proof: the rail hides Unconfigured, the menu says it.
     await trigger(off).click();
     await expect(menu(off).locator('.dp-settings-header-test-status')).toHaveText('Unconfigured');
+    // The menu centres its report, and its Test's mark and word as one unit.
+    const centred = await menu(off).evaluate(el => {
+      const box = el.getBoundingClientRect(), mid = box.left + box.width / 2;
+      const status = el.querySelector('.dp-settings-header-test-status');
+      const range = document.createRange();
+      range.selectNodeContents(status);
+      const text = range.getBoundingClientRect();
+      const test = el.querySelector('.dp-settings-provider-test');
+      const parts = [...test.children].map(child => child.getBoundingClientRect()).filter(r => r.width);
+      const left = Math.min(...parts.map(r => r.left)), right = Math.max(...parts.map(r => r.right));
+      return {status: Math.abs(text.left + text.width / 2 - mid), test: Math.abs((left + right) / 2 - mid), parts: parts.length};
+    });
+    expect(centred.parts).toBeGreaterThanOrEqual(2);
+    expect(centred.status).toBeLessThanOrEqual(1.5);
+    expect(centred.test).toBeLessThanOrEqual(1.5);
     await menu(off).locator('button[data-action="test-premiumize"]').click();
     await expect(page.locator('.toast').last()).toContainText('Premiumize is disabled');
     expect(tests).toEqual(['POST']);
@@ -227,7 +262,7 @@ test.describe('below 780px', () => {
     await expect(head).not.toContainText('Enable');
     await expect(head.getByRole('checkbox', {name: 'Enable OpenID Connect', exact: true})).toHaveCount(1);
     await expect(trigger(head)).toHaveAttribute('data-verification', 'unverified');
-    await expect(trigger(head)).toHaveCSS('opacity', '0.6');
+    await expectNeutral(page, trigger(head));
     await trigger(head).click();
     await expect(menu(head).locator('.dp-settings-header-test-status')).toHaveText('Configured');
     await menu(head).locator('button[data-action="verify-oidc"]').click();
@@ -256,7 +291,7 @@ test('at 780px an idle menu closes and the direct Test takes over', async ({page
   expect(discord).toEqual(['POST']);
 });
 
-test('from 780px: no dropdown, the direct flask Test, muted (never disabled) while its section is off', async ({page}) => {
+test('from 780px: no dropdown, the direct flask Test, the neutral ghost (never disabled) while its section is off', async ({page}) => {
   await fonts(page);
   await page.setViewportSize({width: 1440, height: 900});
   await withState(page, {integrations: {premiumize: {enabled: false, configured: true, verified: false},
@@ -274,7 +309,13 @@ test('from 780px: no dropdown, the direct flask Test, muted (never disabled) whi
     await expect(direct).toHaveText('Test');
     await expect(direct.locator('.dp-settings-action-glyph')).toBeVisible();
     await expect(direct).toBeEnabled();
-    await expect(direct).toHaveCSS('opacity', id === 'premiumize' ? '0.6' : '1');
+    if (id === 'premiumize') {
+      await expectNeutral(page, direct);
+      await expect(direct.locator('.dp-settings-action-glyph')).toHaveCSS('filter', 'grayscale(1)');
+    } else {
+      await expect(direct).toHaveCSS('opacity', '1');
+      await expect(direct).not.toHaveCSS('color', await token(page, '--dp-text-muted'));
+    }
   }
   await header(page, '.dp-settings-provider-card--premiumize').locator('[data-action="test-premiumize"]').click();
   await expect(page.locator('.toast').last()).toContainText('Premiumize is disabled');

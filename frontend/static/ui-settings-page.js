@@ -1458,14 +1458,17 @@
    * unconfigured -- and the painters below keep it current. Participation is
    * separate: an off toggle mutes Test at both widths and never disables it. */
   const TEST_VERIFICATION = Object.freeze({success: 'verified', warning: 'unverified', error: 'unconfigured'});
+  // Each verification state's DP button tone (ui-universal-language.css).
+  const TEST_TONE = Object.freeze({verified: 'btn-success', unverified: 'btn-warn', unconfigured: 'dp-btn--accent'});
   let headerTestMenus = 0;
   function headerTestControls(title, action, toggle, status) {
     const menu = `dp-settings-test-menu-${++headerTestMenus}`;
+    const verification = TEST_VERIFICATION[status.tone] || 'unconfigured';
     return `<div class="dp-settings-header-action">${action}</div><div class="dp-settings-header-test-group">
         <span class="dp-settings-header-test-shell">
-          <button class="dp-settings-header-test-trigger" type="button" popovertarget="${menu}" aria-controls="${menu}"
-                  aria-expanded="false" aria-label="Test ${html(title)}" data-verification="${TEST_VERIFICATION[status.tone] || 'unconfigured'}"
-                  data-report="${html(status.text)}" data-report-tone="${html(status.tone)}"><span>Test</span><span class="dp-dropdown__chevron" aria-hidden="true"></span></button>
+          <button class="btn btn-sm dp-settings-header-test-trigger ${TEST_TONE[verification]}" type="button" popovertarget="${menu}"
+                  aria-controls="${menu}" aria-expanded="false" aria-label="Test ${html(title)}" data-verification="${verification}"
+                  data-report="${html(status.text)}" data-report-tone="${html(status.tone)}">Test</button>
           <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} test"></div>
         </span>${toggle}</div>`;
   }
@@ -3589,7 +3592,10 @@
     }
     const trigger = card.querySelector('.dp-settings-header-test-trigger');
     if (trigger) {
-      trigger.dataset.verification = TEST_VERIFICATION[report.tone] || 'unconfigured';
+      const verification = TEST_VERIFICATION[report.tone] || 'unconfigured';
+      trigger.classList.remove(...Object.values(TEST_TONE));
+      trigger.classList.add(TEST_TONE[verification]);
+      trigger.dataset.verification = verification;
       trigger.dataset.report = report.text;
       trigger.dataset.reportTone = report.tone;
     }

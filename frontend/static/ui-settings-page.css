@@ -320,8 +320,10 @@
 /* ── The header Test (ui-settings-page.js headerTestControls) ─────────────
    From 780px the rail draws exactly what it always drew: the group adds no
    box (display: contents) and its handheld trigger and menu are not drawn.
-   Participation mutes the Test at every width -- an off toggle fades the
-   direct Test (and, below 780px, the trigger) but never disables it. */
+   Participation, at every width: while the toggle is off, the direct Test
+   (and, below 780px, the trigger) is the neutral DP ghost button -- no status
+   colour in its text, border, background or mark, and never disabled. Its
+   verification is unchanged and still reported where it always is. */
 #view-settings .dp-settings-header-test-group {
   display: contents;
 }
@@ -332,7 +334,25 @@
 
 #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test,
 #view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger {
-  opacity: .6;
+  border-color: var(--dp-secondary-border);
+  background: var(--dp-secondary-surface);
+  color: var(--dp-text-muted);
+}
+
+#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test:hover,
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger:hover {
+  border-color: var(--dp-border-strong);
+  background: var(--dp-secondary-surface);
+  color: var(--dp-text-primary);
+}
+
+#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-chip {
+  border-color: var(--dp-secondary-border);
+  background: transparent;
+}
+
+#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-glyph {
+  filter: grayscale(1);
 }
 
 /* ── The ONE canonical Settings disclosure chip ──────────────────────────
@@ -1667,6 +1687,17 @@
   }
   #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-title-group {
     flex: 0 1 auto;
+    /* Room before the rail has to wrap, taken first from the space between
+       the title and its disclosure, then from the identity mark: the whole
+       chip -- mark, corner and glow -- at 30px (from 38), and its gap to the
+       title. The title's type is unchanged. */
+    gap: 2px;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) .dp-settings-card-title--with-icon {
+    gap: 8px;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) :is(.dp-settings-protocol-chip, .dp-settings-provider-chip) {
+    zoom: calc(30 / 38);
   }
   #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-controls {
     flex: 0 0 auto;
@@ -1894,52 +1925,14 @@
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 4px 2px 2px;
+    gap: 4px;
+    padding: 3px 4px 3px 3px;
     border: 1px solid var(--dp-secondary-border);
     border-radius: var(--dp-radius-sm);
   }
 
   #view-settings .dp-settings-header-test-shell {
     display: inline-flex;
-  }
-
-  #view-settings .dp-settings-header-test-trigger {
-    min-height: 32px;
-    display: inline-flex;
-    align-items: center;
-    padding: 0 4px 0 6px;
-    border: 0;
-    border-radius: calc(var(--dp-radius-sm) - 2px);
-    background: transparent;
-    font-family: var(--dp-font-sans);
-    font-size: 12px;
-    font-weight: 650;
-    line-height: 1;
-    cursor: pointer;
-  }
-
-  #view-settings .dp-settings-header-test-trigger .dp-dropdown__chevron {
-    color: currentColor;
-    margin-inline: 4px 0;
-  }
-
-  #view-settings .dp-settings-header-test-trigger[aria-expanded="true"] .dp-dropdown__chevron {
-    transform: rotate(225deg);
-    margin-top: 3px;
-  }
-
-  #view-settings .dp-settings-header-test-trigger[data-verification="verified"] { color: var(--dp-state-success); }
-  #view-settings .dp-settings-header-test-trigger[data-verification="unverified"] { color: var(--dp-state-caution); }
-  #view-settings .dp-settings-header-test-trigger[data-verification="unconfigured"] { color: var(--dp-accent-purple-bright); }
-
-  #view-settings .dp-settings-header-test-trigger:hover {
-    background: var(--dp-surface-2);
-  }
-
-  #view-settings .dp-settings-header-test-trigger:focus-visible {
-    outline: 2px solid var(--dp-accent-purple-bright);
-    outline-offset: 2px;
   }
 
   /* The menu: the shared projected-menu material, in the top layer. */
@@ -1960,6 +1953,7 @@
 
   #view-settings .dp-settings-header-test-status {
     padding: 2px 4px;
+    text-align: center;
     font-size: 12px;
     font-weight: 650;
     line-height: 1.3;
@@ -1972,6 +1966,6 @@
 
   #view-settings .dp-settings-header-test-menu > .dp-settings-provider-test {
     min-height: 40px;
-    justify-content: flex-start;
+    justify-content: center;
   }
 }
