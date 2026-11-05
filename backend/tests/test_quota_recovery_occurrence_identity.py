@@ -11,10 +11,13 @@ sources sat unused (investigations/dp-1.0.14-debridlink-quota-stagnation).
 
 The real Debrid-Link client (envelope parsing), provider (refresh -> resolve)
 and translation are driven by an in-memory HTTP transport; the real engine,
-repository and policy decide on a scratch database. The refusal is limited to
-what the incident recorded: a JSON answer whose ``error`` is ``maxData`` and
-that is not a success. Its HTTP status was never recorded, so these tests use
-403, and the investigation showed the outcome is the same at every status.
+repository and policy decide on a scratch database. The refusal has the
+incident's recorded shape -- a JSON answer that is not a success, whose
+``error`` is a native quota code -- at 403 (the incident's status was never
+recorded; the investigation showed the outcome is the same at every status).
+The code is ``maxLink``: the same quota class without a scope fact, so this
+is C1's accounting alone. The recorded ``maxData`` itself also places a
+temporary account quota hold (C2), proven in test_quota_scope_holds.py.
 """
 from __future__ import annotations
 
@@ -69,7 +72,7 @@ class DebridLinkHTTP:
         if link == HERE and self.refuse_after is not None and served >= self.refuse_after:
             self.adds.append((True, link))
             return RawResponse(403, {"content-type": "application/json"},
-                               json.dumps({"success": False, "error": "maxData"}).encode())
+                               json.dumps({"success": False, "error": "maxLink"}).encode())
         self.adds.append((False, link))
         key = link.split("://", 1)[1]
         return self._ok({"id": f"l{len(self.adds):06d}", "name": "movie.bin", "size": SIZE, "url": link,
@@ -368,7 +371,7 @@ async def test_only_a_provider_answer_to_issuance_is_a_refusal_occurrence(tmp_pa
     request = candidate.refresh_request
     with pytest.raises(ProviderIssuanceRefusal) as refused:
         await engine._issued_material(candidate, request)
-    assert refused.value.error.native_code == "maxData"
+    assert refused.value.error.native_code == "maxLink"
     # No provider able to issue: core's own finding, not a provider answer.
     engine.registry.providers.pop("debridlink")
     with pytest.raises(TransferError) as structural:

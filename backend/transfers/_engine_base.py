@@ -122,12 +122,13 @@ class ObservationBatch(dict):
 
 from transfers.canonical import CanonicalOwnership
 from transfers.contracts import (
-    CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation, UpstreamSelection,
+    AccountIdentitySource, CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation,
+    UpstreamSelection,
 )
 from transfers import codec, provider_choice
 from transfers.errors import (
-    Category, Domain, MutationOutcome, NormalizedError, Recovery, Retryability, Stage,
-    TransferError, unknown_failure,
+    Category, Domain, MutationOutcome, NormalizedError, Origin, QuotaScope, Recovery, Retryability, Stage,
+    TransferError, quota_scope, unknown_failure,
 )
 from transfers.candidate_activation import reconcile_native_transition, resolve_candidate_index, retire_writer
 from transfers import material as mat
@@ -3510,14 +3511,15 @@ class TransferEngine:
             return None
         if not transient:
             return candidate
-        return await self._issued_material(candidate, record.resolvable, lan_host=await self._consented_lan_host(record))
+        return await self._issued_material(candidate, record.resolvable, lan_host=await self._consented_lan_host(record),
+                                           artifact_id=artifact.id)
 
     def _candidate_expired(self) -> NormalizedError:
         return self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
                            retryability=Retryability.AFTER_RERESOLUTION)
 
     async def _issued_material(self, candidate: TransferCandidate, request: TransferRequest, *,
-                               lan_host: str = "") -> TransferCandidate:
+                               lan_host: str = "", artifact_id: int | None = None) -> TransferCandidate:
         """``candidate`` with fresh transient execution material issued by its
         bound provider's refresh contract for ``request``, validated exactly as
         any provider output is -- for an execution (``_executable_candidate``)
@@ -3526,37 +3528,88 @@ class TransferEngine:
 
         Every failure once the provider has been asked is its answer to this
         one request (``ProviderIssuanceRefusal``); a provider unable to issue
-        at all is core's own finding (a plain ``TransferError``)."""
+        at all is core's own finding (a plain ``TransferError``).
+
+        Every issuance passes the provider quota gate first
+        (``TransferRepository.quota_issuance``): an issuance for pending work
+        (``artifact_id``) spends a due hold's one requalification turn; one
+        for no artifact (an evidence sample) never asks while a hold is
+        current. A blocked issuance never reaches the provider: it is core's
+        own finding, so it neither renews nor clears a hold."""
         expired = self._candidate_expired()
         provider = self.registry.providers.get(candidate.provider_id)
         if not isinstance(provider, CandidateRefresh):
             raise TransferError(expired)
+        if await self.repository.quota_issuance(
+                self._quota_keys(candidate), artifact_id, self.clock(),
+                requalify_seconds=self.policy.quota_requalify_seconds,
+                lease_seconds=self.policy.quota_probe_lease_seconds) is not None:
+            self._count("quota_held")
+            raise TransferError(NormalizedError(
+                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.CANDIDATE_PREPARATION,
+                retryability=Retryability.BACKOFF, origin=Origin.CORE, integration_id=candidate.provider_id))
         self._count("refreshes")
         asked = time.monotonic()
+        asked_at = self.clock()
+        refusal = None
         try:
             result = self._authoritative_provider_result(
                 provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=request)),
                 request_kind=request.kind, lan_host=lan_host)
         except TransferError as exc:
-            self._count("refresh_failed")
-            raise ProviderIssuanceRefusal(exc.error) from exc
+            refusal = ProviderIssuanceRefusal(exc.error)
+            refusal.__cause__ = exc
         except Exception as exc:
-            self._count("refresh_failed")
-            raise ProviderIssuanceRefusal(unknown_failure(
+            refusal = ProviderIssuanceRefusal(unknown_failure(
                 exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
-                stage=Stage.CANDIDATE_PREPARATION)) from None
+                stage=Stage.CANDIDATE_PREPARATION))
         finally:
             self._count("refresh_time", time.monotonic() - asked)
-        if result.error:
+        if refusal is None and result.error:
+            refusal = ProviderIssuanceRefusal(result.error)
+        fresh = result.candidates[0] if refusal is None and result.candidates else None
+        if refusal is None and (fresh is None or not fresh.endpoints
+                                or not all(endpoint.address for endpoint in fresh.endpoints)
+                                or (fresh.expires_at is not None and fresh.expires_at <= self.clock())):
+            refusal = ProviderIssuanceRefusal(expired)
+        if refusal is not None:
             self._count("refresh_failed")
-            raise ProviderIssuanceRefusal(result.error)
-        fresh = result.candidates[0] if result.candidates else None
-        if (fresh is None or not fresh.endpoints or not all(endpoint.address for endpoint in fresh.endpoints)
-                or (fresh.expires_at is not None and fresh.expires_at <= self.clock())):
-            self._count("refresh_failed")
-            raise ProviderIssuanceRefusal(expired)
+            await self._record_quota_refusal(candidate, refusal.error, asked_at=asked_at)
+            raise refusal
         self._count("refreshed")
+        # The provider just issued material in this source's quota scopes:
+        # any hold there ends (``TransferRepository.clear_quota_holds``).
+        await self.repository.clear_quota_holds(self._quota_keys(candidate), answered_at=self.clock())
         return replace(candidate, endpoints=fresh.endpoints, expires_at=fresh.expires_at)
+
+    def _quota_keys(self, candidate: TransferCandidate, scope: QuotaScope | None = None) -> tuple:
+        """The quota-hold keys a source falls under (``provider_quota_holds``):
+        its provider account's and, for a host source, that account's use of
+        its host -- or only ``scope``'s. None for a provider that states no
+        account identity: one integration is never assumed to be one account."""
+        provider = self.registry.providers.get(candidate.provider_id)
+        account = provider.account_identity() if isinstance(provider, AccountIdentitySource) else ""
+        if not account:
+            return ()
+        keys = []
+        if scope in (None, QuotaScope.ACCOUNT):
+            keys.append((candidate.provider_id, account, QuotaScope.ACCOUNT.value, ""))
+        source = candidate.source_identity
+        if (scope in (None, QuotaScope.HOST) and source is not None and source.scope == "host"
+                and str(source.key or "").strip()):
+            keys.append((candidate.provider_id, account, QuotaScope.HOST.value, str(source.key).strip()))
+        return tuple(keys)
+
+    async def _record_quota_refusal(self, candidate: TransferCandidate, error: NormalizedError, *,
+                                    asked_at: float) -> None:
+        """A provider's refusal that states a quota scope holds that scope
+        (renewing a current hold); any other refusal changes no hold."""
+        scope = quota_scope(error)
+        if scope is None or error.integration_id not in ("", candidate.provider_id):
+            return
+        for key in self._quota_keys(candidate, scope):
+            await self.repository.hold_quota(key, asked_at=asked_at, now=self.clock(),
+                                             requalify_seconds=self.policy.quota_requalify_seconds)
 
     def _count(self, name: str, amount: float = 1) -> None:
         """Add to the execution pass in progress' summary (nothing between passes)."""

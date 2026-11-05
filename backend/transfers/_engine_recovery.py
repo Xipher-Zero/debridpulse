@@ -170,6 +170,10 @@ class TransferEngine(_QualifiedTransferEngine):
                 continue
             if await self.canonical.origin_for(artifact, candidate) is None:
                 continue
+            # A source in a provider quota scope under hold is not chosen now
+            # (it stays untried: once the hold requalifies it is eligible).
+            if await self._quota_held_until(artifact, candidate) is not None:
+                continue
             return index
         return None
 
@@ -192,4 +196,12 @@ class TransferEngine(_QualifiedTransferEngine):
             provider_ready=provider_ready,
             executor_ready=executor_ready,
             storage_ready=bool(self.dispatch_permitted),
+            quota_held_until=await self._quota_held_until(artifact, candidate),
         )
+
+    async def _quota_held_until(self, artifact: Artifact, candidate) -> float | None:
+        """Until when a provider quota hold keeps ``artifact`` from asking
+        through ``candidate`` (``None``: it may ask now)."""
+        if candidate is None:
+            return None
+        return await self.repository.quota_hold_until(self._quota_keys(candidate), artifact.id, self.clock())

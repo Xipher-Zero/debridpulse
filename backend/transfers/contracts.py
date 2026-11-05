@@ -59,6 +59,18 @@ class EntitlementSource(Protocol):
 
 
 @runtime_checkable
+class AccountIdentitySource(Protocol):
+    """Optional: the opaque, non-secret identity of the provider account this
+    instance acts for now (``""`` while there is none). It changes whenever the
+    credential or account does, and never contains credential material. Core
+    scopes account-level facts by it -- a quota hold -- so a different account
+    of the same integration never inherits them; a provider without it has no
+    account scope at all."""
+
+    def account_identity(self) -> str: ...
+
+
+@runtime_checkable
 class RequestEntitlementSource(Protocol):
     """Optional narrowing of ``EntitlementSource`` for one request, when the
     account's entitlement depends on request facts only the provider can read

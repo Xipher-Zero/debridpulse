@@ -125,7 +125,12 @@ _COPY_CHUNK = 1024 * 1024
 #   removed -- both as a fresh installation holds it and as an installation
 #   migrated from before 1.0.12 holds it, with the four tables that migration
 #   keeps (adc_aria2_owned_gids, debridpulse_aria2_owned_gids, flexget_runs,
-#   saved_searches), which the bootstrap keeps as they are.
+#   saved_searches), which the bootstrap keeps as they are;
+# * the 1.0.14 schema immediately before temporary provider quota holds
+#   (4180f015), which it extends with the one ``provider_quota_holds`` table,
+#   empty: no hold is inferred from a restored transfer's stored errors -- the
+#   next refusal states it again -- likewise both as a fresh installation and
+#   as one holding those four retained tables.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -140,6 +145,8 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:fc440366772ce843ce91851b8be5894e1c6b3aff63fb75e873fcfbfee64697a4",
     "sha256:6941fac3b88a35fdaa4d2f2f1f5436b0227c2ef99d4ef22e7567a889231e70b8",
     "sha256:fcb6f8e75a4f3a01093996722832bea1ad177b78c68a384316469a1a63a5688b",
+    "sha256:299d4d4574a6a14a1eeb6efdbc4458d1603ae3b0070c03d03ce9e5f69547f498",
+    "sha256:d97c20d09d9dcaa49386cbe1c3376985624491905477c0cb3a2628bb99e9d40d",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

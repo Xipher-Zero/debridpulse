@@ -403,6 +403,28 @@ def _thawed_evidence(value):
     return value
 
 
+# The one typed quota-scope fact a provider may state in a refusal's
+# ``context`` (``QUOTA_SCOPE``): the temporary quota that refused it applies
+# to the whole provider account (``ACCOUNT``) or to that account's use of the
+# refused source's host (``HOST``). A provider states it only where its own
+# native distinction proves the scope; core alone decides what a scope means
+# for routing (``transfers.repository`` quota holds), never from native codes.
+QUOTA_SCOPE = "quota_scope"
+
+
+class QuotaScope(StrEnum):
+    ACCOUNT = "account"
+    HOST = "host"
+
+
+def quota_scope(error: NormalizedError) -> QuotaScope | None:
+    """The quota scope ``error`` states, or ``None``."""
+    try:
+        return QuotaScope(str((error.context or {}).get(QUOTA_SCOPE) or ""))
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True)
 class NormalizedError:
     domain: Domain

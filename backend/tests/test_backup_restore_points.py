@@ -2205,3 +2205,104 @@ async def test_a_wipe_keeps_the_index_and_its_version(served):
     with closing(sqlite3.connect(database.DB_PATH)) as conn:
         assert conn.execute("SELECT count(*) FROM application_events").fetchone() == (0,)
         assert conn.execute("SELECT count(*) FROM torrents").fetchone() == (0,)
+
+
+# ── temporary provider quota holds: one table, empty in older backups ────────
+
+# Written by the 1.0.14 build immediately before temporary provider quota holds
+# (4180f015) with its own backup service: a password Admin (operator /
+# pre-quota-hold-secret) and two transfers.
+PRE_QUOTA_HOLD_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-4180f015.zip"
+# The same build and backup service on an installation that still holds the four
+# tables a migration from before 1.0.12 keeps (empty; definitions as the
+# October 31 2026 production backup's), with one transfer.
+PRE_QUOTA_HOLD_RETAINED_BACKUP = (Path(__file__).parent / "fixtures"
+                                  / "backup-1.0.14-4180f015-retained-legacy-tables.zip")
+QUOTA_HOLD_COLUMNS = ["integration_id", "account_scope", "scope_kind", "scope_key", "held_since", "refused_at",
+                      "requalify_at", "probe_artifact_id", "probe_until", "refusals", "cleared_at", "updated_at"]
+HOLD_KEY = ("debridlink", "v1-opaque-account", "account", "")
+
+
+def _quota_hold_rows(path) -> list[tuple]:
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute("SELECT integration_id,account_scope,scope_kind,scope_key,refusals "
+                            "FROM provider_quota_holds ORDER BY scope_kind").fetchall()
+
+
+async def test_a_fresh_installation_holds_the_empty_quota_hold_table(installation):
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert [row[1] for row in conn.execute("PRAGMA table_info(provider_quota_holds)")] == QUOTA_HOLD_COLUMNS
+    assert _quota_hold_rows(database.DB_PATH) == []
+    live = backup.schema_version(database.DB_PATH)
+    await database.init_db()                                  # every later start: idempotent
+    assert backup.schema_version(database.DB_PATH) == live
+    assert live not in backup._UPGRADABLE_SCHEMAS
+
+
+@pytest.mark.parametrize("fixture,transfers", [(PRE_QUOTA_HOLD_BACKUP, 2), (PRE_QUOTA_HOLD_RETAINED_BACKUP, 1)],
+                         ids=["fresh", "retained_legacy_tables"])
+async def test_a_backup_from_before_quota_holds_restores_through_the_staged_upgrade(served, fixture, transfers):
+    """Upgraded on the private staged copy only, through the canonical
+    bootstrap: the table arrives empty, every recorded row comes back and
+    the restore point itself is never upgraded."""
+    from auth import accounts
+    from auth.passwords import verify_password
+
+    _app, client, _composed, _calls = served
+    if fixture is PRE_QUOTA_HOLD_RETAINED_BACKUP:
+        with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
+            scratch.deserialize(package.read("debridpulse.db"))
+            kept = [row[0] for row in scratch.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('adc_aria2_owned_gids',"
+                "'debridpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
+        with closing(sqlite3.connect(database.DB_PATH)) as conn:   # the live installation holds them as well
+            for ddl in kept:
+                conn.execute(ddl)
+            conn.commit()
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=fixture.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE name='provider_quota_holds'").fetchone() is None
+        recorded_transfers = conn.execute("SELECT id, name, status FROM torrents ORDER BY id").fetchall()
+    assert len(recorded_transfers) == transfers
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _quota_hold_rows(database.DB_PATH) == []
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert conn.execute("SELECT id, name, status FROM torrents ORDER BY id").fetchall() == recorded_transfers
+    _operator, password_hash = await accounts.local_credential("operator")
+    assert verify_password(password_hash, "pre-quota-hold-secret")
+
+
+async def test_a_backup_taken_with_a_quota_hold_brings_it_back_and_a_wipe_forgets_it(served):
+    from services import db_maintenance
+
+    _app, client, _composed, _calls = served
+    repository = TransferRepository()
+    assert await repository.hold_quota(HOLD_KEY, asked_at=100.0, now=101.0, requalify_seconds=300.0)
+    point = await backup.create_restore_point()
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) == backup.schema_version(database.DB_PATH)
+    await repository.clear_quota_holds((HOLD_KEY,), answered_at=150.0)
+    assert await repository.quota_hold_until((HOLD_KEY,), 1, 160.0) is None
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _quota_hold_rows(database.DB_PATH) == [("debridlink", "v1-opaque-account", "account", "", 1)]
+    assert await repository.quota_hold_until((HOLD_KEY,), 1, 160.0) == pytest.approx(401.0)
+    live = backup.schema_version(database.DB_PATH)
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _quota_hold_rows(database.DB_PATH) == []

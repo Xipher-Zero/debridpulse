@@ -963,6 +963,34 @@ TRANSFER_REPOSITORY_SCHEMA = (
         withdrawn_by TEXT)""",
     "CREATE INDEX IF NOT EXISTS idx_transfer_demands_transfer ON transfer_demands(transfer_id,withdrawn_at)",
     "CREATE INDEX IF NOT EXISTS idx_transfer_demands_account ON transfer_demands(account_id,withdrawn_at)",
+    # A temporary provider quota hold (1.0.14): a provider refused fresh
+    # execution material with a typed quota scope (``transfers.errors.
+    # QuotaScope``) for one account (``account_scope``, the provider's opaque
+    # ``account_identity``: never credential material) -- the whole account
+    # (``scope_kind`` ``account``, ``scope_key`` empty) or its use of one host
+    # (``host``, the refused source's host). While current, recovery selects
+    # nothing else in that scope; from ``requalify_at`` one dispatch of
+    # pending work may ask again (``probe_artifact_id`` until
+    # ``probe_until``). The hold is current while its latest refusal's answer
+    # (``refused_at``) is later than ``cleared_at``: a successful issuance in
+    # the scope sets ``cleared_at`` to its answer, and only a refusal asked
+    # after that renews it (``requalify_at`` moves on; ``held_since`` and
+    # ``refusals`` describe the current hold). Core
+    # recovery state, never a provider fact store: no reset time is claimed.
+    """CREATE TABLE IF NOT EXISTS provider_quota_holds (
+        integration_id TEXT NOT NULL,
+        account_scope TEXT NOT NULL,
+        scope_kind TEXT NOT NULL CHECK(scope_kind IN ('account','host')),
+        scope_key TEXT NOT NULL DEFAULT '',
+        held_since REAL NOT NULL,
+        refused_at REAL NOT NULL,
+        requalify_at REAL NOT NULL,
+        probe_artifact_id INTEGER,
+        probe_until REAL NOT NULL DEFAULT 0,
+        refusals INTEGER NOT NULL DEFAULT 1,
+        cleared_at REAL NOT NULL DEFAULT 0,
+        updated_at REAL NOT NULL,
+        PRIMARY KEY(integration_id, account_scope, scope_kind, scope_key))""",
 )
 
 # The one total order of readiness evidence (1.0.13): a provider's failure of
@@ -1282,6 +1310,9 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'transfer_demands': {'id', 'transfer_id', 'request_id', 'account_id', 'credential_id', 'origin', 'created_at',
                          'withdrawn_at', 'withdrawn_by'},
+    'provider_quota_holds': {'integration_id', 'account_scope', 'scope_kind', 'scope_key', 'held_since', 'refused_at',
+                             'requalify_at', 'probe_artifact_id', 'probe_until', 'refusals', 'cleared_at',
+                             'updated_at'},
     'event_journal': {'id', 'occurrence_key', 'occurred_at', 'category', 'event_type', 'severity', 'outcome',
                       'subject_kind', 'subject_id', 'transfer_id', 'related_transfer_id', 'integration_id',
                       'subject_name', 'message', 'detail', 'error_domain', 'error_category', 'error_origin',

@@ -174,6 +174,15 @@ class TransferEngine(_QualifiedTransferEngine):
             integration_id=candidate.provider_id if candidate else "",
         )
 
+    async def _quota_admit(self, artifact: Artifact, candidate) -> float | None:
+        """The provider quota gate before asking a provider for a dispatch:
+        ``None`` when ``artifact`` may ask through ``candidate`` now (no hold,
+        or this artifact now holds the one requalification turn of every due
+        hold), else until when it may not."""
+        return await self.repository.quota_admission(
+            self._quota_keys(candidate), artifact.id, self.clock(),
+            lease_seconds=self.policy.quota_probe_lease_seconds)
+
     @staticmethod
     def _executor_wait_error(executor_id: str = "") -> NormalizedError:
         return NormalizedError(
@@ -589,6 +598,10 @@ class TransferEngine(_QualifiedTransferEngine):
             return False
         if candidate.expires_at is not None and candidate.expires_at <= self.clock():
             return False
+        if await self._quota_admit(current, candidate) is not None:
+            # Its provider quota scope is held: the scheduler's dispatch
+            # routes it to recovery, which goes on elsewhere or waits.
+            return False
         # This dispatch runs under the recovery claim that decided to reuse the
         # same candidate: the one place a native-assisted retry may hand the
         # previous (already fenced) attempt's native state to the new attempt.
@@ -940,7 +953,7 @@ class TransferEngine(_QualifiedTransferEngine):
             )
 
         if stored.get("quiescence_reason") in {
-            "provider_disabled", "executor_unavailable", "storage_unavailable", "retry_backoff",
+            "provider_disabled", "executor_unavailable", "storage_unavailable", "retry_backoff", "provider_quota",
         }:
             await self.repository.clear_recovery_quiescence(claim)
 
@@ -1434,6 +1447,15 @@ class TransferEngine(_QualifiedTransferEngine):
         if decision.action == RecoveryAction.FAIL_PERMANENTLY:
             return await self.repository.transition_recovery(
                 current.id, "error", error=error, retry_at=0, clear_quiescence=True,
+            )
+
+        if decision.action == RecoveryAction.WAIT_FOR_PROVIDER and decision.quiescence_reason == "provider_quota":
+            # A quota hold on every usable source: parked on the hold itself
+            # (``_wake_quiescent_artifacts`` reads it), not on a timer -- it
+            # wakes when the hold lets it ask, or when a source outside the
+            # hold arrives.
+            return await self._park_existing_execution(
+                claim, current, reason="provider_quota", wake=decision.wake_condition or "quota_requalify",
             )
 
         if decision.action == RecoveryAction.WAIT_FOR_PROVIDER:
@@ -2283,6 +2305,15 @@ class TransferEngine(_QualifiedTransferEngine):
                 trigger=RecoveryTrigger.AUTO_RETRY,
                 error=error,
             )
+        if candidate is not None and await self._quota_admit(artifact, candidate) is not None:
+            # The provider is not asked while the source's quota scope is held
+            # (or another file holds its requalification turn): recovery goes
+            # on through another source, or waits for the requalification.
+            return await self.recover_artifact(
+                artifact,
+                trigger=RecoveryTrigger.AUTO_RETRY,
+                error=self._provider_wait_error(candidate),
+            )
         return await super()._dispatch(artifact, reason=reason)
 
     # ------------------------------------------------------------------
@@ -2355,6 +2386,13 @@ class TransferEngine(_QualifiedTransferEngine):
                 elif reason == "storage_unavailable" and self.dispatch_permitted:
                     await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
                 elif reason == "retry_backoff" and artifact.retry_at <= self.clock():
+                    await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
+                elif reason == "provider_quota" and (
+                        await self._quota_held_until(artifact, candidate) is None
+                        or await self._next_alternate_index(artifact) is not None):
+                    # The hold now lets it ask (requalification due and no
+                    # other file holding the one turn, or the hold cleared),
+                    # or a source outside the hold arrived: recovery decides.
                     await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
                 elif reason == "materialization_hold":
                     # Gate 9 revision-6 rejection finding 1: HOLD parking

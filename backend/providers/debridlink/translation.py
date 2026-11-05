@@ -28,8 +28,8 @@ from providers.debridlink.client import (
 )
 from services.network_safety import UnsafeDestinationError
 from transfers.errors import (
-    Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
-    Permanence, Retryability, Stage, TransferError, safe_diagnostic,
+    QUOTA_SCOPE, Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
+    Permanence, QuotaScope, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.file_selection import ManifestInvalid, collection_member_paths
 from transfers.models import (
@@ -84,6 +84,10 @@ _ERRORS = {
     "badTorrentFile": (Category.INVALID_REQUEST, Retryability.NEVER),
     "maxTransfer": (Category.CONCURRENCY_LIMITED, Retryability.BACKOFF),
 }
+# The scope of a temporary quota where Debrid-Link's own codes distinguish it:
+# ``maxData`` is the account's data quota, ``maxDataHost`` that account's quota
+# for the refused link's host. No other code states a scope.
+_QUOTA_SCOPES = {"maxData": QuotaScope.ACCOUNT, "maxDataHost": QuotaScope.HOST}
 # A refusal that carried no code is described by its HTTP status alone.
 _STATUSES = {
     401: (Category.CREDENTIAL_INVALID, Retryability.AFTER_REAUTH),
@@ -98,7 +102,8 @@ _SOURCE_CATEGORIES = frozenset({
 
 
 def _error(category: Category, retry: Retryability, native: str, diagnostic: object, *, stage: Stage,
-           secrets: tuple[str, ...], known: bool, retry_after: float | None = None) -> NormalizedError:
+           secrets: tuple[str, ...], known: bool, retry_after: float | None = None,
+           scope: QuotaScope | None = None) -> NormalizedError:
     source = category in _SOURCE_CATEGORIES
     return NormalizedError(
         Domain.RESOLUTION if source else Domain.PROVIDER, category, stage, retryability=retry,
@@ -109,6 +114,7 @@ def _error(category: Category, retry: Retryability, native: str, diagnostic: obj
         retry_after_seconds=retry_after if retry == Retryability.BACKOFF else None,
         confidence=Confidence.HIGH if known else Confidence.UNKNOWN,
         evidence_basis=EvidenceBasis.NATIVE_CODE if known else EvidenceBasis.UNKNOWN,
+        context={QUOTA_SCOPE: scope.value} if scope is not None else {},
     )
 
 
@@ -117,7 +123,7 @@ def error_from_native(exc: DebridLinkAPIError, *, stage: Stage = Stage.RESOLUTIO
     if exc.error in _ERRORS:
         category, retry = _ERRORS[exc.error]
         return _error(category, retry, exc.error, exc.error, stage=stage, secrets=secrets, known=True,
-                      retry_after=exc.retry_after)
+                      retry_after=exc.retry_after, scope=_QUOTA_SCOPES.get(exc.error))
     # A refusal without a native code is described by its status -- and by
     # the safe facts of the body that carried no code, when there was one.
     if not exc.error and exc.status in _STATUSES:

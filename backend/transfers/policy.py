@@ -316,6 +316,9 @@ class RecoveryContext:
     # Bytes the executor itself reported for the failed attempt. ``None`` means
     # no authoritative observation exists; unknown progress is never zero.
     observed_completed_bytes: int | None = None
+    # When the selected source's provider quota hold lets it be asked again
+    # (``TransferRepository.quota_hold_until``); ``None`` while no hold applies.
+    quota_held_until: float | None = None
 
 
 @dataclass(frozen=True)
@@ -357,6 +360,12 @@ class TransferPolicy:
     local_resource_failure_handler: Callable[[NormalizedError], bool] | None = None
     same_candidate_no_progress_limit: int = 2
     refreshes_per_recovery_epoch: int = 1
+    # A provider quota hold (a typed quota-scope refusal): how long its scope
+    # is avoided before ONE dispatch of pending work may ask again, and how
+    # long that one probe holds the scope's turn. DebridPulse's own interval,
+    # never a provider's reset time.
+    quota_requalify_seconds: float = 300.0
+    quota_probe_lease_seconds: float = 120.0
     # DebridPulse-owned material continuation: how often a running writer's
     # reported material is made durable and committed, and how long a writer
     # being replaced may quiesce before it is force-fenced.
@@ -477,6 +486,17 @@ class TransferPolicy:
             return RecoveryDecision(
                 RecoveryAction.WAIT_FOR_RESOURCE, "executor_unavailable",
                 quiescence_reason="executor_unavailable", wake_condition="executor_available",
+            )
+        if context.quota_held_until is not None:
+            # The selected source's provider scope is under a quota hold:
+            # another source outside it goes on now; with none, the file waits
+            # for the hold's own requalification, never for an operator.
+            if context.has_alternate:
+                return RecoveryDecision(RecoveryAction.TRY_ALTERNATE_CANDIDATE, "quota_hold_alternate", retry_at=now)
+            until = max(float(context.quota_held_until), now)
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_PROVIDER, "provider_quota_hold", retry_at=until,
+                quiescence_reason="provider_quota", wake_condition=f"quota_requalify:{until}",
             )
 
         can_refresh = context.can_refresh and context.candidate_refreshes < max(1, self.refreshes_per_recovery_epoch)

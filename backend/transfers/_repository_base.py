@@ -6185,3 +6185,173 @@ class TransferRepository:
                              (("resolved" if ready else "pending") if selected else "skipped", row["request_id"]))
             await db.commit()
         return True
+
+    # ------------------------------------------------------------------
+    # Provider quota holds (``provider_quota_holds``). A key is
+    # ``(integration_id, account_scope, scope_kind, scope_key)``; a source
+    # falls under every key the engine derives for it (its account's, and its
+    # host's on that account).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _quota_rows(db, keys) -> list[dict]:
+        rows = []
+        for integration_id, account, kind, key in keys:
+            row = await db.fetchone(
+                """SELECT * FROM provider_quota_holds WHERE integration_id=? AND account_scope=?
+                   AND scope_kind=? AND scope_key=? AND refused_at>cleared_at""",
+                (integration_id, account, kind, key))
+            if row:
+                rows.append(dict(row))
+        return rows
+
+    @staticmethod
+    def _quota_blocked_until(rows, artifact_id: int, now: float) -> float | None:
+        """When the latest of ``rows`` lets ``artifact_id`` ask: a hold not yet
+        due blocks until it is; a due one blocks only while another
+        artifact's probe holds its turn. ``None``: nothing blocks."""
+        blocked = None
+        for row in rows:
+            if float(row["requalify_at"]) > now:
+                until = float(row["requalify_at"])
+            elif float(row["probe_until"]) > now and row["probe_artifact_id"] not in (None, artifact_id):
+                until = float(row["probe_until"])
+            else:
+                continue
+            blocked = until if blocked is None else max(blocked, until)
+        return blocked
+
+    async def quota_hold_until(self, keys, artifact_id: int, now: float) -> float | None:
+        """Read only: until when a quota hold keeps ``artifact_id`` from
+        asking in any of ``keys`` (``None``: it may ask now)."""
+        if not keys:
+            return None
+        async with get_db() as db:
+            return self._quota_blocked_until(await self._quota_rows(db, keys), int(artifact_id), float(now))
+
+    async def quota_admission(self, keys, artifact_id: int, now: float, *, lease_seconds: float) -> float | None:
+        """The one requalification turn: ``None`` when ``artifact_id`` may ask
+        in ``keys`` now -- no hold, or every hold due and this artifact now
+        holding each one's probe turn until ``now + lease_seconds`` -- else
+        until when it may not. Atomic across artifacts. A reservation only:
+        the issuance itself spends the turn (``quota_issuance``), so checking
+        again within one dispatch is harmless and a turn once spent is not
+        granted again to the same artifact."""
+        if not keys:
+            return None
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await self._quota_rows(db, keys)
+            blocked = self._quota_blocked_until(rows, int(artifact_id), float(now))
+            if blocked is not None or not rows:
+                await db.rollback()
+                return blocked
+            for row in rows:
+                await db.execute(
+                    """UPDATE provider_quota_holds SET probe_artifact_id=?,probe_until=?,updated_at=?
+                       WHERE integration_id=? AND account_scope=? AND scope_kind=? AND scope_key=?""",
+                    (int(artifact_id), float(now) + max(1.0, float(lease_seconds)), float(now),
+                     row["integration_id"], row["account_scope"], row["scope_kind"], row["scope_key"]))
+            await db.commit()
+        return None
+
+    async def quota_issuance(self, keys, artifact_id: int | None, now: float, *, requalify_seconds: float,
+                             lease_seconds: float) -> float | None:
+        """The issuance gate itself, checked as the provider is about to be
+        asked in ``keys``: ``None`` when it may ask, else until when it may
+        not (atomic across artifacts).
+
+        A hold not yet due blocks everyone. A due hold admits exactly one
+        issuance per requalification interval, and only for pending work
+        (``artifact_id``) that no other artifact's turn excludes: asking
+        SPENDS the turn -- the hold's next requalification moves to ``now +
+        requalify_seconds`` -- so whatever the answer, the same artifact is
+        not asked for again before then (a refusal renews the hold, a success
+        clears it, any other answer leaves the spent turn standing). An
+        issuance for no artifact (an equivalence sample) never takes the
+        turn: while a hold is current it does not ask at all."""
+        if not keys:
+            return None
+        async with get_db() as db:
+            # No hold: nothing to decide, so no write lock is taken (a hold
+            # written after this read is one whose refusal came after this
+            # issuance was decided, as if it were asked a moment earlier).
+            if not await self._quota_rows(db, keys):
+                return None
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await self._quota_rows(db, keys)
+            if not rows:
+                await db.rollback()
+                return None
+            if artifact_id is None:
+                await db.rollback()
+                return max([float(now)] + [max(float(row["requalify_at"]), float(row["probe_until"]))
+                                           for row in rows])
+            blocked = self._quota_blocked_until(rows, int(artifact_id), float(now))
+            if blocked is not None:
+                await db.rollback()
+                return blocked
+            for row in rows:
+                await db.execute(
+                    """UPDATE provider_quota_holds SET requalify_at=?,probe_artifact_id=?,probe_until=?,updated_at=?
+                       WHERE integration_id=? AND account_scope=? AND scope_kind=? AND scope_key=?""",
+                    (float(now) + max(1.0, float(requalify_seconds)), int(artifact_id),
+                     float(now) + max(1.0, float(lease_seconds)), float(now),
+                     row["integration_id"], row["account_scope"], row["scope_kind"], row["scope_key"]))
+            await db.commit()
+        return None
+
+    async def hold_quota(self, key, *, asked_at: float, now: float, requalify_seconds: float) -> bool:
+        """A refusal asked at ``asked_at`` and answered at ``now`` states a
+        quota in ``key``: hold it, or renew it, until ``now +
+        requalify_seconds``, ending any probe turn. A successful issuance
+        answered after ``asked_at`` is newer truth: nothing changes. Returns
+        whether the hold was written."""
+        integration_id, account, kind, scope_key = key
+        until = float(now) + max(1.0, float(requalify_seconds))
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT refused_at,cleared_at FROM provider_quota_holds WHERE integration_id=?
+                   AND account_scope=? AND scope_kind=? AND scope_key=?""", (integration_id, account, kind, scope_key))
+            if row and float(row["cleared_at"]) > float(asked_at):
+                await db.rollback()
+                return False
+            if row is None:
+                await db.execute(
+                    """INSERT INTO provider_quota_holds(integration_id,account_scope,scope_kind,scope_key,
+                       held_since,refused_at,requalify_at,probe_artifact_id,probe_until,refusals,cleared_at,
+                       updated_at) VALUES(?,?,?,?,?,?,?,NULL,0,1,0,?)""",
+                    (integration_id, account, kind, scope_key, float(now), float(now), until, float(now)))
+            else:
+                current = float(row["refused_at"]) > float(row["cleared_at"])
+                await db.execute(
+                    """UPDATE provider_quota_holds SET held_since=CASE WHEN ? THEN held_since ELSE ? END,
+                       refused_at=?,requalify_at=?,probe_artifact_id=NULL,probe_until=0,
+                       refusals=CASE WHEN ? THEN refusals+1 ELSE 1 END,updated_at=?
+                       WHERE integration_id=? AND account_scope=? AND scope_kind=? AND scope_key=?""",
+                    (int(current), float(now), float(now), until, int(current), float(now),
+                     integration_id, account, kind, scope_key))
+            await db.commit()
+        return True
+
+    async def clear_quota_holds(self, keys, *, answered_at: float) -> int:
+        """A successful issuance answered at ``answered_at`` in ``keys``: each
+        hold whose latest refusal it answered after ends (its row stays,
+        cleared, so an older refusal reported later cannot renew it; a
+        refusal answered after this success keeps its hold)."""
+        if not keys:
+            return 0
+        cleared = 0
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            for integration_id, account, kind, scope_key in keys:
+                cursor = await db.execute(
+                    """UPDATE provider_quota_holds SET cleared_at=MAX(cleared_at,?),probe_artifact_id=NULL,
+                       probe_until=0,updated_at=? WHERE integration_id=? AND account_scope=? AND scope_kind=?
+                       AND scope_key=? AND cleared_at<?""",
+                    (float(answered_at), float(answered_at), integration_id, account, kind, scope_key,
+                     float(answered_at)))
+                cleared += cursor.rowcount
+            await db.commit()
+        return cleared

@@ -68,6 +68,9 @@ _WAIT_PRESENTATION = {
     "retry_backoff": ("waiting_for_retry", "Waiting for retry", "queued"),
     "provider_disabled": ("waiting_for_provider", "Waiting for provider", "pending"),
     "provider_unavailable": ("waiting_for_provider", "Waiting for provider", "pending"),
+    # A provider quota hold on the file's only usable source, until it
+    # requalifies (``TransferPolicy.quota_requalify_seconds``).
+    "provider_quota": ("waiting_for_provider", "Waiting for provider", "pending"),
     "storage_unavailable": ("waiting_for_storage", "Waiting for storage", "pending"),
     "executor_unavailable": ("waiting_for_executor", "Waiting for executor", "pending"),
 }

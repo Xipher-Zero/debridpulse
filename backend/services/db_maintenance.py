@@ -64,6 +64,10 @@ TABLES = [
     "application_events",
     "artifact_recovery_state",
     "artifact_material_state",
+    # Temporary provider quota holds are recovery state of pending work
+    # (``transfers.repository``): a wipe forgets them with it; the next
+    # refusal states the quota again.
+    "provider_quota_holds",
     "integration_runtime_state",
     "transfer_input_challenges",
     "schema_migrations",
@@ -94,6 +98,8 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # ordinary integration disablement never reaches this path.
         await db.execute("DELETE FROM integration_runtime_state")
         await db.execute("DELETE FROM transfer_input_challenges")
+        # Provider quota holds are recovery state of the work being wiped.
+        await db.execute("DELETE FROM provider_quota_holds")
         # File-selection intent and provenance are deleted child-first so no
         # orphan can outlive an explicit whole-database wipe: an intent's
         # entries, then the intent (which names its originating generation),

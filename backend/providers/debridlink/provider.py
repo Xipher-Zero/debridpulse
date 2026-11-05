@@ -118,6 +118,15 @@ class DebridLinkProvider:
         # Replaced by host maintenance once it is attached.
         return self.applicability
 
+    def account_identity(self) -> str:
+        """The account this instance acts for: the opaque scope of its saved
+        API key (``integrations.runtime_state.credential_scope``, the same
+        namespace its account truth is kept under), ``""`` without a key."""
+        from integrations.runtime_state import credential_scope
+
+        key = str(getattr(self.client, "api_key", "") or "").strip()
+        return credential_scope(INTEGRATION_ID, key) if key else ""
+
     @property
     def entitlements(self):
         """What the connected account may begin now, kept by its account
