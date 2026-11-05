@@ -1357,7 +1357,14 @@ class TransferRepository(_QualifiedTransferRepository):
             states = {ExecutionState.RUNNING: "downloading", ExecutionState.QUEUED: "queued", ExecutionState.PAUSED: "paused",
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
-            await db.execute("""UPDATE download_files SET status=?,normalized_error=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','consolidated','cancelled'))""",
+            # A settled file (completed, or a duplicate standby) keeps its
+            # state: a later observation of the attempt that once wrote it --
+            # a restarted executor no longer knowing the finished job, a
+            # replayed success -- is the attempt's truth (recorded above),
+            # never the file's. Decided in this statement, so a file committed
+            # complete after this observation was taken is not reopened either
+            # (as ``detach_retired_writer`` does).
+            await db.execute("""UPDATE download_files SET status=?,normalized_error=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=? AND status NOT IN ('completed','duplicate') AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','consolidated','cancelled'))""",
                              (states[observation.state], error, handle.attempt_id))
             total = observation.progress.total_bytes
             credible = (

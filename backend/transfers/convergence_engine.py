@@ -135,9 +135,13 @@ class TransferEngine(_QualifiedTransferEngine):
         existing = set()
         for transfer in await self.repository.active():
             for artifact in await self.repository.artifacts(transfer.id):
+                # A completed artifact is settled: startup has nothing of it to
+                # recover, even while its transfer still has unfinished files
+                # (as Pause and Resume already skip it).
+                if artifact.state == "completed":
+                    continue
                 existing.add(artifact.id)
-                if artifact.state != "completed":
-                    await self._reconcile_startup_material(artifact)
+                await self._reconcile_startup_material(artifact)
         self._startup_recovery_artifacts = existing
         return result
 
