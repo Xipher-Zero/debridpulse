@@ -317,6 +317,24 @@
   gap: 12px;
 }
 
+/* ── The header Test (ui-settings-page.js headerTestControls) ─────────────
+   From 780px the rail draws exactly what it always drew: the group adds no
+   box (display: contents) and its handheld trigger and menu are not drawn.
+   Participation mutes the Test at every width -- an off toggle fades the
+   direct Test (and, below 780px, the trigger) but never disables it. */
+#view-settings .dp-settings-header-test-group {
+  display: contents;
+}
+
+#view-settings .dp-settings-header-test-shell {
+  display: none;
+}
+
+#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test,
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger {
+  opacity: .6;
+}
+
 /* ── The ONE canonical Settings disclosure chip ──────────────────────────
    Rendered by ui-settings-page.js `settingsDisclosure()` and used identically
    by Sources & Providers cards and Downloads -> Executor Tuning cards. The two
@@ -1631,6 +1649,37 @@
   #view-settings .dp-settings-card-header:where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left;
   }
+  /* A header carrying the handheld Test group (headerTestControls): its rail
+     is never narrower than what it holds, so it wraps WHOLE onto its own line,
+     at the trailing edge, when the title leaves it too little room -- and
+     stays beside the title when it fits. A rail item wider than a grid track
+     would otherwise be drawn across the title. The hint, which the handheld
+     header never shows, keeps its own last line; the header declares no grid
+     tracks, so the hint fitter (fitHeaderHints) never reads it as the
+     three-track header. */
+  #view-settings .card-header.dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) {
+    display: flex;
+    grid-template-columns: none;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 6px;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-title-group {
+    flex: 0 1 auto;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-controls {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    flex-wrap: nowrap;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-center {
+    flex: 1 0 100%;
+    order: 1;
+  }
+  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-center:empty {
+    display: none;
+  }
 }
 
 /* Settings: tabs and action footer remain visible; only the body scrolls.
@@ -1819,4 +1868,110 @@
 
 .dp-settings-help-table td[data-answer="no"] {
   color: var(--dp-text-muted);
+}
+
+/* ── The header Test, below 780px ─────────────────────────────────────────
+   The rail's status and direct Test give way to one compact outlined group:
+   a textual Test trigger, then the toggle. The status stays the rail's live
+   region (read, not drawn); the menu shows it above the Test it holds. The
+   trigger's colour is the configuration's: verified, unverified (caution),
+   unconfigured (the accent purple). */
+@media (max-width: 779px) {
+  #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-provider-config-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-header-action {
+    display: none;
+  }
+
+  #view-settings .dp-settings-header-test-group {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px 2px 2px;
+    border: 1px solid var(--dp-secondary-border);
+    border-radius: var(--dp-radius-sm);
+  }
+
+  #view-settings .dp-settings-header-test-shell {
+    display: inline-flex;
+  }
+
+  #view-settings .dp-settings-header-test-trigger {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 4px 0 6px;
+    border: 0;
+    border-radius: calc(var(--dp-radius-sm) - 2px);
+    background: transparent;
+    font-family: var(--dp-font-sans);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  #view-settings .dp-settings-header-test-trigger .dp-dropdown__chevron {
+    color: currentColor;
+    margin-inline: 4px 0;
+  }
+
+  #view-settings .dp-settings-header-test-trigger[aria-expanded="true"] .dp-dropdown__chevron {
+    transform: rotate(225deg);
+    margin-top: 3px;
+  }
+
+  #view-settings .dp-settings-header-test-trigger[data-verification="verified"] { color: var(--dp-state-success); }
+  #view-settings .dp-settings-header-test-trigger[data-verification="unverified"] { color: var(--dp-state-caution); }
+  #view-settings .dp-settings-header-test-trigger[data-verification="unconfigured"] { color: var(--dp-accent-purple-bright); }
+
+  #view-settings .dp-settings-header-test-trigger:hover {
+    background: var(--dp-surface-2);
+  }
+
+  #view-settings .dp-settings-header-test-trigger:focus-visible {
+    outline: 2px solid var(--dp-accent-purple-bright);
+    outline-offset: 2px;
+  }
+
+  /* The menu: the shared projected-menu material, in the top layer. */
+  #view-settings .dp-settings-header-test-menu {
+    inset: auto;
+    margin: 0;
+    width: max-content;
+    min-width: 160px;
+    max-width: calc(100vw - 16px);
+    padding: 8px;
+    display: none;
+  }
+
+  #view-settings .dp-settings-header-test-menu:popover-open {
+    display: grid;
+    gap: 8px;
+  }
+
+  #view-settings .dp-settings-header-test-status {
+    padding: 2px 4px;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.3;
+    color: var(--dp-text-secondary);
+  }
+
+  #view-settings .dp-settings-header-test-status[data-tone="error"] { color: var(--dp-state-error); }
+  #view-settings .dp-settings-header-test-status[data-tone="warning"] { color: var(--dp-state-caution); }
+  #view-settings .dp-settings-header-test-status[data-tone="success"] { color: var(--dp-state-success); }
+
+  #view-settings .dp-settings-header-test-menu > .dp-settings-provider-test {
+    min-height: 40px;
+    justify-content: flex-start;
+  }
 }

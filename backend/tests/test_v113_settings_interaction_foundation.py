@@ -663,9 +663,14 @@ def test_the_header_rail_reads_state_then_action_then_participation():
     would depend on the body's geometry."""
     card = block(SETTINGS_JS, "function providerCard(")
     controls = card[card.index("dp-settings-card-header-controls"):]
-    assert controls.index("dp-settings-provider-config-status") \
-        < controls.index("dp-settings-header-action") \
-        < controls.index("${enable}"), "the rail is not state -> action -> Enable"
+    # State, then the card's controls; those are the action then Enable --
+    # through the one header Test treatment when the card has a Test.
+    assert controls.index("dp-settings-provider-config-status") < controls.index("${controls}"), \
+        "the rail is not state -> action -> Enable"
+    assert "headerAction ? headerTestControls(title, headerAction, enable, report) : enable;" in card
+    test = block(SETTINGS_JS, "function headerTestControls(")
+    assert test.index('<div class="dp-settings-header-action">${action}</div>') < test.index("${toggle}</div>"), \
+        "the rail is not state -> action -> Enable"
 
 
 def test_the_header_action_slot_is_neutral_and_optional():

@@ -62,12 +62,19 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
   });
 
   test('the rail reads state, then Help, then Test, then Enable/toggle', async ({page}) => {
-    // Semantic order, read off the rendered DOM.
-    const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
-      child.matches('.dp-settings-provider-config-status') ? 'state'
-        : child.matches('.dp-settings-help-chip') ? 'help'
-        : child.matches('.dp-settings-header-action') ? 'action'
-        : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
+    // Semantic order, read off the rendered DOM: the rail's drawn items, read
+    // through the header Test group, which draws no box of its own from 780px
+    // (its handheld trigger is not drawn there).
+    const order = await rail(page).evaluate(el => {
+      const drawn = node => Array.from(node.children).flatMap(child =>
+        getComputedStyle(child).display === 'contents' ? drawn(child)
+          : getComputedStyle(child).display === 'none' ? [] : [child]);
+      return drawn(el).map(child =>
+        child.matches('.dp-settings-provider-config-status') ? 'state'
+          : child.matches('.dp-settings-help-chip') ? 'help'
+          : child.matches('.dp-settings-header-action') ? 'action'
+          : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other');
+    });
     expect(order).toEqual(['state', 'help', 'action', 'enable']);
     // Visual order, left to right, on one shared centreline.
     const [s, t, e] = [await boxOf(status(page)), await boxOf(testButton(page)),
@@ -76,7 +83,11 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
     expect(t.right).toBeLessThanOrEqual(e.left + 1);
     expect(Math.abs(s.centerY - t.centerY)).toBeLessThanOrEqual(2);
     expect(Math.abs(t.centerY - e.centerY)).toBeLessThanOrEqual(2);
-    await expect(enable(page)).toContainText('Enable');
+    // The participation control is AllDebrid's Enable, named for what it
+    // enables; a card header draws no "Enable" word beside it.
+    await expect(enable(page).getByRole('checkbox', {name: 'Enable AllDebrid provider route', exact: true}))
+      .toHaveCount(1);
+    await expect(enable(page)).not.toContainText('Enable');
   });
 
   test('Test stays in the header rail collapsed and expanded, and the body never holds it',
@@ -256,14 +267,25 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
 
   test('the rail keeps its order when it reflows at a narrow width', async ({page}) => {
     await page.setViewportSize({width: 560, height: 1000});
-    await expect(testButton(page)).toBeVisible();
+    // Below 780px the state and the direct Test are carried by the handheld
+    // Test trigger (its menu reports the state): the drawn rail is Help, then
+    // Test, then the toggle, and the state stays the rail's live region.
+    await expect(testButton(page)).toBeHidden();
+    await expect(rail(page).locator('.dp-settings-header-test-trigger')).toBeVisible();
+    await expect(status(page)).toHaveAttribute('role', 'status');
     // Reflow is allowed; losing the order, or overflowing, is not.
-    const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
-      child.matches('.dp-settings-provider-config-status') ? 'state'
-        : child.matches('.dp-settings-help-chip') ? 'help'
-        : child.matches('.dp-settings-header-action') ? 'action'
-        : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
-    expect(order).toEqual(['state', 'help', 'action', 'enable']);
+    const order = await rail(page).evaluate(el => {
+      const drawn = node => Array.from(node.children).flatMap(child => {
+        const shown = getComputedStyle(child);
+        if (shown.display === 'none' || shown.position === 'absolute') return [];
+        return [child, ...drawn(child)];
+      });
+      return drawn(el).map(child =>
+        child.matches('.dp-settings-help-chip') ? 'help'
+          : child.matches('.dp-settings-header-test-trigger') ? 'test'
+          : child.matches('.dp-settings-integration-header-enable') ? 'enable' : null).filter(Boolean);
+    });
+    expect(order).toEqual(['help', 'test', 'enable']);
     expect(await page.evaluate(() =>
       document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBeTruthy();
     await page.setViewportSize({width: 1440, height: 1000});

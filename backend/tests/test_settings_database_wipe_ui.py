@@ -59,7 +59,9 @@ def test_backups_retention_header_copy_and_enable_control_are_locked():
     # The event journal has no retention: only backups and snapshots do.
     assert "Configure automated backups and retention for backups and statistics snapshots." in js
     header = js.split("dp-settings-backups-header-toggle", 1)[1].split("</label>", 1)[0]
-    assert '<span class="tl">Enable</span>' in header and 'data-setting="backup_enabled"' in header
+    # A card-header toggle shows no "Enable" word; its name says what it enables.
+    assert 'data-setting="backup_enabled"' in header and 'aria-label="Enable Backups & Retention"' in header
+    assert ">Enable<" not in header
     assert "dpBackupsRetentionPolished" not in js
 
 

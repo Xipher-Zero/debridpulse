@@ -82,7 +82,11 @@ def test_automatic_extraction_takes_the_hinted_header_grammar():
     assert "help: 'automatic-extraction',\n      hinted: true," in extraction
     assert "headerCenter: '<span class=\"dp-settings-extraction-header-copy\">Automatically extract supported archives after a download completes.</span>'" in extraction
     card = _function("card")
-    assert "}${help}${\n          options.headerAction" in card and "${\n          options.action || ''}</div>`" in card
+    # The rail: status, Help, then the card's controls -- its header action
+    # (none here), then its participation control.
+    assert "}${help}${\n          controls}</div>`" in card
+    plain = card.split("const controls = ", 1)[1].split(";\n", 1)[0].split(":", 1)[1]
+    assert plain.index("options.headerAction ?") < plain.index("${\n          options.action || ''}")
     # Its private header grid is retired, not overridden.
     assert ".dp-settings-extraction-card > .card-header" not in COMPLETION_CSS
     assert ".dp-settings-extraction-card > .card-header" not in PAGE_CSS

@@ -404,6 +404,7 @@
       button.innerHTML = button.dataset.dpSettingsMarkup;
       delete button.dataset.dpSettingsMarkup;
     }
+    settleHeaderTestMenu(button);
   }
 
 
@@ -872,11 +873,16 @@
      * nothing changes for the cards that never had one. */
     const status = options.headerStatus;
     const help = helpChip(options.help, title);
+    // ``testStatus``: the card's Test proves its configuration, so it takes
+    // the one header Test treatment (headerTestControls) with that report.
+    const controls = options.headerAction && options.testStatus
+      ? headerTestControls(title, options.headerAction, options.action || '', options.testStatus)
+      : `${options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
+          options.action || ''}`;
     const rail = (status || options.headerAction || help)
       ? `<div class="dp-settings-card-header-controls">${
           status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${help}${
-          options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
-          options.action || ''}</div>`
+          controls}</div>`
       : (options.action || '');
     /* ``hinted``: the card's header takes the Services header grammar (see
      * fitHeaderHints) -- identity, its one-line purpose hint (``headerCenter``)
@@ -1234,12 +1240,15 @@
       </div>`;
   }
 
-  function integrationHeaderToggle(identity, value, displayName, extraClass = '') {
+  // A card HEADER's toggle shows no "Enable" word (its accessible name says
+  // what it enables); a Network Source box, whose toggle is its body's one
+  // control, keeps the word (``visibleLabel``).
+  function integrationHeaderToggle(identity, value, displayName, extraClass = '', {visibleLabel = false} = {}) {
     const safeIdentity = String(identity || '').replace(/[^a-z0-9_-]/gi, '-');
     const id = `dp-settings-integration-${safeIdentity}-enabled`;
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable ${html(extraClass)}" for="${id}">
-        <span class="toggle-info"><span class="tl">Enable</span></span>
+        ${visibleLabel ? '<span class="toggle-info"><span class="tl">Enable</span></span>' : ''}
         <span class="toggle">
           <input id="${id}" data-integration-enabled="${html(identity)}" type="checkbox" ${checked(value)}
                  aria-label="Enable ${html(displayName)} provider route">
@@ -1312,7 +1321,6 @@
     const id = `dp-settings-integration-group-${safeGroup}-enabled`;
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable dp-settings-provider-header-enable" for="${id}">
-        <span class="toggle-info"><span class="tl">Enable</span></span>
         <span class="toggle">
           <input id="${id}" data-integration-group-enabled="${html(groupId)}" type="checkbox" ${checked(value)}
                  aria-label="Enable ${html(label)}">
@@ -1432,6 +1440,36 @@
           </button>`;
   }
 
+  /* A card's header Test, as each width presents it.
+   *
+   * From 780px the rail is unchanged: the direct Test (``action``, the card's
+   * own Test markup) beside the participation toggle, and the header status.
+   * Below 780px the rail's status and direct Test give way to one compact
+   * outlined group: a ``Test`` trigger, then the toggle. The trigger only
+   * opens a menu (a native popover: Escape, light dismiss, focus return). The
+   * menu is drawn when it opens (bindHeaderTestMenus, as the Downloads status
+   * menu is): the configuration report first, then the card's own Test,
+   * cloned, so the one page action dispatch runs the card's existing handler
+   * -- and a closed menu holds nothing, so the page has one Test per card.
+   *
+   * ``status`` is the card's configuration report whatever its participation
+   * (a rail may hide it while switched off; this never does). The trigger's
+   * colour says which of the three it is -- verified, unverified,
+   * unconfigured -- and the painters below keep it current. Participation is
+   * separate: an off toggle mutes Test at both widths and never disables it. */
+  const TEST_VERIFICATION = Object.freeze({success: 'verified', warning: 'unverified', error: 'unconfigured'});
+  let headerTestMenus = 0;
+  function headerTestControls(title, action, toggle, status) {
+    const menu = `dp-settings-test-menu-${++headerTestMenus}`;
+    return `<div class="dp-settings-header-action">${action}</div><div class="dp-settings-header-test-group">
+        <span class="dp-settings-header-test-shell">
+          <button class="dp-settings-header-test-trigger" type="button" popovertarget="${menu}" aria-controls="${menu}"
+                  aria-expanded="false" aria-label="Test ${html(title)}" data-verification="${TEST_VERIFICATION[status.tone] || 'unconfigured'}"
+                  data-report="${html(status.text)}" data-report-tone="${html(status.tone)}"><span>Test</span><span class="dp-dropdown__chevron" aria-hidden="true"></span></button>
+          <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} test"></div>
+        </span>${toggle}</div>`;
+  }
+
   /* The card's operational header rail.
    *
    * The right-hand region of the ONE canonical Settings card header reads, in
@@ -1466,13 +1504,15 @@
     // state is canonical truth about the provider, never about the card.
     const disclosure = settingsDisclosure(bodyId, false, 'provider configuration');
     const status = providerStatus(enabled, configured, verified);
+    const report = providerStatus(true, configured, verified);
+    const controls = headerAction ? headerTestControls(title, headerAction, enable, report) : enable;
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${className} dp-settings-provider-card--collapsed" data-provider-configured="${configured}">
         <div class="card-header dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}">
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
           <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>${
-            helpChip(help, title)}${headerAction ? `<div class="dp-settings-header-action">${headerAction}</div>` : ''}${enable}</div>
+            helpChip(help, title)}${controls}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -1508,7 +1548,7 @@
           <span class="card-title"><span class="dp-settings-card-title-text">${String(label).split(/\s+/).filter(Boolean)
             .map(word => `<span class="dp-settings-source-box-title-line">${html(word)}</span>`).join(' ')}</span></span>
         </div>
-        ${integrationHeaderToggle(identity, enabled, label, 'dp-settings-source-box-enable')}
+        ${integrationHeaderToggle(identity, enabled, label, 'dp-settings-source-box-enable', {visibleLabel: true})}
         <p class="dp-settings-source-box-copy">${lines.map(line => `<span>${html(line)}</span>`).join('')}</p>
       </section>`;
   }
@@ -2892,8 +2932,9 @@
       hinted: true,
       titlePrefix: familyIcon('extraction', 'archive-restore'),
       headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
-      action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
-          <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${commitAttributes('extract_enabled')} ${checked(s.extract_enabled)}>
+      action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="toggle">
+          <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${commitAttributes('extract_enabled')} ${checked(s.extract_enabled)}
+                 aria-label="Enable Automatic Extraction">
           <span class="ttrack"></span>
         </span></label>`,
     });
@@ -3103,7 +3144,9 @@
       hinted: true,
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
       headerAction: providerTestAction('test-discord'),
-      action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false),
+      action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false, '',
+        'Enable Discord Notifications'),
+      testStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
     });
 
     const reports = card('Statistics Reporting', `
@@ -3136,7 +3179,9 @@
       hinted: true,
       headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
       headerAction: providerTestAction('send-report'),
-      action: headerEnableToggle('stats_reporting_enabled', s.stats_reporting_enabled !== false),
+      action: headerEnableToggle('stats_reporting_enabled', s.stats_reporting_enabled !== false, '',
+        'Enable Statistics Reporting'),
+      testStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
     });
 
     return discord + reports;
@@ -3224,13 +3269,13 @@
    * Settings, so it is the same control everywhere: one declaration, one
    * appearance, one commit class, and the same treatment an integration's own
    * header Enable already renders. */
-  function headerEnableToggle(key, value, extraClass = '') {
+  function headerEnableToggle(key, value, extraClass = '', name = 'Enable') {
     const id = fieldId(key);
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable ${html(extraClass)}" for="${id}">
-        <span class="toggle-info"><span class="tl">Enable</span></span>
         <span class="toggle">
-          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)} ${commitAttributes(key)}>
+          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)} ${commitAttributes(key)}
+                 aria-label="${html(name)}">
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -3527,12 +3572,32 @@
   }
 
   /* Repaint one card's canonical header status in place. */
-  function paintCardStatus(view, card, status) {
-    const node = view.querySelector(`${card} .dp-settings-provider-config-status`);
-    if (!node) return;
-    node.textContent = status.text;
-    node.dataset.tone = status.tone;
-    node.hidden = !status.text;
+  function paintCardStatus(view, card, status, report = status) {
+    const node = view.querySelector(card);
+    if (node) paintStatusNodes(node, status, report);
+  }
+
+  /* One card's configuration report wherever it is shown: the header rail's
+   * status (``status``) and, where the card has the header Test treatment,
+   * that menu's report and its trigger's colour (``report``). */
+  function paintStatusNodes(card, status, report) {
+    const node = card.querySelector('.dp-settings-card-header-controls > .dp-settings-provider-config-status');
+    if (node) {
+      node.textContent = status.text;
+      node.dataset.tone = status.tone;
+      node.hidden = !status.text;
+    }
+    const trigger = card.querySelector('.dp-settings-header-test-trigger');
+    if (trigger) {
+      trigger.dataset.verification = TEST_VERIFICATION[report.tone] || 'unconfigured';
+      trigger.dataset.report = report.text;
+      trigger.dataset.reportTone = report.tone;
+    }
+    const menu = card.querySelector('.dp-settings-header-test-status');
+    if (menu) {
+      menu.textContent = report.text;
+      menu.dataset.tone = report.tone;
+    }
   }
 
   function paintAuthKpis(a) {
@@ -3577,7 +3642,7 @@
     // The header status is a projection of canonical state, repainted in the
     // one canonical status node the card's rail already owns; the OIDC word is
     // never derived from a toast or from the DOM.
-    paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));
+    paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a), oidcConfigurationStatus(a));
     paintCardStatus(view, '.dp-settings-username-password-card', credentialStatus(a));
     projectCredentialDraft();
 
@@ -3721,7 +3786,7 @@
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
       headerStatus: credentialStatus(a),
-      action: headerEnableToggle('auth_password_enabled', a.password_enabled),
+      action: headerEnableToggle('auth_password_enabled', a.password_enabled, '', 'Enable Username & Password'),
     });
 
     const providerField = input('oidc_provider_name', 'Provider Name', a.oidc_provider_name || 'OpenID Connect', {
@@ -3854,7 +3919,9 @@
       // OIDC-specific Test.
       headerStatus: oidcHeaderStatus(a),
       headerAction: providerTestAction('verify-oidc'),
-      action: headerEnableToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
+      action: headerEnableToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable',
+        'Enable OpenID Connect'),
+      testStatus: oidcConfigurationStatus(a),
     });
 
     return authStatusCard(a) + credentials + oidc;
@@ -5566,7 +5633,13 @@
   }
 
   function oidcHeaderStatus(a) {
-    if (!a?.oidc_enabled) return {text: '', tone: 'none'};
+    return a?.oidc_enabled ? oidcConfigurationStatus(a) : {text: '', tone: 'none'};
+  }
+
+  // What the stored OIDC configuration IS, whether or not OIDC is switched on:
+  // the header rail says nothing while it is off (above); the handheld Test
+  // menu always reports it (headerTestControls).
+  function oidcConfigurationStatus(a) {
     if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
     return a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
   }
@@ -5675,11 +5748,9 @@
       headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
           <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
       action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
-        <span class="toggle-info">
-          <span class="tl">Enable</span>
-        </span>
         <span class="toggle">
-          <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${commitAttributes('backup_enabled')} ${checked(s.backup_enabled !== false)}>
+          <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${commitAttributes('backup_enabled')} ${checked(s.backup_enabled !== false)}
+                 aria-label="Enable Backups & Retention">
           <span class="ttrack"></span>
         </span>
       </label>`,
@@ -5934,13 +6005,8 @@
         setDisclosureExpanded(disclosure, false);
       }
     }
-    const status = providerStatus(enabled, !!entry.configured, !!entry.verified);
-    const node = card.querySelector('.dp-settings-provider-config-status');
-    if (node) {
-      node.textContent = status.text;
-      node.dataset.tone = status.tone;
-      node.hidden = !status.text;
-    }
+    paintStatusNodes(card, providerStatus(enabled, !!entry.configured, !!entry.verified),
+      providerStatus(true, !!entry.configured, !!entry.verified));
   }
 
   /* The ONE immediate canonical operational control.
@@ -6066,6 +6132,110 @@
       || identity;
   }
 
+  /* The handheld header Test menu (headerTestControls). A popover's own
+   * toggle does not bubble, so the page listens in the capture phase. Open, it
+   * sits under its trigger, right edges aligned, inside the window (above the
+   * trigger where there is more room), follows a scroll or resize, and puts
+   * focus on its Test; the platform closes it on Escape or an outside press
+   * and returns focus to the trigger. Nothing here runs or reports a Test.
+   * When the page reaches 780px an idle menu closes (the direct Test takes
+   * over); one whose Test is running stays until that Test answers. */
+  const HANDHELD = window.matchMedia('(max-width: 779px)');
+  const TEST_MENU_EDGE = 8;
+  const TEST_MENU_GAP = 6;
+  function placeHeaderTestMenu(menu) {
+    const trigger = menu.closest('.dp-settings-header-test-shell')?.querySelector('.dp-settings-header-test-trigger');
+    if (!trigger || !menu.matches(':popover-open')) return;
+    const box = trigger.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    menu.style.maxHeight = '';
+    const size = menu.getBoundingClientRect();
+    const below = vh - box.bottom - TEST_MENU_GAP - TEST_MENU_EDGE;
+    const above = box.top - TEST_MENU_GAP - TEST_MENU_EDGE;
+    const up = size.height > below && above > below;
+    const room = Math.max(0, up ? above : below);
+    menu.style.maxHeight = `${room}px`;
+    menu.style.left = `${Math.max(TEST_MENU_EDGE, Math.min(box.right - size.width, vw - TEST_MENU_EDGE - size.width))}px`;
+    menu.style.top = `${up ? box.top - TEST_MENU_GAP - Math.min(size.height, room) : box.bottom + TEST_MENU_GAP}px`;
+  }
+  const openTestMenus = () => document.querySelectorAll('#view-settings .dp-settings-header-test-menu:popover-open');
+  const followTestMenus = () => openTestMenus().forEach(placeHeaderTestMenu);
+  const testMenuRunning = menu => !!menu.querySelector('button[data-dp-settings-markup]');
+  // The menu's content, drawn as it opens: the card's report, then its Test.
+  function drawHeaderTestMenu(menu) {
+    if (testMenuRunning(menu)) return;
+    const trigger = menu.closest('.dp-settings-header-test-shell')?.querySelector('.dp-settings-header-test-trigger');
+    const test = menu.closest('.dp-settings-card-header-controls')
+      ?.querySelector(':scope > .dp-settings-header-action > .dp-settings-provider-test');
+    if (!trigger || !test) return;
+    const report = document.createElement('div');
+    report.className = 'dp-settings-header-test-status';
+    report.id = `${menu.id}-report`;
+    report.dataset.tone = trigger.dataset.reportTone || 'none';
+    report.textContent = trigger.dataset.report || '';
+    // The Test the menu focuses is described by the report, so the state is
+    // read with it -- also while the section is off and its rail says nothing.
+    const action = test.cloneNode(true);
+    action.setAttribute('aria-describedby', report.id);
+    menu.replaceChildren(report, action);
+  }
+
+  /* A menu's Test has answered (setBusy, the page's one busy owner): a menu
+   * closed meanwhile lets go of it; one still open while the page has left
+   * the handheld width closes -- the direct Test is the page's Test there --
+   * and hands focus to that Test. A handheld menu stays, showing the answer. */
+  function settleHeaderTestMenu(button) {
+    const menu = button.closest?.('.dp-settings-header-test-menu');
+    if (!menu) return;
+    if (!menu.matches(':popover-open')) {
+      menu.replaceChildren();
+      return;
+    }
+    if (HANDHELD.matches) return;
+    // Focus was in the menu, or nowhere (a running Test's own button gives it
+    // up while disabled): it goes to the direct Test, never from elsewhere.
+    const active = document.activeElement;
+    const focused = !active || active === document.body || menu.contains(active);
+    menu.hidePopover();
+    if (focused) {
+      menu.closest('.dp-settings-card-header-controls')
+        ?.querySelector(':scope > .dp-settings-header-action > .dp-settings-provider-test')?.focus({preventScroll: true});
+    }
+  }
+  function bindHeaderTestMenus(view) {
+    view.addEventListener('beforetoggle', event => {
+      const menu = event.target;
+      if (menu instanceof HTMLElement && menu.matches('.dp-settings-header-test-menu') && event.newState === 'open') {
+        drawHeaderTestMenu(menu);
+      }
+    }, true);
+    view.addEventListener('toggle', event => {
+      const menu = event.target;
+      if (!(menu instanceof HTMLElement) || !menu.matches('.dp-settings-header-test-menu')) return;
+      const open = event.newState === 'open';
+      menu.closest('.dp-settings-header-test-shell')?.querySelector('.dp-settings-header-test-trigger')
+        ?.setAttribute('aria-expanded', String(open));
+      const anyOpen = openTestMenus().length > 0;
+      window[anyOpen ? 'addEventListener' : 'removeEventListener']('resize', followTestMenus);
+      document[anyOpen ? 'addEventListener' : 'removeEventListener']('scroll', followTestMenus, {capture: true});
+      // A closed menu holds nothing -- unless its Test is still running, whose
+      // own handler finishes on the button it was given.
+      if (!open) {
+        if (!testMenuRunning(menu)) menu.replaceChildren();
+        return;
+      }
+      placeHeaderTestMenu(menu);
+      menu.querySelector('button[data-action]')?.focus({preventScroll: true});
+    }, true);
+    HANDHELD.addEventListener('change', () => {
+      if (HANDHELD.matches) return;
+      openTestMenus().forEach(menu => {
+        if (!testMenuRunning(menu)) menu.hidePopover();
+      });
+    });
+  }
+
   function bindEvents(view) {
     if (view.dataset.dpSettingsEventsBound === '1') return;
     view.dataset.dpSettingsEventsBound = '1';
@@ -6073,6 +6243,8 @@
     // The page's width changed (window, sidebar, or the page shown again):
     // the header's navigation compares its measured widths with the new room.
     if (typeof ResizeObserver === 'function') new ResizeObserver(() => navigation.fit()).observe(view);
+
+    bindHeaderTestMenus(view);
 
     view.addEventListener('keydown', event => {
       const current = event.target.closest('.dp-settings-tabs [data-tab]');
@@ -6161,6 +6333,10 @@
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
+      // A header's Test is one action shown twice (headerTestControls): while
+      // either presentation runs it, the other does not start it again.
+      if (button.matches('.dp-settings-provider-test') && button.closest('.card-header')
+        ?.querySelector(`button[data-action="${CSS.escape(action)}"][data-dp-settings-markup]`)) return;
       if (action === 'test-alldebrid') testConnection('alldebrid', button);
       else if (action === 'test-debridlink') testConnection('debridlink', button);
       else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);

@@ -49,11 +49,6 @@
   cursor: pointer;
 }
 
-#view-settings .dp-settings-extraction-enable > .form-label {
-  margin: 0;
-  white-space: nowrap;
-}
-
 /* ── The Extraction behaviour group ───────────────────────────────────────
    Delete Archives After Extraction and Concurrent Extractions are ONE group,
    not two cards and not two controls floating in a band: a single subtle

@@ -30,15 +30,6 @@
   margin: 0 !important;
 }
 
-#view-settings .dp-settings-backups-header-toggle .toggle-info {
-  display: flex;
-  align-items: center;
-}
-
-#view-settings .dp-settings-backups-header-toggle .tl {
-  white-space: nowrap;
-}
-
 #view-settings .dp-settings-backups-header-toggle .toggle {
   flex: 0 0 auto;
 }

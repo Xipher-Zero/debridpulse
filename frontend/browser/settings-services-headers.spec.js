@@ -55,7 +55,11 @@ function headers(page) {
       const shown = !!hint && hint.getClientRects().length > 0;
       const c = shown ? hint.getBoundingClientRect() : null;
       const chips = [...rail.querySelectorAll('.dp-settings-help-chip')];
-      const items = [...rail.children].map(node => node.getBoundingClientRect());
+      // The rail's drawn items, read through a boxless wrapper (the header
+      // Test group draws no box from 780px; its handheld trigger is not drawn).
+      const drawn = node => [...node.children].flatMap(child => getComputedStyle(child).display === 'contents'
+        ? drawn(child) : (child.getClientRects().length ? [child] : []));
+      const items = drawn(rail).map(node => node.getBoundingClientRect());
       return {name: h.querySelector('.dp-settings-card-title-text').textContent.trim(), height: hb.height, minHeight: parseFloat(st.minHeight),
         gap: parseFloat(st.columnGap), titleInset: title.left - left, railInset: right - r.right,
         oneRow: items.every(item => Math.abs((item.top + item.bottom) / 2 - (title.top + title.bottom) / 2) < 2),

@@ -90,15 +90,21 @@ def test_oidc_header_status_is_projected_from_canonical_configuration_and_eviden
     js = read(SETTINGS_JS)
     status = js[js.index("function oidcHeaderStatus(a)"):]
     status = status[:status.index("\n  }")]
+    configuration = js[js.index("function oidcConfigurationStatus(a)"):]
+    configuration = configuration[:configuration.index("\n  }")]
 
-    assert "if (!a?.oidc_enabled) return {text: '', tone: 'none'};" in status
-    assert "if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};" in status
-    assert "a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'}" in status
+    # The rail says nothing while OIDC is off; otherwise it reports the one
+    # configuration projection (which the handheld Test menu always reports).
+    assert "return a?.oidc_enabled ? oidcConfigurationStatus(a) : {text: '', tone: 'none'};" in status
+    assert "if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};" in configuration
+    assert "a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'}" in configuration
     # No other source of truth is consulted.
     for forbidden in ("document.", "querySelector", "oidc_available", "toast", "classList"):
         assert forbidden not in status, forbidden
-    # The repaint uses the same projection rather than a second derivation.
-    assert "paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));" in js
+        assert forbidden not in configuration, forbidden
+    # The repaint uses the same projections rather than a second derivation.
+    assert ("paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a), oidcConfigurationStatus(a));"
+            in js)
 
 
 def test_oidc_default_role_is_provisioning_policy_inside_the_oidc_card():

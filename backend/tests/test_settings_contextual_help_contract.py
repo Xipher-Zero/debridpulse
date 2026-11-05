@@ -219,16 +219,26 @@ def test_every_header_rail_reads_status_then_help_then_its_own_controls():
     their established order -- in every canonical header builder."""
     card = PAGE.split("function card(title, body, options = {}) {", 1)[1].split("\n  }\n", 1)[0]
     rail = card.split("const rail = ", 1)[1].split(";\n", 1)[0]
-    order = [rail.index(token) for token in
-             ("dp-settings-provider-config-status", "${help}", "options.headerAction ?", "options.action || ''")]
+    order = [rail.index(token) for token in ("dp-settings-provider-config-status", "${help}", "controls}")]
     assert order == sorted(order)
+    # The card's own controls: its header action, then its participation
+    # control -- directly, or through the one header Test treatment, whose
+    # arguments and markup keep that same order.
+    controls = card.split("const controls = ", 1)[1].split(";\n", 1)[0]
+    assert "headerTestControls(title, options.headerAction, options.action || '', options.testStatus)" in controls
+    plain = controls.split(":", 1)[1]
+    assert plain.index("options.headerAction ?") < plain.index("options.action || ''")
+    test = PAGE.split("function headerTestControls(title, action, toggle, status) {", 1)[1].split("\n  }\n", 1)[0]
+    assert test.index('<div class="dp-settings-header-action">${action}</div>') < test.index("${toggle}</div>")
     group = PAGE.split("function groupCard(title, body, options = {}) {", 1)[1].split("\n  }\n", 1)[0]
     assert '<div class="dp-settings-card-header-controls">${help}${options.action || \'\'}</div>' in group
     provider = PAGE.split("function providerCard(", 1)[1].split("\n  }\n", 1)[0]
-    controls = provider.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>\n", 1)[0]
-    order = [controls.index(token) for token in
-             ("dp-settings-provider-config-status", "helpChip(help, title)", "headerAction ?", "${enable}")]
+    rail = provider.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>\n", 1)[0]
+    order = [rail.index(token) for token in
+             ("dp-settings-provider-config-status", "helpChip(help, title)", "${controls}")]
     assert order == sorted(order)
+    assert "const report = providerStatus(true, configured, verified);" in provider
+    assert "headerAction ? headerTestControls(title, headerAction, enable, report) : enable;" in provider
     # Download Engine Activity updates by itself: its rail is its Help alone.
     work = PAGE.split("function executorWorkCard() {", 1)[1].split("\n  }\n", 1)[0]
     assert ('<div class="dp-settings-card-header-controls">${helpChip(\'engine-activity\', '
