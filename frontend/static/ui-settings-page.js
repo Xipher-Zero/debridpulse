@@ -476,11 +476,15 @@
       const style = getComputedStyle(node);
       return Math.ceil(height + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0));
     };
+    // The row above the grid that holds the header's lent Help, while it does.
+    const slot = network?.querySelector(':scope > .dp-settings-help-slot');
     const fit = () => {
       const tile = grid?.firstElementChild;
       const row = tile ? tile.getBoundingClientRect().height : 0;
+      const lent = slot?.childElementCount
+        ? slot.getBoundingClientRect().height + (parseFloat(getComputedStyle(slot).marginBottom) || 0) : 0;
       if (row && !network.getAnimations().length) {
-        network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row)}px`);
+        network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row + lent)}px`);
       }
       const card = premium?.firstElementChild;
       const body = card?.querySelector(':scope > .card-body');
@@ -492,7 +496,7 @@
     fit();
     if (typeof ResizeObserver === 'function') {
       servicesRowObserver = new ResizeObserver(fit);
-      for (const node of [grid, premium?.firstElementChild]) if (node) servicesRowObserver.observe(node);
+      for (const node of [grid, slot, premium?.firstElementChild]) if (node) servicesRowObserver.observe(node);
     }
   }
 
@@ -514,8 +518,11 @@
    * The same fit keeps a group's one-row headers one row with the LEAST
    * compression that does it (fitHeaderSteps). A group that declares
    * data-header-fit (Premium Services) holds handheld headers that never wrap
-   * and never shorten their titles; its marker names how much of the room it
-   * takes back (ui-settings-page.css): 0 none, 1 the gaps and the Services
+   * and never shorten their titles (Network Sources, declaring
+   * data-header-fit-self, its own header: 1 the gaps, 2 the header padding,
+   * 3 the identity mark, 4 Help lent to the row above its protocol boxes,
+   * which Network's one-row viewport then includes); its marker names how
+   * much of the room it takes back (ui-settings-page.css): 0 none, 1 the gaps and the Services
    * panel's padding, 2 the header and group-body padding, 3 the identity
    * marks, 4 also lends a header's help chip to its card's body slot
    * (.dp-settings-help-slot: the API Key or Account Connection box, Usenet's
@@ -592,8 +599,10 @@
 
   function fitHeaderSteps(parts) {
     for (const group of root()?.querySelectorAll('[data-header-fit]') || []) {
-      // Its cards' headers, not its own.
-      const members = parts.filter(part => part.header.parentElement !== group && group.contains(part.header));
+      // Its cards' headers, not its own -- or, declared data-header-fit-self
+      // (Network Sources), its own header alone.
+      const self = group.hasAttribute('data-header-fit-self');
+      const members = parts.filter(part => (part.header.parentElement === group) === self && group.contains(part.header));
       // Not drawn (another tab, a closed group): kept as it is until it is.
       if (!members.some(({header}) => header.getClientRects().length)) continue;
       let step = 0;
@@ -625,7 +634,7 @@
     if (chip.parentElement === home) return;
     const focused = document.activeElement === chip;
     if (lend) slot.append(chip);
-    else rail.insertBefore(chip, rail.querySelector(':scope > .dp-settings-header-action, :scope > .dp-settings-header-test-group'));
+    else rail.insertBefore(chip, rail.querySelector(':scope > .dp-settings-header-action, :scope > .dp-settings-header-test-group, :scope > .toggle-row'));
     if (!focused) return;
     // Focus goes with the chip; into a closed body it cannot, so it goes to
     // the card's own disclosure, the control that opens where the chip went.
@@ -1011,7 +1020,7 @@
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
         options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}${
-        options.headerFit ? ' data-header-fit="0"' : ''}>
+        options.headerFit ? ' data-header-fit="0"' : ''}${options.headerFit === 'self' ? ' data-header-fit-self' : ''}>
         <div class="card-header${header ? ' dp-settings-card-header' : ''}${hinted ? ' dp-settings-card-header--hinted' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
           ${header ? `<div class="dp-settings-card-header-center">${hinted ? `<p class="dp-settings-provider-header-copy">${html(options.hint)}</p>` : ''}</div>
@@ -2376,9 +2385,10 @@
         ((left.presentation?.display_order ?? 0) - (right.presentation?.display_order ?? 0))
         || leftId.localeCompare(rightId)) : [];
     const generalSources = groupCard(groupLabel,
-      `<div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
+      `<div class="dp-settings-help-slot dp-settings-help-slot--row"></div><div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
         sourceProtocolBox(id, SOURCE_BOX_TITLES[id] || entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
+      headerFit: 'self',
       help: 'network-sources',
       hint: 'Download directly from network sources; no premium account needed.',
       titlePrefix: protocolIcon(groupId, true),

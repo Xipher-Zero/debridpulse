@@ -1759,6 +1759,42 @@
   #view-settings .dp-settings-debrid-services:is([data-header-fit="5"]) > .dp-settings-group-body {
     padding-inline: 2px !important;
   }
+  /* Network Sources: its own header is ONE row, its title in full, by the
+     same least-necessary steps (its data-header-fit-self, fitHeaderSteps):
+     1 the gaps, 2 the header padding, 3 its identity mark at 26px, 4 Help
+     lent to the row above its protocol boxes (no rule of its own). The
+     Services panel's padding stays Premium Services' to take. */
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources > .card-header.dp-settings-card-header {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources > .card-header.dp-settings-card-header > .dp-settings-card-title-group {
+    flex: 0 0 auto;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources > .card-header.dp-settings-card-header > .dp-settings-card-header-controls {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    margin-inline-start: auto;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header {
+    column-gap: 6px;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header > .dp-settings-card-title-group {
+    gap: 0;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header .dp-settings-card-title--with-icon {
+    gap: 4px;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header > .dp-settings-card-header-controls {
+    column-gap: 6px;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header {
+    padding-inline: 4px !important;
+  }
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header .dp-settings-protocol-chip {
+    zoom: calc(26 / 38);
+  }
 }
 
 /* A body box a header may lend its help chip to (fitHeaderHints): the chip
