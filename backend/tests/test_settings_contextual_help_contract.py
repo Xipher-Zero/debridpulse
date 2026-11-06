@@ -495,7 +495,10 @@ def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
     # card() takes the grammar only when asked; nothing else changes for it.
     card = _block(PAGE, "function card(title, body, options = {}) {")
     assert "<div class=\"card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}\">" in card
-    assert "${options.hinted ? `<span class=\"dp-settings-card-title-group\">${identity}</span>` : identity}" in card
+    # (Its title group also holds the card's disclosure chip where the card is
+    # collapsible -- Disk Space & Recovery, below 780px -- and nothing otherwise.)
+    assert "${options.hinted ? `<span class=\"dp-settings-card-title-group\">${identity}${disclosure}</span>` : identity}" in card
+    assert "const disclosure = collapse ? settingsDisclosure(bodyId, open, title, `card:${collapse.key}`) : '';" in card
     # Download Behavior & Limits and Disk Space & Recovery, the two card() headers.
     assert panel.count("hinted: true,") == 2 and panel.count("help: 'disk-recovery', hinted: true,") == 1
     # The two hints this pass adds; the four that were there are unchanged.

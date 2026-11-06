@@ -229,7 +229,10 @@ test('at 780px every header control is whole and is its own target: the disclosu
       const name = header.querySelector('.dp-settings-card-title-text').textContent.trim();
       header.scrollIntoView({block: 'center'});
       const hb = header.getBoundingClientRect();
+      // Every DRAWN control. (Disk Space & Recovery's disclosure is drawn only
+      // below 780px; that it is not drawn here is asserted below.)
       for (const node of header.querySelectorAll('.dp-settings-disclosure, .dp-settings-help-chip')) {
+        if (!node.getClientRects().length) continue;
         const r = node.getBoundingClientRect();
         if (r.left < hb.left || r.right > hb.right || r.width < 24 || r.height < 24) out.push(`${name}: ${node.className} ${r.width}x${r.height}`);
         const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
@@ -239,6 +242,8 @@ test('at 780px every header control is whole and is its own target: the disclosu
     return out;
   });
   expect(report).toEqual([]);
+  await expect(page.locator('.dp-settings-download-recovery-card > .card-header .dp-settings-disclosure')).toBeHidden();
+  await expect(page.locator('.dp-settings-download-recovery-card > .card-body')).toBeVisible();
 });
 
 /* Every control a method card renders, named by its own label. */

@@ -49,6 +49,26 @@
   gap: 12px;
 }
 
+/* A reading's short words (authKpiItems) are drawn only where the grid asks
+   for them (data-kpi-words, handheld); the full words stay its text to
+   assistive technology. */
+#view-settings .dp-settings-kpi-words--short {
+  display: none;
+}
+
+#view-settings .dp-settings-auth-kpi-grid[data-kpi-words='short'] .dp-settings-kpi-words--full {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#view-settings .dp-settings-auth-kpi-grid[data-kpi-words='short'] .dp-settings-kpi-words--short {
+  display: inline;
+}
+
 /* Reuse the Dashboard KPI component classes/material language while adapting
    only the state-card geometry: no icon, no sparkline, centered two-line copy. */
 #view-settings .dp-settings-auth-kpi.dash-hero-stat {
@@ -360,8 +380,32 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     justify-content: flex-start;
   }
 
+  /* All three readings stay visible at every width: side by side while
+     their words fit (row), else the mode across the whole row above its two
+     mechanisms (split), else that with closer card padding (close), else
+     that with their short words. fitAuthKpis chooses, from the steps
+     declared here, by reading the cards as drawn. */
   #view-settings .dp-settings-auth-kpi-grid {
-    grid-template-columns: minmax(0, 1fr);
+    --dp-kpi-fit-steps: 4;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #view-settings .dp-settings-auth-kpi-grid:is([data-kpi-fit='split'], [data-kpi-fit='close']) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-settings .dp-settings-auth-kpi-grid:is([data-kpi-fit='split'], [data-kpi-fit='close']) > .dp-settings-auth-kpi[data-auth-kpi='mode'] {
+    grid-column: 1 / -1;
+  }
+
+  #view-settings .dp-settings-auth-kpi-grid[data-kpi-fit='close'] > .dp-settings-auth-kpi.dash-hero-stat {
+    padding-inline: 10px;
+  }
+
+  /* A word runs past its card rather than breaking, so the fit can see it;
+     only the last composition breaks one, as it always could. */
+  #view-settings .dp-settings-auth-kpi-grid:not([data-kpi-words='short']) .dp-settings-auth-kpi :is(.dhs-label, .dhs-val) {
+    overflow-wrap: normal;
   }
 
   /* Stacked, each setting keeps its own inline title/hint + control, and the

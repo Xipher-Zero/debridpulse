@@ -597,6 +597,61 @@
     return {withHelp: without + help <= room, withoutHelp: without <= room};
   }
 
+  /* A header whose title may wrap (data-header-fit-wrap) fits while its title
+   * takes at most two lines, no word of it runs past its region, and nothing
+   * runs past the header. */
+  function wrappedHeaderFits({header, title}) {
+    const text = header.querySelector('.dp-settings-card-title-text');
+    if (!text) return true;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const lines = new Set([...range.getClientRects()].filter(box => box.width > 1 && box.height > 8)
+      .map(box => Math.round(box.bottom))).size;
+    // Overflow shows on whichever box narrowed: the identity, its title or
+    // the header.
+    return lines <= 2 && [title, title.querySelector('.card-title'), text, header]
+      .every(box => !box || box.scrollWidth <= box.clientWidth + 1);
+  }
+
+  /* The wrapping header's steps are its stylesheet's (--dp-header-fit-steps,
+   * handheld only; from 780px it declares none and the header is as it was).
+   * Each is laid out and READ in turn and the first that fits is kept: the
+   * title wrapping within its own region first, then what the stylesheet
+   * takes back at each step, Help lent to the body's row from
+   * HEADER_FIT_LENDS_HELP. */
+  function fitWrappingHeader(group, members) {
+    const steps = parseInt(getComputedStyle(group).getPropertyValue('--dp-header-fit-steps'), 10) || 0;
+    for (let step = 0; step < Math.max(1, steps); step += 1) {
+      group.dataset.headerFit = String(step);
+      members.forEach(part => placeHeaderHelp(part, steps > 0 && step >= HEADER_FIT_LENDS_HELP));
+      if (members.every(wrappedHeaderFits)) break;
+    }
+    members.forEach(promoteShortTitle);
+  }
+
+  /* While a header draws its card's short title (OIDC), the title -- the
+   * element holding the full title, the card's name -- carries that full
+   * title as its tooltip, through the one tooltip owner (ui-tooltip.js): on
+   * hover, on a tap (data-tooltip-touch: the tap shows it and does nothing
+   * else) and on keyboard focus, the title being a tab stop only then. The
+   * drawn short words themselves stay out of the accessibility tree. Where
+   * the full title is drawn, it is a plain title again. */
+  function promoteShortTitle({header}) {
+    const text = header.querySelector('.dp-settings-card-title-text');
+    const short = text?.querySelector(':scope > .dp-settings-card-title-short');
+    if (!short) return;
+    const full = text.querySelector(':scope > .dp-settings-card-title-full')?.textContent.trim() || '';
+    if (full && short.getClientRects().length) {
+      text.dataset.tooltip = full;
+      text.setAttribute('data-tooltip-touch', '');
+      text.tabIndex = 0;
+    } else if ('tooltip' in text.dataset) {
+      delete text.dataset.tooltip;
+      text.removeAttribute('data-tooltip-touch');
+      text.removeAttribute('tabindex');
+    }
+  }
+
   function fitHeaderSteps(parts) {
     for (const group of root()?.querySelectorAll('[data-header-fit]') || []) {
       // Its cards' headers, not its own -- or, declared data-header-fit-self
@@ -605,6 +660,10 @@
       const members = parts.filter(part => (part.header.parentElement === group) === self && group.contains(part.header));
       // Not drawn (another tab, a closed group): kept as it is until it is.
       if (!members.some(({header}) => header.getClientRects().length)) continue;
+      if (group.hasAttribute('data-header-fit-wrap')) {
+        fitWrappingHeader(group, members);
+        continue;
+      }
       let step = 0;
       group.dataset.headerFit = '0';
       // Only the handheld one-row header takes room back.
@@ -1052,7 +1111,15 @@
     let titleMarkup = html(title);
     if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
-      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
+      // ``shortTitle``: the handheld header's last resort (fitHeaderSteps,
+      // data-header-fit-wrap), drawn only at that step and only by the
+      // stylesheet, from its attribute -- so the title's text, and the card's
+      // name to assistive technology, stay the full title alone. While it is
+      // drawn the title says the full title as its tooltip (promoteShortTitle).
+      const words = options.shortTitle
+        ? `<span class="dp-settings-card-title-full">${html(title)}</span><span class="dp-settings-card-title-short" aria-hidden="true" data-short-title="${html(options.shortTitle)}"></span>`
+        : html(title);
+      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${words}</span>`;
     }
     const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
     /* The SAME operational header rail a provider card renders: what the
@@ -1081,14 +1148,29 @@
     // given as plain text is that element's text.
     const center = options.hinted && options.headerCenter && !/^\s*</.test(options.headerCenter)
       ? `<span>${options.headerCenter}</span>` : options.headerCenter;
+    /* ``collapsible`` ({key, expanded}): the canonical disclosure chip beside
+     * the title, its choice kept for the page by the one disclosure owner. A
+     * card whose stylesheet keeps its body open at some widths (Disk Space &
+     * Recovery from 780px) declares that there, not here. */
+    const collapse = options.collapsible;
+    const bodyId = collapse ? `dp-settings-card-body-${String(collapse.key).replace(/[^a-z0-9_-]/gi, '-')}` : '';
+    const open = collapse ? disclosureOpen(`card:${collapse.key}`, collapse.expanded) : true;
+    const disclosure = collapse ? settingsDisclosure(bodyId, open, title, `card:${collapse.key}`) : '';
+    /* ``headerFit: 'wrap'``: the handheld header is one row whose title may
+     * take two lines, and which takes back room in the steps its stylesheet
+     * declares (fitHeaderSteps) -- lending Help to the row drawn at the top of
+     * the body only while it holds it. */
+    const fit = options.headerFit === 'wrap';
     return `
-      <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
+      <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}"${
+        fit ? ' data-header-fit="0" data-header-fit-self data-header-fit-wrap' : ''}>
         <div class="card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}">
-          ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}</span>` : identity}
+          ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}${disclosure}</span>` : identity}
           ${center ? `<div class="${centerClass}">${center}</div>` : ''}
           ${rail}
         </div>
-        <div class="card-body">${body}</div>
+        <div class="card-body"${bodyId ? ` id="${bodyId}"` : ''}${open ? '' : ' hidden'}>${
+          fit ? '<div class="dp-settings-help-slot dp-settings-help-slot--row"></div>' : ''}${body}</div>
       </section>`;
   }
   /* A group card. ``collapsible`` is the smallest generic opt-in there can be:
@@ -3029,6 +3111,9 @@
       ),
     ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert'),
       help: 'disk-recovery', hinted: true,
+      // Closed when first drawn below 780px; the stylesheet keeps it open,
+      // without the chip, from 780px.
+      collapsible: {key: 'disk-recovery', expanded: false},
       headerCenter: '<span class="dp-settings-download-engine-header-copy">Protect free disk space and recover failed or stalled downloads.</span>'});
 
     return delivery + tuning + recovery + executorWorkCard();
@@ -3821,7 +3906,7 @@
       const kpi = view.querySelector(`.dp-settings-auth-kpi[data-auth-kpi="${item.id}"]`);
       const value = kpi?.querySelector('.dhs-val');
       if (!kpi || !value) continue;
-      value.replaceChildren(document.createTextNode(item.value));
+      value.replaceChildren(...kpiWordNodes(item.value, item.valueShort));
       if (item.secondary) {
         value.appendChild(document.createElement('br'));
         const secondary = document.createElement('span');
@@ -3830,6 +3915,59 @@
         value.appendChild(secondary);
       }
       kpi.dataset.c = item.tone;
+    }
+    // New words may need another composition.
+    authKpiFit?.();
+  }
+
+  /* The Authentication Status KPIs below 780px (their stylesheet declares
+   * --dp-kpi-fit-steps there): the three side by side while their words fit
+   * them, else the mode across the whole row above its two mechanisms, else
+   * that with closer card padding, else that with the short words. Each is laid out and READ in turn -- every
+   * label in at most two lines, every value in at most two (and its qualifier
+   * line), no word running past its card -- and the first that fits is kept,
+   * so the choice is a function of the room alone and the same width gives
+   * the same composition however it was reached. Re-read when the room
+   * changes and when the painter writes new words. */
+  const KPI_FITS = Object.freeze([['row', 'full'], ['split', 'full'], ['close', 'full'], ['close', 'short']]);
+  let authKpiObserver = null;
+  let authKpiFit = null;
+
+  function kpiFits(grid) {
+    const lines = node => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return new Set([...range.getClientRects()].filter(box => box.width > 1 && box.height > 4)
+        .map(box => Math.round(box.bottom))).size;
+    };
+    return Array.from(grid.querySelectorAll('.dp-settings-auth-kpi')).every(kpi => {
+      const body = kpi.querySelector('.dhs-body');
+      const label = kpi.querySelector('.dhs-label');
+      const value = kpi.querySelector('.dhs-val');
+      const qualifier = value?.querySelector('.dp-settings-auth-kpi-secondary') ? 1 : 0;
+      return body.scrollWidth <= body.clientWidth + 1 && lines(label) <= 2 && lines(value) <= 2 + qualifier;
+    });
+  }
+
+  function fitAuthKpis() {
+    authKpiObserver?.disconnect();
+    authKpiObserver = null;
+    const grid = root()?.querySelector('.dp-settings-auth-kpi-grid');
+    authKpiFit = grid ? () => {
+      if (!grid.isConnected || !grid.getClientRects().length) return;
+      const steps = parseInt(getComputedStyle(grid).getPropertyValue('--dp-kpi-fit-steps'), 10) || 0;
+      delete grid.dataset.kpiFit;
+      delete grid.dataset.kpiWords;
+      for (const [fit, words] of KPI_FITS.slice(0, steps)) {
+        grid.dataset.kpiFit = fit;
+        grid.dataset.kpiWords = words;
+        if (kpiFits(grid)) return;
+      }
+    } : null;
+    authKpiFit?.();
+    if (grid && typeof ResizeObserver === 'function') {
+      authKpiObserver = new ResizeObserver(() => authKpiFit?.());
+      authKpiObserver.observe(grid.parentElement);
     }
   }
 
@@ -3910,11 +4048,47 @@
 
     const oidcState = oidcStatePresentation(a);
 
+    // Each reading also has its SHORT words (labelShort, valueShort): what a
+    // narrow card says when the full words no longer fit it (fitAuthKpis).
+    // The same state, never a different one; the full words stay its
+    // accessible text.
     return [
-      {id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone, secondary: ''},
-      {id: 'password', label: 'Username & Password', value: password.value, tone: password.tone, secondary: ''},
-      {id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary},
+      {id: 'mode', label: 'Authentication Mode', labelShort: 'Auth Mode',
+        value: modeValue, valueShort: KPI_SHORT_VALUES[modeValue] || modeValue, tone: modeTone, secondary: ''},
+      {id: 'password', label: 'Username & Password', labelShort: 'Password',
+        value: password.value, valueShort: KPI_SHORT_VALUES[password.value] || password.value, tone: password.tone, secondary: ''},
+      {id: 'oidc', label: 'OIDC State', labelShort: 'OIDC',
+        value: oidcState.primary, valueShort: KPI_SHORT_VALUES[oidcState.primary] || oidcState.primary, tone: oidcState.tone,
+        secondary: oidcState.secondary},
     ];
+  }
+
+  // The status words a narrow KPI may shorten, and to what; every other word
+  // is already short.
+  const KPI_SHORT_VALUES = Object.freeze({
+    'Configuration Error': 'Config Error',
+    'Runtime Unavailable': 'Unavailable',
+    'OpenID Connect': 'OIDC',
+    'Username & Password': 'Password',
+  });
+
+  // A KPI's words as markup: the full words, and -- where they differ -- the
+  // short ones, drawn instead only while the grid says so (data-kpi-words).
+  const kpiWords = (full, short) => (short && short !== full
+    ? `<span class="dp-settings-kpi-words--full">${html(full)}</span><span class="dp-settings-kpi-words--short" aria-hidden="true">${html(short)}</span>`
+    : html(full));
+
+  // The same, as nodes, for the painter.
+  function kpiWordNodes(full, short) {
+    if (!short || short === full) return [document.createTextNode(full)];
+    const node = (form, text) => {
+      const span = document.createElement('span');
+      span.className = `dp-settings-kpi-words--${form}`;
+      if (form === 'short') span.setAttribute('aria-hidden', 'true');
+      span.textContent = text;
+      return span;
+    };
+    return [node('full', full), node('short', short)];
   }
 
   function authStatusCard(a) {
@@ -3925,8 +4099,8 @@
         ${authKpiItems(a).map(item => `
           <div class="dash-hero-stat dp-settings-auth-kpi" data-auth-kpi="${html(item.id)}" data-c="${html(item.tone)}">
             <div class="dhs-body">
-              <div class="dhs-label">${html(item.label)}</div>
-              <div class="dhs-val">${html(item.value)}${item.secondary ? `<br><span class="dp-settings-auth-kpi-secondary">${html(item.secondary)}</span>` : ''}</div>
+              <div class="dhs-label">${kpiWords(item.label, item.labelShort)}</div>
+              <div class="dhs-val">${kpiWords(item.value, item.valueShort)}${item.secondary ? `<br><span class="dp-settings-auth-kpi-secondary">${html(item.secondary)}</span>` : ''}</div>
             </div>
           </div>`).join('')}
       </div>
@@ -3948,7 +4122,7 @@
           })}
       </div>
     `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check'),
-      help: 'auth-status', hinted: true,
+      help: 'auth-status', hinted: true, headerFit: 'wrap',
       headerCenter: 'How people sign in, and how long a browser stays signed in.',
       headerCenterClass: 'dp-settings-auth-header-copy'});
   }
@@ -3996,6 +4170,7 @@
       className: 'dp-settings-username-password-card',
       help: 'username-password',
       hinted: true,
+      headerFit: 'wrap',
       titlePrefix: familyIcon('authentication', 'user-lock'),
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
@@ -4124,6 +4299,8 @@
     `, {
       className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
       help: 'oidc',
+      headerFit: 'wrap',
+      shortTitle: 'OIDC',
       titlePrefix: familyIcon('authentication', 'id-card'),
       headerCenter: 'Configure an external identity provider for browser sign-in.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
@@ -6065,6 +6242,7 @@
     fitServicesRows();
     fitHeaderHints();
     fitIslands();
+    fitAuthKpis();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -7851,6 +8029,7 @@
     navigation.fit({measure: true});
     headerHintFit?.();
     islandFit?.();
+    authKpiFit?.();
   });
 
   registerCommitScopes();

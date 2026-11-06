@@ -21,9 +21,15 @@ def test_authentication_status_uses_three_dashboard_derived_state_kpis():
     items = js[js.index("function authKpiItems"):js.index("function authStatusCard")]
     block = js[js.index("function authStatusCard"):js.index("function authenticationPanel")]
 
-    assert "id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone" in items
-    assert "id: 'password', label: 'Username & Password', value: password.value, tone: password.tone" in items
-    assert "id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary" in items
+    # Each reading also states its short words, from the same state (a narrow
+    # card's last composition, fitAuthKpis); the full words are unchanged.
+    assert "id: 'mode', label: 'Authentication Mode', labelShort: 'Auth Mode'," in items
+    assert "value: modeValue, valueShort: KPI_SHORT_VALUES[modeValue] || modeValue, tone: modeTone" in items
+    assert "id: 'password', label: 'Username & Password', labelShort: 'Password'," in items
+    assert "value: password.value, valueShort: KPI_SHORT_VALUES[password.value] || password.value, tone: password.tone" in items
+    assert "id: 'oidc', label: 'OIDC State', labelShort: 'OIDC'," in items
+    assert "value: oidcState.primary, valueShort: KPI_SHORT_VALUES[oidcState.primary] || oidcState.primary, tone: oidcState.tone," in items
+    assert "secondary: oidcState.secondary}" in items
     # The global API token is retired (1.0.13 ACL); tokens live in Users & Access.
     assert "API Token" not in items
     assert "authKpiItems(a).map(item =>" in block

@@ -576,6 +576,19 @@
   padding-block: var(--dp-card-padding-compact, 14px);
 }
 
+/* Disk Space & Recovery is open from 780px, without its disclosure chip;
+   below it the chip is drawn, the card starting closed (card(), collapsible)
+   and keeping the operator's choice for the page. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-download-recovery-card > .card-header .dp-settings-disclosure {
+    display: none;
+  }
+
+  #view-settings .dp-settings-download-recovery-card > .card-body[hidden] {
+    display: block;
+  }
+}
+
 /* Two settings, one CENTRED bounded island -- the same relationship container
    and the same padding density as the accepted Extraction behaviour island, so
    the two surfaces speak one visual language. Content-bounded, never stretched
@@ -1875,6 +1888,54 @@
   #view-settings [data-panel="sources"] > .dp-settings-general-sources:is([data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .card-header.dp-settings-card-header .dp-settings-protocol-chip {
     zoom: calc(26 / 38);
   }
+  /* A header whose title may wrap (data-header-fit-wrap: the Authentication
+     cards) is ONE row: the identity from the leading edge, its title taking
+     what the rail leaves and wrapping there, and the rail whole, on one line,
+     at the trailing edge. It takes room back in the steps declared here, the
+     first that fits kept (fitHeaderSteps): 1 the informational status leaves
+     the rail -- Test and Enable stay; 2-3 nothing more (this header keeps its
+     gaps, padding and identity mark); 4 Help is lent to the row at the top of
+     the card body; 5 the card's short title, where it has one. */
+  #view-settings .dp-settings-card[data-header-fit-wrap] {
+    --dp-header-fit-steps: 6;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap] > .card-header.dp-settings-card-header {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    column-gap: 10px;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap] > .card-header.dp-settings-card-header > .dp-settings-card-title-group {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap] > .card-header.dp-settings-card-header > .dp-settings-card-header-controls {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    margin-inline-start: auto;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap]:not([data-header-fit="0"]) > .card-header > .dp-settings-card-header-controls > .dp-settings-provider-config-status {
+    display: none;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-short {
+    display: inline;
+  }
+  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-short::before {
+    content: attr(data-short-title);
+  }
+}
+
+/* A card's short title is drawn only at its header's last step (above). */
+#view-settings .dp-settings-card-title-short {
+  display: none;
 }
 
 /* A body box a header may lend its help chip to (fitHeaderHints): the chip
