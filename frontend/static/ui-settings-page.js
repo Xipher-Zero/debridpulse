@@ -509,7 +509,28 @@
    * again. The identity and the rail keep their own tracks either way
    * (ui-settings-page.css), so neither moves when the hint comes or goes.
    * Kept current as headers, identities or rails change size, and when fonts
-   * finish loading. */
+   * finish loading.
+   *
+   * The same fit keeps a group's one-row headers one row with the LEAST
+   * compression that does it (fitHeaderSteps). A group that declares
+   * data-header-fit (Premium Services) holds handheld headers that never wrap
+   * and never shorten their titles; its marker names how much of the room it
+   * takes back (ui-settings-page.css): 0 none, 1 the gaps and the Services
+   * panel's padding, 2 the header and group-body padding, 3 the identity
+   * marks, 4 also lends a header's help chip to its card's body slot
+   * (.dp-settings-help-slot: the API Key or Account Connection box, Usenet's
+   * row above its servers) wherever that header still does not fit with it,
+   * 5 the last of the group body's padding. Each step is laid out and READ
+   * in turn, and the first at which every header fits is kept, so the
+   * choice is a function of the room alone: it cannot oscillate, and it
+   * gives back each step as soon as the room holds it. A header fits when
+   * its identity, the gap and its rail (with the chip at the chip's own
+   * declared width) fit its row -- the same widths wherever the chip is.
+   * The slot is looked up on every fit, so a body region rebuilt since
+   * (renderDeviceConnection) is the one used. The chip is the same element
+   * either way -- one control, one name, one delegated handler -- and it
+   * moves when the fit says so, focused or not: a focused chip keeps its
+   * focus, and one lent to a closed body hands it to the card's disclosure. */
   let headerHintObserver = null;
   let headerHintFit = null;
 
@@ -521,11 +542,13 @@
       title: header.querySelector(':scope > .dp-settings-card-title-group'),
       rail: header.querySelector(':scope > .dp-settings-card-header-controls'),
       hint: header.querySelector(':scope > .dp-settings-card-header-center > :only-child'),
-      chip: header.querySelector(':scope > .dp-settings-card-header-controls > .dp-settings-help-chip')}))
+      chip: header.querySelector(':scope > .dp-settings-card-header-controls > .dp-settings-help-chip')
+        || helpSlot(header)?.querySelector(':scope > .dp-settings-help-chip') || null}))
       .filter(part => part.title && part.rail && part.hint);
     headerHintFit = () => {
       // The identity and the rail at their own widths, the hint out of the row.
       parts.forEach(({header}) => { header.dataset.hint = 'hidden'; });
+      fitHeaderSteps(parts);
       const room = parts.map(({header, title, rail}) => {
         const style = getComputedStyle(header);
         const box = header.getBoundingClientRect();
@@ -549,6 +572,65 @@
       headerHintObserver = new ResizeObserver(() => headerHintFit());
       parts.forEach(({header, title, rail}) => [header, title, rail].forEach(node => headerHintObserver.observe(node)));
     }
+  }
+
+  // The card body's current help slot, if the card has one.
+  const helpSlot = header => header.parentElement?.querySelector(':scope > .card-body .dp-settings-help-slot');
+
+  const HEADER_FIT_STEPS = 5;
+  const HEADER_FIT_LENDS_HELP = 4;
+
+  // What a one-row header holds against its room, the chip at its own width.
+  function headerFit({header, title, rail, chip}) {
+    const style = getComputedStyle(header);
+    const room = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - title.getBoundingClientRect().width - (parseFloat(style.columnGap) || 0);
+    const help = chip ? parseFloat(getComputedStyle(chip).width) + (parseFloat(getComputedStyle(rail).columnGap) || 0) : 0;
+    const without = rail.getBoundingClientRect().width - (chip?.parentElement === rail ? help : 0);
+    return {withHelp: without + help <= room, withoutHelp: without <= room};
+  }
+
+  function fitHeaderSteps(parts) {
+    for (const group of root()?.querySelectorAll('[data-header-fit]') || []) {
+      // Its cards' headers, not its own.
+      const members = parts.filter(part => part.header.parentElement !== group && group.contains(part.header));
+      // Not drawn (another tab, a closed group): kept as it is until it is.
+      if (!members.some(({header}) => header.getClientRects().length)) continue;
+      let step = 0;
+      group.dataset.headerFit = '0';
+      // Only the handheld one-row header takes room back.
+      if (members.every(({header}) => {
+        const style = getComputedStyle(header);
+        return style.display === 'flex' && style.flexWrap === 'nowrap';
+      })) {
+        for (; step < HEADER_FIT_STEPS; step += 1) {
+          group.dataset.headerFit = String(step);
+          const lends = step >= HEADER_FIT_LENDS_HELP;
+          if (members.every(part => {
+            const fit = headerFit(part);
+            return fit.withHelp || (lends && helpSlot(part.header) && fit.withoutHelp);
+          })) break;
+        }
+        group.dataset.headerFit = String(step);
+      }
+      members.forEach(part => placeHeaderHelp(part,
+        step >= HEADER_FIT_LENDS_HELP && !headerFit(part).withHelp));
+    }
+  }
+
+  function placeHeaderHelp({rail, chip, header}, lend) {
+    const slot = helpSlot(header);
+    if (!chip || !slot) return;
+    const home = lend ? slot : rail;
+    if (chip.parentElement === home) return;
+    const focused = document.activeElement === chip;
+    if (lend) slot.append(chip);
+    else rail.insertBefore(chip, rail.querySelector(':scope > .dp-settings-header-action, :scope > .dp-settings-header-test-group'));
+    if (!focused) return;
+    // Focus goes with the chip; into a closed body it cannot, so it goes to
+    // the card's own disclosure, the control that opens where the chip went.
+    if (lend && slot.closest('[hidden]')) header.querySelector('.dp-settings-disclosure')?.focus({preventScroll: true});
+    else chip.focus({preventScroll: true});
   }
 
   /* The bounded settings islands -- Download Behavior & Limits' folder and
@@ -928,7 +1010,8 @@
     const hinted = header && options.hint;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
-        options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}>
+        options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}${
+        options.headerFit ? ' data-header-fit="0"' : ''}>
         <div class="card-header${header ? ' dp-settings-card-header' : ''}${hinted ? ' dp-settings-card-header--hinted' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
           ${header ? `<div class="dp-settings-card-header-center">${hinted ? `<p class="dp-settings-provider-header-copy">${html(options.hint)}</p>` : ''}</div>
@@ -1018,7 +1101,7 @@
       inline: true,
       // The title/hint, the field and the removal are ONE compact, centred
       // Settings control island (ui-settings-page.css).
-      className: `dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}`,
+      className: `dp-settings-alldebrid-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`,
       after: configured ? ALLDEBRID_KEY_PRESENT : '',
       action: ALLDEBRID_KEY_CLEAR(configured),
     });
@@ -1055,7 +1138,7 @@
       placeholder: apiKeyPlaceholder(id, configured),
       hint: apiKeyHint(id, configured),
       inline: true,
-      className: `dp-settings-${id}-key-row ${configured ? 'is-configured' : ''}`,
+      className: `dp-settings-${id}-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`,
       after: configured ? ALLDEBRID_KEY_PRESENT : '',
       action: apiKeyClear(id, configured),
     });
@@ -1714,7 +1797,7 @@
     const servers = Array.isArray(options.servers) ? options.servers : [];
     // Usenet acquisition runs inside DebridPulse, so there is no service
     // address or key to configure -- only the news servers to acquire from.
-    return `
+    return `<div class="dp-settings-help-slot dp-settings-help-slot--row"></div>
       <div class="dp-usenet-servers" data-usenet-collection>
         ${servers.map(usenetServerCard).join('')}
         ${usenetAddTile()}
@@ -1780,7 +1863,7 @@
 
   function accountIsland(helper, body, actions) {
     return `
-      <div class="dp-settings-account-island">
+      <div class="dp-settings-account-island dp-settings-help-slot">
         <div class="dp-settings-account-island-copy">
           <p class="dp-settings-account-heading">Account Connection</p>
           <p class="dp-settings-copy">${helper}</p>${body}
@@ -1827,7 +1910,17 @@
     if (!region) return;
     const next = document.createElement('template');
     next.innerHTML = deviceConnectionMarkup(id);
-    if (region.innerHTML !== next.innerHTML) region.replaceChildren(next.content);
+    // The card's help chip, when its header lent it to the island, is the
+    // header's control: it is not part of what this region shows, and it
+    // moves into the rebuilt island rather than being rebuilt.
+    const help = region.querySelector('.dp-settings-help-slot > .dp-settings-help-chip');
+    const shown = help ? region.innerHTML.replace(help.outerHTML, '') : region.innerHTML;
+    if (shown !== next.innerHTML) {
+      const focused = help && document.activeElement === help;
+      if (help) next.content.querySelector('.dp-settings-help-slot')?.append(help);
+      region.replaceChildren(next.content);
+      if (focused) help.focus({preventScroll: true});
+    }
   }
 
   function stopDevicePolling(id) {
@@ -2263,6 +2356,7 @@
       families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
         + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
+      headerFit: true,
       help: 'premium-services',
       hint: 'Connect your Usenet servers and the debrid services you have accounts with.',
       titlePrefix: familyIcon('sources', 'crown'),

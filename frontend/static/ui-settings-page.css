@@ -1711,6 +1711,85 @@
   #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-center:empty {
     display: none;
   }
+  /* Premium Services: every provider header is ONE row, every title in
+     full, every control at its own size. The row never wraps and the title
+     never shrinks; room comes back step by step, as little as the room
+     needs, and the step is the group's data-header-fit, chosen from the
+     rendered headers (fitHeaderSteps): 1 the gaps (the title's own gap to
+     its unmarked, zero-width premium mark included) and the Services
+     panel's padding, 2 the header and group-body padding, 3 the identity
+     marks at 26px, 4 Help lent to the card's body where a header still does
+     not fit (no rule of its own), 5 the last of the group body's padding.
+     The paddings are the phone-width card sizing rule's (`.card-header`/
+     `.card-body { padding: ... !important }` in ui-universal-language.css),
+     narrowed here for this group only. */
+  #view-settings .dp-settings-debrid-services .dp-settings-provider-card > .card-header.dp-settings-card-header {
+    flex-wrap: nowrap;
+  }
+  #view-settings .dp-settings-debrid-services .dp-settings-provider-card > .card-header.dp-settings-card-header > .dp-settings-card-title-group {
+    flex: 0 0 auto;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header {
+    column-gap: 6px;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header > .dp-settings-card-title-group {
+    gap: 0;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header .dp-settings-card-title--with-icon {
+    gap: 4px;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header .dp-provider-premium:empty {
+    margin-inline-start: -4px;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header > .dp-settings-card-header-controls {
+    column-gap: 6px;
+  }
+  #view-settings .dp-settings-panels:has(> [data-panel="sources"]:not([hidden]) > .dp-settings-debrid-services:is([data-header-fit="1"],[data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"])) {
+    padding-inline: 4px;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header {
+    padding-inline: 4px !important;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="2"],[data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) > .dp-settings-group-body {
+    padding-inline: 4px !important;
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="3"],[data-header-fit="4"],[data-header-fit="5"]) .dp-settings-provider-card > .card-header.dp-settings-card-header :is(.dp-settings-protocol-chip, .dp-settings-provider-chip) {
+    zoom: calc(26 / 38);
+  }
+  #view-settings .dp-settings-debrid-services:is([data-header-fit="5"]) > .dp-settings-group-body {
+    padding-inline: 2px !important;
+  }
+}
+
+/* A body box a header may lend its help chip to (fitHeaderHints): the chip
+   sits in the box's upper-right corner, out of the box's flow, so the box and
+   everything in it keep their geometry. */
+#view-settings .dp-settings-help-slot {
+  position: relative;
+}
+
+#view-settings .dp-settings-help-slot > .dp-settings-help-chip {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+}
+
+/* Usenet's body has no box with a free corner (its server cards and the Add
+   Server tile fill it), so its slot is a row of its own above the servers,
+   drawn only while it holds the lent chip, which sits at its trailing edge. */
+#view-settings .dp-settings-help-slot.dp-settings-help-slot--row {
+  position: static;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+#view-settings .dp-settings-help-slot.dp-settings-help-slot--row:empty {
+  display: none;
+}
+
+#view-settings .dp-settings-help-slot--row > .dp-settings-help-chip {
+  position: static;
 }
 
 /* Settings: tabs and action footer remain visible; only the body scrolls.

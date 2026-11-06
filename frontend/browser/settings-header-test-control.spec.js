@@ -391,7 +391,11 @@ test('below 780px every Test-group header keeps title, disclosure, Help, Test an
           const at = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
           return !at || !parts[name].contains(at);
         });
-        return {overlaps, blocked, missing: ['identity', 'title', 'help', 'group', 'test', 'toggle'].filter(name => !box(parts[name])),
+        // A Premium Services Help may be lent to its own card's body while it
+        // alone keeps the header off one row (settings-premium-header-help.spec.js).
+        const lent = !parts.help && el.parentElement.querySelector(':scope > .card-body .dp-settings-help-slot > .dp-settings-help-chip');
+        return {overlaps, blocked, missing: ['identity', 'title', 'help', 'group', 'test', 'toggle']
+                  .filter(name => !box(parts[name]) && !(name === 'help' && lent)),
                 headerOverflow: el.scrollWidth - el.clientWidth,
                 pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth};
       });
