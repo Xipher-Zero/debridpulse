@@ -11,7 +11,12 @@
  * the element; passing from one described element to the next shows the next at
  * once. Hidden at once on leaving or blur, on Escape (until the pointer or focus
  * leaves), on a press or context menu, on scrolling, resizing or navigation, and
- * when the element leaves the document. Touch gets no hover tooltip. While shown,
+ * when the element leaves the document. Touch gets no hover tooltip; an element
+ * that asks for it (data-tooltip-touch: a Settings island title whose hint is
+ * out of view) shows its tooltip on a tap instead. That first tap is only
+ * that -- its click is cancelled, so a label activates nothing -- and the
+ * tooltip stays until a press elsewhere (or any of the edges above); a tap on
+ * the element while it is shown is an ordinary use. While shown,
  * the element is described by it (aria-describedby); its accessible name is its
  * own. A tooltip whose text is longer than its bound (an Original Resource URL)
  * scrolls, and the pointer can reach it to do so; every other tooltip lets the
@@ -58,6 +63,7 @@
   let bridging = false;             // the pointer is crossing between an element and its scrollable tooltip
   let shownText = '';               // the data-tooltip the shown tooltip presents
   let dwell = null;                 // {host, x, y, timer}: the pointer resting over a dwell element
+  let tapped = null;                // a data-tooltip-touch element whose tap shows its tooltip
 
   const textOf = element => String(element?.getAttribute('data-tooltip') || '').trim();
   const describedBy = element => (element.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
@@ -371,6 +377,14 @@
   }, true);
   const dismiss = event => {
     const host = hostOf(event.target);
+    // A tap on an element that shows its tooltip on a tap: shown already, the
+    // tap is a use; otherwise it shows the tooltip once its click is cancelled.
+    if (host && event.type === 'pointerdown' && event.pointerType === 'touch' && host.hasAttribute('data-tooltip-touch')) {
+      tapped = target === host ? null : host;
+      if (!tapped) hide();
+      return;
+    }
+    tapped = null;
     // Using a dwell element (a section, First, Last): its tooltip goes, and
     // only a fresh rest after this use brings it back.
     if (host && dwellOf(host) && event.pointerType !== 'touch') {
@@ -387,6 +401,17 @@
   // from here.
   document.addEventListener('click', event => {
     const host = hostOf(event.target);
+    if (tapped) {
+      const shown = tapped;
+      tapped = null;
+      if (host === shown) {
+        event.preventDefault();
+        hide();
+        dismissed = null;
+        show(shown);
+        return;
+      }
+    }
     if (host && dwellOf(host) && dwell?.host === host) settle(host, dwell.x, dwell.y);
   }, true);
   // Scrolling hides it -- but not the described element's own (a navigator's

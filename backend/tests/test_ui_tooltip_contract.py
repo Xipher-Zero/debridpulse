@@ -69,7 +69,14 @@ def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() ->
     assert "tab.getAttribute('aria-selected') === 'true'" in index and "part.textContent = text;" in index
     assert "tip.replaceChildren(head, all);" in index
     assert "(event.target instanceof Element && target.contains(event.target))) return;" in owner
-    assert "stopPropagation" not in owner and "preventDefault" not in owner
+    # Nothing is swallowed: the one cancelled default is the first tap on an
+    # element that asked to show its tooltip on a tap (data-tooltip-touch, a
+    # Settings island title whose hint is out of view), so that tap activates
+    # nothing it labels; the click still reaches every listener.
+    assert "stopPropagation" not in owner and owner.count("preventDefault") == 1
+    tap = owner[owner.index("    if (tapped) {"):owner.index("    if (host && dwellOf(host) && dwell?.host === host) settle(")]
+    assert "if (host === shown) {\n        event.preventDefault();" in tap
+    assert "host.hasAttribute('data-tooltip-touch')" in owner and "event.pointerType === 'touch'" in owner
     # Hidden on every lifecycle edge, and while shown its element leaving the document hides it.
     for edge in ("document.addEventListener('pointerdown', dismiss, true);", "document.addEventListener('contextmenu', dismiss, true);",
                  "window.addEventListener('resize', hide);", "document.addEventListener('debridpulse:navigation', hide);",
@@ -81,8 +88,8 @@ def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() ->
 
 def test_it_loads_once_as_a_direct_script_and_is_styled_by_the_shared_material() -> None:
     index = read("index.html")
-    assert index.count('<script src="/ui-tooltip.js?v=1" defer></script>') == 1
-    assert index.index("/ui-motion.js?v=1") < index.index("/ui-tooltip.js?v=1") < index.index("/ui-pager.js?v=1")
+    assert index.count('<script src="/ui-tooltip.js?v=2" defer></script>') == 1
+    assert index.index("/ui-motion.js?v=1") < index.index("/ui-tooltip.js?v=2") < index.index("/ui-pager.js?v=1")
     css = read("ui-components.css")
     block = css[css.index(".dp-tooltip {"):css.index(".dp-tooltip[hidden]")]
     for token in ("var(--dp-surface-overlay)", "var(--dp-border-default)", "var(--dp-shadow-control)",

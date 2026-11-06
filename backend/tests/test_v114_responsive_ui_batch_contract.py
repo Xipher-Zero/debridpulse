@@ -46,7 +46,7 @@ def test_the_two_bounded_islands_share_one_measured_stacking_owner():
     # Wrapped is still READ from the island laid out as a row, and from 780px
     # that reading alone decides (fitIsland).
     assert ".some((box, index, boxes) => index && box.left < boxes[index - 1].right);" in PAGE
-    one = _function("fitIsland")
+    one = _function("chooseIslandFit")
     assert "if (islandWrapped(island)) island.dataset.island = 'stacked';" in one
     # The one stacked rule, at every width.
     stacked = PAGE_CSS.split("\n#view-settings .dp-settings-island[data-island='stacked'] {", 1)[1]

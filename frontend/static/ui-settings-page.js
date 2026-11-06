@@ -665,7 +665,14 @@
    * function of the room alone, so it cannot oscillate, and each step is
    * given back as soon as the room holds the one before it. A setting that
    * does not fit even at the last step, alone, takes its title above its
-   * control (data-island-field="column"). */
+   * control (data-island-field="column").
+   *
+   * A hint the chosen step takes out of view (READ: it is no longer drawn) is
+   * not lost: its setting's own title says it, through the one tooltip owner
+   * (ui-tooltip.js) -- on hover, on a tap (data-tooltip-touch: the first tap
+   * shows it and activates nothing) and on keyboard focus (the title is a tab
+   * stop only then). Its text is the hint's own, read at every fit; where the
+   * hint is drawn again the title is a plain title again. */
   let islandObserver = null;
   let islandFit = null;
 
@@ -691,7 +698,32 @@
     });
   }
 
+  // Each setting's title carries its hint while, and only while, the hint
+  // is not drawn.
+  function promoteIslandHints(island) {
+    islandFields(island).forEach(field => {
+      const title = field.querySelector(':scope > .dp-settings-inline-field-info > .form-label');
+      const hint = field.querySelector(':scope > .dp-settings-inline-field-info > .form-hint');
+      if (!title || !hint) return;
+      const text = hint.textContent.trim();
+      if (text && hint.getBoundingClientRect().width <= 1) {
+        title.dataset.tooltip = text;
+        title.setAttribute('data-tooltip-touch', '');
+        title.tabIndex = 0;
+      } else if ('tooltip' in title.dataset) {
+        delete title.dataset.tooltip;
+        title.removeAttribute('data-tooltip-touch');
+        title.removeAttribute('tabindex');
+      }
+    });
+  }
+
   function fitIsland(island) {
+    chooseIslandFit(island);
+    promoteIslandHints(island);
+  }
+
+  function chooseIslandFit(island) {
     delete island.dataset.island;
     island.dataset.islandFit = '0';
     islandFields(island).forEach(field => { delete field.dataset.islandField; });

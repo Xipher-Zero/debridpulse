@@ -702,6 +702,21 @@
     align-items: center;
     text-align: center;
   }
+
+  /* Turned to a column, the main axis is vertical: a basis, grow or shrink a
+     region declared for the row (the folder's 380px) would be read as a
+     HEIGHT. Both regions take their own height instead, and the control spans
+     the setting's width, its own control centred within it. */
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column']
+    > :is(.dp-settings-inline-field-info, .dp-settings-inline-field-control) {
+    flex: none;
+  }
+
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column']
+    > .dp-settings-inline-field-control {
+    align-self: stretch;
+    justify-content: center;
+  }
 }
 
 #view-settings .dp-settings-download-path-stack,
