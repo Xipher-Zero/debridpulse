@@ -775,9 +775,10 @@
   }
 
   // Each setting's title carries its hint while, and only while, the hint
-  // is not drawn.
-  function promoteIslandHints(island) {
-    islandFields(island).forEach(field => {
+  // is not drawn -- an island's settings (fitIsland) and the Authentication
+  // cards' (fitAuthBody) alike.
+  function promoteHints(fields) {
+    fields.forEach(field => {
       const title = field.querySelector(':scope > .dp-settings-inline-field-info > .form-label');
       const hint = field.querySelector(':scope > .dp-settings-inline-field-info > .form-hint');
       if (!title || !hint) return;
@@ -796,7 +797,7 @@
 
   function fitIsland(island) {
     chooseIslandFit(island);
-    promoteIslandHints(island);
+    promoteHints(islandFields(island));
   }
 
   function chooseIslandFit(island) {
@@ -1161,6 +1162,9 @@
      * declares (fitHeaderSteps) -- lending Help to the row drawn at the top of
      * the body only while it holds it. */
     const fit = options.headerFit === 'wrap';
+    // A card whose body already has a box Help may be lent to (the OpenID
+    // Connect identity group) declares ``helpRow: false``: no row is drawn.
+    const helpRow = fit && options.helpRow !== false;
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}"${
         fit ? ' data-header-fit="0" data-header-fit-self data-header-fit-wrap' : ''}>
@@ -1170,7 +1174,7 @@
           ${rail}
         </div>
         <div class="card-body"${bodyId ? ` id="${bodyId}"` : ''}${open ? '' : ' hidden'}>${
-          fit ? '<div class="dp-settings-help-slot dp-settings-help-slot--row"></div>' : ''}${body}</div>
+          helpRow ? '<div class="dp-settings-help-slot dp-settings-help-slot--row"></div>' : ''}${body}</div>
       </section>`;
   }
   /* A group card. ``collapsible`` is the smallest generic opt-in there can be:
@@ -3581,7 +3585,7 @@
     const id = fieldId('oidc_allow_all');
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-oidc-allow-all" for="${id}">
-        <span class="toggle-info"><span class="tl">Allow Any Authenticated OIDC Identity</span></span>
+        <span class="toggle-info"><span class="tl"><span class="dp-settings-oidc-allow-all-full">Allow Any Authenticated OIDC Identity</span><span class="dp-settings-oidc-allow-all-short" aria-hidden="true" data-short-label="Allow Any Identity"></span></span></span>
         <span class="toggle">
           <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)} ${commitAttributes('oidc_allow_all')}>
           <span class="ttrack"></span>
@@ -3949,6 +3953,47 @@
     });
   }
 
+  /* The Username & Password and OpenID Connect bodies below 780px: their
+   * settings' hints leave the layout there (ui-settings-authentication.css),
+   * each said instead by its own title (promoteHints); and the access policy
+   * toggle says "Allow Any Identity" where its full words would not stay on
+   * one line beside the toggle -- read from the label as drawn, its full
+   * words staying the toggle's name. Re-read when either body's room
+   * changes. */
+  const AUTH_HINT_FIELDS = '.dp-settings-username-password-card .dp-settings-inline-field, .dp-settings-oidc-card .dp-settings-inline-field';
+  let authBodyObserver = null;
+  let authBodyFit = null;
+
+  function fitAuthBody() {
+    authBodyObserver?.disconnect();
+    authBodyObserver = null;
+    const view = root();
+    const bodies = Array.from(view?.querySelectorAll(
+      '.dp-settings-username-password-card > .card-body, .dp-settings-oidc-card > .card-body') || []);
+    authBodyFit = bodies.length ? () => {
+      promoteHints(Array.from(view.querySelectorAll(AUTH_HINT_FIELDS)).filter(field => field.getClientRects().length));
+      const policy = view.querySelector('.dp-settings-oidc-allow-all');
+      const words = policy?.querySelector('.tl');
+      if (!words || !words.getClientRects().length) return;
+      delete policy.dataset.words;
+      // Read against the room between the row's start and the toggle: words
+      // that overrun it, at either end, or take a second line do not fit.
+      const range = document.createRange();
+      range.selectNodeContents(words.querySelector('.dp-settings-oidc-allow-all-full'));
+      const boxes = [...range.getClientRects()].filter(box => box.width > 1);
+      const row = policy.getBoundingClientRect();
+      const toggle = policy.querySelector('.toggle')?.getBoundingClientRect();
+      const lines = new Set(boxes.map(box => Math.round(box.bottom))).size;
+      const overrun = boxes.some(box => box.left < row.left - 0.5 || (toggle && box.right > toggle.left + 0.5));
+      if (lines > 1 || overrun) policy.dataset.words = 'short';
+    } : null;
+    authBodyFit?.();
+    if (authBodyFit && typeof ResizeObserver === 'function') {
+      authBodyObserver = new ResizeObserver(() => authBodyFit?.());
+      bodies.forEach(body => authBodyObserver.observe(body));
+    }
+  }
+
   function fitAuthKpis() {
     authKpiObserver?.disconnect();
     authKpiObserver = null;
@@ -4275,7 +4320,7 @@
     }), 'dp-settings-oidc-sandwich');
 
     const oidc = card('OpenID Connect', `
-      <div class="dp-settings-oidc-group dp-settings-oidc-group--identity" role="group" aria-label="Provider identity and callback">
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--identity dp-settings-help-slot" role="group" aria-label="Provider identity and callback">
         ${providerField}${publicBaseField}${callbackField}
       </div>
       <div class="dp-settings-oidc-issuer-band">${issuerField}</div>
@@ -4300,6 +4345,7 @@
       className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
       help: 'oidc',
       headerFit: 'wrap',
+      helpRow: false,
       shortTitle: 'OIDC',
       titlePrefix: familyIcon('authentication', 'id-card'),
       headerCenter: 'Configure an external identity provider for browser sign-in.',
@@ -6243,6 +6289,7 @@
     fitHeaderHints();
     fitIslands();
     fitAuthKpis();
+    fitAuthBody();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -8030,6 +8077,7 @@
     headerHintFit?.();
     islandFit?.();
     authKpiFit?.();
+    authBodyFit?.();
   });
 
   registerCommitScopes();

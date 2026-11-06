@@ -318,13 +318,18 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   max-width: 600px;
 }
 
-#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info {
-  flex: 1 1 150px;
-  min-width: 100px;
-}
+/* The pair's share of a ROW: its sentence and its control each start at
+   150px of width. From 780px only -- below it each setting is a column, where
+   a basis is a height (ui-settings-page.css). */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info {
+    flex: 1 1 150px;
+    min-width: 100px;
+  }
 
-#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-control {
-  flex: 1 1 150px;
+  #view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-control {
+    flex: 1 1 150px;
+  }
 }
 
 #view-settings .dp-settings-auth-username-field .input,
@@ -514,7 +519,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 /* The fields share the group's spare width rather than each keeping a fixed
    one; the informational stack stays bounded so the growth reaches controls. */
 #view-settings .dp-settings-oidc-group > .dp-settings-inline-field {
-  flex: 1 1 260px;
   min-width: 0;
 }
 
@@ -557,24 +561,32 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    width reach the controls rather than the sentences. */
 /* Scoped to the group so these state the proportion INSIDE it -- the group's
    own child rule above is more specific than a bare field class would be. */
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-provider-field {
-  flex: 1 1 200px;
-}
+/* Their share of a ROW, from 780px only: below it the group is a column of
+   settings, where a basis is a height (the handheld layout, below). */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-oidc-group > .dp-settings-inline-field {
+    flex: 1 1 260px;
+  }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-auth-public-base-field {
-  flex: 1.35 1 260px;
-}
+  #view-settings .dp-settings-oidc-group > .dp-settings-oidc-provider-field {
+    flex: 1 1 200px;
+  }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-auth-callback-field {
-  flex: 1.45 1 280px;
-}
+  #view-settings .dp-settings-oidc-group > .dp-settings-auth-public-base-field {
+    flex: 1.35 1 260px;
+  }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-id-field {
-  flex: 1.1 1 300px;
-}
+  #view-settings .dp-settings-oidc-group > .dp-settings-auth-callback-field {
+    flex: 1.45 1 280px;
+  }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-secret-field {
-  flex: 1 1 300px;
+  #view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-id-field {
+    flex: 1.1 1 300px;
+  }
+
+  #view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-secret-field {
+    flex: 1 1 300px;
+  }
 }
 
 /* Inside the group every control may narrow to nothing (above); the client
@@ -584,13 +596,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-width: min-content;
 }
 
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-scopes-field {
-  flex: 1.5 1 300px;
-}
+@media (min-width: 780px) {
+  #view-settings .dp-settings-oidc-group > .dp-settings-oidc-scopes-field {
+    flex: 1.5 1 300px;
+  }
 
-/* A claim name is one short word; it does not earn half the row. */
-#view-settings .dp-settings-oidc-group > .dp-settings-oidc-group-claim-field {
-  flex: 1 1 240px;
+  /* A claim name is one short word; it does not earn half the row. */
+  #view-settings .dp-settings-oidc-group > .dp-settings-oidc-group-claim-field {
+    flex: 1 1 240px;
+  }
 }
 
 /* Stacked, a group is one field per row in a centred, content-bounded
@@ -880,11 +894,91 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   #view-settings .dp-settings-oidc-allowlists {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /* Each Username & Password and OpenID Connect setting is its title over its
+     control; its hint leaves the layout and its title says it as a tooltip
+     (fitAuthBody, promoteHints) -- still the control's neighbour to assistive
+     technology, as the islands' hidden hints are. */
+  #view-settings :is(.dp-settings-username-password-card, .dp-settings-oidc-card) .dp-settings-inline-field-info > .form-hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Help, lent to the identity group (fitHeaderSteps), sits in its top-right
+     corner, on the Provider Name title's row. */
+  #view-settings .dp-settings-oidc-group--identity.dp-settings-help-slot > .dp-settings-help-chip {
+    top: 9px;
+    right: 12px;
+  }
+
+  /* Access control: no rule before it, its heading centred on its own row,
+     the policy toggle's row beneath it, the policy's explanation directly
+     under that, then the provisioning role and the allowlists. The policy
+     band's two members join the section's own rows to be ordered so. */
+  #view-settings .dp-settings-oidc-access::before {
+    display: none;
+  }
+
+  #view-settings .dp-settings-oidc-section-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #view-settings .dp-settings-oidc-section-title {
+    justify-self: center;
+  }
+
+  #view-settings .dp-settings-oidc-policy-band {
+    display: contents;
+  }
+
+  #view-settings .dp-settings-oidc-access > .dp-settings-oidc-section-heading { order: 0; }
+  #view-settings .dp-settings-oidc-policy-band > .dp-settings-oidc-section-copy { order: 1; }
+  #view-settings .dp-settings-oidc-policy-band > .dp-settings-oidc-default-role { order: 2; }
+  #view-settings .dp-settings-oidc-access > .dp-settings-oidc-allowlists { order: 3; }
+
+  /* The policy's explanation reads across the whole section. */
+  #view-settings .dp-settings-oidc-section-copy {
+    justify-self: stretch;
+    max-width: none;
+  }
+
+  /* The provisioning role: its title over its selector, the selector centred
+     in the section. */
+  #view-settings .dp-settings-oidc-default-role .dp-settings-inline-field-control {
+    justify-content: center;
+  }
+
+  /* The allowlists keep their guidance beneath each list, centred. */
+  #view-settings .dp-settings-oidc-sandwich > .form-hint {
+    text-align: center;
+  }
+
+  /* The policy toggle says its short words where its full ones would not
+     stay on one line (fitAuthBody); its full words stay its name. */
+  #view-settings .dp-settings-oidc-allow-all[data-words='short'] .dp-settings-oidc-allow-all-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-oidc-allow-all[data-words='short'] .dp-settings-oidc-allow-all-short::before {
+    content: attr(data-short-label);
+  }
 }
 
 /* Where the heading and the policy decision can no longer share one row,
    each leads its own row, and the role follows them, rather than colliding or
    hugging a right edge that no longer exists. */
+/* (The section is never this narrow from 780px: this is the handheld one.)
+   Its heading centred on its own row, the policy toggle's row beneath it at
+   the section's width, the provisioning role centred. */
 @container dp-oidc-access (max-width: 559px) {
   #view-settings .dp-settings-oidc-section-heading {
     grid-template-columns: minmax(0, 1fr);
@@ -892,9 +986,12 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   }
 
   #view-settings .dp-settings-oidc-section-title,
-  #view-settings .dp-settings-oidc-default-role,
+  #view-settings .dp-settings-oidc-default-role {
+    justify-self: center;
+  }
+
   #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
-    justify-self: start;
+    justify-self: stretch;
   }
 }
 

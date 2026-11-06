@@ -85,7 +85,9 @@ const header = (page, selector) => page.locator(selector).evaluate(card => {
   const status = rail.querySelector(':scope > .dp-settings-provider-config-status');
   const test = rail.querySelector('.dp-settings-header-test-trigger');
   const toggle = rail.querySelector('.toggle');
-  const slot = card.querySelector(':scope > .card-body > .dp-settings-help-slot--row');
+  // The body box the card lends Help to: a row of its own (Authentication
+  // Status, Username & Password), or OpenID Connect's identity group.
+  const slot = card.querySelector(':scope > .card-body .dp-settings-help-slot');
   const parts = [help, test, toggle, status].map(r).filter(Boolean);
   return {
     step: card.dataset.headerFit,
@@ -98,9 +100,16 @@ const header = (page, selector) => page.locator(selector).evaluate(card => {
       .map(p => Math.round((p.top + p.bottom) / 2 / 4))).size,
     overflow: head.scrollWidth > head.clientWidth + 1 || group.scrollWidth > group.clientWidth + 1,
     helpIn: help.parentElement === rail ? 'header' : help.parentElement === slot ? 'body' : 'elsewhere',
-    // Lent, it sits at the body's trailing edge, above everything else in it.
-    helpCorner: help.parentElement === slot ? {right: r(card.querySelector(':scope > .card-body')).right - r(help).right,
-      aboveNext: r(help).bottom <= r(slot.nextElementSibling).top} : null,
+    // Lent, it sits at its box's trailing edge, covering nothing in the body:
+    // above everything after a row, clear of every control in a group.
+    helpCorner: help.parentElement === slot ? {right: r(slot).right - r(help).right - (slot.matches('.dp-settings-help-slot--row') ? 0 : 12),
+      aboveNext: slot.matches('.dp-settings-help-slot--row') ? r(help).bottom <= r(slot.nextElementSibling).top
+        : [...slot.querySelectorAll('.input, .dp-action-field')].map(r)
+          .concat([...slot.querySelectorAll('.form-label')].flatMap(label => {
+            const words = document.createRange();
+            words.selectNodeContents(label);
+            return [...words.getClientRects()];
+          })).every(box => !hit(box, r(help)))} : null,
     status: status ? !!r(status) && r(status).width > 2 : null,
     test: test ? (rail.contains(test) && !!r(test)) : null,
     toggle: !!toggle && rail.contains(toggle) && !!r(toggle),
@@ -158,7 +167,7 @@ test('the lent Help, the short title and the header controls keep their names an
   await resize(page, 280);
   const card = page.locator(CARDS.oidc);
   const help = card.locator('.dp-settings-help-chip');
-  await expect(card.locator(':scope > .card-body > .dp-settings-help-slot--row > .dp-settings-help-chip')).toHaveCount(1);
+  await expect(card.locator(':scope > .card-body > .dp-settings-oidc-group--identity > .dp-settings-help-chip')).toHaveCount(1);
   await expect(help).toHaveAccessibleName('Help: OpenID Connect');
   // The card is still OpenID Connect to assistive technology; the drawn short
   // words are not in its tree and are not a tooltip host or a tab stop.
