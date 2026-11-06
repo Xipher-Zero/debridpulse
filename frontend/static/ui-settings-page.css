@@ -600,7 +600,7 @@
   margin: 0 auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  padding: 16px var(--dp-island-padding-inline, 22px) 17px;
 }
 
 /* A hint is a sentence: bound the informational stacks so the island's width
@@ -617,15 +617,90 @@
    setting rather than the room the wrapped row was given. Each setting
    centres ITSELF (align-self), so no island's own cross-axis alignment -- the
    equal-height `stretch` a row of them uses -- can widen one to the island and
-   leave its content packed to the leading edge. Handheld (below 780px) keeps
-   its own one-column island. */
-@media (min-width: 780px) {
-  #view-settings .dp-settings-island[data-island='stacked'] {
-    flex-direction: column;
+   leave its content packed to the leading edge. The same at every width:
+   below 780px the island also takes back room step by step (data-island-fit,
+   below), and stacking is one of those steps. */
+#view-settings .dp-settings-island[data-island='stacked'] {
+  flex-direction: column;
+}
+
+#view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
+  align-self: center;
+}
+
+/* Handheld (below 780px): an island takes back only as much room as its
+   card needs, one step at a time, and fitIslands keeps the first step at
+   which every setting fits whole -- its title and hint beside its control,
+   nothing overflowing (ui-settings-page.js). The steps are declared here, and
+   their count is what tells the fitter the island is the handheld one:
+     0  the established island: one row while it holds its settings at their
+        own sizes;
+     1  one row, its settings narrowed to their floors (a hint keeps a
+        readable measure, a control its usable width) at a closer gap;
+     2  stacked: one setting per row, each whole and centred;
+     3  stacked, the island's side padding and each setting's inner gap closer;
+     4  stacked and close, the hints taken out of view (still each control's
+        description to assistive technology), the titles wrapping as needed.
+   Only a setting that still cannot fit at 4 puts its title above its control
+   (data-island-field="column"), the last resort; its neighbours stay inline.
+   The island stays content-bounded and centred at every step. */
+@media (max-width: 779px) {
+  #view-settings .dp-settings-island {
+    --dp-island-fit-steps: 5;
+    --dp-island-hint-min: 128px;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: 100%;
+    margin-inline: auto;
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
-  #view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
-    align-self: center;
+  /* Every setting may narrow, never past the island: its title, hint and
+     control then yield to their own floors, and the fit reads whether they
+     still hold. */
+  #view-settings .dp-settings-island .dp-settings-inline-field {
+    flex-shrink: 1;
+    min-width: auto;
+    max-width: 100%;
+  }
+
+  /* A hint is a sentence: it may wrap, but never into a column of words. */
+  #view-settings .dp-settings-island .dp-settings-inline-field-info:has(> .form-hint) {
+    min-width: var(--dp-island-hint-min);
+  }
+
+  #view-settings .dp-settings-island[data-island-fit='1'] {
+    flex-wrap: nowrap;
+    column-gap: 24px;
+  }
+
+  /* Each island states its side padding through this one property. */
+  #view-settings .dp-settings-island:is([data-island-fit='3'], [data-island-fit='4']) {
+    --dp-island-padding-inline: 10px;
+  }
+
+  #view-settings .dp-settings-island:is([data-island-fit='3'], [data-island-fit='4']) .dp-settings-inline-field {
+    gap: 10px;
+  }
+
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field-info {
+    min-width: auto;
+  }
+
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field-info > .form-hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column'] {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 }
 
@@ -668,11 +743,19 @@
   width: 96px;
 }
 
-/* Inside the field's border the action is a compact chip, not a full-height
-   button pretending to be part of the frame. */
+/* Inside the field's border the action is the small DP button at its own
+   height (btn-sm), centred in the field like every other embedded action --
+   not the bare pairing's full-height Browse (ui-settings-directory-browser.css).
+   From 780px it is the compact chip that surface has always drawn. */
 #view-settings .dp-action-field > .dp-settings-directory-field-browse {
-  min-height: 0;
-  padding-block: 4px;
+  min-height: var(--dp-control-height-sm);
+}
+
+@media (min-width: 780px) {
+  #view-settings .dp-action-field > .dp-settings-directory-field-browse {
+    min-height: 0;
+    padding-block: 4px;
+  }
 }
 
 #view-settings .dp-settings-inline-check {
@@ -1434,17 +1517,12 @@
     max-width: none;
   }
 
-  /* One setting per line, each keeping its own inline title/hint + control. */
-  #view-settings .dp-settings-download-engine-row {
-    width: auto;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 14px;
-  }
-
+  /* The island steps (data-island-fit) narrow the folder no further than a
+     path still worth reading beside Browse. */
   #view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
     width: auto;
-    flex: 1 1 auto;
+    flex: 0 1 380px;
+    min-width: 152px;
   }
 }
 
@@ -1483,7 +1561,9 @@
     text-align: left;
   }
 
-  #view-settings .dp-settings-inline-field {
+  /* A Settings island's settings keep their inline form; the island's own
+     steps decide how they yield (data-island-fit). */
+  #view-settings .dp-settings-inline-field:not(.dp-settings-island .dp-settings-inline-field) {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1635,6 +1715,16 @@
   }
   #view-settings .dp-settings-card-header > .dp-settings-card-title-group { grid-column: 1; grid-row: 1; }
   #view-settings .dp-settings-card-header > .dp-settings-card-header-controls { grid-column: 2; grid-row: 1; }
+  /* Downloads and Extraction: the rail is reserved first, whole and on one
+     line (Help; Automatic Extraction's Help and Enable), and the identity --
+     the title with its disclosure -- takes what is left, the title wrapping
+     inside it. Neither region can reach into the other. */
+  #view-settings :is([data-panel="downloads"], [data-panel="extraction"]) .card-header.dp-settings-card-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  #view-settings :is([data-panel="downloads"], [data-panel="extraction"]) .dp-settings-card-header > .dp-settings-card-header-controls {
+    flex-wrap: nowrap;
+  }
   #view-settings .dp-settings-card-header:where(:not(.dp-settings-card-header--hinted)) > .dp-settings-card-header-center {
     grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left;
   }

@@ -43,15 +43,17 @@ def test_session_information_and_control_form_one_centred_bounded_island():
     assert "margin: 14px auto 0;" in island
     assert "border: 1px solid var(--dp-divider);" in island
     assert "border-radius: 12px;" in island
-    assert "padding: 10px 22px;" in island
+    assert "padding: 10px var(--dp-island-padding-inline, 22px);" in island
     assert "gap: 18px 44px;" in island
 
-    # Stacked, the island stops being content-bounded: there is one column --
-    # handheld only (the shell's 780px mode change), never from 900px.
+    # Handheld (below the shell's 780px mode change, never from 900px) it is a
+    # Settings island like any other: content-bounded and centred, its
+    # settings inline while they fit, by the shared island steps
+    # (ui-settings-page.css, fitIslands) -- never a one-column band of its own.
     assert "@media (max-width: 900px)" not in css
     narrow = css[css.index("@media (max-width: 779px)"):]
-    assert ".dp-settings-auth-session-row" in narrow
-    assert "flex-direction: column;" in narrow
+    assert ".dp-settings-auth-session-row" not in re.sub(r"/\*.*?\*/", "", narrow, flags=re.S)
+    assert 'dp-settings-auth-session-row dp-settings-island' in source(SETTINGS)
 
 
 def test_log_out_lives_inside_the_sessions_field_as_a_flex_sibling_of_the_count():

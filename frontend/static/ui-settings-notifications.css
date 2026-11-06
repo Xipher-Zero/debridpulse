@@ -190,7 +190,7 @@
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  padding: 16px var(--dp-island-padding-inline, 22px) 17px;
 }
 
 #view-settings .dp-settings-statistics-cadence-group > .dp-settings-inline-field {

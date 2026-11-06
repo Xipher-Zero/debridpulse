@@ -528,7 +528,7 @@ def test_the_report_cadence_and_window_are_one_centred_bordered_group():
     engine = block(source(SHARED), "#view-settings .dp-settings-download-engine-row {", "}")
     for shared_material in ("justify-content: center", "gap: 18px 44px", "width: max-content",
                             "border: 1px solid var(--dp-divider)", "border-radius: 12px",
-                            "padding: 16px 22px 17px"):
+                            "padding: 16px var(--dp-island-padding-inline, 22px) 17px"):
         assert shared_material in engine, shared_material
         assert shared_material in island, shared_material
 

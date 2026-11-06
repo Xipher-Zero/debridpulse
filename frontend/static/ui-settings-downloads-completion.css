@@ -74,7 +74,7 @@
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  padding: 16px var(--dp-island-padding-inline, 22px) 17px;
 }
 
 /* Each setting is the shared inline field; the island only says how the two
@@ -131,18 +131,4 @@
 
 #view-settings .dp-settings-password-eye.is-open .dp-settings-password-eye-open {
   display: block;
-}
-
-@media (max-width: 779px) {
-  /* One setting per line; each keeps its own inline title/hint + control. */
-  #view-settings .dp-settings-extraction-behavior {
-    width: auto;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  #view-settings .dp-settings-extraction-behavior > .dp-settings-inline-field {
-    justify-content: space-between;
-  }
 }

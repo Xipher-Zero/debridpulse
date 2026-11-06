@@ -40,10 +40,16 @@ def test_the_two_bounded_islands_share_one_measured_stacking_owner():
         assert PAGE.count(f'<div class="{island}"') == 1, island
     fit = _function("fitIslands")
     assert "root()?.querySelectorAll('.dp-settings-island')" in fit
-    assert "boxes.some((box, index) => index && box.left < boxes[index - 1].right)" in fit
+    assert ".forEach(fitIsland);" in fit
     assert "islands.forEach(island => islandObserver.observe(island.parentElement));" in fit
     assert PAGE.count("fitIslands();") == 1 and PAGE.count("islandFit?.();") == 1
-    stacked = PAGE_CSS.split("@media (min-width: 780px) {\n  #view-settings .dp-settings-island[data-island='stacked'] {", 1)[1]
+    # Wrapped is still READ from the island laid out as a row, and from 780px
+    # that reading alone decides (fitIsland).
+    assert ".some((box, index, boxes) => index && box.left < boxes[index - 1].right);" in PAGE
+    one = _function("fitIsland")
+    assert "if (islandWrapped(island)) island.dataset.island = 'stacked';" in one
+    # The one stacked rule, at every width.
+    stacked = PAGE_CSS.split("\n#view-settings .dp-settings-island[data-island='stacked'] {", 1)[1]
     assert [line.strip() for line in stacked.split("}", 1)[0].strip().splitlines()] == ["flex-direction: column;"]
 
 

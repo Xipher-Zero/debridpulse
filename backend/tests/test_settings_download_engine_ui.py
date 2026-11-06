@@ -134,7 +134,8 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "margin: 0 auto;" in row
     assert "border: 1px solid var(--dp-divider);" in row
     assert "border-radius: 12px;" in row
-    assert "padding: 16px 22px 17px;" in row
+    # Its side padding is the island property the handheld steps narrow.
+    assert "padding: 16px var(--dp-island-padding-inline, 22px) 17px;" in row
     assert "gap: 18px 44px;" in row
     # The zone wrappers stay names, not boxes.
     assert (

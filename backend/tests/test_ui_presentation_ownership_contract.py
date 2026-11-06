@@ -43,7 +43,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=4",
-        "/ui-settings-archive-passwords.js?v=2",
+        "/ui-settings-archive-passwords.js?v=3",
     )
     positions = []
     for src in expected:
@@ -285,7 +285,7 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=4",
-        "/ui-settings-archive-passwords.js?v=2",
+        "/ui-settings-archive-passwords.js?v=3",
     )
     positions = [index.index(item) for item in ordered]
     assert positions == sorted(positions)

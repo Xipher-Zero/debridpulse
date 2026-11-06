@@ -201,7 +201,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   border-radius: 12px;
   /* Compact and even above and below: a reading beneath the KPI cards, so
      visibly shorter than they are. */
-  padding: 10px 22px;
+  padding: 10px var(--dp-island-padding-inline, 22px);
 }
 
 #view-settings .dp-settings-auth-session-row > .dp-settings-inline-field {
@@ -365,8 +365,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   }
 
   /* Stacked, each setting keeps its own inline title/hint + control, and the
-     island stops being content-bounded because there is only one column. */
-  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
+     pair stops being content-bounded because there is only one column. (The
+     session island is a Settings island: its handheld steps are the shared
+     ones, ui-settings-page.css.) */
   #view-settings .dp-settings-auth-credentials-row {
     width: auto;
     align-items: stretch;

@@ -61,7 +61,7 @@
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  padding: 16px var(--dp-island-padding-inline, 22px) 17px;
 }
 
 /* Event Logging's island holds two compact field groups side by side -- the
@@ -85,16 +85,14 @@
 /* Wrapped, it is a stacked Settings island (fitIslands marks it; the shared
    stacked rule puts one setting per row, each at its own width, centred): the
    outline then hugs the stack rather than keeping the side-by-side share and
-   minimum it no longer uses. Handheld keeps its own one-column island. */
-@media (min-width: 780px) {
-  #view-settings .dp-settings-event-logging-island[data-island='stacked'] {
-    width: max-content;
-    min-width: 0;
-  }
+   minimum it no longer uses, at every width. */
+#view-settings .dp-settings-event-logging-island[data-island='stacked'] {
+  width: max-content;
+  min-width: 0;
+}
 
-  #view-settings .dp-settings-event-logging-island[data-island='stacked'] > .dp-settings-event-logging-field {
-    flex: 0 1 auto;
-  }
+#view-settings .dp-settings-event-logging-island[data-island='stacked'] > .dp-settings-event-logging-field {
+  flex: 0 1 auto;
 }
 
 /* The reading takes the selector's footprint, not a free-text field's, and
@@ -334,14 +332,14 @@
 
 
 @media (max-width: 779px) {
-  /* One control per line; each keeps its own title/hint + control. */
-  #view-settings .dp-settings-event-logging-island,
+  /* One control per line; each keeps its own title/hint + control. (Event
+     Logging's is a Settings island: its handheld steps are the shared ones,
+     ui-settings-page.css.) */
   #view-settings .dp-settings-backup-folder-island {
     width: auto;
     padding: 14px 16px 15px;
   }
 
-  #view-settings .dp-settings-event-logging-field,
   #view-settings .dp-settings-backup-folder-field {
     gap: 12px;
   }

@@ -26,7 +26,7 @@ def test_the_stacked_island_keeps_each_setting_at_its_own_width():
     # Each setting centres ITSELF, so no island's own cross-axis rule (the
     # session row's equal-height `stretch`) can widen one to the island.
     assert ("#view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {\n"
-            "    align-self: center;\n  }") in PAGE_CSS
+            "  align-self: center;\n}") in PAGE_CSS
     assert "justify-content: space-between" not in PAGE_CSS.split("data-island='stacked'", 1)[1].split("@media", 1)[0]
     assert 'dp-settings-auth-session-row dp-settings-island' in PAGE
     session = _function("authStatusCard")

@@ -655,22 +655,68 @@
    * a setting that starts left of where the previous one ends began a new
    * line -- in the fonts drawn, never a width breakpoint. Kept current as the
    * room changes (the island's container is observed, never the island,
-   * whose own box the mark changes) and when fonts finish loading. */
+   * whose own box the mark changes) and when fonts finish loading.
+   *
+   * The handheld island (its stylesheet declares --dp-island-fit-steps) also
+   * takes back room in steps (data-island-fit, ui-settings-page.css): each is
+   * laid out and READ in turn, and the first at which every setting fits
+   * whole -- the row, if the step is one, unwrapped, and no setting wider than
+   * the island holds or overflowing its own box -- is kept. The choice is a
+   * function of the room alone, so it cannot oscillate, and each step is
+   * given back as soon as the room holds the one before it. A setting that
+   * does not fit even at the last step, alone, takes its title above its
+   * control (data-island-field="column"). */
   let islandObserver = null;
   let islandFit = null;
+
+  const ISLAND_STACKED_STEP = 2;
+
+  // The settings an island holds, as drawn.
+  const islandFields = island => Array.from(island.querySelectorAll('.dp-settings-inline-field'))
+    .filter(field => field.getClientRects().length);
+
+  // Whether its settings, laid out as a row, began a second line.
+  const islandWrapped = island => islandFields(island).map(field => field.getBoundingClientRect())
+    .some((box, index, boxes) => index && box.left < boxes[index - 1].right);
+
+  // The settings that do not fit whole inside the island's content box.
+  function islandMisfits(island) {
+    const style = getComputedStyle(island);
+    const box = island.getBoundingClientRect();
+    const left = box.left + island.clientLeft + parseFloat(style.paddingLeft);
+    const right = box.left + island.clientLeft + island.clientWidth - parseFloat(style.paddingRight);
+    return islandFields(island).filter(field => {
+      const b = field.getBoundingClientRect();
+      return b.left < left - 0.5 || b.right > right + 0.5 || field.scrollWidth > field.clientWidth + 1;
+    });
+  }
+
+  function fitIsland(island) {
+    delete island.dataset.island;
+    island.dataset.islandFit = '0';
+    islandFields(island).forEach(field => { delete field.dataset.islandField; });
+    const steps = parseInt(getComputedStyle(island).getPropertyValue('--dp-island-fit-steps'), 10) || 0;
+    if (!steps) {
+      // From 780px: one row, or stacked where the row wrapped.
+      delete island.dataset.islandFit;
+      if (islandWrapped(island)) island.dataset.island = 'stacked';
+      return;
+    }
+    for (let step = 0; step < steps; step += 1) {
+      island.dataset.islandFit = String(step);
+      if (step >= ISLAND_STACKED_STEP) island.dataset.island = 'stacked';
+      if (!(step === 0 && islandWrapped(island)) && !islandMisfits(island).length) return;
+    }
+    islandMisfits(island).forEach(field => { field.dataset.islandField = 'column'; });
+  }
 
   function fitIslands() {
     islandObserver?.disconnect();
     islandObserver = null;
     const islands = Array.from(root()?.querySelectorAll('.dp-settings-island') || []);
     islandFit = () => {
-      islands.forEach(island => { delete island.dataset.island; });
-      const wrapped = islands.map(island => {
-        const boxes = Array.from(island.querySelectorAll('.dp-settings-inline-field'))
-          .filter(field => field.getClientRects().length).map(field => field.getBoundingClientRect());
-        return boxes.some((box, index) => index && box.left < boxes[index - 1].right);
-      });
-      islands.forEach((island, index) => { if (wrapped[index]) island.dataset.island = 'stacked'; });
+      // Not drawn (another tab): kept as it is until it is.
+      islands.filter(island => island.getClientRects().length).forEach(fitIsland);
     };
     islandFit();
     if (typeof ResizeObserver === 'function' && islands.length) {
@@ -831,7 +877,7 @@
       <div class="dp-settings-field dp-settings-extraction-password-field">
         <label class="form-label" for="${id}">Archive Passwords</label>
         <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords" data-archive-stored="${configured ? '1' : '0'}"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true">Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords" data-archive-stored="${configured ? '1' : '0'}"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true"><span class="dp-settings-password-wording--full">Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</span><span class="dp-settings-password-wording--short">Passwords are saved as you finish editing. Use Show to reveal them, and Clear to erase the stored list.</span></p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords"><span class="dp-settings-password-wording--full">Clear Passwords</span><span class="dp-settings-password-wording--short">Clear</span></button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
       </div>`;
   }
 
