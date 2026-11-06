@@ -112,10 +112,12 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
     expected = (
         # Entry/replacement is changed-blur and removal is an explicit action
         # behind the canonical confirmation, so neither sentence mentions a Save
-        # any more, and the removal names exactly what it erases.
+        # any more, and the removal names exactly what it erases (its
+        # accessible name; its visible word is Remove, inside the field).
         "Enter an API key to connect your AllDebrid account.",
         "API key configured for your AllDebrid account.",
-        "Remove API Key",
+        "aria-label=\"Remove the stored ${html(name)} API key\"",
+        ">Remove</button>",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
     )
     # The polling, sync and resolution-retry settings apply beyond AllDebrid, so

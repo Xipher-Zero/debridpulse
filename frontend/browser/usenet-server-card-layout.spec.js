@@ -302,3 +302,45 @@ test('header Test, Enable, Edit, and the footer Remove keep their behaviour afte
   const cardBox = await short.boundingBox();
   expect(Math.abs(tile.width - cardBox.width)).toBeLessThanOrEqual(0.5);
 });
+
+/* DP 1.0.14 services correction: the server card's Test is text-only. No
+ * flask chip, so nothing in the button is drawn or reserved for one, and the
+ * room it took is the name region's: the title runs to the island. */
+test('the server Test is text-only and its former icon room goes to the name', async ({page}) => {
+  await prepare(page);
+  for (const value of [320, 1024]) {
+    await width(page, value);
+    for (const id of ['layout-short', 'layout-long']) {
+      const drawn = await card(page, id).evaluate(node => {
+        const test = node.querySelector('[data-usenet-action="test"]');
+        const style = getComputedStyle(test);
+        const label = test.querySelector(':scope > span').getBoundingClientRect();
+        const title = node.querySelector('.dp-usenet-server-title').getBoundingClientRect();
+        const island = node.querySelector('.dp-usenet-server-controls').getBoundingClientRect();
+        const name = node.querySelector('.dp-usenet-server-name');
+        const edit = node.querySelector('.dp-usenet-name-edit').getBoundingClientRect();
+        const px = key => parseFloat(style[key]);
+        return {
+          children: test.children.length,
+          marks: test.querySelectorAll('img, svg, .dp-settings-action-chip').length,
+          text: test.textContent.trim(),
+          // Button width is its word and its padding/border: no icon slot.
+          slack: test.getBoundingClientRect().width - label.width
+            - px('paddingLeft') - px('paddingRight') - px('borderLeftWidth') - px('borderRightWidth'),
+          // The title region ends at the header gap before the island.
+          titleToIsland: island.left - title.right,
+          // The name fills the title region beside Edit whenever it is cut.
+          cut: name.scrollWidth > name.clientWidth + 1,
+          nameRoom: title.width - edit.width - 6 - name.getBoundingClientRect().width,
+        };
+      });
+      expect(drawn.children, `${id} @${value}`).toBe(1);
+      expect(drawn.marks, `${id} @${value}`).toBe(0);
+      expect(drawn.text).toBe('Test');
+      expect(Math.abs(drawn.slack), `${id} @${value}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(drawn.titleToIsland - 8), `${id} @${value}`).toBeLessThanOrEqual(1);
+      if (drawn.cut) expect(Math.abs(drawn.nameRoom), `${id} @${value}`).toBeLessThanOrEqual(1);
+    }
+  }
+  await expect(card(page, 'layout-short').getByRole('button', {name: 'Test', exact: true})).toHaveCount(1);
+});

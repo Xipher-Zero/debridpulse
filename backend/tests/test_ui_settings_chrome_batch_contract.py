@@ -284,24 +284,26 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     # renders blank -- both now through the canonical composer rather than
     # hand-written markup, so there is one control owner and one commit
     # declaration instead of two.
-    assert "className: `dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}`" in key_helper
+    assert "className: `dp-settings-alldebrid-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`" in key_helper
     assert "return input(key, 'API Key', ''," in key_helper
     # The configured/unconfigured parts of the row are declared once and used
     # both to render it and to converge it.
     assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_helper
     assert "CONFIGURED_SECRET_MASK" in runtime
     assert "ALLDEBRID_KEY_HINT(configured)" in key_helper
-    # The stored-key state moved INSIDE the field's trailing edge, so it is
-    # carried by the control rather than by an external status row.
-    assert "ALLDEBRID_KEY_PRESENT" in key_helper
-    assert "Key present" in runtime
+    # 1.0.14: the in-field "Key present" status is retired; Remove sits inside
+    # the field (embeddedActionField) and its tone says whether a key is stored.
+    assert "ALLDEBRID_KEY_PRESENT" not in runtime
+    assert "Key present" not in runtime
+    assert "embedAction: ALLDEBRID_KEY_CLEAR(configured)" in key_helper
     # DP 1.0.13: the Save-oriented clear checkbox became an explicit Clear
     # action, and the final interaction pass moved the question it asked into
     # the ONE canonical Settings confirmation -- so the row owns the action and
     # nothing else, and no card-local confirmation representation survives.
     assert "Clear stored API Key" not in runtime
     assert 'data-action="clear-alldebrid-key"' in runtime
-    assert "Remove API Key" in runtime
+    assert "Remove API Key" not in runtime
+    assert ">Remove</button>" in runtime
     assert "Clear Stored API Key" not in runtime
     assert "Confirm removal of the stored API key" not in runtime
     assert "data-alldebrid-clear-confirm" not in runtime
@@ -321,7 +323,8 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "tuningCells(" in additional
     assert "alldebrid_rate_limit_per_minute" in additional
 
-    assert ".dp-settings-alldebrid-key-row.is-configured" in page
+    assert ".dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .dp-action-field {" in page
+    assert "--dp-key-status-reserve" not in page
     # The row is the shared inline field: a stacked title + hint, the field as
     # the flexible element beside it, and the destructive action last -- three
     # peers on one centre line. The key still consumes every spare pixel before
@@ -336,8 +339,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "border-top" not in action_rule
     # The retired confirmation's own rule went with it.
     assert ".dp-settings-alldebrid-key-confirm" not in page
-    assert ".dp-settings-key-present" in page
-    assert "text-align: right;" in page
+    assert ".dp-settings-key-present" not in page
     assert ".dp-settings-additional > summary" in page
     # Open turns the chevron; it turns back as the roll-up begins (ui-motion.js
     # keeps the element open until the body has rolled away).

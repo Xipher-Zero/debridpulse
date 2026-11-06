@@ -1677,12 +1677,13 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
     await expect(card.locator('[data-usenet-action="save"]')).toHaveCount(0);
     // Remove deletes the whole server: the canonical destructive action. Test
-    // is the one canonical Settings Test control, flask chip included.
+    // is the one canonical Settings Test control, text-only on a server card
+    // (1.0.14: no flask chip).
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveClass(/\bbtn-danger\b/);
     const testAction = card.locator('[data-usenet-action="test"]');
     await expect(testAction).toHaveClass(/\bdp-settings-provider-test\b/);
-    await expect(testAction.locator('.dp-settings-action-chip .dp-settings-action-glyph'))
-      .toHaveAttribute('src', /\/icons\/lucide\/flask-conical\.svg/);
+    await expect(testAction.locator('.dp-settings-action-chip, img')).toHaveCount(0);
+    await expect(testAction).toHaveText('Test');
     await card.locator('[data-usenet-advanced-toggle]').click();
     await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
     await expect(card.locator('[data-usenet-action="test"]')).toHaveCount(1);

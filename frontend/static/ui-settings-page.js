@@ -1081,23 +1081,27 @@
     ? 'API key configured for your AllDebrid account.'
     : 'Enter an API key to connect your AllDebrid account.';
 
-  /* The stored-key state, INSIDE the field's trailing edge.
-   *
-   * It is a status the field carries, not a control and not credential text:
-   * it takes no pointer events and no selection, so it can neither be clicked,
-   * dragged over, focused nor mistaken for something the operator typed, and
-   * the field reserves trailing room for it (ui-settings-page.css) so entered
-   * or masked content can never render underneath it. */
-  const ALLDEBRID_KEY_PRESENT =
-    '<span class="dp-settings-key-present" role="status">Key present</span>';
-
-  /* The destructive action is part of the field, always. Whether there is
+  /* The destructive action is part of the field, always: Remove sits INSIDE
+   * the key field's own border (embeddedActionField). Whether there is
    * anything to destroy is a STATE of that control, not a reason to remove it:
    * a credential row that grows and loses an action as secrets come and go
-   * reflows under the operator's hands. */
-  const ALLDEBRID_KEY_CLEAR = configured => `
-            <button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"
-                    aria-label="Remove the stored AllDebrid API key"${configured ? '' : ' disabled'}>Remove API Key</button>`;
+   * reflows under the operator's hands. With a key stored it is the red DP
+   * button; with none it is the neutral ghost, disabled, so no destructive act
+   * is offered. The state is the persisted credential's, never the draft's. */
+  const KEY_REMOVE_TONE = configured => configured ? 'btn-danger' : 'btn-ghost';
+
+  const keyRemoveAction = (action, name, configured) => `<button type="button" class="btn ${KEY_REMOVE_TONE(configured)} btn-sm" data-action="${action}"
+                    aria-label="Remove the stored ${html(name)} API key"${configured ? '' : ' disabled'}>Remove</button>`;
+
+  // Converges the action on accepted state; the button is never replaced.
+  function renderKeyRemove(button, configured) {
+    if (!button) return;
+    button.disabled = !configured;
+    button.classList.toggle('btn-danger', configured);
+    button.classList.toggle('btn-ghost', !configured);
+  }
+
+  const ALLDEBRID_KEY_CLEAR = configured => keyRemoveAction('clear-alldebrid-key', 'AllDebrid', configured);
 
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
@@ -1111,15 +1115,14 @@
       // The title/hint, the field and the removal are ONE compact, centred
       // Settings control island (ui-settings-page.css).
       className: `dp-settings-alldebrid-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`,
-      after: configured ? ALLDEBRID_KEY_PRESENT : '',
-      action: ALLDEBRID_KEY_CLEAR(configured),
+      embedAction: ALLDEBRID_KEY_CLEAR(configured),
     });
   }
 
   /* An API-key account credential row, for a premium provider whose account
    * connects by a key the operator pastes (Debrid-Link, Premiumize). It is the AllDebrid
-   * row's grammar exactly -- the same inline field, in-field "Key present"
-   * status, always-present destructive Remove action, changed-blur commit
+   * row's grammar exactly -- the same inline field, the always-present
+   * destructive Remove inside it, changed-blur commit
    * through the integration's own scope and one canonical confirmation for
    * removal -- declared per provider here rather than once per provider. The
    * account line above the field is the neutral premium-account wording
@@ -1136,9 +1139,7 @@
     ? `API key configured for your ${API_KEY_ACCOUNTS[id].name} account.`
     : `Enter an API key to connect your ${API_KEY_ACCOUNTS[id].name} account.`;
 
-  const apiKeyClear = (id, configured) => `
-            <button type="button" class="btn btn-danger btn-sm" data-action="clear-${id}-key"
-                    aria-label="Remove the stored ${html(API_KEY_ACCOUNTS[id].name)} API key"${configured ? '' : ' disabled'}>Remove API Key</button>`;
+  const apiKeyClear = (id, configured) => keyRemoveAction(`clear-${id}-key`, API_KEY_ACCOUNTS[id].name, configured);
 
   function apiKeyField(id, configured) {
     return input(`${id}_api_key`, 'API Key', '', {
@@ -1148,8 +1149,7 @@
       hint: apiKeyHint(id, configured),
       inline: true,
       className: `dp-settings-${id}-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`,
-      after: configured ? ALLDEBRID_KEY_PRESENT : '',
-      action: apiKeyClear(id, configured),
+      embedAction: apiKeyClear(id, configured),
     });
   }
 
@@ -1214,12 +1214,7 @@
     row.classList.toggle('is-configured', configured);
     const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
     if (hint) hint.textContent = apiKeyHint(id, configured);
-    const control = row.querySelector('.dp-settings-inline-field-control');
-    const present = control?.querySelector('.dp-settings-key-present');
-    if (configured && control && !present) control.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_PRESENT);
-    else if (!configured && present) present.remove();
-    const clear = row.querySelector(`[data-action="clear-${id}-key"]`);
-    if (clear) clear.disabled = !configured;
+    renderKeyRemove(row.querySelector(`[data-action="clear-${id}-key"]`), configured);
     renderApiKeyAccount(id);
     renderIntegrationState(card, id);
   }
@@ -1522,12 +1517,15 @@
    * appearance, one place, for every provider that has something to prove. */
   // `attribute` names the owner that handles the action: the page's own
   // data-action by default, or a collection owner's (a Usenet server's Test).
-  function providerTestAction(action, attribute = 'data-action') {
-    return `
-          <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" ${attribute}="${html(action)}">
+  // `mark: false` is the text-only Test a Usenet server card carries: no flask
+  // chip, so the room it took goes back to the server's name.
+  function providerTestAction(action, attribute = 'data-action', {mark = true} = {}) {
+    const chip = mark ? `
             <span class="dp-settings-action-chip" aria-hidden="true">
               <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-            </span>
+            </span>` : '';
+    return `
+          <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" ${attribute}="${html(action)}">${chip}
             <span>Test</span>
           </button>`;
   }
@@ -1714,7 +1712,7 @@
               <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
             </button>
           </span>
-          <div class="dp-usenet-server-controls">${providerTestAction('test', 'data-usenet-action')}
+          <div class="dp-usenet-server-controls">${providerTestAction('test', 'data-usenet-action', {mark: false})}
             ${usenetEnableControl(server.enabled !== false, name)}
           </div>
         </div>
@@ -6852,21 +6850,15 @@
       field.placeholder = ALLDEBRID_KEY_PLACEHOLDER(configured);
     }
     row.classList.toggle('is-configured', configured);
-    // Only the three parts that DEPEND on whether a key is stored: the hint,
-    // the in-field status and the destructive action. The input element itself
+    // Only the parts that DEPEND on whether a key is stored: the hint and the
+    // destructive action's state. The input element itself
     // is still never replaced -- destroying a control the operator may be
     // editing would remove focus from it, which IS its commit boundary.
     const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
     if (hint) hint.textContent = ALLDEBRID_KEY_HINT(configured);
 
-    const control = row.querySelector('.dp-settings-inline-field-control');
-    const present = control?.querySelector('.dp-settings-key-present');
-    if (configured && control && !present) control.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_PRESENT);
-    else if (!configured && present) present.remove();
-
     // The action never appears or disappears; only its state converges.
-    const clear = row.querySelector('[data-action="clear-alldebrid-key"]');
-    if (clear) clear.disabled = !configured;
+    renderKeyRemove(row.querySelector('[data-action="clear-alldebrid-key"]'), configured);
 
     renderApiKeyAccount('alldebrid');
     renderIntegrationState(card, 'alldebrid');

@@ -500,9 +500,6 @@
           </span>
           <div class="dp-usenet-server-controls">
             <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-usenet-action="test">
-              <span class="dp-settings-action-chip" aria-hidden="true">
-                <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-              </span>
               <span>Test</span>
             </button>
             <label class="dp-usenet-enable toggle-row">

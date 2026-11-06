@@ -520,7 +520,7 @@ test('a whole-settings write from another tab cannot replay Extraction state', a
 
 // --- AllDebrid credential rhythm -------------------------------------------
 
-test('the AllDebrid credential row is the inline grammar, with its status inside the field',
+test('the AllDebrid credential row is the inline grammar, with Remove inside the field',
   async ({page}) => {
     await isolateExternalFonts(page);
     const live = await page.request.get('/api/settings').then(r => r.json());
@@ -544,10 +544,10 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
       const rect = node => node.getBoundingClientRect();
       const midY = box => (box.top + box.bottom) / 2;
       const info = rect(row.querySelector('.dp-settings-inline-field-info'));
-      const input = row.querySelector('.dp-settings-inline-field-control > .input');
-      const badge = row.querySelector('.dp-settings-key-present');
-      const clear = row.querySelector('[data-action="clear-alldebrid-key"]');
-      const style = getComputedStyle(badge);
+      // 1.0.14: Remove is inside the key field's own border (.dp-action-field).
+      const field = row.querySelector('.dp-settings-inline-field-control > .dp-action-field');
+      const input = field.querySelector(':scope > .input');
+      const clear = field.querySelector(':scope > [data-action="clear-alldebrid-key"]');
       const contentRight = rect(input).right - parseFloat(getComputedStyle(input).paddingRight);
       return {
         // The row is a bordered, padded island; what must stay one compact
@@ -556,13 +556,14 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
           .reduce((sum, edge) => sum + parseFloat(getComputedStyle(row)[edge]), 0),
         stacked: rect(row.querySelector('.form-hint')).top
           >= rect(row.querySelector('.form-label')).bottom - 1,
-        inputCentred: midY(rect(input)) - midY(info),
-        clearCentred: midY(rect(clear)) - midY(info),
-        badgeInsideField: rect(badge).right <= rect(input).right && rect(badge).left > rect(input).left,
-        // Reserved trailing room: entered or masked content stops clear of it.
-        contentToBadge: rect(badge).left - contentRight,
-        pointerEvents: style.pointerEvents,
-        userSelect: style.userSelect,
+        inputCentred: midY(rect(field)) - midY(info),
+        // Vertically centred in the field, right-aligned at its trailing edge.
+        clearCentred: midY(rect(clear)) - midY(rect(field)),
+        clearTrailing: rect(field).right - rect(clear).right,
+        // Key text ends before Remove begins: no overlap.
+        contentToClear: rect(clear).left - contentRight,
+        status: !!row.querySelector('.dp-settings-key-present'),
+        separateAction: !!row.querySelector('.dp-settings-inline-field-action'),
         externalStatusRow: !!document.querySelector('.dp-settings-alldebrid-key-meta'),
       };
     });
@@ -572,21 +573,12 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
     expect(measured.height).toBeLessThanOrEqual(64);
     expect(Math.abs(measured.inputCentred)).toBeLessThanOrEqual(TOLERANCE);
     expect(Math.abs(measured.clearCentred)).toBeLessThanOrEqual(TOLERANCE);
-    // The status lives inside the field's trailing edge, reserved for, and
-    // incapable of catching a pointer or a selection.
-    expect(measured.badgeInsideField).toBe(true);
-    expect(measured.contentToBadge).toBeGreaterThan(0);
-    expect(measured.pointerEvents).toBe('none');
-    expect(measured.userSelect).toBe('none');
+    expect(measured.clearTrailing).toBeGreaterThanOrEqual(0);
+    expect(measured.clearTrailing).toBeLessThanOrEqual(6);
+    expect(measured.contentToClear).toBeGreaterThanOrEqual(0);
+    expect(measured.status).toBe(false);
+    expect(measured.separateAction).toBe(false);
     expect(measured.externalStatusRow).toBe(false);
-
-    // Hit-testing: the badge's own centre resolves to the input beneath it.
-    const hit = await page.evaluate(() => {
-      const b = document.querySelector('.dp-settings-key-present').getBoundingClientRect();
-      const node = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
-      return node ? node.id || node.className : null;
-    });
-    expect(String(hit)).not.toContain('dp-settings-key-present');
   });
 
 // --- Download Behavior & Limits --------------------------------------------

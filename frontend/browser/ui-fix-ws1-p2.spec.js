@@ -265,7 +265,8 @@ test('WS1-P2 premium card implements the exact persisted three-state status matr
   await openSources(page);
   const card = page.locator('.dp-settings-provider-card--alldebrid');
   await card.locator('.dp-settings-disclosure').click();
-  await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
+  // 1.0.14: a stored key is said by the red, enabled in-field Remove.
+  await expect(card.locator('[data-action="clear-alldebrid-key"]')).toHaveClass(/\bbtn-danger\b/);
   await expect(page.locator('.dp-settings-provider-card--general-http .dp-settings-disclosure')).toHaveCount(0);
 });
 
@@ -337,7 +338,7 @@ test('WS1-P2 disclosure and Enable stay independent, and the credential commits 
     await expect(body).toBeHidden();
     await disclosure.click();
     await expect(body).toBeVisible();
-    await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
+    await expect(card.locator('[data-action="clear-alldebrid-key"]')).toBeEnabled();
 
     // Enabling a provider that IS configured has nothing to ask for, so it
     // opens nothing -- and it does not close what the operator already opened.
@@ -363,7 +364,7 @@ test('WS1-P2 disclosure and Enable stay independent, and the credential commits 
     await setProviderEnabled(card, true);
     await expect(body).toBeHidden();
     await card.locator('.dp-settings-disclosure').click();
-    await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
+    await expect(card.locator('[data-action="clear-alldebrid-key"]')).toBeEnabled();
   });
 
 test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark/light/narrow layouts', async ({ page }) => {

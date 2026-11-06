@@ -315,7 +315,7 @@ for (const connected of [false, true]) {
               const range = document.createRange(); range.selectNodeContents(n);
               for (const r of range.getClientRects()) covered.push([`text "${n.textContent.trim().slice(0, 20)}"`, r]);
             }
-            for (const n of body.querySelectorAll('input, button, a, select, textarea, summary, img, .toggle, .dp-settings-provider-status-line, .dp-settings-key-present')) {
+            for (const n of body.querySelectorAll('input, button, a, select, textarea, summary, img, .toggle, .dp-settings-provider-status-line')) {
               if (chip.contains(n) || !n.getClientRects().length) continue;
               covered.push([n.className || n.tagName, n.getBoundingClientRect()]);
             }

@@ -608,7 +608,7 @@ test('the AllDebrid credential is one compact centred island and no blank row si
   // whether a key is stored: the island's geometry is the same in either state,
   // and its hint must be the contextual copy for the state the island itself
   // shows (read in one snapshot, so a concurrent re-render cannot split them).
-  await expect(row.locator('[data-action="clear-alldebrid-key"]')).toHaveText('Remove API Key');
+  await expect(row.locator('[data-action="clear-alldebrid-key"]')).toHaveText('Remove');
   const keyState = await row.evaluate(island => ({
     hint: island.querySelector('.form-hint').textContent.trim(),
     configured: !island.querySelector('[data-action="clear-alldebrid-key"]').disabled,
@@ -619,9 +619,15 @@ test('the AllDebrid credential is one compact centred island and no blank row si
   const geometry = await row.evaluate(island => {
     const box = island.getBoundingClientRect();
     const body = island.parentElement.getBoundingClientRect();
-    const parts = ['.dp-settings-inline-field-info', '.dp-settings-inline-field-control', '.dp-settings-inline-field-action']
+    // 1.0.14: Remove is inside the key field, so the island holds two parts.
+    const parts = ['.dp-settings-inline-field-info', '.dp-settings-inline-field-control']
       .map(selector => island.querySelector(selector).getBoundingClientRect());
+    const field = island.querySelector('.dp-action-field').getBoundingClientRect();
+    const remove = island.querySelector('.dp-action-field > [data-action="clear-alldebrid-key"]').getBoundingClientRect();
     return {
+      removeInside: remove.left > field.left && remove.right <= field.right && remove.top >= field.top
+        && remove.bottom <= field.bottom,
+      separateAction: !!island.querySelector('.dp-settings-inline-field-action'),
       border: getComputedStyle(island).borderTopStyle,
       share: box.width / body.width,
       centred: Math.abs((box.left - body.left) - (body.right - box.right)),
@@ -644,6 +650,8 @@ test('the AllDebrid credential is one compact centred island and no blank row si
   expect(geometry.ordered).toBe(true);
   expect(geometry.inside).toBe(true);
   expect(geometry.centreLine).toBeLessThan(2);
+  expect(geometry.removeInside).toBe(true);
+  expect(geometry.separateAction).toBe(false);
   expect(geometry.above).toEqual([{account: true, children: 0, height: 0}]);
 });
 

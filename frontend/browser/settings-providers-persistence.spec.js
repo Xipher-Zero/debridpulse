@@ -431,7 +431,8 @@ test('Clear is the explicit red action, and it asks the canonical confirmation',
   await preconfigure(page);
   // No card-local gate survives: the action is available, and the dialog asks.
   await expect(clearButton(page)).toBeEnabled();
-  await expect(clearButton(page)).toHaveText('Remove API Key');
+  await expect(clearButton(page)).toHaveText('Remove');
+  await expect(clearButton(page)).toHaveAccessibleName('Remove the stored AllDebrid API key');
   await expect(clearButton(page)).toHaveClass(/btn-danger/);
   await expect(page.locator('[data-alldebrid-clear-confirm]')).toHaveCount(0);
 
@@ -480,6 +481,9 @@ test('a confirmed Clear erases the stored key exactly once', async ({page}) => {
   // key was saved or cleared, and moved a control out from under the operator.
   await expect(clearButton(page)).toHaveCount(1);
   await expect(clearButton(page)).toBeDisabled();
+  // 1.0.14: with nothing stored it is the neutral ghost, not a red button.
+  await expect(clearButton(page)).toHaveClass(/\bbtn-ghost\b/);
+  await expect(clearButton(page)).not.toHaveClass(/\bbtn-danger\b/);
 });
 
 test('a failed Clear renders no false cleared state', async ({page}) => {
@@ -496,6 +500,7 @@ test('a failed Clear renders no false cleared state', async ({page}) => {
   // The row still says a key is stored, because one still is.
   await expect(clearButton(page)).toBeVisible();
   await expect(clearButton(page)).toBeEnabled();
+  await expect(clearButton(page)).toHaveClass(/\bbtn-danger\b/);
   await page.unrouteAll({behavior: 'ignoreErrors'}).catch(() => {});
   expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
 });

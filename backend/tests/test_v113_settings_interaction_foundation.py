@@ -630,17 +630,21 @@ def test_the_alldebrid_credential_row_never_replaces_the_control_it_converges():
     assert "String(field.value ?? '') === String(dispatched ?? '')" in render
     # The variable parts are rebuilt from the SAME declarations the row is
     # rendered from, so the row keeps one markup owner in either direction.
-    # Three parts depend on whether a key is stored: the placeholder, the hint,
-    # and -- since the row moved to the inline field grammar -- the in-field
-    # status beside the destructive action.
-    for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_HINT(",
-                     "ALLDEBRID_KEY_PRESENT"):
+    # Two parts depend on whether a key is stored: the placeholder and the
+    # hint. The in-field "Key present" status is retired (1.0.14).
+    for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_HINT("):
         assert fragment in render, fragment
         assert fragment.rstrip("(") in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    assert "ALLDEBRID_KEY_PRESENT" not in SETTINGS_JS
+    assert "dp-settings-key-present" not in SETTINGS_JS
     # The destructive action is no longer one of the variable parts: it is
-    # always rendered, so convergence only moves its disabled state.
-    assert "clear.disabled = !configured;" in render
-    assert "ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    # always rendered, so convergence only moves its state (disabled + tone).
+    assert "renderKeyRemove(" in render
+    converge = block(SETTINGS_JS, "function renderKeyRemove(")
+    assert "button.disabled = !configured;" in converge
+    assert "classList.toggle('btn-danger', configured)" in converge
+    assert "classList.toggle('btn-ghost', !configured)" in converge
+    assert "embedAction: ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
     # Nothing replaces or re-parents the control.
     for banned in ("outerHTML", "replaceWith", "replaceChild", "cloneNode"):
         assert banned not in render, banned
@@ -1218,16 +1222,20 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     """The card-local confirmation checkbox is gone: the group is one red button
     naming exactly what it erases, and whether the operator means it is the one
     canonical Settings confirmation's question."""
-    group = block(SETTINGS_JS, "const ALLDEBRID_KEY_CLEAR")
-    action = control(group, 'data-action="clear-alldebrid-key"')
-    assert "btn-danger" in action
+    assert "keyRemoveAction('clear-alldebrid-key', 'AllDebrid', configured)" in block(SETTINGS_JS, "const ALLDEBRID_KEY_CLEAR")
+    group = block(SETTINGS_JS, "const keyRemoveAction")
+    action = control(group, 'data-action="${action}"')
+    # 1.0.14: red with a key stored, the neutral ghost with none.
+    assert "${KEY_REMOVE_TONE(configured)}" in action
+    assert "configured ? 'btn-danger' : 'btn-ghost'" in block(SETTINGS_JS, "const KEY_REMOVE_TONE")
     # DP 1.0.13: `disabled` here is the two-state presentation, not a gate on
     # whether the operator MEANS it -- that remains the canonical confirmation's
     # question. The control keeps its slot at all times and simply says whether
     # there is anything stored to erase, so the row never reflows.
     assert "configured ? '' : ' disabled'" in action
     assert 'type="checkbox"' not in action
-    assert "Remove API Key" in group
+    assert ">Remove</button>" in group
+    assert "Remove API Key" not in SETTINGS_JS
     assert 'type="checkbox"' not in group
     assert "<label" not in group
     assert "data-alldebrid-clear-confirm" not in SETTINGS_JS
@@ -1236,10 +1244,10 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     # The row renders that one declaration, and nothing else does. It is now
     # carried by the inline field's neutral trailing action slot rather than a
     # wrapper of its own, so the button itself is what must be unique.
-    assert "ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
-    # One declaration. The converger addresses that same button by selector,
-    # which is a read rather than a second rendering of it.
-    assert SETTINGS_JS.count('<button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"') == 1
+    assert "embedAction: ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    # One declaration for the three API-key rows. The converger addresses that
+    # same button by selector, which is a read rather than a second rendering.
+    assert SETTINGS_JS.count('<button type="button" class="btn ${KEY_REMOVE_TONE(configured)} btn-sm" data-action=') == 1
 
 
 def test_the_clear_group_is_centred_against_the_api_key_input_itself():
@@ -1364,7 +1372,7 @@ def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
 def test_one_test_and_one_remove_per_card_rendered_once():
     for label, markup in SERVER_CARDS:
         assert (markup.count('data-usenet-action="test"')
-                + markup.count("providerTestAction('test', 'data-usenet-action')")) == 1, label
+                + markup.count("providerTestAction('test', 'data-usenet-action', {mark: false})")) == 1, label
         assert markup.count('data-usenet-action="remove"') == 1, label
     # And the behaviour owner never clones or relocates them.
     for banned in ("cloneNode", "insertBefore(actions", "appendChild(actions",

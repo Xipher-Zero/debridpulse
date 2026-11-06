@@ -205,21 +205,25 @@ def test_server_actions_are_test_remove_and_a_confirmed_clear():
     for action in ("remove", "clear-password"):
         assert f'data-usenet-action="{action}"' in SETTINGS
     # Test is the canonical Settings Test control, addressed to this owner.
-    assert "providerTestAction('test', 'data-usenet-action')" in SETTINGS
+    # Text-only: the card's Test carries no flask chip (1.0.14).
+    assert "providerTestAction('test', 'data-usenet-action', {mark: false})" in SETTINGS
     assert 'data-usenet-action="save"' not in SETTINGS
 
 
 def test_server_test_and_remove_use_the_canonical_settings_actions():
     """DP 1.0.13 cleanup: Remove deletes the whole server, so it is the
-    canonical destructive action; Test is the one canonical Test control (chip +
-    flask glyph). The blank card the behaviour owner creates says the same."""
+    canonical destructive action; Test is the one canonical Test control,
+    text-only on a server card (1.0.14: no chip, no flask glyph). The blank card
+    the behaviour owner creates says the same."""
     remove = '<button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">'
     assert remove in SETTINGS and remove in SERVERS
     assert "btn-ghost btn-sm dp-usenet-remove" not in SETTINGS + SERVERS
     blank_test = SERVERS[SERVERS.index('data-usenet-action="test"') - 80:SERVERS.index('data-usenet-action="test"') + 400]
-    for part in ('class="btn btn-ghost btn-sm dp-settings-provider-test"', 'class="dp-settings-action-chip"',
-                 'src="/icons/lucide/flask-conical.svg"'):
-        assert part in blank_test, part
+    assert 'class="btn btn-ghost btn-sm dp-settings-provider-test"' in blank_test
+    blank_test = blank_test[:blank_test.index("</button>")]
+    assert "<span>Test</span>" in blank_test
+    for part in ("dp-settings-action-chip", "flask-conical.svg"):
+        assert part not in blank_test, part
     # No second Test style: the Usenet stylesheet states nothing about either.
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
     for selector in ("dp-settings-provider-test", "dp-settings-action-chip", "dp-usenet-remove", "btn-danger"):

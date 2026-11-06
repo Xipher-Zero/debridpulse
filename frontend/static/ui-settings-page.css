@@ -832,27 +832,14 @@
 #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
   /* The field is what absorbs the row's spare width. */
   flex: 1 1 auto;
-  /* The status inside the field is positioned against THIS box, which is the
-     field's own box -- not against the page, and not to compensate for a
-     structure that could not express it. */
-  position: relative;
 }
 
-#view-settings .dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .input {
+/* The key field carries Remove inside its own border (.dp-action-field): the
+   key text ends where Remove begins, so nothing has to reserve room for it. */
+#view-settings .dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .dp-action-field {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-}
-
-/* Room the FIELD reserves for the status it carries, so entered or masked
-   content can never render underneath it. The same value bounds the status, so
-   the reservation and the thing reserved for can never disagree. */
-#view-settings .dp-settings-alldebrid-key-row.is-configured {
-  --dp-key-status-reserve: 88px;
-}
-
-#view-settings .dp-settings-alldebrid-key-row.is-configured .dp-settings-inline-field-control > .input {
-  padding-right: calc(var(--dp-key-status-reserve) + 20px);
 }
 
 /* The Debrid-Link and Premiumize credential rows: the AllDebrid row's island, exactly. */
@@ -878,45 +865,13 @@
 #view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-control,
 #view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-control {
   flex: 1 1 auto;
-  position: relative;
 }
 
-#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .input,
-#view-settings .dp-settings-premiumize-key-row .dp-settings-inline-field-control > .input {
+#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .dp-action-field,
+#view-settings .dp-settings-premiumize-key-row .dp-settings-inline-field-control > .dp-action-field {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-}
-
-#view-settings .dp-settings-debridlink-key-row.is-configured,
-#view-settings .dp-settings-premiumize-key-row.is-configured {
-  --dp-key-status-reserve: 88px;
-}
-
-#view-settings .dp-settings-debridlink-key-row.is-configured .dp-settings-inline-field-control > .input,
-#view-settings .dp-settings-premiumize-key-row.is-configured .dp-settings-inline-field-control > .input {
-  padding-right: calc(var(--dp-key-status-reserve) + 20px);
-}
-
-/* A status the field carries -- never a control, and never mistakable for
-   credential text. It takes no pointer events and no selection, so it cannot
-   be clicked, dragged across, focused, or caught by a caret; the field's own
-   reserved room keeps content clear of it. */
-#view-settings .dp-settings-key-present {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  max-width: var(--dp-key-status-reserve);
-  overflow: hidden;
-  color: var(--dp-state-success);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  text-align: right;
-  pointer-events: none;
-  user-select: none;
 }
 
 /* Secondary provider/engine tuning lives in native disclosures rather than
@@ -1453,8 +1408,8 @@
 }
 
 @media (max-width: 779px) {
-  /* Stacked: the informational block, the field and the action each take the
-     full width, in that order. The status stays inside the field. */
+  /* Stacked: the informational block and the field (Remove inside it) each
+     take the full width, in that order. */
   #view-settings .dp-settings-alldebrid-key-row {
     width: 100%;
     align-items: stretch;
