@@ -3927,17 +3927,21 @@
   /* The Authentication Status KPIs below 780px (their stylesheet declares
    * --dp-kpi-fit-steps there): the three side by side while their words fit
    * them, else the mode across the whole row above its two mechanisms, else
-   * that with closer card padding, else that with the short words. Each is laid out and READ in turn -- every
-   * label in at most two lines, every value in at most two (and its qualifier
-   * line), no word running past its card -- and the first that fits is kept,
+   * that with closer card padding, else that with the short words. Each is
+   * laid out and READ in turn -- every title in one line while the three are
+   * side by side and in at most two in the others, every value in at most two
+   * (and its qualifier line), no word running past its card -- and the first
+   * that fits is kept,
    * so the choice is a function of the room alone and the same width gives
    * the same composition however it was reached. Re-read when the room
    * changes and when the painter writes new words. */
-  const KPI_FITS = Object.freeze([['row', 'full'], ['split', 'full'], ['close', 'full'], ['close', 'short']]);
+  // [composition, words, title lines]: three across only while every title
+  // keeps one line; the mode-over-mechanisms compositions let one wrap.
+  const KPI_FITS = Object.freeze([['row', 'full', 1], ['split', 'full', 2], ['close', 'full', 2], ['close', 'short', 2]]);
   let authKpiObserver = null;
   let authKpiFit = null;
 
-  function kpiFits(grid) {
+  function kpiFits(grid, titleLines) {
     const lines = node => {
       const range = document.createRange();
       range.selectNodeContents(node);
@@ -3949,7 +3953,7 @@
       const label = kpi.querySelector('.dhs-label');
       const value = kpi.querySelector('.dhs-val');
       const qualifier = value?.querySelector('.dp-settings-auth-kpi-secondary') ? 1 : 0;
-      return body.scrollWidth <= body.clientWidth + 1 && lines(label) <= 2 && lines(value) <= 2 + qualifier;
+      return body.scrollWidth <= body.clientWidth + 1 && lines(label) <= titleLines && lines(value) <= 2 + qualifier;
     });
   }
 
@@ -4003,10 +4007,10 @@
       const steps = parseInt(getComputedStyle(grid).getPropertyValue('--dp-kpi-fit-steps'), 10) || 0;
       delete grid.dataset.kpiFit;
       delete grid.dataset.kpiWords;
-      for (const [fit, words] of KPI_FITS.slice(0, steps)) {
+      for (const [fit, words, titleLines] of KPI_FITS.slice(0, steps)) {
         grid.dataset.kpiFit = fit;
         grid.dataset.kpiWords = words;
-        if (kpiFits(grid)) return;
+        if (kpiFits(grid, titleLines)) return;
       }
     } : null;
     authKpiFit?.();

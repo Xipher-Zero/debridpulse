@@ -915,6 +915,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     right: 12px;
   }
 
+  /* While the group holds it, the chip reaches below Provider Name's title
+     line: that setting's control then starts lower, so the chip keeps the
+     same clearance above it that a title keeps (8px). Without the chip, the
+     ordinary title-to-control gap. */
+  #view-settings .dp-settings-oidc-group--identity:has(> .dp-settings-help-chip) > .dp-settings-oidc-provider-field {
+    row-gap: 14px;
+  }
+
   /* Access control: no rule before it, its heading centred on its own row,
      the policy toggle's row beneath it, the policy's explanation directly
      under that, then the provisioning role and the allowlists. The policy

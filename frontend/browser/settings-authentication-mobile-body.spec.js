@@ -69,7 +69,11 @@ const fields = page => page.evaluate(() => {
       const action = field.querySelector(':scope > .dp-settings-inline-field-action');
       const t = r(title), c = r(control), f = r(field);
       const region = field.closest('.dp-settings-oidc-group');
+      // Help lent into this setting's group, and the setting is the one under it.
+      const chip = region?.querySelector(':scope > .dp-settings-help-chip');
+      const underChip = !!chip && field === region.querySelector(':scope > .dp-settings-inline-field');
       return {
+        underChip, chipClearance: underChip ? c.top - r(chip).bottom : null,
         name: title.textContent.trim(), hint: hint.textContent.trim(), hintDrawn: !!r(hint) && r(hint).width > 2,
         tooltip: title.getAttribute('data-tooltip'), touch: title.hasAttribute('data-tooltip-touch'), tabindex: title.getAttribute('tabindex'),
         gap: c.top - t.bottom, below: c.top >= t.bottom - 0.5,
@@ -99,7 +103,15 @@ test('each setting is its title over its control, its hint on its title, and eve
     for (const field of now.inline) {
       const at = `${field.name} @${width}`;
       expect(field.below, `${at}: control beside its title`).toBe(true);
-      expect(field.gap, `${at}: title to control`).toBeLessThanOrEqual(12);
+      if (field.underChip) {
+        // Under the lent Help: the control clears the chip by a title's gap,
+        // and no more than that.
+        expect(field.chipClearance, `${at}: control too close to the lent Help`).toBeGreaterThanOrEqual(8);
+        expect(field.chipClearance, `${at}: control too far below the lent Help`).toBeLessThanOrEqual(10);
+        expect(field.gap, `${at}: title to control`).toBeLessThanOrEqual(16);
+      } else {
+        expect(field.gap, `${at}: title to control`).toBeLessThanOrEqual(12);
+      }
       expect(field.slack, `${at}: empty height in the setting`).toBeLessThanOrEqual(2);
       expect(field.inside, `${at}: escapes`).toBe(true);
       expect(field.hintDrawn, `${at}: hint drawn`).toBe(false);
