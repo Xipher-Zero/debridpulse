@@ -189,7 +189,19 @@
     if (card.dataset.usenetNameOverride === '1') return;
     const label = card.querySelector('[data-usenet-display-name]');
     if (!label) return;
-    label.textContent = String(fieldValue(card, 'host') || '').trim() || 'New server';
+    showName(card, String(fieldValue(card, 'host') || '').trim() || 'New server');
+  }
+
+  /* The one writer of a card's shown name. A name too long for its room is
+   * drawn with an ellipsis, so the whole name is also the label's tooltip and
+   * part of the Edit and Enable controls' accessible names. */
+  function showName(card, text) {
+    const label = card.querySelector('[data-usenet-display-name]');
+    if (!label) return;
+    label.textContent = text;
+    label.dataset.tooltip = text;
+    card.querySelector('[data-usenet-action="rename"]')?.setAttribute('aria-label', `Edit display name for ${text}`);
+    card.querySelector('[data-usenet-field="enabled"]')?.setAttribute('aria-label', `Enable ${text}`);
   }
 
   /* Inline field validation. It never reports an operation result. */
@@ -397,7 +409,7 @@
     if (!server || !label) return;
     const override = String(server.display_name || '').trim();
     card.dataset.usenetNameOverride = override ? '1' : '0';
-    if (override) label.textContent = override;
+    if (override) showName(card, override);
     else refreshDerivedName(card);
   }
 
@@ -471,17 +483,36 @@
     // A brand-new card has no canonical id yet, so its Advanced region gets a
     // locally unique one; the backend mints the record id when the card's
     // first ordinary commit boundary asks its scope to materialize it.
-    const advancedId = `dp-usenet-advanced-new-${(blankCard.sequence = (blankCard.sequence || 0) + 1)}`;
+    const sequence = (blankCard.sequence = (blankCard.sequence || 0) + 1);
+    const advancedId = `dp-usenet-advanced-new-${sequence}`;
+    const passwordId = `dp-usenet-password-new-${sequence}`;
     wrapper.innerHTML = `
       <div class="dp-usenet-server" data-usenet-server-id="" data-commit-instance=""
            data-usenet-password-configured="0"
            data-usenet-name-override="0">
         <div class="dp-usenet-server-head">
-          <span class="dp-usenet-server-name" data-usenet-display-name>New server</span>
-          <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                  data-tooltip="Edit display name" aria-label="Edit display name">
-            <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
-          </button>
+          <span class="dp-usenet-server-title">
+            <span class="dp-usenet-server-name" data-usenet-display-name data-tooltip="New server">New server</span>
+            <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
+                    data-tooltip="Edit display name" aria-label="Edit display name for New server">
+              <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
+            </button>
+          </span>
+          <div class="dp-usenet-server-controls">
+            <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-usenet-action="test">
+              <span class="dp-settings-action-chip" aria-hidden="true">
+                <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+              </span>
+              <span>Test</span>
+            </button>
+            <label class="dp-usenet-enable toggle-row">
+              <span class="toggle">
+                <input type="checkbox" data-usenet-field="enabled" aria-label="Enable New server"
+                       data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" checked>
+                <span class="ttrack"></span>
+              </span>
+            </label>
+          </div>
         </div>
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
@@ -489,17 +520,19 @@
             <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="" autocomplete="off"
                    placeholder="news.example.com">
           </label>
-          <label class="dp-usenet-field dp-usenet-field--port">
-            <span class="form-label">Port</span>
-            <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port" value="563">
-          </label>
-          <label class="dp-usenet-ssl toggle-row">
-            <span class="tl">SSL</span>
-            <span class="toggle">
-              <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" checked>
-              <span class="ttrack"></span>
-            </span>
-          </label>
+          <div class="dp-usenet-port-ssl">
+            <label class="dp-usenet-field dp-usenet-field--port">
+              <span class="form-label">Port</span>
+              <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port" value="563">
+            </label>
+            <label class="dp-usenet-field dp-usenet-field--ssl">
+              <span class="form-label">SSL</span>
+              <span class="toggle dp-usenet-ssl">
+                <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" checked>
+                <span class="ttrack"></span>
+              </span>
+            </label>
+          </div>
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
@@ -507,15 +540,15 @@
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="" autocomplete="off">
           </label>
         </div>
-        <div class="dp-usenet-row dp-usenet-row--password">
-          <label class="dp-usenet-field dp-usenet-field--password">
-            <span class="form-label">Password</span>
-            <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
-                   autocomplete="off" placeholder="Password">
-          </label>
-          <div class="dp-usenet-clear-password">
-            <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                    aria-label="Clear the stored password for this server" disabled>Clear Password</button>
+        <div class="dp-usenet-row">
+          <div class="dp-usenet-field dp-usenet-field--wide dp-usenet-field--password">
+            <label class="form-label" for="${passwordId}">Password</label>
+            <div class="dp-action-field">
+              <input class="input" id="${passwordId}" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
+                     autocomplete="off" placeholder="Password">
+              <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
+                      aria-label="Clear the stored password for this server" data-tooltip="Clear the stored password for this server" disabled>Clear</button>
+            </div>
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
@@ -557,22 +590,8 @@
             <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
           </div>
           <div class="dp-usenet-actions">
-            <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-usenet-action="test">
-              <span class="dp-settings-action-chip" aria-hidden="true">
-                <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-              </span>
-              <span>Test</span>
-            </button>
             <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
           </div>
-          <label class="dp-usenet-enable toggle-row">
-            <span class="tl">Enable</span>
-            <span class="toggle">
-              <input type="checkbox" data-usenet-field="enabled"
-                     data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" checked>
-              <span class="ttrack"></span>
-            </span>
-          </label>
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
@@ -835,7 +854,7 @@
     const trimmed = next.trim();
     const previous = {override: card.dataset.usenetNameOverride, text: label.textContent};
     card.dataset.usenetNameOverride = trimmed ? '1' : '0';
-    label.textContent = trimmed || derived || 'New server';
+    showName(card, trimmed || derived || 'New server');
     if (!serverId(card)) return;
     await window.DPSettingsPersistence.settle(card);
     try {
@@ -845,7 +864,7 @@
       convergeName(card, result);
     } catch (error) {
       card.dataset.usenetNameOverride = previous.override;
-      label.textContent = previous.text;
+      showName(card, previous.text);
       toast(`Could not rename ${serverName(card)}: ${failure(card, error)}`, 'error');
     }
   }

@@ -123,11 +123,13 @@ def test_the_clear_password_row_is_one_explicit_destructive_action():
     checkbox geometry to own."""
     block = SETTINGS_JS[SETTINGS_JS.index("function usenetServerCard("):
                         SETTINGS_JS.index("function usenetAddTile(")]
-    row = block[block.index("dp-usenet-clear-password"):]
-    row = row[:row.index("</div>")]
+    # DP 1.0.14: Clear, inside the Password field (the shared compound field).
+    row = block[block.index("embeddedActionField("):]
+    row = row[:row.index("</button>")]
+    assert 'data-usenet-field="password"' in row
     assert 'data-usenet-action="clear-password"' in row
     assert "btn-danger" in row
-    assert "Clear Password" in row
+    assert row.endswith(">Clear")
     # No second confirmation representation survives anywhere on the card.
     assert "dp-settings-inline-check" not in row
     assert "<label" not in row
@@ -136,14 +138,14 @@ def test_the_clear_password_row_is_one_explicit_destructive_action():
     assert "Confirm removal of the stored password for this server" not in SETTINGS_JS
 
 
-def test_the_clear_group_owns_its_geometry_without_a_positioning_hack():
+def test_the_clear_action_owns_its_geometry_without_a_positioning_hack():
+    """DP 1.0.14: Clear sits inside the Password field through the shared
+    compound field, a sibling of the input -- never positioned over it."""
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
-    block = css[css.index(".dp-usenet-clear-password {"):]
+    assert ".dp-usenet-clear-password" not in css
+    block = css[css.index(".dp-usenet-field--password"):]
     block = block[:block.index("}") + 1]
-    # One left-aligned group, centred together -- never a nudge.
-    assert "display: flex" in block
-    assert "align-items: center" in block
-    for banned in ("position: absolute", "transform", "margin-left", "text-align: center"):
+    for banned in ("position: absolute", "transform", "margin-left", "padding-right", "padding-inline-end"):
         assert banned not in block, banned
 
 

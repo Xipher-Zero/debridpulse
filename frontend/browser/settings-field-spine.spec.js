@@ -150,8 +150,10 @@ test('the Usenet server fields obey the same spine as every other tab', async ({
       const control = field.querySelector('.input');
       const label = field.querySelector('.form-label');
       if (!control || !label || control.getBoundingClientRect().width === 0) continue;
+      // A control drawn bare inside a compound field: the field is its outer box.
+      const outer = control.closest('.dp-action-field') || control;
       out.push({field: control.dataset.usenetField,
-                delta: label.getBoundingClientRect().left - control.getBoundingClientRect().left});
+                delta: label.getBoundingClientRect().left - outer.getBoundingClientRect().left});
     }
     return out;
   });
@@ -199,48 +201,42 @@ test('a themed select is measured as the control the operator can see', async ({
 
 /* DP 1.0.13: erasing a stored credential stopped being a gated checkbox that a
  * Save committed and became an explicit destructive ACTION, asked by the ONE
- * canonical Settings confirmation -- and the batch that followed put it on the
- * Password INPUT's own row.
+ * canonical Settings confirmation. DP 1.0.14: the action is Clear, INSIDE the
+ * Password field's own border (the shared compound field), at every width.
  *
- * There is ONE state again. The collection's track minimum is now the width
- * the card genuinely needs, so the card is never starved into reflowing this
- * row onto a second line, and the two-state oracle that briefly described that
- * reflow described a layout that can no longer occur.
- *
- * What this spine spec owns is therefore the relationship between the two: the
- * button is beside the input, vertically centred against the CONTROL rather
- * than against the taller label+input stack, and it takes horizontal room from
- * the field instead of adding an action band beneath it. */
-test('Clear Password sits beside the Password input on its own row', async ({page}) => {
+ * What this spine spec owns is the relationship between the two: Clear sits
+ * at the field's trailing edge, vertically centred against the CONTROL rather
+ * than against the taller label+input stack, and the typed text ends before
+ * it -- it takes horizontal room from the field instead of adding a band. */
+test('Clear sits inside the Password field at its trailing edge', async ({page}) => {
   await openSettings(page);
   await expandAll(page, 'sources');
   const geometry = await page.evaluate(() => {
-    const row = document.querySelector('.dp-usenet-clear-password');
-    if (!row) return null;
-    const card = row.closest('[data-usenet-server-id]');
-    const input = card.querySelector('[data-usenet-field="password"]').getBoundingClientRect();
-    const label = card.querySelector('[data-usenet-field="password"]')
-      .closest('.dp-usenet-field').querySelector('.form-label').getBoundingClientRect();
-    const button = row.querySelector('[data-usenet-action="clear-password"]').getBoundingClientRect();
-    const host = row.closest('.dp-usenet-row').getBoundingClientRect();
+    const field = document.querySelector('[data-usenet-collection] .dp-usenet-field--password .dp-action-field');
+    if (!field) return null;
+    const input = field.querySelector('[data-usenet-field="password"]');
+    const box = input.getBoundingClientRect();
+    const label = field.closest('.dp-usenet-field').querySelector('.form-label').getBoundingClientRect();
+    const button = field.querySelector('[data-usenet-action="clear-password"]').getBoundingClientRect();
+    const outer = field.getBoundingClientRect();
     return {
-      inputRight: input.right,
-      inputCentreY: (input.top + input.bottom) / 2,
+      textEnd: box.right - parseFloat(getComputedStyle(input).paddingRight),
+      fieldLeft: outer.left, fieldRight: outer.right,
+      fieldCentreY: (outer.top + outer.bottom) / 2,
       labelCentreY: (label.top + label.bottom) / 2,
-      buttonLeft: button.left,
-      buttonRight: button.right,
+      buttonLeft: button.left, buttonRight: button.right,
       buttonCentreY: (button.top + button.bottom) / 2,
-      rowRight: host.right,
-      controls: row.querySelectorAll('input, label').length,
+      controls: field.querySelectorAll('label, input[type="checkbox"]').length,
     };
   });
-  expect(geometry, 'the clear-password row did not render').toBeTruthy();
-  // Beside the input, on the same row -- never beneath it.
-  expect(geometry.buttonLeft).toBeGreaterThanOrEqual(geometry.inputRight - 1);
+  expect(geometry, 'the password field did not render').toBeTruthy();
+  // Inside the field, at its trailing edge, after the text's end.
+  expect(geometry.buttonLeft).toBeGreaterThan(geometry.fieldLeft);
+  expect(geometry.fieldRight - geometry.buttonRight).toBeLessThanOrEqual(6);
+  expect(geometry.textEnd).toBeLessThanOrEqual(geometry.buttonLeft + 0.5);
   // Centred against the CONTROL, not against the label+input stack.
-  expect(Math.abs(geometry.buttonCentreY - geometry.inputCentreY)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.buttonCentreY - geometry.fieldCentreY)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.buttonCentreY - geometry.labelCentreY)).toBeGreaterThan(2);
-  // The group is the button: nothing follows it, and it is not stretched.
+  // No second confirmation representation.
   expect(geometry.controls).toBe(0);
-  expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.rowRight + 1);
 });

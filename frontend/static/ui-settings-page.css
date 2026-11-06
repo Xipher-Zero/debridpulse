@@ -324,8 +324,22 @@
    (and, below 780px, the trigger) is the neutral DP ghost button -- no status
    colour in its text, border, background or mark, and never disabled. Its
    verification is unchanged and still reported where it always is. */
-#view-settings .dp-settings-header-test-group {
-  display: contents;
+/* The Test/toggle island's material, one declaration: the handheld header
+   Test group, and a Usenet server card's Test/Enable at every width. */
+#view-settings :is(.dp-settings-header-test-group, .dp-usenet-server-controls) {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--dp-secondary-border);
+  border-radius: var(--dp-radius-sm);
+}
+
+@media (min-width: 780px) {
+  #view-settings .dp-settings-header-test-group {
+    display: contents;
+  }
 }
 
 #view-settings .dp-settings-header-test-shell {
@@ -2034,16 +2048,6 @@
 
   #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-header-action {
     display: none;
-  }
-
-  #view-settings .dp-settings-header-test-group {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 4px 3px 3px;
-    border: 1px solid var(--dp-secondary-border);
-    border-radius: var(--dp-radius-sm);
   }
 
   #view-settings .dp-settings-header-test-shell {

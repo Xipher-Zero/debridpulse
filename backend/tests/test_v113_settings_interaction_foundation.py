@@ -337,12 +337,11 @@ def test_the_server_collection_is_a_viewport_capacity_grid():
     does not stretch into a giant card and three do not recentre themselves."""
     collection = rule(USENET_CSS, ".dp-usenet-servers {")
     assert "display: grid" in collection
-    # The minimum is the width the CARD needs to lay its own rows out, measured
-    # from the binding row (the Advanced rail) rather than chosen to make some
-    # viewport show a particular number. Capacity follows from it; it is never
-    # tuned to a capacity, and the card never needs an internal reflow to
-    # survive its own track.
-    assert "repeat(auto-fill, minmax(360px, 1fr))" in collection
+    # The minimum is the width at which a card keeps Host, Port and SSL on one
+    # row; capacity follows from it and is never tuned to a capacity. DP
+    # 1.0.14: a collection narrower than that is ONE track of its own width
+    # (min(100%, ...)), so a card never runs past its container.
+    assert "repeat(auto-fill, minmax(min(100%, 360px), 1fr))" in collection
     assert "auto-fit" not in collection, "empty trailing capacity would collapse"
     assert "justify-content: center" not in collection, "population-centred sizing returned"
     # Capacity is the layout's own behaviour, never a measured offset.
@@ -477,12 +476,15 @@ def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
         # gate on intent -- the canonical dialog is still what asks whether the
         # operator means it. Hiding the group instead made the password field
         # change width every time a credential was saved or cleared.
-        group = rendered[rendered.index("dp-usenet-clear-password"):]
-        group = group[:group.index("</div>")]
-        assert " hidden>" not in group, f"{label}: the clear group still disappears"
-        assert "Clear Password" in group, label
-        assert 'type="checkbox"' not in group, label
-        assert "<label" not in group, label
+        # DP 1.0.14: it is Clear, inside the Password field's own border --
+        # the shared compound field, the input and Clear its two members.
+        button = rendered[rendered.index('data-usenet-action="clear-password"'):]
+        assert button[:button.index("</button>")].endswith(">Clear"), label
+        assert " hidden" not in action, f"{label}: the clear action still disappears"
+        field = rendered[rendered.index('data-usenet-field="password"'):]
+        field = field[:field.index('data-usenet-action="clear-password"')]
+        assert "<label" not in field and 'type="checkbox"' not in field, label
+        assert "dp-action-field" in rendered or "embeddedActionField(" in rendered, label
     # The retired gated checkbox and every trace of its copy are gone.
     assert "<span>Clear the stored password for this server</span>" not in SETTINGS_JS
     assert "dp-settings-inline-check dp-usenet-clear-password" not in SETTINGS_JS
@@ -1381,20 +1383,24 @@ def test_the_action_pair_lives_inside_the_disclosure_grid():
         assert advanced.index("dp-usenet-advanced-body") < advanced.index("dp-usenet-actions")
 
 
-def test_the_disclosure_grid_centres_the_pair_on_the_whole_card():
+def test_the_footer_is_advanced_then_remove_at_the_trailing_edge():
+    """DP 1.0.14: the footer is Advanced at the leading edge and Remove at the
+    trailing edge, on ONE row in both disclosure states; Test and Enable are
+    the header's. Nothing is re-placed when the disclosure opens."""
     grid = rule(USENET_CSS, ".dp-usenet-advanced {")
     assert "display: grid" in grid
-    # Symmetric rails: the pair is centred on the CARD, not on leftover space.
-    assert "minmax(0, 1fr) auto minmax(0, 1fr)" in grid
+    assert "grid-template-columns: minmax(0, 1fr) auto;" in grid
     for banned in ("position: absolute", "margin-left", "transform"):
         assert banned not in grid, banned
-    collapsed = rule(USENET_CSS, ".dp-usenet-actions {")
-    assert "grid-row: 1" in collapsed and "grid-column: 2" in collapsed
-    # Expanded: its own final row beneath every advanced field, still centred,
-    # driven by the disclosure's own open state.
-    expanded = rule(USENET_CSS, ".dp-usenet-advanced:has(> .dp-usenet-advanced-body:not([hidden])) .dp-usenet-actions {")
-    assert "grid-row: 3" in expanded
-    assert "grid-column: 1 / -1" in expanded
+    actions = rule(USENET_CSS, ".dp-usenet-actions {")
+    assert "grid-row: 1" in actions and "grid-column: 2" in actions
+    assert "justify-content: flex-end" in actions
+    assert ".dp-usenet-advanced:has(" not in USENET_CSS
+    for label, markup in SERVER_CARDS:
+        footer = markup[markup.index('class="dp-usenet-actions"'):]
+        footer = footer[:footer.index("</div>")]
+        assert 'data-usenet-action="remove"' in footer, label
+        assert 'data-usenet-action="test"' not in footer and "dp-usenet-enable" not in footer, label
 
 
 def test_the_priority_hint_belongs_to_the_priority_field():
@@ -1406,26 +1412,28 @@ def test_the_priority_hint_belongs_to_the_priority_field():
         assert field.index('data-usenet-field="priority"') < field.index("Lower values have priority."), label
     hint = rule(USENET_CSS, ".dp-usenet-priority-hint {")
     assert "text-align: center" not in hint, "the hint is still a free-floating centred paragraph"
-    # The tuning row keeps both inputs on one band even though one column is taller.
+    # The tuning row keeps both inputs on one band even though one column is
+    # taller: labels, then inputs, then the hint, each in its own grid row.
     tuning = rule(USENET_CSS, ".dp-usenet-row--tuning {")
-    assert "align-items: flex-start" in tuning
+    assert "display: grid" in tuning
+    assert ".dp-usenet-row--tuning .dp-usenet-priority-hint { grid-row: 3; grid-column: 2; }" in USENET_CSS
 
 
 def test_ssl_is_centred_against_the_host_and_port_input_boxes():
-    """Structural: the host row becomes a two-row grid -- labels, then controls
-    -- and SSL is placed in the CONTROLS row. Nothing is nudged."""
-    row = rule(USENET_CSS, ".dp-usenet-row--host {")
-    assert "display: grid" in row
+    """Structural: Port with SSL is a two-row grid -- labels, then controls
+    -- and the SSL toggle is placed in the CONTROLS row, its label above it
+    at every width (DP 1.0.14). Nothing is nudged."""
+    group = rule(USENET_CSS, ".dp-usenet-port-ssl {")
+    assert "display: grid" in group and "align-items: center" in group
     ssl = rule(USENET_CSS, ".dp-usenet-ssl {")
     assert "grid-row: 2" in ssl
-    assert "align-self: center" in ssl
     for banned in ("position: absolute", "transform", "margin-top: -", "margin-bottom: -"):
         assert banned not in ssl, banned
     # The toggle itself is untouched.
     for label, markup in SERVER_CARDS:
         element = control(markup, 'data-usenet-field="ssl"')
         assert 'type="checkbox"' in element, label
-        assert "toggle-row" in markup
+        assert '<span class="form-label">SSL</span>' in markup, label
 
 
 def test_no_usenet_geometry_is_faked_at_runtime():

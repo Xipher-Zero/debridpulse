@@ -383,7 +383,7 @@ test('clearing the password is explicit, confirmed, and does erase it', async ({
   await enableUsenet(page);
   const card = collection(page).locator(`[data-usenet-server-id="${id}"]`);
   await expect(clearButton(card)).toBeEnabled();
-  await expect(clearButton(card)).toHaveText('Clear Password');
+  await expect(clearButton(card)).toHaveText('Clear');
   await confirmDanger(page, clearButton(card));
   await expect.poll(async () => (await storedServers(page))[0].password_configured).toBe(false);
 });
@@ -1689,7 +1689,10 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
   });
 
-  test('collapsed: Advanced stays left and the pair shares its row, centred on the card',
+  // DP 1.0.14: the footer is Advanced at the leading edge and Remove at the
+  // trailing edge; Test and Enable are the header's (formerly the Test and
+  // Remove pair, centred on the card).
+  test('collapsed: Advanced stays left and Remove shares its row at the trailing edge',
     async ({page}) => {
       const card = only(page);
       const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
@@ -1699,9 +1702,10 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       expect(Math.abs(toggle.centerY - actions.centerY)).toBeLessThanOrEqual(2);
       // Advanced is on the card's left datum.
       expect(toggle.left - content.left).toBeLessThanOrEqual(2);
-      // The pair is centred on the WHOLE card, not on the leftover space to
-      // the right of the disclosure.
-      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+      // Remove is on the card's right datum.
+      expect(Math.abs(actions.right - content.right)).toBeLessThanOrEqual(1);
+      await expect(card.locator('.dp-usenet-actions [data-usenet-action="test"]')).toHaveCount(0);
+      await expect(card.locator('.dp-usenet-server-head [data-usenet-action="test"]')).toHaveCount(1);
       // And they do not overlap.
       expect(actions.left).toBeGreaterThan(toggle.right);
       // No dedicated action band beneath the row.
@@ -1709,7 +1713,9 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       expect(advanced.bottom - Math.max(toggle.bottom, actions.bottom)).toBeLessThanOrEqual(3);
     });
 
-  test('expanded: the pair owns the final row beneath every advanced field, still centred',
+  // DP 1.0.14: Remove stays on Advanced's row, at the trailing edge, when the
+  // disclosure opens (formerly the pair moved to a final row of its own).
+  test('expanded: Remove stays on the Advanced row at the trailing edge, above the advanced fields',
     async ({page}) => {
       const card = only(page);
       await card.locator('[data-usenet-advanced-toggle]').click();
@@ -1719,8 +1725,9 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
       const content = await contentBox(card);
       expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
-      expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
-      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+      expect(Math.abs(toggle.centerY - actions.centerY)).toBeLessThanOrEqual(2);
+      expect(actions.bottom).toBeLessThanOrEqual(body.top + 2);
+      expect(Math.abs(actions.right - content.right)).toBeLessThanOrEqual(1);
     });
 
   test('the Priority hint sits directly beneath the Priority input, in its column',

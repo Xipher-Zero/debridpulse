@@ -73,8 +73,11 @@ test('every Usenet server field label aligns with its control outer box', async 
       const label = field.querySelector('.form-label');
       const control = field.querySelector('.input');
       if (!label || !control || control.getBoundingClientRect().width === 0) continue;
+      // A control inside a compound field (Password, with its Clear) is drawn
+      // bare: the field's border is the control's outer box.
+      const outer = control.closest('.dp-action-field') || control;
       out[control.dataset.usenetField] =
-        label.getBoundingClientRect().left - control.getBoundingClientRect().left;
+        label.getBoundingClientRect().left - outer.getBoundingClientRect().left;
     }
     return out;
   });
@@ -137,18 +140,19 @@ test('representative pre-existing Settings fields use the same canonical datum',
  * Whether the operator means a destructive action is now the one canonical
  * Settings confirmation's question, asked when they act -- so there is no
  * card-local checkbox to align against its own label text, and no datum here to
- * restate. What the group must still be is ONE explicit destructive control,
- * which is the shared-datum invariant below. */
-test('the clear-stored-password group is one explicit destructive control', async ({page}) => {
+ * restate. DP 1.0.14: the action is Clear, INSIDE the Password field (the
+ * shared compound field), and it must still be ONE explicit destructive
+ * control, vertically centred in the field that holds it. */
+test('the clear-stored-password action is one explicit destructive control inside its field', async ({page}) => {
   await isolateExternalFonts(page);
   const card = await usenetServerCard(page);
-  const row = card.locator('.dp-usenet-clear-password');
+  const row = card.locator('.dp-usenet-field--password .dp-action-field');
   await expect(row).toHaveCount(1);
 
   const action = row.locator('[data-usenet-action="clear-password"]');
   await expect(action).toHaveCount(1);
   await expect(action).toHaveClass(/btn-danger/);
-  await expect(action).toHaveText('Clear Password');
+  await expect(action).toHaveText('Clear');
   await expect(action).toBeEnabled();
   // No confirmation representation survives on the card, in either theme.
   await expect(row.locator('input[type="checkbox"]')).toHaveCount(0);
@@ -156,9 +160,9 @@ test('the clear-stored-password group is one explicit destructive control', asyn
 
   for (const light of [false, true]) {
     await page.evaluate(isLight => document.body.classList.toggle('light', isLight), light);
-    // The control is vertically centred on the group it is the whole of.
+    // The control is vertically centred on the field it sits in.
     const delta = await page.evaluate(() => {
-      const target = document.querySelector('.dp-usenet-clear-password');
+      const target = document.querySelector('.dp-usenet-field--password .dp-action-field');
       const button = target.querySelector('[data-usenet-action="clear-password"]')
         .getBoundingClientRect();
       const host = target.getBoundingClientRect();

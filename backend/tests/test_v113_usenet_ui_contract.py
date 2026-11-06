@@ -117,21 +117,26 @@ def test_add_tile_uses_a_lucide_plus_and_centres_its_group():
     assert "flex-direction: column" in inner and "align-items: center" in inner
 
 
-def test_host_port_and_ssl_share_one_aligned_row():
-    """DP 1.0.13: one row, laid out as a two-row grid -- labels, then controls
-    -- so the SSL group is centred against the Host/Port INPUT BOXES rather
-    than against their taller label+input wrappers."""
-    assert 'dp-usenet-row--host' in SETTINGS
+def test_host_then_port_with_ssl_as_one_group():
+    """DP 1.0.14: Host, then Port with SSL as ONE group -- one row while the
+    three fit, the group beneath Host when they do not (the flex line's own
+    fit, never a viewport width). The group is a two-row grid, labels above
+    their controls, so SSL's label is always above its toggle and the toggle
+    is centred against the Port input box itself."""
+    assert 'dp-usenet-row--host' in SETTINGS and 'dp-usenet-port-ssl' in SETTINGS
     for field in ("host", "port", "ssl"):
         assert f'data-usenet-field="{field}"' in SETTINGS
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
     row = css[css.index(".dp-usenet-row--host {"):]
     row = row[:row.index("}") + 1]
-    assert "display: grid" in row
-    assert ".dp-usenet-row--host .dp-usenet-field--port" in css
+    assert "flex-wrap: wrap" in row
+    group = css[css.index(".dp-usenet-port-ssl {"):]
+    group = group[:group.index("}") + 1]
+    assert "display: grid" in group and "grid-template-rows: auto auto" in group
+    assert ".dp-usenet-field--ssl > .form-label { grid-column: 2; grid-row: 1;" in css
     ssl = css[css.index(".dp-usenet-ssl {"):]
     ssl = ssl[:ssl.index("}") + 1]
-    assert "grid-row: 2" in ssl and "align-self: center" in ssl
+    assert "grid-row: 2" in ssl
 
 
 def test_the_ssl_toggle_follows_only_a_conventional_port():
@@ -168,11 +173,16 @@ def test_a_failed_native_application_is_surfaced_on_the_card():
 
 
 def test_connections_and_priority_share_one_aligned_row():
-    """Top-aligned, so the Priority column can carry its own help text beneath
-    its input without dragging the two inputs off one band."""
+    """DP 1.0.14: a two-equal-column grid of labels, then inputs, so the
+    Priority column carries its own help text beneath its input, a label
+    needing two lines at a narrow card sits on its input, and the two inputs
+    stay on one band -- a 2x2 at every width, never wider than the card."""
     assert "dp-usenet-row--tuning" in SETTINGS
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
-    assert ".dp-usenet-row--tuning { align-items: flex-start; }" in css
+    tuning = css[css.index(".dp-usenet-row--tuning {"):]
+    tuning = tuning[:tuning.index("}")]
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in tuning
+    assert ".dp-usenet-row--tuning .input { grid-row: 2; min-width: 0; }" in css
 
 
 def test_no_api_key_field_is_exposed_on_a_news_server():

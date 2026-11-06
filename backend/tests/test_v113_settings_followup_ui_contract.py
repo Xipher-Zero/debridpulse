@@ -140,17 +140,14 @@ def test_no_per_tab_label_or_hint_nudge_survives():
 
 # --- D. Usenet clear-password row ---------------------------------------------
 
-def test_clear_password_row_is_one_left_aligned_action_group():
-    """DP 1.0.13: the confirmation stopped being a gated checkbox and became
-    the confirmation of an explicit destructive ACTION. Button, checkbox and
-    the sentence that describes it read as one group, left-aligned with the
-    card's form content and vertically centred together."""
-    assert ".dp-usenet-clear-password" in USENET_CSS
-    rule = USENET_CSS[USENET_CSS.index(".dp-usenet-clear-password {"):]
+def test_clear_password_is_inside_the_password_field():
+    """DP 1.0.14: the explicit destructive Clear is inside the Password
+    field's own border -- the shared compound field (.dp-action-field), which
+    centres it vertically at the trailing edge -- not a group beside it."""
+    assert ".dp-usenet-clear-password" not in USENET_CSS
+    assert ".dp-usenet-field--password .dp-action-field" in USENET_CSS
+    rule = USENET_CSS[USENET_CSS.index(".dp-usenet-field--password .dp-action-field"):]
     rule = rule[:rule.index("}")]
-    assert "display: flex" in rule
-    assert "align-items: center" in rule
-    assert "text-align: center" not in rule
     for banned in ("position: absolute", "transform", "margin-left"):
         assert banned not in rule, banned
 

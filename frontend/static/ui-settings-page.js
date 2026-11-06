@@ -1661,10 +1661,17 @@
    * every card and the group is hidden while the server has nothing stored to
    * clear, so the behaviour owner toggles STATE rather than markup.
    *
-   * Test and Remove are rendered exactly once, inside the Advanced grid. Their
-   * placement in BOTH disclosure states belongs to that grid
-   * (ui-settings-usenet-servers.css); nothing clones, moves or re-parents
-   * them. */
+   * The card reads, at every width: its header -- the name with its Edit,
+   * from the leading edge, then the Test/Enable island at the trailing edge
+   * (the header Test group's material) -- then Host, then Port with SSL,
+   * Username, Password with its Clear inside the field (the shared compound
+   * field, .dp-action-field), and the footer: Advanced, then Remove at the
+   * trailing edge. Test, Enable and Remove are rendered exactly once; nothing
+   * clones, moves or re-parents them. Only two things answer to width: a name
+   * too long for its room ends in an ellipsis (the whole name stays the
+   * text, the tooltip and the controls' names), and Port with SSL takes its
+   * own row beneath Host when the three no longer fit one
+   * (ui-settings-usenet-servers.css). */
   /* One server's participation control.
    *
    * It is an ORDINARY reversible boolean of this record, so it commits
@@ -1673,17 +1680,13 @@
    * integration participation owner, which is a different question about a
    * different subject.
    *
-   * Its PLACEMENT is the Advanced rail's own far-right structural slot
-   * (ui-settings-usenet-servers.css). The rail is a three-track grid whose
-   * third track exists in both disclosure states, so Enable stays beside
-   * Advanced when Test/Remove drop to their own row. Nothing measures,
-   * moves or re-parents it. */
-  function usenetEnableControl(value) {
+   * It sits in the header's Test/Enable island, after Test. It shows no
+   * word; its accessible name names the server. */
+  function usenetEnableControl(value, name) {
     return `
           <label class="dp-usenet-enable toggle-row">
-            <span class="tl">Enable</span>
             <span class="toggle">
-              <input type="checkbox" data-usenet-field="enabled"
+              <input type="checkbox" data-usenet-field="enabled" aria-label="Enable ${html(name)}"
                      data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" ${checked(value)}>
               <span class="ttrack"></span>
             </span>
@@ -1691,7 +1694,9 @@
   }
 
   function usenetServerCard(server, index) {
-    const advancedId = `dp-usenet-advanced-${String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-')}`;
+    const safe = String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-');
+    const advancedId = `dp-usenet-advanced-${safe}`;
+    const passwordId = `dp-usenet-password-${safe}`;
     const derived = String(server.host || '').trim();
     const override = String(server.display_name || '').trim();
     const name = override || derived || 'New server';
@@ -1702,11 +1707,16 @@
            data-usenet-password-configured="${server.password_configured ? '1' : '0'}"
            data-usenet-name-override="${override ? '1' : '0'}">
         <div class="dp-usenet-server-head">
-          <span class="dp-usenet-server-name" data-usenet-display-name>${html(name)}</span>
-          <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                  data-tooltip="Edit display name" aria-label="Edit display name for ${html(name)}">
-            <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
-          </button>
+          <span class="dp-usenet-server-title">
+            <span class="dp-usenet-server-name" data-usenet-display-name data-tooltip="${html(name)}">${html(name)}</span>
+            <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
+                    data-tooltip="Edit display name" aria-label="Edit display name for ${html(name)}">
+              <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
+            </button>
+          </span>
+          <div class="dp-usenet-server-controls">${providerTestAction('test', 'data-usenet-action')}
+            ${usenetEnableControl(server.enabled !== false, name)}
+          </div>
         </div>
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
@@ -1714,18 +1724,20 @@
             <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="${html(server.host || '')}"
                    autocomplete="off" placeholder="news.example.com">
           </label>
-          <label class="dp-usenet-field dp-usenet-field--port">
-            <span class="form-label">Port</span>
-            <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port"
-                   value="${html(String(server.port ?? 563))}">
-          </label>
-          <label class="dp-usenet-ssl toggle-row">
-            <span class="tl">SSL</span>
-            <span class="toggle">
-              <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" ${checked(server.ssl !== false)}>
-              <span class="ttrack"></span>
-            </span>
-          </label>
+          <div class="dp-usenet-port-ssl">
+            <label class="dp-usenet-field dp-usenet-field--port">
+              <span class="form-label">Port</span>
+              <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port"
+                     value="${html(String(server.port ?? 563))}">
+            </label>
+            <label class="dp-usenet-field dp-usenet-field--ssl">
+              <span class="form-label">SSL</span>
+              <span class="toggle dp-usenet-ssl">
+                <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" ${checked(server.ssl !== false)}>
+                <span class="ttrack"></span>
+              </span>
+            </label>
+          </div>
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
@@ -1733,15 +1745,13 @@
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="${html(server.username || '')}" autocomplete="off">
           </label>
         </div>
-        <div class="dp-usenet-row dp-usenet-row--password">
-          <label class="dp-usenet-field dp-usenet-field--password">
-            <span class="form-label">Password</span>
-            <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
-                   autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
-          </label>
-          <div class="dp-usenet-clear-password">
-            <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                    aria-label="Clear the stored password for this server"${configured ? '' : ' disabled'}>Clear Password</button>
+        <div class="dp-usenet-row">
+          <div class="dp-usenet-field dp-usenet-field--wide dp-usenet-field--password">
+            <label class="form-label" for="${passwordId}">Password</label>
+            ${embeddedActionField(`<input class="input" id="${passwordId}" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
+                     autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">`,
+              `<button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
+                      aria-label="Clear the stored password for this server" data-tooltip="Clear the stored password for this server"${configured ? '' : ' disabled'}>Clear</button>`)}
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
@@ -1782,10 +1792,9 @@
             </div>
             <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
           </div>
-          <div class="dp-usenet-actions">${providerTestAction('test', 'data-usenet-action')}
+          <div class="dp-usenet-actions">
             <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
           </div>
-          ${usenetEnableControl(server.enabled !== false)}
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
