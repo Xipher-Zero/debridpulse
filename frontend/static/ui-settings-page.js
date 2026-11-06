@@ -663,7 +663,13 @@
    * whole -- the row, if the step is one, unwrapped, and no setting wider than
    * the island holds or overflowing its own box -- is kept. The choice is a
    * function of the room alone, so it cannot oscillate, and each step is
-   * given back as soon as the room holds the one before it. A setting that
+   * given back as soon as the room holds the one before it. Spacing yields
+   * before any setting narrows: the stack keeps its normal spacing only while
+   * the island holds every setting at its own width (it is drawn as wide as
+   * its own content, not narrowed to the room), so tighter spacing never hands room back to a setting that
+   * had already been narrowed -- which re-widened a setting nothing had
+   * constrained, re-wrapping its title, only for it to narrow again a few
+   * pixels later. A setting that
    * does not fit even at the last step, alone, takes its title above its
    * control (data-island-field="column").
    *
@@ -685,6 +691,17 @@
   // Whether its settings, laid out as a row, began a second line.
   const islandWrapped = island => islandFields(island).map(field => field.getBoundingClientRect())
     .some((box, index, boxes) => index && box.left < boxes[index - 1].right);
+
+  // Whether the room has narrowed the island below its own width -- so a
+  // setting in it is narrower than its own. Read against the island laid out
+  // unbounded for that one reading (its container may itself be sized by it).
+  function islandNarrowed(island) {
+    const drawn = island.getBoundingClientRect().width;
+    island.style.maxWidth = 'none';
+    const own = island.getBoundingClientRect().width;
+    island.style.maxWidth = '';
+    return drawn < own - 0.5;
+  }
 
   // The settings that do not fit whole inside the island's content box.
   function islandMisfits(island) {
@@ -737,7 +754,9 @@
     for (let step = 0; step < steps; step += 1) {
       island.dataset.islandFit = String(step);
       if (step >= ISLAND_STACKED_STEP) island.dataset.island = 'stacked';
-      if (!(step === 0 && islandWrapped(island)) && !islandMisfits(island).length) return;
+      if (step === 0 && islandWrapped(island)) continue;
+      if (step === ISLAND_STACKED_STEP && islandNarrowed(island)) continue;
+      if (!islandMisfits(island).length) return;
     }
     islandMisfits(island).forEach(field => { field.dataset.islandField = 'column'; });
   }

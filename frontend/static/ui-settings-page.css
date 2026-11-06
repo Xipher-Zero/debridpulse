@@ -1533,11 +1533,17 @@
   }
 
   /* The island steps (data-island-fit) narrow the folder no further than a
-     path still worth reading beside Browse. */
+     path still worth reading beside Browse. The path is the one island
+     control whose width is flexible: it starts at that floor and takes the
+     room its title and hint leave, up to its 380px, so they keep their own
+     width first and narrow -- and wrap -- only once the path is at its floor.
+     Taking the hints out of view therefore hands it no width a title still
+     needs. */
   #view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
     width: auto;
-    flex: 0 1 380px;
+    flex: 1 0 152px;
     min-width: 152px;
+    max-width: 380px;
   }
 }
 
