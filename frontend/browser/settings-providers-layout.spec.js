@@ -267,11 +267,11 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
 
   test('the rail keeps its order when it reflows at a narrow width', async ({page}) => {
     await page.setViewportSize({width: 560, height: 1000});
-    // Below 780px the state and the direct Test are carried by the handheld
-    // Test trigger (its menu reports the state): the drawn rail is Help, then
-    // Test, then the toggle, and the state stays the rail's live region.
-    await expect(testButton(page)).toBeHidden();
-    await expect(rail(page).locator('.dp-settings-header-test-trigger')).toBeVisible();
+    // Below 780px the state is carried by the Test's colour: the drawn rail
+    // is Help, then the same Test, then the toggle, and the state stays the
+    // rail's live region.
+    await expect(testButton(page)).toBeVisible();
+    await expect(rail(page).locator('[popover]')).toHaveCount(0);
     await expect(status(page)).toHaveAttribute('role', 'status');
     // Reflow is allowed; losing the order, or overflowing, is not.
     const order = await rail(page).evaluate(el => {
@@ -282,7 +282,7 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       });
       return drawn(el).map(child =>
         child.matches('.dp-settings-help-chip') ? 'help'
-          : child.matches('.dp-settings-header-test-trigger') ? 'test'
+          : child.matches('.dp-settings-provider-test') ? 'test'
           : child.matches('.dp-settings-integration-header-enable') ? 'enable' : null).filter(Boolean);
     });
     expect(order).toEqual(['help', 'test', 'enable']);

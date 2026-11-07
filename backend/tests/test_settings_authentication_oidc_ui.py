@@ -94,7 +94,7 @@ def test_oidc_header_status_is_projected_from_canonical_configuration_and_eviden
     configuration = configuration[:configuration.index("\n  }")]
 
     # The rail says nothing while OIDC is off; otherwise it reports the one
-    # configuration projection (which the handheld Test menu always reports).
+    # configuration projection (which the handheld Test's colour always says).
     assert "return a?.oidc_enabled ? oidcConfigurationStatus(a) : {text: '', tone: 'none'};" in status
     assert "if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};" in configuration
     assert "a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'}" in configuration

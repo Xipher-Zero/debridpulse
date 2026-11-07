@@ -1728,33 +1728,22 @@
    *
    * From 780px the rail is unchanged: the direct Test (``action``, the card's
    * own Test markup) beside the participation toggle, and the header status.
-   * Below 780px the rail's status and direct Test give way to one compact
-   * outlined group: a ``Test`` trigger, then the toggle. The trigger only
-   * opens a menu (a native popover: Escape, light dismiss, focus return). The
-   * menu is drawn when it opens (bindHeaderTestMenus, as the Downloads status
-   * menu is): the configuration report first, then the card's own Test,
-   * cloned, so the one page action dispatch runs the card's existing handler
-   * -- and a closed menu holds nothing, so the page has one Test per card.
+   * Below 780px the rail's status gives way, and the same Test and the toggle
+   * sit in one compact outlined group: the Test textual, coloured by the
+   * configuration. It is one Test at every width -- one press runs the card's
+   * existing handler at once; nothing opens.
    *
    * ``status`` is the card's configuration report whatever its participation
-   * (a rail may hide it while switched off; this never does). The trigger's
-   * colour says which of the three it is -- verified, unverified,
-   * unconfigured -- and the painters below keep it current. Participation is
-   * separate: an off toggle mutes Test at both widths and never disables it. */
+   * (a rail may hide it while switched off; this never does). The group
+   * carries which of the three it is -- verified, unverified, unconfigured --
+   * as the handheld Test's colour (ui-settings-page.css), and the painters
+   * below keep it current. Participation is separate: an off toggle mutes Test
+   * at both widths and never disables it. */
   const TEST_VERIFICATION = Object.freeze({success: 'verified', warning: 'unverified', error: 'unconfigured'});
-  // Each verification state's DP button tone (ui-universal-language.css).
-  const TEST_TONE = Object.freeze({verified: 'btn-success', unverified: 'btn-warn', unconfigured: 'dp-btn--accent'});
   let headerTestMenus = 0;
   function headerTestControls(title, action, toggle, status) {
-    const menu = `dp-settings-test-menu-${++headerTestMenus}`;
     const verification = TEST_VERIFICATION[status.tone] || 'unconfigured';
-    return `<div class="dp-settings-header-action">${action}</div><div class="dp-settings-header-test-group">
-        <span class="dp-settings-header-test-shell">
-          <button class="btn btn-sm dp-settings-header-test-trigger ${TEST_TONE[verification]}" type="button" popovertarget="${menu}"
-                  aria-controls="${menu}" aria-expanded="false" aria-label="Test ${html(title)}" data-verification="${verification}"
-                  data-report="${html(status.text)}" data-report-tone="${html(status.tone)}">Test</button>
-          <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} test"></div>
-        </span>${toggle}</div>`;
+    return `<div class="dp-settings-header-test-group" data-verification="${verification}"><div class="dp-settings-header-action">${action}</div>${toggle}</div>`;
   }
 
   /* A card's header actions, as each width presents them: the same group.
@@ -3922,20 +3911,8 @@
       node.dataset.tone = status.tone;
       node.hidden = !status.text;
     }
-    const trigger = card.querySelector('.dp-settings-header-test-trigger');
-    if (trigger) {
-      const verification = TEST_VERIFICATION[report.tone] || 'unconfigured';
-      trigger.classList.remove(...Object.values(TEST_TONE));
-      trigger.classList.add(TEST_TONE[verification]);
-      trigger.dataset.verification = verification;
-      trigger.dataset.report = report.text;
-      trigger.dataset.reportTone = report.tone;
-    }
-    const menu = card.querySelector('.dp-settings-header-test-status');
-    if (menu) {
-      menu.textContent = report.text;
-      menu.dataset.tone = report.tone;
-    }
+    const group = card.querySelector('.dp-settings-header-test-group[data-verification]');
+    if (group) group.dataset.verification = TEST_VERIFICATION[report.tone] || 'unconfigured';
   }
 
   function paintAuthKpis(a) {
@@ -6123,8 +6100,8 @@
   }
 
   // What the stored OIDC configuration IS, whether or not OIDC is switched on:
-  // the header rail says nothing while it is off (above); the handheld Test
-  // menu always reports it (headerTestControls).
+  // the header rail says nothing while it is off (above); the handheld Test's
+  // colour always says it (headerTestControls).
   function oidcConfigurationStatus(a) {
     if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
     return a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
@@ -6627,14 +6604,15 @@
       || identity;
   }
 
-  /* The handheld header Test menu (headerTestControls). A popover's own
-   * toggle does not bubble, so the page listens in the capture phase. Open, it
-   * sits under its trigger, right edges aligned, inside the window (above the
-   * trigger where there is more room), follows a scroll or resize, and puts
-   * focus on its Test; the platform closes it on Escape or an outside press
-   * and returns focus to the trigger. Nothing here runs or reports a Test.
-   * When the page reaches 780px an idle menu closes (the direct Test takes
-   * over); one whose Test is running stays until that Test answers. */
+  /* The handheld header actions menu (headerActionsMenu: Backups). A
+   * popover's own toggle does not bubble, so the page listens in the capture
+   * phase. Open, it sits under its trigger, right edges aligned, inside the
+   * window (above the trigger where there is more room), follows a scroll or
+   * resize, and puts focus on its first action; the platform closes it on
+   * Escape or an outside press and returns focus to the trigger. Nothing here
+   * runs an action. When the page reaches 780px an idle menu closes (the
+   * direct actions take over); one whose action is running stays until that
+   * action answers. */
   const HANDHELD = window.matchMedia('(max-width: 779px)');
   const TEST_MENU_EDGE = 8;
   const TEST_MENU_GAP = 6;
@@ -6657,38 +6635,22 @@
   const openTestMenus = () => document.querySelectorAll('#view-settings .dp-settings-header-test-menu:popover-open');
   const followTestMenus = () => openTestMenus().forEach(placeHeaderTestMenu);
   const testMenuRunning = menu => !!menu.querySelector('button[data-dp-settings-markup]');
-  // The menu's content, drawn as it opens: the card's report, then its Test
-  // -- or, for a card's actions menu (headerActionsMenu), each of its actions.
+  // The menu's content, drawn as it opens: each of the card's actions.
   function drawHeaderTestMenu(menu) {
     if (testMenuRunning(menu)) return;
-    const trigger = menu.closest('.dp-settings-header-test-shell')?.querySelector('.dp-settings-header-test-trigger');
     const actions = menu.closest('.dp-settings-card-header-controls')?.querySelector(':scope > .dp-settings-header-action');
-    if (trigger && actions && !('report' in trigger.dataset)) {
-      menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > button[data-action]'), button => {
-        const item = button.cloneNode(true);
-        if (item.dataset.menuLabel) item.textContent = item.dataset.menuLabel;
-        return item;
-      }));
-      return;
-    }
-    const test = actions?.querySelector(':scope > .dp-settings-provider-test');
-    if (!trigger || !test) return;
-    const report = document.createElement('div');
-    report.className = 'dp-settings-header-test-status';
-    report.id = `${menu.id}-report`;
-    report.dataset.tone = trigger.dataset.reportTone || 'none';
-    report.textContent = trigger.dataset.report || '';
-    // The Test the menu focuses is described by the report, so the state is
-    // read with it -- also while the section is off and its rail says nothing.
-    const action = test.cloneNode(true);
-    action.setAttribute('aria-describedby', report.id);
-    menu.replaceChildren(report, action);
+    if (!actions) return;
+    menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > button[data-action]'), button => {
+      const item = button.cloneNode(true);
+      if (item.dataset.menuLabel) item.textContent = item.dataset.menuLabel;
+      return item;
+    }));
   }
 
-  /* A menu's Test has answered (setBusy, the page's one busy owner): a menu
+  /* A menu's action has answered (setBusy, the page's one busy owner): a menu
    * closed meanwhile lets go of it; one still open while the page has left
-   * the handheld width closes -- the direct Test is the page's Test there --
-   * and hands focus to that Test. A handheld menu stays, showing the answer. */
+   * the handheld width closes -- the direct action is the page's there -- and
+   * hands focus to that action. A handheld menu stays, showing the answer. */
   function settleHeaderTestMenu(button) {
     const menu = button.closest?.('.dp-settings-header-test-menu');
     if (!menu) return;
@@ -6843,10 +6805,6 @@
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
-      // A header's Test is one action shown twice (headerTestControls): while
-      // either presentation runs it, the other does not start it again.
-      if (button.matches('.dp-settings-provider-test') && button.closest('.card-header')
-        ?.querySelector(`button[data-action="${CSS.escape(action)}"][data-dp-settings-markup]`)) return;
       if (action === 'test-alldebrid') testConnection('alldebrid', button);
       else if (action === 'test-debridlink') testConnection('debridlink', button);
       else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);

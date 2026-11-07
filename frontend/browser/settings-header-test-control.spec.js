@@ -4,8 +4,9 @@ const { test, expect } = require('@playwright/test');
  * headerTestControls).
  *
  * Below 780px a card header's status and direct Test give way to one compact
- * outlined group -- a textual Test trigger beside the toggle -- whose menu
- * reports the configuration and holds the card's own Test. From 780px the
+ * outlined group -- a textual Test beside the toggle, coloured by the
+ * configuration, that runs the card's own Test at once on one press: no menu,
+ * no second Test. From 780px the
  * header is what it was, except: no "Enable" word, and an off section's Test
  * is muted (never disabled). Every Settings card header's toggle loses the
  * visible "Enable" word at every width.
@@ -66,9 +67,17 @@ async function openTab(page, tab) {
 }
 
 const header = (page, card) => page.locator(`#view-settings ${card} > .card-header`);
-const trigger = head => head.locator('.dp-settings-header-test-trigger');
-const menu = head => head.locator('.dp-settings-header-test-menu');
-const isOpen = locator => locator.evaluate(el => el.matches(':popover-open'));
+// The card's one Test, and the group that says its verification.
+const trigger = head => head.locator('.dp-settings-card-header-controls .dp-settings-provider-test');
+const group = head => head.locator('.dp-settings-header-test-group');
+// The header's one drawn Test is a plain action: no popover, nothing it opens.
+async function expectAction(button) {
+  for (const attribute of ['popovertarget', 'aria-expanded', 'aria-controls', 'aria-haspopup']) {
+    await expect(button).not.toHaveAttribute(attribute, /.*/);
+  }
+  await expect(button).toHaveAttribute('type', 'button');
+}
+const popovers = page => page.locator('#view-settings .card-header [popover]:not(.dp-settings-backups-retention-card *)');
 const token = (page, name, property = 'color', read = property) => page.evaluate(([variable, prop, out]) => {
   const probe = document.createElement('span');
   probe.style[prop] = `var(${variable})`;
@@ -92,56 +101,7 @@ async function expectNeutral(page, button) {
 test.describe('below 780px', () => {
   test.use({viewport: {width: 390, height: 844}});
 
-  test('Test is a trigger beside the toggle; the status moves into its menu; opening tests nothing', async ({page}) => {
-    await fonts(page);
-    await withState(page, {integrations: {usenet: {enabled: true, configured: true, verified: false}}});
-    const tests = answer(page, '/api/usenet/test', () => [200, {}]);
-    await page.goto('/');
-    await openTab(page, 'sources');
-    const head = header(page, '.dp-settings-provider-card--usenet');
-    await expect(head).not.toContainText('Enable');
-    await expect(head.locator('.dp-settings-header-action')).toBeHidden();
-    await expect(trigger(head)).toBeVisible();
-    await expect(trigger(head)).toHaveAccessibleName('Test Usenet');
-    await expect(trigger(head)).toHaveText('Test');
-    await expect(trigger(head)).toHaveAttribute('data-verification', 'unverified');
-    await expect(head.getByRole('checkbox', {name: 'Enable Usenet provider route', exact: true})).toHaveCount(1);
-    // One outlined group, Test then toggle, no gratuitous gap.
-    const group = await head.locator('.dp-settings-header-test-group').evaluate(el => {
-      const box = el.getBoundingClientRect();
-      const t = el.querySelector('.dp-settings-header-test-trigger').getBoundingClientRect();
-      const s = el.querySelector('.toggle').getBoundingClientRect();
-      return {border: getComputedStyle(el).borderTopWidth, style: getComputedStyle(el).borderTopStyle,
-              inside: t.left >= box.left && s.right <= box.right, gap: s.left - t.right};
-    });
-    expect(group).toMatchObject({border: '1px', style: 'solid', inside: true});
-    expect(group.gap).toBeLessThanOrEqual(8);
-    // The rail's live status is still the page's announcement, just not drawn.
-    const live = head.locator('.dp-settings-card-header-controls > .dp-settings-provider-config-status');
-    await expect(live).toHaveAttribute('role', 'status');
-    await expect(live).toHaveText('Unverified');
-    expect((await live.boundingBox()).width).toBeLessThanOrEqual(1);
-
-    await trigger(head).click();
-    await expect(menu(head)).toBeVisible();
-    await expect(trigger(head)).toHaveAttribute('aria-expanded', 'true');
-    await expect(menu(head).locator('> *').first()).toHaveText('Unverified');
-    const inner = menu(head).getByRole('button', {name: 'Test', exact: true});
-    await expect(inner).toBeFocused();
-    await expect(inner.locator('.dp-settings-action-glyph')).toHaveCount(1);
-    const box = await menu(head).boundingBox();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(390);
-    expect(tests).toEqual([]);
-    await page.keyboard.press('Escape');
-    await expect(menu(head)).toBeHidden();
-    await expect(trigger(head)).toBeFocused();
-    await expect(trigger(head)).toHaveAttribute('aria-expanded', 'false');
-    // A closed menu holds nothing: the page keeps one Test per card.
-    await expect(page.locator('[data-action="test-usenet"]')).toHaveCount(1);
-  });
-
-  test("the menu's Test runs the card's own action once and the menu stays through it", async ({page}) => {
+  test("Test beside the toggle runs the card's Test at once, on one press, and nothing else opens", async ({page}) => {
     await fonts(page);
     await withState(page, {integrations: {usenet: {enabled: true, configured: true, verified: false}}});
     let release;
@@ -152,25 +112,72 @@ test.describe('below 780px', () => {
     await page.goto('/');
     await openTab(page, 'sources');
     const head = header(page, '.dp-settings-provider-card--usenet');
+    await expect(head).not.toContainText('Enable');
+    await expect(trigger(head)).toBeVisible();
+    await expect(trigger(head)).toHaveAccessibleName('Test');
+    await expect(trigger(head).locator('.dp-settings-action-chip')).toBeHidden();
+    await expect(trigger(head)).toHaveText('Test');
+    await expect(group(head)).toHaveAttribute('data-verification', 'unverified');
+    await expectAction(trigger(head));
+    await expect(popovers(page)).toHaveCount(0);
+    await expect(head.getByRole('checkbox', {name: 'Enable Usenet provider route', exact: true})).toHaveCount(1);
+    // One outlined group, Test then toggle, no gratuitous gap.
+    const outline = await head.locator('.dp-settings-header-test-group').evaluate(el => {
+      const box = el.getBoundingClientRect();
+      const t = el.querySelector('.dp-settings-provider-test').getBoundingClientRect();
+      const s = el.querySelector('.toggle').getBoundingClientRect();
+      return {border: getComputedStyle(el).borderTopWidth, style: getComputedStyle(el).borderTopStyle,
+              inside: t.left >= box.left && s.right <= box.right, gap: s.left - t.right};
+    });
+    expect(outline).toMatchObject({border: '1px', style: 'solid', inside: true});
+    expect(outline.gap).toBeLessThanOrEqual(8);
+    // The rail's live status is still the page's announcement, just not drawn.
+    const live = head.locator('.dp-settings-card-header-controls > .dp-settings-provider-config-status');
+    await expect(live).toHaveAttribute('role', 'status');
+    await expect(live).toHaveText('Unverified');
+    expect((await live.boundingBox()).width).toBeLessThanOrEqual(1);
+    // In the header's accessibility tree, one Test.
+    await expect(head.getByRole('button', {name: /Test/})).toHaveCount(1);
+
+    // One press: the Test runs, busy, and a second press starts nothing.
     await trigger(head).click();
-    const inner = menu(head).locator('button[data-action="test-usenet"]');
-    await inner.click();
-    await expect(inner).toHaveText('Testing…');
-    await expect(inner).toBeDisabled();
-    await inner.click({force: true});
-    expect(await isOpen(menu(head))).toBe(true);
     await expect.poll(() => tests.length).toBe(1);
+    await expect(trigger(head)).toHaveText('Testing…');
+    await expect(trigger(head)).toBeDisabled();
+    await trigger(head).click({force: true});
+    await expect(popovers(page)).toHaveCount(0);
     release();
     await expect(page.locator('.toast').last()).toContainText('Usenet: 1 of 1 news server(s) verified');
     expect(tests).toEqual(['POST']);
-    expect(await isOpen(menu(head))).toBe(true);
-    await expect(inner).toBeEnabled();
-    // The accepted state, not the click, says Verified.
-    await expect(menu(head).locator('.dp-settings-header-test-status')).toHaveText('Verified');
-    await expect(trigger(head)).toHaveAttribute('data-verification', 'verified');
+    await expect(trigger(head)).toBeEnabled();
+    await expect(trigger(head)).toHaveText('Test');
+    // The accepted state, not the press, says Verified -- in the Test's colour.
+    await expect(group(head)).toHaveAttribute('data-verification', 'verified');
+    await expect(trigger(head)).toHaveCSS('color', await token(page, '--dp-state-success'));
+    await expect(live).toHaveText('Verified');
   });
 
-  test('Discord and Statistics Reporting keep their own flows; a failure is reported as the handler reports it', async ({page}) => {
+  test('the keyboard runs the Test with Enter and with Space', async ({page}) => {
+    await fonts(page);
+    await withState(page, {integrations: {debridlink: {enabled: true, configured: true, verified: false}}});
+    const tests = answer(page, '/api/settings/validate-debridlink', () => [400, {detail: 'Key refused'}]);
+    await page.goto('/');
+    await openTab(page, 'sources');
+    const head = header(page, '.dp-settings-provider-card--debridlink');
+    await trigger(head).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.toast').last()).toContainText('Key refused');
+    await expect.poll(() => tests.length).toBe(1);
+    await expect(trigger(head)).toBeEnabled();
+    await trigger(head).focus();
+    await page.keyboard.press('Space');
+    await expect.poll(() => tests.length).toBe(2);
+    await expect(popovers(page)).toHaveCount(0);
+    // A refusal does not prove the configuration: still the unverified colour.
+    await expect(group(head)).toHaveAttribute('data-verification', 'unverified');
+  });
+
+  test('Discord and Statistics Reporting each run their own Test at once; a failure is reported as the handler reports it', async ({page}) => {
     await fonts(page);
     await withState(page, {settings: {discord_notifications_configured: true, discord_notifications_verified: false,
                                       stats_reporting_configured: false, stats_reporting_verified: false}});
@@ -180,23 +187,20 @@ test.describe('below 780px', () => {
     await openTab(page, 'notifications');
     const discordHead = header(page, '.dp-settings-discord-card');
     const reportHead = header(page, '.dp-settings-statistics-reporting-card');
-    await expect(trigger(discordHead)).toHaveAttribute('data-verification', 'unverified');
-    await expect(trigger(reportHead)).toHaveAttribute('data-verification', 'unconfigured');
+    await expect(group(discordHead)).toHaveAttribute('data-verification', 'unverified');
+    await expect(group(reportHead)).toHaveAttribute('data-verification', 'unconfigured');
     await trigger(discordHead).click();
-    await expect(menu(discordHead).locator('.dp-settings-header-test-status')).toHaveText('Configured');
-    await menu(discordHead).locator('button[data-action="test-discord"]').click();
     await expect(page.locator('.toast').last()).toContainText('Webhook Notifications: Webhook refused');
     expect(discord).toEqual(['POST']);
-    expect(await isOpen(menu(discordHead))).toBe(true);
-    await page.keyboard.press('Escape');
+    expect(report).toEqual([]);
     await trigger(reportHead).click();
-    await expect(menu(reportHead).locator('.dp-settings-header-test-status')).toHaveText('Unconfigured');
-    await menu(reportHead).locator('button[data-action="send-report"]').click();
     await expect(page.locator('.toast').last()).toContainText('Test report sent (24h)');
     expect(report).toEqual(['POST']);
+    expect(discord).toEqual(['POST']);
+    await expect(popovers(page)).toHaveCount(0);
   });
 
-  test('the trigger is a DP button coloured by the configuration; an off section is the neutral ghost yet still opens and tests', async ({page}) => {
+  test('the Test is a DP button coloured by the configuration; an off section is the neutral ghost yet still tests at once', async ({page}) => {
     await fonts(page);
     await withState(page, {integrations: {
       alldebrid: {enabled: true, configured: true, verified: true},
@@ -213,45 +217,27 @@ test.describe('below 780px', () => {
       if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
       for (const [id, state, variable] of cases) {
         const head = header(page, `.dp-settings-provider-card--${id}`);
-        await expect(trigger(head)).toHaveAttribute('data-verification', state);
+        await expect(group(head)).toHaveAttribute('data-verification', state);
         await expect(trigger(head)).toHaveClass(/\bbtn\b.*\bbtn-sm\b/);
         await expect(trigger(head)).toHaveText('Test');
-        await expect(trigger(head).locator('svg')).toHaveCount(0);
+        await expect(trigger(head).locator('.dp-settings-action-chip')).toBeHidden();
         await expect(trigger(head)).toHaveCSS('color', await token(page, variable));
         await expect(trigger(head)).toHaveCSS('opacity', '1');
       }
       // Off: verification stays (verified, unconfigured), the colour does not.
       for (const [id, state] of [['torbox', 'verified'], ['premiumize', 'unconfigured']]) {
         const head = header(page, `.dp-settings-provider-card--${id}`);
-        await expect(trigger(head)).toHaveAttribute('data-verification', state);
+        await expect(group(head)).toHaveAttribute('data-verification', state);
         await expectNeutral(page, trigger(head));
       }
     }
-    const off = header(page, '.dp-settings-provider-card--premiumize');
-    // Off is participation, not proof: the rail hides Unconfigured, the menu says it.
-    await trigger(off).click();
-    await expect(menu(off).locator('.dp-settings-header-test-status')).toHaveText('Unconfigured');
-    // The menu centres its report, and its Test's mark and word as one unit.
-    const centred = await menu(off).evaluate(el => {
-      const box = el.getBoundingClientRect(), mid = box.left + box.width / 2;
-      const status = el.querySelector('.dp-settings-header-test-status');
-      const range = document.createRange();
-      range.selectNodeContents(status);
-      const text = range.getBoundingClientRect();
-      const test = el.querySelector('.dp-settings-provider-test');
-      const parts = [...test.children].map(child => child.getBoundingClientRect()).filter(r => r.width);
-      const left = Math.min(...parts.map(r => r.left)), right = Math.max(...parts.map(r => r.right));
-      return {status: Math.abs(text.left + text.width / 2 - mid), test: Math.abs((left + right) / 2 - mid), parts: parts.length};
-    });
-    expect(centred.parts).toBeGreaterThanOrEqual(2);
-    expect(centred.status).toBeLessThanOrEqual(1.5);
-    expect(centred.test).toBeLessThanOrEqual(1.5);
-    await menu(off).locator('button[data-action="test-premiumize"]').click();
+    await trigger(header(page, '.dp-settings-provider-card--premiumize')).click();
     await expect(page.locator('.toast').last()).toContainText('Premiumize is disabled');
     expect(tests).toEqual(['POST']);
+    await expect(popovers(page)).toHaveCount(0);
   });
 
-  test('OpenID Connect keeps its own verification flow and reports its configuration while off', async ({page}) => {
+  test('OpenID Connect runs its own verification flow at once, also while off', async ({page}) => {
     await fonts(page);
     await withState(page, {auth: {oidc_enabled: false, oidc_configured: true, oidc_verified: false}});
     const verify = answer(page, '/api/auth/oidc/verify-config', () => [400, {detail: 'Issuer unreachable'}]);
@@ -261,17 +247,18 @@ test.describe('below 780px', () => {
     const head = header(page, '.dp-settings-oidc-card');
     await expect(head).not.toContainText('Enable');
     await expect(head.getByRole('checkbox', {name: 'Enable OpenID Connect', exact: true})).toHaveCount(1);
-    await expect(trigger(head)).toHaveAttribute('data-verification', 'unverified');
+    await expect(group(head)).toHaveAttribute('data-verification', 'unverified');
+    await expect(trigger(head)).toHaveAccessibleName('Test');
+    await expectAction(trigger(head));
     await expectNeutral(page, trigger(head));
     await trigger(head).click();
-    await expect(menu(head).locator('.dp-settings-header-test-status')).toHaveText('Configured');
-    await menu(head).locator('button[data-action="verify-oidc"]').click();
     await expect(page.locator('.toast').last()).toContainText('Issuer unreachable');
     expect(verify).toEqual(['POST']);
+    await expect(popovers(page)).toHaveCount(0);
   });
 });
 
-test('at 780px an idle menu closes and the direct Test takes over', async ({page}) => {
+test('at 779px and at 780px the same one Test runs at one press, its flask mark back from 780px', async ({page}) => {
   await fonts(page);
   await page.setViewportSize({width: 779, height: 900});
   await withState(page, {settings: {discord_notifications_configured: true, discord_notifications_verified: true}});
@@ -280,15 +267,16 @@ test('at 780px an idle menu closes and the direct Test takes over', async ({page
   await openTab(page, 'notifications');
   const head = header(page, '.dp-settings-discord-card');
   await trigger(head).click();
-  expect(await isOpen(menu(head))).toBe(true);
-  await page.setViewportSize({width: 780, height: 900});
-  await expect.poll(() => isOpen(menu(head))).toBe(false);
-  await expect(trigger(head)).toBeHidden();
-  const direct = head.locator('.dp-settings-header-action > [data-action="test-discord"]');
-  await expect(direct).toBeVisible();
-  await direct.click();
   await expect(page.locator('.toast').last()).toContainText('Test notification sent');
   expect(discord).toEqual(['POST']);
+  await expect(trigger(head).locator('.dp-settings-action-chip')).toBeHidden();
+  await page.setViewportSize({width: 780, height: 900});
+  await expect(trigger(head)).toBeVisible();
+  await expect(trigger(head).locator('.dp-settings-action-glyph')).toBeVisible();
+  await expect(head.getByRole('button', {name: /Test/})).toHaveCount(1);
+  await expect(page.locator('[data-action="test-discord"]')).toHaveCount(1);
+  await trigger(head).click();
+  await expect.poll(() => discord.length).toBe(2);
 });
 
 test('from 780px: no dropdown, the direct flask Test, the neutral ghost (never disabled) while its section is off', async ({page}) => {
@@ -301,7 +289,7 @@ test('from 780px: no dropdown, the direct flask Test, the neutral ghost (never d
   await openTab(page, 'sources');
   for (const id of ['premiumize', 'alldebrid']) {
     const head = header(page, `.dp-settings-provider-card--${id}`);
-    await expect(trigger(head)).toBeHidden();
+    await expect(head.locator('[popover]')).toHaveCount(0);
     await expect(head.locator('.dp-settings-provider-config-status')).toHaveText('Unverified');
     await expect(head).not.toContainText('Enable');
     const direct = head.locator('.dp-settings-header-action > .dp-settings-provider-test');
@@ -369,7 +357,7 @@ test('below 780px every Test-group header keeps title, disclosure, Help, Test an
         // included: no two of them may share a pixel, unless one holds the other.
         const parts = {identity: el.querySelector('.dp-settings-card-title-group'), title: el.querySelector('.card-title'),
           disclosure: el.querySelector('.dp-settings-disclosure'), help: el.querySelector('.dp-settings-help-chip'),
-          group: el.querySelector('.dp-settings-header-test-group'), test: el.querySelector('.dp-settings-header-test-trigger'),
+          group: el.querySelector('.dp-settings-header-test-group'), test: el.querySelector('.dp-settings-header-test-group .dp-settings-provider-test'),
           toggle: el.querySelector('.dp-settings-card-header-controls .toggle')};
         const box = node => node && node.getClientRects().length ? node.getBoundingClientRect() : null;
         const names = Object.keys(parts);
@@ -421,7 +409,7 @@ test('below 780px every Test-group header keeps title, disclosure, Help, Test an
   }
 });
 
-test('a Test running across 779 to 780px closes its menu when it answers; focus goes to the direct Test', async ({page}) => {
+test('a Test running across 779 to 780px stays the one busy Test, is not started again, and answers on its card', async ({page}) => {
   await fonts(page);
   await page.setViewportSize({width: 779, height: 900});
   await withState(page, {settings: {discord_notifications_configured: true, discord_notifications_verified: false}});
@@ -433,64 +421,37 @@ test('a Test running across 779 to 780px closes its menu when it answers; focus 
   await openTab(page, 'notifications');
   const head = header(page, '.dp-settings-discord-card');
   await trigger(head).click();
-  await menu(head).locator('button[data-action="test-discord"]').click();
   await expect.poll(() => calls.length).toBe(1);
   await page.setViewportSize({width: 780, height: 900});
-  expect(await isOpen(menu(head))).toBe(true);           // running: kept until it answers
+  // The same Test at this width, still busy: a press starts nothing.
+  await expect(trigger(head)).toBeDisabled();
+  await trigger(head).click({force: true});
   release();
   await expect(page.locator('.toast').last()).toContainText('Test notification sent');
-  await expect.poll(() => isOpen(menu(head))).toBe(false);
-  await expect(trigger(head)).toHaveAttribute('aria-expanded', 'false');
-  await expect(menu(head).locator('*')).toHaveCount(0);
-  await expect(page.locator('[data-action="test-discord"]')).toHaveCount(1);
-  await expect(head.locator('.dp-settings-header-action > [data-action="test-discord"]')).toBeFocused();
   await expect(head.locator('.dp-settings-provider-config-status')).toHaveText('Verified');
+  await expect(group(head)).toHaveAttribute('data-verification', 'verified');
   expect(calls).toEqual(['POST']);
 });
 
-test('a menu dismissed while its Test runs lets go of it when it answers, keeping the result', async ({page}) => {
+test('each card\'s Test answers on its own card', async ({page}) => {
   await fonts(page);
-  await page.setViewportSize({width: 390, height: 844});
-  await withState(page, {integrations: {usenet: {enabled: true, configured: true, verified: false}}});
-  let release;
-  const gate = new Promise(resolve => { release = resolve; });
-  const calls = answer(page, '/api/usenet/test', () => [200, {
-    ok: true, tested: 1, passed: 1, failed: 0, servers: [],
-    integration_id: 'usenet', integration: {enabled: true, configured: true, verified: true}}], {gate});
+  await page.setViewportSize({width: 320, height: 900});
+  await withState(page, {integrations: {
+    alldebrid: {enabled: true, configured: true, verified: false},
+    torbox: {enabled: true, configured: true, verified: false}}});
+  const torbox = answer(page, '/api/settings/validate-torbox', () => [200, {
+    integration_id: 'torbox', integration: {enabled: true, configured: true, verified: true}}]);
+  const alldebrid = answer(page, '/api/settings/validate-alldebrid', () => [500, {}]);
   await page.goto('/');
   await openTab(page, 'sources');
-  const head = header(page, '.dp-settings-provider-card--usenet');
+  const head = header(page, '.dp-settings-provider-card--torbox');
+  await head.scrollIntoViewIfNeeded();
   await trigger(head).click();
-  await menu(head).locator('button[data-action="test-usenet"]').click();
-  await expect.poll(() => calls.length).toBe(1);
-  await page.keyboard.press('Escape');
-  await expect.poll(() => isOpen(menu(head))).toBe(false);
-  await expect(trigger(head)).toHaveAttribute('aria-expanded', 'false');
-  release();
-  await expect(page.locator('.toast').last()).toContainText('Usenet: 1 of 1 news server(s) verified');
-  await expect(menu(head).locator('*')).toHaveCount(0);
-  await expect(page.locator('[data-action="test-usenet"]')).toHaveCount(1);
-  await expect(trigger(head)).toHaveAttribute('data-verification', 'verified');
-  expect(calls).toEqual(['POST']);
-  // Opened again, the menu is drawn afresh from the accepted state.
-  await trigger(head).click();
-  await expect(menu(head).locator('.dp-settings-header-test-status')).toHaveText('Verified');
-  await expect(menu(head).locator('button[data-action="test-usenet"]')).toBeEnabled();
-});
-
-test('the open menu describes its Test with the configuration, also while OpenID Connect is off', async ({page}) => {
-  await fonts(page);
-  await page.setViewportSize({width: 390, height: 844});
-  await withState(page, {auth: {oidc_enabled: false, oidc_configured: true, oidc_verified: false}});
-  await page.goto('/');
-  await openTab(page, 'authentication');
-  const head = header(page, '.dp-settings-oidc-card');
-  await expect(head.locator('.dp-settings-card-header-controls > .dp-settings-provider-config-status')).toHaveText('');
-  await trigger(head).click();
-  const inner = menu(head).locator('button[data-action="verify-oidc"]');
-  await expect(inner).toBeFocused();
-  await expect(inner).toHaveAccessibleName('Test');
-  await expect(inner).toHaveAccessibleDescription('Configured');
+  await expect.poll(() => torbox.length).toBe(1);
+  await expect(group(head)).toHaveAttribute('data-verification', 'verified');
+  await expect(group(header(page, '.dp-settings-provider-card--alldebrid'))).toHaveAttribute('data-verification', 'unverified');
+  expect(alldebrid).toEqual([]);
+  await expect(popovers(page)).toHaveCount(0);
 });
 
 /* ── A standard User's own Notifications, in a real User-role session ───── */
@@ -544,15 +505,13 @@ test('a User\'s own Notifications take the same header Test treatment through th
     await expect(head.getByRole('checkbox', {name, exact: true})).toHaveCount(1);
     await expect(trigger(head)).toBeVisible();
     await trigger(head).click();
-    await menu(head).locator(`button[data-action="${action}"]`).click();
     await expect.poll(() => calls.length).toBe(1);
-    await page.keyboard.press('Escape');
   }
   expect(global).toEqual([]);
   // From 780px the User's header is the direct Test beside the toggle.
   await page.setViewportSize({width: 1024, height: 900});
   const head = view.locator('.dp-settings-discord-card > .card-header');
-  await expect(trigger(head)).toBeHidden();
-  await expect(head.locator('.dp-settings-header-action > [data-action="test-discord"]')).toBeVisible();
+  await expect(trigger(head)).toBeVisible();
+  await expect(trigger(head).locator('.dp-settings-action-glyph')).toBeVisible();
   await context.close();
 });

@@ -318,12 +318,12 @@
 }
 
 /* ── The header Test (ui-settings-page.js headerTestControls) ─────────────
-   From 780px the rail draws exactly what it always drew: the group adds no
-   box (display: contents) and its handheld trigger and menu are not drawn.
-   Participation, at every width: while the toggle is off, the direct Test
-   (and, below 780px, the trigger) is the neutral DP ghost button -- no status
-   colour in its text, border, background or mark, and never disabled. Its
-   verification is unchanged and still reported where it always is. */
+   One Test at every width. From 780px the rail draws exactly what it always
+   drew: the group adds no box (display: contents). Participation, at every
+   width: while the toggle is off, the Test is the neutral DP ghost button --
+   no status colour in its text, border, background or mark, and never
+   disabled. Its verification is unchanged and still reported where it always
+   is. */
 /* The Test/toggle island's material, one declaration: the handheld header
    Test group, and a Usenet server card's Test/Enable at every width. */
 #view-settings :is(.dp-settings-header-test-group, .dp-usenet-server-controls) {
@@ -346,26 +346,24 @@
   display: none;
 }
 
-#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test,
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger[data-verification] {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test {
   border-color: var(--dp-secondary-border);
   background: var(--dp-secondary-surface);
   color: var(--dp-text-muted);
 }
 
-#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test:hover,
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger[data-verification]:hover {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test:hover {
   border-color: var(--dp-border-strong);
   background: var(--dp-secondary-surface);
   color: var(--dp-text-primary);
 }
 
-#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-chip {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-chip {
   border-color: var(--dp-secondary-border);
   background: transparent;
 }
 
-#view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-glyph {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-glyph {
   filter: grayscale(1);
 }
 
@@ -2204,11 +2202,11 @@
 }
 
 /* ── The header Test, below 780px ─────────────────────────────────────────
-   The rail's status and direct Test give way to one compact outlined group:
-   a textual Test trigger, then the toggle. The status stays the rail's live
-   region (read, not drawn); the menu shows it above the Test it holds. The
-   trigger's colour is the configuration's: verified, unverified (caution),
-   unconfigured (the accent purple). */
+   The rail's status gives way, and the Test and the toggle sit in one compact
+   outlined group: the Test textual (its mark not drawn), its colour the
+   configuration's, in the DP button tones -- verified (success), unverified
+   (caution), unconfigured (the accent purple). One press still runs it. The
+   status stays the rail's live region (read, not drawn). */
 @media (max-width: 779px) {
   #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-provider-config-status {
     position: absolute;
@@ -2227,7 +2225,55 @@
     display: inline-flex;
   }
 
-  /* The menu: the shared projected-menu material, in the top layer. */
+  #view-settings .dp-settings-header-test-group > .dp-settings-header-action {
+    display: contents;
+  }
+
+  #view-settings .dp-settings-header-test-group .dp-settings-provider-test .dp-settings-action-chip {
+    display: none;
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification] .dp-settings-provider-test {
+    box-shadow: none;
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="verified"] .dp-settings-provider-test {
+    border-color: color-mix(in srgb, var(--dp-state-success) 34%, transparent);
+    background: var(--dp-state-success-bg);
+    color: var(--dp-state-success);
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="unverified"] .dp-settings-provider-test {
+    border-color: color-mix(in srgb, var(--dp-state-caution) 34%, transparent);
+    background: var(--dp-state-caution-bg);
+    color: var(--dp-state-caution);
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="unconfigured"] .dp-settings-provider-test {
+    border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 34%, transparent);
+    background: color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent);
+    color: var(--dp-accent-purple-bright);
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification] .dp-settings-provider-test:hover:not(:disabled) {
+    filter: none;
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="verified"] .dp-settings-provider-test:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--dp-state-success) 22%, transparent);
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="unverified"] .dp-settings-provider-test:hover:not(:disabled) {
+    background: rgba(234,179,8,.2);
+    border-color: rgba(234,179,8,.5);
+  }
+
+  #view-settings .dp-settings-header-test-group[data-verification="unconfigured"] .dp-settings-provider-test:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--dp-accent-purple-bright) 22%, transparent);
+  }
+
+  /* An actions menu (Backups): the shared projected-menu material, in the
+     top layer. */
   #view-settings .dp-settings-header-test-menu {
     inset: auto;
     margin: 0;
@@ -2242,19 +2288,6 @@
     display: grid;
     gap: 8px;
   }
-
-  #view-settings .dp-settings-header-test-status {
-    padding: 2px 4px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 650;
-    line-height: 1.3;
-    color: var(--dp-text-secondary);
-  }
-
-  #view-settings .dp-settings-header-test-status[data-tone="error"] { color: var(--dp-state-error); }
-  #view-settings .dp-settings-header-test-status[data-tone="warning"] { color: var(--dp-state-caution); }
-  #view-settings .dp-settings-header-test-status[data-tone="success"] { color: var(--dp-state-success); }
 
   #view-settings .dp-settings-header-test-menu > .btn {
     min-height: 40px;

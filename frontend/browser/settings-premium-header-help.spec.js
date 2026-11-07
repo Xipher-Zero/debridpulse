@@ -167,7 +167,7 @@ const collisions = page => page.evaluate(ids => {
       title: header.querySelector('.dp-settings-card-title-text'),
       disclosure: header.querySelector('.dp-settings-disclosure'),
       help: header.querySelector('.dp-settings-help-chip'),
-      test: header.querySelector('.dp-settings-header-test-trigger'),
+      test: header.querySelector('.dp-settings-header-test-group .dp-settings-provider-test'),
       toggle: header.querySelector('.dp-settings-header-test-group .toggle'),
     };
     const sizes = {disclosure: [32, 32], help: [34, 28], test: [null, 30]};
@@ -423,11 +423,11 @@ test('lent Help, disclosure, Test and toggle stay operable by pointer and keyboa
   await expect(help).toBeVisible();
   expect(await collisions(page)).toEqual([]);
 
-  // The header's Test opens its menu; the toggle is the element at its centre.
+  // The header's Test is a plain action (it opens nothing); the toggle is the
+  // element at its centre.
   const head = debridlink.locator(':scope > .card-header');
-  await head.locator('.dp-settings-header-test-trigger').click();
-  await expect.poll(() => head.locator('.dp-settings-header-test-menu').evaluate(n => n.matches(':popover-open'))).toBe(true);
-  await page.keyboard.press('Escape');
+  await expect(head.locator('.dp-settings-provider-test')).not.toHaveAttribute('popovertarget', /.*/);
+  await expect(head.locator('[popover]')).toHaveCount(0);
   expect(await head.locator('.dp-settings-header-test-group .toggle').evaluate(n => {
     const b = n.getBoundingClientRect();
     return n.contains(document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2));

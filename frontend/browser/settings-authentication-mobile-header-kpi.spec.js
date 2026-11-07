@@ -83,7 +83,7 @@ const header = (page, selector) => page.locator(selector).evaluate(card => {
   const lines = drawnShort ? [r(short)] : [...range.getClientRects()].filter(box => box.width > 1 && box.height > 8);
   const help = card.querySelector('.dp-settings-help-chip');
   const status = rail.querySelector(':scope > .dp-settings-provider-config-status');
-  const test = rail.querySelector('.dp-settings-header-test-trigger');
+  const test = rail.querySelector('.dp-settings-provider-test');
   const toggle = rail.querySelector('.toggle');
   // The body box the card lends Help to: a row of its own (Authentication
   // Status, Username & Password), or OpenID Connect's identity group.
@@ -190,14 +190,14 @@ test('the lent Help, the short title and the header controls keep their names an
   await expect(page.locator('#dp-tooltip')).toBeHidden();
   // Keyboard: the title is the stop before Test; its tooltip shows on focus,
   // Escape dismisses it, and the title keeps focus.
-  await card.locator('.dp-settings-header-test-trigger').focus();
+  await card.locator('.dp-settings-card-header-controls .dp-settings-provider-test').focus();
   await page.keyboard.press('Shift+Tab');
   await expect(title).toBeFocused();
   await expect(page.locator('#dp-tooltip')).toHaveText('OpenID Connect');
   await page.keyboard.press('Escape');
   await expect(page.locator('#dp-tooltip')).toBeHidden();
   await expect(title).toBeFocused();
-  await expect(card.locator('.dp-settings-header-test-trigger')).toHaveAccessibleName('Test OpenID Connect');
+  await expect(card.locator('.dp-settings-card-header-controls .dp-settings-provider-test')).toHaveAccessibleName('Test');
   await expect(card.locator('[data-setting="auth_oidc_enabled"]')).toHaveAccessibleName('Enable OpenID Connect');
   // The lent Help is the same control: keyboard reaches it and it opens its own topic.
   await help.focus();
