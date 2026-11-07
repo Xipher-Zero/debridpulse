@@ -1282,6 +1282,169 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   margin-left: auto;
 }
 
+/* Drawn only by the handheld Integration Accounts stages (below): a token's
+   issue day beneath its name, its Revoke glyph and the token it names. */
+#view-settings .dp-settings-users-tokens :is(.dp-settings-users-token-issued, .dp-settings-users-token-target, .dp-row-action-icon) {
+  display: none;
+}
+
+/* The Integration Accounts card below 780px (fitIntegrationAccounts).
+   Each account's header keeps one row: 0 its actions as they are, 1 one
+   Manage Tokens menu holding them, 2 that menu reading "Manage", 3 its
+   status said by its name's colour -- enabled (success) or disabled
+   (caution) -- and to assistive technology beside the name.
+   The token tables share one stage and one set of column widths: 0 four
+   columns, 1 each token's issue day beneath its name instead of its own
+   column, 2 each Revoke its glyph alone, 3 closer cell padding. No cell's
+   information wraps, and every row keeps the four-column rows' height. */
+@media (max-width: 779px) {
+  #view-settings .dp-settings-users-integration-head {
+    --dp-account-fit-steps: 4;
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit] {
+    flex-wrap: nowrap;
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit] > .dp-settings-users-name {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit] > :is(.dp-settings-users-status, .dp-settings-users-actions, .dp-settings-header-test-group) {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-integration-head:not([data-account-fit="1"], [data-account-fit="2"], [data-account-fit="3"]) > .dp-settings-header-test-group,
+  #view-settings .dp-settings-users-integration-head:is([data-account-fit="1"], [data-account-fit="2"], [data-account-fit="3"]) > .dp-settings-users-actions {
+    display: none;
+  }
+
+  #view-settings .dp-settings-users-integration-head > .dp-settings-header-test-group {
+    margin-left: auto;
+  }
+
+  #view-settings .dp-settings-users-integration-head:is([data-account-fit="2"], [data-account-fit="3"]) .dp-settings-fit-label-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-integration-head:is([data-account-fit="2"], [data-account-fit="3"]) .dp-settings-fit-label-short {
+    display: inline;
+  }
+
+  #view-settings .dp-settings-users-integration-head:is([data-account-fit="2"], [data-account-fit="3"]) .dp-settings-fit-label-short::before {
+    content: attr(data-fit-2);
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit="3"] > .dp-settings-users-status {
+    display: none;
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit="3"] > .dp-settings-users-name[data-enabled="true"] {
+    color: var(--dp-state-success);
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit="3"] > .dp-settings-users-name[data-enabled="false"] {
+    color: var(--dp-state-caution);
+  }
+
+  #view-settings .dp-settings-users-integration-head[data-account-fit="3"] > .dp-settings-users-state {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-tokens {
+    --dp-tokens-fit-steps: 4;
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] {
+    table-layout: fixed;
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] > thead > tr > th:nth-child(2) {
+    width: var(--dp-tokens-issued, auto);
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] > thead > tr > th:nth-child(3) {
+    width: var(--dp-tokens-status, auto);
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] > thead > tr > th:nth-child(4) {
+    width: var(--dp-tokens-action, auto);
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] :is(th, td) {
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] :is(.dp-settings-users-token-name, .dp-settings-users-token-issued) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit] > tbody > tr {
+    height: var(--dp-tokens-row, auto);
+  }
+
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="0"]) .dp-settings-users-token-issued,
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="1"], [data-tokens-fit="2"], [data-tokens-fit="3"]) :is(th, td):nth-child(2) {
+    display: none;
+  }
+
+  /* The name and its day are two lines where the row's height is its
+     Revoke's and the cell's padding: the cell gives up its own padding to
+     them (the row keeps its height, the two centred in it). */
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="1"], [data-tokens-fit="2"], [data-tokens-fit="3"]) td:first-child {
+    padding-block: 0;
+  }
+
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="2"], [data-tokens-fit="3"]) [data-user-action="revoke-token"] {
+    position: relative;
+    min-width: 36px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="2"], [data-tokens-fit="3"]) [data-user-action="revoke-token"] :is([data-dp-icon-label], .dp-settings-users-token-target) {
+    display: inline;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+  }
+
+  #view-settings .dp-settings-users-tokens:is([data-tokens-fit="2"], [data-tokens-fit="3"]) [data-user-action="revoke-token"] .dp-row-action-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
+  }
+
+  #view-settings .dp-settings-users-tokens[data-tokens-fit="3"] :is(th, td) {
+    padding-inline: 6px;
+  }
+}
+
 /* Account dialogs (DPSettingsModal): fields stack, one per line. */
 .dp-modal-dialog.dp-users-dialog .dp-modal-body,
 .dp-modal-dialog.dp-account-dialog .dp-account-view {

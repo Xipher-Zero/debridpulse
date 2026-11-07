@@ -1770,12 +1770,20 @@
   // ``from``: the wrapping header's step (fitHeaderSteps) at which the menu
   // takes over below 780px; the actions are drawn whole until then.
   function headerActionsMenu(title, label, actions, toggle = '', {from = 0} = {}) {
+    return `<div class="dp-settings-header-action">${actions}</div>${actionsMenuGroup(title, label, toggle, {from})}`;
+  }
+
+  // The menu's trigger and its (empty until opened) menu, after the actions
+  // it holds: a card header's (above) or an Integration account's own
+  // (integrationBlocks). ``short``: the trigger's shorter words, drawn only
+  // where its owner's stylesheet says (fitLabel); its full words stay its
+  // name.
+  function actionsMenuGroup(title, label, toggle = '', {from = 0, short = ''} = {}) {
     const menu = `dp-settings-test-menu-${++headerTestMenus}`;
-    return `<div class="dp-settings-header-action">${actions}</div><div class="dp-settings-header-test-group"${
-      from ? ` data-menu-from="${from}"` : ''}>
+    return `<div class="dp-settings-header-test-group"${from ? ` data-menu-from="${from}"` : ''}>
         <span class="dp-settings-header-test-shell">
           <button class="btn btn-ghost btn-sm dp-settings-header-test-trigger" type="button" popovertarget="${menu}"
-                  aria-controls="${menu}" aria-expanded="false">${html(label)}</button>
+                  aria-controls="${menu}" aria-expanded="false">${short ? fitLabel(label, short) : html(label)}</button>
           <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} actions"></div>
         </span>${toggle}</div>`;
   }
@@ -4518,19 +4526,25 @@
    * directory no longer holds it (its row is kept server-side, for
    * attribution). A refused or unanswered Revoke re-reads the same way, so the
    * row stays exactly while the token is still active. */
+  // Below 780px a token's issue day may be drawn beneath its name, and its
+  // Revoke be its glyph alone, named for the token it revokes and saying so
+  // as a tooltip (fitIntegrationAccounts); from 780px neither is drawn.
   function tokenRows(account) {
     const tokens = state.users.tokens[account.id];
     if (!Array.isArray(tokens)) return '<div class="dp-settings-users-detail">Tokens could not be read.</div>';
     if (!tokens.length) return '<div class="dp-settings-users-detail">No API tokens. Issue one to connect automation.</div>';
+    const issued = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value);
+    const day = value => window.downloadsDayMarkup ? window.downloadsDayMarkup(value) : html(value);
+    const revoke = window.DPIcons?.iconLabel ? window.DPIcons.iconLabel('trash2', 'Revoke') : '<span data-dp-icon-label="1">Revoke</span>';
     return `
       <table class="t-table dp-settings-users-tokens">
         <thead><tr><th>Token</th><th>Issued</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
         <tbody>${tokens.map(token => `
           <tr>
-            <td>${html(token.label)}</td>
-            <td class="dp-settings-users-detail">${window.downloadsDateMarkup ? window.downloadsDateMarkup(token.created_at) : html(token.created_at)}</td>
+            <td><span class="dp-settings-users-token-name">${html(token.label)}</span><span class="dp-settings-users-token-issued dp-settings-users-detail">${day(token.created_at)}</span></td>
+            <td class="dp-settings-users-detail">${issued(token.created_at)}</td>
             <td><span class="dp-settings-users-status" data-tone="success">Active</span></td>
-            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}">Revoke</button></div></td>
+            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}" data-tooltip="${html(`Revoke ${token.label}`)}" data-tooltip-label="[data-dp-icon-label]" data-tooltip-touch>${revoke}<span class="dp-settings-users-token-target"> ${html(token.label)}</span></button></div></td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -4541,18 +4555,24 @@
     return integrations.map(account => {
       const id = html(account.id);
       const lifecycle = account.enabled
-        ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`
-        : `<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}">Enable</button>`;
+        ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}" data-menu-closes>Disable</button>`
+        : `<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}" data-menu-closes>Enable</button>`;
+      // Below 780px its actions may become one Manage Tokens (then Manage)
+      // menu holding each of them, and its status its name's colour, the
+      // state then said beside the name to assistive technology
+      // (fitIntegrationAccounts); from 780px the menu is not drawn.
       return `
         <section class="dp-settings-users-integration" data-account-row="${id}">
           <div class="dp-settings-users-integration-head">
-            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" data-tooltip="Account details">${html(accountName(account))}</button>
+            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" data-tooltip="Account details" data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button><span class="dp-settings-users-state">${
+              account.enabled ? 'Enabled' : 'Disabled'}</span>
             ${accountStatus(account)}
             <div class="dp-settings-users-actions">
-              ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}">Issue Token</button>` : ''}
+              ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}" data-menu-closes>Issue Token</button>` : ''}
               ${lifecycle}
-              ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}">Delete</button>`}
+              ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}" data-menu-closes>Delete</button>`}
             </div>
+            ${actionsMenuGroup(accountName(account), 'Manage Tokens', '', {from: 1, short: 'Manage'})}
           </div>
           ${tokenRows(account)}
         </section>`;
@@ -4619,6 +4639,7 @@
     // Its cards' headers are new: the one hinted-header fitter takes them on.
     fitHeaderHints();
     fitUsersTable();
+    fitIntegrationAccounts();
   }
 
   /* The User Accounts table below 780px: as the room narrows it gives back
@@ -4694,6 +4715,121 @@
         if (wrap.clientWidth !== width) usersTableFit?.();
       });
       usersTableObserver.observe(wrap);
+    }
+  }
+
+  /* The Integration Accounts card below 780px: each account's header and,
+   * together, every token table.
+   *
+   * Each header (data-account-fit, its stylesheet's steps,
+   * --dp-account-fit-steps) takes the first of its compositions that keeps
+   * it on one row with its name whole: 0 its actions as they are, 1 one
+   * Manage Tokens menu holding them, 2 that menu reading "Manage", 3 its
+   * status said by its name's colour (enabled success, disabled caution) and
+   * to assistive technology beside the name. The last is kept whatever it
+   * holds, its name then cut short.
+   *
+   * The token tables share one stage (data-tokens-fit, --dp-tokens-fit-steps)
+   * and one set of column widths, so their columns line up whatever each
+   * holds: 0 Token, Issued, Status and Actions; 1 the issue day beneath each
+   * token's name instead of its own column; 2 each Revoke its glyph alone;
+   * 3 closer cell padding. Issued, Status and Actions are each as wide as the
+   * widest of their cells in every table (--dp-tokens-issued, -status,
+   * -action), Token takes the rest. A stage fits when no table needs
+   * horizontal scrolling, no token's name or day is cut short and no row is
+   * taller than the tables' rows are with four columns -- so the day beneath
+   * a name never grows its row; the last stage is kept whatever it holds.
+   * Every row is then given that one height (--dp-tokens-row), and a name
+   * cut short says itself as a tooltip. Read as drawn; the same room and
+   * tokens always choose the same stages. From 780px the card is as it
+   * was. */
+  let integrationAccountsObserver = null;
+  let integrationAccountsFit = null;
+  const TOKEN_COLUMNS = Object.freeze([[2, '--dp-tokens-issued'], [3, '--dp-tokens-status'], [4, '--dp-tokens-action']]);
+
+  function fitIntegrationAccounts() {
+    integrationAccountsObserver?.disconnect();
+    integrationAccountsObserver = null;
+    const card = root()?.querySelector('.dp-settings-users-integrations-card');
+    const heads = card ? Array.from(card.querySelectorAll('.dp-settings-users-integration-head')) : [];
+    const tables = card ? Array.from(card.querySelectorAll('.dp-settings-users-tokens')) : [];
+    if (!heads.length && !tables.length) {
+      integrationAccountsFit = null;
+      return;
+    }
+    const steps = (node, name) => parseInt(getComputedStyle(node).getPropertyValue(name), 10) || 0;
+    const cut = node => node.scrollWidth > node.clientWidth + 1;
+    const drawn = node => node.getClientRects().length > 0;
+
+    const fitHead = head => {
+      delete head.dataset.accountFit;
+      const count = steps(head, '--dp-account-fit-steps');
+      if (!count) return;
+      const name = head.querySelector('.dp-settings-users-name');
+      for (let step = 0; step < count; step += 1) {
+        head.dataset.accountFit = String(step);
+        if (head.scrollWidth <= head.clientWidth + 1 && !cut(name)) return;
+      }
+    };
+
+    const rows = tables.flatMap(table => Array.from(table.tBodies[0]?.rows || []));
+    const height = row => row.getBoundingClientRect().height;
+    const names = () => tables.flatMap(table => Array.from(table.querySelectorAll('.dp-settings-users-token-name, .dp-settings-users-token-issued'))).filter(drawn);
+    // A cell's own content, unwrapped, with its padding: what its column needs.
+    const need = cell => {
+      const style = getComputedStyle(cell);
+      const content = cell.querySelector('.btn') || cell;
+      const range = document.createRange();
+      range.selectNodeContents(content);
+      const width = content === cell ? range.getBoundingClientRect().width : content.getBoundingClientRect().width;
+      return Math.ceil(width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight));
+    };
+    const widen = () => TOKEN_COLUMNS.forEach(([column, property]) => {
+      const cells = tables.flatMap(table => Array.from(table.querySelectorAll(`:is(th, td):nth-child(${column})`))).filter(drawn);
+      card.style.setProperty(property, `${Math.max(0, ...cells.map(need))}px`);
+    });
+    const clearWidths = () => TOKEN_COLUMNS.forEach(([, property]) => card.style.removeProperty(property));
+    const setStage = step => tables.forEach(table => { table.dataset.tokensFit = String(step); });
+    const fitsTables = most => tables.every(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1)
+      && !names().some(cut) && rows.every(row => height(row) <= most + 0.5);
+    const fitTables = () => {
+      tables.forEach(table => {
+        delete table.dataset.tokensFit;
+        table.style.removeProperty('--dp-tokens-row');
+      });
+      clearWidths();
+      tables.forEach(table => table.querySelectorAll('.dp-settings-users-token-name[data-tooltip]').forEach(name => name.removeAttribute('data-tooltip')));
+      const count = tables.length ? steps(tables[0], '--dp-tokens-fit-steps') : 0;
+      if (!count) return;
+      let most = 0;
+      for (let step = 0; step < count; step += 1) {
+        setStage(step);
+        clearWidths();
+        widen();
+        // The rows' height with four columns: every stage's budget.
+        if (step === 0) most = Math.max(0, ...rows.map(height));
+        if (fitsTables(most)) break;
+      }
+      tables.forEach(table => table.style.setProperty('--dp-tokens-row', `${most}px`));
+      tables.forEach(table => table.querySelectorAll('.dp-settings-users-token-name').forEach(name => {
+        if (cut(name)) name.setAttribute('data-tooltip', name.textContent);
+      }));
+    };
+
+    let width = null;
+    integrationAccountsFit = () => {
+      if (!card.getClientRects().length) return;
+      width = card.clientWidth;
+      heads.forEach(fitHead);
+      fitTables();
+    };
+    integrationAccountsFit();
+    if (typeof ResizeObserver === 'function') {
+      // The row height it gives changes the card's height, not its room.
+      integrationAccountsObserver = new ResizeObserver(() => {
+        if (card.clientWidth !== width) integrationAccountsFit?.();
+      });
+      integrationAccountsObserver.observe(card);
     }
   }
 
@@ -6757,7 +6893,8 @@
   // The menu's content, drawn as it opens: each of the card's actions.
   function drawHeaderTestMenu(menu) {
     if (testMenuRunning(menu)) return;
-    const actions = menu.closest('.dp-settings-card-header-controls')?.querySelector(':scope > .dp-settings-header-action');
+    const actions = menu.closest('.dp-settings-card-header-controls')?.querySelector(':scope > .dp-settings-header-action')
+      || menu.closest('.dp-settings-users-integration-head')?.querySelector(':scope > .dp-settings-users-actions');
     if (!actions) return;
     menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > :is(button[data-action], button[data-user-action])'), button => {
       const item = button.cloneNode(true);
@@ -6880,6 +7017,9 @@
     });
 
     view.addEventListener('click', event => {
+      // A tap that only showed an element's tooltip (data-tooltip-touch,
+      // ui-tooltip.js cancels it: a Revoke drawn as its glyph) is not its use.
+      if (event.defaultPrevented && event.target.closest?.('[data-tooltip-touch]')) return;
       // Additional Settings (a native <details>): its body rolls down as it
       // opens and up before it closes; `open` stays the one state.
       const summary = event.target.closest('.dp-settings-additional > summary');
@@ -8227,6 +8367,7 @@
     authKpiFit?.();
     handheldBodyFit?.();
     usersTableFit?.();
+    integrationAccountsFit?.();
   });
 
   registerCommitScopes();

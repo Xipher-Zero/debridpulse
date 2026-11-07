@@ -194,6 +194,14 @@ function exactDate(value) {
 function dateMarkup(value) {
   return `<span class="dp-downloads-date-value" tabindex="0" data-tooltip="${esc(exactDate(value))}">${esc(formatDownloadsDate(value))}</span>`;
 }
+// The same, its calendar day alone (a compact list's secondary line: the
+// Integration Accounts token tables below 780px); its exact moment is still
+// its tooltip, and a missing one is the same dash.
+function dayMarkup(value) {
+  const d = value ? (typeof parseApiDate === 'function' ? parseApiDate(value) : new Date(value)) : null;
+  const day = d && !Number.isNaN(d.getTime()) ? formatDownloadsDay(d) : formatDownloadsDate(value);
+  return `<span class="dp-downloads-date-value" tabindex="0" data-tooltip="${esc(exactDate(value))}">${esc(day)}</span>`;
+}
 
 /* Every list whose date column presents formatDownloadsDate: Downloads and
  * Dashboard Recent Activity. Each heading carries the ONE menu below, writing
@@ -1474,6 +1482,7 @@ function init() {
 window.loadTorrents = loadTorrents;
 // The one date cell markup, also drawn by Dashboard Recent Activity.
 window.downloadsDateMarkup = dateMarkup;
+window.downloadsDayMarkup = dayMarkup;
 // The same preference applied to calendar fields the server already bucketed (Statistics).
 window.downloadsCalendarLabel = formatCalendar;
 // The same, for one instant's day (a premium account's expiry).
