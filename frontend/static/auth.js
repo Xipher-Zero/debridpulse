@@ -294,10 +294,15 @@
   /* My Account: ONE dialog of one fixed size with two views. The profile view
    * (the account's DP Username, shown read-only -- an Admin changes it --
    * then Display Name, Actual Name, Email) saves the two names and, while the
-   * account has none, an email; Change Password, offered only to an account
-   * that holds a local password, swaps the same dialog to the password view, whose Cancel returns to the profile -- with
-   * its unsaved edits intact -- and whose Save changes only the password. A
-   * failed save keeps the dialog and says why. */
+   * account has none, an email; the password action swaps the same dialog to
+   * the password view, whose Cancel returns to the profile -- with its unsaved
+   * edits intact -- and whose Save changes only the password. An account that
+   * holds a local password is offered Change Password (Current, New,
+   * Confirm); one whose own profile says it has none -- it signs in through
+   * its identity provider -- is offered Set Password, its first one (New and
+   * Confirm only, under the username it already has, for a password manager).
+   * Neither is offered when the profile could not be read; the server decides
+   * either way. A failed save keeps the dialog and says why. */
   async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
     if (!modal) return;
@@ -308,6 +313,9 @@
     const views = {};
     let view = 'profile';
     const notice = text => window.toast(text, 'error');
+    // Set Password: the account's own read says it has no local password.
+    const first = Boolean(own) && own.has_password === false;
+    const passwordAction = profile.has_password ? 'Change Password' : first ? 'Set Password' : '';
     let emailSlot = null;
     // The Pencil turns the shown address into the field, holding it; Save
     // sends the change, Cancel discards it.
@@ -333,10 +341,10 @@
       handle.setActionHidden('password', next !== 'profile');
       if (next === 'profile') {
         // Secrets never outlive their view.
-        ['current', 'next', 'confirm'].forEach(name => { fields[name].value = ''; });
+        ['current', 'next', 'confirm'].forEach(name => { if (fields[name]) fields[name].value = ''; });
         fields.display_name.focus();
       } else {
-        fields.current.focus();
+        (fields.current || fields.next).focus();
       }
     };
 
@@ -345,7 +353,7 @@
       acceptLabel: 'Save',
       cancelLabel: 'Cancel',
       className: 'dp-account-dialog',
-      actions: profile.has_password ? [{id: 'password', label: 'Change Password', placement: 'leading'}] : [],
+      actions: passwordAction ? [{id: 'password', label: passwordAction, placement: 'leading'}] : [],
       onAction(id) {
         if (id === 'password') show('password', this.handle);
       },
@@ -364,17 +372,23 @@
               <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
             <div class="dp-modal-field dp-account-email" data-account-email></div>
           </div>
-          <div class="dp-account-view" data-account-view="password" hidden>
+          <div class="dp-account-view" data-account-view="password" hidden>${first ? `
+            <input type="text" data-account-password-username autocomplete="username" readonly hidden>` : `
             <label class="dp-modal-field"><span class="form-label">Current Password</span>
-              <input class="input" data-field="current" type="password" maxlength="4096" autocomplete="current-password"></label>
+              <input class="input" data-field="current" type="password" maxlength="4096" autocomplete="current-password"></label>`}
             <label class="dp-modal-field"><span class="form-label">New Password</span>
               <input class="input" data-field="next" type="password" maxlength="4096" autocomplete="new-password"></label>
             <label class="dp-modal-field"><span class="form-label">Confirm New Password</span>
-              <input class="input" data-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>
+              <input class="input" data-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>${first ? `
+            <p class="dp-account-username-note">Local password sign-in works only if your administrator has enabled it.</p>` : ''}
           </div>`;
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
         body.querySelector('[data-account-username]').textContent = String(profile.username || '');
+        // The account the new password belongs to, for a password manager only:
+        // never sent, never chosen here.
+        const passwordUsername = body.querySelector('[data-account-password-username]');
+        if (passwordUsername) passwordUsername.value = String(profile.username || '');
         fields.display_name.value = String(profile.display_name || data.display_name || '');
         fields.actual_name.value = String(profile.actual_name || '');
         emailSlot = body.querySelector('[data-account-email]');
@@ -387,6 +401,15 @@
         return false;
       },
       async onAccept() {
+        if (view === 'password' && first) {
+          if (!fields.next.value) { notice('Enter a new password.'); return false; }
+          if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
+          const failure = await sendJson('POST', '/api/account/first-password', {new_password: fields.next.value});
+          if (failure) { notice(failure.message); return false; }
+          // The server ended every session of this account: sign in again.
+          redirectToLogin();
+          return true;
+        }
         if (view === 'password') {
           if (!fields.current.value || !fields.next.value) { notice('Enter your current and new password.'); return false; }
           if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }

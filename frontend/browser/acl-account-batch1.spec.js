@@ -212,8 +212,9 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
     await dialog.locator('[data-modal-accept]').click();
     await expect(page).toHaveURL(/\/login/);
 
-    // An account with no local password is not offered Change Password. The
-    // profile is the server's; only its has_password fact is varied here.
+    // An account with no local password is not offered Change Password: it
+    // is offered Set Password, its first one (my-account-first-password.spec.js).
+    // The profile is the server's; only its has_password fact is varied here.
     await admin.page.route('**/api/account', async route => {
       const response = await route.fetch();
       await route.fulfill({response, json: {...await response.json(), has_password: false}});
@@ -221,7 +222,7 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
     await admin.page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
     const plain = admin.page.locator('.dp-modal-dialog.dp-account-dialog');
     await expect(plain).toBeVisible();
-    expect(await plain.locator('.dp-modal-footer .btn').allTextContents()).toEqual(['Cancel', 'Save']);
+    expect(await plain.locator('.dp-modal-footer .btn').allTextContents()).toEqual(['Set Password', 'Cancel', 'Save']);
     await plain.locator('[data-modal-cancel]').click();
   } finally {
     await closeSignedIn();

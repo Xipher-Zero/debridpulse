@@ -85,6 +85,38 @@ async def verify_password_candidate_async(
     return await asyncio.shield(worker)
 
 
+async def hash_password_async(password: str, *, finished=None) -> str:
+    """Generate one Argon2 verifier off the request event loop, in the same
+    bounded worker slots as verification (``_PASSWORD_VERIFY_SLOTS``).
+
+    As there, the thread cannot be cancelled, so its slot is released only
+    when the worker itself finishes -- never when the caller is cancelled or
+    disconnects. ``finished`` (optional) is called exactly once at that same
+    moment, or at once if no worker was started, so a caller can hold its own
+    admission for exactly as long as the work it admitted."""
+    try:
+        await _PASSWORD_VERIFY_SLOTS.acquire()
+    except BaseException:
+        if finished is not None:
+            finished()
+        raise
+    try:
+        worker = asyncio.create_task(asyncio.to_thread(hash_password, password))
+    except BaseException:
+        _PASSWORD_VERIFY_SLOTS.release()
+        if finished is not None:
+            finished()
+        raise
+
+    def complete(_task) -> None:
+        _PASSWORD_VERIFY_SLOTS.release()
+        if finished is not None:
+            finished()
+
+    worker.add_done_callback(complete)
+    return await asyncio.shield(worker)
+
+
 def password_credential_version(password_hash: str) -> str:
     """Stable non-secret version marker used to invalidate password sessions."""
     encoded = str(password_hash or "").strip().encode("utf-8", errors="surrogatepass")

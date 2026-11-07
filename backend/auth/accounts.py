@@ -555,14 +555,19 @@ def _not_self(actor_id: str, account_id: str) -> None:
 MIN_NEW_PASSWORD_LENGTH = 8
 
 
+def _new_password_rule(password: str) -> None:
+    """The one new-password rule: a password set now is long enough."""
+    if len(password) < MIN_NEW_PASSWORD_LENGTH:
+        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+
+
 async def _new_verifier(password: str | None) -> str | None:
     """The verifier for a password being set now, or ``None`` when none is:
-    the one place the new-password rule is enforced, hashed off the event
+    the new-password rule (``_new_password_rule``), hashed off the event
     loop and before any write transaction opens."""
     if not password:
         return None
-    if len(password) < MIN_NEW_PASSWORD_LENGTH:
-        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+    _new_password_rule(password)
     return await asyncio.to_thread(hash_password, password)
 
 
@@ -1203,6 +1208,63 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
             raise AccountRefused("The password was changed meanwhile; try again")
         await _set_password_row(db, account.id, verifier)
     password_failure_throttle.record_success(peer, identity)
+
+
+def _first_password_refusal(account: Account | None) -> str:
+    """Why ``account`` cannot set a first password now, or ``""``."""
+    if account is None or account.deleted_at or account.merged_into:
+        return "Account does not exist"
+    if account.role is Role.INTEGRATION:
+        return "Integration accounts have no password"
+    if not account.enabled:
+        return "The account is disabled"
+    if not account.username:
+        return "The account has no username to sign in with"
+    if account.has_password:
+        return "The account already has a password; use Change Password"
+    return ""
+
+
+async def set_own_first_password(account_id: str, new_password: str, *, peer: str = "unknown") -> None:
+    """A signed-in human account that has no local password gives itself its
+    first one, signing in under the username it already has. Its signed-in
+    session is the authority; there is no current password to prove.
+
+    It sets a FIRST password only: under the authentication lock, in the same
+    transaction as the write, the account must still hold no credential, so
+    a password set meanwhile -- by an Admin, or by an earlier submission -- is
+    refused and kept, never replaced (that is Change Password's, with its
+    proof). Its OIDC identities, username, role and profile are untouched.
+    Like every credential change, the account's sessions then end
+    (``_mutation``): it signs in again.
+
+    Hashing is the expensive part, so it is admitted like a sign-in attempt's
+    proof: an account that cannot set one now is refused before any (a fast
+    answer only -- the transaction still decides), then the request takes the
+    password-attempt admission (``password_attempt_admission``: per peer and
+    in all, fail-fast) and the verifier is generated in the bounded Argon2
+    worker slots. The admission is held until that worker finishes, even if
+    the request is cancelled meanwhile."""
+    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
+    from auth.passwords import hash_password_async
+
+    if not new_password:
+        raise AccountRefused("A password is required")
+    _new_password_rule(new_password)
+    refusal = _first_password_refusal(await get_account(account_id))
+    if refusal:
+        raise AccountRefused(refusal)
+    if not password_attempt_admission.acquire(peer):
+        raise PasswordAuthenticationBusy
+    verifier = await hash_password_async(new_password, finished=lambda: password_attempt_admission.release(peer))
+    async with _locked_mutation([str(account_id)]) as db:
+        account = await _require(db, account_id)
+        refusal = _first_password_refusal(account)
+        if refusal:
+            raise AccountRefused(refusal)
+        if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (account.id,)):
+            raise AccountRefused("The account already has a password; use Change Password")
+        await _set_password_row(db, account.id, verifier)
 
 
 # ── Integration API tokens ──────────────────────────────────────────────────

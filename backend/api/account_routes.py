@@ -67,6 +67,12 @@ class OwnPassword(BaseModel):
     new_password: str = Field(min_length=1, max_length=4096)
 
 
+class OwnFirstPassword(BaseModel):
+    # Strict, and nothing else: the account is always the signed-in one.
+    model_config = ConfigDict(strict=True, extra="forbid")
+    new_password: str = Field(min_length=1, max_length=4096)
+
+
 class AccountMerge(BaseModel):
     model_config = ConfigDict(strict=True)
     target_id: str = Field(min_length=1, max_length=64)
@@ -411,6 +417,26 @@ async def change_own_password(body: OwnPassword, request: Request):
     try:
         await accounts.change_own_password(principal.account_id, body.current_password, body.new_password,
                                            peer=peer_key(request))
+    except PasswordAuthenticationBusy:
+        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
+                            "Try again shortly.", headers={"Retry-After": "2"}) from None
+    except AccountRefused as exc:
+        raise _refused(exc) from None
+    return {"ok": True}
+
+
+@router.post("/account/first-password")
+async def set_own_first_password(body: OwnFirstPassword, request: Request):
+    """The signed-in human account's FIRST local password (an account that
+    signs in through its identity provider and has none): no current password
+    to prove, refused once any password exists. Its sessions then end."""
+    principal = request.state.principal
+    if not principal.authenticated or principal.role == Role.INTEGRATION.value:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from auth.manager import PasswordAuthenticationBusy, peer_key
+
+    try:
+        await accounts.set_own_first_password(principal.account_id, body.new_password, peer=peer_key(request))
     except PasswordAuthenticationBusy:
         raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
                             "Try again shortly.", headers={"Retry-After": "2"}) from None
