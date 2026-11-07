@@ -618,12 +618,15 @@
    * Each is laid out and READ in turn and the first that fits is kept: the
    * title wrapping within its own region first, then what the stylesheet
    * takes back at each step, Help lent to the body's row from
-   * HEADER_FIT_LENDS_HELP. */
+   * HEADER_FIT_LENDS_HELP -- or from the step the stylesheet names
+   * (--dp-header-fit-lends-help: a card whose short title comes first). */
   function fitWrappingHeader(group, members) {
-    const steps = parseInt(getComputedStyle(group).getPropertyValue('--dp-header-fit-steps'), 10) || 0;
+    const style = getComputedStyle(group);
+    const steps = parseInt(style.getPropertyValue('--dp-header-fit-steps'), 10) || 0;
+    const lends = parseInt(style.getPropertyValue('--dp-header-fit-lends-help'), 10) || HEADER_FIT_LENDS_HELP;
     for (let step = 0; step < Math.max(1, steps); step += 1) {
       group.dataset.headerFit = String(step);
-      members.forEach(part => placeHeaderHelp(part, steps > 0 && step >= HEADER_FIT_LENDS_HELP));
+      members.forEach(part => placeHeaderHelp(part, steps > 0 && step >= lends));
       if (members.every(wrappedHeaderFits)) break;
     }
     members.forEach(promoteShortTitle);
@@ -1110,6 +1113,14 @@
             aria-label="${html(label)}" data-tooltip="${html(label)}">${glyph}</button>`;
   }
 
+  /* A header action's words at each step of a wrapping header
+   * (fitHeaderSteps): its full words, then the shorter ones its stylesheet
+   * draws from step 2 and from step 3 below 780px (ui-settings-page.css) --
+   * from attributes, so the button's text and its name stay the full words,
+   * and the action is one button whatever it reads. */
+  const fitLabel = (full, short, shortest = short) => `<span class="dp-settings-fit-label-full">${html(full)}</span>`
+    + `<span class="dp-settings-fit-label-short" aria-hidden="true" data-fit-2="${html(short)}" data-fit-3="${html(shortest)}"></span>`;
+
   function card(title, body, options = {}) {
     let titleClass = 'card-title';
     let titleMarkup = html(title);
@@ -1168,9 +1179,12 @@
     // A card whose body already has a box Help may be lent to (the OpenID
     // Connect identity group) declares ``helpRow: false``: no row is drawn.
     const helpRow = fit && options.helpRow !== false;
+    // ``shortTitleFirst``: its short title is drawn before Help is lent (the
+    // stylesheet's step order), not as the last resort.
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}"${
-        fit ? ' data-header-fit="0" data-header-fit-self data-header-fit-wrap' : ''}>
+        fit ? ' data-header-fit="0" data-header-fit-self data-header-fit-wrap' : ''}${
+        fit && options.shortTitleFirst ? ' data-header-short-first' : ''}>
         <div class="card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}">
           ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}${disclosure}</span>` : identity}
           ${center ? `<div class="${centerClass}">${center}</div>` : ''}
@@ -1753,9 +1767,12 @@
    * data-menu-label where it has one -- so the page's one action dispatch runs
    * each existing handler. An action marked data-menu-closes closes the menu
    * first (the one it opens takes over: Backup Management's dialog). */
-  function headerActionsMenu(title, label, actions, toggle = '') {
+  // ``from``: the wrapping header's step (fitHeaderSteps) at which the menu
+  // takes over below 780px; the actions are drawn whole until then.
+  function headerActionsMenu(title, label, actions, toggle = '', {from = 0} = {}) {
     const menu = `dp-settings-test-menu-${++headerTestMenus}`;
-    return `<div class="dp-settings-header-action">${actions}</div><div class="dp-settings-header-test-group">
+    return `<div class="dp-settings-header-action">${actions}</div><div class="dp-settings-header-test-group"${
+      from ? ` data-menu-from="${from}"` : ''}>
         <span class="dp-settings-header-test-shell">
           <button class="btn btn-ghost btn-sm dp-settings-header-test-trigger" type="button" popovertarget="${menu}"
                   aria-controls="${menu}" aria-expanded="false">${html(label)}</button>
@@ -4550,8 +4567,13 @@
       headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
-      headerAction: '<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge">Merge</button>'
-        + '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local">Add Local Account</button>',
+      headerFit: 'wrap',
+      // Below 780px its two actions become one Manage menu from header step
+      // 3 (headerActionsMenu), Add Local Account reading "Add Account" at 2.
+      action: headerActionsMenu('User Accounts', 'Manage',
+        '<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-menu-closes>Merge</button>'
+        + `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local" data-menu-label="Add Local Account" data-menu-closes>${
+          fitLabel('Add Local Account', 'Add Account')}</button>`, '', {from: 3}),
     });
     const automation = card('Integration Accounts', integrationBlocks(integrations), {
       className: 'dp-settings-users-card dp-settings-users-integrations-card',
@@ -4560,7 +4582,9 @@
       headerCenter: 'Automation that submits downloads through the API. A token is shown once, when it is issued.',
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
-      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">Add Integration Account</button>',
+      headerFit: 'wrap',
+      headerAction: `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">${
+        fitLabel('Add Integration Account', 'Add Account', 'Add')}</button>`,
     });
     const delivery = card('Integration Delivery Profiles', profileRows(), {
       className: 'dp-settings-delivery-profiles-card',
@@ -4569,7 +4593,11 @@
       headerCenter: 'Configure how external applications access completed downloads.',
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
-      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">Create Delivery Profile</button>',
+      headerFit: 'wrap',
+      shortTitle: 'Delivery Profiles',
+      shortTitleFirst: true,
+      headerAction: `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">${
+        fitLabel('Create Delivery Profile', 'Create Profile', 'Create')}</button>`,
     });
     return people + automation + delivery;
   }
@@ -6640,7 +6668,7 @@
     if (testMenuRunning(menu)) return;
     const actions = menu.closest('.dp-settings-card-header-controls')?.querySelector(':scope > .dp-settings-header-action');
     if (!actions) return;
-    menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > button[data-action]'), button => {
+    menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > :is(button[data-action], button[data-user-action])'), button => {
       const item = button.cloneNode(true);
       if (item.dataset.menuLabel) item.textContent = item.dataset.menuLabel;
       return item;
@@ -6698,7 +6726,7 @@
         return;
       }
       placeHeaderTestMenu(menu);
-      menu.querySelector('button[data-action]')?.focus({preventScroll: true});
+      menu.querySelector(':is(button[data-action], button[data-user-action])')?.focus({preventScroll: true});
     }, true);
     HANDHELD.addEventListener('change', () => {
       if (HANDHELD.matches) return;

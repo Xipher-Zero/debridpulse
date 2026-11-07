@@ -77,7 +77,9 @@ async function expectAction(button) {
   }
   await expect(button).toHaveAttribute('type', 'button');
 }
-const popovers = page => page.locator('#view-settings .card-header [popover]:not(.dp-settings-backups-retention-card *)');
+// No header that holds a Test has a popover (an actions menu -- Backups,
+// Manage -- is another header's).
+const popovers = page => page.locator('#view-settings .card-header:has(.dp-settings-provider-test) [popover]');
 const token = (page, name, property = 'color', read = property) => page.evaluate(([variable, prop, out]) => {
   const probe = document.createElement('span');
   probe.style[prop] = `var(${variable})`;

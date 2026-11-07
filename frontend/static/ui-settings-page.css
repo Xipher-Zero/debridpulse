@@ -1912,9 +1912,12 @@
      what the rail leaves and wrapping there, and the rail whole, on one line,
      at the trailing edge. It takes room back in the steps declared here, the
      first that fits kept (fitHeaderSteps): 1 the informational status leaves
-     the rail -- Test and Enable stay; 2-3 nothing more (this header keeps its
-     gaps, padding and identity mark); 4 Help is lent to the row at the top of
-     the card body; 5 the card's short title, where it has one. */
+     the rail -- Test and Enable stay; 2 an action's shorter words, 3 its
+     shortest, or its actions menu where one takes over from 3 (Users &
+     Access; this header keeps its gaps, padding and identity mark); 4 Help
+     is lent to the row at the top of the card body; 5 the card's short
+     title, where it has one -- drawn from 4, and Help lent at 5, on a card
+     whose short title comes first (data-header-short-first). */
   #view-settings .dp-settings-card[data-header-fit-wrap] {
     --dp-header-fit-steps: 6;
   }
@@ -1936,7 +1939,14 @@
   #view-settings .dp-settings-card[data-header-fit-wrap]:not([data-header-fit="0"]) > .card-header > .dp-settings-card-header-controls > .dp-settings-provider-config-status {
     display: none;
   }
-  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-full {
+  /* A card whose short title comes first (data-header-short-first:
+     Integration Delivery Profiles) draws it from step 4, and lends Help only
+     at 5. */
+  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-short-first] {
+    --dp-header-fit-lends-help: 5;
+  }
+
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="5"], [data-header-short-first][data-header-fit="4"]) .dp-settings-card-title-full {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1944,12 +1954,63 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-short {
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="5"], [data-header-short-first][data-header-fit="4"]) .dp-settings-card-title-short {
     display: inline;
   }
-  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="5"] .dp-settings-card-title-short::before {
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="5"], [data-header-short-first][data-header-fit="4"]) .dp-settings-card-title-short::before {
     content: attr(data-short-title);
   }
+
+  /* A header action's shorter words (fitLabel, Users & Access): from step 2
+     its first, from step 3 its shortest -- before Help is lent at 4. Its full
+     words stay its text and name. */
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="2"], [data-header-fit="3"], [data-header-fit="4"], [data-header-fit="5"])
+    > .card-header .dp-settings-header-action .dp-settings-fit-label-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="2"], [data-header-fit="3"], [data-header-fit="4"], [data-header-fit="5"])
+    > .card-header .dp-settings-header-action .dp-settings-fit-label-short {
+    display: inline;
+  }
+
+  #view-settings .dp-settings-card[data-header-fit-wrap][data-header-fit="2"] > .card-header .dp-settings-fit-label-short::before {
+    content: attr(data-fit-2);
+  }
+
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="3"], [data-header-fit="4"], [data-header-fit="5"])
+    > .card-header .dp-settings-fit-label-short::before {
+    content: attr(data-fit-3);
+  }
+
+  /* An actions menu that takes over only from a later step (headerActionsMenu
+     ``from``: User Accounts' Manage, from 3): until then the actions are
+     drawn whole, and the menu is not. */
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="0"], [data-header-fit="1"], [data-header-fit="2"])
+    > .card-header > .dp-settings-card-header-controls:has(> .dp-settings-header-test-group[data-menu-from="3"]) > .dp-settings-header-action {
+    display: flex;
+  }
+
+  #view-settings .dp-settings-card[data-header-fit-wrap]:is([data-header-fit="0"], [data-header-fit="1"], [data-header-fit="2"])
+    > .card-header > .dp-settings-card-header-controls > .dp-settings-header-test-group[data-menu-from="3"] {
+    display: none;
+  }
+
+  /* A menu with no toggle beside it is its trigger alone: no island. */
+  #view-settings .dp-settings-header-test-group[data-menu-from] {
+    padding: 0;
+    border: 0;
+  }
+}
+
+/* A header action's shorter words are drawn only by the steps above. */
+#view-settings .dp-settings-fit-label-short {
+  display: none;
 }
 
 /* A card's short title is drawn only at its header's last step (above). */
