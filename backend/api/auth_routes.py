@@ -408,9 +408,13 @@ _AUTH_FAVICON_HTML = _auth_favicon_html()
 
 
 def _auth_csp(*, allow_form: bool) -> str:
+    # The installed-app metadata (manifest.webmanifest and its icons, public
+    # static files: auth.policy PUBLIC_PATHS) is what these pages may fetch
+    # from their own origin; everything they draw stays inline.
     directives = [
         "default-src 'none'",
-        "img-src data:",
+        "manifest-src 'self'",
+        "img-src data: 'self'",
         "style-src 'unsafe-inline'",
         f"script-src 'sha256-{_AUTH_PAGE_SCRIPT_HASH}'",
     ]
@@ -453,6 +457,7 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
 <meta name="color-scheme" content="{mode}">
 <title>{html.escape(title)}</title>
 {_AUTH_FAVICON_HTML}
+<link rel="manifest" href="/manifest.webmanifest">
 <style>{style}</style>
 <script>{_AUTH_PAGE_SCRIPT}</script>
 </head>

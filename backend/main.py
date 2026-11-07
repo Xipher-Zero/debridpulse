@@ -492,7 +492,7 @@ async def request_id_middleware(request: Request, call_next):
     path = request.url.path
     static_frontend = (
         request.method.upper() in {"GET", "HEAD"}
-        and (path == "/" or path.endswith((".html", ".js", ".css")))
+        and (path == "/" or path.endswith((".html", ".js", ".css", ".webmanifest")))
     )
     existing_cache = response.headers.get("Cache-Control", "")
     if static_frontend and "no-store" not in existing_cache.lower():

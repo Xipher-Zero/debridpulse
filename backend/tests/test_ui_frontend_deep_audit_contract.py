@@ -172,7 +172,7 @@ def test_shared_visual_contract_is_css_owned_not_runtime_injected() -> None:
 
 def test_static_frontend_resources_are_forced_to_revalidate() -> None:
     main = read(MAIN)
-    assert 'path.endswith((".html", ".js", ".css"))' in main
+    assert 'path.endswith((".html", ".js", ".css", ".webmanifest"))' in main
     assert '"no-store" not in existing_cache.lower()' in main
     assert 'response.headers["Cache-Control"] = "no-cache, must-revalidate"' in main
 

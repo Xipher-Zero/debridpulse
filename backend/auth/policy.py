@@ -15,6 +15,11 @@ PUBLIC_PATHS = frozenset(
         "/login",
         "/auth/oidc/start",
         "/auth/oidc/callback",
+        # The browser's installed-app metadata and its icons: fixed static
+        # bytes, the same for every visitor, fetched without credentials.
+        "/manifest.webmanifest",
+        "/favicon-192.png",
+        "/favicon.png",
     }
 )
 
