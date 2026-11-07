@@ -1111,8 +1111,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    one stage at a time (fitUsersTable, data-users-fit): 1 the emails, 2 the
    Sign-In column, 3 the Status column -- each name then in its account's
    enabled (success) or disabled (caution) colour, the state still said to
-   assistive technology beside it, and the name one line, the Account column
-   taking what Role and Actions leave -- and 4 closer cell padding. The
+   assistive technology beside it -- and 4 closer cell padding. At every
+   stage each cell keeps one line and every row the stage's one height. The
    built-in Administrator's notice says "Built-in Admin Account" (label 1, on
    two lines as its full words are) or
    "Default" (2) where its full words do not fit (data-users-label). */
@@ -1131,17 +1131,33 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     display: none;
   }
 
-  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) :is(th, td):first-child {
+  /* At every stage no cell's information wraps (fitUsersTable then gives
+     back information rather than let a row grow): the Account column takes
+     what the others leave, its name and email cut short where too long; the
+     others keep one line; and every row is the stage's one height. */
+  #view-settings .dp-settings-users-table[data-users-fit] :is(th, td):first-child {
     width: 100%;
     max-width: 0;
   }
 
-  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-name {
+  #view-settings .dp-settings-users-table[data-users-fit] :is(th, td):not(:first-child) {
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-table[data-users-fit] .dp-settings-users-name {
     display: block;
+  }
+
+  /* (The email is a block already, and its stage hides it from 1.) */
+  #view-settings .dp-settings-users-table[data-users-fit] :is(.dp-settings-users-name, td:first-child > .dp-settings-users-detail) {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-table[data-users-fit] > tbody > tr {
+    height: var(--dp-users-row, auto);
   }
 
   #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-name[data-enabled="true"] {
@@ -1180,10 +1196,11 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     white-space: nowrap;
   }
 
-  /* Two lines, as the full notice is: "Built-in Admin" over "Account". */
+  /* Two lines, as the full notice is: "Built-in Admin" over "Account",
+     neither wrapping further. */
   #view-settings .dp-settings-users-table[data-users-label="1"] .dp-settings-users-hint-short {
     display: block;
-    white-space: pre-line;
+    white-space: pre;
   }
 
   #view-settings .dp-settings-users-table[data-users-label="1"] .dp-settings-users-hint-short::before {

@@ -4626,13 +4626,19 @@
    * stylesheet's steps, --dp-users-fit-steps): 1 the accounts' emails, 2 the
    * Sign-In column, 3 the Status column (each name then coloured by the
    * account's own enabled state, and that state said to assistive technology
-   * beside it), 4 closer cell padding. A stage fits while the table needs no
-   * horizontal scrolling and, once names are single-line, none is cut short;
-   * the last stage is kept whatever it holds, the table scrolling as before
-   * if it still must. Within the stage chosen, the built-in Administrator's
-   * notice takes the longest of its wordings that fits (data-users-label),
-   * so a long phrase never costs a column. Read from the table as drawn; the
-   * same room always chooses the same stage. From 780px the table is as it
+   * beside it), 4 closer cell padding. Below 780px no cell's information
+   * wraps (its stylesheet): a name or email too long for its cell is cut
+   * short. A stage fits in both dimensions: the table needs no horizontal
+   * scrolling, no name or email is cut short, and no row is taller than an
+   * editable account's -- its Edit button, its name, and its email where the
+   * stage shows emails -- so information goes before any row grows. The last
+   * stage is kept whatever it holds. Within the stage chosen, the built-in
+   * Administrator's notice takes the longest of its wordings that fits the
+   * same way (data-users-label), so a long phrase never costs a column nor
+   * grows its row. Every row is then given that one height
+   * (--dp-users-row), so an account without a button (You, the notice) is
+   * as tall as one with it. Read from the table as drawn; the same room and
+   * accounts always choose the same stage. From 780px the table is as it
    * was. */
   let usersTableObserver = null;
   let usersTableFit = null;
@@ -4642,14 +4648,21 @@
     usersTableObserver = null;
     const table = root()?.querySelector('.dp-settings-users-table');
     const wrap = table?.parentElement;
-    usersTableFit = table ? () => {
-      if (!table.getClientRects().length) return;
-      const steps = parseInt(getComputedStyle(table).getPropertyValue('--dp-users-fit-steps'), 10) || 0;
-      delete table.dataset.usersFit;
-      delete table.dataset.usersLabel;
-      if (!steps) return;
-      const fits = () => wrap.scrollWidth <= wrap.clientWidth + 1
-        && Array.from(table.querySelectorAll('.dp-settings-users-name')).every(name => name.scrollWidth <= name.clientWidth + 1);
+    const rows = table ? Array.from(table.tBodies[0]?.rows || []) : [];
+    const height = row => row.getBoundingClientRect().height;
+    // An editable account's row: the height every row of the stage may take.
+    const editable = rows.filter(row => row.querySelector('[data-user-action="edit"]'));
+    const target = () => Math.max(0, ...(editable.length ? editable : rows).map(height));
+    const cut = node => node.scrollWidth > node.clientWidth + 1;
+    const fits = () => {
+      const most = target();
+      return wrap.scrollWidth <= wrap.clientWidth + 1
+        && !Array.from(table.querySelectorAll('.dp-settings-users-name, td:first-child > .dp-settings-users-detail')).some(cut)
+        && rows.every(row => height(row) <= most + 0.5);
+    };
+    // The stage, then the notice's wording: the first stage that fits with
+    // its shortest wording, then the longest wording that fits it.
+    const choose = steps => {
       for (let step = 0; step < steps; step += 1) {
         table.dataset.usersFit = String(step);
         table.dataset.usersLabel = '2';
@@ -4661,10 +4674,25 @@
         table.dataset.usersLabel = '2';
         return;
       }
+    };
+    let width = null;
+    usersTableFit = table ? () => {
+      if (!table.getClientRects().length) return;
+      width = wrap.clientWidth;
+      const steps = parseInt(getComputedStyle(table).getPropertyValue('--dp-users-fit-steps'), 10) || 0;
+      delete table.dataset.usersFit;
+      delete table.dataset.usersLabel;
+      table.style.removeProperty('--dp-users-row');
+      if (!steps) return;
+      choose(steps);
+      table.style.setProperty('--dp-users-row', `${target()}px`);
     } : null;
     usersTableFit?.();
     if (usersTableFit && typeof ResizeObserver === 'function') {
-      usersTableObserver = new ResizeObserver(() => usersTableFit?.());
+      // The row height it gives changes the wrapper's height, not its room.
+      usersTableObserver = new ResizeObserver(() => {
+        if (wrap.clientWidth !== width) usersTableFit?.();
+      });
       usersTableObserver.observe(wrap);
     }
   }

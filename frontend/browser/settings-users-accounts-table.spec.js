@@ -25,6 +25,16 @@ const directory = (self, {longName = true} = {}) => [
     display_name: 'Synthetic Extraordinarily Long Display Name', has_password: true, oidc_identities: 0, email: 'a-very-long-secondary-address@example.invalid'}] : []),
 ];
 
+// The operator's narrow composition: the built-in Administrator, the
+// signed-in account (You), and three editable accounts.
+const operator = self => [
+  {id: 'acct-builtin', role: 'admin', enabled: true, protected: 'default_admin', username: 'admin', display_name: 'Admin', has_password: true, oidc_identities: 0, email: ''},
+  {id: self, role: 'admin', enabled: true, protected: '', username: 'browser', display_name: 'Xipher', has_password: true, oidc_identities: 1, email: ''},
+  {id: 'acct-a', role: 'user', enabled: true, protected: '', username: 'synthetic-a', display_name: 'Synthetic A', has_password: true, oidc_identities: 0, email: ''},
+  {id: 'acct-b', role: 'readonly', enabled: false, protected: '', username: 'synthetic-b', display_name: 'Synthetic B', has_password: true, oidc_identities: 0, email: ''},
+  {id: 'acct-c', role: 'user', enabled: true, protected: '', username: '', display_name: 'Synthetic C', has_password: false, oidc_identities: 1, email: ''},
+];
+
 async function open(browser, options = {}) {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   const context = await browser.newContext({baseURL: AUTH, viewport: {width: 1280, height: 900}});
@@ -40,7 +50,7 @@ async function open(browser, options = {}) {
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
   const self = await page.evaluate(() => window.debridPulseAuth.authority.account_id);
-  const accounts = directory(self, options);
+  const accounts = (options.accounts || directory)(self, options);
   page.__accounts = accounts;
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const request = route.request();
@@ -56,7 +66,7 @@ async function open(browser, options = {}) {
   });
   await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
   await page.locator('#view-settings .dp-settings-tabs [data-tab="users"]:not(.dp-motion-still *)').first().dispatchEvent('click');
-  await expect(page.locator('.dp-settings-users-table tr[data-account-row="acct-multi"]')).toBeVisible();
+  await expect(page.locator(`.dp-settings-users-table tr[data-account-row="${accounts.at(-1).id}"]`)).toBeVisible();
   return {context, page};
 }
 
@@ -85,7 +95,25 @@ const table = page => page.evaluate(() => {
       name: name.textContent,
       actionsInside: (() => { const a = row.querySelector('.dp-settings-users-actions').getBoundingClientRect(), c = row.lastElementChild.getBoundingClientRect(); return a.left >= c.left - 0.5 && a.right <= c.right + 0.5; })()};
   });
-  return {fit: t.dataset.usersFit ?? null, label: t.dataset.usersLabel ?? null, heads, rows,
+  // Each row's height; the informational cells (all but Actions) drawn on
+  // more lines than their content intends -- the name one, its email one,
+  // every other cell one; the notice's lines; an Edit row's height.
+  const lines = node => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return new Set([...range.getClientRects()].filter(box => box.width > 2 && box.height > 6).map(box => Math.round(box.bottom))).size;
+  };
+  const wrapped = [...t.tBodies[0].rows].flatMap(row => [...row.cells].filter(drawn).slice(0, -1).flatMap(cell => cell.cellIndex === 0
+    ? [...cell.querySelectorAll(':scope > .dp-settings-users-name, :scope > .dp-settings-users-detail')].filter(drawn)
+    : [cell]).filter(node => lines(node) > 1).map(node => `${row.dataset.accountRow}:${node.className || node.cellIndex}`));
+  const heights = [...t.tBodies[0].rows].map(row => row.getBoundingClientRect().height);
+  const editRow = t.querySelector('[data-user-action="edit"]')?.closest('tr');
+  const hint = t.querySelector('.dp-settings-users-hint');
+  const button = t.querySelector('[data-user-action="edit"]');
+  return {fit: t.dataset.usersFit ?? null, label: t.dataset.usersLabel ?? null, heads, rows, heights, wrapped,
+    spread: Math.max(...heights) - Math.min(...heights), editHeight: editRow ? editRow.getBoundingClientRect().height : null,
+    // The notice as drawn (whichever wording) against an Edit button: it never sets its row's height.
+    hintHeight: hint ? hint.getBoundingClientRect().height : 0, buttonHeight: button ? button.getBoundingClientRect().height : 0,
     admin: short.getClientRects().length ? getComputedStyle(short, '::before').content.replace(/"/g, '').replace(/\\a /g, ' ') : 'full',
     adminText: t.querySelector('.dp-settings-users-hint').textContent.replace(/\s+/g, ' ').trim(),
     overflow: wrap.scrollWidth > wrap.clientWidth + 1, page: document.documentElement.scrollWidth > window.innerWidth,
@@ -115,15 +143,22 @@ test('the table gives back its information in order, fits from 3 columns at 320p
     // Every stage but the last fits whole: no scrolling, no name cut short.
     if (fit < 4) expect([t.overflow, t.rows.some(row => row.cut)], at).toEqual([false, false]);
     expect([t.overflow, t.page], at).toEqual([false, false]);
+    // Vertically too: no informational cell wraps, the notice keeps its own
+    // two lines at most, and every row is one height -- an Edit row's.
+    expect(t.wrapped, at).toEqual([]);
+    expect(t.hintHeight, at).toBeLessThanOrEqual(t.buttonHeight + 0.5);
+    expect(t.spread, at).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(t.heights[0] - t.editHeight), at).toBeLessThanOrEqual(0.5);
     seen[fit] = true;
     states[width] = `${t.fit}/${t.label}`;
   }
   // The stages only ever take more back as the room narrows.
   const fits = widths.map(width => Number(states[width].split('/')[0]));
   for (let index = 1; index < fits.length; index += 1) expect(fits[index], `@${widths[index]}`).toBeGreaterThanOrEqual(fits[index - 1]);
-  expect(fits[0]).toBe(0);
+  // (This directory's long name and three-method account take Sign-In back
+  // even at 779px; the full table at 779px is the operator directory's case.)
   expect(fits.at(-1)).toBe(4);
-  expect(Object.keys(seen).sort()).toEqual(['0', '1', '2', '4']);
+  expect(Object.keys(seen)).toEqual(expect.arrayContaining(['4']));
   // Closer padding only at the last stage.
   await resize(page, 320);
   const narrow = await table(page);
@@ -242,6 +277,75 @@ test('below 780px the Edit User line names the sign-in methods the Sign-In colum
       await expect(dialog).toBeHidden();
     }
   }
+  expect(page.__writes).toEqual([]);
+  await context.close();
+});
+
+test('the operator\'s narrow table: every row as tall as an Edit row, the notice "Default", You centred, no scrolling', async ({browser}) => {
+  const {context, page} = await open(browser, {accounts: operator});
+  // Where it fits, the full table.
+  await resize(page, 779);
+  const wide = await table(page);
+  expect([wide.fit, wide.heads, wide.admin, wide.spread <= 0.5]).toEqual(['0', COLUMNS[0], 'full', true]);
+  await resize(page, 1280);
+  const button = await page.locator('tr[data-account-row="acct-a"] [data-user-action="edit"]').boundingBox();
+  for (const width of [320, 326, 360]) {
+    await resize(page, width);
+    const t = await table(page);
+    const at = `@${width} (stage ${t.fit})`;
+    expect(t.heads, at).toEqual(['Account', 'Role', 'Actions']);
+    expect(t.admin, at).toBe('Default');
+    expect([t.wrapped, t.overflow], at).toEqual([[], false]);
+    expect(t.hintHeight, at).toBeLessThanOrEqual(t.buttonHeight + 0.5);
+    expect(t.spread, at).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(t.heights[0] - t.editHeight), at).toBeLessThanOrEqual(0.5);
+    // You and the notice centred in their rows, as every Edit is; no control sizes them.
+    for (const id of ['acct-builtin', null, 'acct-a']) {
+      const off = await page.evaluate(id => {
+        const row = id ? document.querySelector(`tr[data-account-row="${id}"]`)
+          : document.querySelector(`tr[data-account-row="${window.debridPulseAuth.authority.account_id}"]`);
+        const actions = row.lastElementChild.querySelector(':scope > .dp-settings-users-actions > *');
+        const r = row.getBoundingClientRect(), a = actions.getBoundingClientRect();
+        return {off: Math.abs((a.top + a.bottom) / 2 - (r.top + r.bottom) / 2), controls: row.lastElementChild.querySelectorAll('button').length};
+      }, id);
+      expect(off.off, `${at} ${id || 'You'}`).toBeLessThanOrEqual(1);
+      expect(off.controls, `${at} ${id || 'You'}`).toBe(id === 'acct-a' ? 1 : 0);
+    }
+    // Edit keeps its size.
+    const edit = await page.locator('tr[data-account-row="acct-a"] [data-user-action="edit"]').boundingBox();
+    expect([edit.width, edit.height], at).toEqual([button.width, button.height]);
+  }
+  expect(page.__writes).toEqual([]);
+  await context.close();
+});
+
+test('the table refits when its accounts change: state, sign-in and a long name, with no stale stage or height', async ({browser}) => {
+  const {context, page} = await open(browser, {accounts: operator});
+  await resize(page, 560);
+  const before = await table(page);
+  // A re-read directory: Synthetic A disabled with three sign-in methods, and a long-named account.
+  const a = page.__accounts.find(account => account.id === 'acct-a');
+  Object.assign(a, {enabled: false, oidc_identities: 2});
+  page.__accounts.push({id: 'acct-long', role: 'user', enabled: true, protected: '', username: 'synthetic-extraordinarily-long-username',
+    display_name: 'Synthetic Extraordinarily Long Display Name', has_password: true, oidc_identities: 1, email: 'a-very-long-secondary-address@example.invalid'});
+  await page.evaluate(() => window.loadSettings());
+  await page.locator('#view-settings .dp-settings-tabs [data-tab="users"]:not(.dp-motion-still *)').first().dispatchEvent('click');
+  await expect(page.locator('tr[data-account-row="acct-long"]')).toBeVisible();
+  await settle(page);
+  for (const width of [560, 440, 320, 440, 560, 779]) {
+    await resize(page, width);
+    const t = await table(page);
+    const at = `@${width} (stage ${t.fit})`;
+    expect([t.wrapped, t.overflow, t.page], at).toEqual([[], false, false]);
+    expect(t.spread, at).toBeLessThanOrEqual(0.5);
+    const row = t.rows.find(entry => entry.id === 'acct-a');
+    expect(row.enabled, at).toBe('false');
+    if (t.heads.includes('Status')) expect(row.statusCell, at).toBe('Disabled');
+    else expect(row.stateSaid, at).toBe('Disabled');
+  }
+  // The new long name takes back information it did not need before, never row height.
+  await resize(page, 560);
+  expect(Number((await table(page)).fit)).toBeGreaterThanOrEqual(Number(before.fit));
   expect(page.__writes).toEqual([]);
   await context.close();
 });
