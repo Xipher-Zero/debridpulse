@@ -6639,11 +6639,11 @@
         <span class="dp-settings-tab-label">${html(label)}</span>
       </button>
     `).join('');
-    // The compact navigator's two travel actions: actions, not tabs, each
-    // naming the section it reaches.
-    const travel = (end, glyph, index) => `
-      <button class="dp-settings-nav-end dp-section-nav-end" type="button" data-settings-end="${end}"
-              aria-label="${end === 'first' ? 'First' : 'Last'} section: ${html(TABS.at(index)[1])}">
+    // The compact navigator's two travel actions: actions, not tabs, each one
+    // section from the selected one.
+    const travel = (step, glyph, label) => `
+      <button class="dp-settings-nav-end dp-section-nav-end" type="button" data-settings-end="${step}"
+              aria-label="${label}">
         ${window.DPIcons?.svg?.(glyph) || ''}
       </button>`;
 
@@ -6659,9 +6659,9 @@
           </div>
           <div class="dp-settings-nav dp-section-nav">
             <div class="dp-settings-nav-control dp-section-nav-control">
-              ${travel('first', 'chevronFirst', 0)}
+              ${travel('previous', 'chevronLeft', 'Previous section')}
               <div class="stabs dp-settings-tabs dp-section-nav-strip" role="tablist" aria-label="Settings sections">${tabs}</div>
-              ${travel('last', 'chevronLast', -1)}
+              ${travel('next', 'chevronRight', 'Next section')}
             </div>
           </div>
         </div>
@@ -6743,7 +6743,7 @@
     });
   }
 
-  /* The operator chose a tab (`via` 'tab', or 'end' through First / Last):
+  /* The operator chose a tab (`via` 'tab', or 'travel' through Previous / Next):
    * the strip changes at once and the panel slides across from the one on
    * screen, by the tabs' displayed order. */
   function chooseTab(name, via = 'tab') {
@@ -7149,16 +7149,19 @@
         chooseTab(tab.dataset.tab);
         return;
       }
-      // First / Last: the first or last tab, through the same choice; focus
-      // follows to that tab, since the action is hidden once it is there.
+      // Previous / Next: one section from the selected one, through the same
+      // choice. Focus stays on the action while it has somewhere to go, and
+      // follows to the section once it has none (the action is then gone).
       const travel = event.target.closest('.dp-settings-nav-end');
       if (travel) {
         const tabs = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]:not(.dp-motion-still *)'));
-        const target = travel.dataset.settingsEnd === 'first' ? tabs[0] : tabs.at(-1);
+        const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true')
+          + (travel.dataset.settingsEnd === 'previous' ? -1 : 1);
+        const target = tabs[index];
         if (!target) return;
         const focused = document.activeElement === travel;
-        chooseTab(target.dataset.tab, 'end');
-        if (focused) target.focus({preventScroll: true});
+        chooseTab(target.dataset.tab, 'travel');
+        if (focused && (index === 0 || index === tabs.length - 1)) target.focus({preventScroll: true});
         return;
       }
 

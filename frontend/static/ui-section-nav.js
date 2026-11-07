@@ -9,15 +9,16 @@
  *
  *   <header>  <copy/>  <.dp-section-nav>
  *     <.dp-section-nav-control>
- *       <button.dp-section-nav-end>  (First: the first section)
+ *       <button.dp-section-nav-end>  (Previous: the section before the selected one)
  *       <[role=tablist].dp-section-nav-strip> [role=tab]... </>
- *       <button.dp-section-nav-end>  (Last: the last section)
+ *       <button.dp-section-nav-end>  (Next: the section after it)
  *
  * This owner only measures and places: which presentation the header shows
  * (data-presentation), the compact window's width, room, trim and position,
- * which end of the list the window shows (data-nav-at) and which sections an edge
- * cuts (data-nav-cut), with the custom properties ui-section-nav.css draws
- * them by. It keeps no selection of its own and renders nothing.
+ * which travel action the selection leaves nothing to do (data-nav-at: the
+ * selected section is the list's first or last, or its only one) and which
+ * sections an edge cuts (data-nav-cut), with the custom properties
+ * ui-section-nav.css draws them by. It keeps no selection of its own and renders nothing.
  */
 (function () {
   'use strict';
@@ -26,11 +27,13 @@
    * place -- centred in the whole header while the copy fits beside it,
    * otherwise right after the copy -- and is the complete strip whenever
    * the copy, the row gap and the strip fit the header with NAV_SPARE to
-   * spare. Otherwise it is the compact navigator: First, a window onto the
-   * same strip, and Last. First and Last stand over the strip's ends; where
-   * the window shows the list's first or last section -- whichever section
-   * is selected -- the one that would lead there is gone and the window
-   * takes its place (each arrangement's own room and side). The window is as wide as the
+   * spare. Otherwise it is the compact navigator: Previous, a window onto the
+   * same strip, and Next -- each one section from the selected one. Previous
+   * and Next stand over the strip's ends; where the selected section is the
+   * list's first (or last), Previous (or Next) has nowhere to go and is gone,
+   * and the window takes its place (that arrangement's own room and side). A
+   * window that shows the list's first or last section while another section
+   * is selected keeps both: its own room, beside them. The window is as wide as the
    * navigator can be while still centred in the header, and
    * wider (the navigator moving right, never past the copy) only while some
    * section would otherwise have fewer than three positions (navWindow);
@@ -142,7 +145,7 @@
         const style = getComputedStyle(strip);
         const frame = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
           .reduce((sum, key) => sum + parseFloat(style[key]), 0);
-        // The compact control's own parts: First and Last (each over one end
+        // The compact control's own parts: Previous and Next (each over one end
         // of the strip, `slot` wide), its padding and border, and the room
         // kept at either end of the list.
         header.dataset.presentation = 'compact';
@@ -219,7 +222,7 @@
 
     /* The side padding each tab gives up so that a window this wide holds
      * the first and the last section each with its neighbour whole (and the
-     * room kept at that end), its own travel action gone: none while it
+     * room kept at that end), selected, its own travel action gone: none while it
      * already does, else the least
      * (in half pixels, the two tabs giving it up on both sides) up to
      * NAV_TRIM. Half a pixel more than exact: the window scrolls in whole
@@ -235,11 +238,14 @@
      * selected: {left, room, side}, `left` and `room` the part of the list
      * it shows. The selected section is whole; a window edge where sections
      * continue cuts one section, showing NAV_CUT of it, and fades. The window
-     * starts at the list's first section (side 'first': First is gone and the
-     * window takes its slot), ends at its last ('last': likewise Last), shows
-     * all of it ('only') or lies between with a section cut at each edge;
-     * of the possible layouts, the one centring the selection best, then the
-     * one with more sections. null when there is none. */
+     * starts at the list's first section, ends at its last, or lies between
+     * with a section cut at each edge. Only the selection's own unavailable
+     * action gives up its slot: with the first section selected (side
+     * 'first') Previous is gone and the window takes its place, likewise Next
+     * with the last ('last'), both with the only one ('only'); a window at an
+     * end of the list with another section selected keeps both, its own room
+     * beside them. Of the possible layouts, the one centring the selection
+     * best, then the one with more sections. null when there is none. */
     function navLayout(window, index) {
       const {widths, edge, slot} = navFit;
       const count = widths.length;
@@ -247,21 +253,28 @@
       let end = edge;
       for (const each of widths) { at.push(end); end += each; }
       const total = end + edge;
-      if (window + 2 * slot >= total) return {left: 0, room: window + 2 * slot, side: 'only', positions: count};
+      if (count === 1) return {left: 0, room: window + 2 * slot, side: 'only', positions: count};
+      const first = index === 0;
+      const last = index === count - 1;
+      // The whole list, where the selection's own gone action makes the room.
+      if ((first || last) && window + slot >= total) {
+        return first ? {left: 0, room: window + slot, side: 'first', positions: count}
+          : {left: Math.max(0, total - window - slot), room: window + slot, side: 'last', positions: count};
+      }
       let best = null;
       for (let from = 0; from <= index; from += 1) {
         for (let to = index; to < count; to += 1) {
           if ((from === index && from > 0) || (to === index && to < count - 1) || (from === 0 && to === count - 1)) continue;
           let left, room = window, side = '';
           if (from === 0) {
-            room = window + slot;
-            side = 'first';
+            room = window + (first ? slot : 0);
+            side = first ? 'first' : '';
             left = 0;
             const part = room - at[to];
             if (part < NAV_CUT[0] * widths[to] || part > NAV_CUT[1] * widths[to]) continue;
           } else if (to === count - 1) {
-            room = window + slot;
-            side = 'last';
+            room = window + (last ? slot : 0);
+            side = last ? 'last' : '';
             left = total - room;
             const part = at[from] + widths[from] - left;
             if (part < NAV_CUT[0] * widths[from] || part > NAV_CUT[1] * widths[from]) continue;
@@ -287,12 +300,25 @@
       const total = widths.reduce((sum, each) => sum + each, 2 * edge);
       const at = widths.slice(0, index).reduce((sum, each) => sum + each, edge);
       const left = at + widths[index] / 2 - window / 2;
-      if (left <= edge) return {left: 0, room: window + slot, side: 'first'};
-      if (left + window >= total - edge) return {left: Math.max(0, total - window - slot), room: window + slot, side: 'last'};
+      return navEnd(left, window, index, total);
+    }
+
+    /* A window that would reach past an end of the list stops at it: taking
+     * that end's travel slot where the selection is that end's section, else
+     * beside its action. */
+    function navEnd(left, window, index, total) {
+      const {widths, edge, slot} = navFit;
+      if (left <= edge) {
+        return index === 0 ? {left: 0, room: window + slot, side: 'first'} : {left: 0, room: window, side: ''};
+      }
+      if (left + window >= total - edge) {
+        return index === widths.length - 1 ? {left: Math.max(0, total - window - slot), room: window + slot, side: 'last'}
+          : {left: Math.max(0, total - window), room: window, side: ''};
+      }
       return {left, room: window, side: ''};
     }
 
-    // First is gone: the window shows the list's first section.
+    // Previous is gone: the first section is selected (its slot is the window's).
     const firstGone = side => side === 'first' || side === 'only';
 
     /* Where the window goes for the operator's choice of this section
@@ -310,8 +336,8 @@
      * The selection stays whole: the window
      * moves no farther than that allows, and never past the list's ends.
      * The first or last section chosen where it is already shown is the
-     * end arrangement at once (`snap`: no selector slide); First and Last
-     * (`motion.via === 'end'`) and a section the window does not show keep
+     * end arrangement at once (`snap`: no selector slide); Previous and Next
+     * (`motion.via === 'travel'`) and a section the window does not show keep
      * the ordinary layout (navLayout). null: the ordinary layout. */
     function navChoice(index, motion) {
       const {widths, edge, slot, window: width} = navFit;
@@ -327,24 +353,27 @@
       const shown = widths.map((_, k) => k).filter(k => k === was || part(k) >= NAV_TARGET);
       if (!shown.includes(index)) return null;
       if (index === 0 || index === count - 1) {
-        if (motion.via === 'end') return null;
+        if (motion.via === 'travel') return null;
         return {...(navLayout(width, index) || navFallback(width, index)), snap: true};
       }
       const whole = ({left, room}) => at[index] >= left - 0.5 && at[index] + widths[index] <= left + room + 0.5;
       const forward = index > was && index === shown.at(-1);
       const backward = index < was && index === shown[0];
       if (!forward && !backward) {
+        // A drawn window that took the slot of an action this selection has
+        // somewhere to go again (the first or last section no longer
+        // selected) gives it back: the ordinary layout.
+        const reclaimed = (firstGone(drawnSide) && index !== 0) || ((drawnSide === 'last' || drawnSide === 'only') && index !== count - 1);
+        if (reclaimed) return null;
         const still = {left: before, room: drawnRoom, side: drawnSide};
         return whole(still) ? {...still, snap: false} : null;
       }
       const step = Math.min(widths[index] - Math.max(0, part(index) - widths[index + (forward ? 1 : -1)]),
         forward ? at[index] - before : before + drawnRoom - at[index] - widths[index]);
-      // The sections move on screen by `step`; First, gone in the drawn
+      // The sections move on screen by `step`; Previous, gone in the drawn
       // window, takes its slot again between them.
-      let left = before + (forward ? step : -step) + (firstGone(drawnSide) ? slot : 0);
-      let next = {left, room: width, side: ''};
-      if (left <= edge) next = {left: 0, room: width + slot, side: 'first'};
-      else if (left + width >= total - edge) next = {left: Math.max(0, total - width - slot), room: width + slot, side: 'last'};
+      const left = before + (forward ? step : -step) + (firstGone(drawnSide) ? slot : 0);
+      const next = navEnd(left, width, index, total);
       return whole(next) ? {...next, snap: false} : null;
     }
 
@@ -352,11 +381,10 @@
      * section's window goes -- for the operator's choice (`motion`: the
      * page's own, {direction, distance, via}) as navChoice decides, else
      * (a render, a resize, a refit) where navLayout places it -- and fades
-     * where sections continue. The strip spans the whole control, First and
-     * Last over its ends: it is clipped to the window, and where the window
-     * shows the list's first or last section (data-nav-at, whatever is
-     * selected) the action that would lead there is gone and the window
-     * takes its place. A choice that moves the window from
+     * where sections continue. The strip spans the whole control, Previous
+     * and Next over its ends: it is clipped to the window, and where the
+     * selected section is the list's first or last (data-nav-at) the action
+     * that has nowhere to go is gone and the window takes its place. A choice that moves the window from
      * where it is drawn slides it, by DPMotion's own slide of the strip
      * alone, the way the choice goes (as the panel does), unless it is an
      * end section's snap; anything else is drawn at once, ending a slide of
@@ -374,7 +402,7 @@
       // -- the selection as centred as the list's ends allow.)
       const {left, room, side, snap} = (motion && navFit.drawn && navChoice(index, motion))
         || {...(navLayout(navFit.window, index) || navFallback(navFit.window, index)), snap: false};
-      // The window starts after First, unless First is gone; the strip's own
+      // The window starts after Previous, unless Previous is gone; the strip's own
       // padding (one slot) lets it start before the list.
       const target = Math.round(left + (firstGone(side) ? navFit.slot : 0));
       navFit.left = target;
@@ -425,7 +453,7 @@
         requestAnimationFrame(() => { delete fit.shown; });
       }
       navFit.drawn = {left: target, index, room, side};
-      // Which travel action is gone: the end of the list the window shows.
+      // Which travel action is gone: the one the selection leaves nowhere to go.
       const at = tabs.length === 1 ? 'only' : side;
       const control = strip.parentElement;
       if ((control.dataset.navAt || '') !== at) {

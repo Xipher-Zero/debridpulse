@@ -148,23 +148,30 @@ for (const {view, label, count} of PAGES) {
     });
   }
 
-  test(`the ${label} index follows First and Last, and takes no click: the edge preview, clicked again and again at one point, still chooses the next section`, async ({page}) => {
+  test(`the ${label} index follows Previous and Next, and takes no click: the edge preview, clicked again and again at one point, still chooses the next section`, async ({page}) => {
     await open(page, view, 1100, false);
     const strip = `#view-${view} .dp-${view}-tabs`;
+    // Next, one section at a time, to the last.
     const last = page.locator(`#view-${view} .dp-${view}-nav-end`).last();
-    await last.click();
-    await settle(page);
+    while (await last.isVisible()) {
+      await last.click();
+      await settle(page);
+    }
     // The press dismissed it; hovering again shows the new selection.
     await awayFrom(page);
     const box = await page.locator(strip).boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await shownTip(page);
     let i = await index(page, view);
-    expectIndex(i, 'after Last', count);
+    expectIndex(i, 'after Next to the end', count);
     expect(i.selected).toBe(count - 1);
     await awayFrom(page);
-    await page.locator(`#view-${view} .dp-${view}-nav-end`).first().click();
-    await settle(page);
+    // Previous, one section at a time, back to the first.
+    const first = page.locator(`#view-${view} .dp-${view}-nav-end`).first();
+    while (await first.isVisible()) {
+      await first.click();
+      await settle(page);
+    }
     await awayFrom(page);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await shownTip(page);
@@ -329,7 +336,7 @@ for (const {view, label} of PAGES) {
     expect(at[0], 'jitter is still a rest').toBeLessThan(DWELL + 600);
   });
 
-  test(`using the ${label} navigator never brings the index up: repeated edge clicks both ways, First and Last, an end snap and a quick reversal; only a fresh rest after the use does`, async ({page}) => {
+  test(`using the ${label} navigator never brings the index up: repeated edge clicks both ways, Previous and Next, an end snap and a quick reversal; only a fresh rest after the use does`, async ({page}) => {
     await openLogged(page, view);
     const strip = `#view-${view} .dp-${view}-tabs`;
     // 9 and 11. The right edge clicked again and again at one point (the
@@ -364,7 +371,7 @@ for (const {view, label} of PAGES) {
       await until(page, t0 + (click + 1) * DWELL * 0.35);
     }
     expect(await appeared(page, t0), 'left-edge clicks').toEqual([]);
-    // 12. First and Last: the index goes at the press and returns only a
+    // 12. Previous and Next: the index goes at the press and returns only a
     // full dwell after the window has settled.
     for (const end of ['last', 'first']) {
       await awayFrom(page);

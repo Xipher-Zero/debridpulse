@@ -54,7 +54,7 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
   /* Every frame in which the compact navigator's window is sliding (DPMotion
    * marks the strip while it runs): its direction and step, and where the
    * navigator's control and the header stand. */
-  /* And in every frame: a First or Last that is shown stands over the
+  /* And in every frame: a Previous or Next that is shown stands over the
    * window's end, one that is gone has left its place to the window --
    * never both, never neither (__dpEnds counts the frames that break it). */
   await page.addInitScript(() => {
@@ -93,7 +93,7 @@ async function openSettings(page, width, {fallbackFonts = false} = {}) {
       if (compact) {
         const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(compact).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
         const [top, right = top, , left = right] = inset;
-        for (const [end, clip] of [['first', left], ['last', right]]) {
+        for (const [end, clip] of [['previous', left], ['next', right]]) {
           const node = compact.parentElement.querySelector(`.dp-settings-nav-end[data-settings-end="${end}"]`);
           const there = getComputedStyle(node).display !== 'none';
           if (there !== clip > 0 || (there && Math.abs(node.getBoundingClientRect().width - clip) > 0.5)) window.__dpEnds.push(`${end}: ${there ? 'shown' : 'gone'}, clip ${clip}`);
@@ -415,14 +415,14 @@ test('the compact window holds as many sections as fit, fewer as the header narr
   test.info().annotations.push({type: 'capacity', description: rows.map(row => `${row.width}px ${row.window.toFixed(0)}px [${row.positions.join(',')}]`).join('; ')});
 });
 
-test('the window is bounded: it starts at the first section, ends at the last, centres between them, fades only where sections continue; First and Last only away from their end', async ({page}) => {
+test('the window is bounded: it starts at the first section, ends at the last, centres between them, fades only where sections continue; Previous and Next only away from the selected end', async ({page}) => {
   await openSettings(page, 1100);
   const order = (await header(page)).order;
-  const first = page.locator('#view-settings .dp-settings-nav-end[data-settings-end="first"]');
-  const last = page.locator('#view-settings .dp-settings-nav-end[data-settings-end="last"]');
+  const first = page.locator('#view-settings .dp-settings-nav-end[data-settings-end="previous"]');
+  const last = page.locator('#view-settings .dp-settings-nav-end[data-settings-end="next"]');
   await expect(page.getByRole('tablist', {name: 'Settings sections'}).getByRole('tab')).toHaveCount(order.length);
 
-  // The first section: the window starts with it; no First; the far edge fades.
+  // The first section: the window starts with it; no Previous; the far edge fades.
   await choose(page, order[0]);
   let h = await header(page);
   expect(h.compact).toBe(true);
@@ -432,7 +432,8 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   expect(h.mask).toContain('linear-gradient');
   await expect(first).toHaveCSS('display', 'none');
   await expect(last).toBeVisible();
-  await expect(last).toHaveAccessibleName(`Last section: ${await page.locator(`#view-settings [data-tab="${order.at(-1)}"]:not(.dp-motion-still *)`).textContent().then(t => t.trim())}`);
+  await expect(last).toHaveAccessibleName('Next section');
+  await expect(first).toHaveAttribute('aria-label', 'Previous section');
   await first.evaluate(node => node.focus());
   await expect(first).not.toBeFocused();   // a hidden action takes no focus
   const control = h.control;
@@ -449,12 +450,17 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   await expect(first).toBeVisible();
   await expect(last).toBeVisible();
 
-  // The last section: the window ends with it; no Last; the near edge fades.
+  // Next, from the keyboard, one section at a time: focus stays on Next while
+  // it has somewhere to go, and follows to the last section once it has none.
   await last.focus();
-  await page.keyboard.press('Enter');
-  await expect(selected(page)).toHaveAttribute('data-tab', order.at(-1));
+  for (let k = middle + 1; k < order.length; k += 1) {
+    await page.keyboard.press('Enter');
+    await expect(selected(page)).toHaveAttribute('data-tab', order[k]);
+    await settle(page);
+    if (k < order.length - 1) await expect(last).toBeFocused();
+  }
+  // The last section: the window ends with it; no Next; the near edge fades.
   await expect(page.locator(`#view-settings [data-tab="${order.at(-1)}"]:not(.dp-motion-still *)`)).toBeFocused();
-  await settle(page);
   h = await header(page);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
   expect(h.fadeEnd).toBe(0);
@@ -467,10 +473,15 @@ test('the window is bounded: it starts at the first section, ends at the last, c
   await expect(last).toHaveCSS('display', 'none');
   // The navigator does not move or resize, wherever the selection is.
   for (const key of ['left', 'right']) expect(Math.abs(h.control[key] - control[key])).toBeLessThanOrEqual(0.5);
-  await first.click();
-  await expect(selected(page)).toHaveAttribute('data-tab', order[0]);
+  // Previous, one section at a time, back to the first; then focus follows to it.
+  for (let k = order.length - 2; k >= 0; k -= 1) {
+    await first.click();
+    await expect(selected(page)).toHaveAttribute('data-tab', order[k]);
+    await settle(page);
+  }
+  await expect(first).toHaveCSS('display', 'none');
+  await page.locator(`#view-settings [data-tab="${order[0]}"]:not(.dp-motion-still *)`).focus();
   await expect(page.locator(`#view-settings [data-tab="${order[0]}"]:not(.dp-motion-still *)`)).toBeFocused();
-  await settle(page);
 
   // The keyboard walks every section in order, the selection always whole.
   for (let k = 1; k < order.length; k += 1) {
@@ -528,14 +539,13 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
         expect(h.labelsWhole.every(Boolean), at).toBe(true);
         await expect(page.locator('#view-settings .dp-settings-tabs [tabindex="0"]')).toHaveCount(1);
         await expect(page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[k]}"]`)).toHaveAttribute('tabindex', '0');
-        // First and Last keep their size; each is gone exactly where the window
-        // shows its end section whole (1.0.14, 053c1f60; section-navigator-endpoints).
+        // Previous and Next keep their size; each is gone exactly where the
+        // selected section is the first or last (section-navigator-endpoints).
         for (const end of h.ends.filter(end => end.shown)) {
           expect(end.width, at).toBeGreaterThanOrEqual(32);
           expect(end.height, at).toBeGreaterThanOrEqual(32);
         }
-        const whole = i => h.shown[i] >= h.widths[i] - 0.5;
-        expect(h.ends.map(end => end.shown), at).toEqual([!whole(0), !whole(n - 1)]);
+        expect(h.ends.map(end => end.shown), at).toEqual([k !== 0, k !== n - 1]);
         // Side padding: the complete strip's unless an end section and its
         // whole neighbour would not otherwise fit the end section's own room
         // (the control's window and the place of the action gone there), and
@@ -619,8 +629,8 @@ test('at the 780px floor, where the end pair cannot fit even trimmed (the hosted
     expect(problems(other, reference), where).toEqual([]);
     expectNoHiddenCut(other, where);
     for (const key of ['left', 'right']) expect(Math.abs(other.control[key] - control[key]), where).toBeLessThanOrEqual(0.5);
-    // First is gone exactly where the window shows the first section whole; the last is never whole here.
-    expect(other.ends.map(end => end.shown), where).toEqual([other.shown[0] < other.widths[0] - 0.5, true]);
+    // Previous is gone exactly where the first section is selected; Next is there (the last is not selected here).
+    expect(other.ends.map(end => end.shown), where).toEqual([k !== 0, true]);
     if (k === 0) await expectEndpoint(page, other, where, reference);
   }
   // The preview opens its section, the window sliding back the way the
@@ -643,7 +653,7 @@ test('at the 780px floor, where the end pair cannot fit even trimmed (the hosted
 });
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
-  test(`with ${fonts}, a First or Last that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
+  test(`with ${fonts}, a Previous or Next that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
     await openSettings(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const order = (await header(page)).order;
     const n = order.length;
@@ -753,11 +763,11 @@ const expectSnap = (slide, direction, label) => {
   expect(slide.content.moving, label).toBeGreaterThanOrEqual(3);
 };
 
-test('the window slides only when a choice moves it, the same way as the panel: neighbours, edges, First and Last, into either end', async ({page}) => {
+test('the window slides only when a choice moves it, the same way as the panel: neighbours, edges, Previous and Next, into either end', async ({page}) => {
   await openSettings(page, 1100);
   const order = (await header(page)).order;
 
-  // Between the sections' ends (where First and Last both stay), a choice
+  // Between the sections' ends (where Previous and Next both stay), a choice
   // of a whole section the window already shows: where the window stays,
   // nothing slides; where it moves, it slides the way the choice goes.
   let h;
@@ -788,15 +798,21 @@ test('the window slides only when a choice moves it, the same way as the panel: 
   slide = await slideOf(page, () => choose(page, order[cut]));
   expectSlide(slide, 'forward', 'cut section');
 
-  // Last: forward into the end arrangement; First: back to the start.
-  slide = await slideOf(page, () => page.locator('#view-settings .dp-settings-nav-end[data-settings-end="last"]').click());
-  expectSlide(slide, 'forward', 'Last');
-  h = await header(page);
-  expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
-  slide = await slideOf(page, () => page.locator('#view-settings .dp-settings-nav-end[data-settings-end="first"]').click());
-  expectSlide(slide, 'backward', 'First');
-  h = await header(page);
-  expect(Math.abs(h.atStart - h.edge)).toBeLessThanOrEqual(1);
+  // Next, one section at a time, forward into the end arrangement; Previous,
+  // one at a time, back to the start: each press that moves the window slides
+  // it the press's way, and one that does not leaves it still.
+  for (const [which, way] of [['next', 'forward'], ['previous', 'backward']]) {
+    const action = page.locator(`#view-settings .dp-settings-nav-end[data-settings-end="${which}"]`);
+    while (await action.isVisible()) {
+      const was = (await header(page)).index;
+      slide = await slideOf(page, () => action.click());
+      h = await header(page);
+      expect(h.index, `${which} from ${order[was]}`).toBe(was + (way === 'forward' ? 1 : -1));
+      if (slide.moved) expectSlide(slide, way, `${which} from ${order[was]}`);
+      else expect(slide.frames, `${which} from ${order[was]}`).toEqual([]);
+    }
+    expect(Math.abs((way === 'forward' ? h.atEnd : h.atStart) - h.edge)).toBeLessThanOrEqual(1);
+  }
 
   // Walking to the end one section at a time: each move that shifts the
   // window slides forward, the last of them into the end arrangement; the
@@ -954,9 +970,14 @@ test('with reduced motion the window moves at once and never slides', async ({pa
   await page.emulateMedia({reducedMotion: 'reduce'});
   await openSettings(page, 1100);
   const order = (await header(page)).order;
-  const slide = await slideOf(page, () => page.locator('#view-settings .dp-settings-nav-end[data-settings-end="last"]').click());
-  expect(slide.moved).toBeGreaterThan(0);
-  expect(slide.frames).toEqual([]);
+  // Next, pressed to the end: wherever the window moves, it moves at once.
+  let moved = 0;
+  while (await page.locator('#view-settings .dp-settings-nav-end[data-settings-end="next"]').isVisible()) {
+    const slide = await slideOf(page, () => page.locator('#view-settings .dp-settings-nav-end[data-settings-end="next"]').click());
+    moved += Math.abs(slide.moved);
+    expect(slide.frames).toEqual([]);
+  }
+  expect(moved).toBeGreaterThan(0);
   const h = await header(page);
   expect(h.index).toBe(order.length - 1);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);

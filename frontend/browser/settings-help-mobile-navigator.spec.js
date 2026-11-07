@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
  * header is one row: the page's identity -- as much of it as leaves the
  * section navigator whole (shorter approved wordings, then no hint, no
  * artwork, none) -- and the SAME compact navigator as from 780px (ui-section-
- * nav.js: First, a window onto the one tablist, Last), centred in the whole
+ * nav.js: Previous, a window onto the one tablist, Next), centred in the whole
  * header while the identity fits beside it, else right after it, centred again
  * with no identity; a choice slides the navigator's window and the content
  * viewport by DPMotion as from 780px. From 780px nothing changes.
@@ -88,7 +88,7 @@ for (const name of Object.keys(PAGES)) {
       expect(h.levelIndex, `${at}: the identity never shorter at a wider width`).toBeLessThanOrEqual(previous);
       previous = h.levelIndex;
       expect(h.clipped, `${at}: title and hint drawn whole`).toBe(false);
-      if (h.presentation === 'compact') expect(h.ends, `${at}: First or Last there`).toBeGreaterThanOrEqual(1);
+      if (h.presentation === 'compact') expect(h.ends, `${at}: Previous or Next there`).toBeGreaterThanOrEqual(1);
       // Centred in the whole header, else right after the identity (never past it); centred with none.
       if (h.levelIndex === PAGES[name].levels.length - 1) expect(Math.abs(h.offCentre), `${at}: no identity, centred`).toBeLessThanOrEqual(0.5);
       else if (Math.abs(h.offCentre) > 0.5) {
@@ -111,7 +111,7 @@ for (const name of Object.keys(PAGES)) {
     expect((await header(page, name)).level).toEqual(back.level);
   });
 
-  test(`${name}: on a handheld the compact navigator chooses as from 780px -- tabs, First/Last, keyboard -- sliding its window and the content the choice's way; re-entry starts at the first section`, async ({page}) => {
+  test(`${name}: on a handheld the compact navigator chooses as from 780px -- tabs, Previous/Next, keyboard -- sliding its window and the content the choice's way; re-entry starts at the first section`, async ({page}) => {
     await open(page, name, 390);
     const p = PAGES[name];
     const tabs = page.locator(`${p.view} ${p.strip}:not(.dp-motion-still) [role="tab"]`);
@@ -132,23 +132,34 @@ for (const name of Object.keys(PAGES)) {
     expect(s.whole && s.tabStop === 1, `${name}: the selection whole in the window, one tab stop`).toBe(true);
     let slides = await page.evaluate(() => [...new Set(window.__slides)]);
     expect(slides, `${name}: the content viewport slid forward`).toContain('content:forward');
-    // Last: the window and the content travel forward to the last section.
-    await page.evaluate(() => { window.__slides.length = 0; });
-    await page.locator(`${p.view} .dp-section-nav-end:last-child`).click();
-    await settle(page);
-    s = await state();
-    expect(s.selected).toBe(order.at(-1));
-    expect(s.whole).toBe(true);
-    slides = await page.evaluate(() => [...new Set(window.__slides)]);
-    expect(slides).toEqual(expect.arrayContaining(['strip:forward', 'content:forward']));
-    // First: back, the other way.
-    await page.evaluate(() => { window.__slides.length = 0; });
-    await page.locator(`${p.view} .dp-section-nav-end:first-child`).click();
-    await settle(page);
-    s = await state();
-    expect(s.selected).toBe(order[0]);
-    slides = await page.evaluate(() => [...new Set(window.__slides)]);
-    expect(slides).toEqual(expect.arrayContaining(['strip:backward', 'content:backward']));
+    // Next, pressed to the last section: one section a press, the content
+    // (and the window, wherever it moves) travelling forward.
+    const next = page.locator(`${p.view} .dp-section-nav-end:last-child`);
+    for (let k = 2; k < count; k += 1) {
+      await page.evaluate(() => { window.__slides.length = 0; });
+      await next.click();
+      await settle(page);
+      s = await state();
+      expect(s.selected, `${name}: Next to #${k}`).toBe(order[k]);
+      expect(s.whole).toBe(true);
+      slides = await page.evaluate(() => [...new Set(window.__slides)]);
+      expect(slides, `${name}: Next to #${k}`).toContain('content:forward');
+      expect(slides, `${name}: Next to #${k}`).not.toContain('strip:backward');
+    }
+    await expect(next).toBeHidden();
+    // Previous, pressed back to the first: one section a press, the other way.
+    const previous = page.locator(`${p.view} .dp-section-nav-end:first-child`);
+    for (let k = count - 2; k >= 0; k -= 1) {
+      await page.evaluate(() => { window.__slides.length = 0; });
+      await previous.click();
+      await settle(page);
+      s = await state();
+      expect(s.selected, `${name}: Previous to #${k}`).toBe(order[k]);
+      slides = await page.evaluate(() => [...new Set(window.__slides)]);
+      expect(slides, `${name}: Previous to #${k}`).toContain('content:backward');
+      expect(slides, `${name}: Previous to #${k}`).not.toContain('strip:forward');
+    }
+    await expect(previous).toBeHidden();
     // Keyboard: the arrow keys move between the tabs; focus stays on a shown tab.
     await tabs.nth(0).focus();
     await page.keyboard.press('ArrowRight');
@@ -182,5 +193,5 @@ test('reduced motion on a handheld: a choice lands at once, without a slide, and
   expect(await page.evaluate(() => {
     const v = document.getElementById('view-settings'), tab = v.querySelector('.dp-settings-tabs [aria-selected="true"]');
     return [tab.dataset.tab, [...v.querySelectorAll('[data-panel]')].filter(panel => !panel.hidden).map(panel => panel.dataset.panel)];
-  })).toEqual(['maintenance', ['maintenance']]);
+  })).toEqual(['downloads', ['downloads']]);   // Next: the one section after the first, at once
 });

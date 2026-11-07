@@ -806,8 +806,8 @@
     if (scroller) scroller.scrollTop = 0;
   }
 
-  /* The operator chose a section (`via` 'tab', or 'end' through First /
-   * Last): the strip changes at once and the panel slides across, by the
+  /* The operator chose a section (`via` 'tab', or 'travel' through Previous
+   * / Next): the strip changes at once and the panel slides across, by the
    * tabs' displayed order. */
   function chooseTab(name, focus = false, via = 'tab') {
     const view = root();
@@ -871,13 +871,18 @@
         chooseTab(tab.dataset.tab);
         return;
       }
-      // First / Last: the first or last tab, through the same choice; focus
-      // follows to that tab, since the action is hidden once it is there.
+      // Previous / Next: one section from the selected one, through the same
+      // choice. Focus stays on the action while it has somewhere to go, and
+      // follows to the section once it has none (the action is then gone).
       const travel = event.target.closest('.dp-help-nav-end');
       if (!travel) return;
       const tabs = Array.from(view.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)'));
-      const target = travel.dataset.helpEnd === 'first' ? tabs[0] : tabs.at(-1);
-      if (target) chooseTab(target.dataset.tab, document.activeElement === travel, 'end');
+      const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true')
+        + (travel.dataset.helpEnd === 'previous' ? -1 : 1);
+      const target = tabs[index];
+      if (target) {
+        chooseTab(target.dataset.tab, document.activeElement === travel && (index === 0 || index === tabs.length - 1), 'travel');
+      }
     });
 
     view.addEventListener('keydown', event => {
@@ -915,11 +920,11 @@
           <span class="dp-help-tab-label">${label}</span>
         </button>`;
     }).join('');
-    // The compact navigator's two travel actions: actions, not tabs, each
-    // naming the section it reaches.
-    const travel = (end, glyph, index) => `
-      <button class="dp-help-nav-end dp-section-nav-end" type="button" data-help-end="${end}"
-              aria-label="${end === 'first' ? 'First' : 'Last'} section: ${TABS.at(index)[1]}">
+    // The compact navigator's two travel actions: actions, not tabs, each one
+    // section from the selected one.
+    const travel = (step, glyph, label) => `
+      <button class="dp-help-nav-end dp-section-nav-end" type="button" data-help-end="${step}"
+              aria-label="${label}">
         ${window.DPIcons?.svg?.(glyph) || ''}
       </button>`;
 
@@ -935,9 +940,9 @@
           </div>
           <div class="dp-help-nav dp-section-nav">
             <div class="dp-help-nav-control dp-section-nav-control">
-              ${travel('first', 'chevronFirst', 0)}
+              ${travel('previous', 'chevronLeft', 'Previous section')}
               <div class="dp-tabs dp-help-tabs dp-section-nav-strip" role="tablist" aria-label="Help sections">${tabs}</div>
-              ${travel('last', 'chevronLast', -1)}
+              ${travel('next', 'chevronRight', 'Next section')}
             </div>
           </div>
         </header>

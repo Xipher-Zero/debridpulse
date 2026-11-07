@@ -115,8 +115,9 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     # Complete strip or compact navigator, decided by the shared navigator
     # from the rendered tabs and copy (no assumed tab count, no fixed
     # breakpoint besides the handheld edge); the compact one is a bounded
-    # window onto the same tabs with the pager's own First / Last glyphs,
-    # opens tabs through chooseTab, and slides only through DPMotion when a
+    # window onto the same tabs with Previous / Next (single chevrons), one
+    # section from the selected one, opens tabs through chooseTab, and slides
+    # only through DPMotion when a
     # choice moves it. Settings keeps no copy of those mechanics.
     runtime = read(RUNTIME)
     mechanics = read(STATIC / "ui-section-nav.js")
@@ -136,11 +137,16 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "const NAV_TRIM = 5;" in mechanics and "navFit.trim = navTrim(navFit.window);" in fit
     assert "nav.style.removeProperty('--dp-section-nav-trim');" in fit
     assert "window.matchMedia('(min-width: 780px)')" in mechanics
-    assert "'chevronFirst'" in runtime and "'chevronLast'" in runtime
+    assert "${travel('previous', 'chevronLeft', 'Previous section')}" in runtime
+    assert "${travel('next', 'chevronRight', 'Next section')}" in runtime
+    assert "chevronFirst" not in runtime and "chevronLast" not in runtime
     assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
     assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
-    assert "chooseTab(target.dataset.tab, 'end');" in travel[:travel.index("return;\n      }")]
+    travel = travel[:travel.index("return;\n      }")]
+    assert "+ (travel.dataset.settingsEnd === 'previous' ? -1 : 1);" in travel
+    assert "chooseTab(target.dataset.tab, 'travel');" in travel
+    assert "if (focused && (index === 0 || index === tabs.length - 1)) target.focus({preventScroll: true});" in travel
     assert "addEventListener?.('loadingdone', () => {\n    navigation.fit({measure: true});" in runtime
     assert "new ResizeObserver(() => navigation.fit())" in runtime
     place = mechanics[mechanics.index("function placeNavigation("):]
@@ -171,12 +177,12 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     # A choice is placed from the window as drawn (navChoice): a whole section
     # leaves it still; the edge section moves it by just as much as puts the
     # next section where the chosen one was; a shown end section, chosen as a
-    # tab (not through First / Last), snaps -- drawn at once, ending any
+    # tab (not through Previous / Next), snaps -- drawn at once, ending any
     # selector slide still under way. A refit that leaves the window as it
     # is leaves the placement alone.
     choice = mechanics[mechanics.index("function navChoice("):mechanics.index("function placeNavigation(")]
     assert "const step = Math.min(widths[index] - Math.max(0, part(index) - widths[index + (forward ? 1 : -1)])," in choice
-    assert "if (motion.via === 'end') return null;" in choice and "snap: true" in choice
+    assert "if (motion.via === 'travel') return null;" in choice and "snap: true" in choice
     assert "navFit.slide?.skip();\n      drawNavigation();" in place
     assert "if (presentation !== 'compact' || drawn !== `${navFit.window} ${navFit.trim}`) placeNavigation();" in fit
     assert "navigation.place(motion);" in runtime

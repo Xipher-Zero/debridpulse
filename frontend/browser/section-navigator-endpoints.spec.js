@@ -1,13 +1,14 @@
 const { test, expect } = require('@playwright/test');
 
-/* The compact Settings and Help navigators' First and Last follow the window
- * as it is drawn, never which section is selected: where the window shows the
- * list's first section whole, First is gone and the window takes its slot;
- * where it shows the last whole, Last likewise; otherwise each is there, over
- * the strip's clipped end, never over a part of a section the window shows.
- * The control keeps its place and size whichever section is selected and
- * whatever ends are shown. Read from the rendered geometry, the clip and
- * hit-testing alone -- never from data-nav-at. */
+/* The compact Settings and Help navigators' Previous and Next follow the
+ * selected section, never the window as it is drawn: with the first section
+ * selected Previous is gone and the window takes its slot; with the last,
+ * Next likewise; otherwise each is there -- even where the window shows the
+ * list's first or last section -- over the strip's clipped end, never over a
+ * part of a section the window shows. Each press selects the section one
+ * before or after the selected one. The control keeps its place and size
+ * whichever section is selected. Read from the rendered geometry, the clip,
+ * the selection and hit-testing alone -- never from data-nav-at. */
 
 const TARGET = 24;
 const PAGES = {
@@ -71,18 +72,18 @@ const state = page => page.evaluate(TARGET => {
     names: tabNodes.map(node => node.textContent.trim().replace(/\s+/g, ' '))};
 }, TARGET);
 
-/* The endpoint contract for one drawn state; returns its problems. */
+/* The travel contract for one drawn state; returns its problems. */
 function problems(s, at) {
   const out = [];
   if (!s.compact) {
-    if (s.ends.some(end => end.shown)) out.push(`${at}: First/Last on the complete strip`);
+    if (s.ends.some(end => end.shown)) out.push(`${at}: Previous/Next on the complete strip`);
     return out;
   }
-  const [first, last] = s.ends;
-  const head = s.tabs[0], tail = s.tabs.at(-1);
-  if (first.shown === head.whole) out.push(`${at}: First ${first.shown ? 'shown' : 'gone'} with the first section ${head.whole ? 'whole' : 'not whole'}`);
-  if (last.shown === tail.whole) out.push(`${at}: Last ${last.shown ? 'shown' : 'gone'} with the last section ${tail.whole ? 'whole' : 'not whole'}`);
-  for (const [name, end] of [['First', first], ['Last', last]]) if (end.over.length) out.push(`${at}: ${name} over ${end.over.map(k => s.names[k])}`);
+  const [previous, next] = s.ends;
+  const atFirst = s.selected === 0, atLast = s.selected === s.tabs.length - 1;
+  if (previous.shown === atFirst) out.push(`${at}: Previous ${previous.shown ? 'shown' : 'gone'} with section ${s.selected + 1} of ${s.tabs.length} selected`);
+  if (next.shown === atLast) out.push(`${at}: Next ${next.shown ? 'shown' : 'gone'} with section ${s.selected + 1} of ${s.tabs.length} selected`);
+  for (const [name, end] of [['Previous', previous], ['Next', next]]) if (end.over.length) out.push(`${at}: ${name} over ${end.over.map(k => s.names[k])}`);
   for (const t of s.tabs) if (t.hits.some(hit => !hit)) out.push(`${at}: ${s.names[t.k]} not its own target where it shows`);
   if (!s.tabs[s.selected].whole) out.push(`${at}: the selection not whole`);
   if (s.busy) out.push(`${at}: busy after settling`);
@@ -109,7 +110,7 @@ async function choose(page, k) {
 }
 
 for (const name of Object.keys(PAGES)) {
-  test(`${name}: at every compact width, walking every section both ways, First and Last follow the window drawn -- gone where its end section shows whole, never over a section it shows -- and the control never moves`, async ({page}) => {
+  test(`${name}: at every compact width, walking every section both ways, Previous and Next follow the selection -- gone only at the first or last section, never over a section the window shows -- and the control never moves`, async ({page}) => {
     test.setTimeout(120_000);
     await open(page, name, 1100);
     const report = [];
@@ -133,7 +134,7 @@ for (const name of Object.keys(PAGES)) {
     expect(report).toEqual([]);
   });
 
-  test(`${name}: with the first section shown whole, choosing its neighbour keeps First gone, the first section whole and every section where it was; the same at the last section`, async ({page}) => {
+  test(`${name}: with the first section selected Previous is gone; choosing its neighbour -- the first section still shown -- brings Previous back, usable; the same for Next at the last section`, async ({page}) => {
     await open(page, name, 940);
     const count = (await state(page)).tabs.length;
     await choose(page, 0);
@@ -143,9 +144,12 @@ for (const name of Object.keys(PAGES)) {
     await choose(page, 1);
     const after = await state(page);
     expect(problems(after, 'second chosen')).toEqual([]);
-    expect(after.ends[0].shown, 'First stays gone: the first section still shows whole').toBe(false);
-    expect(after.tabs.map(t => Math.round(t.left)), 'no section moved').toEqual(before.tabs.map(t => Math.round(t.left)));
+    expect(after.tabs[0].shown, 'the first section is still in the window').toBeGreaterThan(0);
+    expect(after.ends[0].shown, 'Previous is back: the selection has a section before it').toBe(true);
     expect(after.control).toEqual(before.control);
+    await page.locator('.view.active .dp-section-nav-end').first().click();
+    await settle(page);
+    expect((await state(page)).selected, 'Previous selects the section before').toBe(0);
 
     await choose(page, count - 1);
     const end = await state(page);
@@ -153,12 +157,15 @@ for (const name of Object.keys(PAGES)) {
     await choose(page, count - 2);
     const back = await state(page);
     expect(problems(back, 'second to last chosen')).toEqual([]);
-    expect(back.ends[1].shown, 'Last stays gone: the last section still shows whole').toBe(false);
-    expect(back.tabs.map(t => Math.round(t.left))).toEqual(end.tabs.map(t => Math.round(t.left)));
+    expect(back.tabs.at(-1).shown, 'the last section is still in the window').toBeGreaterThan(0);
+    expect(back.ends[1].shown, 'Next is back: the selection has a section after it').toBe(true);
     expect(back.control).toEqual(before.control);
+    await page.locator('.view.active .dp-section-nav-end').last().click();
+    await settle(page);
+    expect((await state(page)).selected, 'Next selects the section after').toBe(count - 1);
   });
 
-  test(`${name}: repeated edge clicks at one point both ways, a quick reversal, First and Last, and a font re-measure under a slide leave no stale action, no overlap and no busy mark`, async ({page}) => {
+  test(`${name}: repeated edge clicks at one point both ways, a quick reversal, Previous and Next pressed through every section, and a font re-measure under a slide leave no stale action, no overlap and no busy mark`, async ({page}) => {
     await open(page, name, 860);
     const count = (await state(page)).tabs.length;
     await choose(page, 0);
@@ -190,13 +197,18 @@ for (const name of Object.keys(PAGES)) {
     await page.mouse.click((Math.max(left.left, strip.x) + Math.min(left.right, strip.x + strip.width)) / 2 + 8, y);
     await settle(page);
     report.push(...problems(await state(page), 'quick reversal'));
-    // First and Last themselves.
-    for (const which of ['last', 'first']) {
-      const end = page.locator('.view.active .dp-section-nav-end').nth(which === 'first' ? 0 : 1);
-      if (await end.isVisible()) { await end.click(); await settle(page); }
-      s = await state(page);
-      report.push(...problems(s, `${which} action`));
-      expect(s.selected).toBe(which === 'first' ? 0 : count - 1);
+    // Previous and Next themselves: each press one section, to the end and back.
+    for (const which of ['next', 'previous']) {
+      const end = page.locator('.view.active .dp-section-nav-end').nth(which === 'previous' ? 0 : 1);
+      while (await end.isVisible()) {
+        const was = (await state(page)).selected;
+        await end.click();
+        await settle(page);
+        s = await state(page);
+        report.push(...problems(s, `${which} action from #${was}`));
+        expect(s.selected, `${which} from #${was}`).toBe(was + (which === 'next' ? 1 : -1));
+      }
+      expect(s.selected).toBe(which === 'previous' ? 0 : count - 1);
     }
     // A font re-measure while a slide runs.
     await choose(page, 1);
@@ -210,7 +222,7 @@ for (const name of Object.keys(PAGES)) {
   });
 }
 
-test('the complete strip has no First or Last; the handheld header has the same compact navigator with them, on both pages', async ({page}) => {
+test('the complete strip has no Previous or Next; the handheld header has the same compact navigator with them, on both pages', async ({page}) => {
   for (const name of Object.keys(PAGES)) {
     await open(page, name, 1920);
     const wide = await state(page);
@@ -224,7 +236,7 @@ test('the complete strip has no First or Last; the handheld header has the same 
   }
 });
 
-test('with fallback fonts the Settings and Help endpoint contract holds at the 780px floor and at 1020px', async ({page}) => {
+test('with fallback fonts the Settings and Help travel contract holds at the 780px floor and at 1020px', async ({page}) => {
   for (const name of Object.keys(PAGES)) {
     await open(page, name, 780, {fallbackFonts: true});
     const report = [];

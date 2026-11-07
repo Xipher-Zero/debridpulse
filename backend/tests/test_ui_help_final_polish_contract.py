@@ -97,8 +97,9 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
         assert absent not in runtime, absent
     assert runtime.count('role="tablist" aria-label="Help sections"') == 1
     assert 'class="dp-tabs dp-help-tabs dp-section-nav-strip" role="tablist"' in runtime
-    assert "'chevronFirst'" in runtime and "'chevronLast'" in runtime
-    assert "aria-label=\"${end === 'first' ? 'First' : 'Last'} section: ${TABS.at(index)[1]}\"" in runtime
+    assert "${travel('previous', 'chevronLeft', 'Previous section')}" in runtime
+    assert "${travel('next', 'chevronRight', 'Next section')}" in runtime
+    assert "chevronFirst" not in runtime and "chevronLast" not in runtime and "First section" not in runtime
     assert "new ResizeObserver(() => navigation.fit()).observe(view);" in runtime
     assert "addEventListener?.('loadingdone', () => navigation.fit({measure: true}))" in runtime
     # The window moves with the choice's own direction, from the section
@@ -111,8 +112,13 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     select = select[:select.index("\n  }\n")]
     assert "navigation.place(motion);" in select
     assert "selected?.focus({preventScroll: navigation.placing()});" in select
-    # First / Last reach the ends through the same choice.
+    # Previous / Next reach the section one from the selected one, through the
+    # same choice; focus follows only once the action has nowhere to go.
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-help-nav-end');"):]
-    assert "chooseTab(target.dataset.tab, document.activeElement === travel, 'end');" in travel[:travel.index("});")]
+    travel = travel[:travel.index("});")]
+    assert "tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true')" in travel
+    assert "+ (travel.dataset.helpEnd === 'previous' ? -1 : 1);" in travel
+    assert "chooseTab(target.dataset.tab, document.activeElement === travel && (index === 0 || index === tabs.length - 1), 'travel');" in travel
+    assert "tabs[0]" not in travel and "tabs.at(-1)" not in travel
     # Every entry still opens Quick Start.
     assert "function load() {\n    state.activeTab = 'quickstart';\n    render();\n  }" in runtime

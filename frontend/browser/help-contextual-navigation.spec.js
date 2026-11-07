@@ -101,7 +101,7 @@ async function openHelp(page, width, {fallbackFonts = false} = {}) {
       if (compact && innerWidth >= 780) {
         const inset = (/inset\(([^)]+)\)/.exec(getComputedStyle(compact).clipPath)?.[1] || '0').split(/\s+/).map(parseFloat);
         const [top, right = top, , left = right] = inset;
-        for (const [end, clip] of [['first', left], ['last', right]]) {
+        for (const [end, clip] of [['previous', left], ['next', right]]) {
           const node = compact.parentElement.querySelector(`.dp-help-nav-end[data-help-end="${end}"]`);
           const there = getComputedStyle(node).display !== 'none';
           if (there !== clip > 0 || (there && Math.abs(node.getBoundingClientRect().width - clip) > 0.5)) window.__dpEnds.push(`${end}: ${there ? 'shown' : 'gone'}, clip ${clip}`);
@@ -434,11 +434,11 @@ test('the compact window holds as many Help sections as fit, fewer as the header
   test.info().annotations.push({type: 'capacity', description: rows.map(row => `${row.width}px ${row.window.toFixed(0)}px [${row.positions.join(',')}]`).join('; ')});
 });
 
-test('the Help window is bounded: it starts at Quick Start, ends at License, centres between them, fades only where sections continue; First and Last only away from their end, named for their section', async ({page}) => {
+test('the Help window is bounded: it starts at Quick Start, ends at License, centres between them, fades only where sections continue; Previous and Next only away from the selected end, named for their action', async ({page}) => {
   await openHelp(page, 1100);
   const order = (await header(page)).order;
-  const first = page.locator('#view-help .dp-help-nav-end[data-help-end="first"]');
-  const last = page.locator('#view-help .dp-help-nav-end[data-help-end="last"]');
+  const first = page.locator('#view-help .dp-help-nav-end[data-help-end="previous"]');
+  const last = page.locator('#view-help .dp-help-nav-end[data-help-end="next"]');
   // One tablist of the eight real tabs, each with its own panel.
   const tablist = page.getByRole('tablist', {name: 'Help sections'});
   await expect(tablist.getByRole('tab')).toHaveCount(8);
@@ -452,7 +452,7 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   await expect(page.locator('#view-help [role="tablist"]')).toHaveCount(1);
   await expect(page.locator('#view-help [data-tab]')).toHaveCount(8);
 
-  // Quick Start: the window starts with it; no First. The far edge fades
+  // Quick Start: the window starts with it; no Previous. The far edge fades
   // where it cuts a section; where it falls (within less than TARGET) on a
   // section boundary, that part is not shown (the approved rule).
   let h = await header(page);
@@ -472,8 +472,8 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   expect(h.shown.filter(part => part > 0.5 && part < TARGET)).toEqual([]);
   await expect(first).toHaveCSS('display', 'none');
   await expect(last).toBeVisible();
-  await expect(last).toHaveAccessibleName('Last section: License');
-  await expect(first).toHaveAttribute('aria-label', 'First section: Quick Start');   // gone: no accessible node here
+  await expect(last).toHaveAccessibleName('Next section');
+  await expect(first).toHaveAttribute('aria-label', 'Previous section');   // gone: no accessible node here
   await first.evaluate(node => node.focus());
   await expect(first).not.toBeFocused();   // a hidden action takes no focus
   const control = h.control;
@@ -495,18 +495,23 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   expect(h.atEnd).toBeGreaterThan(h.edge);
   await expect(first).toBeVisible();
   await expect(last).toBeVisible();
-  await expect(first).toHaveAccessibleName('First section: Quick Start');
-  await expect(last).toHaveAccessibleName('Last section: License');
+  await expect(first).toHaveAccessibleName('Previous section');
+  await expect(last).toHaveAccessibleName('Next section');
   // The actions are actions, never tabs.
   await expect(page.getByRole('tablist', {name: 'Help sections'}).getByRole('button')).toHaveCount(0);
   for (const key of ['left', 'right']) expect(Math.abs(h.control[key] - control[key])).toBeLessThanOrEqual(0.5);
 
-  // License: the window ends with it; no Last; the near edge fades.
+  // Next, from the keyboard, one section at a time: focus stays on Next while
+  // it has somewhere to go, and follows to License once it has none.
   await last.focus();
-  await page.keyboard.press('Enter');
-  await expect(selected(page)).toHaveAttribute('data-tab', 'license');
+  for (let k = middle + 1; k < order.length; k += 1) {
+    await page.keyboard.press('Enter');
+    await expect(selected(page)).toHaveAttribute('data-tab', order[k]);
+    await settle(page);
+    if (k < order.length - 1) await expect(last).toBeFocused();
+  }
+  // License: the window ends with it; no Next; the near edge fades.
   await expect(page.locator('#dp-help-tab-license')).toBeFocused();
-  await settle(page);
   h = await header(page);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
   expect(h.fadeEnd).toBe(0);
@@ -516,10 +521,15 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
   expect(h.shown.filter(part => part > 0.5 && part < TARGET)).toEqual([]);
   await expect(last).toHaveCSS('display', 'none');
   for (const key of ['left', 'right']) expect(Math.abs(h.control[key] - control[key])).toBeLessThanOrEqual(0.5);
-  await first.click();
-  await expect(selected(page)).toHaveAttribute('data-tab', 'quickstart');
+  // Previous, one section at a time, back to Quick Start.
+  for (let k = order.length - 2; k >= 0; k -= 1) {
+    await first.click();
+    await expect(selected(page)).toHaveAttribute('data-tab', order[k]);
+    await settle(page);
+  }
+  await expect(first).toHaveCSS('display', 'none');
+  await page.locator('#dp-help-tab-quickstart').focus();
   await expect(page.locator('#dp-help-tab-quickstart')).toBeFocused();
-  await settle(page);
 
   // The keyboard walks every section in order, the selection always whole,
   // and wraps at either end; Home and End reach the ends.
@@ -593,10 +603,9 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
           expect(end.width, at).toBeGreaterThanOrEqual(32);
           expect(end.height, at).toBeGreaterThanOrEqual(32);
         }
-        // Each of First and Last is gone exactly where the window shows its end
-        // section whole (1.0.14, 053c1f60; section-navigator-endpoints).
-        const whole = i => h.shown[i] >= h.widths[i] - 0.5;
-        expect(h.ends.map(end => end.shown), at).toEqual([!whole(0), !whole(n - 1)]);
+        // Each of Previous and Next is gone exactly where the selected section
+        // is the first or last (section-navigator-endpoints).
+        expect(h.ends.map(end => end.shown), at).toEqual([k !== 0, k !== n - 1]);
         // Side padding: the complete strip's unless an end section and its
         // whole neighbour would not otherwise fit the end section's own room,
         // and then at least 5px.
@@ -695,7 +704,7 @@ test('at the 780px floor, where the end pair cannot fit even trimmed, License st
 });
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
-  test(`with ${fonts}, a Help First or Last that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
+  test(`with ${fonts}, a Help Previous or Next that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
     await openHelp(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const order = (await header(page)).order;
     const n = order.length;
@@ -795,7 +804,7 @@ const expectSnap = (slide, direction, label) => {
   expect(slide.content.moving, label).toBeGreaterThanOrEqual(3);
 };
 
-test('the Help window slides only when a choice moves it, the same way as the panel: neighbours, edges, First and Last, into either end, and a quick return turns back', async ({page}) => {
+test('the Help window slides only when a choice moves it, the same way as the panel: neighbours, edges, Previous and Next, into either end, and a quick return turns back', async ({page}) => {
   await openHelp(page, 1100);
   const order = (await header(page)).order;
 
@@ -835,15 +844,21 @@ test('the Help window slides only when a choice moves it, the same way as the pa
   slide = await slideOf(page, () => choose(page, order[cut]));
   expectSlide(slide, 'forward', `${order[cut]}, beyond the window's edge`);
 
-  // Last: forward into the end arrangement; First: back to the start.
-  slide = await slideOf(page, () => page.locator('#view-help .dp-help-nav-end[data-help-end="last"]').click());
-  expectSlide(slide, 'forward', 'Last');
-  h = await header(page);
-  expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
-  slide = await slideOf(page, () => page.locator('#view-help .dp-help-nav-end[data-help-end="first"]').click());
-  expectSlide(slide, 'backward', 'First');
-  h = await header(page);
-  expect(Math.abs(h.atStart - h.edge)).toBeLessThanOrEqual(1);
+  // Next, one section at a time, forward into the end arrangement; Previous,
+  // one at a time, back to the start: each press that moves the window slides
+  // it the press's way, and one that does not leaves it still.
+  for (const [which, way] of [['next', 'forward'], ['previous', 'backward']]) {
+    const action = page.locator(`#view-help .dp-help-nav-end[data-help-end="${which}"]`);
+    while (await action.isVisible()) {
+      const was = (await header(page)).index;
+      slide = await slideOf(page, () => action.click());
+      h = await header(page);
+      expect(h.index, `${which} from ${order[was]}`).toBe(was + (way === 'forward' ? 1 : -1));
+      if (slide.moved) expectSlide(slide, way, `${which} from ${order[was]}`);
+      else expect(slide.frames, `${which} from ${order[was]}`).toEqual([]);
+    }
+    expect(Math.abs((way === 'forward' ? h.atEnd : h.atStart) - h.edge)).toBeLessThanOrEqual(1);
+  }
 
   // Walking to the end one section at a time and back: each move that
   // shifts the window slides the way it goes; the others move nothing.
@@ -994,9 +1009,14 @@ test('with reduced motion the Help window moves at once and never slides', async
   await page.emulateMedia({reducedMotion: 'reduce'});
   await openHelp(page, 1100);
   const order = (await header(page)).order;
-  const slide = await slideOf(page, () => page.locator('#view-help .dp-help-nav-end[data-help-end="last"]').click());
-  expect(slide.moved).toBeGreaterThan(0);
-  expect(slide.frames).toEqual([]);
+  // Next, pressed to the end: wherever the window moves, it moves at once.
+  let moved = 0;
+  while (await page.locator('#view-help .dp-help-nav-end[data-help-end="next"]').isVisible()) {
+    const slide = await slideOf(page, () => page.locator('#view-help .dp-help-nav-end[data-help-end="next"]').click());
+    moved += Math.abs(slide.moved);
+    expect(slide.frames).toEqual([]);
+  }
+  expect(moved).toBeGreaterThan(0);
   const h = await header(page);
   expect(h.index).toBe(order.length - 1);
   expect(Math.abs(h.atEnd - h.edge)).toBeLessThanOrEqual(1);
