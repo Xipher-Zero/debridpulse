@@ -126,7 +126,8 @@ test('each person has one right-aligned Edit; You and the protected Administrato
   const hint = row(page, 'acct-admin').locator('.dp-settings-users-hint');
   await expect(hint).toHaveText('Password managed in Authentication');
   // Always exactly two lines, "Password managed" over "in Authentication", neither wrapping.
-  const lines = () => hint.evaluate(node => [...node.children].map(line => {
+  // Its drawn lines (its handheld shorter wording, below 780px only, is not drawn here).
+  const lines = () => hint.evaluate(node => [...node.children].filter(line => line.getClientRects().length).map(line => {
     const range = document.createRange();
     range.selectNodeContents(line);
     return [line.textContent, new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size];
@@ -145,7 +146,7 @@ test('role only: the current role and its description; Cancel sends nothing; App
   await openUsers(page);
   let dialog = await edit(page, 'acct-ann');
   await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');      // the username, not the display name
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Enabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Enabled', {useInnerText: true});
   await expect(dialog.locator('.dp-dropdown__value')).toHaveText('User');
   await expect(dialog.locator('[data-field-description="role"]'))
     .toHaveText('Adds and operates downloads, and can delete or redirect a transfer only when no other account still needs it.');
@@ -328,7 +329,7 @@ test('a new username with a new password is one password request; a refused rena
   await pickUsername(page, 'bob');
   await dialog.locator('[data-modal-accept]').click();
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Role changed to Admin. Username not changed: That username belongs to another account');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled', {useInnerText: true});
   await expect(dialog.locator('.dp-users-edit-stale')).toBeVisible();
   await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: bob');   // still the unapplied draft
   await expect(dialog.locator('[data-username-draft]')).toBeVisible();
@@ -363,7 +364,7 @@ test('role and password: role first, one request each; a refused password is rep
   await dialog.locator('[data-modal-accept]').click();
   const outcome = dialog.locator('.dp-users-edit-outcome');
   await expect(outcome).toHaveText('Role changed to Admin. Password not saved: A password must be at least 8 characters');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled');  // re-read
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled', {useInnerText: true});  // re-read
   await expect(row(page, 'acct-ann')).toContainText('Admin');
   expect(writes(sent)).toEqual([
     {method: 'PATCH', path: '/accounts/acct-ann', body: {role: 'admin'}},
@@ -397,7 +398,7 @@ test('an acknowledged role is never resent when the re-read fails: only the corr
   await expect(dialog.locator('.dp-users-edit-outcome'))
     .toHaveText('Role changed to Admin. Password not saved: A password must be at least 8 characters');
   // The role is the server's acknowledged one; the directory itself was not re-read, and says so.
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · Admin · Enabled', {useInnerText: true});
   await expect(dialog.locator('.dp-users-edit-stale')).toBeVisible();
   await expect(page.locator('.dp-settings-load-error')).toContainText('Accounts could not be loaded.');
   refusePassword = false;
@@ -422,13 +423,13 @@ test('an acknowledged Enable or Disable is shown as such when the re-read fails'
   failListing = true;
   await dialog.getByRole('button', {name: 'Enable', exact: true}).click();
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Account enabled.');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Enabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Enabled', {useInnerText: true});
   await expect(dialog.locator('.dp-users-edit-stale')).toBeVisible();
   await expect(footer).toHaveText(['Disable', 'Remove', 'Cancel', 'Apply']);
   await dialog.getByRole('button', {name: 'Disable', exact: true}).click();
   await dialog.locator('[data-modal-accept]').click();
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Account disabled. It had no outstanding requests.');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Disabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Disabled', {useInnerText: true});
   await expect(footer).toHaveText(['Enable', 'Remove', 'Cancel', 'Apply']);
   expect(writes(sent).filter(entry => entry.method === 'PATCH')).toEqual([
     {method: 'PATCH', path: '/accounts/acct-cid', body: {enabled: true}},
@@ -481,7 +482,7 @@ test('Disable and Remove confirm in the same dialog: server figures, Back keeps 
   await dialog.locator('[data-modal-accept]').click();
   await expect(dialog.locator('.dp-modal-title')).toHaveText('Edit User: ann');
   await expect(dialog.locator('.dp-users-edit-outcome')).toHaveText('Account disabled. It had no outstanding requests.');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Disabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('ann@example.test · User · Disabled', {useInnerText: true});
   await expect(footer).toHaveText(['Enable', 'Remove', 'Cancel', 'Apply']);
   await expect(dialog.locator('[data-edit-field="password"]')).toHaveValue(SECRET);   // the draft is still only a draft
   expect(writes(sent)).toEqual([{method: 'PATCH', path: '/accounts/acct-ann', body: {enabled: false}}]);
@@ -514,7 +515,7 @@ test('a disabled person is edited and enabled directly, without a confirmation o
   const {sent} = await isolate(page);
   await openUsers(page);
   const dialog = await edit(page, 'acct-cid');
-  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Disabled');
+  await expect(dialog.locator('.dp-users-edit-identity')).toHaveText('User · Disabled', {useInnerText: true});
   const footer = dialog.locator('.dp-modal-footer .btn:visible');
   await expect(footer).toHaveText(['Enable', 'Remove', 'Cancel', 'Apply']);
   await chooseRole(page, 'ReadOnly User');
@@ -548,7 +549,8 @@ test('the footer: lifecycle at the start, Cancel and Apply at the end; keyboard 
   await page.setViewportSize({width: 390, height: 844});
   const narrow = await edit(page, 'acct-ann');
   const fit = await narrow.evaluate(node => ({width: node.getBoundingClientRect().width, overflow: node.scrollWidth - node.clientWidth}));
-  await expect(row(page, 'acct-admin').locator('.dp-settings-users-hint > span')).toHaveText(['Password managed', 'in Authentication']);
+  // Its words stay "Password managed in Authentication" whatever wording the narrow table draws.
+  await expect(row(page, 'acct-admin').locator('.dp-settings-users-hint > span:not(.dp-settings-users-hint-short)')).toHaveText(['Password managed', 'in Authentication']);
   expect(fit.width).toBeLessThanOrEqual(390);
   expect(fit.overflow).toBe(0);
   await expect(narrow.locator('.dp-modal-footer .btn:visible')).toHaveCount(4);

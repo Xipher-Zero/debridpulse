@@ -36,7 +36,8 @@ async function open(browser, viewport = {width: 1280, height: 900}, options = {}
   await page.locator('#password').fill('browser-secret');
   await page.locator('button[type="submit"]').click();
   await expect(page).not.toHaveURL(/\/login/);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch));
+  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch)
+    && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;

@@ -1100,6 +1100,101 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   display: block;
   white-space: nowrap;
 }
+/* Drawn only by the handheld User Accounts stages (below): the built-in
+   Administrator's shorter notice, and an account's state beside its name. */
+#view-settings .dp-settings-users-hint > .dp-settings-users-hint-short,
+#view-settings .dp-settings-users-state {
+  display: none;
+}
+
+/* The User Accounts table below 780px gives back its secondary information
+   one stage at a time (fitUsersTable, data-users-fit): 1 the emails, 2 the
+   Sign-In column, 3 the Status column -- each name then in its account's
+   enabled (success) or disabled (caution) colour, the state still said to
+   assistive technology beside it, and the name one line, the Account column
+   taking what Role and Actions leave -- and 4 closer cell padding. The
+   built-in Administrator's notice says "Built-in Admin Account" (label 1, on
+   two lines as its full words are) or
+   "Default" (2) where its full words do not fit (data-users-label). */
+@media (max-width: 779px) {
+  #view-settings .dp-settings-users-table {
+    --dp-users-fit-steps: 5;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="1"], [data-users-fit="2"], [data-users-fit="3"], [data-users-fit="4"])
+    td:first-child > .dp-settings-users-detail {
+    display: none;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="2"], [data-users-fit="3"], [data-users-fit="4"]) :is(th, td):nth-child(3),
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) :is(th, td):nth-child(4) {
+    display: none;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) :is(th, td):first-child {
+    width: 100%;
+    max-width: 0;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-name[data-enabled="true"] {
+    color: var(--dp-state-success);
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-name[data-enabled="false"] {
+    color: var(--dp-state-caution);
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-fit="3"], [data-users-fit="4"]) .dp-settings-users-state {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-table[data-users-fit="4"] :is(th, td) {
+    padding-inline: 6px;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-label="1"], [data-users-label="2"]) .dp-settings-users-hint > span:not(.dp-settings-users-hint-short) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-users-table:is([data-users-label="1"], [data-users-label="2"]) .dp-settings-users-hint-short {
+    display: inline;
+    white-space: nowrap;
+  }
+
+  /* Two lines, as the full notice is: "Built-in Admin" over "Account". */
+  #view-settings .dp-settings-users-table[data-users-label="1"] .dp-settings-users-hint-short {
+    display: block;
+    white-space: pre-line;
+  }
+
+  #view-settings .dp-settings-users-table[data-users-label="1"] .dp-settings-users-hint-short::before {
+    content: attr(data-label-1);
+  }
+
+  #view-settings .dp-settings-users-table[data-users-label="2"] .dp-settings-users-hint-short::before {
+    content: attr(data-label-2);
+  }
+}
+
 #view-settings .dp-settings-users-self {
   color: var(--dp-text-muted);
   font-size: 11.5px;
@@ -1237,6 +1332,18 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   margin: 0;
   color: var(--dp-text-muted);
   font-size: 12px;
+}
+
+/* The account's sign-in methods: the line's last item below 780px only,
+   where the User Accounts table has no Sign-In column (editUser). */
+.dp-modal-dialog.dp-users-edit-dialog .dp-users-edit-signin {
+  display: none;
+}
+
+@media (max-width: 779px) {
+  .dp-modal-dialog.dp-users-edit-dialog .dp-users-edit-signin {
+    display: inline;
+  }
 }
 .dp-modal-dialog.dp-users-edit-dialog .dp-users-edit-group {
   display: flex;

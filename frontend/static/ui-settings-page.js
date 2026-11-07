@@ -4432,12 +4432,14 @@
   const selfId = () => text(window.debridPulseAuth?.authority?.account_id);
   const accountName = account => text(account?.display_name || account?.username || 'Unnamed account');
 
-  function signInMethods(account) {
+  function signInMethodList(account) {
     const methods = [];
     if (account.has_password) methods.push(`Password${account.username ? ` (${account.username})` : ''}`);
     if (account.oidc_identities) methods.push(account.oidc_identities > 1 ? `OIDC ×${account.oidc_identities}` : 'OIDC');
-    return methods.length ? methods.join(' · ') : 'No sign-in method';
+    return methods.length ? methods : ['No sign-in method'];
   }
+
+  const signInMethods = account => signInMethodList(account).join(' · ');
 
   function accountStatus(account) {
     return account.enabled
@@ -4463,8 +4465,11 @@
    * here, and the server refuses both regardless. */
   function userActions(account) {
     if (account.id === selfId()) return '<span class="dp-settings-users-self">You</span>';
+    // Below 780px the table may draw the notice in fewer words
+    // (fitUsersTable); its full words stay what it says.
     if (account.protected === 'default_admin') {
-      return '<span class="dp-settings-users-hint"><span>Password managed</span> <span>in Authentication</span></span>';
+      return '<span class="dp-settings-users-hint"><span>Password managed</span> <span>in Authentication</span>'
+        + '<span class="dp-settings-users-hint-short" aria-hidden="true" data-label-1="Built-in Admin&#10;Account" data-label-2="Default"></span></span>';
     }
     if (account.protected) return '';
     return `<button class="btn btn-ghost btn-sm" type="button" data-user-action="edit" data-account-id="${html(account.id)}">Edit</button>`;
@@ -4478,7 +4483,8 @@
           <thead><tr><th>Account</th><th>Role</th><th>Sign-In</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
-              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" data-tooltip="Account details">${html(accountName(account))}</button>${
+              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" data-tooltip="Account details" data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button><span class="dp-settings-users-state">${
+                account.enabled ? 'Enabled' : 'Disabled'}</span>${
                 account.email ? `<div class="dp-settings-users-detail">${html(account.email)}</div>` : ''}</td>
               <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
               <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
@@ -4612,6 +4618,55 @@
     mount.innerHTML = usersBody();
     // Its cards' headers are new: the one hinted-header fitter takes them on.
     fitHeaderHints();
+    fitUsersTable();
+  }
+
+  /* The User Accounts table below 780px: as the room narrows it gives back
+   * its secondary information one stage at a time (data-users-fit, its
+   * stylesheet's steps, --dp-users-fit-steps): 1 the accounts' emails, 2 the
+   * Sign-In column, 3 the Status column (each name then coloured by the
+   * account's own enabled state, and that state said to assistive technology
+   * beside it), 4 closer cell padding. A stage fits while the table needs no
+   * horizontal scrolling and, once names are single-line, none is cut short;
+   * the last stage is kept whatever it holds, the table scrolling as before
+   * if it still must. Within the stage chosen, the built-in Administrator's
+   * notice takes the longest of its wordings that fits (data-users-label),
+   * so a long phrase never costs a column. Read from the table as drawn; the
+   * same room always chooses the same stage. From 780px the table is as it
+   * was. */
+  let usersTableObserver = null;
+  let usersTableFit = null;
+
+  function fitUsersTable() {
+    usersTableObserver?.disconnect();
+    usersTableObserver = null;
+    const table = root()?.querySelector('.dp-settings-users-table');
+    const wrap = table?.parentElement;
+    usersTableFit = table ? () => {
+      if (!table.getClientRects().length) return;
+      const steps = parseInt(getComputedStyle(table).getPropertyValue('--dp-users-fit-steps'), 10) || 0;
+      delete table.dataset.usersFit;
+      delete table.dataset.usersLabel;
+      if (!steps) return;
+      const fits = () => wrap.scrollWidth <= wrap.clientWidth + 1
+        && Array.from(table.querySelectorAll('.dp-settings-users-name')).every(name => name.scrollWidth <= name.clientWidth + 1);
+      for (let step = 0; step < steps; step += 1) {
+        table.dataset.usersFit = String(step);
+        table.dataset.usersLabel = '2';
+        if (step < steps - 1 && !fits()) continue;
+        for (const label of ['0', '1']) {
+          table.dataset.usersLabel = label;
+          if (fits()) return;
+        }
+        table.dataset.usersLabel = '2';
+        return;
+      }
+    } : null;
+    usersTableFit?.();
+    if (usersTableFit && typeof ResizeObserver === 'function') {
+      usersTableObserver = new ResizeObserver(() => usersTableFit?.());
+      usersTableObserver.observe(wrap);
+    }
   }
 
   async function loadUsers() {
@@ -5011,6 +5066,14 @@
       nodes.identity.textContent = account
         ? [account.email, roleLabel(account.role), account.enabled ? 'Enabled' : 'Disabled'].filter(Boolean).join(' · ')
         : 'This account no longer exists.';
+      // Below 780px the table has no Sign-In column: the line says it
+      // (its stylesheet draws this item only there).
+      if (account) {
+        const methods = document.createElement('span');
+        methods.className = 'dp-users-edit-signin';
+        methods.textContent = ` · ${signInMethodList(account).join(', ')}`;
+        nodes.identity.append(methods);
+      }
       nodes.stale.hidden = reread;
       if (!handle) return;
       handle.setBusy(pending);
@@ -8135,6 +8198,7 @@
     islandFit?.();
     authKpiFit?.();
     handheldBodyFit?.();
+    usersTableFit?.();
   });
 
   registerCommitScopes();
