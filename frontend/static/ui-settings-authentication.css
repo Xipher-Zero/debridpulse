@@ -1668,6 +1668,94 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     display: none;
   }
 }
+/* Drawn only by the handheld stages (below): a profile's tokens beneath its
+   name. */
+#view-settings .dp-settings-profiles-table .dp-settings-profile-token {
+  display: none;
+}
+
+/* The Integration Delivery Profiles table below 780px (fitProfilesTable,
+   data-profiles-fit): 1 the Categories column leaves, 2 the API Tokens
+   column -- each profile's tokens then named, by their labels alone,
+   beneath its name -- 3 closer cell padding. No cell's information wraps:
+   a name, its tokens and each path keep one line, Paths keeping what Profile
+   and Edit leave it. Every row is the stage's one height, its Edit's, its
+   contents centred in it. (Retention has left already, above.) */
+@media (max-width: 779px) {
+  #view-settings .dp-settings-profiles-table {
+    --dp-profiles-fit-steps: 4;
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] :is(th, td) {
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] td {
+    vertical-align: middle;
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] > tbody > tr {
+    height: var(--dp-profiles-row, auto);
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] .dp-settings-profile-chip {
+    margin-block: 0;
+  }
+
+  #view-settings .dp-settings-profiles-table:is([data-profiles-fit="1"], [data-profiles-fit="2"], [data-profiles-fit="3"]) :is(th, td):nth-child(2),
+  #view-settings .dp-settings-profiles-table:is([data-profiles-fit="2"], [data-profiles-fit="3"]) :is(th, td):nth-child(3) {
+    display: none;
+  }
+
+  /* The name, and from 2 its tokens beneath it: each one line, cut short
+     only where the last stage still lacks room (fitProfilesTable). The two
+     take the cell's room where its padding would have been. */
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] :is(.dp-settings-profile-name, .dp-settings-profile-token) {
+    max-width: var(--dp-profiles-name, none);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit] .dp-settings-profile-name {
+    display: block;
+  }
+
+  #view-settings .dp-settings-profiles-table:is([data-profiles-fit="2"], [data-profiles-fit="3"]) .dp-settings-profile-token {
+    display: block;
+  }
+
+  #view-settings .dp-settings-profiles-table:is([data-profiles-fit="2"], [data-profiles-fit="3"]) td:first-child {
+    padding-block: 0;
+  }
+
+  #view-settings .dp-settings-profiles-table[data-profiles-fit="3"] :is(th, td) {
+    padding-inline: 6px;
+  }
+}
+
+/* The profile dialog's Path Summary: below 780px only, the form's two paths
+   as the table maps them, whole. */
+.dp-modal-dialog.dp-profile-dialog .dp-profile-path-summary {
+  display: none;
+}
+@media (max-width: 779px) {
+  .dp-modal-dialog.dp-profile-dialog .dp-profile-path-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border: 1px solid var(--dp-border-default);
+    border-radius: var(--dp-radius-sm);
+    padding: 9px 12px;
+  }
+
+  .dp-modal-dialog.dp-profile-dialog .dp-profile-path-summary-route {
+    color: var(--dp-text-secondary, var(--dp-text-muted));
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+}
+
 .dp-settings-profile-chip {
   display: inline-flex;
   align-items: center;

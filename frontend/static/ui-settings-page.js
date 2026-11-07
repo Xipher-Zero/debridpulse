@@ -4640,6 +4640,7 @@
     fitHeaderHints();
     fitUsersTable();
     fitIntegrationAccounts();
+    fitProfilesTable();
   }
 
   /* The User Accounts table below 780px: as the room narrows it gives back
@@ -4830,6 +4831,83 @@
         if (card.clientWidth !== width) integrationAccountsFit?.();
       });
       integrationAccountsObserver.observe(card);
+    }
+  }
+
+  /* The Integration Delivery Profiles table below 780px: as the room
+   * narrows it gives back its secondary information one stage at a time
+   * (data-profiles-fit, its stylesheet's steps, --dp-profiles-fit-steps):
+   * 1 the Categories column, 2 the API Tokens column -- each profile's
+   * tokens then named, by their own labels, beneath its name -- 3 closer
+   * cell padding. Paths keeps what Profile and Edit leave it, each path one
+   * line cut short where it is longer than that (its own minimum, as at
+   * every width), its whole mapping its tooltip, on a tap too. A stage fits
+   * in both dimensions: the table needs no horizontal scrolling, no
+   * profile's name or tokens are cut short, and no row is taller than its
+   * Edit and that cell's padding -- so tokens beneath a name never grow a
+   * row; the last stage is kept whatever it holds, its names then giving up
+   * exactly the width the table still lacks (--dp-profiles-name), cut short.
+   * Every row is then given that one height (--dp-profiles-row). Read from the table as drawn; the
+   * same room and profiles always choose the same stage. From 780px the
+   * table is as it was. */
+  let profilesTableObserver = null;
+  let profilesTableFit = null;
+
+  function fitProfilesTable() {
+    profilesTableObserver?.disconnect();
+    profilesTableObserver = null;
+    const table = root()?.querySelector('.dp-settings-profiles-table');
+    const wrap = table?.parentElement;
+    const rows = table ? Array.from(table.tBodies[0]?.rows || []) : [];
+    const paths = table ? Array.from(table.querySelectorAll('.dp-settings-profile-path-lines')) : [];
+    const height = row => row.getBoundingClientRect().height;
+    // A row's Edit with its cell's padding and the row's and cell's borders:
+    // every row's height.
+    const sides = (node, keys) => keys.reduce((sum, key) => sum + (parseFloat(getComputedStyle(node)[key]) || 0), 0);
+    const budget = () => Math.max(0, ...rows.map(row => {
+      const cell = row.cells[row.cells.length - 1];
+      return (cell.querySelector('.btn')?.getBoundingClientRect().height || 0)
+        + sides(cell, ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'])
+        + sides(row, ['borderTopWidth', 'borderBottomWidth']);
+    }));
+    const cut = node => node.getClientRects().length > 0 && node.scrollWidth > node.clientWidth + 1;
+    const fits = most => wrap.scrollWidth <= wrap.clientWidth + 1
+      && !Array.from(table.querySelectorAll('.dp-settings-profile-name, .dp-settings-profile-token')).some(cut)
+      && rows.every(row => height(row) <= most + 0.5);
+    let width = null;
+    profilesTableFit = table ? () => {
+      if (!table.getClientRects().length) return;
+      width = wrap.clientWidth;
+      const steps = parseInt(getComputedStyle(table).getPropertyValue('--dp-profiles-fit-steps'), 10) || 0;
+      delete table.dataset.profilesFit;
+      table.style.removeProperty('--dp-profiles-row');
+      table.style.removeProperty('--dp-profiles-name');
+      paths.forEach(node => node.removeAttribute('data-tooltip-touch'));
+      if (!steps) return;
+      const most = budget();
+      for (let step = 0; step < steps; step += 1) {
+        table.dataset.profilesFit = String(step);
+        if (fits(most)) break;
+      }
+      table.style.setProperty('--dp-profiles-row', `${most}px`);
+      // Still too wide at the last stage: the names give up exactly what the
+      // table lacks, each then cut short (Paths keeps its own minimum).
+      const over = wrap.scrollWidth - wrap.clientWidth;
+      if (over > 1) {
+        const widest = Math.max(0, ...Array.from(table.querySelectorAll('.dp-settings-profile-name, .dp-settings-profile-token'))
+          .filter(node => node.getClientRects().length).map(node => node.getBoundingClientRect().width));
+        table.style.setProperty('--dp-profiles-name', `${Math.max(0, Math.floor(widest - over))}px`);
+      }
+      // A tap shows a path's whole mapping (ui-tooltip.js).
+      paths.forEach(node => node.setAttribute('data-tooltip-touch', ''));
+    } : null;
+    profilesTableFit?.();
+    if (profilesTableFit && typeof ResizeObserver === 'function') {
+      // The row height it gives changes the wrapper's height, not its room.
+      profilesTableObserver = new ResizeObserver(() => {
+        if (wrap.clientWidth !== width) profilesTableFit?.();
+      });
+      profilesTableObserver.observe(wrap);
     }
   }
 
@@ -5683,6 +5761,15 @@
     return entry.tokens.map(token => `${token.label} · ${token.account}`).join(', ');
   }
 
+  // A profile's API tokens by their own labels alone (beneath its name below
+  // 780px, fitProfilesTable): each authorized client's live tokens, or the
+  // table's own words for a client with none, or None.
+  function profileTokenNames(clients, profile) {
+    if (!profile.clients.length) return {text: 'None', missing: true};
+    const names = profile.clients.flatMap(clientId => clients.get(clientId)?.tokens.map(token => token.label) || [clientLabel(clients, clientId)]);
+    return {text: names.join(', '), missing: !profile.clients.some(clientId => clients.has(clientId))};
+  }
+
   function profileRows() {
     const profiles = state.profiles;
     if (profiles.error) return `<div class="dp-settings-load-error"><b>Delivery profiles could not be loaded.</b><span>${html(profiles.error)}</span></div>`;
@@ -5705,9 +5792,10 @@
               : '<span class="dp-settings-users-detail">None</span>';
             const mapped = importRoot !== profile.local_root;
             const route = mapped ? `${profile.local_root} → ${importRoot}` : profile.local_root;
+            const names = profileTokenNames(clients, profile);
             return `
             <tr data-profile-row="${id}">
-              <td><b>${id}</b></td>
+              <td><b class="dp-settings-profile-name">${id}</b><span class="dp-settings-profile-token${names.missing ? ' dp-settings-users-detail' : ''}">${html(names.text)}</span></td>
               <td>${profile.categories.length ? profile.categories.map(category => `<span class="dp-settings-profile-chip">${html(category)}</span>`).join('') : '<span class="dp-settings-users-detail">None</span>'}</td>
               <td>${tokens}</td>
               <td class="dp-settings-users-detail dp-settings-profiles-paths">
@@ -5800,6 +5888,10 @@
           'Where DebridPulse’s completed downloads for this profile lie: the download folder or a folder beneath it.')}
         ${field('import_root', 'External Import Path', '<input class="input" data-profile-input="import_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false" aria-label="External Import Path">',
           'The same folder as the external application sees it, when it mounts it at another path.')}
+        <div class="dp-profile-path-summary" data-profile-path-summary role="group" aria-label="Path Summary">
+          <span class="form-label">Path Summary</span>
+          <div class="dp-profile-path-summary-route" data-profile-path-route></div>
+        </div>
         ${field('retention_hours', 'Retention', embeddedActionField('<input class="input" data-profile-input="retention_hours" type="number" min="1" max="8760" step="1" aria-label="Retention in hours">', fieldUnit('hours')),
           'How long a completed download is offered to the application. Nothing is deleted when it ends.')}
         <p class="dp-profile-error" data-profile-error role="alert" hidden></p>
@@ -5906,6 +5998,17 @@
       list.innerHTML = ids.length ? ids.map(clientId => `
         <label class="dp-profile-check"><input type="checkbox" data-profile-client="${html(clientId)}"${draft.clients.has(clientId) ? ' checked' : ''}> <span>${html(clientLabel(clients, clientId))}</span></label>`).join('')
         : '<span class="dp-settings-users-detail">No API tokens yet. Create one here.</span>';
+    }
+
+    // Below 780px: the two paths as the table maps them, from the form's
+    // current values -- the DP Download Path, then the External Import Path
+    // where it differs; a path not yet entered is the dash.
+    function paintPathSummary() {
+      const local = controls.local_root.value.trim();
+      const imported = controls.import_root.value.trim();
+      const line = (value, arrow) => `<div class="dp-profile-path-summary-line">${arrow ? '<span class="dp-profile-path-summary-arrow">→</span> ' : ''}${html(value || '—')}</div>`;
+      dialogBody.querySelector('[data-profile-path-route]').innerHTML = line(local, false)
+        + (imported && imported !== local ? line(imported, true) : '');
     }
 
     function addCategory(value) {
@@ -6141,8 +6244,15 @@
         paintClients();
         handle.setActionHidden('reload', true);
 
-        controls.local_root.addEventListener('input', () => { if (!importEdited) controls.import_root.value = controls.local_root.value; });
-        controls.import_root.addEventListener('input', () => { importEdited = true; });
+        paintPathSummary();
+        controls.local_root.addEventListener('input', () => {
+          if (!importEdited) controls.import_root.value = controls.local_root.value;
+          paintPathSummary();
+        });
+        controls.import_root.addEventListener('input', () => {
+          importEdited = true;
+          paintPathSummary();
+        });
         controls.category.addEventListener('keydown', event => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
@@ -8368,6 +8478,7 @@
     handheldBodyFit?.();
     usersTableFit?.();
     integrationAccountsFit?.();
+    profilesTableFit?.();
   });
 
   registerCommitScopes();
