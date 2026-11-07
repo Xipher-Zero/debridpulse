@@ -521,7 +521,7 @@ test('every webhook Clear is inside its own field, named for what it clears, and
   await openSettings(page, 'notifications');
   for (const width of [1440, 1180, 1024, 900, 780, 480]) {
     await page.setViewportSize({width, height: 1000});
-    for (const [key, name] of [['discord_webhook_url', 'Clear the stored primary Discord webhook'],
+    for (const [key, name] of [['discord_webhook_url', 'Clear the stored primary webhook'],
       ['discord_webhook_added', 'Clear the stored Download Added webhook'], ['stats_report_webhook_url', 'Clear the stored reporting webhook']]) {
       const g = await field(page, key).evaluate((input, key) => {
         const row = input.closest('.dp-settings-inline-field'), compound = input.closest('.dp-action-field');

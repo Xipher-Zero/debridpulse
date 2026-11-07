@@ -118,7 +118,11 @@ const islandAt = (page, selector) => page.locator(selector).evaluate(island => {
         within: boxes[index].left >= inner[0] - 0.5 && boxes[index].right <= inner[1] + 0.5,
         overflow: field.scrollWidth > field.clientWidth + 1,
         inline: control.left >= info.right - 0.5 && control.top < info.bottom && control.bottom > info.top,
-        column: field.dataset.islandField === 'column',
+        // A setting the fit turned to a column -- or every setting of an island
+        // that declares its settings take columns together at the last step
+        // (data-island-columns: Statistics Reporting's cadence and window).
+        column: field.dataset.islandField === 'column'
+          || (island.hasAttribute('data-island-columns') && island.dataset.islandFit === '4'),
         hintShown: !!hint && hint.getBoundingClientRect().width > 2,
         hintText: hint?.textContent.trim() || '',
       };

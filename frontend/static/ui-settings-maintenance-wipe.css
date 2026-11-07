@@ -160,7 +160,7 @@
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  padding: 16px var(--dp-island-padding-inline, 22px) 17px;
 }
 
 #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
@@ -332,9 +332,9 @@
 
 
 @media (max-width: 779px) {
-  /* One control per line; each keeps its own title/hint + control. (Event
-     Logging's is a Settings island: its handheld steps are the shared ones,
-     ui-settings-page.css.) */
+  /* One control per line; each keeps its own title + control. (Event
+     Logging's and Database Reset's are Settings islands: their handheld steps
+     are the shared ones, ui-settings-page.css.) */
   #view-settings .dp-settings-backup-folder-island {
     width: auto;
     padding: 14px 16px 15px;
@@ -344,19 +344,41 @@
     gap: 12px;
   }
 
-  #view-settings .dp-settings-database-wipe-row {
-    width: auto;
-    align-items: stretch;
+  /* Lent Help (fitHeaderSteps): on Backup Folder's title row, its right edge
+     on the folder field's; while the island holds it, the field starts lower
+     so the chip keeps a title's clearance above it (8px). */
+  #view-settings .dp-settings-backup-folder-island.dp-settings-help-slot > .dp-settings-help-chip {
+    top: 8px;
+    right: 16px;
+  }
+
+  #view-settings .dp-settings-backup-folder-island:has(> .dp-settings-help-chip) > .dp-settings-backup-folder-field {
+    row-gap: 15px;
+  }
+
+  /* Backup Folder's and Allow Database Reset's hints leave the layout; each
+     title says its hint as a tooltip (promoteHints), still the control's
+     neighbour to assistive technology. */
+  #view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-info > .form-hint,
+  #view-settings .dp-settings-database-wipe-toggle > .toggle-info > .td {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Database Reset's island: its toggle beside its action while the room
+     holds both on one row; stacked (fitIslands), the toggle's title centred
+     above the toggle and the action centred beneath them. */
+  #view-settings .dp-settings-database-wipe-row[data-island='stacked'] > .dp-settings-toggle {
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
   }
 
-  #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
-    width: auto;
-    justify-content: space-between;
-  }
-
-  #view-settings .dp-settings-database-wipe-action {
-    justify-content: flex-start;
+  #view-settings .dp-settings-database-wipe-row[data-island='stacked'] .toggle-info {
+    align-items: center;
+    text-align: center;
   }
 }

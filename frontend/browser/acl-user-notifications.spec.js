@@ -125,7 +125,7 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   await expect(view.locator('.dp-settings-header-title')).toHaveText('The Grapevine');
   await expect(view).not.toContainText('Tuning Deck');
   await expect(view.locator('[data-panel]')).toHaveCount(1);
-  await expect(view.locator('.dp-settings-discord-card .card-title')).toContainText('Discord Notifications');
+  await expect(view.locator('.dp-settings-discord-card .card-title')).toContainText('Webhook Notifications');
   await expect(view.locator('.dp-settings-statistics-reporting-card .card-title')).toContainText('Statistics Reporting');
   const settings = await view.locator('[data-setting]').evaluateAll(nodes => nodes.map(node => node.dataset.setting));
   expect(new Set(settings)).toEqual(new Set([
@@ -179,7 +179,7 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   // the account-scoped endpoint only -- after the canonical confirmation.
   const clear = view.locator('[data-action="clear-webhook"][data-webhook="discord_webhook_url"]');
   expect(await clear.evaluate(button => !!button.closest('.dp-action-field') && button.textContent.trim())).toBe('Clear');
-  await expect(clear).toHaveAttribute('aria-label', 'Clear the stored primary Discord webhook');
+  await expect(clear).toHaveAttribute('aria-label', 'Clear the stored primary webhook');
   const writes = [];
   page.on('request', request => { if (request.method() === 'PUT') writes.push([new URL(request.url()).pathname, request.postDataJSON()]); });
   await clear.click();

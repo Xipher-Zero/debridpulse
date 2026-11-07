@@ -263,3 +263,49 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 }
+
+/* Below 780px each identity and destination setting -- and the Reporting
+   Webhook -- is its title over its control: its hint leaves the layout and
+   its title says it as a tooltip (fitHandheldBodies, promoteHints), still the
+   control's neighbour to assistive technology. Help, lent by the card's
+   header (fitHeaderSteps), sits at the top-right of the first region, on its
+   first setting's title row. */
+@media (max-width: 779px) {
+  #view-settings :is(.dp-settings-notifications-identity-row, .dp-settings-notifications-delivery-row, .dp-settings-statistics-reporting-row)
+    > .dp-settings-inline-field > .dp-settings-inline-field-info > .form-hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Over its control, a title takes the setting's width -- not the
+     description column its hint needed beside it -- so Primary Webhook and
+     Download Added Webhook wrap only where their words need it. */
+  #view-settings :is(.dp-settings-notifications-identity-row, .dp-settings-notifications-delivery-row)
+    > .dp-settings-inline-field > .dp-settings-inline-field-info {
+    width: auto;
+  }
+
+  /* Lent Help: on the first title's row, its right edge on the controls'. */
+  #view-settings .dp-settings-notifications-identity-row.dp-settings-help-slot > .dp-settings-help-chip {
+    top: 10px;
+    right: 22px;
+  }
+
+  #view-settings .dp-settings-statistics-reporting-row.dp-settings-help-slot > .dp-settings-help-chip {
+    top: -6px;
+    right: 0;
+  }
+
+  /* While the region holds it, the chip reaches below the first title's
+     line: that setting's control starts lower, so the chip keeps the
+     clearance above it a title keeps (8px). Without the chip, the ordinary
+     title-to-control gap. */
+  #view-settings :is(.dp-settings-notifications-identity-row, .dp-settings-statistics-reporting-row):has(> .dp-settings-help-chip)
+    > .dp-settings-inline-field:first-child {
+    row-gap: 15px;
+  }
+}

@@ -158,7 +158,7 @@ test('a User\'s Notifications page is headed The Grapevine in the canonical mast
     await expect(view.locator('.dp-settings-discord-card')).toBeVisible();
     await expect(view.locator('.dp-settings-statistics-reporting-card')).toBeVisible();
     expect(await view.locator('.card-title').allTextContents()).toEqual(
-      expect.arrayContaining([expect.stringContaining('Discord Notifications'), expect.stringContaining('Statistics Reporting')]));
+      expect.arrayContaining([expect.stringContaining('Webhook Notifications'), expect.stringContaining('Statistics Reporting')]));
 
     for (const [width, theme] of [[1440, 'dark'], [1024, 'light'], [800, 'dark']]) {
       await page.setViewportSize({width, height: 900});

@@ -347,14 +347,14 @@
 }
 
 #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test,
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger[data-verification] {
   border-color: var(--dp-secondary-border);
   background: var(--dp-secondary-surface);
   color: var(--dp-text-muted);
 }
 
 #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test:hover,
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger:hover {
+#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) .dp-settings-header-test-trigger[data-verification]:hover {
   border-color: var(--dp-border-strong);
   background: var(--dp-secondary-surface);
   color: var(--dp-text-primary);
@@ -637,7 +637,7 @@
   flex-direction: column;
 }
 
-#view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {
+#view-settings .dp-settings-island[data-island='stacked'] :is(.dp-settings-inline-field, .dp-settings-island-member) {
   align-self: center;
 }
 
@@ -655,7 +655,10 @@
      4  stacked and close, the hints taken out of view (still each control's
         description to assistive technology), the titles wrapping as needed.
    Only a setting that still cannot fit at 4 puts its title above its control
-   (data-island-field="column"), the last resort; its neighbours stay inline.
+   (data-island-field="column"), the last resort; its neighbours stay inline
+   -- unless the island declares data-island-columns (Statistics Reporting's
+   cadence and window), whose settings at 4 all take their titles above their
+   controls together, so the pair reads alike.
    The island stays content-bounded and centred at every step. */
 @media (max-width: 779px) {
   #view-settings .dp-settings-island {
@@ -676,6 +679,19 @@
     flex-shrink: 1;
     min-width: auto;
     max-width: 100%;
+  }
+
+  /* A member of an island of other controls (islandFields) is whole or not
+     there: it keeps its own width and its title one line, so a row that
+     cannot hold it wraps or overflows, and the fit reads that, rather than
+     squeezing its title under its control. */
+  #view-settings .dp-settings-island .dp-settings-island-member {
+    flex-shrink: 0;
+    max-width: 100%;
+  }
+
+  #view-settings .dp-settings-island .dp-settings-island-member .tl {
+    white-space: nowrap;
   }
 
   /* A hint is a sentence: it may wrap, but never into a column of words. */
@@ -710,7 +726,8 @@
     white-space: nowrap;
   }
 
-  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column'] {
+  #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column'],
+  #view-settings .dp-settings-island[data-island-fit='4'][data-island-columns] .dp-settings-inline-field {
     flex-direction: column;
     align-items: center;
     text-align: center;
@@ -721,11 +738,15 @@
      HEIGHT. Both regions take their own height instead, and the control spans
      the setting's width, its own control centred within it. */
   #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column']
+    > :is(.dp-settings-inline-field-info, .dp-settings-inline-field-control),
+  #view-settings .dp-settings-island[data-island-fit='4'][data-island-columns] .dp-settings-inline-field
     > :is(.dp-settings-inline-field-info, .dp-settings-inline-field-control) {
     flex: none;
   }
 
   #view-settings .dp-settings-island[data-island-fit='4'] .dp-settings-inline-field[data-island-field='column']
+    > .dp-settings-inline-field-control,
+  #view-settings .dp-settings-island[data-island-fit='4'][data-island-columns] .dp-settings-inline-field
     > .dp-settings-inline-field-control {
     align-self: stretch;
     justify-content: center;
@@ -1938,6 +1959,31 @@
   display: none;
 }
 
+/* A subsection's short title (disclosureSection) is its handheld title: its
+   full title stays its text, out of view there. */
+#view-settings .dp-settings-subsection-title-short {
+  display: none;
+}
+
+@media (max-width: 779px) {
+  #view-settings .dp-settings-subsection-title-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #view-settings .dp-settings-subsection-title-short {
+    display: inline;
+  }
+
+  #view-settings .dp-settings-subsection-title-short::before {
+    content: attr(data-short-title);
+  }
+}
+
 /* A body box a header may lend its help chip to (fitHeaderHints): the chip
    sits in the box's upper-right corner, out of the box's flow, so the box and
    everything in it keep their geometry. */
@@ -2210,7 +2256,7 @@
   #view-settings .dp-settings-header-test-status[data-tone="warning"] { color: var(--dp-state-caution); }
   #view-settings .dp-settings-header-test-status[data-tone="success"] { color: var(--dp-state-success); }
 
-  #view-settings .dp-settings-header-test-menu > .dp-settings-provider-test {
+  #view-settings .dp-settings-header-test-menu > .btn {
     min-height: 40px;
     justify-content: center;
   }

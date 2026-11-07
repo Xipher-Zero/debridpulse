@@ -174,12 +174,12 @@ def test_both_webhooks_use_the_standard_field_grammar_with_one_clear_each():
     assert "inline: true" in composer and "embedAction: WEBHOOK_CLEAR(key" in composer
 
     controls = block(runtime, "const WEBHOOK_CONTROLS = Object.freeze({", "const webhookPlaceholder")
-    assert "'Discord Webhook'" in controls
-    assert "Primary Discord destination for enabled notifications." in controls
+    assert "'Primary Webhook'" in controls
+    assert "Primary destination for enabled notifications." in controls
     assert "'Download Added Webhook'" in controls
     assert "Optional destination for new-download notifications. Leave blank to use the primary webhook." in controls
     assert "'Reporting Webhook'" in controls
-    assert "Optional destination for statistics reports. Leave blank to use the primary Discord webhook." in controls
+    assert "Optional destination for statistics reports. Leave blank to use the primary webhook." in controls
     # One declaration, three rows, one clear action shape.
     assert runtime.count("const WEBHOOK_CLEAR") == 1
     clear = block(runtime, "const WEBHOOK_CLEAR", "function webhookField")
@@ -236,7 +236,7 @@ def test_the_disclosure_is_named_exactly_and_uses_the_one_disclosure_control():
     assert "disclosureSection('Notification Events & Delivery Options', 'notifications-events'" in card
     assert "Additional Options" not in runtime
 
-    composer = block(runtime, "function disclosureSection(title, key, body, expanded = false)",
+    composer = block(runtime, "function disclosureSection(title, key, body, expanded = false, shortTitle = '')",
                      "  // Provider card:")
     assert "settingsDisclosure(bodyId, open, title, persistKey)" in composer
     assert "disclosureOpen(persistKey, expanded)" in composer
@@ -375,9 +375,14 @@ def test_the_shared_inline_primitive_puts_the_title_over_its_hint():
 
 def test_the_page_states_no_field_layout_of_its_own():
     """Correction 1's implementation rule: no Notifications-only offsets, no
-    absolutely positioned hint, no cloned component, no second abstraction."""
+    absolutely positioned hint, no cloned component, no second abstraction.
+    (A handheld hint taken out of view -- clipped to nothing, the hidden-hint
+    idiom every Settings section uses -- is not a layout offset.)"""
     css = source(STYLE)
-    for banned in ("position: absolute", "inset-inline-start", "float:",
+    for rule in re.findall(r"\{[^{}]*\}", css):
+        if "position: absolute" in rule:
+            assert "clip-path: inset(50%)" in rule and "width: 1px" in rule, rule
+    for banned in ("inset-inline-start", "float:",
                    "#view-settings .dp-settings-inline-field {",
                    "#view-settings .dp-settings-inline-field-info {",
                    "#view-settings .dp-settings-inline-field-control {",

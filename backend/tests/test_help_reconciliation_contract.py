@@ -171,7 +171,7 @@ def test_report_destination_and_snapshot_semantics():
 
     assert reporting_destination(SimpleNamespace(stats_report_webhook_url="", discord_webhook_url="https://d")) == "https://d"
     settings = _panel("settingsPanel")
-    assert "They go only to <b>Reporting Webhook</b>, or to the Discord Webhook when that is empty" in settings
+    assert "They go only to <b>Reporting Webhook</b>, or to the Primary Webhook when that is empty" in settings
     assert "never to DebridPulse's users" in settings
     # No browser surface reads the stored snapshots.
     assert not any("/stats/snapshots" in path.read_text(encoding="utf-8") for path in STATIC.glob("*.js"))
@@ -196,7 +196,7 @@ def test_settings_locations_named_in_help_exist():
     for card in ("Download Behavior & Limits", "Transfer Method Settings", "Disk Space & Recovery",
                  "Download Engine Activity", "Automatic Extraction", "Authentication Status",
                  "Username & Password", "OpenID Connect", "User Accounts", "Integration Accounts",
-                 "Integration Delivery Profiles", "Discord Notifications", "Statistics Reporting",
+                 "Integration Delivery Profiles", "Webhook Notifications", "Statistics Reporting",
                  "Event Logging", "Backups & Retention", "Database Reset Controls"):
         assert f"'{card}'" in page or f"'{card}'," in page, card
         assert card.replace("&", "&amp;") in HELP, card

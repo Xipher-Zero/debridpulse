@@ -316,7 +316,7 @@ def test_the_qualified_cells_state_the_policy_exceptions():
     assert "may decline" in rows["Pause, resume, retry, and reorder transfers"][3]
     # Personal notifications are a User's alone; Admin has the global ones.
     assert _derived(Capability.NOTIFICATIONS_SELF) == [False, True, False, False]
-    assert rows["Discord notifications and statistics reports"][1:] == ["Its own, under Notifications", "NO", "NO"]
+    assert rows["Webhook notifications and statistics reports"][1:] == ["Its own, under Notifications", "NO", "NO"]
     assert _derived(Capability.DEMAND_ANY) == [True, False, False, False]
     assert _derived(Capability.DEMAND_OWN) == [True, True, False, True]
     assert rows["Withdraw download requests"] == ["Any account's", "Its own", "NO", "Its own jobs"]
@@ -334,7 +334,7 @@ def test_the_reporting_explanation_names_the_implemented_destination():
     assert reporting_destination(both) == "https://r"
     assert reporting_destination(primary) == "https://d"
     reporting = HELP.split("'statistics-reporting': {", 1)[1].split("\n    },\n", 1)[0]
-    assert "the Reporting Webhook, or the Discord Webhook from Discord Notifications when no Reporting Webhook is set" in reporting
+    assert "the Reporting Webhook, or the Primary Webhook from Webhook Notifications when no Reporting Webhook is set" in reporting
     assert "It is not sent to DebridPulse users." in reporting
     assert "not a Statistics Snapshot" in reporting
     own = HELP.split("'statistics-reporting-own': {", 1)[1].split("\n    },\n", 1)[0]

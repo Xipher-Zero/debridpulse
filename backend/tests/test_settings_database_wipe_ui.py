@@ -34,11 +34,14 @@ def panel() -> str:
 
 def test_both_backup_actions_live_in_the_card_header_rail_in_order():
     body = panel()
-    rail = body[body.index("headerAction:"):body.index("</label>`,")]
+    # From 780px the rail; below 780px the same two actions in one Backups
+    # menu (headerActionsMenu), which clones them.
+    rail = body[body.index("action: headerActionsMenu('Backups & Retention', 'Backups',"):body.index("</label>`),")]
     assert rail.index('data-action="backups"') < rail.index('data-action="run-backup"')
     assert rail.index('data-action="run-backup"') < rail.index('data-setting="backup_enabled"')
     # Quiet/secondary for the manager, the existing positive treatment for the act.
-    assert '<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>' in rail
+    assert '<button class="btn btn-ghost btn-sm" type="button" data-action="backups"' in rail
+    assert 'data-menu-label="Backup Management" data-menu-closes>Backups</button>' in rail
     assert "List Backups" not in source(RUNTIME)
     assert 'class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup<' in rail
 
@@ -121,7 +124,7 @@ def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
 
 def test_backup_folder_is_the_centred_bordered_island_with_browse_inside_the_field():
     body = panel()
-    island = body[body.index('<div class="dp-settings-backup-folder-island">'):body.index("${disclosureSection(")]
+    island = body[body.index('<div class="dp-settings-backup-folder-island dp-settings-help-slot">'):body.index("${disclosureSection(")]
     assert "directoryField('backup_folder', 'Backup Folder'" in island
     assert "Choose where DebridPulse stores database and configuration backups." in island
     # Title-over-Hint left + control right, centred against it: the shared
@@ -157,7 +160,7 @@ def test_the_disclosure_is_the_canonical_one_with_the_exact_label():
     assert "disclosureSection('Additional Backup & Retention Settings', 'backup-retention'," in body
     js = source(RUNTIME)
     # The ONE disclosure component, exposing expanded/collapsed state.
-    section = js.split("function disclosureSection(title, key, body, expanded = false)", 1)[1]
+    section = js.split("function disclosureSection(title, key, body, expanded = false, shortTitle = '')", 1)[1]
     assert "settingsDisclosure(bodyId, open, title, persistKey)" in section.split("\n  }", 1)[0]
     assert 'aria-expanded="${expanded}"' in js
 
@@ -264,7 +267,7 @@ def test_database_reset_card_copy_and_operator_order_are_locked():
     assert "Allow Database Reset" in js
     assert "Unlock the database reset action." in js
     assert '>Reset Database</button>' in js
-    row = js.split('<div class="dp-settings-database-wipe-row">', 1)[1]
+    row = js.split('<div class="dp-settings-database-wipe-row dp-settings-island">', 1)[1]
     assert row.index("'db_wipe_enabled'") < row.index('data-action="wipe-database"')
     assert "Database Destructive Actions" not in js and "dpWipeControlsPolished" not in js
 
@@ -273,7 +276,7 @@ def test_a_deliberate_spacer_separates_the_warning_from_the_controls():
     body = panel()
     caution = body.index('class="dp-settings-caution"')
     spacer = body.index('class="dp-settings-database-reset-spacer"')
-    controls = body.index('class="dp-settings-database-wipe-row"')
+    controls = body.index('class="dp-settings-database-wipe-row ')
     assert caution < spacer < controls
     # Layout, not content: nothing for assistive technology to read.
     assert '<div class="dp-settings-database-reset-spacer" aria-hidden="true"></div>' in body

@@ -133,7 +133,7 @@
             <li><b>Services</b> and <b>Engines:</b> what each service and engine can and cannot do.</li>
             <li><b>Settings:</b> every Settings tab, card and important option. In Settings itself, the <b>Help</b> button (?) on each card explains that card.</li>
           </ul>
-          <p>Optional features such as automatic archive extraction, Discord notifications, backups and OpenID Connect sign-in can be added whenever you need them.</p>`)}
+          <p>Optional features such as automatic archive extraction, webhook notifications, backups and OpenID Connect sign-in can be added whenever you need them.</p>`)}
       </section>`;
   }
 
@@ -581,10 +581,10 @@
 
           ${accordion('Notifications', `
             <ul>
-              <li><b>Discord Notifications:</b> sends messages to a Discord channel through a <b>webhook</b>, a private address Discord creates for a channel. Fill in <b>Discord Webhook</b>; <b>Download Added Webhook</b> optionally sends new-download messages elsewhere. <b>Display Name</b> and <b>Avatar URL</b> (or its <b>Upload</b> button) set how messages appear. Under <b>Notification Events &amp; Delivery Options</b>, choose <b>Download Added</b>, <b>Download Completed</b>, <b>Download Error</b>, <b>Extraction Result</b> and <b>Update Available</b>, and the <b>Update Check Interval</b> (0 turns update checks off). <b>Test</b> sends a test message using the saved settings.</li>
-              <li><b>Statistics Reporting:</b> sends periodic summaries of this DebridPulse's activity to Discord. They go only to <b>Reporting Webhook</b>, or to the Discord Webhook when that is empty, never to DebridPulse's users. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now, even while automatic reports are off. Reports are separate from the statistics snapshots under Data &amp; Maintenance.</li>
+              <li><b>Webhook Notifications:</b> sends messages through a <b>webhook</b>, a private address a service such as Discord creates for a channel. A Discord webhook receives Discord messages; any other webhook receives a JSON summary of each event. Fill in <b>Primary Webhook</b>; <b>Download Added Webhook</b> optionally sends new-download messages elsewhere. <b>Display Name</b> and <b>Avatar URL</b> (or its <b>Upload</b> button) set how messages appear in Discord. Under <b>Notification Events &amp; Delivery Options</b>, choose <b>Download Added</b>, <b>Download Completed</b>, <b>Download Error</b>, <b>Extraction Result</b> and <b>Update Available</b>, and the <b>Update Check Interval</b> (0 turns update checks off). <b>Test</b> sends a test message using the saved settings.</li>
+              <li><b>Statistics Reporting:</b> sends periodic summaries of this DebridPulse's activity to a webhook. They go only to <b>Reporting Webhook</b>, or to the Primary Webhook when that is empty, never to DebridPulse's users. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now, even while automatic reports are off. Reports are separate from the statistics snapshots under Data &amp; Maintenance.</li>
             </ul>
-            <p>A <b>User</b> has their own <b>Notifications</b> page with the same two cards: Discord alerts about downloads they asked for, and reports of their own activity, sent only to the webhooks they enter there. Nothing falls back to the Admin's webhooks. Admins, ReadOnly Users and Integration accounts have no personal notifications.</p>
+            <p>A <b>User</b> has their own <b>Notifications</b> page with the same two cards: webhook alerts about downloads they asked for, and reports of their own activity, sent only to the Discord webhooks they enter there. Nothing falls back to the Admin's webhooks. Admins, ReadOnly Users and Integration accounts have no personal notifications.</p>
             <p>An uploaded avatar is served by DebridPulse itself, so Discord must be able to reach it over the internet. If DebridPulse is only reachable on your private network, use an avatar link hosted elsewhere.</p>`)}
 
           ${accordion('Data &amp; Maintenance', `
@@ -677,8 +677,8 @@
           ${accordion('Automatic extraction did not run or failed', `
             <p>Check that <b>Settings → Extraction → Automatic Extraction</b> is enabled; extraction only starts after the download is complete. Read the download's <b>Extraction</b> and <b>Extraction Error</b> fields. A protected archive needs its password in <b>Archive Passwords</b>, and the destination needs enough space. When extraction fails, the archive is kept so you can try again.</p>`)}
 
-          ${accordion('Discord or Prometheus is not working', `
-            <p>For Discord, press <b>Test</b> on the card, check the webhook still exists in Discord, and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper an Integration token from <b>Users &amp; Access</b>.</p>`)}
+          ${accordion('Webhook notifications or Prometheus are not working', `
+            <p>For webhook notifications, press <b>Test</b> on the card, check the webhook still exists at its service (in Discord, in the channel's settings), and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper an Integration token from <b>Users &amp; Access</b>.</p>`)}
 
           ${accordion('The page stops updating live', `
             <p>DebridPulse sends live updates over a long-lived connection (Server-Sent Events) and falls back to checking every 15 seconds if that fails. If updates are often late, a reverse proxy in front of DebridPulse is probably buffering or cutting the connection: it must allow long-running streamed responses. Reloading the page reconnects.</p>`)}

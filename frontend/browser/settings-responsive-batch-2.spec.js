@@ -456,7 +456,7 @@ function problems(list, width) {
 const INVENTORY = {
   authentication: ['Authentication Status', 'Username & Password', 'OpenID Connect'],
   users: ['User Accounts', 'Integration Accounts', 'Integration Delivery Profiles'],
-  notifications: ['Discord Notifications', 'Statistics Reporting'],
+  notifications: ['Webhook Notifications', 'Statistics Reporting'],
   maintenance: ['Event Logging', 'Backups & Retention', 'Database Reset Controls'],
 };
 
@@ -541,11 +541,11 @@ test('a real non-admin User keeps their own Notifications: the same two cards, h
       await page.waitForFunction(() => document.getElementById('sidebar').getAnimations().every(a => a.playState !== 'running'));
       await settle(page);
       const list = await headers(page, 'notifications');
-      expect(list.map(h => [h.name, h.topic])).toEqual([['Discord Notifications', 'discord-own'], ['Statistics Reporting', 'statistics-reporting-own']]);
+      expect(list.map(h => [h.name, h.topic])).toEqual([['Webhook Notifications', 'discord-own'], ['Statistics Reporting', 'statistics-reporting-own']]);
       expect(problems(list, width)).toEqual([]);
     }
     // The User's Help is their own scope's, and says nothing of Admin-only controls.
-    for (const [topic, title, own] of [['discord-own', 'Discord Notifications', 'Your own Discord alerts'],
+    for (const [topic, title, own] of [['discord-own', 'Webhook Notifications', 'Your own webhook alerts'],
       ['statistics-reporting-own', 'Statistics Reporting', 'activity attributed to you']]) {
       await page.locator(`[data-settings-help="${topic}"]`).click();
       const dialog = page.locator('.dp-modal-dialog.dp-settings-help-dialog');

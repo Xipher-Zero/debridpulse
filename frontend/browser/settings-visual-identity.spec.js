@@ -17,7 +17,7 @@ const CARDS = {
   'OpenID Connect': ['authentication', 'id-card'],
   'User Accounts': ['users', 'users'], 'Integration Accounts': ['users', 'key-round'],
   'Integration Delivery Profiles': ['users', 'workflow-users'],
-  'Discord Notifications': ['notifications', 'message-square'], 'Statistics Reporting': ['notifications', 'chart-line'],
+  'Webhook Notifications': ['notifications', 'message-square'], 'Statistics Reporting': ['notifications', 'chart-line'],
   'Backups & Retention': ['maintenance', 'archive'], 'Database Reset Controls': ['maintenance', 'database-x'],
 };
 const PROVIDERS = {alldebrid: '#FFA34E', debridlink: '#418DD5', premiumize: '#A43C8E', realdebrid: '#7EAC56',
@@ -149,7 +149,7 @@ const HEADERS = [
   ['users', 'User Accounts', '.dp-settings-users-card:not(.dp-settings-users-integrations-card)', 'users', 'users'],
   ['users', 'Integration Accounts', '.dp-settings-users-integrations-card', 'users', 'key-round'],
   ['users', 'Integration Delivery Profiles', '.dp-settings-delivery-profiles-card', 'users', 'workflow-users'],
-  ['notifications', 'Discord Notifications', '.dp-settings-discord-card', 'notifications', 'message-square'],
+  ['notifications', 'Webhook Notifications', '.dp-settings-discord-card', 'notifications', 'message-square'],
   ['notifications', 'Statistics Reporting', '.dp-settings-statistics-reporting-card', 'notifications', 'chart-line'],
   ['maintenance', 'Backups & Retention', '.dp-settings-backups-retention-card', 'maintenance', 'archive'],
   ['maintenance', 'Database Reset Controls', '.dp-settings-database-wipe-card', 'maintenance', 'database-x'],

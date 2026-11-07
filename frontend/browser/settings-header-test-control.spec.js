@@ -185,7 +185,7 @@ test.describe('below 780px', () => {
     await trigger(discordHead).click();
     await expect(menu(discordHead).locator('.dp-settings-header-test-status')).toHaveText('Configured');
     await menu(discordHead).locator('button[data-action="test-discord"]').click();
-    await expect(page.locator('.toast').last()).toContainText('Discord: Webhook refused');
+    await expect(page.locator('.toast').last()).toContainText('Webhook Notifications: Webhook refused');
     expect(discord).toEqual(['POST']);
     expect(await isOpen(menu(discordHead))).toBe(true);
     await page.keyboard.press('Escape');
@@ -287,7 +287,7 @@ test('at 780px an idle menu closes and the direct Test takes over', async ({page
   const direct = head.locator('.dp-settings-header-action > [data-action="test-discord"]');
   await expect(direct).toBeVisible();
   await direct.click();
-  await expect(page.locator('.toast').last()).toContainText('Discord notification sent');
+  await expect(page.locator('.toast').last()).toContainText('Test notification sent');
   expect(discord).toEqual(['POST']);
 });
 
@@ -438,7 +438,7 @@ test('a Test running across 779 to 780px closes its menu when it answers; focus 
   await page.setViewportSize({width: 780, height: 900});
   expect(await isOpen(menu(head))).toBe(true);           // running: kept until it answers
   release();
-  await expect(page.locator('.toast').last()).toContainText('Discord notification sent');
+  await expect(page.locator('.toast').last()).toContainText('Test notification sent');
   await expect.poll(() => isOpen(menu(head))).toBe(false);
   await expect(trigger(head)).toHaveAttribute('aria-expanded', 'false');
   await expect(menu(head).locator('*')).toHaveCount(0);
@@ -537,7 +537,7 @@ test('a User\'s own Notifications take the same header Test treatment through th
     .find(item => item.textContent.includes('Notifications'))));
   const view = page.locator('#view-settings');
   await expect(view).toHaveAttribute('data-settings-context', 'self');
-  for (const [card, name, action, calls] of [['.dp-settings-discord-card', 'Enable Discord Notifications', 'test-discord', own],
+  for (const [card, name, action, calls] of [['.dp-settings-discord-card', 'Enable Webhook Notifications', 'test-discord', own],
                                              ['.dp-settings-statistics-reporting-card', 'Enable Statistics Reporting', 'send-report', ownReport]]) {
     const head = view.locator(`${card} > .card-header`);
     await expect(head).not.toContainText('Enable');

@@ -35,7 +35,7 @@
       ['Delete, cancel, or redirect transfers', YES,
         'Only when no other account still needs the transfer', NO, NO],
       ['Withdraw download requests', 'Any account’s', 'Its own', NO, 'Its own jobs'],
-      ['Discord notifications and statistics reports', 'The global ones, in Settings',
+      ['Webhook notifications and statistics reports', 'The global ones, in Settings',
         'Its own, under Notifications', NO, NO],
       ['Settings, accounts, maintenance, the Activity Log, and global pause', YES, NO, NO, NO],
       ['Hold API tokens', NO, NO, NO, 'Yes, issued by an Admin'],
@@ -555,14 +555,15 @@
 
     /* ── Notifications (global) ───────────────────────────────────────── */
     discord: {
-      title: 'Discord Notifications',
+      title: 'Webhook Notifications',
       sections: [
         {text: [
-          'Instance-wide Discord alerts about download events. They describe every download, whoever added it, and go only to the webhooks configured here.',
+          'Instance-wide webhook alerts about download events. They describe every download, whoever added it, and go only to the webhooks configured here.',
+          'A Discord webhook receives each alert as a Discord message; any other webhook receives it as a JSON summary of the event.',
         ]},
         {heading: 'Principal controls', list: [
           'Enable turns these alerts on or off; it does not affect statistics reports.',
-          'The Discord Webhook receives every alert. The optional Download Added Webhook receives only Download Added alerts; without it, those go to the Discord Webhook too.',
+          'The Primary Webhook receives every alert. The optional Download Added Webhook receives only Download Added alerts; without it, those go to the Primary Webhook too.',
           'Display Name and Avatar URL set how the sender appears in Discord.',
           'Notification Events choose which alerts are sent, including Update Available and how often DebridPulse checks for a new release.',
           'Test sends a test message to the saved webhooks.',
@@ -576,10 +577,10 @@
       title: 'Statistics Reporting',
       sections: [
         {text: [
-          'An outbound summary of this DebridPulse instance’s activity, sent to a Discord webhook. It is not a Statistics Snapshot; snapshots are kept internally under Data & Maintenance and are never sent.',
+          'An outbound summary of this DebridPulse instance’s activity, sent to a webhook. It is not a Statistics Snapshot; snapshots are kept internally under Data & Maintenance and are never sent.',
         ]},
         {heading: 'Who receives it', list: [
-          'Only the configured destination: the Reporting Webhook, or the Discord Webhook from Discord Notifications when no Reporting Webhook is set.',
+          'Only the configured destination: the Reporting Webhook, or the Primary Webhook from Webhook Notifications when no Reporting Webhook is set.',
           'It is not sent to DebridPulse users. Users who set up their own reports receive only reports about their own activity, at their own destination.',
         ]},
         {heading: 'What and when', list: [
@@ -593,14 +594,15 @@
 
     /* ── Notifications (a User's own) ─────────────────────────────────── */
     'discord-own': {
-      title: 'Discord Notifications',
+      title: 'Webhook Notifications',
       sections: [
         {text: [
-          'Your own Discord alerts, about downloads you requested. They go only to the webhooks you configure here, and nothing here changes the instance-wide notifications an Admin manages.',
+          'Your own webhook alerts, about downloads you requested. They go only to the webhooks you configure here, and nothing here changes the instance-wide notifications an Admin manages.',
+          'Your webhooks must be Discord webhooks.',
         ]},
         {heading: 'Principal controls', list: [
           'Enable turns your alerts on or off.',
-          'Your Discord Webhook receives your alerts; an optional Download Added Webhook receives only Download Added alerts. Nothing falls back to an Admin’s webhook.',
+          'Your Primary Webhook receives your alerts; an optional Download Added Webhook receives only Download Added alerts. Nothing falls back to an Admin’s webhook.',
           'Choose which events you are told about: Download Added, Download Completed, Download Error, and Extraction Result.',
           'An alert is sent only while your own request is part of that download; withdrawn requests send nothing.',
         ]},
@@ -613,7 +615,7 @@
           'Your own statistics report: a summary of the download activity attributed to you, sent to a Discord webhook you choose. It never includes other accounts’ activity.',
         ]},
         {heading: 'Who receives it', list: [
-          'Only your destination: your Reporting Webhook, or your own Discord Webhook when no Reporting Webhook is set. An Admin’s destinations are never used.',
+          'Only your destination: your Reporting Webhook, or your own Primary Webhook when no Reporting Webhook is set. An Admin’s destinations are never used.',
         ]},
         {heading: 'What and when', list: [
           'Report Window chooses how much recent activity each report covers.',

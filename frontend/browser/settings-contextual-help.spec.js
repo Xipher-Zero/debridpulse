@@ -108,7 +108,7 @@ test('a help chip opens its own card’s read-only help; Escape returns focus an
   await expect(dialog).toHaveAttribute('role', 'dialog');
   await expect(dialog).toHaveAttribute('aria-modal', 'true');
   await expect(dialog.locator('.dp-modal-title')).toHaveText('Statistics Reporting');
-  await expect(dialog).toContainText('Reporting Webhook, or the Discord Webhook');
+  await expect(dialog).toContainText('Reporting Webhook, or the Primary Webhook');
   await expect(dialog).toContainText('It is not sent to DebridPulse users.');
   await expect(dialog.locator('input, select, textarea')).toHaveCount(0);
   await expect(dialog.locator('button')).toHaveCount(2);

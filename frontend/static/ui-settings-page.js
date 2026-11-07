@@ -743,8 +743,10 @@
 
   const ISLAND_STACKED_STEP = 2;
 
-  // The settings an island holds, as drawn.
-  const islandFields = island => Array.from(island.querySelectorAll('.dp-settings-inline-field'))
+  // The settings an island holds, as drawn: its inline fields, or the blocks
+  // an island of other controls names its members (Database Reset's toggle
+  // and action).
+  const islandFields = island => Array.from(island.querySelectorAll('.dp-settings-inline-field, .dp-settings-island-member'))
     .filter(field => field.getClientRects().length);
 
   // Whether its settings, laid out as a row, began a second line.
@@ -775,12 +777,13 @@
   }
 
   // Each setting's title carries its hint while, and only while, the hint
-  // is not drawn -- an island's settings (fitIsland) and the Authentication
-  // cards' (fitAuthBody) alike.
+  // is not drawn -- an island's settings (fitIsland) and the handheld bodies'
+  // (fitHandheldBodies) alike; a toggle's title (.tl) and detail (.td) as an
+  // inline field's.
   function promoteHints(fields) {
     fields.forEach(field => {
-      const title = field.querySelector(':scope > .dp-settings-inline-field-info > .form-label');
-      const hint = field.querySelector(':scope > .dp-settings-inline-field-info > .form-hint');
+      const title = field.querySelector(':scope > .dp-settings-inline-field-info > .form-label, :scope > .toggle-info > .tl');
+      const hint = field.querySelector(':scope > .dp-settings-inline-field-info > .form-hint, :scope > .toggle-info > .td');
       if (!title || !hint) return;
       const text = hint.textContent.trim();
       if (text && hint.getBoundingClientRect().width <= 1) {
@@ -1644,16 +1647,24 @@
    * resize or rebalance the rows above it -- they are not in it.
    *
    * Expansion is presentation, never configuration: the choice is remembered
-   * for the page's lifetime by the disclosure owner and is written nowhere. */
-  function disclosureSection(title, key, body, expanded = false) {
+   * for the page's lifetime by the disclosure owner and is written nowhere.
+   *
+   * ``shortTitle``: the words a handheld subsection header draws instead
+   * (below 780px, ui-settings-page.css), from its attribute -- as a card's
+   * short title is drawn -- so the title's text and the disclosure's name stay
+   * the full title. */
+  function disclosureSection(title, key, body, expanded = false, shortTitle = '') {
     const safe = String(key).replace(/[^a-z0-9_-]/gi, '-');
     const bodyId = `dp-settings-section-body-${safe}`;
     const persistKey = `section:${safe}`;
     const open = disclosureOpen(persistKey, expanded);
+    const words = shortTitle
+      ? `<span class="dp-settings-subsection-title-full">${html(title)}</span><span class="dp-settings-subsection-title-short" aria-hidden="true" data-short-title="${html(shortTitle)}"></span>`
+      : html(title);
     return `
       <section class="dp-settings-subsection">
         <div class="dp-settings-subsection-header">
-          <span class="dp-settings-subsection-title">${html(title)}</span>
+          <span class="dp-settings-subsection-title">${words}</span>
           ${settingsDisclosure(bodyId, open, title, persistKey)}
         </div>
         <div class="dp-settings-subsection-body" id="${bodyId}"${open ? '' : ' hidden'}>${body}</div>
@@ -1743,6 +1754,23 @@
                   aria-controls="${menu}" aria-expanded="false" aria-label="Test ${html(title)}" data-verification="${verification}"
                   data-report="${html(status.text)}" data-report-tone="${html(status.tone)}">Test</button>
           <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} test"></div>
+        </span>${toggle}</div>`;
+  }
+
+  /* A card's header actions, as each width presents them: the same group.
+   * From 780px the actions sit in the rail exactly as before; below 780px
+   * they give way to one ``label`` trigger whose menu holds each of them,
+   * cloned as it opens (drawHeaderTestMenu) and each named by its
+   * data-menu-label where it has one -- so the page's one action dispatch runs
+   * each existing handler. An action marked data-menu-closes closes the menu
+   * first (the one it opens takes over: Backup Management's dialog). */
+  function headerActionsMenu(title, label, actions, toggle = '') {
+    const menu = `dp-settings-test-menu-${++headerTestMenus}`;
+    return `<div class="dp-settings-header-action">${actions}</div><div class="dp-settings-header-test-group">
+        <span class="dp-settings-header-test-shell">
+          <button class="btn btn-ghost btn-sm dp-settings-header-test-trigger" type="button" popovertarget="${menu}"
+                  aria-controls="${menu}" aria-expanded="false">${html(label)}</button>
+          <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} actions"></div>
         </span>${toggle}</div>`;
   }
 
@@ -3258,7 +3286,7 @@
    * is a usable saved destination at all, and whether that exact saved
    * configuration has been proven by a Test. Both facts are canonical and
    * backend-derived -- the effective-destination rule (including Statistics
-   * Reporting's fallback to the primary Discord webhook) and the durable
+   * Reporting's fallback to the primary webhook) and the durable
    * verification evidence both belong to services/notification_service.py.
    * This function only reports them.
    *
@@ -3282,13 +3310,13 @@
    * delivery fallback, which the backend owns. */
   const WEBHOOK_CONTROLS = Object.freeze({
     discord_webhook_url: {
-      label: 'Discord Webhook',
-      placeholder: 'Primary Discord webhook',
-      hint: 'Primary Discord destination for enabled notifications.',
-      aria: 'Clear the stored primary Discord webhook',
+      label: 'Primary Webhook',
+      placeholder: 'Primary webhook',
+      hint: 'Primary destination for enabled notifications.',
+      aria: 'Clear the stored primary webhook',
       confirm: {
-        title: 'Clear the Discord webhook?',
-        message: 'The stored primary Discord webhook will be removed. Discord notifications '
+        title: 'Clear the primary webhook?',
+        message: 'The stored primary webhook will be removed. Webhook notifications '
           + 'cannot be delivered until a webhook is configured again.',
       },
     },
@@ -3300,18 +3328,18 @@
       confirm: {
         title: 'Clear the Download Added webhook?',
         message: 'The dedicated Download Added destination will be removed. New-download '
-          + 'notifications return to the primary Discord webhook.',
+          + 'notifications return to the primary webhook.',
       },
     },
     stats_report_webhook_url: {
       label: 'Reporting Webhook',
       placeholder: 'Optional reporting webhook',
-      hint: 'Optional destination for statistics reports. Leave blank to use the primary Discord webhook.',
+      hint: 'Optional destination for statistics reports. Leave blank to use the primary webhook.',
       aria: 'Clear the stored reporting webhook',
       confirm: {
         title: 'Clear the reporting webhook?',
         message: 'The dedicated statistics-report destination will be removed. Reports return '
-          + 'to the primary Discord webhook when one is configured.',
+          + 'to the primary webhook when one is configured.',
       },
     },
   });
@@ -3385,15 +3413,18 @@
    * own second-line slot rather than dropped in beside the input. */
   const avatarPreview = url => `
             <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact"${
-              url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : ''}</div>`;
+              url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Avatar preview"><span>${html(url)}</span>` : ''}</div>`;
 
   /* ``own``: a standard User's own configuration. The same two cards and
    * controls, less what is not theirs to set: instance update notices and
    * their check interval, and the instance-hosted avatar upload (a User's
-   * avatar is a URL Discord fetches itself). */
+   * avatar is a URL Discord fetches itself). Display Name and Avatar URL are
+   * how the sender appears on a Discord webhook -- any other webhook receives
+   * the event itself (services/notifications.py) -- so their hints name
+   * Discord. */
   function notificationsPanel(s, own = false) {
-    const discord = card('Discord Notifications', `
-      <div class="dp-settings-notifications-identity-row">
+    const discord = card('Webhook Notifications', `
+      <div class="dp-settings-notifications-identity-row dp-settings-help-slot">
         ${input('discord_username', 'Display Name', own ? s.discord_username || '' : s.discord_username || 'DebridPulse', {
           placeholder: own ? 'DebridPulse' : '',
           hint: 'Name shown as the sender of Discord notifications.',
@@ -3433,10 +3464,12 @@
             controlClass: 'dp-settings-unit-field',
           }),
         ],
-      ))}
+      ), false, 'Delivery Options')}
     `, {
       className: 'dp-settings-discord-card',
       help: own ? 'discord-own' : 'discord',
+      headerFit: 'wrap',
+      helpRow: false,
       titlePrefix: familyIcon('notifications', 'message-square'),
       headerCenter: own ? 'Configure your identity, Discord destinations, and alerts for your own downloads.'
         : 'Configure notification identity, delivery destinations, and event alerts.',
@@ -3445,14 +3478,14 @@
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
       headerAction: providerTestAction('test-discord'),
       action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false, '',
-        'Enable Discord Notifications'),
+        'Enable Webhook Notifications'),
       testStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
     });
 
     const reports = card('Statistics Reporting', `
-      <div class="dp-settings-statistics-reporting-row">
+      <div class="dp-settings-statistics-reporting-row dp-settings-help-slot">
         ${webhookField('stats_report_webhook_url', s.stats_report_webhook_url_configured)}
-        <div class="dp-settings-statistics-cadence-group dp-settings-island">
+        <div class="dp-settings-statistics-cadence-group dp-settings-island" data-island-columns>
           ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
             type: 'number', min: 0, max: 168, step: 1,
             hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
@@ -3472,6 +3505,8 @@
     `, {
       className: 'dp-settings-statistics-reporting-card',
       help: own ? 'statistics-reporting-own' : 'statistics-reporting',
+      headerFit: 'wrap',
+      helpRow: false,
       titlePrefix: familyIcon('notifications', 'chart-line'),
       headerCenter: own ? 'Configure where reports of your own activity are sent, how often, and how much they summarize.'
         : 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
@@ -3529,7 +3564,7 @@
     if (!preview) return;
     preview.hidden = !url;
     preview.innerHTML = url
-      ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : '';
+      ? `<img src="${html(url)}" alt="Avatar preview"><span>${html(url)}</span>` : '';
   }
 
   /* The accepted notification state a Test just established, adopted through
@@ -3957,25 +3992,35 @@
     });
   }
 
-  /* The Username & Password and OpenID Connect bodies below 780px: their
-   * settings' hints leave the layout there (ui-settings-authentication.css),
-   * each said instead by its own title (promoteHints); and the access policy
-   * toggle says "Allow Any Identity" where its full words would not stay on
-   * one line beside the toggle -- read from the label as drawn, its full
-   * words staying the toggle's name. Re-read when either body's room
-   * changes. */
-  const AUTH_HINT_FIELDS = '.dp-settings-username-password-card .dp-settings-inline-field, .dp-settings-oidc-card .dp-settings-inline-field';
-  let authBodyObserver = null;
-  let authBodyFit = null;
+  /* The handheld bodies below 780px: the settings named here leave their
+   * hints out of the layout there (each card's stylesheet) -- Username &
+   * Password and OpenID Connect, Webhook Notifications' identity and
+   * destinations, the Reporting Webhook and Backup Folder -- each said
+   * instead by its own title (promoteHints; Allow Database Reset is an
+   * island's, fitIsland); and the
+   * access policy toggle says "Allow Any Identity" where its full words would
+   * not stay on one line beside the toggle -- read from the label as drawn,
+   * its full words staying the toggle's name. Re-read when any of their
+   * bodies' room changes. */
+  const HANDHELD_HINT_CARDS = ['.dp-settings-username-password-card', '.dp-settings-oidc-card', '.dp-settings-discord-card',
+    '.dp-settings-statistics-reporting-card', '.dp-settings-backups-retention-card'];
+  const HANDHELD_HINT_FIELDS = [
+    '.dp-settings-username-password-card .dp-settings-inline-field',
+    '.dp-settings-oidc-card .dp-settings-inline-field',
+    '.dp-settings-discord-card :is(.dp-settings-notifications-identity-row, .dp-settings-notifications-delivery-row) > .dp-settings-inline-field',
+    '.dp-settings-statistics-reporting-row > .dp-settings-webhook-row',
+    '.dp-settings-backup-folder-field',
+  ].join(', ');
+  let handheldBodyObserver = null;
+  let handheldBodyFit = null;
 
-  function fitAuthBody() {
-    authBodyObserver?.disconnect();
-    authBodyObserver = null;
+  function fitHandheldBodies() {
+    handheldBodyObserver?.disconnect();
+    handheldBodyObserver = null;
     const view = root();
-    const bodies = Array.from(view?.querySelectorAll(
-      '.dp-settings-username-password-card > .card-body, .dp-settings-oidc-card > .card-body') || []);
-    authBodyFit = bodies.length ? () => {
-      promoteHints(Array.from(view.querySelectorAll(AUTH_HINT_FIELDS)).filter(field => field.getClientRects().length));
+    const bodies = Array.from(view?.querySelectorAll(HANDHELD_HINT_CARDS.map(card => `${card} > .card-body`).join(', ')) || []);
+    handheldBodyFit = bodies.length ? () => {
+      promoteHints(Array.from(view.querySelectorAll(HANDHELD_HINT_FIELDS)).filter(field => field.getClientRects().length));
       const policy = view.querySelector('.dp-settings-oidc-allow-all');
       const words = policy?.querySelector('.tl');
       if (!words || !words.getClientRects().length) return;
@@ -3991,10 +4036,10 @@
       const overrun = boxes.some(box => box.left < row.left - 0.5 || (toggle && box.right > toggle.left + 0.5));
       if (lines > 1 || overrun) policy.dataset.words = 'short';
     } : null;
-    authBodyFit?.();
-    if (authBodyFit && typeof ResizeObserver === 'function') {
-      authBodyObserver = new ResizeObserver(() => authBodyFit?.());
-      bodies.forEach(body => authBodyObserver.observe(body));
+    handheldBodyFit?.();
+    if (handheldBodyFit && typeof ResizeObserver === 'function') {
+      handheldBodyObserver = new ResizeObserver(() => handheldBodyFit?.());
+      bodies.forEach(body => handheldBodyObserver.observe(body));
     }
   }
 
@@ -6140,7 +6185,7 @@
     });
     const backupEnabledId = fieldId('backup_enabled');
     const backups = card('Backups & Retention', `
-      <div class="dp-settings-backup-folder-island">
+      <div class="dp-settings-backup-folder-island dp-settings-help-slot">
         ${directoryField('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups', {
           hint: 'Choose where DebridPulse stores database and configuration backups.',
           browseAction: 'browse-backup-folder',
@@ -6178,23 +6223,28 @@
             embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
           }),
         ),
-      ))}
+      ), false, 'Backup Settings')}
     `, {
       className: 'dp-settings-backups-retention-card',
       help: 'backups',
+      headerFit: 'wrap',
+      helpRow: false,
+      shortTitle: 'Backup Control',
       titlePrefix: familyIcon('maintenance', 'archive'),
       headerCenter: 'Configure automated backups and retention for backups and statistics snapshots.',
       headerCenterClass: 'dp-settings-backups-header-copy',
       hinted: true,
-      headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
+      // Below 780px the two actions are one Backups menu (headerActionsMenu).
+      action: headerActionsMenu('Backups & Retention', 'Backups', `<button class="btn btn-ghost btn-sm" type="button" data-action="backups"
+                  data-menu-label="Backup Management" data-menu-closes>Backups</button>
           <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
-      action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
+      `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
         <span class="toggle">
           <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${commitAttributes('backup_enabled')} ${checked(s.backup_enabled !== false)}
                  aria-label="Enable Backups & Retention">
           <span class="ttrack"></span>
         </span>
-      </label>`,
+      </label>`),
     });
     const reset = card('Database Reset Controls', `
       <div class="dp-settings-caution">
@@ -6202,15 +6252,17 @@
         <span>Processing is paused automatically for the reset and returned to its previous state afterwards. A safety backup is always created first; the reset is aborted if it fails.</span>
       </div>
       <div class="dp-settings-database-reset-spacer" aria-hidden="true"></div>
-      <div class="dp-settings-database-wipe-row">
-        ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle')}
-        <div class="dp-settings-actions dp-settings-database-wipe-action">
+      <div class="dp-settings-database-wipe-row dp-settings-island">
+        ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle dp-settings-island-member')}
+        <div class="dp-settings-actions dp-settings-database-wipe-action dp-settings-island-member">
           <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database">Reset Database</button>
         </div>
       </div>
     `, {
       className: 'dp-settings-database-wipe-card',
       help: 'database-reset',
+      headerFit: 'wrap',
+      helpRow: false,
       titlePrefix: familyIcon('maintenance', 'database-x'),
       headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
@@ -6293,7 +6345,7 @@
     fitHeaderHints();
     fitIslands();
     fitAuthKpis();
-    fitAuthBody();
+    fitHandheldBodies();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -6605,12 +6657,21 @@
   const openTestMenus = () => document.querySelectorAll('#view-settings .dp-settings-header-test-menu:popover-open');
   const followTestMenus = () => openTestMenus().forEach(placeHeaderTestMenu);
   const testMenuRunning = menu => !!menu.querySelector('button[data-dp-settings-markup]');
-  // The menu's content, drawn as it opens: the card's report, then its Test.
+  // The menu's content, drawn as it opens: the card's report, then its Test
+  // -- or, for a card's actions menu (headerActionsMenu), each of its actions.
   function drawHeaderTestMenu(menu) {
     if (testMenuRunning(menu)) return;
     const trigger = menu.closest('.dp-settings-header-test-shell')?.querySelector('.dp-settings-header-test-trigger');
-    const test = menu.closest('.dp-settings-card-header-controls')
-      ?.querySelector(':scope > .dp-settings-header-action > .dp-settings-provider-test');
+    const actions = menu.closest('.dp-settings-card-header-controls')?.querySelector(':scope > .dp-settings-header-action');
+    if (trigger && actions && !('report' in trigger.dataset)) {
+      menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > button[data-action]'), button => {
+        const item = button.cloneNode(true);
+        if (item.dataset.menuLabel) item.textContent = item.dataset.menuLabel;
+        return item;
+      }));
+      return;
+    }
+    const test = actions?.querySelector(':scope > .dp-settings-provider-test');
     if (!trigger || !test) return;
     const report = document.createElement('div');
     report.className = 'dp-settings-header-test-status';
@@ -6637,16 +6698,22 @@
     }
     if (HANDHELD.matches) return;
     // Focus was in the menu, or nowhere (a running Test's own button gives it
-    // up while disabled): it goes to the direct Test, never from elsewhere.
+    // up while disabled): it goes to the direct action, never from elsewhere.
     const active = document.activeElement;
     const focused = !active || active === document.body || menu.contains(active);
     menu.hidePopover();
     if (focused) {
       menu.closest('.dp-settings-card-header-controls')
-        ?.querySelector(':scope > .dp-settings-header-action > .dp-settings-provider-test')?.focus({preventScroll: true});
+        ?.querySelector(`:scope > .dp-settings-header-action > [data-action="${CSS.escape(button.dataset.action || '')}"]`)
+        ?.focus({preventScroll: true});
     }
   }
   function bindHeaderTestMenus(view) {
+    // Before the page's dispatch runs the action (the capture phase).
+    view.addEventListener('click', event => {
+      event.target.closest?.('.dp-settings-header-test-menu:popover-open > [data-menu-closes]')
+        ?.parentElement.hidePopover();
+    }, true);
     view.addEventListener('beforetoggle', event => {
       const menu = event.target;
       if (menu instanceof HTMLElement && menu.matches('.dp-settings-header-test-menu') && event.newState === 'open') {
@@ -7348,10 +7415,10 @@
         ? await request('POST', `${OWN_NOTIFICATIONS}/test-discord`, undefined, 20000)
         : await request('POST', '/settings/validate-discord', undefined, 20000);
       adoptNotifications(result.notifications);
-      notify('Discord notification sent', 'success');
+      notify('Test notification sent', 'success');
     } catch (error) {
       await refreshNotificationState();
-      notify(`Discord: ${error.message}`, 'error');
+      notify(`Webhook Notifications: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);
     }
@@ -7465,8 +7532,8 @@
     if (avatar) avatar.value = accepted;
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: 'Clear the Discord avatar?',
-      message: 'The stored avatar URL will be removed. Discord notifications will be sent '
+      title: 'Clear the avatar?',
+      message: 'The stored avatar URL will be removed. Notifications will be sent to Discord '
         + 'without a custom avatar until a new one is set.',
       confirmLabel: 'Clear Avatar',
     });
@@ -8081,7 +8148,7 @@
     headerHintFit?.();
     islandFit?.();
     authKpiFit?.();
-    authBodyFit?.();
+    handheldBodyFit?.();
   });
 
   registerCommitScopes();

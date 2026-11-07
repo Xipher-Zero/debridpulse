@@ -25,7 +25,7 @@ def test_the_stacked_island_keeps_each_setting_at_its_own_width():
     assert "stretch" not in stacked
     # Each setting centres ITSELF, so no island's own cross-axis rule (the
     # session row's equal-height `stretch`) can widen one to the island.
-    assert ("#view-settings .dp-settings-island[data-island='stacked'] .dp-settings-inline-field {\n"
+    assert ("#view-settings .dp-settings-island[data-island='stacked'] :is(.dp-settings-inline-field, .dp-settings-island-member) {\n"
             "  align-self: center;\n}") in PAGE_CSS
     assert "justify-content: space-between" not in PAGE_CSS.split("data-island='stacked'", 1)[1].split("@media", 1)[0]
     assert 'dp-settings-auth-session-row dp-settings-island' in PAGE
@@ -77,7 +77,7 @@ def test_the_credential_status_never_says_verified():
 def test_every_governing_card_of_the_four_sections_is_hinted_and_their_private_grids_are_retired():
     # Items 2 and 6: one grammar, one fitter.
     for card in ("Authentication Status", "Username & Password", "OpenID Connect", "User Accounts", "Integration Accounts",
-                 "Integration Delivery Profiles", "Discord Notifications", "Statistics Reporting", "Event Logging",
+                 "Integration Delivery Profiles", "Webhook Notifications", "Statistics Reporting", "Event Logging",
                  "Backups & Retention", "Database Reset Controls"):
         call = PAGE.split(f"card('{card}'", 1)[1].split("\n    });", 1)[0]
         assert "hinted: true" in call, card
