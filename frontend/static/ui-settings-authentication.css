@@ -423,6 +423,20 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     flex-direction: column;
     gap: 14px;
   }
+
+  /* The password field and its Apply are one control group: the setting is
+     its title over that group (each setting below 780px is a column,
+     ui-settings-page.css), the field taking what Apply leaves and Apply its
+     own size beside it, at the setting's own gap. */
+  #view-settings .dp-settings-auth-credentials-row > .dp-settings-inline-field.dp-settings-auth-password-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  #view-settings .dp-settings-auth-password-field > .dp-settings-inline-field-info {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Canonical authentication field/duration details. */
