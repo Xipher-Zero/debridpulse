@@ -27,11 +27,15 @@ def _keys(block: str) -> list[str]:
 def test_the_downloads_viewport_reserves_its_scrollbar_room():
     # Item 1: the table's tracks are sized from the viewport's 100cqw, which a
     # scrollbar appearing later (a selection's toolbar taking height) does not
-    # shrink -- so its room is reserved, not hidden.
+    # shrink -- so its room is reserved, and the table fits beside it. The
+    # viewport scrolls only vertically: a page turn's fading still copy is
+    # clipped rather than shown as a sideways scrollbar. Hiding is no
+    # substitute for the reservation; both hold.
     wrap = DOWNLOADS_CSS.split("/* ── Data viewport", 1)[1].split("#view-torrents .dp-downloads-table-wrap {", 1)[1]
     wrap = wrap.split("}", 1)[0]
     assert "scrollbar-gutter: stable;" in wrap
-    assert "overflow-x: hidden" not in DOWNLOADS_CSS
+    assert "overflow-x: hidden !important;" in wrap
+    assert DOWNLOADS_CSS.count("overflow-x: hidden") == 1
 
 
 def test_the_two_bounded_islands_share_one_measured_stacking_owner():
