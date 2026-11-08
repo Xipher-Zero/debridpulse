@@ -1009,6 +1009,94 @@ test('the presentation changing keeps the section, its panel, an unsent edit and
   expect(sent).toEqual([]);
 });
 
+/* A section change shows the new section from its top, however far down the
+ * last one was scrolled: by a tab, Previous / Next, the keyboard, or two
+ * choices in a row, with and without motion. The section leaving keeps its
+ * place while it slides away (it is kept, drawn where it stood), and an edit
+ * within a section keeps that section where it is. */
+test('a new section opens at its top while the one leaving keeps its place, and an edit keeps the section where it is', async ({page}) => {
+  await openSettings(page, 1000, {fallbackFonts: true});
+  const deck = '#view-settings .dp-settings-scroll';
+  const order = await page.evaluate(() => [...new Set([...document.querySelectorAll('#view-settings .dp-settings-tabs:not(.dp-motion-still) [data-tab]')].map(tab => tab.dataset.tab))]);
+  const panel = id => page.locator(`#view-settings [data-panel="${id}"]`);
+  const depth = async () => page.locator(deck).evaluate(node => node.scrollHeight - node.clientHeight);
+  const toBottom = () => page.locator(deck).evaluate(node => { node.scrollTop = node.scrollHeight; return node.scrollTop; });
+  // Every frame of a change: the deck's scroll, and the kept outgoing section's top.
+  const watch = () => page.evaluate(selector => {
+    window.__dpScroll = [];
+    const tick = () => {
+      const node = document.querySelector(selector);
+      const leaving = node.querySelector('[data-dp-motion-outgoing]');
+      const shown = [...node.querySelectorAll('[data-panel]')].find(part => !part.hidden && !part.hasAttribute('data-dp-motion-outgoing'));
+      window.__dpScroll.push({scroll: node.scrollTop, shown: shown?.dataset.panel, leaving: leaving?.dataset.panel, top: leaving?.getBoundingClientRect().top});
+      if (window.__dpScroll.length < 90) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, deck);
+  const frames = () => page.evaluate(() => window.__dpScroll);
+  const nextControl = () => page.locator('#view-settings .dp-settings-nav-end[data-settings-end="next"]:visible').first();
+  // A window short enough that neighbouring sections scroll.
+  const size = async width => { await page.setViewportSize({width, height: 700}); await settle(page); };
+  for (const width of [1000, 390]) {
+    await size(width);
+    // A deep section whose next one is deep too, so an inherited place would show.
+    const deep = {};
+    for (const id of order) { await choose(page, id); deep[id] = await depth(); }
+    const start = order.slice(0, -1).sort((a, b) => Math.min(deep[b], deep[order[order.indexOf(b) + 1]]) - Math.min(deep[a], deep[order[order.indexOf(a) + 1]]))[0];
+    const following = order[order.indexOf(start) + 1];
+    expect(Math.min(deep[start], deep[following]), `${width}px: two deep neighbours`).toBeGreaterThan(40);
+    const ways = {
+      tab: () => choose(page, following),
+      next: () => nextControl().click(),
+      keyboard: async () => { await selected(page).focus(); await page.keyboard.press('ArrowRight'); },
+      twice: async () => { await selected(page).focus(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); },
+    };
+    for (const [way, act] of Object.entries(ways)) {
+      await choose(page, start);
+      const scrolled = await toBottom();
+      expect(scrolled, `${width}px ${way}: scrolled down`).toBeGreaterThan(40);
+      const stood = await panel(start).evaluate(node => node.getBoundingClientRect().top);
+      await watch();
+      await act();
+      await settle(page);
+      const seen = await frames();
+      const arrived = seen.filter(frame => frame.shown && frame.shown !== start);
+      expect(arrived.length, `${width}px ${way}: the new section drawn`).toBeGreaterThan(0);
+      expect(arrived.filter(frame => frame.scroll !== 0), `${width}px ${way}: from its top in every frame`).toEqual([]);
+      const leaving = seen.filter(frame => frame.leaving === start);
+      expect(leaving.length, `${width}px ${way}: the section leaving slides`).toBeGreaterThan(0);
+      expect(leaving.filter(frame => Math.abs(frame.top - stood) > 0.5), `${width}px ${way}: where it stood`).toEqual([]);
+    }
+    // An edit within a section keeps it where it is.
+    await choose(page, start);
+    const kept = await page.locator(deck).evaluate(node => { node.scrollTop = Math.round((node.scrollHeight - node.clientHeight) / 2); return node.scrollTop; });
+    const field = await page.locator(deck).evaluate((node, id) => {
+      const view = node.getBoundingClientRect();
+      const input = [...node.querySelectorAll(`[data-panel="${id}"] input[type="number"], [data-panel="${id}"] input[type="text"]`)]
+        .find(each => { const box = each.getBoundingClientRect(); return !each.disabled && box.height && box.top > view.top && box.bottom < view.bottom; });
+      if (!input) return false;
+      input.focus({preventScroll: true});
+      return true;
+    }, start);
+    if (field) {
+      await page.keyboard.press('End');
+      await page.keyboard.type('1');
+      expect(await page.locator(deck).evaluate(node => node.scrollTop), `${width}px: an edit keeps the section's place`).toBe(kept);
+    }
+  }
+  // Without motion: at once, from the top.
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await size(390);
+  const deep = {};
+  for (const id of order) { await choose(page, id); deep[id] = await depth(); }
+  const start = order.slice(0, -1).find(id => deep[id] > 40 && deep[order[order.indexOf(id) + 1]] > 40);
+  await choose(page, start);
+  await toBottom();
+  await nextControl().click();
+  await settle(page);
+  expect(await page.locator(deck).evaluate(node => node.scrollTop), 'reduced motion: from its top').toBe(0);
+});
+
 test('below 780px the handheld header is one row with the same compact navigator', async ({page}) => {
   // 1.0.14: the former handheld header (a wrapping, scrolling strip beneath the copy, no compact
   // navigator) is retired; the identity gives way instead (settings-help-mobile-navigator.spec.js).

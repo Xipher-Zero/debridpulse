@@ -15,7 +15,7 @@ body {
   display: flex;
   flex-direction: column;
   top: 0;
-  height: 100vh;
+  height: 100%;
   width: var(--dp-sidebar-width);
   min-width: var(--dp-sidebar-width);
   background:
@@ -238,7 +238,7 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
   min-width: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   min-height: 0;
   flex: 1;

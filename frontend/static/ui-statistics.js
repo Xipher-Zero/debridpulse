@@ -318,7 +318,7 @@
     ['premium', 'Premium Sources'],
     ['network', 'Network Sources'],
   ]);
-  const COMPLETIONS_LABEL = 'Daily Completions';
+  const COMPLETIONS_LABEL = 'Total Completions';
 
   // The inset stack's presentation: purple kept on each side (a share of the
   // bar's width, within bounds) and at least this much above it.

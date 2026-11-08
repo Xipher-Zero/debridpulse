@@ -88,7 +88,7 @@ for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
   test(`${period} ${light ? 'light' : 'dark'}: each purple bar keeps its silhouette with a narrower Premium/Network stack inset on the same scale`, async ({ page }) => {
     await boot(page, {light});
     await show(page, period);
-    expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
+    expect(await legend(page)).toEqual(['Total Completions', 'Premium Sources', 'Network Sources']);
     const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
     const bars = Object.fromEntries((await drawn(page)).map(bar => [bar.date, bar]));
     // One unit of height, from the scale: the purple bar is the total, the stack only P + N.
@@ -289,7 +289,7 @@ test('changing period mid-animation starts the new chart from the baseline, with
 test('1 Year keeps its monthly buckets and stacks; the tooltip gives the total and each share', async ({ page }) => {
   await boot(page);
   await show(page, '1y');
-  expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
+  expect(await legend(page)).toEqual(['Total Completions', 'Premium Sources', 'Network Sources']);
   const chart = await page.evaluate(() => {
     const instance = document.getElementById('daily-chart')._ci;
     return {labels: instance.data.labels, datasets: instance.data.datasets.map(set => ({role: set.dpRole, data: set.data})),
@@ -309,7 +309,7 @@ for (const period of ['30d', 'all']) {
     await boot(page);
     await show(page, '7d');
     await show(page, period);
-    expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
+    expect(await legend(page)).toEqual(['Total Completions', 'Premium Sources', 'Network Sources']);
     const chart = await page.evaluate(() => {
       const instance = document.getElementById('daily-chart')._ci;
       return {datasets: instance.data.datasets.map(set => ({label: set.label, role: set.dpRole, data: set.data})),
@@ -326,7 +326,7 @@ for (const period of ['30d', 'all']) {
 test('an empty period keeps its three-item legend; swatches follow the theme', async ({ page }) => {
   await boot(page);
   await show(page, '24h');
-  expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
+  expect(await legend(page)).toEqual(['Total Completions', 'Premium Sources', 'Network Sources']);
   const swatches = () => page.locator('#completions-legend .dp-stats-chart-legend-swatch')
     .evaluateAll(nodes => nodes.map(node => getComputedStyle(node).backgroundColor));
   const dark = await swatches();

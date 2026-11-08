@@ -6753,10 +6753,18 @@
     // show -- so a quick return turns back.
     const from = order.indexOf(state.activeTab), to = order.indexOf(tabName(name));
     const step = from >= 0 && to >= 0 ? to - from : 0;
+    const changed = tabName(name) !== state.activeTab;
     // The compact navigator's window, when it moves, slides the same way.
     selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step), via});
-    if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
-    else showTabPanel();
+    // A new section is shown from its top. The one leaving keeps its place:
+    // the slide keeps it drawn where it stood, measured before this commit.
+    const scroller = root()?.querySelector('.dp-settings-scroll');
+    const commit = () => {
+      showTabPanel();
+      if (changed && scroller) scroller.scrollTop = 0;
+    };
+    if (window.DPMotion) window.DPMotion.slide({element: scroller, axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, commit);
+    else commit();
   }
 
   // A collapsed provider card can only be re-collapsed by un-checking Enable
