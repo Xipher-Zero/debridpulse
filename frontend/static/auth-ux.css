@@ -5,8 +5,9 @@
  * sidebar's column, below the navigation and pushed to the bottom by its own
  * auto top margin, so the navigation always ends above it: nothing in the
  * stack is positioned over the sidebar, in either session state. When the
- * session owner marks it data-session="authenticated", Provider Status and
- * the session row are one flow inside it.
+ * session owner marks it data-session ("authenticated", or "standalone" where
+ * the row holds My Account alone), Provider Status and the session row are
+ * one flow inside it.
  */
 #sidebar .sidebar-bottom-stack {
   --dp-sidebar-stack-inset: 10px;
@@ -29,7 +30,7 @@
   width: calc(100% * var(--dp-sidebar-scale, 1) - 2 * var(--dp-sidebar-stack-inset) * (1 - var(--dp-sidebar-scale, 1)));
   flex: 0 0 auto;
 }
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+#sidebar .sidebar-bottom-stack[data-session] #sidebar-auth-row {
   position: static !important;
   width: 100%;
   min-height: 46px;
@@ -112,7 +113,7 @@ body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sideba
    gives the stack's inset back, so its glyph sits on the sidebar icon rail
    (ui-shell-structural.css) with its label following at the item gap -- at
    every sidebar width. */
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+#sidebar .sidebar-bottom-stack[data-session] #sidebar-auth-row {
   padding-left: calc(var(--dp-sidebar-item-inset) - var(--dp-sidebar-stack-inset));
   padding-right: 10px;
 }
@@ -122,7 +123,7 @@ body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sideba
    Out at the bottom, each label faded in place (its accessible name is its
    own; the account's DP tooltip names it). */
 @media (min-width: 780px) and (max-width: 1559px) {
-  #sidebar:not(.sidebar-overlay-open) .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+  #sidebar:not(.sidebar-overlay-open) .sidebar-bottom-stack[data-session] #sidebar-auth-row {
     flex-direction: column-reverse;
     align-items: flex-start;
     row-gap: 2px;

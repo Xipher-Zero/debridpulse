@@ -329,7 +329,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       await expect(page.locator(id), id).toBeHidden();
     }
     // Every control within the header and the window, none over another.
-    const boxes = await page.evaluate(() => ['#page-title', '#runtime-speed-badge', '#theme-toggle', '#theme-picker-toggle']
+    const boxes = await page.evaluate(() => ['#topbar-account-button', '#page-title', '#runtime-speed-badge', '#theme-toggle', '#theme-picker-toggle']
       .map(id => (({left, right, top, bottom}) => ({id, left, right, top, bottom}))(document.querySelector(id).getBoundingClientRect())));
     const header = await page.locator('#topbar').boundingBox();
     for (const box of boxes) {
@@ -348,7 +348,8 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     for (const width of [320, 375, 390, 430, 447, 448, 494, 495, 565, 566, 599, 600, 779]) {
       await page.setViewportSize({width, height: 760});
       expect(await headerRow(page), `${width}px`).toEqual({inside: true, oneLine: true, height: 61});
-      expect((await expectHeaderTargets(page, width)).map(hit => hit.id)).toEqual(['#theme-toggle', '#theme-picker-toggle', '#runtime-cap-toggle']);
+      // The open runtime's default Admin keeps its account button at the header's start (one press: My Account).
+      expect((await expectHeaderTargets(page, width)).map(hit => hit.id)).toEqual(['#topbar-account-button', '#theme-toggle', '#theme-picker-toggle', '#runtime-cap-toggle']);
       expect(await page.locator('#page-title').evaluate(node => node.scrollWidth <= node.clientWidth + 0.5), `${width}px: Downloads whole`).toBe(true);
       expect(await shown(page, '#runtime-badge-speed'), `${width}px: the live speed`).toBe(true);
     }

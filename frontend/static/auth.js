@@ -63,6 +63,18 @@
     return {admin: 'Admin', user: 'User', readonly: 'ReadOnly User', integration: 'Integration'}[role] || '';
   }
 
+  /* Whose account the shell offers, from the server's own session answer:
+   * "authenticated" -- a signed-in browser session (Log Out and My Account);
+   * "standalone" -- no interactive authentication, where the server admits
+   * every request as the installation's default Admin (auth/models.py
+   * Principal.standalone: bound to that account, authenticating nothing, so
+   * no mechanism); otherwise none. The client never claims a session. */
+  function sessionKind(data) {
+    if (data?.authenticated === true) return 'authenticated';
+    if (data && data.authenticated === false && !data.mechanism && data.account_id) return 'standalone';
+    return '';
+  }
+
   function currentReturnPath() {
     return window.location.pathname + window.location.search + window.location.hash;
   }
@@ -89,27 +101,36 @@
   // The session's ONE sidebar row: Log Out at its start, and at its end the
   // signed-in account (Display Name over Role) that opens My Account. Two
   // separate controls in one row, with the elastic space between them
-  // belonging to neither.
+  // belonging to neither. Without interactive authentication there is no
+  // session to leave: the row holds My Account alone, in the same place,
+  // opening the default Admin's own account.
   function syncSidebarSessionUi(data) {
     syncHeaderSessionUi(data);
     const stack = document.getElementById('sidebar-bottom-stack');
     const mount = document.getElementById('sidebar-auth-mount');
     if (!stack || !mount) return;
 
-    if (!data?.authenticated) {
+    const kind = sessionKind(data);
+    if (!kind) {
       delete stack.dataset.session;
       mount.hidden = true;
       mount.replaceChildren();
       return;
     }
 
-    stack.dataset.session = 'authenticated';
+    stack.dataset.session = kind;
     mount.hidden = false;
-    if (mount.querySelector('#sidebar-auth-row')) return;
+    if (mount.querySelector(`#sidebar-auth-row[data-session="${kind}"]`)) return;
+    mount.replaceChildren();
+    if (kind === 'standalone') {
+      mount.appendChild(standaloneSidebarRow(data));
+      return;
+    }
 
     const row = document.createElement('div');
     row.id = 'sidebar-auth-row';
     row.className = 'nav-item dp-sidebar-session-row';
+    row.dataset.session = 'authenticated';
     row.style.flexShrink = '0';
     row.innerHTML = `
       <button type="button" class="dp-sidebar-logout" aria-label="Log out of DebridPulse" data-tooltip="Log Out">
@@ -159,6 +180,28 @@
     mount.appendChild(row);
   }
 
+  // The standalone row: the signed-in row's account control alone, at its
+  // end, named only My Account -- no session, so no sign-in name to show.
+  function standaloneSidebarRow(data) {
+    const row = document.createElement('div');
+    row.id = 'sidebar-auth-row';
+    row.className = 'nav-item dp-sidebar-session-row';
+    row.dataset.session = 'standalone';
+    row.style.flexShrink = '0';
+    row.innerHTML = `
+      <span class="dp-sidebar-session-space" aria-hidden="true"></span>
+      <button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">
+        <span class="nav-label">My Account</span>
+        <span class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
+          </svg>
+        </span>
+      </button>`;
+    row.querySelector('.dp-sidebar-profile').addEventListener('click', () => { void openAccountDialog(data); });
+    return row;
+  }
+
   // A pending logout refuses a second press; a refused or failed one says so
   // and may be pressed again.
   function bindLogout(button) {
@@ -180,20 +223,33 @@
    * start of the header, opening a sheet with the account (Display Name over
    * Role), My Account and Log Out -- the same dialog and the same logout as
    * the sidebar's row. A press beside the sheet's panel closes it without
-   * reaching the page; Escape and Tab close it, focus back on the button. */
+   * reaching the page; Escape and Tab close it, focus back on the button.
+   * Without interactive authentication the same button opens My Account
+   * itself: there is no session to log out of, so no sheet. */
   const handheld = window.matchMedia('(max-width: 779px)');
   function syncHeaderSessionUi(data) {
     const mount = document.getElementById('topbar-account-mount');
     if (!mount) return;
-    if (!data?.authenticated) {
+    const kind = sessionKind(data);
+    if (!kind) {
       mount.hidden = true;
       mount.replaceChildren();
       return;
     }
     mount.hidden = false;
-    if (mount.querySelector('#topbar-account-button')) return;
+    if (mount.querySelector(`#topbar-account-button[data-session="${kind}"]`)) return;
+    if (kind === 'standalone') {
+      mount.innerHTML = `
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="standalone" aria-label="My Account">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
+        </svg>
+      </button>`;
+      mount.querySelector('#topbar-account-button').addEventListener('click', () => { void openAccountDialog(data); });
+      return;
+    }
     mount.innerHTML = `
-      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" aria-haspopup="dialog" aria-controls="topbar-account-sheet" aria-expanded="false" aria-label="My account">
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="authenticated" aria-haspopup="dialog" aria-controls="topbar-account-sheet" aria-expanded="false" aria-label="My account">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
           <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
         </svg>
