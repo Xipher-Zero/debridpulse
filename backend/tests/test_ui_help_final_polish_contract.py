@@ -91,8 +91,10 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-help-nav'),\n    copy: '.dp-help-header-copy',\n    identity: {title: '.dp-help-header-title', hint: '.dp-help-header-subtitle', levels: [" in runtime
     # The approved handheld identity levels, longest first (the last, none, is the owner's).
     for level in ("{title: 'Field Manual', hint: 'When intuition fails.'}", "{title: 'Field Manual', hint: 'When stuck.'}",
-                  "{title: 'Manual', hint: 'When stuck.'}", "{title: 'Help', hint: ''}", "{title: 'Help', hint: '', artwork: false}"):
+                  "{title: 'Manual', hint: 'When stuck.'}", "{title: 'Help', hint: ''}"):
         assert level in runtime, level
+    # No iconless Help title: after Help (with its icon) the whole identity goes (the owner's none).
+    assert "artwork: false" not in runtime
     for absent in ("function fitNavigation(", "function navLayout(", "navFit", "NAV_TRIM", "scrollLeft"):
         assert absent not in runtime, absent
     assert runtime.count('role="tablist" aria-label="Help sections"') == 1

@@ -126,8 +126,10 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-settings-nav'),\n    copy: '.dp-settings-header-copy',\n    identity: {title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', levels: [" in runtime
     # The approved handheld identity levels, longest first (the last, none, is the owner's).
     for level in ("{title: 'Tuning Deck', hint: 'Your rules, your defaults.'}", "{title: 'Tuning Deck', hint: 'Your rules.'}",
-                  "{title: 'Tuning', hint: 'Your rules.'}", "{title: 'Tune', hint: ''}", "{title: 'Tune', hint: '', artwork: false}"):
+                  "{title: 'Tuning', hint: 'Your rules.'}", "{title: 'Tune', hint: 'Rules!'}"):
         assert level in runtime, level
+    # No title-only or iconless level: after Tune / Rules! the whole identity goes (the owner's none).
+    assert "{title: 'Tune', hint: ''}" not in runtime and "artwork: false" not in runtime
     fit = mechanics[mechanics.index("function fitNavigation("):mechanics.index("function navWindow(")]
     assert "getBoundingClientRect().width" in fit and "NAV_SPARE" in fit
     assert "navFit.strip + navFit.copy + gap + NAV_SPARE <= width ? 'full' : 'compact'" in fit

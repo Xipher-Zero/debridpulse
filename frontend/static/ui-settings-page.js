@@ -6733,8 +6733,7 @@
       {title: 'Tuning Deck', hint: 'Your rules, your defaults.'},
       {title: 'Tuning Deck', hint: 'Your rules.'},
       {title: 'Tuning', hint: 'Your rules.'},
-      {title: 'Tune', hint: ''},
-      {title: 'Tune', hint: '', artwork: false},
+      {title: 'Tune', hint: 'Rules!'},
     ]},
   });
 

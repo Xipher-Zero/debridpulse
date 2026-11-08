@@ -15,10 +15,10 @@ const WEB_FONTS = process.env.DP_WEB_FONTS === '1';
 const PAGES = {
   settings: {view: '#view-settings', head: '.dp-settings-master-header', copy: '.dp-settings-header-copy', nav: '.dp-settings-nav', strip: '.dp-settings-tabs',
     scroll: '.dp-settings-scroll', icon: '.dp-settings-header-icon', title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', first: 'sources',
-    levels: [['Tuning Deck', 'Your rules, your defaults.', true], ['Tuning Deck', 'Your rules.', true], ['Tuning', 'Your rules.', true], ['Tune', '', true], ['Tune', '', false], ['', '', false]]},
+    levels: [['Tuning Deck', 'Your rules, your defaults.', true], ['Tuning Deck', 'Your rules.', true], ['Tuning', 'Your rules.', true], ['Tune', 'Rules!', true], ['', '', false]]},
   help: {view: '#view-help', head: '.dp-help-master-header', copy: '.dp-help-header-copy', nav: '.dp-help-nav', strip: '.dp-help-tabs',
     scroll: '.dp-help-scroll', icon: '.dp-help-title-icon', title: '.dp-help-header-title', hint: '.dp-help-header-subtitle', first: 'quickstart',
-    levels: [['Field Manual', 'When intuition fails.', true], ['Field Manual', 'When stuck.', true], ['Manual', 'When stuck.', true], ['Help', '', true], ['Help', '', false], ['', '', false]]},
+    levels: [['Field Manual', 'When intuition fails.', true], ['Field Manual', 'When stuck.', true], ['Manual', 'When stuck.', true], ['Help', '', true], ['', '', false]]},
 };
 
 async function open(page, name, width) {

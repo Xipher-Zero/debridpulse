@@ -34,7 +34,6 @@
       {title: 'Field Manual', hint: 'When stuck.'},
       {title: 'Manual', hint: 'When stuck.'},
       {title: 'Help', hint: ''},
-      {title: 'Help', hint: '', artwork: false},
     ]},
   });
 
