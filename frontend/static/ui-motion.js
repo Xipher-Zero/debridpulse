@@ -104,6 +104,26 @@
     return made;
   }
 
+  /* A clip's inset() as [top, right, bottom, left] pixels (none: zeros), the
+   * part of `element` a clip shows, and whether a node lies in that part. */
+  const insets = clip => {
+    const values = (/inset\(([^)]*)\)/.exec(clip || '')?.[1] || '').trim().split(/\s+/).filter(Boolean).map(parseFloat);
+    const [top = 0, right = top, bottom = top, left = right] = values;
+    return [top, right, bottom, left];
+  };
+  const windowOf = (element, clip) => {
+    const box = element.getBoundingClientRect();
+    const [top, right, bottom, left] = insets(clip);
+    return {left: box.left + left, right: box.right - right, top: box.top + top, bottom: box.bottom - bottom};
+  };
+  // Shown there: in that part and drawn at all (a part too small to be shown
+  // at rest is transparent, and a slide's own opacity must not reveal it).
+  const within = (node, frame) => {
+    const box = node.getBoundingClientRect();
+    return box.right > frame.left + 0.5 && box.left < frame.right - 0.5 && box.bottom > frame.top + 0.5 && box.top < frame.bottom - 0.5
+      && parseFloat(getComputedStyle(node).opacity) > 0;
+  };
+
   // The slide each surface is making, so a newer one ends it first and a
   // resolve() still knows where the content it covers is drawn at rest.
   const flights = new WeakMap();
@@ -117,8 +137,15 @@
    * commit runs once, at once: `done` resolves once it has run (the DOM holds
    * the destination); `settled` once the motion has finished, was skipped or
    * was superseded, with everything it put in place gone; `skip()` ends the
-   * motion at once, keeping the committed destination. */
-  function slide({element, axis = 'x', direction = 0, distance = 1}, commit) {
+   * motion at once, keeping the committed destination.
+   *
+   * `windowed`: the surface is a clipped window onto content longer than it
+   * (a compact section navigator's strip). Each presentation is its own
+   * window: the copy keeps the clip it had before the commit, and in each
+   * only what its window showed travels -- the rest of its content is not
+   * drawn while it moves -- so nothing outside either window crosses the
+   * surface and the two never overlap. Only transforms move. */
+  function slide({element, axis = 'x', direction = 0, distance = 1, windowed = false}, commit) {
     const previous = element ? flights.get(element) : null;
     previous?.end();
     const idle = {done: Promise.resolve(), settled: Promise.resolve(), skip() {}};
@@ -139,14 +166,20 @@
       ({ghost, parts, before} = previous);
     } else {
       // Copied before the owner replaces it.
-      before = {top: element.scrollTop, left: element.scrollLeft};
+      before = {top: element.scrollTop, left: element.scrollLeft, clip: windowed ? getComputedStyle(element).clipPath : ''};
       ghost = element.cloneNode(false);
       ghost.removeAttribute('id');
       ghost.removeAttribute('aria-live');
       ghost.classList.add('dp-motion-still');
       ghost.inert = true;
       ghost.setAttribute('aria-hidden', 'true');
-      parts = Array.from(element.children).filter(drawn).map(copy);
+      const children = Array.from(element.children).filter(drawn);
+      parts = children.map(copy);
+      // Windowed: a copy of what its window did not show is not drawn.
+      if (windowed) {
+        const frame = windowOf(element, before.clip);
+        children.forEach((node, k) => { if (!within(node, frame)) parts[k].style.visibility = 'hidden'; });
+      }
       ghost.append(...parts);
     }
 
@@ -298,6 +331,16 @@
         moving.set(node, animation);
         if (flight.waiting) animation.pause();
       };
+      if (windowed && !keeps) {
+        // The copy keeps its own window's clip, never reaching where the
+        // destination now draws its controls; the destination draws only
+        // what its own window shows while it moves.
+        const after = getComputedStyle(element).clipPath;
+        const was = insets(before.clip).map((value, k) => Math.max(value, insets(after)[k]));
+        ghost.style.clipPath = `inset(${was.map(value => `${value}px`).join(' ')})`;
+        const frame = windowOf(element, after);
+        Array.from(element.children).filter(drawn).forEach(node => { if (!within(node, frame)) hold(node, 'visibility', 'hidden'); });
+      }
       const old = keeps ? outgoing.map(({node}) => node) : parts;
       leaving.push(...old.map(node => node.animate(leave, timing)));
       lead = leaving[0] || null;

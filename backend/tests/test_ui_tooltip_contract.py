@@ -89,7 +89,7 @@ def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() ->
 def test_it_loads_once_as_a_direct_script_and_is_styled_by_the_shared_material() -> None:
     index = read("index.html")
     assert index.count('<script src="/ui-tooltip.js?v=2" defer></script>') == 1
-    assert index.index("/ui-motion.js?v=1") < index.index("/ui-tooltip.js?v=2") < index.index("/ui-pager.js?v=1")
+    assert index.index("/ui-motion.js?v=2") < index.index("/ui-tooltip.js?v=2") < index.index("/ui-pager.js?v=1")
     css = read("ui-components.css")
     block = css[css.index(".dp-tooltip {"):css.index(".dp-tooltip[hidden]")]
     for token in ("var(--dp-surface-overlay)", "var(--dp-border-default)", "var(--dp-shadow-control)",

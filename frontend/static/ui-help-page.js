@@ -781,15 +781,16 @@
     name = tabName(name);
     state.activeTab = name;
 
-    let selected = null;
-    root()?.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)').forEach(tab => {
+    const tabs = Array.from(root()?.querySelectorAll('.dp-help-tab:not(.dp-motion-still *)') || []);
+    const selected = tabs.find(tab => tab.dataset.tab === name) || null;
+    // The navigator marks it selected when it places it: after copying the
+    // window that leaves, where a slide shows the choice.
+    navigation.place(motion, {tab: selected, apply: () => tabs.forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? 0 : -1;
-      if (active) selected = tab;
-    });
-    navigation.place(motion);
+    })});
     // (Where the navigator places its own window, focus never scrolls it.)
     if (focus) selected?.focus({preventScroll: navigation.placing()});
   }

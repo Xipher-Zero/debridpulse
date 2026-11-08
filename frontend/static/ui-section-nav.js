@@ -390,13 +390,25 @@
      * end section's snap; anything else is drawn at once, ending a slide of
      * the strip still running. Where the window goes is decided here
      * (navFit.left); the slide's commit only draws the latest decision. */
-    function placeNavigation(motion = null) {
+    /* `selection` (the page's choice, {tab, apply}): the tab chosen, and the
+     * page's own function that marks it selected. A slide copies the strip
+     * as it was drawn before applying it, so the window leaving shows the
+     * section that was selected there, and the one arriving the new one;
+     * without a slide it is applied at once. */
+    function placeNavigation(motion = null, selection = null) {
+      const apply = () => selection?.apply();
       const nav = locate();
-      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navigating()) return;
+      if (!nav || navFit?.nav !== nav || nav.parentElement.dataset.presentation !== 'compact' || !navigating()) {
+        apply();
+        return;
+      }
       const strip = nav.querySelector('.dp-section-nav-strip');
       const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
-      const index = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
-      if (index < 0) return;
+      const index = selection ? tabs.indexOf(selection.tab) : tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+      if (index < 0) {
+        apply();
+        return;
+      }
       describe(nav, tabs, index);
       // (Without a layout -- only when no window width gives every section one
       // -- the selection as centred as the list's ends allow.)
@@ -411,7 +423,10 @@
       navFit.side = side;
       if ((onScreen()?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
         const slide = navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
-          distance: motion.distance}, drawNavigation);
+          distance: motion.distance, windowed: true}, () => {
+          apply();
+          drawNavigation();
+        });
         // Busy while the window slides: the section index waits for it
         // (ui-tooltip.js data-tooltip-dwell). The latest slide holds the
         // mark; its own completion -- finished, skipped or superseded --
@@ -430,6 +445,7 @@
         return;
       }
       navFit.slide?.skip();
+      apply();
       drawNavigation();
     }
 

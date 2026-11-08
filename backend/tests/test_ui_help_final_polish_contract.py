@@ -110,7 +110,7 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     assert "order.indexOf(state.activeTab)" in choose and ":not([hidden])" not in choose
     select = runtime[runtime.index("function selectTabControl("):]
     select = select[:select.index("\n  }\n")]
-    assert "navigation.place(motion);" in select
+    assert "navigation.place(motion, {tab: selected, apply: () => tabs.forEach(tab => {" in select
     assert "selected?.focus({preventScroll: navigation.placing()});" in select
     # Previous / Next reach the section one from the selected one, through the
     # same choice; focus follows only once the action has nowhere to go.

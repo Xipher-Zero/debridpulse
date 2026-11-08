@@ -166,7 +166,9 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     # the window shown before it.
     assert "const onScreen = () => navFit?.shown || navFit?.drawn;" in mechanics
     assert "requestAnimationFrame(() => { delete fit.shown; });" in draw
-    assert "distance: motion.distance}, drawNavigation);" in place
+    # The strip slides as two clipped windows (DPMotion windowed); the page's
+    # selection is applied in the slide's commit, after the leaving window is copied.
+    assert "distance: motion.distance, windowed: true}, () => {\n          apply();\n          drawNavigation();\n        });" in place
     assert "control.dataset.navAt = at;" in draw and "navFit.drawn = {left: target, index, room, side};" in draw
     # Which travel action is gone follows the window as drawn -- the end of
     # the list it shows (each arrangement's side) -- never which section is
@@ -183,9 +185,9 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     choice = mechanics[mechanics.index("function navChoice("):mechanics.index("function placeNavigation(")]
     assert "const step = Math.min(widths[index] - Math.max(0, part(index) - widths[index + (forward ? 1 : -1)])," in choice
     assert "if (motion.via === 'travel') return null;" in choice and "snap: true" in choice
-    assert "navFit.slide?.skip();\n      drawNavigation();" in place
+    assert "navFit.slide?.skip();\n      apply();\n      drawNavigation();" in place
     assert "if (presentation !== 'compact' || drawn !== `${navFit.window} ${navFit.trim}`) placeNavigation();" in fit
-    assert "navigation.place(motion);" in runtime
+    assert "navigation.place(motion, {tab: tabs.find(tab => tab.dataset.tab === name) || null, apply: () => tabs.forEach(tab => {" in runtime
     choose = runtime[runtime.index("function chooseTab("):]
     choose = choose[:choose.index("\n  }\n")]
     assert "selectTabControl(name, {direction: Math.sign(step), distance: Math.abs(step), via});" in choose

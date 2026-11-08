@@ -6710,13 +6710,15 @@
     name = tabName(name);
     state.activeTab = name;
 
-    root()?.querySelectorAll('[data-tab]:not(.dp-motion-still *)').forEach(tab => {
+    const tabs = Array.from(root()?.querySelectorAll('[data-tab]:not(.dp-motion-still *)') || []);
+    // The navigator marks it selected when it places it: after copying the
+    // window that leaves, where a slide shows the choice.
+    navigation.place(motion, {tab: tabs.find(tab => tab.dataset.tab === name) || null, apply: () => tabs.forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? '0' : '-1';
-    });
-    navigation.place(motion);
+    })});
   }
 
   /* The header's one row: the complete strip or the compact navigator,

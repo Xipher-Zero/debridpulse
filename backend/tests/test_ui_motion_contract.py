@@ -76,7 +76,7 @@ def test_the_motion_primitive_presents_only() -> None:
     assert "jump" not in motion and "jump" not in css
     assert "@import url('/ui-motion.css?v=1');" in read("style.css")
     index = read("index.html")
-    assert index.index('/ui-motion.js?v=1') < index.index('/ui-pager.js?v=1')
+    assert index.index('/ui-motion.js?v=2') < index.index('/ui-pager.js?v=1')
 
 
 def test_only_the_operators_own_navigation_moves_anything() -> None:
@@ -104,14 +104,16 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
     # moves it.
     navigator = read("ui-section-nav.js")
     assert navigator.count("window.DPMotion.slide(") == 1
-    place = navigator[navigator.index("function placeNavigation(motion = null) {"):]
+    place = navigator[navigator.index("function placeNavigation(motion = null, selection = null) {"):]
     place = place[:place.index("\n    }\n")]
     assert "window.DPMotion.slide(" in place and "motion?.direction" in place
     for owner in ("ui-settings-page.js", "ui-help-page.js"):
         source = read(owner)
         # Each page's own slide is its panel's.
         assert source.count("window.DPMotion.slide(") == 1, owner
-        assert source.count("navigation.place(motion)") == 1, owner
+        # The page hands its selection to the navigator, which applies it
+        # after copying the window that leaves (DPMotion windowed slide).
+        assert source.count("navigation.place(motion, {tab: ") == 1, owner
         choose = source[source.index("function chooseTab("):]
         choose = choose[:choose.index("\n  }\n")]
         assert "selectTabControl(name" in choose and "showTabPanel" in choose, owner
