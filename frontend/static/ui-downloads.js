@@ -49,7 +49,11 @@ let torrentPageTurn = null;   // {page, source, motion, shown, paint, ended}
 const torrentTableWrap = () => document.querySelector('#view-torrents .dp-downloads-table-wrap');
 function beginTorrentTurn(page) {
   const tb = document.getElementById('t-tbody');
-  const turn = {page, source: tb ? tb.innerHTML : '', motion: null, shown: false, paint: null, ended: false};
+  // A turn begun over the placeholder of the page that fits comes back, if it
+  // fails, to that page's held rows, never to the placeholder.
+  const held = capacityHold && tb && 'dpPlaceholder' in tb.dataset ? heldRows(capacityHold) : null;
+  const source = held ? held.map(row => row.outerHTML).join('') : tb ? tb.innerHTML : '';
+  const turn = {page, source, motion: null, shown: false, paint: null, ended: false};
   const distance = page - renderedTorrentPage;
   torrentPageTurn = turn;
   turn.motion = window.DPMotion.slide({element: torrentTableWrap(), axis: 'x', direction: Math.sign(distance), distance: Math.abs(distance)}, () => {
@@ -256,6 +260,21 @@ const DESKTOP_QUERY = '(min-width: 780px)';
 let capacityTimer = null;
 let capacityObserver = null;
 let busy = false;
+// The rows drawn at a size that did not fit (the first page, at the
+// provisional 25) when they gave way to the placeholder of the page that
+// fits. They belong to the one request that fetches that page (its ticket,
+// claimed when it starts); any later request supersedes them. Should that
+// request finally fail, the placeholder resolves to those of them on the
+// page that fits -- never the whole oversized set.
+let capacityHold = null;
+// The held rows on the page that fits (it always overlaps the page drawn).
+function heldRows(hold) {
+  const from = (hold.page - 1) * hold.limit;
+  const drawn = document.createElement('tbody');
+  drawn.innerHTML = hold.source;
+  return [...drawn.querySelectorAll(':scope > tr[data-torrent-id]')]
+    .filter((row, index) => hold.offset + index >= from && hold.offset + index < from + hold.limit);
+}
 
 /* How many complete rows the table viewport holds: the wrapper's own client
  * height (the workspace gives it what the card's header, toolbar and pager
@@ -782,6 +801,10 @@ async function fetchAndRenderTorrents() {
   // authoritative-state mutation (page/filter/search/page-size change)
   // cannot retroactively change what this in-flight request "was for".
   const ticket = searchControl().request();
+  if (capacityHold) {
+    if (capacityHold.ticket) capacityHold = null;
+    else capacityHold.ticket = ticket;
+  }
   const _limit = Math.min(Math.max(parseInt(torrentPageSize) || 25, 1), 100);
   const _offset = (torrentPage - 1) * _limit;
   try {
@@ -821,6 +844,7 @@ async function fetchAndRenderTorrents() {
     torrentTotal = _total;
     const paint = () => {
       const tb = document.getElementById('t-tbody');
+      capacityHold = null;
       renderTorrentPagination(torrentTotal, _limit, _offset);
       // A page shown while a reorder is held is a preview: selection is kept.
       if (!reorder) reconcileDownloadSelection(items);
@@ -867,6 +891,34 @@ async function fetchAndRenderTorrents() {
     }
     window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);
     if (searchControl().fail(ticket, e) === 'retried') return;
+    // The page that fits did not come: its placeholder resolves to the rows
+    // already drawn that are on that page (the page that fits always
+    // overlaps the page drawn), under that page's pager -- bounded to its
+    // capacity, the pager where it stands -- rather than a placeholder that
+    // never resolves.
+    const hold = capacityHold?.ticket === ticket ? capacityHold : null;
+    if (hold) {
+      capacityHold = null;
+      const rows = heldRows(hold);
+      replaceTorrentRows(() => {
+        document.getElementById('t-tbody').replaceChildren(...rows);
+        renderTorrentPagination(hold.total, hold.limit, (hold.page - 1) * hold.limit);
+        fitTransferSummaryLines();
+        syncDownloadSelectionUi();
+        renderedTorrentPage = hold.page;
+      });
+    }
+    // A placeholder still drawn stood for a request this one superseded -- a
+    // filter or search changed while the page that fits was in flight -- and
+    // this one failed: it resolves to the list's failure state, in the
+    // empty-state row, never to rows of another view or to a placeholder that
+    // never resolves.
+    const tb = document.getElementById('t-tbody');
+    if (tb && 'dpPlaceholder' in tb.dataset) replaceTorrentRows(() => {
+      tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 7 : 5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>Downloads could not be loaded: ${esc(sanitizeErrorMsg(e.message))}</div></td></tr>`;
+      renderTorrentPagination(0, torrentPageSize, 0);
+      syncDownloadSelectionUi();
+    });
     toast(sanitizeErrorMsg(e.message), 'error');
   }
   document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
@@ -883,8 +935,20 @@ async function loadTorrents() {
   // repaginates the rows being selected. Clearing it measures again.
   if (!busy && !_selectedIds.size) {
     const size = measuredSize();
+    const drawn = (torrentPage - 1) * torrentPageSize;
     if (applySize(size)) {
       const focus = captureFocus();
+      // The page just drawn was sized before it could be measured -- the first
+      // page at the provisional 25 -- and is never shown as the page: in this
+      // same task, before it is painted, its place takes the placeholder of
+      // the page that fits, and the pager that page's, which the page then
+      // resolves into (replaceTorrentRows).
+      const tb = document.getElementById('t-tbody');
+      if (tb && !('dpPlaceholder' in tb.dataset)) {
+        capacityHold = {source: tb.innerHTML, offset: drawn, total: torrentTotal, page: torrentPage, limit: torrentPageSize, ticket: null};
+        paintTorrentPlaceholder(torrentPage);
+        renderTorrentPagination(torrentTotal, torrentPageSize, (torrentPage - 1) * torrentPageSize);
+      }
       busy = true;
       try { await fetchAndRenderTorrents(); ensureDateMenus(); }
       finally { busy = false; restoreFocus(focus); }
