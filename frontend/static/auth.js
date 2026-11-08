@@ -180,8 +180,9 @@
     mount.appendChild(row);
   }
 
-  // The standalone row: the signed-in row's account control alone, at its
-  // end, named only My Account -- no session, so no sign-in name to show.
+  // The standalone row: My Account alone, an ordinary sidebar entry -- its
+  // glyph on the icon rail and its label after it, as Log Out sits in the
+  // signed-in row -- named only My Account: no session, so no sign-in name.
   function standaloneSidebarRow(data) {
     const row = document.createElement('div');
     row.id = 'sidebar-auth-row';
@@ -189,14 +190,13 @@
     row.dataset.session = 'standalone';
     row.style.flexShrink = '0';
     row.innerHTML = `
-      <span class="dp-sidebar-session-space" aria-hidden="true"></span>
       <button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">
-        <span class="nav-label">My Account</span>
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
           </svg>
         </span>
+        <span class="nav-label">My Account</span>
       </button>`;
     row.querySelector('.dp-sidebar-profile').addEventListener('click', () => { void openAccountDialog(data); });
     return row;

@@ -82,6 +82,12 @@ body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sideba
   gap: 9px;
   text-align: right;
 }
+/* Without a session the row holds My Account alone, laid out as Log Out is:
+   glyph first on the icon rail, label after it at the item gap. */
+#sidebar #sidebar-auth-row[data-session="standalone"] > .dp-sidebar-profile {
+  gap: inherit;
+  text-align: left;
+}
 #sidebar .dp-sidebar-profile .nav-label {
   min-width: 0;
 }
