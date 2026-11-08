@@ -158,7 +158,7 @@ test('the role help opens above Add Local Account and closes back into it', asyn
   await expect(account).toHaveCount(0);
 });
 
-test('at a narrow width the chip stays inside its header and the role table scrolls in its own region', async ({page}) => {
+test('at a narrow width the chip stays inside its header and the role matrix reads capability by capability', async ({page}) => {
   await page.setViewportSize({width: 390, height: 800});
   await openSettings(page);
   for (const name of ['sources', 'maintenance', 'users']) {
@@ -187,10 +187,22 @@ test('at a narrow width the chip stays inside its header and the role table scro
   await expect(help.locator('.dp-modal-title')).toHaveText('User Accounts');
   const fit = await help.evaluate(el => {
     const box = el.getBoundingClientRect();
-    const region = el.querySelector('.dp-settings-help-table-scroll');
-    return {fits: box.right <= innerWidth && box.bottom <= innerHeight, scrolls: region.scrollWidth > region.clientWidth};
+    const body = el.querySelector('.dp-modal-body');
+    const table = el.querySelector('table.dp-settings-help-table');
+    const items = [...el.querySelectorAll('.dp-settings-help-roles .dp-settings-help-role-item')];
+    // The narrow list is the table's own rows: every capability, each role's answer in order.
+    const roles = [...table.tHead.rows[0].cells].slice(1).map(cell => cell.textContent);
+    const rows = [...table.tBodies[0].rows].map(row => [...row.cells].map(cell => cell.textContent));
+    const listed = items.map(item => [item.querySelector('h4').textContent,
+      ...[...item.querySelectorAll('.dp-settings-help-role-answer')].map(pair => pair.querySelector('dd').textContent)]);
+    const named = items.every(item => [...item.querySelectorAll('dt')].map(term => term.textContent).join() === roles.join());
+    return {fits: box.right <= innerWidth && box.bottom <= innerHeight,
+      tableShown: getComputedStyle(el.querySelector('.dp-settings-help-table-scroll')).display !== 'none',
+      listShown: getComputedStyle(el.querySelector('.dp-settings-help-roles')).display !== 'none',
+      sideways: body.scrollWidth > body.clientWidth, same: JSON.stringify(listed) === JSON.stringify(rows), named,
+      count: items.length};
   });
-  expect(fit).toEqual({fits: true, scrolls: true});
+  expect(fit).toEqual({fits: true, tableShown: false, listShown: true, sideways: false, same: true, named: true, count: 10});
   await page.keyboard.press('Escape');
 });
 

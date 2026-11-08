@@ -709,7 +709,45 @@
       });
     });
     wrapper.appendChild(grid);
-    return wrapper;
+    const matrix = document.createElement('div');
+    matrix.className = 'dp-settings-help-matrix';
+    matrix.append(wrapper, answers(spec));
+    return matrix;
+  }
+
+  /* The same matrix capability by capability, each answer named by its role:
+   * where the dialog is too narrow for the table's columns, this is shown in
+   * its place (ui-settings-page.css), and only one of the two is ever shown. */
+  function answers(spec) {
+    const [, ...roles] = spec.head;
+    const list = document.createElement('div');
+    list.className = 'dp-settings-help-roles';
+    list.setAttribute('role', 'region');
+    list.setAttribute('aria-label', spec.caption);
+    list.appendChild(paragraph(spec.caption, 'dp-settings-help-roles-caption'));
+    spec.rows.forEach(([label, ...values]) => {
+      const item = document.createElement('div');
+      item.className = 'dp-settings-help-role-item';
+      const heading = document.createElement('h4');
+      heading.className = 'dp-settings-help-role-capability';
+      heading.textContent = label;
+      const pairs = document.createElement('dl');
+      pairs.className = 'dp-settings-help-role-answers';
+      roles.forEach((role, index) => {
+        const pair = document.createElement('div');
+        pair.className = 'dp-settings-help-role-answer';
+        const term = document.createElement('dt');
+        term.textContent = role;
+        const value = document.createElement('dd');
+        value.textContent = values[index];
+        if (values[index] === YES || values[index] === NO) value.dataset.answer = values[index].toLowerCase();
+        pair.append(term, value);
+        pairs.appendChild(pair);
+      });
+      item.append(heading, pairs);
+      list.appendChild(item);
+    });
+    return list;
   }
 
   function render(body, topic) {

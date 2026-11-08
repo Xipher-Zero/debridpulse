@@ -2262,6 +2262,81 @@
   color: var(--dp-text-muted);
 }
 
+/* The table's columns need its 560px. Where the matrix is narrower, the same
+   rows read capability by capability (ui-settings-help.js), each role's
+   answer labelled, with no sideways scroll; the table is not shown, so only
+   one of the two is announced. */
+.dp-settings-help-matrix {
+  container: dp-settings-help-matrix / inline-size;
+  min-width: 0;
+}
+
+.dp-settings-help-roles {
+  display: none;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dp-settings-help-roles-caption {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--dp-text-primary);
+  font-weight: 700;
+}
+
+.dp-settings-help-role-item {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--dp-border-subtle);
+}
+
+.dp-settings-help-role-capability {
+  margin: 0;
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dp-settings-help-role-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 4px 14px;
+  margin: 0;
+}
+
+.dp-settings-help-role-answer {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dp-settings-help-role-answer dt {
+  color: var(--dp-text-primary);
+  font-weight: 600;
+}
+
+.dp-settings-help-role-answer dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dp-settings-help-role-answer dd[data-answer="no"] {
+  color: var(--dp-text-muted);
+}
+
+@container dp-settings-help-matrix (width < 562px) {
+  .dp-settings-help-table-scroll {
+    display: none;
+  }
+
+  .dp-settings-help-roles {
+    display: block;
+  }
+}
+
 /* ── The header Test, below 780px ─────────────────────────────────────────
    The rail's status gives way, and the Test and the toggle sit in one compact
    outlined group: the Test textual (its mark not drawn), its colour the

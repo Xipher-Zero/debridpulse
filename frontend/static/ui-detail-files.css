@@ -1,5 +1,13 @@
 /* Details -> Files status geometry owner. */
-.dp-detail-files-card tbody td:last-child .badge,#detail-files tbody td[data-role="file-status"] .badge,#detail-files-table tbody td[data-role="file-status"] .badge{width:136px!important;min-width:136px!important;max-width:136px!important;height:28px!important;min-height:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:0 10px!important;white-space:nowrap!important;box-sizing:border-box}
+.dp-detail-files-card tbody td:last-child .badge,#detail-files tbody td[data-role="file-status"] .badge,#detail-files-table tbody td[data-role="file-status"] .badge{width:var(--dp-detail-file-status-width,136px)!important;min-width:var(--dp-detail-file-status-width,136px)!important;max-width:var(--dp-detail-file-status-width,136px)!important;height:28px!important;min-height:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:0 10px!important;white-space:nowrap!important;box-sizing:border-box}
+
+/* Where the Files table itself is narrower than 400px, each Status badge shows
+   its glyph alone -- the label set aside as the Dashboard and Downloads tables
+   do (ui-transfer-contract.css): it stays the badge's text and DP's tooltip
+   says it -- and the chip contracts
+   around that glyph instead of keeping the full label's 136px. */
+.dp-detail-files-card .dp-detail-table-wrap{container:dp-detail-files/inline-size}
+@container dp-detail-files (width < 400px){.dp-detail-files-card tbody td:last-child .badge{position:relative;--dp-detail-file-status-width:35px}.dp-detail-files-card tbody td:last-child .badge .dp-status-label{position:absolute;width:1px;height:1px;overflow:hidden;white-space:nowrap;opacity:0;pointer-events:none}}
 
 /* Files section header: title on the left, right-side action group pinned
    right -- the transfer-level common-source group launcher (owned by

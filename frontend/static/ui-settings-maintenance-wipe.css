@@ -304,6 +304,61 @@
   overflow-wrap: anywhere;
 }
 
+/* A narrow inventory: the whole row (the date in full and Contents) needs
+   about 480px of the dialog body. Narrower, Contents leaves the table -- still
+   each checkbox's description, and shown in the selected backup's details --
+   and the date shortens to "9/28/26 10:35 PM", whose parts may stack; the full
+   date stays the cell's text. Selection, Size and Remove are kept. */
+.dp-backup-manager-body {
+  container: dp-backup-inventory / inline-size;
+}
+
+.dp-backup-when-short,
+.dp-backup-selected-contents {
+  display: none;
+}
+
+@container dp-backup-inventory (width < 520px) {
+  .dp-backup-table th,
+  .dp-backup-table td {
+    padding-inline: 6px;
+  }
+
+  .dp-backup-table .dp-backup-contents {
+    display: none;
+  }
+
+  .dp-backup-table .dp-backup-when {
+    position: relative;
+    white-space: normal;
+  }
+
+  .dp-backup-when-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .dp-backup-when-short {
+    display: inline;
+  }
+
+  .dp-backup-when-short > span {
+    white-space: nowrap;
+  }
+
+  .dp-backup-row-action {
+    width: auto;
+  }
+
+  .dp-backup-selected-contents {
+    display: block;
+  }
+}
+
 .dp-backup-restore-copy {
   display: grid;
   gap: 12px;

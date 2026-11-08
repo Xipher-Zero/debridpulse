@@ -70,6 +70,17 @@
     return `${day} · ${time}`;
   }
 
+  /* The same moment shortened for a narrow inventory -- "9/28/26" and
+   * "10:35 PM", in the same configured time zone -- as two parts that may
+   * stack. */
+  function whenShort(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return [String(iso || '')];
+    const timeZone = timezone();
+    return [date.toLocaleDateString('en-US', {month: 'numeric', day: 'numeric', year: '2-digit', timeZone}),
+      date.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZone})];
+  }
+
   function size(bytes) {
     return typeof fmtSize === 'function' ? fmtSize(Number(bytes) || 0) : `${Number(bytes) || 0} B`;
   }
@@ -85,16 +96,19 @@
     if (!body) return;
     const selected = selectedBackup();
     if (!selected) state.selected = '';
-    const rows = state.inventory.map(item => {
+    const rows = state.inventory.map((item, index) => {
       const checked = item.id === state.selected;
+      const full = when(item.created_at);
       return `
         <tr class="dp-backup-row${checked ? ' is-selected' : ''}" data-backup-id="${html(item.id)}">
           <td class="dp-backup-select">
             <input type="checkbox" class="dp-backup-check" data-backup-select="${html(item.id)}"
-                   aria-label="Select backup ${html(when(item.created_at))}" ${checked ? 'checked' : ''}>
+                   aria-label="Select backup ${html(full)}" aria-describedby="dp-backup-contents-${index}"
+                   ${checked ? 'checked' : ''}>
           </td>
-          <td class="dp-backup-when">${html(when(item.created_at))}</td>
-          <td class="dp-backup-contents">${html(item.contents)}</td>
+          <td class="dp-backup-when"><span class="dp-backup-when-full">${html(full)}</span><span class="dp-backup-when-short"
+              aria-hidden="true" title="${html(full)}">${whenShort(item.created_at).map(part => `<span>${html(part)}</span>`).join(' ')}</span></td>
+          <td class="dp-backup-contents" id="dp-backup-contents-${index}">${html(item.contents)}</td>
           <td class="dp-backup-size">${html(size(item.size_bytes))}</td>
           <td class="dp-backup-row-action">${checked
             ? `<button class="btn btn-danger btn-sm" type="button" data-backup-remove="${html(item.id)}">Remove</button>`
@@ -109,7 +123,7 @@
             <thead><tr>
               <th scope="col" class="dp-backup-select" aria-label="Selected"></th>
               <th scope="col">Backup</th>
-              <th scope="col">Contents</th>
+              <th scope="col" class="dp-backup-contents">Contents</th>
               <th scope="col">Size</th>
               <th scope="col" class="dp-backup-row-action" aria-label="Actions"></th>
             </tr></thead>
@@ -118,6 +132,7 @@
       </div>
       <div class="dp-backup-selection" data-backup-selection aria-live="polite">${selected ? `
         <div>Selected: ${html(when(selected.created_at))}</div>
+        <div class="dp-backup-selected-contents">Contents: ${html(selected.contents)}</div>
         <div class="dp-backup-id">Backup ID: ${html(selected.id)}</div>` : ''}</div>`;
     const dialog = state.dialog;
     if (dialog) {

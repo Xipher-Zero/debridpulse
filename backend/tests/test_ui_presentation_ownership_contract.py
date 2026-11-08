@@ -90,7 +90,11 @@ def test_canonical_css_graph_uses_named_component_owners() -> None:
     assert "ui-downloads-presentation.css" not in style
     assert "ui-downloads-desktop.css" not in style
     assert "ui-correction" not in style
-    assert "width:136px" in read("ui-detail-files.css").replace(" ", "")
+    details_files = read("ui-detail-files.css").replace(" ", "")
+    assert "width:var(--dp-detail-file-status-width,136px)" in details_files
+    # Icon-only where the Files table itself is narrow: the chip contracts around its glyph.
+    assert "@containerdp-detail-files(width<400px)" in details_files
+    assert "--dp-detail-file-status-width:35px" in details_files
 
 
 _NETWORK_GEOMETRY_FRAGMENT = '<rect x="16" y="16" width="6" height="6" rx="1"/>'
