@@ -9,6 +9,7 @@ demand means for each transfer.
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -19,13 +20,16 @@ from application.service import ApplicationService
 from auth import accounts
 from auth.accounts import AccountRefused, Role
 from auth.permissions import Capability, demand_owner, permits
+from auth.policy import standalone_open
 from auth.throttle import personal_notification_test_rate_limiter
+from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.logging_utils import sanitize_exception
 from services import account_appearance
 from services import account_notifications
 from services import notification_service
 
 router = APIRouter()
+logger = logging.getLogger("debridpulse.auth")
 
 
 def _refused(exc: AccountRefused) -> HTTPException:
@@ -429,20 +433,73 @@ async def change_own_password(body: OwnPassword, request: Request):
 async def set_own_first_password(body: OwnFirstPassword, request: Request):
     """The signed-in human account's FIRST local password (an account that
     signs in through its identity provider and has none): no current password
-    to prove, refused once any password exists. Its sessions then end."""
+    to prove, refused once any password exists. Its sessions then end.
+
+    The one other caller is a Standalone installation's open principal -- the
+    default Admin, which authenticated nothing -- setting the default Admin's
+    first password: that also enables Username & Password, in the same
+    transaction (``_standalone_first_password``)."""
     principal = request.state.principal
-    if not principal.authenticated or principal.role == Role.INTEGRATION.value:
+    open_admin = (not principal.authenticated and principal.mechanism is None
+                  and principal.account_id == accounts.DEFAULT_ADMIN_ID)
+    if principal.role == Role.INTEGRATION.value or not (principal.authenticated or open_admin):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if open_admin and not standalone_open(get_settings()):
         raise HTTPException(status_code=403, detail="Forbidden")
     from auth.manager import PasswordAuthenticationBusy, peer_key
 
     try:
-        await accounts.set_own_first_password(principal.account_id, body.new_password, peer=peer_key(request))
+        if open_admin:
+            await _standalone_first_password(body.new_password, peer=peer_key(request))
+        else:
+            await accounts.set_own_first_password(principal.account_id, body.new_password, peer=peer_key(request))
     except PasswordAuthenticationBusy:
         raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
                             "Try again shortly.", headers={"Retry-After": "2"}) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
+
+
+async def _standalone_first_password(new_password: str, *, peer: str) -> None:
+    """The default Admin's first password on an open Standalone installation,
+    and Username & Password enabled with it: one change, the password and the
+    settings committed together (``accounts.commit_first_password``), or
+    neither. Argon2 runs first, outside any lock. Then, in the established
+    order -- the authentication configuration lock, then the configuration
+    write lock every scoped Settings writer holds -- the installation must
+    still be open Standalone, and the settings it writes are the ones current
+    under both, so no concurrent Settings write can be lost or undo this."""
+    from auth.transitions import authentication_configuration_lock
+
+    verifier = await accounts.first_password_verifier(accounts.DEFAULT_ADMIN_ID, new_password, peer=peer)
+    async with authentication_configuration_lock, config_write_lock():
+        current = get_settings()
+        if not standalone_open(current):
+            raise AccountRefused("Authentication changed meanwhile; nothing was changed")
+        enabled = current.model_copy(update={"auth_password_enabled": True}, deep=True)
+        attempted = []
+
+        def persist():
+            attempted.append(True)
+            save_settings(enabled)
+
+        try:
+            await accounts.commit_first_password(accounts.DEFAULT_ADMIN_ID, verifier, settings=enabled,
+                                                 persist=persist)
+        except AccountRefused:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a persistence failure is reported, never half-applied
+            if attempted:
+                try:
+                    save_settings(current)
+                except Exception as restore_exc:  # noqa: BLE001
+                    logger.critical("Previous authentication settings could not be restored: %s",
+                                    type(restore_exc).__name__)
+            logger.error("The first password was not set: %s", type(exc).__name__)
+            raise HTTPException(status_code=500, detail="The password could not be saved; nothing was changed") from None
+        apply_settings(enabled)
+    await journal_configuration_change(current, enabled)
 
 
 @router.put("/account/display-name")

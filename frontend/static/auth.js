@@ -372,6 +372,9 @@
     // Set Password: the account's own read says it has no local password.
     const first = Boolean(own) && own.has_password === false;
     const passwordAction = profile.has_password ? 'Change Password' : first ? 'Set Password' : '';
+    // A Standalone installation's open default Admin: its first password also
+    // turns on password sign-in (the server does both, or neither).
+    const standaloneFirst = first && data.deployment_type === 'standalone' && sessionKind(data) === 'standalone';
     let emailSlot = null;
     // The Pencil turns the shown address into the field, holding it; Save
     // sends the change, Cancel discards it.
@@ -436,7 +439,9 @@
               <input class="input" data-field="next" type="password" maxlength="4096" autocomplete="new-password"></label>
             <label class="dp-modal-field"><span class="form-label">Confirm New Password</span>
               <input class="input" data-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>${first ? `
-            <p class="dp-account-username-note">Local password sign-in works only if your administrator has enabled it.</p>` : ''}
+            <p class="dp-account-username-note">${standaloneFirst
+              ? 'Saving it turns on password sign-in: DebridPulse then asks for this password.'
+              : 'Local password sign-in works only if your administrator has enabled it.'}</p>` : ''}
           </div>`;
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });

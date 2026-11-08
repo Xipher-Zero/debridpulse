@@ -599,6 +599,7 @@ class SettingsUpdate(AppSettings):
 _DOCUMENT_FIELDS = frozenset(AppSettings.model_fields) - {
     "integrations", "integration_groups", "transfer_policy", "execution_runtime_limits",
     "external_delivery", "notification_verification", "oidc_client_secret", "oidc_client_secret_clear",
+    "deployment_type",
 }
 
 
@@ -711,6 +712,9 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             # configuration and is never accepted from a request, so it is
             # carried forward here exactly like the canonical namespaces above.
             merged["notification_verification"] = previous.notification_verification
+            # The deployment type changes only through its confirmed transition
+            # (``PUT /api/auth/deployment-type``); a submitted one is ignored.
+            merged["deployment_type"] = previous.deployment_type
             clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
             clean = validate_and_sanitise(clean)
             # ... and then retired where it no longer describes what is about to

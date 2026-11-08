@@ -12,7 +12,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api import auth_routes as interactive_routes
-from auth.accounts import AccountRefused, admin_password_holders, local_credential_status, set_own_local_credential
+from auth.accounts import (
+    AccountRefused,
+    admin_password_holders,
+    change_deployment_credentials,
+    deployment_eligible,
+    local_credential_status,
+    set_own_local_credential,
+)
 from auth.csrf import clear_login_csrf_cookie
 from auth.manager import peer_key
 from auth.models import AuthMechanism, Principal
@@ -43,11 +50,12 @@ from auth.policy import (
     oidc_auth_enabled,
     password_auth_enabled,
     safe_return_path,
+    standalone_deployment,
 )
-from auth.sessions import session_cookie_token, session_store, set_session_cookie
+from auth.sessions import clear_session_cookie, session_cookie_token, session_store, set_session_cookie
 from auth.throttle import oidc_verify_rate_limiter
 from auth.transitions import authentication_configuration_lock, oidc_critical_change
-from core.config import apply_settings, get_settings, journal_configuration_change, save_settings
+from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.config_validator import validate_and_sanitise
 
 
@@ -177,7 +185,7 @@ async def _authentication_payload(request: Request, *, cfg=None) -> dict:
         "mode": _authentication_mode(cfg),
         "authentication_required": interactive_auth_enabled(cfg),
         "password_enabled": password_auth_enabled(cfg),
-        "password_ready": bool(password_auth_enabled(cfg) and await admin_password_holders()),
+        "password_ready": bool(password_auth_enabled(cfg) and await admin_password_holders(cfg)),
         "password_configured": password_configured,
         "username": username,
         "session_lifetime_hours": int(getattr(cfg, "auth_session_lifetime_hours", 12) or 12),
@@ -297,7 +305,7 @@ async def _prospective_password_ready(candidate, update: AuthenticationConfigUpd
     """Whether, after this update, an active Admin could sign in with a password."""
     if not bool(getattr(candidate, "auth_password_enabled", False)):
         return False
-    holders = await admin_password_holders()
+    holders = await admin_password_holders(candidate)
     own = principal.account_id
     if own and update.clear_password:
         # Clear intent wins over simultaneous plaintext, exactly as applied.
@@ -305,7 +313,7 @@ async def _prospective_password_ready(candidate, update: AuthenticationConfigUpd
     elif own and principal.role == "admin" and str(update.auth_password or ""):
         if _requested_username(update, own_username) or own_username:
             holders.add(own)
-    return bool(holders)
+    return bool(deployment_eligible(holders, candidate))
 
 
 def _set_pending_correlation_cookie(response: JSONResponse, correlation: str) -> None:
@@ -578,6 +586,75 @@ async def update_authentication_config(request: Request, update: AuthenticationC
     return response
 
 
+class DeploymentTypeChange(BaseModel):
+    """The confirmed Server <-> Standalone transition. ``confirm`` is the
+    destructive confirmation the operator gave; without it nothing changes."""
+    model_config = ConfigDict(strict=True)
+    deployment_type: Literal["server", "standalone"]
+    confirm: bool = False
+
+
+_DEPLOYMENT_LABELS = {"server": "Server", "standalone": "Standalone"}
+
+
+@router.put("/api/auth/deployment-type")
+async def change_deployment_type(request: Request, change: DeploymentTypeChange):
+    """Change the installation's deployment type, in either direction, as one
+    authoritative transition: the type, Username & Password and OpenID Connect
+    both disabled (the rest of their configuration kept), and the default
+    Admin's local password removed if it has one. No other account, credential,
+    binding, token, enabled state or demand is touched. Every browser session
+    then ends: the installation is open, as its default Admin, until
+    authentication is configured again.
+
+    The authentication boundary holds the configuration lock from the caller's
+    admission through this route (``holds_authentication_configuration_lock``),
+    so the current type is the one every concurrent change sees. A request for
+    the type already in force changes nothing and says so."""
+    if not change.confirm:
+        return JSONResponse(
+            {"detail": "Explicit confirmation is required to change the deployment type"}, status_code=409)
+    target = change.deployment_type
+    async with config_write_lock():
+        current = get_settings()
+        if current.deployment_type == target:
+            return JSONResponse(
+                {"detail": f"DebridPulse is already {_DEPLOYMENT_LABELS[target]}; nothing was changed"},
+                status_code=409)
+        clean = validate_and_sanitise(current.model_copy(
+            update={"deployment_type": target, "auth_password_enabled": False, "auth_oidc_enabled": False},
+            deep=True))
+        attempted = []
+
+        def persist():
+            attempted.append(True)
+            save_settings(clean)
+
+        try:
+            await change_deployment_credentials(settings=clean, persist=persist)
+        except Exception as exc:  # noqa: BLE001 - a persistence failure is reported, never half-applied
+            if attempted:
+                try:
+                    save_settings(current)
+                except Exception as restore_exc:  # noqa: BLE001
+                    logger.critical("Previous deployment settings could not be restored: %s",
+                                    type(restore_exc).__name__)
+            logger.error("Deployment type was not changed: %s", type(exc).__name__)
+            return JSONResponse(
+                {"detail": "The deployment type could not be saved; nothing was changed"},
+                status_code=500, headers={"Cache-Control": "no-store"})
+        apply_settings(clean)
+    basic_verification_cache.clear()
+    session_store.clear()
+    pending_oidc_store.clear()
+    await journal_configuration_change(current, clean)
+    logger.warning("Deployment type changed to %s; interactive authentication is disabled", target)
+    response = JSONResponse({"ok": True, "deployment_type": target})
+    response.headers["Cache-Control"] = "no-store"
+    clear_session_cookie(response, request)
+    return response
+
+
 @router.post("/api/auth/oidc/verify-config")
 async def verify_pending_oidc_configuration(
     request: Request,
@@ -587,6 +664,9 @@ async def verify_pending_oidc_configuration(
     principal = getattr(request.state, "principal", None)
     if principal is None or not getattr(principal, "authenticated", False):
         return JSONResponse({"detail": "Authentication required"}, status_code=401)
+    if standalone_deployment(get_settings()):
+        return JSONResponse({"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone"},
+                            status_code=409)
     if not oidc_verify_rate_limiter.allow(peer_key(request)):
         return JSONResponse(
             {"detail": "Too many OpenID Connect configuration verifications have been started"},

@@ -47,6 +47,7 @@ from auth.policy import (
     oidc_auth_enabled,
     password_auth_enabled,
     safe_return_path,
+    standalone_deployment,
 )
 from auth.sessions import (
     clear_session_cookie,
@@ -471,6 +472,10 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
 </html>"""
 
 
+_USERNAME_FIELD = f"""<label for="username">Username</label>
+              <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="Enter your username" required></div>"""
+
+
 async def _login_page(
     request: Request,
     *,
@@ -480,8 +485,13 @@ async def _login_page(
     status_code: int = 200,
 ) -> HTMLResponse:
     cfg = get_settings()
+    # A Standalone installation signs in its one person, the default Admin,
+    # with its password alone: no username and no OpenID Connect are offered,
+    # and the server resolves the account itself (``verify_local_credentials``).
+    # The page reads the installation's settings only, never an account.
+    standalone = standalone_deployment(cfg)
     password_enabled = password_auth_enabled(cfg)
-    oidc_enabled = oidc_auth_enabled(cfg)
+    oidc_enabled = oidc_auth_enabled(cfg) and not standalone
     oidc_ready = oidc_auth_ready(cfg) if oidc_enabled else False
     provider_name = html.escape(
         str(getattr(cfg, "oidc_provider_name", "") or "OpenID Connect").strip()
@@ -497,8 +507,7 @@ async def _login_page(
             <form method="post" action="/login" autocomplete="on">
               <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
               <input type="hidden" name="next" value="{html.escape(return_to, quote=True)}">
-              <label for="username">Username</label>
-              <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="Enter your username" required></div>
+              {'' if standalone else _USERNAME_FIELD}
               <label for="password">Password</label>
               <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="Enter your password" required><button class="password-reveal" type="button" data-password-reveal aria-label="Hold to show password" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
               <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
@@ -730,7 +739,10 @@ async def password_login(request: Request):
             status_code=403,
         )
     form = await request.form()
-    username = str(form.get("username") or "")
+    # Standalone signs in the default Admin by its password alone: a submitted
+    # username names no one and is not read.
+    standalone = standalone_deployment(cfg)
+    username = "" if standalone else str(form.get("username") or "")
     password = str(form.get("password") or "")
     csrf_token = str(form.get("csrf_token") or "")
     return_to = safe_return_path(str(form.get("next") or "/"))
@@ -772,21 +784,21 @@ async def password_login(request: Request):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="Invalid username or password.",
+            error="Invalid password." if standalone else "Invalid username or password.",
             status_code=401,
         )
 
     async with authentication_configuration_lock:
         current = get_settings()
         account = await password_proof_current(proven, current)
-        if account is None:
+        if account is None or standalone_deployment(current) != standalone:
             return await _issue_login_page(
                 request,
                 return_to=return_to,
                 error="Authentication configuration changed while sign-in was in progress. Try again.",
                 status_code=409,
             )
-        if not admitted(account):
+        if not admitted(account, current):
             return await _issue_login_page(
                 request,
                 return_to=return_to,
@@ -902,7 +914,7 @@ async def oidc_callback(
             principal.claims,
             default_role=getattr(cfg, "auth_oidc_default_role", "user"),
         )
-        if not admitted(account):
+        if not admitted(account, cfg):
             response = await _issue_login_page(
                 request,
                 return_to="/",
@@ -952,6 +964,8 @@ def _authority(principal: Principal) -> dict:
         "capabilities": sorted(capabilities(principal)),
         # How every human role's interface renders timestamps.
         "display_timezone": display_timezone(),
+        # The installation's deployment type (``AppSettings.deployment_type``).
+        "deployment_type": get_settings().deployment_type,
     }
 
 

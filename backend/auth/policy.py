@@ -40,6 +40,20 @@ def interactive_auth_enabled(settings) -> bool:
     return password_auth_enabled(settings) or oidc_auth_enabled(settings)
 
 
+def standalone_deployment(settings) -> bool:
+    """Whether the installation's deployment type is Standalone: the built-in
+    default Admin is its one person (``core.config.AppSettings.deployment_type``).
+    Not open mode, which either deployment type is until authentication is on."""
+    return getattr(settings, "deployment_type", "server") == "standalone"
+
+
+def standalone_open(settings) -> bool:
+    """Standalone with no interactive authentication: the default Admin's open
+    principal, which alone may establish the first password (and with it
+    Username & Password authentication)."""
+    return standalone_deployment(settings) and not interactive_auth_enabled(settings)
+
+
 def safe_return_path(value: str, *, default: str = "/") -> str:
     """Accept only a local absolute-path reference; never create an open redirect."""
     candidate = str(value or "").strip()

@@ -53,7 +53,7 @@ from auth.passwords import (
     is_usable_password_hash,
     password_credential_version,
 )
-from auth.policy import interactive_auth_enabled, oidc_auth_enabled, password_auth_enabled
+from auth.policy import interactive_auth_enabled, oidc_auth_enabled, password_auth_enabled, standalone_deployment
 
 
 class Role(StrEnum):
@@ -202,10 +202,25 @@ class Account:
         return bool(self.credential_version)
 
 
-def admitted(account: Account | None) -> bool:
-    """Whether a resolved account may be signed in: it exists and is active.
-    What it may then do is its role's (``auth.permissions``)."""
-    return bool(account is not None and account.active)
+def admitted(account: Account | None, settings=None) -> bool:
+    """Whether a resolved account may be signed in: it exists and is active
+    and, while the installation is Standalone, it is the default Admin -- every
+    other person keeps its stored ``enabled`` but cannot sign in. What it may
+    then do is its role's (``auth.permissions``)."""
+    if account is None or not account.active:
+        return False
+    if settings is None:
+        from core.config import get_settings
+
+        settings = get_settings()
+    return account.id in deployment_eligible({account.id}, settings) or account.role is Role.INTEGRATION
+
+
+def deployment_eligible(account_ids: Iterable[str], settings) -> set[str]:
+    """Which of these accounts the deployment type lets act as a person: all
+    of them on a Server, the default Admin alone on a Standalone installation."""
+    ids = {str(account_id) for account_id in account_ids}
+    return ids & {DEFAULT_ADMIN_ID} if standalone_deployment(settings) else ids
 
 
 def _now() -> str:
@@ -362,10 +377,20 @@ async def canonical_account_id(account_id: str) -> str:
 
 async def local_credential(username: str) -> tuple[Account, str] | None:
     """The active account owning ``username`` and its stored verifier."""
+    return await _local_credential("a.username=?", str(username or ""))
+
+
+async def default_admin_credential() -> tuple[Account, str] | None:
+    """The default Admin and its stored verifier: the one local credential a
+    Standalone sign-in checks, found by the account's ID, never by a name."""
+    return await _local_credential("a.id=?", DEFAULT_ADMIN_ID)
+
+
+async def _local_credential(where: str, value: str) -> tuple[Account, str] | None:
     from db.database import get_db
 
     async with get_db() as db:
-        row = await db.fetchone(f"{_ACCOUNT_SELECT} WHERE a.username=?", (str(username or ""),))
+        row = await db.fetchone(f"{_ACCOUNT_SELECT} WHERE {where}", (value,))
     account = _account(row)
     if account is None or not account.active or not account.has_password:
         return None
@@ -385,18 +410,21 @@ def _oidc_issuer(settings) -> str:
         return ""
 
 
-def usable_admin_exists(admins: Iterable[tuple[bool, frozenset[str]]], settings) -> bool:
+def usable_admin_exists(admins: Mapping[str, tuple[bool, frozenset[str]]], settings) -> bool:
     """Whether some active Admin can still sign in under ``settings``.
 
-    ``admins`` holds, per active Admin account, whether it has a usable local
-    password and the OIDC issuers it is bound under. Without interactive
-    authentication the installation is standalone: its one principal is the
-    default Admin, so an Admin is always usable."""
+    ``admins`` holds, per active Admin account ID, whether it has a usable
+    local password and the OIDC issuers it is bound under. Without interactive
+    authentication the request acts as the open principal, the default Admin,
+    so an Admin is always usable. A Standalone installation counts the default
+    Admin's own password alone."""
     if not interactive_auth_enabled(settings):
         return True
     password = password_auth_enabled(settings)
-    issuer = _oidc_issuer(settings)
-    return any((password and has_password) or (issuer and issuer in issuers) for has_password, issuers in admins)
+    issuer = "" if standalone_deployment(settings) else _oidc_issuer(settings)
+    eligible = deployment_eligible(admins, settings)
+    return any((password and has_password) or (issuer and issuer in issuers)
+               for account_id, (has_password, issuers) in admins.items() if account_id in eligible)
 
 
 _ADMIN_FACTS = (
@@ -419,7 +447,7 @@ def _admin_facts(rows) -> dict[str, tuple[bool, frozenset[str]]]:
 async def _usable_admin(db, settings) -> bool:
     rows = await db.fetchall(_ADMIN_FACTS)
     facts = _admin_facts((row["id"], row["password_hash"], row["issuer"]) for row in rows)
-    return usable_admin_exists(facts.values(), settings)
+    return usable_admin_exists(facts, settings)
 
 
 async def usable_admin_present(settings) -> bool:
@@ -429,14 +457,16 @@ async def usable_admin_present(settings) -> bool:
         return await _usable_admin(db, settings)
 
 
-async def admin_password_holders() -> set[str]:
-    """Active Admin accounts holding a usable local password."""
+async def admin_password_holders(settings) -> set[str]:
+    """Active Admin accounts holding a usable local password that ``settings``'
+    deployment type lets sign in (``deployment_eligible``)."""
     from db.database import get_db
 
     async with get_db() as db:
         rows = await db.fetchall(_ADMIN_FACTS)
     facts = _admin_facts((row["id"], row["password_hash"], row["issuer"]) for row in rows)
-    return {account_id for account_id, (has_password, _issuers) in facts.items() if has_password}
+    holders = {account_id for account_id, (has_password, _issuers) in facts.items() if has_password}
+    return deployment_eligible(holders, settings)
 
 
 def _legacy_credential(document: Mapping[str, Any]) -> tuple[str, str]:
@@ -464,7 +494,7 @@ def restored_state_has_usable_admin(conn: sqlite3.Connection, document: Mapping[
     if legacy_hash:
         _has_password, issuers = facts.get(DEFAULT_ADMIN_ID, (False, frozenset()))
         facts[DEFAULT_ADMIN_ID] = (True, issuers)
-    return usable_admin_exists(facts.values(), settings)
+    return usable_admin_exists(facts, settings)
 
 
 # ── mutation core ───────────────────────────────────────────────────────────
@@ -1239,10 +1269,20 @@ async def set_own_first_password(account_id: str, new_password: str, *, peer: st
     (``_mutation``): it signs in again.
 
     Hashing is the expensive part, so it is admitted like a sign-in attempt's
-    proof: an account that cannot set one now is refused before any (a fast
-    answer only -- the transaction still decides), then the request takes the
-    password-attempt admission (``password_attempt_admission``: per peer and
-    in all, fail-fast) and the verifier is generated in the bounded Argon2
+    proof (``first_password_verifier``); the write is ``commit_first_password``."""
+    from auth.transitions import authentication_configuration_lock
+
+    verifier = await first_password_verifier(account_id, new_password, peer=peer)
+    async with authentication_configuration_lock:
+        await commit_first_password(account_id, verifier)
+
+
+async def first_password_verifier(account_id: str, new_password: str, *, peer: str = "unknown") -> str:
+    """The verifier for ``account_id``'s first password, prepared outside any
+    lock: an account that cannot set one now is refused before any hashing (a
+    fast answer only -- the transaction still decides), then the request takes
+    the password-attempt admission (``password_attempt_admission``: per peer
+    and in all, fail-fast) and the verifier is generated in the bounded Argon2
     worker slots. The admission is held until that worker finishes, even if
     the request is cancelled meanwhile."""
     from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
@@ -1256,8 +1296,14 @@ async def set_own_first_password(account_id: str, new_password: str, *, peer: st
         raise AccountRefused(refusal)
     if not password_attempt_admission.acquire(peer):
         raise PasswordAuthenticationBusy
-    verifier = await hash_password_async(new_password, finished=lambda: password_attempt_admission.release(peer))
-    async with _locked_mutation([str(account_id)]) as db:
+    return await hash_password_async(new_password, finished=lambda: password_attempt_admission.release(peer))
+
+
+async def commit_first_password(account_id: str, verifier: str, *, settings=None, persist=None) -> None:
+    """Store a prepared first-password verifier, committed together with the
+    authentication ``settings`` that ``persist`` writes (``_mutation``). The
+    caller holds the authentication configuration lock."""
+    async with _mutation([str(account_id)], settings, persist) as db:
         account = await _require(db, account_id)
         refusal = _first_password_refusal(account)
         if refusal:
@@ -1265,6 +1311,17 @@ async def set_own_first_password(account_id: str, new_password: str, *, peer: st
         if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (account.id,)):
             raise AccountRefused("The account already has a password; use Change Password")
         await _set_password_row(db, account.id, verifier)
+
+
+async def change_deployment_credentials(*, settings, persist) -> None:
+    """The account half of a deployment-type transition: the default Admin's
+    local password, if it has one, is removed, in the transaction that
+    ``persist`` writes the new deployment ``settings`` in (``_mutation``).
+    Nothing else is touched -- no other account's credential, binding, token,
+    ``enabled`` or demand. The caller holds the authentication configuration
+    lock, and ends every browser session once both are applied."""
+    async with _mutation([DEFAULT_ADMIN_ID], settings, persist) as db:
+        await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (DEFAULT_ADMIN_ID,))
 
 
 # ── Integration API tokens ──────────────────────────────────────────────────

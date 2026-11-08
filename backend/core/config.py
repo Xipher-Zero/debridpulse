@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
@@ -159,6 +159,15 @@ class AppSettings(BaseModel):
     # a page size only: the event journal itself is kept indefinitely.
     activity_log_page_size: Annotated[int, Choice((50, 100, 250))] = 100
 
+    # ── Deployment type ──────────────────────────────────────────────────────
+    # Who may use the installation as a person: ``server``, its accounts under
+    # their roles, or ``standalone``, the built-in default Admin alone (with no
+    # OpenID Connect). Absent means ``server``. Changed only by the confirmed
+    # deployment transition (``api.auth_config_routes``), never by a Settings
+    # write. Unrelated to open mode (``auth.models.Principal.standalone``):
+    # either type is open until interactive authentication is enabled.
+    deployment_type: Literal["server", "standalone"] = "server"
+
     # ── Authentication ────────────────────────────────────────────────────────
     # Mechanisms and admission only. Local credentials belong to accounts
     # (``auth.accounts``); a pre-account ``auth_username``/``auth_password``/
@@ -203,6 +212,15 @@ class AppSettings(BaseModel):
     # "pt-br", "zh-hans"), stored lowercase. Global Downloads preference: an
     # integration that acquires subtitled media reads it and keeps no copy.
     preferred_subtitle_language: str = Field(default="en", pattern=r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
+
+    @model_validator(mode="after")
+    def _standalone_without_oidc(self):
+        # A stored Standalone configuration with OpenID Connect enabled is not
+        # a mode DebridPulse runs in: it is refused at load and restore, never
+        # read as open or as multi-user.
+        if self.deployment_type == "standalone" and self.auth_oidc_enabled:
+            raise ValueError("A Standalone installation cannot enable OpenID Connect")
+        return self
 
     @field_validator("preferred_subtitle_language", mode="before")
     @classmethod

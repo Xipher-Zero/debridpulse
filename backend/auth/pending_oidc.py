@@ -13,6 +13,7 @@ from auth.oidc_version import (
     authentication_configuration_baseline_version,
     oidc_configuration_version,
 )
+from auth.policy import standalone_deployment
 
 
 _OIDC_COMMIT_FIELDS = (
@@ -179,6 +180,10 @@ async def commit_verified_pending_oidc(
     from core.config import apply_settings, get_settings, save_settings
 
     current = get_settings()
+    if standalone_deployment(current):
+        # A Standalone installation has no OpenID Connect: a proposal staged
+        # before it became Standalone is never committed.
+        return None
     current_baseline = authentication_configuration_baseline_version(current)
     if not item.baseline_configuration_version or not secrets.compare_digest(
         item.baseline_configuration_version,

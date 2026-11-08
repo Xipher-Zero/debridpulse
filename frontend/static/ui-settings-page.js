@@ -4629,7 +4629,76 @@
   }
 
   function usersPanel() {
-    return `<div class="dp-settings-users" data-users-mount>${usersBody()}</div>`;
+    return `<div class="dp-settings-users" data-users-mount>${usersBody()}</div>${deploymentCard()}`;
+  }
+
+  /* Deployment Type, at the foot of Users & Access: the installation's type
+   * (``deployment_type``, from the server's settings) and the one action that
+   * selects the other, through the destructive confirmation. Server: every
+   * account signs in under its role. Standalone: the built-in Administrator
+   * alone, by its password once one is set. Either way the change disables
+   * Password and OIDC sign-in and ends every browser session; the server
+   * makes it whole or not at all, and the page then starts again. */
+  const DEPLOYMENT_TYPES = Object.freeze({
+    server: {label: 'Server', other: 'standalone',
+      hint: 'People sign in with their own accounts and roles.'},
+    standalone: {label: 'Standalone', other: 'server',
+      hint: 'Only the built-in Administrator uses DebridPulse as a person. Other user accounts are kept, but cannot sign in.'},
+  });
+  const DEPLOYMENT_CONFIRMATIONS = Object.freeze({
+    standalone: {
+      title: 'Switch to Standalone?',
+      confirmLabel: 'Switch to Standalone',
+      message: 'Only the built-in Administrator will be able to use DebridPulse as a person. Other user accounts '
+        + 'and their settings will be retained, but cannot sign in while Standalone is selected. Password and OIDC '
+        + "login will be disabled, and the Administrator's current password will be cleared. Existing browser "
+        + 'sessions will end. The installation will be accessible to anyone who can reach it, without a password, '
+        + 'until you set one in My Account. Integration accounts and their API tokens remain available. Continue?',
+    },
+    server: {
+      title: 'Switch to Server?',
+      confirmLabel: 'Switch to Server',
+      message: 'Existing user accounts return to their saved enabled/disabled status; none will be deleted. '
+        + "Password and OIDC login will be disabled, the built-in Administrator's password will be cleared if "
+        + 'present, and existing browser sessions will end. The installation will be accessible to anyone who can '
+        + 'reach it, without authentication, until you enable it in Settings. Saved authentication configuration '
+        + 'is retained. Continue?',
+    },
+  });
+
+  function deploymentCard() {
+    const current = state.settings?.deployment_type === 'standalone' ? 'standalone' : 'server';
+    const type = DEPLOYMENT_TYPES[current];
+    const other = DEPLOYMENT_TYPES[type.other];
+    return card('Deployment Type', `
+      <div class="dp-settings-deployment-row dp-settings-island" role="group" aria-label="Deployment type">
+        ${inlineField('', 'Current Deployment Type', html(type.hint),
+          `<span class="dp-settings-deployment-value" data-deployment-type="${current}">${type.label}</span>`,
+          {
+            className: 'dp-settings-deployment-field',
+            action: `<button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
+              type.other}">Switch to ${other.label}</button>`,
+          })}
+      </div>
+    `, {className: 'dp-settings-deployment-card', titlePrefix: familyIcon('users', 'settings')});
+  }
+
+  async function changeDeploymentType(target, button) {
+    const copy = DEPLOYMENT_CONFIRMATIONS[target];
+    if (!copy) return;
+    const confirmed = await window.DPSettingsModal.confirm({tone: 'danger', ...copy});
+    if (!confirmed) return;
+    setBusy(button, true, 'Switching…');
+    try {
+      await request('PUT', '/auth/deployment-type', {deployment_type: target, confirm: true}, 15000);
+    } catch (error) {
+      setBusy(button, false);
+      notify(error.message, 'error');
+      return;
+    }
+    // Every browser session ended with the change: the page starts again,
+    // as the server now admits it.
+    window.location.reload();
   }
 
   function paintUsers() {
@@ -6431,6 +6500,7 @@
     else if (action === 'create-local') void createLocalAccount();
     else if (action === 'create-integration') void createIntegrationAccount();
     else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));
+    else if (action === 'deployment') void changeDeploymentType(button.dataset.deploymentTarget || '', button);
     else if (!account) return true;
     else if (action === 'edit') { if (account.id !== selfId() && !account.protected) void editUser(account); }
     else if (action === 'details') void showAccountDetails(account);

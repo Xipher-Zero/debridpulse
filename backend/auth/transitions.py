@@ -11,7 +11,13 @@ from pydantic import TypeAdapter, ValidationError
 
 from auth.models import AuthMechanism, Principal
 from auth.oidc import OidcConfigurationError, oidc_configuration
-from auth.policy import AUTH_CONFIG_PATH, interactive_auth_enabled, oidc_auth_enabled, password_auth_enabled
+from auth.policy import (
+    AUTH_CONFIG_PATH,
+    interactive_auth_enabled,
+    oidc_auth_enabled,
+    password_auth_enabled,
+    standalone_deployment,
+)
 
 
 CRITICAL_OIDC_FIELDS = frozenset(
@@ -29,6 +35,8 @@ CRITICAL_OIDC_FIELDS = frozenset(
     }
 )
 _AUTH_SETTINGS_PATHS = frozenset({"/api/settings", "/api/auth/config"})
+# The confirmed Server <-> Standalone transition (``api.auth_config_routes``).
+DEPLOYMENT_TYPE_PATH = "/api/auth/deployment-type"
 
 # Authentication configuration changes must be evaluated and committed against
 # one authoritative state. Middleware holds this lock through the settings route
@@ -50,6 +58,14 @@ def _coerced_bool(value: Any, *, default: bool = False) -> bool:
 
 def is_auth_settings_mutation(request: Request) -> bool:
     return request.method.upper() == "PUT" and request.url.path in _AUTH_SETTINGS_PATHS
+
+
+def holds_authentication_configuration_lock(request: Request) -> bool:
+    """Whether the authentication boundary holds the configuration lock from
+    credential validation through the route: every authentication settings
+    mutation, and the deployment-type transition."""
+    return is_auth_settings_mutation(request) or (
+        request.method.upper() == "PUT" and request.url.path == DEPLOYMENT_TYPE_PATH)
 
 
 def _normalized_list(value: Any, *, casefold: bool = False) -> tuple[str, ...]:
@@ -113,9 +129,11 @@ async def _prospective_password_ready(request: Request, payload: Mapping[str, An
     Local credentials are account state (``auth.accounts``). Only the
     dedicated Authentication endpoint edits one -- the signed-in account's own
     -- so only its payload can add or remove a password here."""
-    from auth.accounts import Role, admin_password_holders, local_credential_status
+    from auth.accounts import Role, admin_password_holders, deployment_eligible, local_credential_status
+    from core.config import get_settings
 
-    holders = await admin_password_holders()
+    current = get_settings()
+    holders = await admin_password_holders(current)
     own = principal.account_id
     if request.url.path != AUTH_CONFIG_PATH or not own:
         return bool(holders)
@@ -129,7 +147,7 @@ async def _prospective_password_ready(request: Request, payload: Mapping[str, An
         username, _configured = await local_credential_status(own)
         if str(payload.get("auth_username", username) or "").strip():
             holders.add(own)
-    return bool(holders)
+    return bool(deployment_eligible(holders, current))
 
 
 def _prospective_oidc_ready(payload: Mapping[str, Any], current) -> bool:
@@ -209,6 +227,15 @@ async def settings_transition_rejection(
         default=current_oidc,
     )
     critical_oidc_change = oidc_critical_change(payload, current)
+
+    # A Standalone installation's one person is the default Admin, and it has
+    # no OpenID Connect: no write may enable it (the password half is the
+    # usable-mechanism rule below, which counts the default Admin alone).
+    if standalone_deployment(current) and proposed_oidc:
+        return JSONResponse(
+            {"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone"},
+            status_code=409,
+        )
 
     # Explicitly opening an installation is supported, but only as an
     # authenticated and deliberately confirmed transition. Already-open

@@ -6,9 +6,9 @@ import threading
 
 from fastapi import Request
 
-from auth.accounts import get_account, local_credential
+from auth.accounts import default_admin_credential, get_account, local_credential
 from auth.passwords import basic_verification_cache, verify_password_candidate_async
-from auth.policy import password_auth_enabled
+from auth.policy import password_auth_enabled, standalone_deployment
 from auth.throttle import password_failure_throttle
 from core.config import get_settings
 
@@ -99,13 +99,16 @@ async def verify_local_credentials(
 
     Returns the active account whose credential matched, or ``None``. An
     unknown or disabled username costs the same Argon2 work as a wrong
-    password and is indistinguishable from it."""
+    password and is indistinguishable from it. A Standalone installation has
+    one person: the password is checked against the default Admin's
+    credential, found by its ID, and any supplied username is ignored."""
     cfg = settings if settings is not None else get_settings()
     if not password_auth_enabled(cfg):
         return None
 
     peer = peer_key(request)
-    candidate_user = str(provided_user or "")
+    standalone = standalone_deployment(cfg)
+    candidate_user = "" if standalone else str(provided_user or "")
     candidate_password = str(provided_password or "")
     # A Basic client presenting exactly the credential already proven against
     # this stored verifier needs no Argon2 work, so it takes no admission slot:
@@ -114,8 +117,8 @@ async def verify_local_credentials(
     # read serves the cache hit alone; anything else -- a wrong password
     # included -- is admitted and throttled first, and reads the credential
     # afresh there.
-    if allow_basic_success_cache and candidate_user and basic_verification_cache.size:
-        cached = await local_credential(candidate_user)
+    if allow_basic_success_cache and (candidate_user or standalone) and basic_verification_cache.size:
+        cached = await (default_admin_credential() if standalone else local_credential(candidate_user))
         if cached is not None and basic_verification_cache.contains(cached[0].username, candidate_password, cached[1]):
             password_failure_throttle.record_success(peer, candidate_user)
             return cached[0]
@@ -127,7 +130,10 @@ async def verify_local_credentials(
         if delay:
             await asyncio.sleep(delay)
 
-        found = await local_credential(candidate_user) if candidate_user else None
+        if standalone:
+            found = await default_admin_credential()
+        else:
+            found = await local_credential(candidate_user) if candidate_user else None
         account, password_hash = found if found is not None else (None, "")
 
         verified = await verify_password_candidate_async(

@@ -130,6 +130,7 @@ ACTIONS: dict[str, Capability] = {
     "api.auth_config_routes.update_authentication_config": _A,
     "api.auth_config_routes.get_oidc_runtime_status": _A,
     "api.auth_config_routes.verify_pending_oidc_configuration": _A,
+    "api.auth_config_routes.change_deployment_type": _A,
     "api.account_routes.list_accounts": _A,
     "api.account_routes.create_account": _A,
     "api.account_routes.update_account": _A,

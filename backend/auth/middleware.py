@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from auth.accounts import admitted, resolve_token
+from auth.accounts import DEFAULT_ADMIN_ID, admitted, resolve_token
 from auth.manager import (
     PasswordAuthenticationBusy,
     password_proof_current,
@@ -25,12 +25,13 @@ from auth.policy import (
     oidc_auth_enabled,
     password_auth_enabled,
     safe_return_path,
+    standalone_deployment,
     trusted_request_origin,
 )
 from auth.sessions import CSRF_HEADER, session_cookie_token, session_store
 from auth.transitions import (
     authentication_configuration_lock,
-    is_auth_settings_mutation,
+    holds_authentication_configuration_lock,
     settings_transition_rejection,
 )
 from core.branding import APP_SHORT_NAME
@@ -132,8 +133,11 @@ def session_record_valid(record, cfg) -> bool:
     The mechanism that issued it must still be enabled under the current
     configuration (and, for OIDC, the exact configuration that proved it).
     Its account is current by construction: every account change revokes the
-    account's sessions (``auth.accounts``) in the same critical section."""
+    account's sessions (``auth.accounts``) in the same critical section. A
+    Standalone installation admits the default Admin's sessions alone."""
     if record is None or not record.principal.account_id:
+        return False
+    if standalone_deployment(cfg) and record.principal.account_id != DEFAULT_ADMIN_ID:
         return False
     mechanism = record.principal.mechanism
     if mechanism is AuthMechanism.PASSWORD_SESSION:
@@ -353,7 +357,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
             return _authentication_busy()
         if proven is None:
             return _unauthorized(basic_challenge=True)
-        if is_auth_settings_mutation(request):
+        if holds_authentication_configuration_lock(request):
             # The settings-mutation path already owns the non-reentrant
             # configuration lock in enforce_authentication().
             current = get_settings()
@@ -364,7 +368,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
                 account = await password_proof_current(proven, current)
         # HTTP Basic authenticates exactly the account whose credential
         # matched -- never a role by username -- and only an active one.
-        if not admitted(account):
+        if not admitted(account, current):
             return _unauthorized(basic_challenge=True)
         principal = Principal.http_basic(account)
         _attach_principal(request, principal)
@@ -392,7 +396,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
 
 async def enforce_authentication(request: Request, call_next: CallNext) -> Response:
     """Outer authentication boundary for open, session, Bearer and Basic access."""
-    if is_auth_settings_mutation(request):
+    if holds_authentication_configuration_lock(request):
         # Hold the lock from credential validation through FastAPI route
         # persistence. This closes the middleware-check/route-commit TOCTOU
         # window for both broad and dedicated settings APIs.
