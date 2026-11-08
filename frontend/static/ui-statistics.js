@@ -779,8 +779,19 @@
       options[next].focus({preventScroll: true});
     });
     // Focus leaving the menu (Tab, Shift+Tab, anything) closes it: it is never
-    // a trap. (Its options' blur, in the capture phase.)
+    // a trap. (Its options' blur, in the capture phase.) Except a press of the
+    // control itself: its click is the control's own toggle and closes the
+    // open menu -- closed here first, that click would open it again.
+    // The press lasts until its click has toggled the menu (a touch moves focus
+    // only after it is lifted), or ends without one: cancelled, or released
+    // elsewhere.
+    let pressing = false;
+    trigger.addEventListener('pointerdown', function () { pressing = true; });
+    trigger.addEventListener('click', function () { setTimeout(function () { pressing = false; }); });
+    document.addEventListener('pointercancel', function () { pressing = false; }, true);
+    document.addEventListener('pointerup', function (event) { if (!trigger.contains(event.target)) pressing = false; }, true);
     menu.addEventListener('blur', function (event) {
+      if (pressing) return;
       if (!menu.contains(event.relatedTarget) && menu.matches(':popover-open')) menu.hidePopover();
     }, true);
     // From 780px the period filters themselves are the control: an open menu closes.
