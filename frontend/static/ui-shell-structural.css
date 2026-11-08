@@ -523,12 +523,16 @@ body.light .theme-toggle {
   }
 
   /* The handle: centred on the sidebar's right edge, it follows that edge
-     as the overlay opens and closes, and its chevron says which way it goes. */
+     as the overlay opens and closes, and its chevron says which way it goes.
+     Where the centre would cover something the sidebar shows there (a
+     section heading), app.js (placeSidebarHandle) gives the nearest clear
+     centre, and the handle takes it at once: a move never travels through
+     what it avoids. */
   .sidebar-handle {
     display: grid;
     place-items: center;
     position: absolute;
-    top: 50%;
+    top: var(--dp-sidebar-handle-centre, 50%);
     right: 0;
     z-index: 6;
     width: 18px;

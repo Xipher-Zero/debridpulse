@@ -618,6 +618,49 @@ const mainGeometry = page => page.evaluate(() => ['main', 'content', 'topbar'].m
   return [r.left, r.top, r.width, r.height];
 }));
 
+// The compact rail's handle keeps clear of what the rail shows: centred where
+// nothing is there; where the centre would cover a section heading (SYSTEM,
+// at these heights), the nearest place 6px clear of its letters. The rail's
+// own contents never move for it.
+test('the handle is centred where the rail is clear, and keeps 6px from a section heading it would cover', async ({page}) => {
+  await open(page, 1100, {height: 900});
+  const handleAt = () => page.evaluate(() => {
+    const sidebar = document.getElementById('sidebar');
+    const s = sidebar.getBoundingClientRect(), h = document.getElementById('sidebar-handle').getBoundingClientRect();
+    const letters = [...sidebar.querySelectorAll(':scope > nav .nav-group')].map(node => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect();
+    }).filter(q => q.right > h.left && q.left < h.right);
+    return {offset: (h.top + h.bottom) / 2 - s.top - sidebar.clientHeight / 2,
+      clearance: Math.min(...letters.map(q => Math.max(q.top - h.bottom, h.top - q.bottom))), edge: s.right - h.right};
+  });
+  const rested = () => page.waitForFunction(() => document.getElementById('sidebar-handle').getAnimations().length === 0);
+  const rail = () => page.evaluate(() => [...document.querySelectorAll('#sidebar > .logo, #sidebar > nav > *, #sidebar-bottom-stack')]
+    .map(node => { const r = node.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }));
+  for (const height of [640, 900, 1000]) {
+    await resize(page, 1100, height);
+    await rested();
+    const at = await handleAt();
+    expect(Math.abs(at.offset), `${height}px: centred`).toBeLessThan(0.5);
+    expect(at.clearance, `${height}px`).toBeGreaterThanOrEqual(5.5);
+  }
+  for (const height of [700, 740, 780, 820]) {
+    await resize(page, 1100, height);
+    await rested();
+    const at = await handleAt();
+    expect(Math.abs(at.offset), `${height}px: moved off the centre`).toBeGreaterThan(0.5);
+    expect(at.clearance, `${height}px: clear of the heading`).toBeGreaterThanOrEqual(5.5);
+    expect(at.clearance, `${height}px: the nearest clear place`).toBeLessThan(7);
+    expect(Math.abs(at.edge - (await page.locator('#sidebar').evaluate(n => parseFloat(getComputedStyle(n).borderRightWidth)))), `${height}px: on the edge`).toBeLessThan(0.5);
+    // The rail is where it is with the handle at its centre.
+    const placed = await rail();
+    await page.locator('#sidebar-handle').evaluate(node => node.style.setProperty('top', '50%', 'important'));
+    expect(await rail(), `${height}px: the rail does not move`).toEqual(placed);
+    await page.locator('#sidebar-handle').evaluate(node => node.style.removeProperty('top'));
+  }
+});
+
 test('the handle opens the same sidebar above the page without moving the page, and every dismissal closes it', async ({page}) => {
   await open(page, 1440);
   const handle = page.locator('#sidebar-handle');

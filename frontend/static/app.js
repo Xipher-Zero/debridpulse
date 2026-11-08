@@ -3436,6 +3436,62 @@ function fitSidebarScale(sidebar) {
   void sidebar.offsetWidth;
   sidebar.toggleAttribute('data-sidebar-rescaling', false);
 }
+/* The handle's place on the sidebar's edge (the compact rail and its
+ * overlay; ui-shell-structural.css): centred, unless that would put it over
+ * something the sidebar shows there -- a section heading's letters, an icon,
+ * a count, the brand or the bottom stack -- and then the centre nearest to
+ * it that is clear of them by HANDLE_CLEARANCE, above or below. At rest it
+ * is placed on the sidebar's edge; while the overlay opens or closes, on
+ * every edge it passes, from the rail's to the overlay's, so the handle
+ * travelling with the edge never crosses what it avoids -- and once the
+ * edge has arrived (transitionend), on that edge alone. The sidebar's
+ * contents never move for it. */
+const HANDLE_CLEARANCE = 6;
+function placeSidebarHandle(sidebar) {
+  const handle = document.getElementById('sidebar-handle');
+  if (!handle) return;
+  if (getComputedStyle(handle).display === 'none') {
+    handle.style.removeProperty('--dp-sidebar-handle-centre');
+    return;
+  }
+  const box = sidebar.getBoundingClientRect();
+  const edge = name => parseFloat(getComputedStyle(sidebar).getPropertyValue(name)) || box.width;
+  const rail = edge('--dp-shell-rail');
+  const full = edge('--dp-shell-sidebar-full');
+  const target = sidebar.classList.contains('sidebar-overlay-open') ? full : rail;
+  const travelling = Math.abs(box.width - target) > 0.5;
+  const right = box.left + (travelling ? Math.max(rail, full) : target);
+  const left = box.left + (travelling ? Math.min(rail, full) : target) - handle.offsetWidth;
+  const size = handle.offsetHeight;
+  const room = sidebar.clientHeight;
+  const shown = node => {
+    const style = getComputedStyle(node);
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+  };
+  // A heading is its letters, not its padded box.
+  const heading = node => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return range.getBoundingClientRect();
+  };
+  const blocked = [
+    ...Array.from(sidebar.querySelectorAll(':scope > nav .nav-group'), node => shown(node) ? heading(node) : null),
+    ...Array.from(sidebar.querySelectorAll(':scope > .logo, :scope > nav .nav-item .icon, :scope > nav .nav-badge, :scope > .sidebar-bottom-stack > *'),
+      node => shown(node) ? node.getBoundingClientRect() : null),
+  ].filter(rect => rect && rect.width && rect.height && rect.right > left && rect.left < right)
+    .map(rect => [rect.top - box.top - HANDLE_CLEARANCE, rect.bottom - box.top + HANDLE_CLEARANCE]);
+  const clear = centre => centre - size / 2 >= 0 && centre + size / 2 <= room
+    && blocked.every(([top, bottom]) => centre + size / 2 <= top || centre - size / 2 >= bottom);
+  const preferred = room / 2;
+  let centre = preferred;
+  if (!clear(preferred)) {
+    const options = blocked.flatMap(([top, bottom]) => [top - size / 2, bottom + size / 2]).filter(clear);
+    if (options.length) centre = options.reduce((best, option) =>
+      Math.abs(option - preferred) < Math.abs(best - preferred) ? option : best);
+  }
+  if (centre === preferred) handle.style.removeProperty('--dp-sidebar-handle-centre');
+  else handle.style.setProperty('--dp-sidebar-handle-centre', `${Math.round(centre)}px`);
+}
 {
   // The sidebar's own box (unscaled) is observed for its size; its scaled
   // contents for what they hold (a resize of a scaled box is not reliably
@@ -3443,8 +3499,12 @@ function fitSidebarScale(sidebar) {
   // every height once loaded.
   const sidebar = document.getElementById('sidebar');
   if (sidebar && 'ResizeObserver' in window) {
-    const refit = () => fitSidebarScale(sidebar);
+    const refit = () => { fitSidebarScale(sidebar); placeSidebarHandle(sidebar); };
     new ResizeObserver(refit).observe(sidebar);
+    // The overlay's edge has arrived: the handle is placed on it alone.
+    sidebar.addEventListener('transitionend', event => {
+      if (event.target === sidebar && event.propertyName === 'width') placeSidebarHandle(sidebar);
+    });
     const contents = new MutationObserver(refit);
     contents.observe(sidebar, {attributes: true, attributeFilter: ['class']});
     sidebar.querySelectorAll(':scope > :is(.logo, nav, .sidebar-bottom-stack)').forEach(part =>
