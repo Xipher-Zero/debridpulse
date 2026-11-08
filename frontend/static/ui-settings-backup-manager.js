@@ -107,7 +107,7 @@
                    ${checked ? 'checked' : ''}>
           </td>
           <td class="dp-backup-when"><span class="dp-backup-when-full">${html(full)}</span><span class="dp-backup-when-short"
-              aria-hidden="true" title="${html(full)}">${whenShort(item.created_at).map(part => `<span>${html(part)}</span>`).join(' ')}</span></td>
+              aria-hidden="true">${whenShort(item.created_at).map(part => `<span>${html(part)}</span>`).join(' ')}</span></td>
           <td class="dp-backup-contents" id="dp-backup-contents-${index}">${html(item.contents)}</td>
           <td class="dp-backup-size">${html(size(item.size_bytes))}</td>
           <td class="dp-backup-row-action">${checked
