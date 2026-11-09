@@ -25,7 +25,7 @@ FormatJS formatter). The server reads the same files for three things only:
   messages are restricted to plain ``{name}`` arguments (the catalog validator
   enforces it), so ``message`` needs no general formatter. Before sign-in
   there is no account and so no account language: those pages are English
-  unless a caller states a locale explicitly (``preauth_locale``);
+  unless a caller states a locale explicitly (``pre_sign_in_locale``);
 * ``DisplayError``: an error the interface shows, raised with a stable
   ``code`` (and ``params``) beside its unchanged English ``detail``, so the
   interface can show it in the reader's language while API clients keep the
@@ -209,7 +209,7 @@ def message(key: str, tag: str = DEFAULT_LOCALE, **params) -> str:
     return _ARGUMENT.sub(lambda m: str(params.get(m.group(1), m.group(0))), text)
 
 
-def preauth_locale(explicit: str | None = None) -> str:
+def pre_sign_in_locale(explicit: str | None = None) -> str:
     """The language of a page shown before sign-in. There is no account, and
     neither ``Accept-Language`` nor the browser's language is read: English,
     unless a caller explicitly states a locale the installation holds (the

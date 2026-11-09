@@ -26,7 +26,9 @@
  * DPI18n.diagnostics(), atomically: the veil lifts once, on one language.
  *
  * Owners render through DPI18n: t(key, values) for text, rich(key, values)
- * for a fragment with its tags as elements, render(root) for markup that
+ * for a fragment with its tags as elements, number(value, digits) for a
+ * figure in the shown language's digits and decimal mark (fixed digits, no
+ * grouping: in English exactly what toFixed writes), render(root) for markup that
  * names its keys (data-i18n="key" for its text, data-i18n-attr="attr:key;…"
  * for attributes). When the language changes -- the late arrival of the
  * page's catalog, or setLocale(tag), the substrate a later language choice
@@ -150,6 +152,23 @@
     return made;
   }
 
+  const numberFormats = new Map();         // `${tag}\0${digits}` -> Intl.NumberFormat
+
+  /* A figure with exactly `digits` decimals, in the shown language (a pseudo
+   * locale writes English figures). */
+  function number(value, digits = 0) {
+    const n = Number(value);
+    const tag = pseudo(shown) ? DEFAULT : shown;
+    const id = `${tag}\0${digits}`;
+    if (!numberFormats.has(id)) {
+      const options = {minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false};
+      let made;
+      try { made = new Intl.NumberFormat(tag, options); } catch (_) { made = new Intl.NumberFormat(DEFAULT, options); }
+      numberFormats.set(id, made);
+    }
+    return numberFormats.get(id).format(n === 0 ? 0 : n);      // never "-0"
+  }
+
   const plainTags = () => Object.fromEntries([...RICH_TAGS].map(name => [name, chunks => chunks.join('')]));
 
   /* A message as plain text: rich-text tags keep their text only. */
@@ -189,7 +208,8 @@
   }
 
   /* Render markup that names its keys: data-i18n (its text; with
-   * data-i18n-rich, its rich text) and data-i18n-attr ("attr:key;…"). */
+   * data-i18n-rich, its rich text; with data-i18n-values, a JSON object of
+   * its arguments) and data-i18n-attr ("attr:key;…"). */
   function render(root = document) {
     if (!Formatter || !root) return;
     const nodes = [];
@@ -197,9 +217,16 @@
     if (root.querySelectorAll) nodes.push(...root.querySelectorAll('[data-i18n],[data-i18n-attr]'));
     nodes.forEach(node => {
       const key = node.getAttribute('data-i18n');
-      if (key) {
-        if (node.hasAttribute('data-i18n-rich')) node.replaceChildren(rich(key));
-        else node.textContent = t(key);
+      // A control showing its pending state (data-pending, app.js
+      // setButtonPending) keeps its words: its owner says that state in the
+      // new language. Its attributes (its idle label, its tooltip) follow here.
+      if (key && !node.closest('[data-pending="1"]')) {
+        let values = {};
+        if (node.hasAttribute('data-i18n-values')) {
+          try { values = JSON.parse(node.getAttribute('data-i18n-values')) || {}; } catch (_) { note('invalid values', key); }
+        }
+        if (node.hasAttribute('data-i18n-rich')) node.replaceChildren(rich(key, values));
+        else node.textContent = t(key, values);
       }
       for (const pair of String(node.getAttribute('data-i18n-attr') || '').split(';')) {
         const [attribute, attributeKey] = pair.split(':').map(part => part && part.trim());
@@ -284,11 +311,14 @@
   window.DPI18n = Object.freeze({
     t,
     rich,
+    number,
     render,
     setLocale,
     ready,
     has: key => Boolean(catalogs.get(DEFAULT) && Object.prototype.hasOwnProperty.call(catalogs.get(DEFAULT), key)),
     locale: () => shown,
+    /* The tag for Intl formatters (a pseudo locale formats as English). */
+    intlLocale: () => (pseudo(shown) ? DEFAULT : shown),
     preference: () => (typeof stated.locale === 'string' ? stated.locale : null),
     attachFormatter(IntlMessageFormat) {
       if (Formatter || typeof IntlMessageFormat !== 'function') return;

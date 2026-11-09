@@ -41,7 +41,9 @@
 (function(){
 'use strict';
 const PAGE_SIZES=[50,100,250],DEFAULT_PAGE_SIZE=100;
-const CATEGORY_LABELS=Object.freeze({transfer:'Transfer',routing:'Routing',resource:'Provider Resource',selection:'File Selection',consolidation:'Consolidation',execution:'Download',recovery:'Recovery',storage:'Storage',extraction:'Extraction',input:'Input Required',integration:'Integration',configuration:'Configuration',administration:'Administration'});
+// Every word here is the catalog's (activity.*), said when drawn; an event's own message is the server's.
+const T=(key,values)=>window.DPI18n.t(key,values);
+const CATEGORIES=new Set(['transfer','routing','resource','selection','consolidation','execution','recovery','storage','extraction','input','integration','configuration','administration']);
 let search=null,bound=false;
 let cursor={snapshot:null,windowStart:null},request={},nav=null,pending=false;
 // Auto Refresh: on/off, a coalescing timer, a hint that arrived while a request
@@ -64,7 +66,8 @@ function choose(on){try{sessionStorage.setItem(LIVE_CHOICE,on?'on':'off');}catch
 // hint, "Logs" only where nothing longer fits even then). While Auto Refresh is out of the row it is on, whatever the
 // session's choice, which it never writes; back in the row, that choice holds.
 const HANDHELD=window.matchMedia('(max-width: 779px)');
-const TITLES=['For the Record','The Records','Activity','Logs'],HINTS=['Everything DebridPulse thought was worth mentioning.','Things worth writing down.','Worth noting.'];
+// The title's and the hint's wordings, longest first (separate translations, never truncations).
+const TITLES=()=>['activity.title','activity.title_short','activity.title_shorter','activity.title_shortest'].map(key=>T(key)),HINTS=()=>['activity.subtitle','activity.subtitle_short','activity.subtitle_shortest'].map(key=>T(key));
 const ARRANGEMENTS=[[],['icon'],['quiet'],['quiet','icon']];   // icon: Refresh is its glyph; quiet: Auto Refresh is out of the row
 let liveHidden=false;
 // Whether Auto Refresh follows the journal on this page: the session's choice, or on while out of the row.
@@ -76,10 +79,11 @@ function fitHeader(){const header=document.querySelector('#view-events > .dp-act
 if(!HANDHELD.matches){delete header.dataset.dpFit;delete heading.dataset.dpCopy;delete hint.dataset.dpCopy;setLiveHidden(false);return;}
 if(!header.clientWidth)return;
 const arrange=tokens=>{if(tokens.length)header.dataset.dpFit=tokens.join(' ');else delete header.dataset.dpFit;};
-const tokens=ARRANGEMENTS.find(each=>{arrange(each);return word(heading,TITLES[2],TITLES[0]);})||ARRANGEMENTS.at(-1);
+const titles=TITLES(),hints=HINTS();
+const tokens=ARRANGEMENTS.find(each=>{arrange(each);return word(heading,titles[2],titles[0]);})||ARRANGEMENTS.at(-1);
 arrange(tokens);
-if(!TITLES.some(text=>word(heading,text,TITLES[0])))word(heading,TITLES.at(-1),TITLES[0]);
-if(!HINTS.some(text=>word(hint,text,HINTS[0])))hint.dataset.dpCopy='';
+if(!titles.some(text=>word(heading,text,titles[0])))word(heading,titles.at(-1),titles[0]);
+if(!hints.some(text=>word(hint,text,hints[0])))hint.dataset.dpCopy='';
 setLiveHidden(tokens.includes('quiet'));}
 function controls(){const search=document.getElementById('ev-search'),filter=document.getElementById('ev-filter'),label=document.getElementById('ev-filter-label'),applied=document.getElementById('ev-filter-applied'),panel=document.getElementById('ev-filter-panel'),pagination=document.getElementById('dp-activity-pagination'),info=document.getElementById('dp-activity-page-info'),pager=document.getElementById('dp-activity-page-btns'),newest=document.getElementById('ev-newest');return search&&filter&&label&&applied&&panel?{search,filter,label,applied,panel,pagination,info,pager,newest}:null;}
 // ── Filters ──
@@ -98,15 +102,16 @@ function setDraft(c,values){for(const key of FILTERS)for(const radio of radios(c
 function draft(c){return Object.freeze(Object.fromEntries(FILTERS.map(key=>[key,radios(c,key).find(radio=>radio.checked)?.value??DEFAULT_FILTERS[key]])));}
 // The applied restrictions in the panel's own words, in its column order:
 // "Time Window: Last hour · Severity: Error". Columns at their defaults restrict nothing.
-function restrictions(c){return FILTERS.filter(key=>applied[key]!==DEFAULT_FILTERS[key]).map(key=>{const option=radios(c,key).find(radio=>radio.value===applied[key]);return `${group(c,key).querySelector('legend').textContent.trim()}: ${option?.closest('label')?.textContent.trim()||applied[key]}`;}).join(' · ');}
+function restrictions(c){return FILTERS.filter(key=>applied[key]!==DEFAULT_FILTERS[key]).map(key=>{const option=radios(c,key).find(radio=>radio.value===applied[key]);return T('activity.filter.restriction',{name:group(c,key).querySelector('legend').textContent.trim(),value:option?.closest('label')?.textContent.trim()||applied[key]});}).join(' · ');}
 // One control, two functions: with the defaults applied it opens the panel
 // (Filter Results); with any other combination applied it clears it (Clear
 // Filters), and its DP tooltip and description name what is applied.
 function syncFilter(c){const t=c.filter,clear=restricted(),own=(t.getAttribute('aria-describedby')||'').split(/\s+/).filter(id=>id&&id!==c.applied.id);
 t.dataset.state=clear?'clear':'filter';
 // Below 780px the same control reads Filter or Clear; from 780px, Filter Results or Clear Filters.
-c.label.textContent=HANDHELD.matches?(clear?'Clear':'Filter'):(clear?'Clear Filters':'Filter Results');
-if(clear){const text=restrictions(c);c.applied.textContent=text;t.dataset.tooltip=`Clear filters — ${text}`;t.setAttribute('aria-describedby',[c.applied.id,...own].join(' '));t.removeAttribute('popovertarget');t.removeAttribute('aria-haspopup');t.removeAttribute('aria-expanded');}
+c.label.removeAttribute('data-i18n');   // index.html's first-paint words; this owner's from here
+c.label.textContent=T(HANDHELD.matches?(clear?'activity.filter.clear_short':'activity.filter.open_short'):(clear?'activity.filter.clear':'activity.filter.open'));
+if(clear){const text=restrictions(c);c.applied.textContent=text;t.dataset.tooltip=T('activity.filter.clear_tooltip',{applied:text});t.setAttribute('aria-describedby',[c.applied.id,...own].join(' '));t.removeAttribute('popovertarget');t.removeAttribute('aria-haspopup');t.removeAttribute('aria-expanded');}
 else{c.applied.textContent='';t.removeAttribute('data-tooltip');if(own.length)t.setAttribute('aria-describedby',own.join(' '));else t.removeAttribute('aria-describedby');t.setAttribute('popovertarget',c.panel.id);t.setAttribute('aria-haspopup','dialog');t.setAttribute('aria-expanded',String(c.panel.matches(':popover-open')));}}
 // The applied filters become ``next`` (one new investigation, if they changed).
 function applyFilters(c,next){if(FILTERS.every(key=>next[key]===applied[key]))return;applied=next;syncFilter(c);changed(c);}
@@ -120,6 +125,10 @@ p.style.maxHeight=`${room}px`;const height=Math.min(size.height,room);
 p.style.left=`${Math.max(EDGE,Math.min(box.right-size.width,vw-EDGE-size.width))}px`;p.style.top=`${up?box.top-GAP-height:box.bottom+GAP}px`;}
 function pageSize(){let value=DEFAULT_PAGE_SIZE;try{value=Number(settingsData?.activity_log_page_size);}catch(_){}return PAGE_SIZES.includes(value)?value:DEFAULT_PAGE_SIZE;}
 // nav: the accepted page -- {page, first, oldest, following, pages, lastUnavailable}.
+// lastUnavailable is why Last cannot be used, as a condition, never as words: null,
+// {condition:'unproven'} (the search has not read every event) or {served} (the
+// server's own refusal); the pager says it in the page's language when it is drawn.
+function unavailableWords(value){if(!value)return '';return value.condition==='unproven'?T('activity.last_page_unproven'):String(value.served||'');}
 function restart(){cursor={snapshot:null,windowStart:null};request={};nav=null;investigation++;}
 // One page request within the snapshot; ``page`` is resolved from the accepted answer.
 // A page turn answers at once: it slides to its destination before that page is
@@ -173,26 +182,34 @@ document.fonts?.addEventListener('loadingdone',fitHeader);
 HANDHELD.addEventListener('change',()=>{fitHeader();syncFilter(c);});
 syncFilter(c);syncLive();fitHeader();return c;}
 function parseTimestamp(value){if(!value)return null;try{if(typeof parseApiDate==='function')return parseApiDate(value);}catch(_){}const raw=String(value),d=new Date(/[zZ]|[+-]\d\d:\d\d$/.test(raw)?raw:`${raw.replace(' ','T')}Z`);return Number.isNaN(d.getTime())?null:d;}
-function formatTimestamp(value){const d=parseTimestamp(value);if(!d)return String(value||'—');let zone='UTC';try{zone=String(settingsData?.timezone||'').trim()||'UTC';}catch(_){}try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);}catch(_){return d.toLocaleString();}}
+// In the page's language (English as en-US, as always), in the installation's display time zone.
+function formatTimestamp(value){const d=parseTimestamp(value);if(!d)return String(value||'—');let zone='UTC';try{zone=String(settingsData?.timezone||'').trim()||'UTC';}catch(_){}const tag=window.DPI18n.intlLocale();try{return new Intl.DateTimeFormat(tag==='en'?'en-US':tag,{timeZone:zone,year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);}catch(_){return d.toLocaleString();}}
 function empty(list,text){const e=document.createElement('div');e.className='empty';e.textContent=text;list.appendChild(e);}
-function subjectLine(event){const parts=[CATEGORY_LABELS[event.category]||'Event'];const name=event.name?String(event.name):'';if(name)parts.push(name);if(event.transfer_id!==null&&event.transfer_id!==undefined)parts.push(`#${event.transfer_id}`);return parts.join(' · ');}
-function render(payload,c){const list=document.getElementById('event-list');if(!list)return;list.replaceChildren();const items=Array.isArray(payload?.items)?payload.items:[];if(!items.length){if(search.completeness()!=='complete')empty(list,'No matching events among those searched so far.');else if(filters(search.accepted()))empty(list,'No events match your filters.');else empty(list,payload?.history_started_at?`No events recorded yet. Event history begins ${formatTimestamp(payload.history_started_at)}.`:'No events recorded yet.');}
-for(const event of items){const row=document.createElement('div');row.className='dp-activity-row';row.dataset.eventType=String(event.type||'');const sev=String(event.severity||'info').toLowerCase();const level=document.createElement('div');level.className=`elevel dp-activity-level ${sev==='warning'?'warn':sev==='error'?'error':'info'}`;level.setAttribute('role','img');level.setAttribute('aria-label',sev==='warning'?'Warning':sev==='error'?'Error':'Info');const copy=document.createElement('div');copy.className='dp-activity-copy';const msg=document.createElement('div');msg.className='emsg dp-activity-message';msg.textContent=String(event.message??'');copy.appendChild(msg);const subject=document.createElement('div');subject.className='ename dp-activity-transfer';subject.textContent=subjectLine(event);copy.appendChild(subject);if(event.detail){const detail=document.createElement('details');detail.className='dp-activity-detail';const summary=document.createElement('summary');summary.textContent='Details';const body=document.createElement('div');body.className='dp-activity-detail-text';body.textContent=String(event.detail);detail.append(summary,body);copy.appendChild(detail);}const time=document.createElement('div');time.className='etime dp-activity-time';time.textContent=formatTimestamp(event.occurred_at);row.append(level,copy,time);list.appendChild(row);}
+function subjectLine(event){const parts=[T(CATEGORIES.has(event.category)?`activity.category.${event.category}`:'activity.category.event')];const name=event.name?String(event.name):'';if(name)parts.push(name);if(event.transfer_id!==null&&event.transfer_id!==undefined)parts.push(`#${event.transfer_id}`);return parts.join(' · ');}
+// A row's words from its event: drawn with the row, and again in place on a language change
+// (an open Details and the list's scroll stay as they are).
+function levelWords(sev){return T(sev==='warning'?'activity.level.warning':sev==='error'?'activity.level.error':'activity.level.info');}
+function relabel(row){const event=row._dpEvent;if(!event)return;const sev=String(event.severity||'info').toLowerCase();row.querySelector('.dp-activity-level')?.setAttribute('aria-label',levelWords(sev));
+const subject=row.querySelector('.dp-activity-transfer');if(subject)subject.textContent=subjectLine(event);const summary=row.querySelector('.dp-activity-detail > summary');if(summary)summary.textContent=T('activity.details');
+const time=row.querySelector('.dp-activity-time');if(time)time.textContent=formatTimestamp(event.occurred_at);}
+let lastShown=null;// {payload,c}: the page on screen
+function render(payload,c){const list=document.getElementById('event-list');if(!list)return;lastShown={payload,c};list.replaceChildren();const items=Array.isArray(payload?.items)?payload.items:[];if(!items.length){if(search.completeness()!=='complete')empty(list,T('activity.empty.searched_so_far'));else if(filters(search.accepted()))empty(list,T('activity.empty.filtered'));else empty(list,payload?.history_started_at?T('activity.empty.history_begins',{date:formatTimestamp(payload.history_started_at)}):T('activity.empty.none'));}
+for(const event of items){const row=document.createElement('div');row.className='dp-activity-row';row.dataset.eventType=String(event.type||'');const sev=String(event.severity||'info').toLowerCase();const level=document.createElement('div');level.className=`elevel dp-activity-level ${sev==='warning'?'warn':sev==='error'?'error':'info'}`;level.setAttribute('role','img');level.setAttribute('aria-label',levelWords(sev));const copy=document.createElement('div');copy.className='dp-activity-copy';const msg=document.createElement('div');msg.className='emsg dp-activity-message';msg.textContent=String(event.message??'');copy.appendChild(msg);const subject=document.createElement('div');subject.className='ename dp-activity-transfer';subject.textContent=subjectLine(event);copy.appendChild(subject);if(event.detail){const detail=document.createElement('details');detail.className='dp-activity-detail';const summary=document.createElement('summary');summary.textContent=T('activity.details');const body=document.createElement('div');body.className='dp-activity-detail-text';body.textContent=String(event.detail);detail.append(summary,body);copy.appendChild(detail);}const time=document.createElement('div');time.className='etime dp-activity-time';time.textContent=formatTimestamp(event.occurred_at);row._dpEvent=event;row.append(level,copy,time);list.appendChild(row);}
 document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));}
 // The page an answer to a `kind` request lands on, from the page it left.
 function pageOf(kind,from,payload){let page=kind==='next'?from+1:kind==='previous'?from-1:kind==='last'?Number(payload?.page)||1:1;if(kind==='previous'&&payload?.has_newer===false)page=1;return Math.max(1,page);}
-function accept(payload){const items=Array.isArray(payload?.items)?payload.items:[];const previous=nav||{page:1,pages:null,lastUnavailable:''};const kind=request.kind;
+function accept(payload){const items=Array.isArray(payload?.items)?payload.items:[];const previous=nav||{page:1,pages:null,lastUnavailable:null};const kind=request.kind;
 const page=pageOf(kind,previous.page,payload);
 // A page count is only ever the server's (from Last); an answer whose final page is unproven cannot offer Last.
 const pages=kind==='last'?page:previous.pages;
-const lastUnavailable=payload?.search?.finality==='unproven'?'The last page cannot be found until every event has been searched.':previous.lastUnavailable||'';
+const lastUnavailable=payload?.search?.finality==='unproven'?{condition:'unproven'}:previous.lastUnavailable||null;
 nav={page,pages,lastUnavailable,first:items.length?items[0].id:null,oldest:payload?.has_more?payload.next_before:null,following:payload?.has_more?(payload.more_after_next?2:1):0};}
 // An answer that could not search every event says why here, with its pages.
-const INCOMPLETE=Object.freeze({index_incomplete:'Recent events are still being indexed; matches among them may be missing.',unavailable:'Text search is unavailable on this installation; only the transfer ID was matched.'});
-function renderPagination(payload,c){if(!c.pagination||!nav)return;c.newest.hidden=!payload?.newer_available;const incomplete=INCOMPLETE[search.completeness()]||'';c.info.textContent=[nav.pages?`Page ${nav.page} of ${nav.pages}`:'',incomplete].filter(Boolean).join(' · ');
-window.DPPager.render(c.pager,{page:nav.page,following:nav.following,actions:ACTIONS,lastUnavailable:nav.lastUnavailable,pending});
+const INCOMPLETE=Object.freeze({index_incomplete:'activity.search.index_incomplete',unavailable:'search.unavailable'});
+function renderPagination(payload,c){if(!c.pagination||!nav)return;c.newest.hidden=!payload?.newer_available;const incomplete=INCOMPLETE[search.completeness()]?T(INCOMPLETE[search.completeness()]):'';c.info.textContent=[nav.pages?T('activity.page_of',{page:nav.page,pages:nav.pages}):'',incomplete].filter(Boolean).join(' · ');
+window.DPPager.render(c.pager,{page:nav.page,following:nav.following,actions:ACTIONS,lastUnavailable:unavailableWords(nav.lastUnavailable),pending});
 c.pagination.hidden=!(nav.page>1||nav.following>0||payload?.newer_available||incomplete);}
-function renderFailure(c,message){const list=document.getElementById('event-list');if(list){list.replaceChildren();empty(list,`Events could not be loaded: ${message}`);}if(c.pagination)c.pagination.hidden=true;}
+function renderFailure(c,message){const list=document.getElementById('event-list');lastShown={failure:message,c};if(list){list.replaceChildren();empty(list,T('activity.load_failed',{message}));}if(c.pagination)c.pagination.hidden=true;}
 function setPending(c,value){pending=value;window.DPPager.pending(c.pager,value);}
 // ── Auto Refresh ──
 const active=()=>Boolean(document.getElementById('view-events')?.classList.contains('active'));
@@ -201,7 +218,7 @@ const connected=()=>document.documentElement.dataset.dpPulse==='connected';
 function following(){const list=document.getElementById('event-list');return Boolean(nav&&nav.page===1&&(!list||list.scrollTop<=TOP_SLACK));}
 function stopFollowing(){if(timer){clearTimeout(timer);timer=null;}dirty=false;}
 function syncLive(){const input=document.getElementById('ev-live');if(!input)return;input.checked=live;const island=input.closest('.dp-activity-live'),status=document.getElementById('ev-live-status');const state=!live?'off':connected()?'live':'unavailable';
-const text=state==='off'?'Off':state==='live'?'On: new events appear as they are recorded.':'On, but live updates are not connected. Reconnecting; Refresh still loads the newest events.';
+const text=T(state==='off'?'activity.live.off':state==='live'?'activity.live.on':'activity.live.unavailable');
 if(island){island.dataset.state=state;if(state==='unavailable')island.dataset.tooltip=text;else island.removeAttribute('data-tooltip');}if(status)status.textContent=text;}
 function schedule(){if(!timer)timer=setTimeout(()=>{timer=null;catchUp();},COALESCE_MS);}
 // Bring the view up to the journal: a new investigation at the newest event
@@ -230,7 +247,7 @@ catch(error){if(!search.current(ticket))return null;const message=(()=>{try{retu
 // The turn did not happen: the page it left comes back.
 const t=turn;endTurn(t);const back=()=>{if(t?.shown)replace(()=>list?.replaceChildren(...t.source));};
 // A Last the server cannot prove leaves the page as it was and says why.
-if(request.kind==='last'&&error?.status===409&&nav){back();nav={...nav,lastUnavailable:String(error.detail?.message||message)};setPending(c,false);renderPagination({newer_available:!c.newest.hidden},c);try{toast(nav.lastUnavailable,'warn');}catch(_){}return null;}
+if(request.kind==='last'&&error?.status===409&&nav){back();nav={...nav,lastUnavailable:{served:String(error.detail?.message||message)}};setPending(c,false);renderPagination({newer_available:!c.newest.hidden},c);try{toast(unavailableWords(nav.lastUnavailable),'warn');}catch(_){}return null;}
 setPending(c,false);
 // An Auto Refresh that fails keeps the page -- and its snapshot, cursors and
 // pager -- as they were and says nothing; the next hint or reconnect tries again.
@@ -238,6 +255,12 @@ if(quiet){cursor=quiet.cursor;request=quiet.request;nav=quiet.nav;dirty=false;re
 if(search.fail(ticket,error)==='retried'){back();return null;}replace(()=>renderFailure(c,message));try{toast(message,'error');}catch(_){}return null;}
 finally{if(search.current(ticket))list?.removeAttribute('aria-busy');}}
 function load(){restart();return fetchPage();}
+// A language change: the rows on screen are relabelled in place (an empty or failed page is said again),
+// and the controls this owner words follow (the static markup is ui-i18n.js's).
+document.addEventListener('debridpulse:locale-changed',()=>{const c=controls();if(!c||!bound)return;const list=document.getElementById('event-list');
+const rows=list?Array.from(list.querySelectorAll('.dp-activity-row')):[];if(rows.length)rows.forEach(relabel);
+else if(lastShown?.failure!==undefined)renderFailure(lastShown.c,lastShown.failure);else if(lastShown)render(lastShown.payload,lastShown.c);
+if(nav)renderPagination({newer_available:!c.newest.hidden},c);syncFilter(c);syncLive();fitHeader();});
 window.DPActivityLog=Object.freeze({load,formatTimestamp});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
 })();

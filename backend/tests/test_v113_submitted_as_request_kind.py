@@ -114,10 +114,15 @@ def _source_label():
 
 
 def test_the_formatter_separates_the_channel_from_the_request_kind():
+    from i18n_node import english
+
     block = _source_label()
     assert "function sourceLabel(source, requestKinds" in APP_JS
-    assert "Torrent file" in block and "NZB file" in block
-    assert "Magnet link" in block and "Direct link" in block and "API" in block
+    # The words are the catalog's (1.0.14 localization), the same English.
+    assert "transfer.source.torrent_file" in block and "transfer.source.nzb_file" in block
+    assert "transfer.source.magnet_link" in block and "transfer.source.direct_link" in block and "'API'" in block
+    assert [english(f"transfer.source.{key}") for key in ("torrent_file", "nzb_file", "magnet_link", "direct_link")] == [
+        "Torrent file", "NZB file", "Magnet link", "Direct link"]
 
 
 def test_the_formatter_never_consults_provider_identity():
@@ -135,8 +140,10 @@ def test_the_formatter_never_consults_provider_identity():
 
 
 def test_a_mixed_or_unknown_upload_gets_a_truthful_neutral_label():
+    from i18n_node import english
+
     block = _source_label()
-    assert "Uploaded file" in block
+    assert "transfer.source.uploaded_file" in block and english("transfer.source.uploaded_file") == "Uploaded file"
 
 
 def test_both_surfaces_use_the_one_formatter_with_the_canonical_fact():

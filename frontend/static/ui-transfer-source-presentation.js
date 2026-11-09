@@ -119,9 +119,9 @@
   function sourceIdentityLabel(identity) {
     const kind = String(identity?.kind || 'link').toLowerCase();
     if (kind === 'host' && identity?.host) return String(identity.host);
-    if (kind === 'magnet') return 'Magnet source';
-    if (kind === 'torrent_file') return 'Torrent file source';
-    return 'Link source';
+    if (kind === 'magnet') return window.DPI18n.t('transfer.source_icon.magnet');
+    if (kind === 'torrent_file') return window.DPI18n.t('transfer.source_icon.torrent_file');
+    return window.DPI18n.t('transfer.source_icon.link');
   }
 
   /* ``providerId``: the provider the row's badge names. When that badge is a

@@ -481,7 +481,9 @@ def test_file_down_is_vendored_from_the_pinned_lucide_commit_in_lavender() -> No
 def test_quick_add_accepts_scp_and_ssh_links() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "/^(?:https?|s?ftp|scp|ssh|rsync(?:\\+ssh)?|(?:web)?davs?):\\/\\/\\S+$/i" in app
-    assert "enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI" in app
+    from i18n_node import english
+    assert "DPI18n.t('quick_add.invalid_line', {line: first.line})" in app
+    assert "enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI" in english("quick_add.invalid_line")
 
 
 # ── Home-relative paths: resolved by the one discovery owner, never a shell ──

@@ -50,8 +50,14 @@ def test_statistics_composition_is_direct_static_owner_not_runtime_convergence()
     for fragment in ('class="view card dp-statistics-master" id="view-stats"', 'class="card-header dp-stats-master-header"', 'class="card-body dp-stats-master-body"', 'class="dash-kpi-strip dp-stats-history-grid"', 'class="scard dp-stats-chart dp-list-workspace-surface"', 'class="dp-stats-breakdown-grid"', "By The Numbers", "Vibes are not a performance metric."):
         assert fragment in view
     # The shorter wordings the handheld header draws where the full ones do not fit.
-    assert 'data-short="Statistics" data-shortest="Stats">By The Numbers<' in view
-    assert 'data-short="Vibes aren\'t metrics." data-shortest="Just data.">Vibes are not a performance metric.<' in view
+    # (Each wording is a catalog message the markup names, 1.0.14 localization; the same English.)
+    assert ('data-short="Statistics" data-shortest="Stats" data-i18n="stats.title" '
+            'data-i18n-attr="data-short:stats.title_short;data-shortest:stats.title_shortest">By The Numbers<') in view
+    assert ('data-short="Vibes aren\'t metrics." data-shortest="Just data." data-i18n="stats.subtitle" '
+            'data-i18n-attr="data-short:stats.subtitle_short;data-shortest:stats.subtitle_shortest">Vibes are not a performance metric.<') in view
+    from i18n_node import english
+    assert [english(f"stats.{key}") for key in ("title", "title_short", "title_shortest", "subtitle", "subtitle_short", "subtitle_shortest")] == [
+        "By The Numbers", "Statistics", "Stats", "Vibes are not a performance metric.", "Vibes aren't metrics.", "Just data."]
     assert "split-grid" not in view
     assert "📈" not in view
     assert "ensureStatisticsArchitecture" not in source
@@ -74,10 +80,12 @@ def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changin
         ('1y', '1Year'),
         ('all', 'All Time'),
     )
+    from i18n_node import english
+    keys = {'1h': 'hour', '24h': 'day', '7d': 'week', '30d': 'month', '1y': 'year', 'all': 'all'}
     positions = []
     for period, label in expected:
-        fragment = f'data-period="{period}" onclick="setStatsPeriod(this)">{label}</div>'
-        assert fragment in view
+        fragment = f'data-period="{period}" onclick="setStatsPeriod(this)" data-i18n="stats.period.{keys[period]}">{label}</div>'
+        assert fragment in view and english(f"stats.period.{keys[period]}") == label
         positions.append(view.index(fragment))
     assert positions == sorted(positions)
     for legacy_label in ('>1h</div>', '>24h</div>', '>7d</div>', '>7Day</div>', '>30d</div>', '>1y</div>', '>All time</div>'):
@@ -105,6 +113,9 @@ def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_bas
         "Share of all recorded, finished downloads completed successfully.",
     ):
         assert reviewed_copy in view
+    # One whole sentence per period, the catalog's (stats.metric.success.description).
+    from i18n_node import english
+    success = english("stats.metric.success.description")
     for flavor in (
         "Share of finished downloads completed successfully during the last hour.",
         "Share of finished downloads completed successfully during the last 24 hours.",
@@ -113,7 +124,8 @@ def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_bas
         "Share of finished downloads completed successfully during the last year.",
         "Share of finished downloads completed successfully across all recorded history.",
     ):
-        assert flavor in source
+        assert "{" + flavor + "}" in success
+    assert "t(`stats.metric.${key}.description`, {period: periodWord(period)})" in source
     assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
     assert "grid-template-rows: 18px 48px minmax(28px, auto)" in css
     assert "grid-template-rows: 18px 28px minmax(24px, auto)" in css
@@ -131,9 +143,10 @@ def test_statistics_period_has_one_authority_and_a_handheld_control_projecting_i
     assert "const active = document.querySelector('#stats-period-tabs .ftab.active');" in source
     # The handheld control: a popover listbox read from the filters each time it opens.
     assert ('<button type="button" id="stats-period" class="btn btn-ghost dp-stats-period-trigger" popovertarget="stats-period-menu" '
-            'aria-haspopup="listbox" aria-expanded="false" aria-label="Statistics period">') in view
+            'aria-haspopup="listbox" aria-expanded="false" aria-label="Statistics period" data-i18n-attr="aria-label:stats.period.label">') in view
     assert 'data-dp-lucide="clock"' in view
-    assert '<div id="stats-period-menu" class="dp-dropdown-menu dp-stats-period-menu" popover="auto" role="listbox" aria-label="Statistics period"></div>' in view
+    assert ('<div id="stats-period-menu" class="dp-dropdown-menu dp-stats-period-menu" popover="auto" role="listbox" '
+            'aria-label="Statistics period" data-i18n-attr="aria-label:stats.period.label"></div>') in view
     assert "if (tab) setStatsPeriod(tab);" in source
     # From 780px the filters, below it the control: never both.
     assert "#view-stats .dp-stats-period-trigger {\n  display: none;\n}" in css
@@ -147,8 +160,8 @@ def test_statistics_handheld_shows_two_period_cards_side_by_side_and_desktop_kee
     for metric in ("downloads", "completed", "progress", "success", "data"):
         assert f'data-dp-stats-metric="{metric}"' in view
     assert 'class="dp-stats-row-separator"' in view and 'class="dash-kpi-strip dp-stats-history-grid"' in view
-    assert ('<span class="dp-stats-label-wide">Total Data Downloaded</span>'
-            '<span class="dp-stats-label-handheld">Data Transferred</span>') in view
+    assert ('<span class="dp-stats-label-wide" data-i18n="stats.metric.data.label">Total Data Downloaded</span>'
+            '<span class="dp-stats-label-handheld" data-i18n="stats.metric.data.label_handheld">Data Transferred</span>') in view
     # Below 780px only: the other three cards, the separator and the history row are not shown;
     # the two cards scale their label and value and centre their block.
     handheld = css[css.rindex("@media (max-width: 779px) {"):]
@@ -174,10 +187,13 @@ def test_breakdowns_keep_reviewed_labels_adaptive_top_ten_and_two_column_behavio
         assert heading in view
     for old in ("Monitor Levels", "Most Used Sources"):
         assert old not in view and old not in source
-    for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Unknown"):
-        assert label in source
-    # Events Severity: fixed order and its own labels; the stored values stay.
-    assert "[['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]" in source
+    from i18n_node import english
+    for key, label in (("completed", "Completed"), ("deleted", "Deleted"), ("error", "Error"), ("missing", "Missing"),
+                       ("duplicate", "Duplicate"), ("unknown", "Unknown")):
+        assert english(f"stats.status.{key}") == label
+    # Events Severity: fixed order and its own labels (the catalog's); the stored values stay.
+    assert "[['error', 'stats.severity.error'], ['warning', 'stats.severity.warning'], ['info', 'stats.severity.info']]" in source
+    assert [english(f"stats.severity.{key}") for key in ("error", "warning", "info")] == ["Errors", "Warnings", "Informational"]
     # Transfer Methods: the server names each method; no submission-channel labels remain.
     for old in ("Debrid Link", "Magnet Link", "Uploaded File", "Unknown Source", "SOURCE_LABELS"):
         assert old not in source
@@ -196,16 +212,18 @@ def test_completion_chart_header_is_static_and_runtime_only_hydrates_data_and_pa
     view = statistics_view()
     for fragment in (
         'class="dp-icon dp-stats-chart-title-icon"', '/icons/dp/card-download.svg',
-        'class="dp-stats-chart-heading">Completions</span>',
-        'id="chart-title" class="dp-stats-chart-subtitle">Completed downloads in the last 7 days.',
+        'class="dp-stats-chart-heading" data-i18n="stats.chart.title">Completions</span>',
+        'id="chart-title" class="dp-stats-chart-subtitle" data-i18n="stats.chart.subtitle" data-i18n-values=\'{"period":"week"}\'>Completed downloads in the last 7 days.',
     ):
         assert fragment in view
+    from i18n_node import english
+    subtitle = english("stats.chart.subtitle")
     for flavor in (
         "Completed downloads in the last hour.", "Completed downloads in the last 24 hours.",
         "Completed downloads in the last 7 days.", "Completed downloads in the last 30 days.",
         "Completed downloads in the last year.", "Completed downloads across all recorded history.",
     ):
-        assert flavor in source
+        assert "{" + flavor + "}" in subtitle
     assert "statisticsPurpleGradient" in source
     assert "min-height: 72px" in css
     assert "var(--dp-feature-icon-size, 51px)" in css

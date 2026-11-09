@@ -24,33 +24,23 @@
 
   // Events Severity reads the journal's stored severities, always in this
   // order whatever the counts or the query's order.
-  const SEVERITIES = Object.freeze([['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]);
+  // Words are the catalog's (stats.*), said when drawn.
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const SEVERITIES = Object.freeze([['error', 'stats.severity.error'], ['warning', 'stats.severity.warning'], ['info', 'stats.severity.info']]);
   const PRIMARY_ORDER = Object.freeze(['downloads', 'completed', 'progress', 'success', 'data']);
   const BREAKDOWNS = Object.freeze([
-    {id: 'detail-torrent-status', title: 'Transfer Disposition', kind: 'status'},
-    {id: 'detail-file-status', title: 'File Status', kind: 'status'},
-    {id: 'detail-event-levels', title: 'Events Severity', kind: 'severity'},
+    {id: 'detail-torrent-status', title: 'stats.breakdown.transfer_disposition', kind: 'status'},
+    {id: 'detail-file-status', title: 'stats.breakdown.file_status', kind: 'status'},
+    {id: 'detail-event-levels', title: 'stats.breakdown.events_severity', kind: 'severity'},
     // The server names each acquisition method (its integrations declare it).
-    {id: 'detail-sources', title: 'Transfer Methods', kind: 'method'},
+    {id: 'detail-sources', title: 'stats.breakdown.transfer_methods', kind: 'method'},
   ]);
   const MAX_VISIBLE = 10;
   const TWO_COLUMN_THRESHOLD = 6;
-  const CHART_FLAVOR = Object.freeze({
-    '1h': 'Completed downloads in the last hour.',
-    '24h': 'Completed downloads in the last 24 hours.',
-    '7d': 'Completed downloads in the last 7 days.',
-    '30d': 'Completed downloads in the last 30 days.',
-    '1y': 'Completed downloads in the last year.',
-    'all': 'Completed downloads across all recorded history.',
-  });
-  const SUCCESS_FLAVOR = Object.freeze({
-    '1h': 'Share of finished downloads completed successfully during the last hour.',
-    '24h': 'Share of finished downloads completed successfully during the last 24 hours.',
-    '7d': 'Share of finished downloads completed successfully during the last 7 days.',
-    '30d': 'Share of finished downloads completed successfully during the last 30 days.',
-    '1y': 'Share of finished downloads completed successfully during the last year.',
-    'all': 'Share of finished downloads completed successfully across all recorded history.',
-  });
+  // The period codes, as the catalog's sentences select them (each period
+  // one whole sentence per figure; 'other' is a period the page does not know).
+  const PERIOD_WORD = Object.freeze({'1h': 'hour', '24h': 'day', '7d': 'week', '30d': 'month', '1y': 'year', 'all': 'all'});
+  const periodWord = period => PERIOD_WORD[period] || 'other';
 
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
@@ -66,48 +56,28 @@
     const hours = Math.floor((totalMinutes % 1440) / 60);
     const minutes = totalMinutes % 60;
     const parts = [];
-    if (days) parts.push(days + 'D');
-    if (hours) parts.push(hours + 'H');
-    if (minutes) parts.push(minutes + 'M');
+    if (days) parts.push(t('stats.duration.days', {value: days}));
+    if (hours) parts.push(t('stats.duration.hours', {value: hours}));
+    if (minutes) parts.push(t('stats.duration.minutes', {value: minutes}));
     return parts.join(' ');
   }
 
-  function periodPhrase(period) {
-    return ({
-      '1h': 'during the last hour',
-      '24h': 'during the last 24 hours',
-      '7d': 'during the last 7 days',
-      '30d': 'during the last 30 days',
-      '1y': 'during the last year',
-      'all': 'across all recorded history',
-    })[period] || 'during the selected period';
-  }
-
   function primaryDescription(key, period) {
-    const phrase = periodPhrase(period);
-    if (key === 'downloads') return 'Downloads added ' + phrase + '.';
-    if (key === 'completed') return 'Downloads completed ' + phrase + '.';
-    if (key === 'progress') return 'Downloads still in progress that were added ' + phrase + '.';
-    if (key === 'success') return SUCCESS_FLAVOR[period] || 'Share of finished downloads completed successfully during the selected period.';
-    if (key === 'data') return 'Total data downloaded ' + phrase + '.';
-    return '';
+    return PRIMARY_ORDER.includes(key) ? t(`stats.metric.${key}.description`, {period: periodWord(period)}) : '';
   }
 
+  // A status the catalog does not name is shown as its own code, words title-cased.
   function titleCaseCode(value) {
     const key = String(value || '').trim();
-    if (!key) return 'Unknown';
+    if (!key) return t('stats.status.unknown');
     return key.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, function (ch) { return ch.toUpperCase(); });
   }
 
+  const STATUSES = new Set(['completed', 'deleted', 'error', 'missing', 'duplicate', 'pending', 'uploading', 'processing',
+    'ready', 'queued', 'downloading', 'paused', 'partial', 'blocked', 'extracting']);
   function statusLabel(value) {
     const key = String(value || '').trim().toLowerCase();
-    const labels = {
-      completed: 'Completed', deleted: 'Deleted', error: 'Error', missing: 'Missing',
-      duplicate: 'Duplicate', pending: 'Pending', uploading: 'Uploading', processing: 'Processing',
-      ready: 'Ready', queued: 'Queued', downloading: 'Downloading', paused: 'Paused',
-      partial: 'Partial', blocked: 'Blocked', extracting: 'Extracting',
-    };
-    return labels[key] || titleCaseCode(key);
+    return STATUSES.has(key) ? t(`stats.status.${key}`) : titleCaseCode(key);
   }
 
   function severityEntries(input) {
@@ -115,7 +85,7 @@
       return [String(item.level || '').trim().toLowerCase(), item.count];
     }));
     return SEVERITIES.filter(function (pair) { return counts.has(pair[0]); }).map(function (pair) {
-      return {raw: pair[0], label: pair[1], value: String(counts.get(pair[0]) ?? '—')};
+      return {raw: pair[0], label: t(pair[1]), value: String(counts.get(pair[0]) ?? '—')};
     });
   }
 
@@ -128,7 +98,7 @@
       downloads: totals.torrent_total || 0,
       completed: totals.completed_count || 0,
       progress: totals.partial_total || 0,
-      success: totals.success_rate_pct != null ? totals.success_rate_pct + '%' : '—',
+      success: totals.success_rate_pct != null ? t('transfer.progress.percent', {percent: totals.success_rate_pct}) : '—',
       data: fmtSize(totals.completed_size || 0),
     };
     PRIMARY_ORDER.forEach(function (key) {
@@ -137,7 +107,7 @@
       const value = card.querySelector('.metric-value, .stat-value');
       const sub = card.querySelector('.metric-sub, .stat-sub');
       if (value) value.textContent = values[key];
-      if (sub) sub.textContent = primaryDescription(key, period);
+      if (sub) { sub.removeAttribute('data-i18n'); sub.textContent = primaryDescription(key, period); }
     });
   }
 
@@ -214,9 +184,10 @@
     const title = document.getElementById('modal-title');
     const body = document.getElementById('modal-body');
     if (!overlay || !title || !body) return;
-    title.textContent = (card.dataset.dpStatsOverflowTitle || 'Statistics') + ' — Full List';
+    title.textContent = t('stats.full_list', {title: card.dataset.dpStatsOverflowTitle || t('shell.page.statistics.title')});
     const list = document.createElement('div');
     list.className = 'dp-stats-overflow-list';
+    list._dpStatsCard = card;            // which card it lists: a language change re-words it in place
     entries.forEach(function (entry) { list.appendChild(makeRow(entry)); });
     body.replaceChildren(list);
     overlay.classList.add('open');
@@ -261,7 +232,7 @@
     card.classList.add('dp-stats-overflow-card');
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
-    card.setAttribute('aria-label', title + '. Showing top 10. View ' + more + ' more.');
+    card.setAttribute('aria-label', t('stats.overflow.label', {title, shown: MAX_VISIBLE, more}));
     const header = card.querySelector(':scope > .card-header');
     let indicator = card.querySelector('.dp-stats-more');
     if (!indicator) {
@@ -270,7 +241,7 @@
       indicator.setAttribute('aria-hidden', 'true');
       (header || card).appendChild(indicator);
     }
-    indicator.textContent = '+ ' + more + ' more';
+    indicator.textContent = t('stats.overflow.more', {more});
   }
 
   function renderBreakdown(definition, input) {
@@ -282,12 +253,12 @@
       clearOverflow(card);
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No data available.';
+      empty.textContent = t('stats.no_data');
       body.replaceChildren(empty);
       return;
     }
     body.replaceChildren(buildVisibleList(entries));
-    configureOverflow(card, definition.title, entries);
+    configureOverflow(card, t(definition.title), entries);
   }
 
   function statisticsPurpleGradient(chart) {
@@ -315,10 +286,10 @@
    * delivered them) -- Premium, then Network, on the same scale. Unattributed
    * completions are only the purple above that stack, never a segment of it. */
   const COMPLETION_ROLES = Object.freeze([
-    ['premium', 'Premium Sources'],
-    ['network', 'Network Sources'],
+    ['premium', 'stats.chart.premium'],
+    ['network', 'stats.chart.network'],
   ]);
-  const COMPLETIONS_LABEL = 'Total Completions';
+  const COMPLETIONS_LABEL = 'stats.chart.total';
 
   // The inset stack's presentation: purple kept on each side (a share of the
   // bar's width, within bounds) and at least this much above it.
@@ -415,7 +386,7 @@
       const swatch = document.createElement('span');
       swatch.className = 'dp-stats-chart-legend-swatch';
       swatch.setAttribute('aria-hidden', 'true');
-      item.append(swatch, document.createTextNode(text));
+      item.append(swatch, document.createTextNode(t(text)));
       return item;
     }));
   }
@@ -463,9 +434,9 @@
   // unattributed remainder only when there is one -- never a claim that the
   // two families make up the total when they do not.
   function completionTooltipLines(bucket) {
-    const lines = ['Total completions: ' + (bucket.count || 0)];
-    COMPLETION_ROLES.forEach(function ([role, text]) { lines.push(text + ': ' + (bucket[role] || 0)); });
-    if (bucket.unattributed > 0) lines.push('Unattributed: ' + bucket.unattributed);
+    const lines = [t('stats.chart.tooltip_total', {count: bucket.count || 0})];
+    COMPLETION_ROLES.forEach(function ([role, text]) { lines.push(t('stats.chart.tooltip_family', {family: t(text), count: bucket[role] || 0})); });
+    if (bucket.unattributed > 0) lines.push(t('stats.chart.tooltip_unattributed', {count: bucket.unattributed}));
     return lines;
   }
 
@@ -531,7 +502,7 @@
     // One bar per bucket, the total, as it always was, carrying the buckets the
     // family stack is drawn from.
     const datasets = [paintCompletionDataset({
-      label: 'Completions',
+      label: t('stats.chart.dataset'),
       dpRole: 'total',
       data: daily.map(function (item) { return item.count || 0; }),
       borderRadius: 4,
@@ -578,7 +549,9 @@
 
   const shown = function () { return Boolean(document.getElementById('view-stats')?.classList.contains('active')); };
 
+  let lastRendered = null;            // [stats, period]: drawn again, not re-read, on a language change
   function render(stats, period, live) {
+    lastRendered = [stats, period];
     updatePrimaryMetrics(stats.totals || {}, period);
     renderBreakdown(BREAKDOWNS[0], stats.torrent_status);
     renderBreakdown(BREAKDOWNS[1], stats.file_status);
@@ -657,7 +630,7 @@
   function loadDetailedStats(period) {
     const resolved = selectedPeriod(period);
     const chartTitle = document.getElementById('chart-title');
-    if (chartTitle) chartTitle.textContent = CHART_FLAVOR[resolved] || 'Completed downloads in the selected period.';
+    if (chartTitle) { chartTitle.removeAttribute('data-i18n'); chartTitle.textContent = t('stats.chart.subtitle', {period: periodWord(resolved)}); }
     retire();
     currentPeriod = resolved;
     return new Promise(function (resolve) { admit(true, [resolve]); });
@@ -692,14 +665,15 @@
       labels.replaceChildren.apply(labels, tabs.map(function (tab) {
         const label = document.createElement('span');
         label.dataset.period = tab.dataset.period;
-        label.textContent = tab.textContent.trim();
         return label;
       }));
     }
+    // The filters' own words (a language change renders them again).
+    Array.from(labels.children).forEach(function (label, index) { if (tabs[index]) label.textContent = tabs[index].textContent.trim(); });
     const active = selectedPeriod();
     Array.from(labels.children).forEach(function (label) { label.toggleAttribute('data-current', label.dataset.period === active); });
     const shown = tabs.find(function (tab) { return tab.dataset.period === active; });
-    trigger.setAttribute('aria-label', 'Statistics period: ' + (shown ? shown.textContent.trim() : active));
+    trigger.setAttribute('aria-label', t('stats.period.current', {period: shown ? shown.textContent.trim() : active}));
   }
 
   function periodOptions(menu) { return Array.from(menu.querySelectorAll('.dp-dropdown__option')); }
@@ -848,6 +822,35 @@
   if (statisticsHeader) new ResizeObserver(fitStatisticsHeader).observe(statisticsHeader);
   if (document.fonts) document.fonts.addEventListener('loadingdone', fitStatisticsHeader);
   document.addEventListener('debridpulse:theme-changed', applyChartPalette);
+  // A language change: the answer on screen is drawn again in the new words
+  // (the chart anew, so its labels, legend and tooltips follow), the chart's
+  // subtitle, the period control and the header's fitted wordings too.
+  document.addEventListener('debridpulse:locale-changed', function () {
+    const chartTitle = document.getElementById('chart-title');
+    if (chartTitle && currentPeriod) chartTitle.textContent = t('stats.chart.subtitle', {period: periodWord(currentPeriod)});
+    syncPeriodControl();
+    if (lastRendered) render(lastRendered[0], lastRendered[1], false);
+    // An open period menu: its options re-worded in place (the same elements,
+    // so the open popover, the chosen and the focused option and the scroll stay).
+    const menu = document.getElementById('stats-period-menu');
+    if (menu) periodOptions(menu).forEach(function (option) {
+      const tab = periodTabs().find(function (each) { return each.dataset.period === option.dataset.period; });
+      if (tab) option.textContent = tab.textContent.trim();
+    });
+    // An open Full List: its title and rows re-worded in place from the card's
+    // re-rendered entries (same order), so the dialog, its focus and scroll stay.
+    const list = document.querySelector('#modal-body > .dp-stats-overflow-list');
+    const card = list && list._dpStatsCard;
+    if (card && Array.isArray(card._dpStatsOverflowEntries)) {
+      const title = document.getElementById('modal-title');
+      if (title) title.textContent = t('stats.full_list', {title: card.dataset.dpStatsOverflowTitle || t('shell.page.statistics.title')});
+      const keys = list.querySelectorAll('.kv-key');
+      card._dpStatsOverflowEntries.forEach(function (entry, index) {
+        if (keys[index] && keys[index].dataset.dpStatsRaw === entry.raw) keys[index].textContent = entry.label;
+      });
+    }
+    fitStatisticsHeader();
+  });
   document.addEventListener('debridpulse:statistics-invalidated', invalidated);
   // A reconnected stream may have missed changes: re-read once.
   document.addEventListener('debridpulse:pulse-connected', invalidated);

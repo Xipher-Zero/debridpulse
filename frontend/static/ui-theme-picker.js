@@ -42,9 +42,11 @@
   function render() {
     const mode = theme.mode();
     const current = theme.palette();
-    const word = mode === 'light' ? 'Light' : 'Dark';
-    document.getElementById('theme-picker-title').textContent = word + ' themes';
-    document.getElementById('theme-picker-note').textContent = 'Changes ' + mode + ' appearance only';
+    const title = document.getElementById('theme-picker-title'), modeNote = document.getElementById('theme-picker-note');
+    title.removeAttribute('data-i18n');                 // index.html's first-paint words; this owner's from here
+    modeNote.removeAttribute('data-i18n');
+    title.textContent = t(mode === 'light' ? 'theme.picker.title_light' : 'theme.picker.title_dark');
+    modeNote.textContent = t(mode === 'light' ? 'theme.picker.note_light' : 'theme.picker.note_dark');
     list.replaceChildren(...theme.catalog[mode].map(function (item, index) {
       const row = document.createElement('button');
       row.type = 'button';
@@ -61,7 +63,7 @@
       swatch.innerHTML = '<i data-role="background"></i><i data-role="surface"></i><i data-role="accent"></i><i data-role="tone"></i>';
       const name = document.createElement('span');
       name.className = 'dp-theme-picker-name';
-      name.textContent = item.label;
+      name.textContent = paletteName(mode, item);
       const check = document.createElement('span');
       check.className = 'dp-theme-picker-check';
       check.innerHTML = CHECK;
@@ -83,18 +85,25 @@
   let readState = 'reading';
   let reads = 0;
   let publishing = false;
-  let note = '';
+  let note = '';                 // a catalog key ('' for none)
+  const t = (key, values) => window.DPI18n.t(key, values);
+  // A palette's name: the third-party schemes' own names as the server lists
+  // them; DebridPulse's native palette in the page's language.
+  function paletteName(mode, item) {
+    return item.id === (mode === 'light' ? 'debridpulse-light' : 'debridpulse-dark') ? t('theme.palette.native') : item.label;
+  }
 
   function loginSection() {
     const section = document.createElement('div');
     section.className = 'dp-theme-picker-login';
     section.setAttribute('role', 'group');
     section.setAttribute('aria-labelledby', 'theme-picker-login-title');
-    section.innerHTML = '<div class="dp-theme-picker-login-title" id="theme-picker-login-title">Login Theme</div>'
-      + '<div class="dp-theme-picker-login-state"><span class="dp-theme-picker-login-label">Current login theme</span>'
+    section.innerHTML = '<div class="dp-theme-picker-login-title" id="theme-picker-login-title" data-i18n="theme.login.title"></div>'
+      + '<div class="dp-theme-picker-login-state"><span class="dp-theme-picker-login-label" data-i18n="theme.login.current_label"></span>'
       + '<span class="dp-theme-picker-login-value" aria-live="polite"></span></div>'
-      + '<button type="button" class="dp-btn dp-btn--secondary dp-btn--sm dp-theme-picker-login-set" role="menuitem">Set current</button>'
+      + '<button type="button" class="dp-btn dp-btn--secondary dp-btn--sm dp-theme-picker-login-set" role="menuitem"></button>'
       + '<div class="dp-theme-picker-login-note" role="status"></div>';
+    window.DPI18n.render(section);
     list.after(section);
     section.querySelector('button').addEventListener('click', publish);
     return section;
@@ -103,7 +112,8 @@
   function shown() { return {mode: theme.mode(), palette: theme.palette()}; }
   function named(pair) {
     const item = (theme.catalog[pair.mode] || []).find(function (entry) { return entry.id === pair.palette; });
-    return (item ? item.label : pair.palette) + ' \u00b7 ' + (pair.mode === 'light' ? 'Light' : 'Dark');
+    return t(pair.mode === 'light' ? 'theme.login.value_light' : 'theme.login.value_dark',
+      {palette: item ? paletteName(pair.mode, item) : pair.palette});
   }
   function paintLogin() {
     if (!login) return;
@@ -111,9 +121,9 @@
     const now = shown();
     const current = readState === 'ready' && published && published.mode === now.mode && published.palette === now.palette;
     login.querySelector('.dp-theme-picker-login-value').textContent =
-      readState === 'ready' && published ? named(published) : readState === 'reading' ? 'Checking\u2026' : 'Unavailable';
-    login.querySelector('.dp-theme-picker-login-note').textContent = note;
-    button.textContent = publishing ? 'Setting\u2026' : current ? 'Current' : 'Set current';
+      readState === 'ready' && published ? named(published) : t(readState === 'reading' ? 'theme.login.checking' : 'theme.login.unavailable');
+    login.querySelector('.dp-theme-picker-login-note').textContent = note ? t(note) : '';
+    button.textContent = t(publishing ? 'theme.login.setting' : current ? 'theme.login.current' : 'theme.login.set_current');
     const off = publishing || !!current;
     // A control that loses focus as it is disabled hands it to the menu's
     // chosen row, so the keyboard stays in the menu.
@@ -141,12 +151,11 @@
     note = '';
     paintLogin();
     theme.settled().then(function (saved) {
-      if (!saved) return 'Your theme is not saved yet, so the login theme is unchanged.';
+      if (!saved) return 'theme.login.not_saved_yet';
       return auth.fetch('/api/login-appearance', {method: 'PUT', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(pair)}).then(function (response) {
         if (!response.ok) {
-          return response.status === 409 ? 'Your theme changed before it was saved, so the login theme is unchanged.'
-            : 'The login theme could not be set; it is unchanged.';
+          return response.status === 409 ? 'theme.login.changed_meanwhile' : 'theme.login.failed';
         }
         return response.json().then(function (answer) {
           reads += 1;   // the server's answer is newer than any read in flight
@@ -156,7 +165,7 @@
         });
       });
     }).catch(function () {
-      return 'The login theme could not be set; it is unchanged.';
+      return 'theme.login.failed';
     }).then(function (message) {
       publishing = false;
       note = message;
@@ -200,6 +209,18 @@
     readPublished();
   });
   document.addEventListener('debridpulse:theme-changed', paintLogin);
+  // A language change: the list and the login section are said again.
+  // Rows are renamed in place, so an open menu keeps its focused row.
+  document.addEventListener('debridpulse:locale-changed', function () {
+    const mode = theme.mode();
+    document.getElementById('theme-picker-title').textContent = t(mode === 'light' ? 'theme.picker.title_light' : 'theme.picker.title_dark');
+    document.getElementById('theme-picker-note').textContent = t(mode === 'light' ? 'theme.picker.note_light' : 'theme.picker.note_dark');
+    rows().forEach(function (row) {
+      const item = theme.catalog[mode].find(function (entry) { return entry.id === row.dataset.palette; });
+      if (item) row.querySelector('.dp-theme-picker-name').textContent = paletteName(mode, item);
+    });
+    paintLogin();
+  });
   menu.addEventListener('toggle', function (event) {
     if (event.newState !== 'open') return;
     place();

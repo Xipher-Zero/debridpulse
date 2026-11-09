@@ -24,7 +24,7 @@ def test_provider_status_owner_is_provider_neutral():
     assert "presentation?.status_name" in STATUS
     assert "presentation.status_endpoint" in STATUS
     assert "presentation.static_status" in STATUS
-    assert "No download providers enabled" in STATUS
+    assert "window.DPI18n.t('provider_status.none_enabled')" in STATUS
 
 
 def test_operational_health_is_derived_from_member_observations_not_enablement():

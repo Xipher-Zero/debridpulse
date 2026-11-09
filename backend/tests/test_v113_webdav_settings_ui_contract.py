@@ -127,7 +127,8 @@ def test_the_browser_never_infers_a_webdav_origin():
 def test_route_history_names_a_declined_route_neutrally():
     app = _read("app.js")
     labels = app.split("function routeOutcomePresentation(value) {", 1)[1].split("};", 1)[0]
-    assert "declined: 'Not Applicable'," in labels
+    from i18n_node import english
+    assert "declined: 'not_applicable'," in labels and english("transfer.route_outcome.not_applicable") == "Not Applicable"
 
 
 def test_selectors_share_one_tuning_geometry_that_reads_values_whole():

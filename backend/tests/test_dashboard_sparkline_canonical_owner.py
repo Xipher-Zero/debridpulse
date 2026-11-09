@@ -49,7 +49,8 @@ def test_dashboard_sparklines_have_no_metric_history_owner():
 def test_dashboard_kpi_hover_copy_describes_the_numbers():
     html = (STATIC / "index.html").read_text()
     # The hover copy is the card's DP tooltip (ui-tooltip.js), never a native title.
-    titles = re.findall(r'<div class="dash-hero-stat"[^\n]*? data-tooltip="([^"]+)">\n', html)
+    # (Each names its catalog key beside it, 1.0.14 localization.)
+    titles = re.findall(r'<div class="dash-hero-stat"[^\n]*? data-tooltip="([^"]+)" data-i18n-attr="data-tooltip:dashboard\.kpi\.\w+\.tooltip">\n', html)
     assert len(titles) == 6
     assert not re.findall(r'<div class="dash-hero-stat"[^\n]*? title="', html)
     assert not any(word in title.lower() for title in titles for word in ("trend", "sample", "recent"))

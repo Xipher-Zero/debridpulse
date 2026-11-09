@@ -33,6 +33,7 @@ import db.database as database
 from api.routes import router
 from application.service import ApplicationService
 from fake_integrations import MemoryExecutor, ParcelProvider
+from test_account_locale import supported  # noqa: F401  (a synthetic directory where de and ar are supported)
 from services import backup
 from transfers.applicability import ProviderApplicability
 from transfers.convergence_engine import TransferEngine
@@ -2509,7 +2510,9 @@ async def test_a_backup_from_before_the_locale_restores_english_with_every_accou
     assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-locale-secret")
 
 
-async def test_a_new_backup_brings_back_each_language_and_a_wipe_keeps_them(served):
+async def test_a_new_backup_brings_back_each_language_and_a_wipe_keeps_them(served, supported):
+    # ``supported``: a synthetic catalog directory where de and ar are supported
+    # (only supported locales are an account's language; test_account_locale).
     from auth import accounts
     from services import account_appearance, db_maintenance
 
@@ -2517,16 +2520,16 @@ async def test_a_new_backup_brings_back_each_language_and_a_wipe_keeps_them(serv
     ann = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
     await account_appearance.set_locale(ann, "de")
     await account_appearance.set_presentation(ann, "easy")
-    await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "ja")
+    await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "ar")
     point = await backup.create_restore_point()
-    await account_appearance.set_locale(ann, "fr")
+    await account_appearance.set_locale(ann, "ar")
     await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "en")
 
     restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
 
     assert restored.status_code == 200, restored.text
     assert await account_appearance.load_locale(ann) == "de"
-    assert await account_appearance.load_locale(accounts.DEFAULT_ADMIN_ID) == "ja"
+    assert await account_appearance.load_locale(accounts.DEFAULT_ADMIN_ID) == "ar"
     assert await account_appearance.load_presentation(ann) == "easy"
     live = backup.schema_version(database.DB_PATH)
     rows = _locale_rows(database.DB_PATH)

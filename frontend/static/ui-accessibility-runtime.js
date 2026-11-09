@@ -64,11 +64,11 @@
   function installFilterSemantics() {
     syncFilterGroup(
       document.querySelector('#view-torrents .filter-tabs'),
-      'Download status filter'
+      window.DPI18n.t('a11y.download_status_filter')
     );
     syncFilterGroup(
       document.getElementById('stats-period-tabs'),
-      'Statistics period'
+      window.DPI18n.t('stats.period.label')
     );
   }
 
@@ -127,7 +127,7 @@
 
 
   function installTabSemantics() {
-    syncTablist(document.getElementById('help-tabs'), 'Help sections');
+    syncTablist(document.getElementById('help-tabs'), window.DPI18n.t('a11y.help_sections'));
   }
 
   function installDashboardErrorCardSemantics() {
@@ -135,7 +135,7 @@
     if (!card) return;
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
-    card.setAttribute('aria-label', 'View downloads with errors');
+    card.setAttribute('aria-label', window.DPI18n.t('dashboard.kpi.errors.open'));
     bindKeyboardActivation(card);
   }
 
@@ -144,7 +144,7 @@
     if (!close) return;
     close.setAttribute('role', 'button');
     close.tabIndex = 0;
-    close.setAttribute('aria-label', 'Close details');
+    close.setAttribute('aria-label', window.DPI18n.t('a11y.close_details'));
     bindKeyboardActivation(close);
   }
 
@@ -182,7 +182,7 @@
       }
     }
 
-    return select.name || select.id || 'Select option';
+    return select.name || select.id || window.DPI18n.t('a11y.select_option');
   }
 
   function selectedOption(select) {
@@ -197,7 +197,7 @@
 
     const option = selectedOption(select);
     const value = trigger.querySelector('.dp-dropdown__value');
-    if (value) value.textContent = option ? (option.label || option.textContent || '') : 'Select…';
+    if (value) value.textContent = option ? (option.label || option.textContent || '') : window.DPI18n.t('a11y.select_placeholder');
 
     trigger.disabled = !!select.disabled;
     trigger.setAttribute('aria-disabled', select.disabled ? 'true' : 'false');
@@ -484,7 +484,7 @@
     if (!list.querySelector('.dp-dropdown__option')) {
       const empty = document.createElement('div');
       empty.className = 'dp-dropdown__empty';
-      empty.textContent = query ? 'No matches' : 'No options available';
+      empty.textContent = window.DPI18n.t(query ? 'a11y.select_no_matches' : 'a11y.select_no_options');
       list.appendChild(empty);
     }
   }
@@ -754,6 +754,14 @@
       });
     });
     document.addEventListener('debridpulse:downloads-rendered', installFilterSemantics);
+    // A language change: every accessible name set here is said again.
+    document.addEventListener('debridpulse:locale-changed', function () {
+      installFilterSemantics();
+      installTabSemantics();
+      installDashboardErrorCardSemantics();
+      installModalCloseSemantics();
+      document.querySelectorAll('select[data-dp-dropdown-enhanced="1"]').forEach(syncProjectedSelect);
+    });
     // A filter, a Help tab, or a period chosen from the handheld Statistics
     // menu (the period filters' own choice, ui-statistics.js).
     document.addEventListener('click', function (event) {

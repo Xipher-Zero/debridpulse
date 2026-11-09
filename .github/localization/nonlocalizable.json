@@ -1,0 +1,121 @@
+{
+ "schema": "debridpulse-localization-nonlocalizable/1",
+ "about": "Strings the census finds that must not be translated, each with the reason (reviewed with the candidate that listed it). Matched by owner and exact English.",
+ "exempt": [
+  {
+   "owner": "frontend/static/index.html",
+   "english": "DebridPulse",
+   "reason": "Product name."
+  },
+  {
+   "owner": "frontend/static/index.html",
+   "english": "Debrid<span>Pulse</span>",
+   "reason": "Product name (the sidebar wordmark)."
+  },
+  {
+   "owner": "frontend/static/app.js",
+   "english": "DebridPulse",
+   "reason": "Product name (the browser tab title while idle)."
+  },
+  {
+   "owner": "frontend/static/index.html",
+   "english": "Open the DebridPulse changelog",
+   "reason": "#update-badge is never shown (a holdover; it carries no update information). Not removed here: unrelated to localization."
+  },
+  {
+   "owner": "frontend/static/index.html",
+   "english": "<a href=\"https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md\" target=\"_blank\" rel=\"noopener\">📦 <span></span> available</a>",
+   "reason": "#update-badge is never shown (see above)."
+  },
+  {
+   "owner": "frontend/static/app.js",
+   "english": "DebridPulse icon runtime is unavailable",
+   "reason": "Developer invariant: thrown only when operator-title.js failed to load; never shown."
+  },
+  {
+   "owner": "frontend/static/auth.js",
+   "english": "Logout failed",
+   "reason": "Internal control flow: caught at once; the visible message is session.log_out.failed."
+  },
+  {
+   "owner": "frontend/static/ui-storage-health.js",
+   "english": "Storage health request failed ({0})",
+   "reason": "Internal: the poll's failure is swallowed (the last health stays shown); never displayed."
+  },
+  {
+   "owner": "frontend/static/ui-storage-health.js",
+   "english": "Storage health response is incomplete",
+   "reason": "Internal: as above."
+  },
+  {
+   "owner": "frontend/static/operator-title.js",
+   "english": "ResizeObserver",
+   "reason": "A browser feature name in a feature test."
+  },
+  {
+   "owner": "frontend/static/operator-title.js",
+   "english": "ms ease",
+   "reason": "Part of a CSS transition value."
+  },
+  {
+   "owner": "frontend/static/operator-title.js",
+   "english": "data-tooltip-label=\".dp-status-label\">",
+   "reason": "Markup attributes the census reads as text."
+  },
+  {
+   "owner": "frontend/static/ui-theme-bootstrap.js",
+   "english": "DebridPulse (Default)",
+   "reason": "The palette catalog's fallback data when the server sends none; the picker shows the native palette by its key (theme.palette.native)."
+  },
+  {
+   "owner": "frontend/static/ui-transfer-source-presentation.js",
+   "english": "Media",
+   "reason": "Short form of the integration name 'Media Downloads' in a provider badge (provider and integration names are not translated)."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "invalid catalog",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "catalog unavailable",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "invalid message",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "missing key",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "format failed",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "invalid values",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "no catalog",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/ui-i18n.js",
+   "english": "catalog timed out",
+   "reason": "A diagnostic kind of the localization runtime (DPI18n.diagnostics(), console): a machine identifier, never shown."
+  },
+  {
+   "owner": "frontend/static/app.js",
+   "english": "ResizeObserver",
+   "reason": "A browser feature name in a feature test."
+  }
+ ]
+}

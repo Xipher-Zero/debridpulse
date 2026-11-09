@@ -93,7 +93,7 @@ def test_dashboard_unified_add_button_has_its_own_pending_target():
 
     assert 'id="btn-add-transfer"' in html
     assert "document.getElementById('btn-add-transfer')" in js
-    assert "setButtonPending(button, true, 'Adding…')" in js
+    assert "setButtonPending(button, true, 'quick_add.adding')" in js          # a key: said again on a language change
 
 
 

@@ -3,17 +3,13 @@
   'use strict';
 
   const POLL_MS = 60000;
+  // Words are the catalog's (storage.*), said when drawn.
+  const t = (key, values) => window.DPI18n.t(key, values);
   const DOMAIN_DEFINITIONS = Object.freeze([
-    Object.freeze({key: 'application_state', label: 'Application Storage'}),
-    Object.freeze({key: 'download', label: 'Download Storage'}),
+    Object.freeze({key: 'application_state'}),
+    Object.freeze({key: 'download'}),
   ]);
-  const STATE_LABELS = Object.freeze({
-    healthy: 'Healthy',
-    low_space: 'Low space',
-    full: 'Full',
-    read_only: 'Read only',
-    unavailable: 'Unavailable',
-  });
+  const STATES = new Set(['healthy', 'low_space', 'full', 'read_only', 'unavailable']);
 
   const observed = new Map();
   let currentHealth = null;
@@ -27,7 +23,7 @@
 
   function formatBytes(value) {
     if (!isFiniteNumber(value)) return null;
-    if (value === 0) return '0 B';
+    if (value === 0) return t('format.size.b', {value: window.DPI18n.number(0)});
 
     if (typeof window.fmtSize === 'function') {
       const formatted = window.fmtSize(value);
@@ -41,15 +37,15 @@
       amount /= 1024;
       unit += 1;
     }
-    return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+    return t(`format.size.${units[unit].toLowerCase()}`, {value: window.DPI18n.number(amount, unit === 0 ? 0 : 1)});
   }
 
   function formatCapacity(snapshot) {
     const free = formatBytes(snapshot && snapshot.free_bytes);
     const total = formatBytes(snapshot && snapshot.total_bytes);
-    if (free && total) return `${free} free of ${total}`;
-    if (free) return `${free} free`;
-    if (total) return `${total} total`;
+    if (free && total) return t('storage.capacity.free_of', {free, total});
+    if (free) return t('storage.capacity.free', {free});
+    if (total) return t('storage.capacity.total', {total});
     return '';
   }
 
@@ -58,35 +54,17 @@
   }
 
   function stateLabel(state) {
-    return STATE_LABELS[state] || 'Unavailable';
+    return t(`storage.state.${STATES.has(state) ? state : 'unavailable'}`);
   }
 
+  // One whole sentence per storage and degraded state (unknown states read as unavailable).
   function explanation(domainKey, state) {
-    const application = domainKey === 'application_state';
-    if (state === 'low_space') {
-      return application
-        ? 'Application Storage is running low on space. DebridPulse may be unable to persist state safely.'
-        : 'Download Storage is running low on space. New storage-consuming work is paused until the recovery threshold is reached.';
-    }
-    if (state === 'full') {
-      return application
-        ? 'Application Storage is full. DebridPulse cannot safely persist state.'
-        : 'Download Storage is full. New downloads are paused until space is available.';
-    }
-    if (state === 'read_only') {
-      return application
-        ? 'Application Storage is read only. DebridPulse cannot safely persist state.'
-        : 'Download Storage is read only. New downloads are paused until write access is restored.';
-    }
-    return application
-      ? 'Application Storage is unavailable. DebridPulse cannot safely persist state.'
-      : 'Download Storage is unavailable or not writable.';
+    const domain = domainKey === 'application_state' ? 'application' : 'download';
+    return t(`storage.explanation.${domain}.${['low_space', 'full', 'read_only'].includes(state) ? state : 'unavailable'}`);
   }
 
   function recoveryMessage(domainKey) {
-    return domainKey === 'download'
-      ? 'Download Storage has recovered. New downloads can resume.'
-      : 'Application Storage has recovered.';
+    return t(domainKey === 'download' ? 'storage.recovered.download' : 'storage.recovered.application');
   }
 
   function transitionIdentity(snapshot) {
@@ -156,7 +134,7 @@
     region.setAttribute('role', 'status');
     region.setAttribute('aria-live', 'polite');
     region.setAttribute('aria-atomic', 'false');
-    region.setAttribute('aria-label', 'Storage health warnings');
+    region.setAttribute('aria-label', t('storage.region_label'));
     main.insertBefore(region, content);
     return region;
   }
@@ -172,7 +150,7 @@
 
     const title = document.createElement('strong');
     title.className = 'dp-storage-warning__domain';
-    title.textContent = definition.label;
+    title.textContent = t(definition.key === 'application_state' ? 'storage.domain.application' : 'storage.domain.download');
 
     const condition = document.createElement('span');
     condition.className = 'dp-storage-warning__state';
@@ -210,6 +188,13 @@
     region.replaceChildren(...warnings);
     region.hidden = warnings.length === 0;
   }
+
+  // A language change says the warnings (and the region's name) again.
+  document.addEventListener('debridpulse:locale-changed', () => {
+    const region = document.getElementById('dp-storage-health');
+    if (region) region.setAttribute('aria-label', t('storage.region_label'));
+    if (currentHealth) render(currentHealth);
+  });
 
   function validateHealth(payload) {
     return Boolean(

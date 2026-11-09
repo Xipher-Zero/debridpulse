@@ -170,8 +170,8 @@ def test_the_tier_heading_has_material_in_the_provider_status_css_owner():
 def test_the_alldebrid_subscription_row_is_not_part_of_this_list():
     """It is sibling shell markup owned by ui-premium-account-status.js."""
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    shell = index[index.index('<div class="dp-provider-status-heading">'):
-                  index.index('<span id="lbl-db">')]
+    shell = index[index.index('<div class="dp-provider-status-heading"'):
+                  index.index('<span id="lbl-db"')]
     assert shell.index('id="premium-row"') < shell.index('id="provider-status-list"')
     assert "premium-row" not in STATUS_JS
 

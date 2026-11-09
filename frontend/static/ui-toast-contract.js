@@ -4,8 +4,9 @@
 function correctedToastMessage(message){
   if(message&&typeof message==='object')return message;
   const text=String(message??'');
-  if(/^Line \d+: enter an HTTP\(S\) link or magnet URI$/i.test(text))return 'DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.';
-  if(text==='Checking AllDebrid for ready torrents…'||text==='Checking AllDebrid for ready torrents...')return 'Checking transfers for recoverable work…';
+  // (A legacy wording, matched as it was written; what replaces it is the page's language.)
+  if(/^Line \d+: enter an HTTP\(S\) link or magnet URI$/i.test(text))return window.DPI18n.t('quick_add.not_a_link');
+  if(text==='Checking AllDebrid for ready torrents…'||text==='Checking AllDebrid for ready torrents...')return window.DPI18n.t('recovery.checking');
   return text;
 }
 function canonicalDuration(message){

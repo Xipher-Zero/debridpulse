@@ -29,7 +29,7 @@
     if (!account || account.service_class !== 'premium' || account.entitlement !== 'ready') return null;
     const seconds = Number(account.expires_at);
     if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    return {until: new Date(seconds * 1000), tier: String(account.plan || 'Premium')};
+    return {until: new Date(seconds * 1000), tier: account.plan ? String(account.plan) : window.DPI18n.t('premium.tier_default')};
   }
 
   function premiumUntil(id, status) {
@@ -44,10 +44,11 @@
   // the operator's date preference and time zone (the Downloads date owner),
   // and its "(N days remaining)" / "(expired)" qualifier, counted from the
   // instant itself.
-  function describe(until, tier = 'Premium') {
+  // (A plan's own name is the provider's, as it reports it.)
+  function describe(until, tier = window.DPI18n.t('premium.tier_default')) {
     const days = remaining(until);
-    return {until: `${tier} until ${window.downloadsDayLabel(until)}`,
-            days: days > 0 ? `(${days} days remaining)` : '(expired)'};
+    return {until: window.DPI18n.t('premium.until', {tier, date: window.downloadsDayLabel(until)}),
+            days: window.DPI18n.t(days > 0 ? 'premium.days_remaining' : 'premium.expired', {count: days})};
   }
 
   function line(className, text) {
@@ -62,7 +63,8 @@
     const text = describe(account.until, account.tier);
     const block = document.createElement('span');
     block.className = 'dp-provider-premium-account';
-    block.append(line('dp-provider-premium-until', `${name} ${text.until}`),
+    block.append(line('dp-provider-premium-until',
+      window.DPI18n.t('premium.named_until', {name, tier: account.tier, date: window.downloadsDayLabel(account.until)})),
                  line('dp-provider-premium-days', text.days));
     return block;
   }
@@ -71,7 +73,7 @@
   function compactLine(name, account) {
     const days = remaining(account.until);
     return line('dp-provider-premium-account dp-provider-premium-account--compact',
-                `${name} ${account.tier} ${days > 0 ? `${days} days remaining` : 'expired'}`);
+                window.DPI18n.t(days > 0 ? 'premium.compact_remaining' : 'premium.compact_expired', {name, tier: account.tier, count: days}));
   }
 
   /* The row is contextual: one account gets the full block, several get one
@@ -107,7 +109,11 @@
   // tier -- the same way.
   window.DPPremiumAccount = Object.freeze({until: premiumUntil, account: premiumAccount, describe});
 
+  let lastEntries = null;
   document.addEventListener('debridpulse:provider-status', event => {
-    render(event.detail?.entries || []);
+    lastEntries = event.detail?.entries || [];
+    render(lastEntries);
   });
+  // A language change says the row again from what was last published.
+  document.addEventListener('debridpulse:locale-changed', () => { if (lastEntries) render(lastEntries); });
 })();

@@ -202,7 +202,7 @@ def test_shell_pulse_is_registered_true_vector_art() -> None:
 def test_provider_status_heading_and_list_are_static_shell_markup_the_owner_only_fills() -> None:
     index = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
     owner = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text(encoding="utf-8")
-    assert '<div class="dp-provider-status-heading">Provider Status</div>' in index
+    assert '<div class="dp-provider-status-heading" data-i18n="provider_status.heading">Provider Status</div>' in index
     assert 'id="provider-status-list"' in index
     for created in ("ensureHeading", "createElement", "insertBefore", "dp-provider-status-heading"):
         assert created not in owner, created

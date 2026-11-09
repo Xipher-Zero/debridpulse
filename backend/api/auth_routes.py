@@ -506,7 +506,7 @@ async def _login_page(
     locale: str = "en",
 ) -> HTMLResponse:
     """The sign-in page in ``locale`` (a pre-sign-in locale: English unless a
-    caller states one, ``core.localization.preauth_locale``). ``error`` is the
+    caller states one, ``core.localization.pre_sign_in_locale``). ``error`` is the
     catalog key of the message to show, if any."""
     cfg = get_settings()
     # A Standalone installation signs in its one person, the default Admin,
@@ -605,10 +605,10 @@ async def _issue_login_page(
 ) -> HTMLResponse:
     """The sign-in page with a fresh form challenge. ``error`` is a catalog
     key; ``locale`` the hook for an explicitly stated pre-sign-in language
-    (``core.localization.preauth_locale``), English otherwise."""
-    from core.localization import preauth_locale
+    (``core.localization.pre_sign_in_locale``), English otherwise."""
+    from core.localization import pre_sign_in_locale
 
-    locale = preauth_locale(locale)
+    locale = pre_sign_in_locale(locale)
     if not login_challenge_rate_limiter.allow(peer_key(request)):
         return await _state_free_auth_page(
             message="login.error.challenges",

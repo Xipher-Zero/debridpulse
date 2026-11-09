@@ -96,6 +96,11 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     ("argument mismatch", None, None, {"de": {"shell.dock.more_current": "Mehr, aktuelle Seite: {seite}"}}, "is not in the English source"),
     ("polish category", {"test.case.count": "{n, plural, one {# file} other {# files}}"}, {"test.case.count": _meta(args={"n": "plural"})},
      {"pl": {"test.case.count": "{n, plural, one {# plik} two {# pliki} other {# plików}}"}}, "is not one of pl's"),
+    ("quoted markup", {"test.case.message": "Click '<img src=x onerror=alert(1)>' here"}, {"test.case.message": _meta()}, None,
+     "reads as markup"),
+    ("translated markup", None, None, {"de": {"shell.nav.dashboard": "'<script>'x"}}, "reads as markup"),
+    ("plural of a plain string", {"test.case.message": "Hello {name}"}, {"test.case.message": _meta(args={"name": "string: a name"})},
+     {"de": {"test.case.message": "{name, plural, one {Hallo} other {Hallo}}"}}, "is a plural"),
 ])
 def test_each_class_of_broken_message_is_a_hard_error(tmp_path, case, english, meta, catalogs, expected):
     i18n, meta_path = _scratch(tmp_path, english=english, meta=meta, catalogs=catalogs)
@@ -162,6 +167,60 @@ def test_stale_and_missing_debt_are_told_apart_critical_staleness_on_its_own_and
     code, report = _validate(i18n, meta_path, "--release")
     assert code == 1 and any("advertised as supported" in line and "2 stale" in line for line in report["errors"])
     assert _validate(i18n, meta_path)[0] == 0
+
+
+@needs_node
+def test_a_count_english_says_plainly_may_be_inflected_by_a_translation(tmp_path):
+    english = {"test.case.count": "{count} items"}
+    meta = {"test.case.count": _meta(args={"count": "number: how many"})}
+    catalogs = {"pl": {"test.case.count": "{count, plural, one {{count} element} few {{count} elementy} many {{count} elementów} other {{count} elementu}}"}}
+    i18n, meta_path = _scratch(tmp_path, english=english, meta=meta, catalogs=catalogs)
+    code, report = _validate(i18n, meta_path)
+    assert code == 0, report["errors"]
+
+
+# WS3a: the shell and shared owners say every word through the catalog. The
+# owners are whole, and index.html's shell, Dashboard, Activity Log and
+# Statistics regions (Downloads, Details and the download operations are WS3b).
+WS3A_OWNERS = ("operator-title.js", "ui-statistics.js", "ui-activity-log-runtime.js", "ui-error-semantics.js",
+               "ui-dashboard-transfer-presentation.js", "ui-provider-status.js", "ui-premium-account-status.js",
+               "ui-storage-health.js", "ui-pager.js", "ui-search.js", "ui-toast-contract.js", "ui-tooltip.js",
+               "ui-accessibility-runtime.js", "ui-theme-picker.js", "ui-theme-bootstrap.js",
+               "ui-transfer-source-presentation.js", "ui-i18n.js", "auth.js")
+
+
+def test_the_ws3a_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
+    import inventory
+
+    data = inventory.census()
+    left = [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]
+            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS]
+    assert left == []
+    index = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8").splitlines()
+    downloads = next(i for i, line in enumerate(index, 1) if '<div class="view" id="view-torrents">' in line)
+    events = next(i for i, line in enumerate(index, 1) if '<div class="view" id="view-events"' in line)
+    modal = next(i for i, line in enumerate(index, 1) if '<div id="modal" class="dp-card dp-detail-modal"' in line)
+    shell = [(entry["line"], entry["english"]) for entry in data["entries"] if entry["owner"].endswith("index.html")
+             and not (downloads <= entry["line"] < events - 1 or entry["line"] >= modal)]
+    assert shell == []
+    # Every exemption names its reason, and still matches something (no stale entry).
+    reviewed = json.loads((ROOT / ".github" / "localization" / "nonlocalizable.json").read_text(encoding="utf-8"))["exempt"]
+    assert all(item["reason"].strip() for item in reviewed)
+    matched = {(entry["owner"], entry["english"]) for entry in data["exempt"]}
+    assert [item for item in reviewed if (item["owner"], item["english"]) not in matched] == []
+
+
+def test_the_census_counts_keyed_markup_as_keyed_and_a_sentence_as_a_sentence():
+    import inventory
+
+    markup = inventory.markup_messages('<p data-i18n="a.b">Keyed words</p><p title="Plain tip" data-i18n-attr="title:a.c">Shown words</p>'
+                                       '<div>Literal words</div>')
+    # The keyed text and the keyed title are not literals; the rest are.
+    assert [(kind, text) for kind, text, _rich, _line in markup] == [("markup-text", "Shown words"), ("markup-text", "Literal words")]
+    found = inventory.frontend_entries_from("const a = 'Download Storage is full. New downloads are paused.';\n"
+                                            "const b = '.row > .cell';\nconst c = 'status.completed';\n"
+                                            "const d = 'dp-row dp-row--compact';\n", "frontend/static/x.js")
+    assert [entry["english"] for entry in found] == ["Download Storage is full. New downloads are paused."]
 
 
 def test_the_english_catalog_asset_is_versioned_by_its_content_and_the_server_reads_the_same_catalog():
@@ -236,7 +295,7 @@ def test_the_sign_in_page_is_rendered_from_the_catalog_escaped_and_never_from_an
     assert auth_routes._text("login.error.invalid_credentials", "en") == english["login.error.invalid_credentials"]
     pseudo = auth_routes._text("login.sign_in_with", "en-XA", provider="Corp")
     assert pseudo.startswith("⟦") and "Corp" in pseudo and "Šîgñ" in pseudo           # the argument is untouched
-    assert localization.preauth_locale(None) == "en" and localization.preauth_locale("xx") == "en"
+    assert localization.pre_sign_in_locale(None) == "en" and localization.pre_sign_in_locale("xx") == "en"
     source = (ROOT / "backend" / "api" / "auth_routes.py").read_text(encoding="utf-8")
     login = source[source.index("async def _login_page("):source.index("async def _state_free_auth_page(")]
     assert "accept-language" not in login.lower() and "load_locale" not in login

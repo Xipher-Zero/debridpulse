@@ -12,10 +12,18 @@
 // metadata without category, context, owner or criticality; a message that
 // does not parse; positional ({0}) arguments; arguments that differ from the
 // English source (names or types) or from the declared ones; tags outside
-// b/strong/em/i/code/kbd; plural categories the locale does not have
+// b/strong/em/i/code/kbd; literal text that reads as markup ('<' then a
+// letter, '/', '!' or '?': a translation is text, so whatever an owner does
+// with a formatted message, it never carries an element); plural categories
+// the locale does not have
 // (Intl.PluralRules, CLDR) or a plural without `other`; a sign-in page
 // message (login.*) using more than plain {name} arguments; a translated key
 // English does not have.
+//
+// A translation may give an argument the English source uses plainly
+// ({count}) a plural or number form where the English metadata declares that
+// argument a number ("number: …" / "plural: …"), so a language can inflect a
+// count English does not.
 //
 // WARNINGS (translation debt, exit 0): for each target locale, the English
 // keys it has no translation of (missing) and the ones translated from an
@@ -66,8 +74,9 @@ for (const tag of Object.keys(manifest.locales)) {
 }
 
 // Arguments and tags of a parsed message: name -> type, and every tag name.
-function shape(elements, out = {args: {}, tags: new Set(), plurals: [], positional: false}) {
+function shape(elements, out = {args: {}, tags: new Set(), plurals: [], positional: false, markup: false}) {
   for (const element of elements) {
+    if (element.type === TYPE.LITERAL && /<[A-Za-z!\/?]/.test(element.value)) out.markup = true;
     if (element.type in TYPE_NAME) {
       if (/^\d+$/.test(element.value)) out.positional = true;
       const type = TYPE_NAME[element.type];
@@ -124,6 +133,7 @@ for (const key of new Set([...Object.keys(english.messages), ...Object.keys(meta
   if (!found) continue;
   englishShape[key] = found;
   if (found.positional) error(where, 'positional arguments ({0}); name every argument');
+  if (found.markup) error(where, 'literal text reads as markup');
   for (const tag of found.tags) if (!RICH_TAGS.has(tag)) error(where, `tag <${tag}> is not allowed`);
   const declared = Object.keys(m.args || {}).sort().join(',');
   if (declared !== Object.keys(found.args).sort().join(',')) error(where, `arguments (${Object.keys(found.args)}) differ from the declared (${declared})`);
@@ -146,11 +156,18 @@ for (const [tag, info] of Object.entries(manifest.locales)) {
     const found = parse(where, message, tag);
     if (!found || !englishShape[key]) continue;
     const expected = englishShape[key].args;
+    if (found.markup) error(where, 'literal text reads as markup');
+    // An argument may appear several times (a plural that also shows its count):
+    // its uses are compared as sets. A count -- an argument English selects a
+    // plural on or formats as a number, or declares a number -- may be shown
+    // plainly, pluralized or formatted in any translation.
+    const counted = name => /^(number|plural)\b/.test(String(meta[key]?.args?.[name] || ''));
     for (const [name, type] of Object.entries(found.args)) {
-      if (!(name in expected)) error(where, `argument {${name}} is not in the English source`);
-      else if (expected[name] !== type && !(['plural', 'number'].includes(type) && ['plural', 'number'].includes(expected[name]))) {
-        error(where, `argument {${name}} is a ${type}, the English source's a ${expected[name]}`);
-      }
+      if (!(name in expected)) { error(where, `argument {${name}} is not in the English source`); continue; }
+      const allowed = new Set(expected[name].split('|'));
+      if ([...allowed].some(each => each === 'plural' || each === 'number') || counted(name)) ['plural', 'number', 'string'].forEach(each => allowed.add(each));
+      const refused = type.split('|').filter(each => !allowed.has(each));
+      if (refused.length) error(where, `argument {${name}} is a ${type}, the English source's a ${expected[name]}`);
     }
     for (const name of Object.keys(expected)) if (!(name in found.args)) error(where, `argument {${name}} of the English source is missing`);
     for (const t of found.tags) if (!RICH_TAGS.has(t) || !englishShape[key].tags.has(t)) error(where, `tag <${t}> is not the English source's`);

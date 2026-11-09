@@ -205,7 +205,9 @@ def test_operator_tab_title_uses_short_active_identity_and_queue_average():
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
 
     assert "document.title = 'DebridPulse';" in frontend
-    assert "document.title = `DP | ${speed} (${_operatorTitleState.progress}%)`;" in frontend
+    from i18n_node import english
+    assert "document.title = DPI18n.t('operator_title.active', {speed, percent: DPI18n.number(_operatorTitleState.progress)});" in frontend
+    assert english("operator_title.active") == "DP | {speed} ({percent}%)"
     assert "document.title = `DebridPulse | (${active} Active)" not in frontend
     assert "renderOperatorTitle();" in frontend
 
@@ -232,8 +234,10 @@ def test_dashboard_recent_activity_exposes_pause_resume_but_not_remove():
 
     assert "pauseT(${t.id},this)" in recent_renderer
     assert "resumeT(${t.id},this)" in recent_renderer
-    assert "Pause this download" in recent_renderer
-    assert "Resume this download" in recent_renderer
+    # (Their words are the catalog's, 1.0.14 localization: the same English.)
+    from i18n_node import english
+    assert "T('transfer.action.pause_tooltip')" in recent_renderer and english("transfer.action.pause_tooltip") == "Pause this download"
+    assert "T('transfer.action.resume_tooltip')" in recent_renderer and english("transfer.action.resume_tooltip") == "Resume this download"
     assert "deleteT(" not in recent_renderer
     assert "Remove" not in recent_renderer
     assert "Remove" not in recent_markup
@@ -283,11 +287,14 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "fmtTransferRate(speed, 100)" in frontend
     assert "fmtTransferRate(speed, 1000)" in frontend
     assert "Number(value.toFixed(2)) >= rollover" in frontend
-    assert "return '0 KB/s'" in frontend
-    assert "return '<1 KB/s'" in frontend
-    assert "return 'Unlimited'" in frontend
+    # The words and units are the catalog's (1.0.14 localization), the same English.
+    from i18n_node import english
+    assert "return DPI18n.t('format.rate.zero')" in frontend and english("format.rate.zero") == "0 KB/s"
+    assert "return DPI18n.t('format.rate.below_one_kb')" in frontend and english("format.rate.below_one_kb") == "<1 KB/s"
+    assert "return DPI18n.t('speed_cap.unlimited')" in frontend and english("speed_cap.unlimited") == "Unlimited"
     assert "const units = ['KB', 'MB', 'GB', 'TB']" in frontend
-    assert '<span id="runtime-badge-limit">Unlimited</span>' in index
+    assert english("format.rate.mb") == "{value} MB/s"
+    assert '<span id="runtime-badge-limit" data-i18n="speed_cap.unlimited">Unlimited</span>' in index
 
     # DP 1.0.13 work item G: the topbar indicator is executor-NEUTRAL. It reads
     # one application-owned fact that aggregates every acquiring executor, so

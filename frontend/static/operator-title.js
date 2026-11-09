@@ -42,32 +42,34 @@
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.91 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
   };
 
+  // Each label is a catalog key (status.<name>); the words are drawn in the
+  // page's language when a badge is made.
   const STATUS = Object.freeze({
-    pending: {icon: 'clock3', label: 'Pending', className: 'pending'},
-    uploading: {icon: 'upload', label: 'Uploading', className: 'uploading'},
-    processing: {icon: 'loaderCircle', label: 'Processing', className: 'processing'},
-    input_required: {icon: 'triangleAlert', label: 'Input Required', className: 'input_required'},
-    extracting: {icon: 'packageOpen', label: 'Extracting', className: 'extracting'},
-    queued: {icon: 'clock3', label: 'Queued', className: 'queued'},
-    paused: {icon: 'pause', label: 'Paused', className: 'paused'},
-    downloading: {icon: 'download', label: 'Downloading', className: 'downloading'},
-    ready: {icon: 'play', label: 'Ready', className: 'ready'},
-    completed: {icon: 'circleCheck', label: 'Done', className: 'completed'},
-    consolidated: {icon: 'circleCheck', label: 'Consolidated', className: 'consolidated'},
-    downloading_with_errors: {icon: 'triangleAlert', label: 'Downloading', className: 'partial'},
-    completed_with_errors: {icon: 'triangleAlert', label: 'Completed with errors', className: 'partial'},
-    error: {icon: 'x', label: 'Error', className: 'error'},
-    missing: {icon: 'x', label: 'Missing file', className: 'error'},
-    failed: {icon: 'x', label: 'Failed', className: 'error'},
-    verifying: {icon: 'clock3', label: 'Verifying', className: 'queued'},
-    cancelled: {icon: 'x', label: 'Cancelled', className: 'deleted'},
-    unknown: {icon: 'triangleAlert', label: 'Awaiting confirmation', className: 'partial'},
-    unresolved: {icon: 'clock3', label: 'Resolving', className: 'processing'},
-    refresh_pending: {icon: 'clock3', label: 'Refreshing source', className: 'queued'},
-    lost: {icon: 'triangleAlert', label: 'Execution missing', className: 'error'},
-    deleted: {icon: 'trash2', label: 'Deleted', className: 'deleted'},
-    imported: {icon: 'fileInput', label: 'Imported', className: 'imported'},
-    partial: {icon: 'triangleAlert', label: 'Partial', className: 'partial'}
+    pending: {icon: 'clock3', label: 'status.pending', className: 'pending'},
+    uploading: {icon: 'upload', label: 'status.uploading', className: 'uploading'},
+    processing: {icon: 'loaderCircle', label: 'status.processing', className: 'processing'},
+    input_required: {icon: 'triangleAlert', label: 'status.input_required', className: 'input_required'},
+    extracting: {icon: 'packageOpen', label: 'status.extracting', className: 'extracting'},
+    queued: {icon: 'clock3', label: 'status.queued', className: 'queued'},
+    paused: {icon: 'pause', label: 'status.paused', className: 'paused'},
+    downloading: {icon: 'download', label: 'status.downloading', className: 'downloading'},
+    ready: {icon: 'play', label: 'status.ready', className: 'ready'},
+    completed: {icon: 'circleCheck', label: 'status.completed', className: 'completed'},
+    consolidated: {icon: 'circleCheck', label: 'status.consolidated', className: 'consolidated'},
+    downloading_with_errors: {icon: 'triangleAlert', label: 'status.downloading_with_errors', className: 'partial'},
+    completed_with_errors: {icon: 'triangleAlert', label: 'status.completed_with_errors', className: 'partial'},
+    error: {icon: 'x', label: 'status.error', className: 'error'},
+    missing: {icon: 'x', label: 'status.missing', className: 'error'},
+    failed: {icon: 'x', label: 'status.failed', className: 'error'},
+    verifying: {icon: 'clock3', label: 'status.verifying', className: 'queued'},
+    cancelled: {icon: 'x', label: 'status.cancelled', className: 'deleted'},
+    unknown: {icon: 'triangleAlert', label: 'status.unknown', className: 'partial'},
+    unresolved: {icon: 'clock3', label: 'status.unresolved', className: 'processing'},
+    refresh_pending: {icon: 'clock3', label: 'status.refresh_pending', className: 'queued'},
+    lost: {icon: 'triangleAlert', label: 'status.lost', className: 'error'},
+    deleted: {icon: 'trash2', label: 'status.deleted', className: 'deleted'},
+    imported: {icon: 'fileInput', label: 'status.imported', className: 'imported'},
+    partial: {icon: 'triangleAlert', label: 'status.partial', className: 'partial'}
   });
 
   const TOAST_ICON = Object.freeze({
@@ -105,10 +107,18 @@
   /* The badge names its whole status in its label; where a compact table sets
    * that label aside (icon only), DP's tooltip says it (ui-tooltip.js shows a
    * data-tooltip-label tooltip only while its label is not shown). */
+  // A status without a descriptor shows its own identifier (it has no words),
+  // or 'Unknown' when it has none.
+  function statusWords(key, descriptor, label) {
+    if (label) return label;
+    if (STATUS[key]) return window.DPI18n.t(descriptor.label);
+    return key || window.DPI18n.t('status.unrecognized');
+  }
+
   function statusBadge(status, label, category) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
-    const descriptor = STATUS[key] || {icon: 'info', label: key || 'Unknown', className: key || 'pending'};
-    const text = escapeHtml(label || descriptor.label);
+    const descriptor = STATUS[key] || {icon: 'info', className: key || 'pending'};
+    const text = escapeHtml(statusWords(key, descriptor, label));
     return '<span class="badge badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') +
       ' data-tooltip="' + text + '" data-tooltip-label=".dp-status-label">' +
       lucideSvg(descriptor.icon, 'dp-status-icon') +
@@ -120,8 +130,8 @@
    * glyph's accessible name and DP tooltip. */
   function statusGlyph(status, label, category) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
-    const descriptor = STATUS[key] || {icon: 'info', label: key || 'Unknown', className: key || 'pending'};
-    const text = escapeHtml(label || descriptor.label);
+    const descriptor = STATUS[key] || {icon: 'info', className: key || 'pending'};
+    const text = escapeHtml(statusWords(key, descriptor, label));
     return '<span class="dp-status-glyph badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') +
       ' role="img" aria-label="' + text + '" data-tooltip="' + text + '">' + lucideSvg(descriptor.icon, 'dp-status-icon') + '</span>';
   }
@@ -489,25 +499,14 @@
     }
     if (!targets.size || targets.size > matched) return null;
 
-    const matchingNoun = matched === 1 ? 'file' : 'files';
-    const matchingVerb = matched === 1 ? 'was' : 'were';
-    const candidateNoun = matched === 1 ? 'a failover candidate' : 'failover candidates';
-    const sourceLinkNoun = matched === 1 ? 'link' : 'links';
-    const sourceLinkVerb = matched === 1 ? 'was' : 'were';
-    const destination = targets.size === 1 ? 'the existing download' : 'existing downloads';
-
+    // Whole sentences, chosen by the counts (catalog plurals): never joined
+    // from fragments.
+    const t = (key, values) => window.DPI18n.t(key, values);
+    const counts = {matched, unmatched, targets: targets.size};
     if (unmatched > 0) {
-      const newNoun = unmatched === 1 ? 'file' : 'files';
-      return {
-        title: 'Duplicate files consolidated',
-        body: matched + ' matching ' + matchingNoun + ' ' + matchingVerb + ' merged into ' + destination + ' and retained as ' + candidateNoun + '. ' + unmatched + ' new ' + newNoun + ' will download normally.'
-      };
+      return {title: t('consolidation.files.title', counts), body: t('consolidation.files.body', counts)};
     }
-
-    return {
-      title: targets.size === 1 ? 'Duplicate download consolidated' : 'Duplicate downloads consolidated',
-      body: matched + ' matching ' + matchingNoun + ' ' + matchingVerb + ' merged into ' + destination + '. The new source ' + sourceLinkNoun + ' ' + sourceLinkVerb + ' retained as ' + candidateNoun + '.'
-    };
+    return {title: t('consolidation.downloads.title', counts), body: t('consolidation.downloads.body', counts)};
   }
 
   window.DPIcons = Object.freeze({

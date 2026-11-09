@@ -1,12 +1,24 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete, product localization incomplete.**
-The runtime, the catalogs, the validators, the pseudo locales, the per-account
-language and the coded-error seam exist. Only the proof surfaces read the catalog:
-the shell's navigation and page headings, My Account and its Help, the sign-in
-pages, and the account error codes. Every other surface is still English literals
-(the WS3/WS4 debt the census below counts). No language is offered: there is no
-picker, and no target catalog ships.
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a complete;
+product localization incomplete.** The runtime, the catalogs, the validators,
+the pseudo locales, the per-account language and the coded-error seam exist.
+These surfaces read the catalog:
+
+- WS2's proof surfaces: My Account and its Help, the sign-in pages, and the
+  account error codes;
+- WS3a, the application shell and shared UI: the sidebar (navigation, Provider
+  Status, the status rows) and the topbar (processing controls, speed badge
+  and cap menu, theme controls); Dashboard; Activity Log; Statistics; and the
+  shared owners every page draws with: status badges and failure categories,
+  progress and ETA, sizes, speeds and durations, toasts, the pager, search
+  notices, storage warnings, premium accounts, source icons, tooltips' tab
+  index, and the accessible names the accessibility runtime sets.
+
+Every other surface is still English literals: Downloads, Details and the
+download operations (WS3b), Settings (WS3c, WS3d), the server's display
+messages (WS3e) and Help (WS4). The census below counts them. No language is
+offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
 
@@ -92,12 +104,55 @@ started with `DEBRIDPULSE_I18N_TEST_LOCALES=1`, which admits nothing else.
 **Before sign-in** the language is English. No account exists yet, and neither
 `Accept-Language` nor the browser's language is read. Sign-in page messages
 (`login.*`) use plain `{name}` arguments only and are always HTML-escaped.
-`preauth_locale(explicit)` is the hook a future explicit pre-sign-in choice
+`pre_sign_in_locale(explicit)` is the hook a future explicit pre-sign-in choice
 would use.
 
 **Errors.** A `DisplayError` keeps its English `detail` exactly as API clients
 already receive it, and adds `code` and `params`. The interface shows
 `error.<code>` from the catalog and falls back to `detail`.
+
+**Words the server names by a stable identifier.** Some English the interface
+shows comes from the server as data beside an identifier. The interface says
+it by the identifier, keeping the server's English where the catalog has no
+such identifier, so API clients and a newer server are unaffected:
+
+- a transfer's `presentation_label` is a function of its `presentation_status`
+  (`status.<presentation_status>`; a consolidation still owed proof, which the
+  server marks by `unverified_association_count`, is
+  `status.consolidated_unverified`);
+- a failed transfer's category (`error.category`) is `error_category.<category>`;
+- Provider Status's tier and group headings are `integration.tier.<id>` and
+  `integration.group.<id>`.
+
+Provider, integration, palette and plan names are proper names and stay as the
+server sends them. Activity Log event messages are the server's journal text
+and stay English until WS3e gives them codes.
+
+**Owners.** How a renderer uses the catalog:
+
+- **Static markup** names its key: `data-i18n="key"` for text,
+  `data-i18n-attr="attr:key;…"` for attributes, and `data-i18n-values='{"arg": …}'`
+  for a message's arguments. `render(document)` writes them before the veil
+  lifts, so the first paint is in the page's language.
+- **Markup an owner rewrites** (a status row, a count line, the page heading)
+  keeps its key for the first paint. The owner removes `data-i18n` when it
+  writes its own words, so a later `render()` never resets live state.
+- **Every owner re-says its words on `debridpulse:locale-changed`** from the
+  state it already holds: no request, no navigation. It keeps focus, open
+  panels and dialogs, drafts, scroll, and open `<details>`. A list re-labels
+  its rows in place where rebuilding them would lose the reader's place.
+- **Figures** come from `DPI18n.number(value, digits)`: fixed decimals, no
+  grouping, and the shown language's digits. In English it writes exactly
+  what `toFixed` writes. `DPI18n.intlLocale()` names the tag for other `Intl`
+  formatters (a pseudo locale formats as English). Counts are plain `{count}`
+  arguments; a plural selects on `{count}` and shows `{count}`, never `#`, so
+  English digits are unchanged.
+- **A message is a whole sentence.** A wording that varies with a count or a
+  period is one `plural` or `select` message, never fragments joined in code.
+  Shorter phone wordings are separate keys (`…_short`, `…_shortest`), never
+  truncations.
+- **A formatted message is text.** Owners escape it before markup, and the
+  validator refuses literal text that reads as markup.
 
 ## 2. Glossary (canonical concepts)
 
@@ -131,47 +186,57 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at this candidate
+## 3. Census (WS0) — snapshot at WS3a
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
 text, owner and line, context, placeholders, and criticality. The census reads
 source, so conditionally rendered variants are all counted.
 
-| Measure | Count |
+It is a checked key census:
+
+- markup that names a key (`data-i18n`, `data-i18n-attr`) is keyed, not counted;
+- a literal that is a catalog key is a key reference, not counted;
+- a string that must never be translated is listed once, with its reason, in
+  `.github/localization/nonlocalizable.json` and reported as `exempt`, apart
+  from what is still to be keyed. Examples are the product name, CSS class
+  lists, the localization runtime's own diagnostic kinds, and developer
+  errors that are never shown.
+
+**Correction made in WS3a.** The WS0 census read any plain sentence containing
+a full stop as a CSS selector and dropped it. It also missed the compact-wording
+attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
+`data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
+entries (3,038 unique English), not the 3,350 the WS0 packet reported.
+
+| Measure (at WS3a) | Count |
 |---|---|
-| Frontend literal entries still outside the catalog | 3,350 (2,683 unique English) |
-| … rich text / with placeholders | 506 / 266 |
-| … critical-warning (destructive, security, data loss) | 201 |
-| … long-form Help | 806 |
-| Server display messages (`detail`) | 668 |
-| Catalog keys (English) | 165 |
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) |
+| … rich text / with placeholders | 444 / 234 |
+| … critical-warning (destructive, security, data loss) | 231 |
+| … long-form Help | 962 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 |
+| Server display messages (`detail`) | 669 |
+| Catalog keys (English) | 690 |
 
 The largest owners still outside the catalog:
 
-| Owner | Entries |
-|---|---|
-| `ui-settings-page.js` | 1,226 |
-| `ui-help-page.js` | 538 |
-| `ui-settings-help.js` (all topics except My Account) | 268 |
-| `app.js` | 239 |
-| `index.html` | 235 |
-| `ui-downloads.js` | 131 |
+| Owner | Entries | Workstream |
+|---|---|---|
+| `ui-settings-page.js` | 1,335 | WS3c / WS3d |
+| `ui-help-page.js` | 557 | WS4 |
+| `ui-settings-help.js` (all topics except My Account) | 405 | WS4 |
+| `ui-downloads.js` | 143 | WS3b |
+| `app.js` (Details, transfer actions, submission prompts, file upload) | 140 | WS3b |
+| `ui-root-provider.js` | 92 | WS3b |
 
-Every remaining entry belongs to WS3 (application screens) or WS4 (Help).
-
-The census still has known noise:
-
-- `ui-i18n.js` diagnostics, which are console-only;
-- the internal `Error('Logout failed')` in `auth.js`, which is never shown;
-- the theme picker's palette names;
-- a language-name list that should come from `Intl.DisplayNames` and not from the catalog.
+No WS3a owner holds an entry outside the catalog or the exemption register.
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 
 - the handheld dock's five 64 px slots, which currently ellipsize;
 - every Settings master header, which must stay one row from 320 px;
-- the My Account header at 320 px. Its title already wraps to two lines under `en-XA` at 390 px, a WS3 finding;
+- the My Account header at 320 px. Its title already wraps to two lines under `en-XA` at 390 px (a WS6 geometry finding);
 - table headers and status chips;
 - the sidebar's collapsed rail tooltips.
 
@@ -179,7 +244,9 @@ The census still has known noise:
 
 Run `node .github/localization/validate.mjs` (add `--json` for the full report).
 
-**Hard errors** fail with exit 1:
+**Hard errors** fail with exit 1 (a translation may give a count the English
+uses plainly, `{count}`, a `plural` or `number` form where the English
+metadata declares that argument a number):
 
 - a non-canonical BCP 47 tag;
 - English messages and metadata out of step;
@@ -188,7 +255,8 @@ Run `node .github/localization/validate.mjs` (add `--json` for the full report).
 - an unparsable message;
 - positional `{0}` arguments;
 - arguments that differ from those declared or from the English source, by name or type;
-- tags outside the allowed set;
+- tags outside the allowed set, or literal text that reads as markup (`<` then
+  a letter, `/`, `!` or `?`);
 - plural categories the locale does not have, or a plural without `other`;
 - a `login.*` message with anything but plain arguments;
 - a translated key that English does not have.

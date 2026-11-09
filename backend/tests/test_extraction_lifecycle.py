@@ -165,7 +165,9 @@ def test_extraction_state_is_persisted_and_operator_visible():
     assert '("extraction_error", "TEXT")' in database_source
     assert "active_operations" in routes_source
     assert "extracting_count" in routes_source
-    assert "extracting: {icon: 'packageOpen', label: 'Extracting'" in icon_source
+    from i18n_node import english
+    assert "extracting: {icon: 'packageOpen', label: 'status.extracting'" in icon_source
+    assert english("status.extracting") == "Extracting"
     # The extracting badge is the backend's effective presentation, never
     # re-derived in the browser from the extraction fields.
     assert "completed_with_errors" not in app_source and "downloading_with_errors" not in app_source
@@ -310,6 +312,7 @@ def test_the_extraction_failure_toast_is_shown_only_for_its_announcement():
     root = Path(__file__).resolve().parents[2]
     source = (root / "frontend/static/app.js").read_text()
     function = re.search(r"function notifyExtractionFailure\(data\) \{.*?\n\}\n", source, re.S).group(0)
+    from i18n_node import program
     harness = """
 const toasts = [];
 global.toast = (message, kind) => toasts.push([message, kind]);
@@ -322,7 +325,8 @@ notifyExtractionFailure({...failed, status_changed: true});
 notifyExtractionFailure({extraction_status: 'completed', lifecycle_event: 'completed'});
 console.log(JSON.stringify(toasts));
 """.replace("FUNCTION", function)
-    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True)
+    # Its words are the page's: the real localization runtime and English catalog.
+    result = subprocess.run(["node", "-e", program(harness)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == [["Extraction failed: CRC failed", "error"]]
 
@@ -334,5 +338,6 @@ def test_frontend_surfaces_extraction_failure_toast():
     # The toast is a notification only: no client-side status derivation paints
     # the row (the badge is the backend's effective presentation).
     assert "patchExtractionTransferEvent" not in app_source
-    assert "Extraction failed:" in app_source
+    from i18n_node import english
+    assert "DPI18n.t('extraction.failed', {reason})" in app_source and english("extraction.failed") == "Extraction failed: {reason}"
     assert "extraction_error" in app_source

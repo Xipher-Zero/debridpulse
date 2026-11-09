@@ -160,24 +160,35 @@
   // The state each indicator's dot shows, in words: the dot's own accessible
   // name, and with its row's name the DP tooltip the compact sidebar rail
   // gives the row once that name is no longer shown.
+  const STATES = new Set(['healthy', 'degraded', 'auth_required', 'unhealthy', 'unconfigured', 'unverified', 'unknown',
+    'checking', 'mixed', 'unavailable', 'disabled', 'inactive']);
   function stateLabel(state) {
-    return ({healthy:'Healthy', degraded:'Degraded', auth_required:'Sign-in required', unhealthy:'Unhealthy',
-      unconfigured:'Not configured', unverified:'Not verified', unknown:'Status unknown', checking:'Checking',
-      mixed:'Partly enabled', unavailable:'Unavailable', disabled:'Disabled', inactive:'Inactive'})[state] || 'Status unknown';
+    return window.DPI18n.t(`provider_status.state.${STATES.has(state) ? state : 'unknown'}`);
+  }
+  // A tier's or group's heading: the server's presentation metadata names it
+  // by an id and an English label; a known id is said in the page's language.
+  function headingWords(kind, id, label) {
+    const key = `integration.${kind}.${id}`;
+    return window.DPI18n.has(key) ? window.DPI18n.t(key) : label;
   }
   function indicator(className, state, dot, name, extra = '') {
-    return `<div class="conn-row ${className}"${extra} data-provider-state="${esc(state)}" data-tooltip="${esc(`${name}: ${stateLabel(state)}`)}" data-tooltip-label=".dp-provider-status-name"><div class="dot ${dot}" role="img" aria-label="${esc(stateLabel(state))}"></div><span class="dp-provider-status-name">${esc(name)}</span></div>`;
+    return `<div class="conn-row ${className}"${extra} data-provider-state="${esc(state)}" data-tooltip="${esc(window.DPI18n.t('provider_status.row_tooltip', {name, state: stateLabel(state)}))}" data-tooltip-label=".dp-provider-status-name"><div class="dot ${dot}" role="img" aria-label="${esc(stateLabel(state))}"></div><span class="dp-provider-status-name">${esc(name)}</span></div>`;
   }
+
+  // What was last drawn, so a language change draws it again (no request).
+  let lastRender = null;
+  document.addEventListener('debridpulse:locale-changed', () => { if (lastRender) render(...lastRender); });
 
   function render(entries, mode = 'ready') {
     const host = statusHost();
     if (!host) return;
+    lastRender = [entries, mode];
     if (mode === 'loading') {
-      host.innerHTML = indicator('dp-provider-status-row', 'checking', 'check', 'Checking providers…');
+      host.innerHTML = indicator('dp-provider-status-row', 'checking', 'check', window.DPI18n.t('provider_status.loading'));
       return;
     }
     if (mode === 'unknown') {
-      host.innerHTML = indicator('dp-provider-status-row', 'unknown', 'check', 'Provider status unavailable');
+      host.innerHTML = indicator('dp-provider-status-row', 'unknown', 'check', window.DPI18n.t('provider_status.unavailable'));
       return;
     }
     // Two levels, both driven purely by integration-owned presentation
@@ -227,7 +238,7 @@
     const markup = item => {
       if (item.entry) return rowFor(item.entry);
       const state = aggregateState(item.entries, item.gate);
-      return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}">${indicator('dp-provider-status-group-row', state, dotClass(state), item.label)}</div>`;
+      return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}">${indicator('dp-provider-status-group-row', state, dotClass(state), headingWords('group', item.id, item.label))}</div>`;
     };
 
     // A tier with nothing to show renders nothing: no bare heading is left behind.
@@ -237,11 +248,11 @@
     // whole content is one aggregate group (and nothing else) says that too:
     // only such a tier may fold its heading away when no premium tier exists.
     const rendered = [...tiers.values()].filter(tier => tier.rows.length).map(tier =>
-      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"${tier.premium ? ' data-provider-tier-premium' : ''}${tier.rows.length === 1 && !tier.rows[0].entry ? ' data-provider-tier-single-group' : ''}><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
+      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"${tier.premium ? ' data-provider-tier-premium' : ''}${tier.rows.length === 1 && !tier.rows[0].entry ? ' data-provider-tier-single-group' : ''}><div class="dp-provider-status-tier-label">${esc(headingWords('tier', tier.id, tier.label))}</div>${tier.rows.map(markup).join('')}</div>`
     ).concat(untiered.map(markup));
 
     host.innerHTML = rendered.length ? rendered.join('')
-      : indicator('dp-provider-status-row', 'inactive', 'warn', 'No download providers enabled');
+      : indicator('dp-provider-status-row', 'inactive', 'warn', window.DPI18n.t('provider_status.none_enabled'));
   }
 
   /* Current observation, else valid last-known-good, else unresolved.

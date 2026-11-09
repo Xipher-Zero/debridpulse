@@ -26,7 +26,9 @@ needs_node = pytest.mark.skipif(NODE is None, reason="node is required to run th
 
 
 def _node(script: str):
-    completed = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True)
+    # The owner's words are the page's: the real localization runtime and English catalog.
+    from i18n_node import program
+    completed = subprocess.run([NODE, "-e", program(script)], capture_output=True, text=True, timeout=30, check=True)
     return json.loads(completed.stdout)
 
 

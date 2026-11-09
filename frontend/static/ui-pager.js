@@ -18,13 +18,15 @@
 (function () {
   'use strict';
 
+  // Each action's name is the catalog's pager.<action>, said when synced.
   const ACTIONS = Object.freeze([
-    ['first', 'First page', 'chevronFirst'],
-    ['previous', 'Previous page', 'chevronLeft'],
-    ['next', 'Next page', 'chevronRight'],
-    ['last', 'Last page', 'chevronLast'],
+    ['first', 'pager.first', 'chevronFirst'],
+    ['previous', 'pager.previous', 'chevronLeft'],
+    ['next', 'pager.next', 'chevronRight'],
+    ['last', 'pager.last', 'chevronLast'],
   ]);
   const hosts = new WeakMap();
+  const mounted = new Set();          // so a language change says every pager again
 
   function mount(host) {
     let parts = hosts.get(host);
@@ -40,7 +42,7 @@
       button.type = 'button';
       button.className = 'btn btn-ghost btn-sm dp-pager-btn';
       button.dataset.dpPager = name;
-      button.setAttribute('aria-label', label);
+      button.setAttribute('aria-label', window.DPI18n.t(label));
       button.innerHTML = window.DPIcons?.svg?.(icon) || '';
       button.addEventListener('click', () => {
         const action = parts.model?.actions?.[name];
@@ -61,17 +63,19 @@
     host.classList.add('dp-pager');
     host.replaceChildren(parts.slots.first, parts.slots.previous, centre, parts.slots.next, parts.slots.last);
     hosts.set(host, parts);
+    mounted.add(host);
     return parts;
   }
 
   function sync(parts) {
     const {page, following, lastUnavailable, pending} = parts.model;
     const shown = {first: page >= 3, previous: page > 1, next: following >= 1, last: following >= 2};
-    for (const [name, label] of ACTIONS) {
+    for (const [name, key] of ACTIONS) {
       const button = parts.buttons[name];
+      const label = window.DPI18n.t(key);
       const unavailable = name === 'last' && Boolean(lastUnavailable);
       button.disabled = Boolean(pending) || unavailable;
-      button.setAttribute('aria-label', unavailable ? `${label} unavailable: ${lastUnavailable}` : label);
+      button.setAttribute('aria-label', unavailable ? window.DPI18n.t('pager.unavailable', {action: label, reason: lastUnavailable}) : label);
       if (unavailable) button.dataset.tooltip = lastUnavailable;
       else button.removeAttribute('data-tooltip');
       const child = shown[name] ? button : parts.placeholders[name];
@@ -99,6 +103,10 @@
     parts.model.pending = Boolean(value);
     sync(parts);
   }
+
+  document.addEventListener('debridpulse:locale-changed', () => {
+    mounted.forEach(host => { const parts = hosts.get(host); if (parts?.model) sync(parts); });
+  });
 
   window.DPPager = Object.freeze({render, pending});
 })();

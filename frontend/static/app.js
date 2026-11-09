@@ -41,16 +41,27 @@ function renderTopbarActions() {
   // Each label is the button's icon label (a pending label replaces it, never
   // the glyph); where the shell shows the glyph only (ui-shell-structural.css)
   // the label stays the accessible name and the tooltip says it.
+  // Their words are set below on every render (and so on a language change);
+  // a button showing its pending label keeps it until its action settles.
   if (el.dataset.initialized !== '1') {
     const icon = (name) => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
     const label = '[data-dp-icon-label]';
     el.innerHTML = `
-      <button id="btn-resume-all" class="btn btn-primary" data-default-label="Resume All" data-tooltip="Resume All" data-tooltip-label="${label}" onclick="resumeProcessing()" style="display:none">${icon('play')}<span data-dp-icon-label="1">Resume All</span></button>
-      <button id="btn-resume-paused" class="btn btn-primary" data-default-label="Resume Paused" data-tooltip="Resume Paused" data-tooltip-label="${label}" onclick="resumePausedDownloads()" style="display:none">${icon('play')}<span data-dp-icon-label="1">Resume Paused</span></button>
-      <button id="btn-pause-all" class="btn btn-ghost" data-default-label="Pause All" data-tooltip="Pause All" data-tooltip-label="${label}" onclick="pauseProcessing()">${icon('pause')}<span data-dp-icon-label="1">Pause All</span></button>
+      <button id="btn-resume-all" class="btn btn-primary" data-tooltip-label="${label}" onclick="resumeProcessing()" style="display:none">${icon('play')}<span data-dp-icon-label="1"></span></button>
+      <button id="btn-resume-paused" class="btn btn-primary" data-tooltip-label="${label}" onclick="resumePausedDownloads()" style="display:none">${icon('play')}<span data-dp-icon-label="1"></span></button>
+      <button id="btn-pause-all" class="btn btn-ghost" data-tooltip-label="${label}" onclick="pauseProcessing()">${icon('pause')}<span data-dp-icon-label="1"></span></button>
     `;
     el.dataset.initialized = '1';
   }
+  const word = (button, text) => {
+    if (!button) return;
+    button.dataset.defaultLabel = text;
+    button.dataset.tooltip = text;
+    if (button.dataset.pending === '1') return;
+    const copy = button.querySelector('span:last-child');
+    if (copy) copy.textContent = text;
+    else button.textContent = text;
+  };
 
   const globallyPaused = processingPaused;
   const selectivelyPaused = Math.max(0, Number(pausedTransferCount) || 0);
@@ -60,12 +71,12 @@ function renderTopbarActions() {
 
   if (pauseBtn) {
     pauseBtn.style.display = globallyPaused ? 'none' : '';
-    pauseBtn.dataset.defaultLabel = 'Pause All';
+    word(pauseBtn, DPI18n.t('processing.pause_all'));
   }
 
   if (resumeAllBtn) {
     resumeAllBtn.style.display = globallyPaused ? '' : 'none';
-    resumeAllBtn.dataset.defaultLabel = 'Resume All';
+    word(resumeAllBtn, DPI18n.t('processing.resume_all'));
   }
 
   // Resume Paused beside Pause All: the topbar's widest control state
@@ -76,15 +87,7 @@ function renderTopbarActions() {
     resumePausedBtn.style.display =
       !globallyPaused && selectivelyPaused > 0 ? '' : 'none';
 
-    const label = `Resume Paused (${selectivelyPaused})`;
-    resumePausedBtn.dataset.defaultLabel = label;
-    resumePausedBtn.dataset.tooltip = label;
-
-    if (resumePausedBtn.dataset.pending !== '1') {
-      const copy = resumePausedBtn.querySelector('span:last-child');
-      if (copy) copy.textContent = label;
-      else resumePausedBtn.textContent = label;
-    }
+    word(resumePausedBtn, DPI18n.t('processing.resume_paused_count', {count: selectivelyPaused}));
   }
 
   window.DPProcessingPresentation?.syncPauseUi?.();
@@ -159,6 +162,8 @@ function showPageHeading(el) {
   const page = PAGE_KEYS[v];
   const title = el.dataset.title || (page ? DPI18n.t(`shell.page.${page}.title`) : v);
   const heading = document.getElementById('page-title');
+  // index.html's first-paint heading names a key; from here this owner says it.
+  heading.removeAttribute('data-i18n');
   heading.textContent = title;
   // The entry's short name, drawn in its place by the handheld header only
   // (ui-shell-mobile.css); the heading's own text stays the whole name.
@@ -166,7 +171,10 @@ function showPageHeading(el) {
   else delete heading.dataset.short;
   fitShellHeader();
   const subtitle = document.getElementById('page-subtitle');
-  if (subtitle) subtitle.textContent = el.dataset.subtitle || (page ? DPI18n.t(`shell.page.${page}.subtitle`) : '');
+  if (subtitle) {
+    subtitle.removeAttribute('data-i18n');
+    subtitle.textContent = el.dataset.subtitle || (page ? DPI18n.t(`shell.page.${page}.subtitle`) : '');
+  }
   return title;
 }
 
@@ -637,7 +645,7 @@ async function api(method, path, body, timeoutMs, options) {
   } catch(e) {
     clearTimeout(tid);
     if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
-    if (e.name === 'AbortError' && timedOut) throw new Error('Request timed out after ' + Math.round(ms/1000) + 's');
+    if (e.name === 'AbortError' && timedOut) throw new Error(DPI18n.t('request.timed_out', {seconds: Math.round(ms/1000)}));
     throw e;
   }
 }
@@ -775,32 +783,33 @@ function escapeHtmlStrings(value) {
 // channel alone reported a completed NZB transfer as a torrent file. Nothing
 // here consults provider identity -- a Usenet-resolved torrent is still a
 // torrent, and an AllDebrid-resolved posting is still an NZB.
+// (Catalog keys; the words are the catalog's.)
 const UPLOADED_FILE_LABELS = Object.freeze({
-  torrent: 'Torrent file',
-  torrent_file: 'Torrent file',
-  file: 'Torrent file',
-  nzb: 'NZB file',
-  meta4: 'Metalink file',
+  torrent: 'transfer.source.torrent_file',
+  torrent_file: 'transfer.source.torrent_file',
+  file: 'transfer.source.torrent_file',
+  nzb: 'transfer.source.nzb_file',
+  meta4: 'transfer.source.metalink_file',
 });
 
 function sourceLabel(source, requestKinds) {
   const labels = {
-    direct_link: 'Direct link',
-    manual: 'Magnet link',
-    alldebrid_existing: 'Provider inventory',
-    import_existing: 'Provider inventory',
-    inventory: 'Provider inventory',
-    api: 'API'
+    direct_link: 'transfer.source.direct_link',
+    manual: 'transfer.source.magnet_link',
+    alldebrid_existing: 'transfer.source.provider_inventory',
+    import_existing: 'transfer.source.provider_inventory',
+    inventory: 'transfer.source.provider_inventory',
   };
   const key = String(source || '').trim();
   if (key === 'manual_file') {
     const kinds = Array.isArray(requestKinds) ? requestKinds : [];
     // One unambiguous kind names itself; anything mixed or unrecognised falls
     // back to the truthful channel, never to a guess.
-    if (kinds.length === 1 && UPLOADED_FILE_LABELS[kinds[0]]) return UPLOADED_FILE_LABELS[kinds[0]];
-    return 'Uploaded file';
+    if (kinds.length === 1 && UPLOADED_FILE_LABELS[kinds[0]]) return esc(DPI18n.t(UPLOADED_FILE_LABELS[kinds[0]]));
+    return esc(DPI18n.t('transfer.source.uploaded_file'));
   }
-  return labels[key] || esc(key) || '—';
+  if (key === 'api') return 'API';                 // the interface's name, not a word to translate
+  return labels[key] ? esc(DPI18n.t(labels[key])) : esc(key) || '—';
 }
 
 function transferProviderPresentation(t) {
@@ -810,7 +819,7 @@ function transferProviderPresentation(t) {
   if (t && Object.prototype.hasOwnProperty.call(t, 'route_provider_id')) {
     return t.route_provider_id
       ? {label: String(t.route_provider_name || t.route_provider_id), state: 'known', id: t.route_provider_id}
-      : {label: 'Pending', state: 'pending'};
+      : {label: DPI18n.t('transfer.provider.pending'), state: 'pending'};
   }
   // Every other transfer names the backend's ACTIVE provider projection
   // (``active_provider_id``): the provider executing its work, or the last
@@ -822,9 +831,9 @@ function transferProviderPresentation(t) {
     return {label: String(t.active_provider_name || t.active_provider_id), state: 'known', id: t.active_provider_id};
   }
   if (t?.active_provider_basis === 'ambiguous' || String(t?.status || '') === 'completed') {
-    return {label: 'Unknown', state: 'unknown'};
+    return {label: DPI18n.t('transfer.provider.unknown'), state: 'unknown'};
   }
-  return {label: 'Pending', state: 'pending'};
+  return {label: DPI18n.t('transfer.provider.pending'), state: 'pending'};
 }
 
 // The provider the row's badge names, by id ('' while none is known).
@@ -850,19 +859,19 @@ function providerChip(t, surface) {
 function routeOutcomePresentation(value) {
   const normalized = String(value || '').trim().toLowerCase();
   const labels = {
-    completed: 'Completed',
-    succeeded: 'Completed',
-    failed: 'Failed',
-    cancelled: 'Cancelled',
-    superseded: 'Superseded',
-    resolved: 'Resolved',
-    declined: 'Not Applicable',
-    active: 'In Progress',
-    started: 'In Progress',
-    prepared: 'In Progress',
-    unknown: 'Unknown',
+    completed: 'completed',
+    succeeded: 'completed',
+    failed: 'failed',
+    cancelled: 'cancelled',
+    superseded: 'superseded',
+    resolved: 'resolved',
+    declined: 'not_applicable',
+    active: 'in_progress',
+    started: 'in_progress',
+    prepared: 'in_progress',
+    unknown: 'unknown',
   };
-  return {label: labels[normalized] || 'Unknown', state: normalized || 'unknown'};
+  return {label: DPI18n.t(`transfer.route_outcome.${labels[normalized] || 'unknown'}`), state: normalized || 'unknown'};
 }
 
 function renderRouteHistory(t) {
@@ -936,7 +945,7 @@ async function retryUnverifiedContribution(contributorId, targetId, button) {
 }
 
 function sanitizeErrorMsg(message) {
-  const text = String(message || 'Request failed');
+  const text = String(message || DPI18n.t('request.failed'));
   return text.length > 500 ? text.slice(0, 497) + '...' : text;
 }
 
@@ -947,6 +956,10 @@ function toast(msg, type = 'info') {
   return window.DPIcons.toast(msg, type);
 }
 
+// ``pendingLabel``: the words, or a catalog key -- a key is said in the page's
+// language, and again on a language change while the button stays pending.
+// The idle words are ``data-default-label``, which a keyed control's markup
+// (data-i18n-attr) or its owner keeps in the current language.
 function setButtonPending(button, pending, pendingLabel) {
   if (!button) return;
 
@@ -961,13 +974,17 @@ function setButtonPending(button, pending, pendingLabel) {
 
     // A button with a glyph keeps it: only its label says the pending state.
     if (pendingLabel) {
-      (button.querySelector('[data-dp-icon-label]') || button).textContent = pendingLabel;
+      const keyed = DPI18n.has(pendingLabel);
+      if (keyed) button.dataset.pendingLabelKey = pendingLabel;
+      else delete button.dataset.pendingLabelKey;
+      (button.querySelector('[data-dp-icon-label]') || button).textContent = keyed ? DPI18n.t(pendingLabel) : pendingLabel;
     }
 
     return;
   }
 
   delete button.dataset.pending;
+  delete button.dataset.pendingLabelKey;
   button.disabled = false;
   button.removeAttribute('aria-busy');
 
@@ -975,6 +992,14 @@ function setButtonPending(button, pending, pendingLabel) {
     (button.querySelector('[data-dp-icon-label]') || button).textContent = button.dataset.defaultLabel;
   }
 }
+
+// A language change: a pending control says its pending state in the new
+// words; it stays pending, disabled and busy, and nothing is run again.
+document.addEventListener('debridpulse:locale-changed', () => {
+  document.querySelectorAll('[data-pending="1"][data-pending-label-key]').forEach(button => {
+    (button.querySelector('[data-dp-icon-label]') || button).textContent = DPI18n.t(button.dataset.pendingLabelKey);
+  });
+});
 
 function coalesceAsync(fn) {
   let running = null;
@@ -1015,7 +1040,7 @@ function fmtSize(b) {
   if (!b) return '—';
   const u = ['B','KB','MB','GB','TB','PB']; let i = 0;
   while (Number(b.toFixed(1)) >= 1000 && i < u.length-1) {b/=1024; i++;}
-  return b.toFixed(1)+' '+u[i];
+  return DPI18n.t(`format.size.${u[i].toLowerCase()}`, {value: DPI18n.number(b, 1)});
 }
 function fmtTransferRate(bps, rollover) {
   const speed = Number(bps);
@@ -1026,17 +1051,17 @@ function fmtTransferRate(bps, rollover) {
     value /= 1024;
     unit++;
   }
-  return value.toFixed(2)+' '+units[unit]+'/s';
+  return DPI18n.t(`format.rate.${units[unit].toLowerCase()}`, {value: DPI18n.number(value, 2)});
 }
 function fmtSpeed(bps) {
   const speed = Number(bps);
-  if (!Number.isFinite(speed) || speed <= 0) return '0 KB/s';
-  if (speed < 1024) return '<1 KB/s';
+  if (!Number.isFinite(speed) || speed <= 0) return DPI18n.t('format.rate.zero');
+  if (speed < 1024) return DPI18n.t('format.rate.below_one_kb');
   return fmtTransferRate(speed, 100);
 }
 function fmtSpeedCap(bps) {
   const speed = Number(bps);
-  if (!Number.isFinite(speed) || speed <= 0) return 'Unlimited';
+  if (!Number.isFinite(speed) || speed <= 0) return DPI18n.t('speed_cap.unlimited');
   return fmtTransferRate(speed, 1000);
 }
 function parseApiDate(d) {
@@ -1075,12 +1100,22 @@ function statusShown(s, detail) {
   const projected = String(detail?.presentation_status || '').trim().toLowerCase();
   if (projected) {
     const tone = String(detail?.presentation_badge_status || projected).trim().toLowerCase();
-    const label = String(detail?.presentation_label || '').trim();
+    // The server's label is a function of its presentation status (and, for a
+    // consolidation still owed proof, of its unverified associations): shown
+    // in the page's language by that status's key, its English label where
+    // the catalog has no such status.
+    const served = String(detail?.presentation_label || '').trim();
+    // The server sets the unverified label only together with a positive
+    // unverified_association_count (presentation_repository, one branch), so the
+    // count alone decides it; the words never classify a status.
+    const unverified = projected === 'consolidated' && Number(detail?.unverified_association_count) > 0;
+    const key = `status.${unverified ? 'consolidated_unverified' : projected}`;
+    const label = DPI18n.has(key) ? DPI18n.t(key) : served;
     return {tone, label: label || undefined, category: '', projected};
   }
   const semantics = window.DPFailureSemantics;
   const category = s === 'error' && semantics ? semantics.classify(detail) : '';
-  return {tone: s, label: category ? semantics.labels[category] : '', category, projected: ''};
+  return {tone: s, label: category ? semantics.label(category) : '', category, projected: ''};
 }
 // The backend's effective presentation is the one display-status authority; every
 // list and detail payload carries it. The raw lifecycle status is only what a
@@ -1095,21 +1130,23 @@ function dpDetailProgress(t) {
   const status = transferDisplayStatus(t);
   const active = inFlightExecutionPercent(status, t.active_execution_progress);
   const execution = executionProcessing(status, t.active_execution_basis)
-    ? 'processing (not yet verified)'
-    : (active !== null ? executionProgressWords(active, t.active_execution_basis) + ' (not yet verified)' : '');
+    ? DPI18n.t('transfer.progress.processing_unverified')
+    : (active !== null ? DPI18n.t('transfer.progress.activity_unverified',
+      {activity: executionProgressWords(active, t.active_execution_basis)}) : '');
   if (t.progress == null || (execution && Number(t.progress) === 0)) {
-    return execution || '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '');
+    return esc(execution || '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : ''));
   }
   const beside = execution && t.active_execution_basis !== 'estimated';
-  return Number(t.progress).toFixed(1) + '%' + (beside ? ' · ' + execution : '');
+  return esc(DPI18n.t('transfer.progress.percent', {percent: DPI18n.number(Number(t.progress), 1)}) + (beside ? ' · ' + execution : ''));
 }
 // What an execution percentage counts (``active_execution_basis``): acquired
 // bytes, completed acquisition units (parts such as media segments), or one
 // writer's best-effort estimate of its whole execution -- never logical
 // completion.
 function executionProgressWords(value, basis) {
-  if (basis === 'estimated') return '~' + value.toFixed(1) + '% estimated';
-  return 'in progress ' + value.toFixed(1) + '%' + (basis === 'units' ? ' of parts' : '');
+  const percent = DPI18n.number(value, 1);
+  if (basis === 'estimated') return DPI18n.t('transfer.progress.estimated', {percent});
+  return DPI18n.t(basis === 'units' ? 'transfer.progress.in_progress_units' : 'transfer.progress.in_progress', {percent});
 }
 // The running row's writers are past acquisition (repair, unpack, remux,
 // finalization): no acquisition percentage, and nothing yet verified by it.
@@ -1144,22 +1181,22 @@ function acquisitionEtaText(seconds) {
   return hours ? hours + ':' + two(minutes) + ':' + two(seconds % 60) : minutes + ':' + two(seconds % 60);
 }
 function acquisitionEtaMarkup(eta) {
+  const T = (key, values) => esc(DPI18n.t(key, values));
   if (eta?.indeterminate === true) {
     return '<span class="prog-eta is-indeterminate" data-role="transfer-eta"' +
-      ' aria-label="Estimated time remaining: cannot be estimated while downloading"' +
-      ' data-tooltip="Downloading; the time remaining cannot be estimated right now">ETA ∞</span>';
+      ' aria-label="' + T('transfer.eta.indeterminate.label') + '"' +
+      ' data-tooltip="' + T('transfer.eta.indeterminate.tooltip') + '">' + T('transfer.eta.value', {time: '∞'}) + '</span>';
   }
   const text = acquisitionEtaText(eta?.seconds);
   if (text === null) {
-    return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="Estimated time remaining: not available"' +
-      ' data-tooltip="No reliable estimate of the time remaining right now">—</span>';
+    return '<span class="prog-eta is-unavailable" data-role="transfer-eta" aria-label="' + T('transfer.eta.unavailable.label') + '"' +
+      ' data-tooltip="' + T('transfer.eta.unavailable.tooltip') + '">—</span>';
   }
   // Every figure reads the same: "ETA" already says it is a prediction, so
   // whether it is held (``held``) or best-effort (``estimated``) changes
   // neither its look nor its words.
-  return '<span class="prog-eta" data-role="transfer-eta" aria-label="Estimated time remaining ' + text + '"' +
-    ' data-tooltip="Estimated time remaining for the download, a prediction; processing afterwards is not included">ETA ' +
-    text + '</span>';
+  return '<span class="prog-eta" data-role="transfer-eta" aria-label="' + T('transfer.eta.label', {time: text}) + '"' +
+    ' data-tooltip="' + T('transfer.eta.tooltip') + '">' + T('transfer.eta.value', {time: text}) + '</span>';
 }
 
 // ``activePct``: in-flight execution activity on the current source that is
@@ -1311,34 +1348,42 @@ function progressParts(pct, status, activePct, basis, eta) {
   const compact = eta !== undefined;
   // The compact line's words are their own span, so the layout owner can set
   // them aside where the column is too narrow; the figure always stays.
-  const compactWords = basis === 'units' ? 'of parts' : 'estimated progress';
-  const label = done ? '100%' : (activeOnly
-    ? (processing ? 'processing' : (compact
-      ? '<span class="prog-value">' + activeValue.toFixed(1) + '%</span><span class="prog-words"> ' + compactWords + '</span>'
-      : (estimated ? executionProgressWords(activeValue, basis)
-        : activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress'))))
-    : (showStripe && processing ? 'processing' : (unknown ? '—'
+  // (Every word is the catalog's, escaped: a translation is text, never markup.)
+  const T = (key, values) => esc(DPI18n.t(key, values));
+  const percent = (value, digits) => DPI18n.number(value, digits);
+  const compactWords = T(basis === 'units' ? 'transfer.progress.words.units' : 'transfer.progress.words.estimated');
+  const label = done ? T('transfer.progress.percent', {percent: percent(100, 0)}) : (activeOnly
+    ? (processing ? T('transfer.progress.processing') : (compact
+      ? '<span class="prog-value">' + T('transfer.progress.percent', {percent: percent(activeValue, 1)})
+        + '</span><span class="prog-words"> ' + compactWords + '</span>'
+      : (estimated ? esc(executionProgressWords(activeValue, basis))
+        : T(basis === 'units' ? 'transfer.progress.active_units' : 'transfer.progress.active', {percent: percent(activeValue, 1)}))))
+    : (showStripe && processing ? T('transfer.progress.processing') : (unknown ? '—'
       : (compact && (inFlight || processing)
-        ? '<span class="prog-value">' + actual.toFixed(0) + '%</span><span class="prog-words"> verified</span>'
-        : actual.toFixed(0) + '%' + (inFlight || processing ? ' verified' : '')))));
-  const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
+        ? '<span class="prog-value">' + T('transfer.progress.percent', {percent: percent(actual, 0)})
+          + '</span><span class="prog-words"> ' + T('transfer.progress.words.verified') + '</span>'
+        : T(inFlight || processing ? 'transfer.progress.verified' : 'transfer.progress.percent', {percent: percent(actual, 0)})))));
+  const inFlightTitle = T('transfer.progress.unverified_title');
   const lane = besideVerified
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
       ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
   const activityLabel = (activeOnly && !(compact && !processing)) || (showStripe && processing)
-    ? '<span class="prog-activity" data-role="execution-unverified" data-tooltip="' + inFlightTitle + '">not yet verified</span>'
+    ? '<span class="prog-activity" data-role="execution-unverified" data-tooltip="' + inFlightTitle + '">'
+      + T('transfer.progress.not_yet_verified') + '</span>'
     : (besideVerified
       ? '<span class="prog-activity" data-role="execution-progress" data-tooltip="' + inFlightTitle + '">' +
-        executionProgressWords(activeValue, basis) + '</span>'
-      : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));
+        esc(executionProgressWords(activeValue, basis)) + '</span>'
+      : (processing ? '<span class="prog-activity" data-role="execution-processing">' + T('transfer.progress.processing') + '</span>' : ''));
   // The compact line still says, on hover, that its figure is not yet
   // verified, and names what it counts even where its words are set aside.
   const labelTip = compact && activeOnly && !processing
-    ? ' data-tooltip="' + inFlightTitle + '" aria-label="' + activeValue.toFixed(1) + '% ' + compactWords + ', not yet verified"'
+    ? ' data-tooltip="' + inFlightTitle + '" aria-label="' + T(basis === 'units'
+      ? 'transfer.progress.compact_unverified_units' : 'transfer.progress.compact_unverified_estimated',
+    {percent: percent(activeValue, 1)}) + '"'
     : (compact && !unknown && !done && !showStripe && (inFlight || processing)
-      ? ' aria-label="' + actual.toFixed(0) + '% verified"' : '');
+      ? ' aria-label="' + T('transfer.progress.verified', {percent: percent(actual, 0)}) + '"' : '');
   const pctLabel = '<span class="prog-pct"' + labelTip + '>' + label + '</span>';
   // A compact surface shows the percentage and, while downloading, the
   // estimate on one line beneath the bar: words left, estimate right.
@@ -1362,9 +1407,9 @@ function notifyExtractionFailure(data) {
   if (data?.lifecycle_event !== 'completed') return;
   if (String(data?.extraction_status || '').trim() !== 'error') return;
   const reason = sanitizeErrorMsg(
-    data?.extraction_error || 'Archive extraction failed'
+    data?.extraction_error || DPI18n.t('extraction.failed_default')
   );
-  toast(`Extraction failed: ${reason}`, 'error');
+  toast(DPI18n.t('extraction.failed', {reason}), 'error');
 }
 
 function patchProgressOnlyTransferEvent(data) {
@@ -1457,41 +1502,49 @@ async function checkConnections() {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const result = await api('POST', '/settings/test-aria2');
-      setDot('aria2', 'ok', `aria2: ${result.version||'online'}`);
+      setDot('aria2', 'ok', result.version ? 'status.aria2.version' : 'status.aria2.online', {version: result.version});
       break;
     } catch {
       if (attempt < 3) {
         await new Promise(r => setTimeout(r, attempt * 800));
       } else {
-        setDot('aria2', 'error', 'aria2: offline');
+        setDot('aria2', 'error', 'status.aria2.offline');
       }
     }
   }
 }
 
-function setDot(id, state, label) {
+// A row's last state, so a language change says it again in the new words.
+const _dotState = new Map();
+function setDot(id, state, key, values = {}) {
   const d = document.getElementById('dot-'+id);
   const l = document.getElementById('lbl-'+id);
   if (!d || !l) return;  // element not in DOM yet
+  _dotState.set(id, {state, key, values});
   d.className = 'dot' + (state ? ' '+state : '');
+  const label = DPI18n.t(key, values);
+  l.removeAttribute('data-i18n');      // this row's words are its state's from now on
   l.textContent = label;
   // The compact sidebar rail shows this row as its dot alone; the DP tooltip
   // then says it (index.html marks the label it repeats).
   const row = l.closest('.conn-row');
   if (row) row.dataset.tooltip = label;
 }
+document.addEventListener('debridpulse:locale-changed', () => {
+  _dotState.forEach(({state, key, values}, id) => setDot(id, state, key, values));
+});
 
 async function pauseProcessing() {
   const button =
     document.getElementById('btn-pause-all');
 
-  setButtonPending(button, true, 'Pausing…');
+  setButtonPending(button, true, 'processing.pausing');
 
   try {
     await api('POST', '/processing/pause');
     processingPaused = true;
     renderTopbarActions();
-    toast('Processing paused','warn');
+    toast(DPI18n.t('processing.paused_toast'),'warn');
     loadStats();
     loadRecent();
 
@@ -1514,13 +1567,13 @@ async function resumeProcessing() {
   const button =
     document.getElementById('btn-resume-all');
 
-  setButtonPending(button, true, 'Resuming…');
+  setButtonPending(button, true, 'processing.resuming');
 
   try {
     await api('POST', '/processing/resume');
     processingPaused = false;
     renderTopbarActions();
-    toast('Processing resumed','success');
+    toast(DPI18n.t('processing.resumed_toast'),'success');
     loadStats();
     loadRecent();
 
@@ -1543,13 +1596,13 @@ async function resumePausedDownloads() {
   const button =
     document.getElementById('btn-resume-paused');
 
-  setButtonPending(button, true, 'Resuming…');
+  setButtonPending(button, true, 'processing.resuming');
 
   try {
     await api('POST', '/processing/resume');
     processingPaused = false;
     renderTopbarActions();
-    toast('Paused downloads resumed','success');
+    toast(DPI18n.t('processing.resumed_paused_toast'),'success');
     loadStats();
     loadRecent();
 
@@ -1571,9 +1624,11 @@ async function resumePausedDownloads() {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function fmtDuration(secs) {
   if (!secs || secs <= 0) return '—';
-  if (secs < 60) return secs + 's';
-  if (secs < 3600) return Math.round(secs/60) + 'm';
-  return (secs/3600).toFixed(1) + 'h';
+  // Seconds keep the precision they came with (as String() wrote them).
+  const decimals = Math.min(20, (String(secs).match(/\.(\d+)$/) || ['', ''])[1].length);
+  if (secs < 60) return DPI18n.t('format.duration.seconds', {value: DPI18n.number(secs, decimals)});
+  if (secs < 3600) return DPI18n.t('format.duration.minutes', {value: DPI18n.number(Math.round(secs/60))});
+  return DPI18n.t('format.duration.hours', {value: DPI18n.number(secs/3600, 1)});
 }
 
 var _operatorTitleState = {active: 0, progress: 0};
@@ -1586,7 +1641,7 @@ function renderOperatorTitle() {
 
   const liveBps = (_runtimeStatusState && Number(_runtimeStatusState.liveBps)) || 0;
   const speed = fmtTransferRate(Math.max(0, liveBps), 100).replace(/\s+/g, '');
-  document.title = `DP | ${speed} (${_operatorTitleState.progress}%)`;
+  document.title = DPI18n.t('operator_title.active', {speed, percent: DPI18n.number(_operatorTitleState.progress)});
 }
 
 function updateOperatorTitle(stats) {
@@ -1844,9 +1899,25 @@ function measureDashboardHeartbeatRoute() {
  * the card's own tooltip adds the exact count after its unchanged
  * explanation. Run where the counts are written and when the strip's width
  * changes; from 780px every count is drawn exactly. */
-const DASHBOARD_KPI_COMPACT = [3, 2].map(digits => new Intl.NumberFormat('en', {notation: 'compact', maximumSignificantDigits: digits}));
-const DASHBOARD_KPI_EXACT = new Intl.NumberFormat('en');
-const _dashboardKpiTooltips = new WeakMap();
+// Compact and exact notation in the shown language (DPI18n.intlLocale).
+const _dashboardKpiFormats = new Map();
+function dashboardKpiFormats() {
+  const tag = DPI18n.intlLocale();
+  if (!_dashboardKpiFormats.has(tag)) {
+    _dashboardKpiFormats.set(tag, {
+      compact: [3, 2].map(digits => new Intl.NumberFormat(tag, {notation: 'compact', maximumSignificantDigits: digits})),
+      exact: new Intl.NumberFormat(tag),
+    });
+  }
+  return _dashboardKpiFormats.get(tag);
+}
+let _dashboardKpiTooltips = new WeakMap();
+// A language change re-renders each card's explanation (data-i18n-attr): the
+// explanations are read again and every card refitted.
+document.addEventListener('debridpulse:locale-changed', () => {
+  _dashboardKpiTooltips = new WeakMap();
+  fitDashboardKpiValues();
+});
 function fitDashboardKpiValues() {
   document.querySelectorAll('#view-dashboard .dash-hero-stat .dhs-val').forEach(value => {
     const card = value.closest('.dash-hero-stat');
@@ -1864,11 +1935,12 @@ function fitDashboardKpiValues() {
       - parseFloat(getComputedStyle(card.querySelector('.dhs-body')).marginLeft);
     const fits = () => value.getBoundingClientRect().width <= room;
     if (fits()) return tooltip(explanation);
-    for (const format of DASHBOARD_KPI_COMPACT) {
+    const formats = dashboardKpiFormats();
+    for (const format of formats.compact) {
       value.dataset.compact = format.format(count);
       if (fits()) break;
     }
-    tooltip(`${explanation} Exact count: ${DASHBOARD_KPI_EXACT.format(count)}.`);
+    tooltip(DPI18n.t('dashboard.kpi.exact_count', {explanation, count: formats.exact.format(count)}));
   });
 }
 
@@ -2119,6 +2191,22 @@ function remeasureDashboardHeartbeat() {
   renderDashboardHeartbeat(performance.now());
 }
 
+// The Dashboard figures that carry words or units, from the last /stats: written
+// with the rest on every load, and again on a language change (no refetch).
+let _lastStatsWords = null;
+function renderStatsWords(s) {
+  _lastStatsWords = s;
+  const set = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
+  if (s.paused) set('s-processing', DPI18n.t('dashboard.kpi.paused'));
+  set('s-size', fmtSize(s.total_completed_bytes));
+  set('s-blocked', DPI18n.t('dashboard.kpi.blocked_files', {count: s.total_blocked_files||0}));
+  fitDashboardKpiValues();
+  set('i-success-rate', s.success_rate_pct != null ? DPI18n.t('transfer.progress.percent', {percent: s.success_rate_pct}) : '—');
+  set('i-avg-duration', fmtDuration(s.avg_download_duration_seconds));
+  set('i-avg-size', s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—');
+}
+document.addEventListener('debridpulse:locale-changed', () => { if (_lastStatsWords) renderStatsWords(_lastStatsWords); });
+
 async function loadStats() {
   // Retry up to 5 times — server may be slow on first request after container start
   for (let attempt = 1; attempt <= 5; attempt++) {
@@ -2146,19 +2234,14 @@ async function loadStats() {
       document.getElementById('s-total').textContent = total;
       document.getElementById('s-completed').textContent = completed;
       document.getElementById('s-active').textContent = s.active_operations ?? s.active_downloads ?? 0;
-      document.getElementById('s-processing').textContent = s.paused ? 'Paused' : (bs.processing||0)+(bs.uploading||0);
+      document.getElementById('s-processing').textContent = (bs.processing||0)+(bs.uploading||0);
       const errCount = s.error_count ?? bs.error ?? 0;
       document.getElementById('s-error').textContent = errCount;
       const errCard = document.getElementById('dash-error-card');
       if (errCard) errCard.classList.toggle('dash-hero-stat--quiet', !(errCount > 0));
-      document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
-      document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
-      fitDashboardKpiValues();
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
-      document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
-      document.getElementById('i-avg-duration').textContent = fmtDuration(s.avg_download_duration_seconds);
-      document.getElementById('i-avg-size').textContent = s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—';
+      renderStatsWords(s);
       // The Downloads badge: distinct transfers still in the ordinary download
       // lifecycle (one torrents row each, whatever their artifacts or
       // attempts). Failed transfers awaiting the operator and terminal ones
@@ -2173,7 +2256,7 @@ async function loadStats() {
       // could disagree with itself.
       // ── DB info + dot ──────────────────────────────────────────────────
       // Database status remains in the persistent lower-left status rail.
-      setDot('db', 'ok', 'DB: SQLite');
+      setDot('db', 'ok', 'status.db.sqlite');
       return true; // signal success to caller
     } catch(e) {
       console.warn('loadStats attempt', attempt, 'failed:', e.message);
@@ -2415,7 +2498,7 @@ function resizeDebridLinkInput(input) {
  * its two lines with whole words, never a clipped or third line. From 780px
  * it is always the authored one. Each is measured as the field's own text, as
  * the sizing above measures a placeholder. */
-const _authoredPlaceholders = new WeakMap();
+let _authoredPlaceholders = new WeakMap();
 function fittedPlaceholder(input, twoLines, border) {
   if (!_authoredPlaceholders.has(input)) _authoredPlaceholders.set(input, input.placeholder);
   const authored = _authoredPlaceholders.get(input);
@@ -2436,6 +2519,14 @@ function fittedPlaceholder(input, twoLines, border) {
  * All keeps only its glyph, then the subtitle shows its shorter wording. The
  * first that leaves the rendered subtitle within its column is kept; from
  * 780px the header is the desktop's. */
+// A language change has rendered Quick Add's words again (data-i18n-attr): its
+// placeholder is the new authored one, and both fits are measured afresh.
+document.addEventListener('debridpulse:locale-changed', () => {
+  _authoredPlaceholders = new WeakMap();
+  resizeDebridLinkInput(document.getElementById('q-transfer-input'));
+  fitQuickAddHeader();
+});
+
 const QUICK_ADD_HEADER_FITS = ['', 'icon', 'icon short'];
 function fitQuickAddHeader() {
   const header = document.querySelector('#view-dashboard .dp-dashboard-quick-add > .card-header');
@@ -2504,17 +2595,17 @@ async function addDashboardEntries() {
   const {direct, magnets, invalid} = classifyDashboardEntries(raw);
   if (invalid.length) {
     const first = invalid[0];
-    toast(`Line ${first.line}: enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI`, 'error');
+    toast(DPI18n.t('quick_add.invalid_line', {line: first.line}), 'error');
     input?.focus();
     return;
   }
   if (!direct.length && !magnets.length) {
-    toast('Enter at least one HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI', 'warn');
+    toast(DPI18n.t('quick_add.empty'), 'warn');
     input?.focus();
     return;
   }
 
-  setButtonPending(button, true, 'Adding…');
+  setButtonPending(button, true, 'quick_add.adding');
   const failed = [];
   const kept = [];
   let handled = 0;
@@ -2577,7 +2668,7 @@ async function addDashboardEntries() {
             }
           }
         }
-        if (direct.length && !result) throw new Error('The links could not be submitted');
+        if (direct.length && !result) throw new Error(DPI18n.t('quick_add.not_submitted'));
         if (direct.length) {
           handled += direct.length;
           if (result && result._deferred) deferred += direct.length;
@@ -2608,21 +2699,21 @@ async function addDashboardEntries() {
 
     if (failed.length) {
       const failureMessages = [...new Set(
-        failed.map(entry => String(entry.error?.message || 'Request failed'))
+        failed.map(entry => String(entry.error?.message || DPI18n.t('request.failed')))
       )];
       if (!handled && failureMessages.length === 1) {
         toast(sanitizeErrorMsg(failureMessages[0]), 'error');
       } else {
-        toast(`${handled} handled · ${failed.length} failed`, handled ? 'warn' : 'error');
+        toast(DPI18n.t('quick_add.partly_failed', {handled, failed: failed.length}), handled ? 'warn' : 'error');
       }
     } else if (!handled && kept.length) {
-      toast(scopeKept === kept.length ? 'Link not added' : 'Local network transfer not added', 'info');
+      toast(DPI18n.t(scopeKept === kept.length ? 'quick_add.link_not_added' : 'quick_add.local_not_added'), 'info');
     } else if (handled && deferred === handled) {
-      toast(`${handled} added · processing is paused`, 'success');
+      toast(DPI18n.t('quick_add.added_paused', {count: handled}), 'success');
     } else if (deferred) {
-      toast(`${handled} handled · ${deferred} waiting for Resume All`, 'success');
+      toast(DPI18n.t('quick_add.waiting_for_resume', {handled, deferred}), 'success');
     } else {
-      toast(`${handled} item${handled === 1 ? '' : 's'} submitted`, 'success');
+      toast(DPI18n.t('quick_add.submitted', {count: handled}), 'success');
     }
 
     if (handled) {
@@ -2655,17 +2746,17 @@ function recoveryOutcomeSummary(result) {
   const parts = [];
   const recovered = Number(result?.recovered || 0);
   const imported = Number(result?.imported || 0);
-  if (recovered > 0) parts.push(`${recovered} recovery action${recovered === 1 ? '' : 's'} applied`);
-  if (imported > 0) parts.push(`${imported} transfer${imported === 1 ? '' : 's'} imported`);
+  if (recovered > 0) parts.push(DPI18n.t('recovery.actions_applied', {count: recovered}));
+  if (imported > 0) parts.push(DPI18n.t('recovery.transfers_imported', {count: imported}));
   return parts.join(' · ');
 }
 
 async function recoverAll(button) {
-  setButtonPending(button, true, 'Recovering…');
+  setButtonPending(button, true, 'recovery.recovering');
 
   try {
     toast(
-      'Checking transfers for recoverable work…',
+      DPI18n.t('recovery.checking'),
       'info'
     );
 
@@ -2676,11 +2767,11 @@ async function recoverAll(button) {
     const summary = recoveryOutcomeSummary(r);
 
     if (errors > 0) {
-      toast(`Recovery completed with ${errors} error(s)`, 'error');
+      toast(DPI18n.t('recovery.finished_with_errors', {count: errors}), 'error');
     } else if (summary) {
-      toast(`Recovery complete · ${summary}`, 'success');
+      toast(DPI18n.t('recovery.complete', {summary}), 'success');
     } else {
-      toast('Recovery check complete · no recoverable work found', 'warn');
+      toast(DPI18n.t('recovery.nothing_found'), 'warn');
     }
 
     loadStats();
@@ -3568,11 +3659,16 @@ function updateThemeToggle(isLight) {
   if (!window.DPIcons || typeof window.DPIcons.renderThemeGlyph !== 'function') {
     throw new Error('DebridPulse icon runtime is unavailable');
   }
-  const action = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+  const action = DPI18n.t(isLight ? 'theme.switch_to_dark' : 'theme.switch_to_light');
   btn.dataset.tooltip = action;
   btn.setAttribute('aria-label', action);
+  btn.dataset.themeToggleLight = isLight ? '1' : '0';
   window.DPIcons.renderThemeGlyph(!!isLight);
 }
+document.addEventListener('debridpulse:locale-changed', () => {
+  const btn = document.getElementById('theme-toggle');
+  if (btn && btn.dataset.themeToggleLight) updateThemeToggle(btn.dataset.themeToggleLight === '1');
+});
 document.addEventListener('DOMContentLoaded', () => {
   loadRuntimeSpeed().catch(()=>{});
   loadRuntimeStatus().catch(()=>{});
@@ -3660,8 +3756,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 (async()=>{
-  setDot('aria2', 'check', 'aria2: checking…');
-  setDot('db',    'check', 'DB: checking…');
+  setDot('aria2', 'check', 'status.aria2.checking');
+  setDot('db',    'check', 'status.db.checking');
 
   // Load settings (Admin's: the configuration surface is Admin's alone)
   if (dpCan('administer')) {
@@ -4037,9 +4133,8 @@ async function _setDownloadSpeedCap(bps) {
     // Saved first, then applied: a value the server now holds that downloads
     // could not take yet is said as such (its error stays in the server log).
     if (limitResult && limitResult.ok === false) {
-      toast(limitResult.configured?.max_download_bytes_per_second === bps
-        ? 'Speed limit saved, but running downloads could not take it yet.'
-        : 'Speed limit could not be applied.', 'error');
+      toast(DPI18n.t(limitResult.configured?.max_download_bytes_per_second === bps
+        ? 'speed_cap.saved_not_applied' : 'speed_cap.not_applied'), 'error');
       return false;
     }
     // The canonical cache follows the value the runtime-limits surface accepted.
@@ -4053,7 +4148,7 @@ async function _setDownloadSpeedCap(bps) {
     // A refusal is already a sentence about the speed limit; anything else
     // (a timeout, a lost connection) is said with what failed.
     toast(e.status === 400 ? sanitizeErrorMsg(e.message)
-      : 'Speed limit could not be changed: ' + sanitizeErrorMsg(e.message), 'error');
+      : DPI18n.t('speed_cap.not_changed', {reason: sanitizeErrorMsg(e.message)}), 'error');
     return false;
   }
 }
@@ -4130,7 +4225,7 @@ function updateRuntimeStatusBadge(patch) {
   if (elMax)    elMax.textContent    = maxDl || '—';
   if (elSpeed)  elSpeed.textContent  = fmtSpeed(s.liveBps || 0);
 
-  if (elLimit) elLimit.textContent = fmtSpeedCap(s.limitBps);
+  if (elLimit) { elLimit.removeAttribute('data-i18n'); elLimit.textContent = fmtSpeedCap(s.limitBps); }
   // Active/max are the reading's only figures without a fixed width: the
   // handheld header refits when what they show changes.
   var figures = (elActive ? elActive.textContent : '') + '/' + (elMax ? elMax.textContent : '');
@@ -4141,7 +4236,7 @@ function updateRuntimeStatusBadge(patch) {
 
   // Occupancy and capacity are administrative runtime facts: a caller who
   // cannot read them sees only the live speed, never a stand-in zero.
-  topBadge.dataset.tooltip = dpCan('administer') ? 'Active / max — live speed — download speed cap' : 'Live download speed';
+  topBadge.dataset.tooltip = DPI18n.t(dpCan('administer') ? 'runtime_badge.tooltip_admin' : 'runtime_badge.tooltip');
 
   renderOperatorTitle();
 
@@ -4152,6 +4247,14 @@ function updateRuntimeStatusBadge(patch) {
     );
   });
 }
+
+// A language change says the badge, the topbar's processing controls and the
+// browser-tab title again from the state they already hold.
+document.addEventListener('debridpulse:locale-changed', () => {
+  renderTopbarActions();
+  updateRuntimeStatusBadge({});
+  renderOperatorTitle();
+});
 
 // The cap menu opens and closes through the shell's one sheet lifetime
 // (DPShellSheet): closing, it rolls back up before it is hidden, and a press
@@ -4193,7 +4296,7 @@ async function applyTopbarCustomSpeedCap() {
   var raw = input ? input.value.trim() : '';
   var mbps = raw === '' ? NaN : Number(raw);
   if (!Number.isFinite(mbps) || mbps < 0) {
-    toast('Enter a speed cap of 0 MB/s or greater', 'error');
+    toast(DPI18n.t('speed_cap.custom_invalid'), 'error');
     return;
   }
   await applyTopbarSpeedCap(Math.round(mbps * 1048576));

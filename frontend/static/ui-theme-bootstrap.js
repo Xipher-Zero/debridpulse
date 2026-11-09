@@ -127,12 +127,12 @@
       saving = false;
       if (!ok) {
         Object.keys(body).forEach(function (field) { if (!(field in unsaved)) unsaved[field] = body[field]; });
-        if (!failing) notify('Theme applied here, but not saved to your account.', 'error');
+        if (!failing) notify(window.DPI18n.t('theme.not_saved'), 'error');
         failing = true;
         settle(false);
         return;
       }
-      if (failing && !Object.keys(unsaved).length) notify('Theme saved to your account.', 'success');
+      if (failing && !Object.keys(unsaved).length) notify(window.DPI18n.t('theme.saved'), 'success');
       failing = false;
       save();
     });

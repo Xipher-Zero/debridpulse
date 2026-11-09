@@ -214,17 +214,23 @@ def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
         assert "reconstruct" not in lowered
         for name in ("sabnzbd", "rsync", "destination_aware", "strategy"):
             assert name not in lowered
-    # One wording of what the figure counts, from the neutral basis alone.
-    assert "'in progress ' +" in words and "basis === 'units' ? ' of parts'" in words
+    # One wording of what the figure counts, from the neutral basis alone (the
+    # catalog's words, 1.0.14 localization: the same English).
+    from i18n_node import english
+    assert "basis === 'units' ? 'transfer.progress.in_progress_units' : 'transfer.progress.in_progress'" in words
+    assert (english("transfer.progress.in_progress"), english("transfer.progress.in_progress_units")) == (
+        "in progress {percent}%", "in progress {percent}% of parts")
     assert "executionProgressWords(activeValue, basis)" in renderer
     assert "executionProgressWords(active, t.active_execution_basis)" in details
     # The lane stays secondary and explicit about what it is not.
-    assert "not yet verified as DebridPulse material" in renderer
-    assert "' verified'" in renderer                     # the canonical number keeps its meaning
+    assert "T('transfer.progress.unverified_title')" in renderer
+    assert english("transfer.progress.unverified_title").endswith("not yet verified as DebridPulse material")
+    assert "'transfer.progress.verified'" in renderer and english("transfer.progress.verified") == "{percent}% verified"
     # Promotion: the execution value leads only while nothing is verified (no
     # verified percentage, or exactly 0%), and the two are never compared.
     assert "const activeOnly = inFlight && (unknown || actual === 0);" in renderer
-    assert "'in progress'" in renderer and ">not yet verified</span>" in renderer
+    assert "'transfer.progress.active'" in renderer and "T('transfer.progress.not_yet_verified')" in renderer
+    assert english("transfer.progress.not_yet_verified") == "not yet verified"
     assert not re.search(r"activeValue\s*[<>]=?\s*actual|actual\s*[<>]=?\s*activeValue", renderer)
     for smoothing in ("highest", "high_water", "highWater", "floor", "max_seen", "maxSeen"):
         assert smoothing not in renderer
@@ -329,7 +335,7 @@ def _render(cases):
         pytest.fail("node is required to run the shared progress renderer")
     app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
     # progress() assembles its output from progressParts() (1.0.14), so both are the real owner.
-    names = ("progress(pct, status, activePct, basis, eta)", "progressParts(pct, status, activePct, basis, eta)",
+    names = ("esc(s)", "progress(pct, status, activePct, basis, eta)", "progressParts(pct, status, activePct, basis, eta)",
              "dpDetailProgress(t)", "executionProgressWords(value, basis)",
              "executionProcessing(status, basis)", "transferDisplayStatus(t)",
              "inFlightExecutionPercent(status, activePct)")
@@ -343,7 +349,9 @@ def _render(cases):
               + "bar: progress(pct, status, active, basis), "
               + "details: dpDetailProgress({progress: pct, presentation_status: status, "
               + "active_execution_progress: active, active_execution_basis: basis})}))));")
-    completed = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30, check=True)
+    # Its words are the page's: the real localization runtime and English catalog.
+    from i18n_node import program
+    completed = subprocess.run([node, "-e", program(script)], capture_output=True, text=True, timeout=30, check=True)
     return json.loads(completed.stdout)
 
 

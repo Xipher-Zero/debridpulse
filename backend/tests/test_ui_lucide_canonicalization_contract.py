@@ -47,7 +47,7 @@ def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replac
 
     # One status projection (statusShown) feeds the runtime's badge, and the
     # handheld Transfer Summary's glyph: both drawn by DPIcons alone.
-    assert "return {tone: s, label: category ? semantics.labels[category] : '', category, projected: ''};" in app
+    assert "return {tone: s, label: category ? semantics.label(category) : '', category, projected: ''};" in app
     assert "window.DPIcons.statusBadge(shown.tone, shown.label, shown.category)" in app
     assert "return window.DPIcons.statusGlyph(shown.tone, shown.label, shown.category);" in app
     assert "return window.DPIcons.toast(msg, type);" in app
@@ -55,23 +55,25 @@ def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replac
 
 
 def test_transfer_status_mapping_matches_debridpulse_semantics() -> None:
+    from i18n_node import english
+
     shell = SHELL_RUNTIME.read_text(encoding="utf-8")
+    # Each status keeps its glyph and class; its words are the catalog's
+    # status.<name> (1.0.14 localization), the same English as before.
     mappings = (
-        "downloading: {icon: 'download', label: 'Downloading'",
-        "paused: {icon: 'pause', label: 'Paused'",
-        "completed: {icon: 'circleCheck', label: 'Done'",
-        "error: {icon: 'x', label: 'Error'",
-        "uploading: {icon: 'upload', label: 'Uploading'",
-        "queued: {icon: 'clock3', label: 'Queued'",
-        "pending: {icon: 'clock3', label: 'Pending'",
-        "processing: {icon: 'loaderCircle', label: 'Processing'",
-        "input_required: {icon: 'triangleAlert', label: 'Input Required', className: 'input_required'",
-        "extracting: {icon: 'packageOpen', label: 'Extracting'",
-        "partial: {icon: 'triangleAlert', label: 'Partial'",
-        "ready: {icon: 'play', label: 'Ready'",
-        "deleted: {icon: 'trash2', label: 'Deleted'",
+        ("downloading", "download", "Downloading", None), ("paused", "pause", "Paused", None),
+        ("completed", "circleCheck", "Done", None), ("error", "x", "Error", None),
+        ("uploading", "upload", "Uploading", None), ("queued", "clock3", "Queued", None),
+        ("pending", "clock3", "Pending", None), ("processing", "loaderCircle", "Processing", None),
+        ("input_required", "triangleAlert", "Input Required", "input_required"),
+        ("extracting", "packageOpen", "Extracting", None), ("partial", "triangleAlert", "Partial", None),
+        ("ready", "play", "Ready", None), ("deleted", "trash2", "Deleted", None),
     )
-    missing = [fragment for fragment in mappings if fragment not in shell]
+    missing = []
+    for status, icon, words, class_name in mappings:
+        fragment = f"{status}: {{icon: '{icon}', label: 'status.{status}'" + (f", className: '{class_name}'" if class_name else "")
+        if fragment not in shell or english(f"status.{status}") != words:
+            missing.append(status)
     assert not missing, f"canonical transfer mappings are missing: {missing}"
 
 

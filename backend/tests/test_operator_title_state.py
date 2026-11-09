@@ -42,5 +42,5 @@ def test_custom_speed_cap_handler_is_unchanged():
 
     assert (
         '<button type="button" class="btn btn-primary btn-sm" '
-        'onclick="applyTopbarCustomSpeedCap()">Set Custom</button>'
+        'onclick="applyTopbarCustomSpeedCap()" data-i18n="speed_cap.set_custom">Set Custom</button>'
     ) in html

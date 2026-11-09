@@ -48,7 +48,8 @@ def test_the_one_version_datum_follows_the_active_master_surface_never_the_windo
     index = read(STATIC / "index.html")
     assert index.count('id="sidebar-version"') == 1
     content = index[index.index('<div id="content"'):index.index('<!-- Modal -->')]
-    assert '<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>' in content
+    assert ('<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version" '
+            'data-i18n-attr="aria-label:shell.version_label">v…</div>') in content
     brand = read(STATIC / "ui-shell-brand.css")
     rule = brand[brand.index("#content > #sidebar-version.dp-app-version {"):].split("}", 1)[0]
     for declaration in ("display: block;", "width: min(100%, var(--dp-content-max-width));", "height: 0;",
@@ -68,7 +69,8 @@ def test_sidebar_signal_field_keeps_accepted_vector_geometry() -> None:
     index = read(STATIC / "index.html")
     assert index.count('<dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>') == 2
     assert '<aside id="sidebar">\n  <dp-signal-field' in index
-    assert '<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"><dp-signal-field' in index
+    assert ('<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages" '
+            'data-i18n-attr="aria-label:shell.dock.label"><dp-signal-field') in index
     for name in ("ui-shell-signal-field.css", "ui-shell-structural.css", "ui-shell-mobile.css"):
         sheet = read(STATIC / name)
         assert "url('/icons/dp/sidebar-wave-accent.svg" not in sheet and "#sidebar::before" not in sheet and "dock::before" not in sheet, name

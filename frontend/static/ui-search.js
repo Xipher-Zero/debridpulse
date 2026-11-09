@@ -114,7 +114,7 @@
         else if (meta.status === 'unavailable') settled = 'unavailable';
         else settled = meta.mode && meta.mode !== 'none' ? 'complete' : 'idle';
         if (fresh && !rejected) {
-          if (meta.status === 'unavailable') tell('Text search is unavailable on this installation; only the transfer ID was matched.', 'warn');
+          if (meta.status === 'unavailable') tell(window.DPI18n.t('search.unavailable'), 'warn');
           else if (meta.notice) tell(meta.notice, 'info');
         }
         if (!editing()) show(settled);
@@ -126,8 +126,11 @@
       fail(ticket, error) {
         if (ticket.id !== latest) return false;
         if (error?.status === 400 && error?.detail?.code === 'invalid_query') {
-          const message = String(error.detail.message || error.message || 'This search is not valid.');
-          tell(`${message} ${accepted ? `Results are still for “${accepted}”.` : `Showing all ${noun}.`}`, 'warn');
+          const message = String(error.detail.message || error.message || window.DPI18n.t('search.invalid'));
+          // ``noun`` names the list ('downloads', 'events'): a whole sentence per list, never the noun spliced in.
+          tell(window.DPI18n.t('search.invalid_kept', {message, kept: accepted
+            ? window.DPI18n.t('search.still_for', {query: accepted})
+            : window.DPI18n.t(noun === 'events' ? 'search.showing_all_events' : 'search.showing_all_downloads')}), 'warn');
           rejected = true;
           committed = accepted;
           supersede();

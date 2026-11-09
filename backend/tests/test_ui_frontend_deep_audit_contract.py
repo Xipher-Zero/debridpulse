@@ -136,7 +136,7 @@ def test_cross_cutting_accessibility_runtime_remains_semantic_and_io_free() -> N
     required = (
         "aria-current", "aria-pressed", "role', 'group'", "role', 'tablist'",
         "role', 'tab'", "ArrowRight", "ArrowLeft", "Home", "End",
-        "View downloads with errors", "Close details", "dp-dropdown-shell",
+        "dashboard.kpi.errors.open", "a11y.close_details", "dp-dropdown-shell",
     )
     missing = [fragment for fragment in required if fragment not in source]
     assert not missing, f"Accessibility semantics are missing: {missing}"

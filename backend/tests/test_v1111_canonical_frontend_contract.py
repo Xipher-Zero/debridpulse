@@ -294,7 +294,7 @@ def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
         "Last 24 Hours", "Completed downloads over the last 24 hours.",
         "Last 7 Days", "Completed downloads over the last 7 days.",
         "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
-        "/icons/dp/card-download.svg", 'class="dp-stats-chart-heading">Completions</span>',
+        "/icons/dp/card-download.svg", 'class="dp-stats-chart-heading" data-i18n="stats.chart.title">Completions</span>',
     ):
         assert fragment in view
     for fragment in (

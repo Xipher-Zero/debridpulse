@@ -468,7 +468,8 @@ async def test_the_inline_marks_are_the_canonical_logo(live):
     head = bootstrap.split("\n", 1)[0]
     assert json.loads(re.fullmatch(r"window\.debridPulseLogo=(.*);", head).group(1)) == auth_routes._APP_LOGO_SVG
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert '<dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo"></dp-logo>' in index
+    assert ('<dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo" '
+            'data-i18n-attr="aria-label:shell.logo_label"></dp-logo>') in index
     assert 'src="/logo.svg' not in index
 
 

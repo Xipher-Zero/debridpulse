@@ -1058,6 +1058,3577 @@
    "context": "The identity provider's answer was refused. Server-rendered before sign-in: plain {name} arguments only.",
    "owner": "backend/api/auth_routes.py",
    "criticality": "normal"
+  },
+  "processing.pause_all": {
+   "category": "action",
+   "context": "Topbar button (Admin) that pauses all download processing; also its tooltip.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Topbar button label beside the speed badge; glyph-only where the shell compacts the topbar, then tooltip and accessible name."
+  },
+  "processing.resume_all": {
+   "category": "action",
+   "context": "Topbar button (Admin) shown while processing is paused; resumes all download processing. Also its tooltip.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Topbar button label; glyph-only where the shell compacts the topbar."
+  },
+  "processing.resume_paused_count": {
+   "category": "action",
+   "context": "Topbar button (Admin) that resumes the downloads paused one by one; count = how many are paused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number: paused downloads (plain digits)"
+   },
+   "geometry": "The topbar's widest control state; glyph-only where the shell compacts the topbar."
+  },
+  "request.timed_out": {
+   "category": "error",
+   "context": "A request to the DebridPulse server took too long; shown in the message of the action that made it. 's' = seconds.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "seconds": "number: the time limit in whole seconds"
+   }
+  },
+  "transfer.source.direct_link": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted as a direct HTTP(S)/FTP/… link.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.magnet_link": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted as a magnet link.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.provider_inventory": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer imported from what a premium service already holds.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.uploaded_file": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted by uploading a file of a mixed or unknown kind.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.torrent_file": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted by uploading a .torrent file.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.nzb_file": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted by uploading an .nzb file (Usenet); 'NZB' is a file format name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.source.metalink_file": {
+   "category": "label",
+   "context": "How a transfer was submitted ('Submitted As' in Details): a transfer submitted by uploading a Metalink (.meta4) file; 'Metalink' is a format name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.provider.pending": {
+   "category": "status-chip",
+   "context": "Provider chip of a transfer that no premium service or source has taken yet.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Provider chip in Dashboard and Downloads rows: one or two short words."
+  },
+  "transfer.provider.unknown": {
+   "category": "status-chip",
+   "context": "Provider chip when the server cannot say which provider handled the transfer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Provider chip in Dashboard and Downloads rows: one or two short words."
+  },
+  "transfer.route_outcome.completed": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): this source finished the transfer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.failed": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): this source failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.cancelled": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): this attempt was cancelled.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.superseded": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): another source replaced this one.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.resolved": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): the source resolved the item (the file list or link is known).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.not_applicable": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): the provider declined: it cannot serve this item.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.in_progress": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): this source is still being tried.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.route_outcome.unknown": {
+   "category": "status-chip",
+   "context": "Outcome of one provider or source attempt in a transfer's route history (Details): the outcome is not known.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "format.size.b": {
+   "category": "label",
+   "context": "A size in B (binary multiples of 1024), e.g. '12.5 B'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.size.kb": {
+   "category": "label",
+   "context": "A size in KB (binary multiples of 1024), e.g. '12.5 KB'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.size.mb": {
+   "category": "label",
+   "context": "A size in MB (binary multiples of 1024), e.g. '12.5 MB'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.size.gb": {
+   "category": "label",
+   "context": "A size in GB (binary multiples of 1024), e.g. '12.5 GB'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.size.tb": {
+   "category": "label",
+   "context": "A size in TB (binary multiples of 1024), e.g. '12.5 TB'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.size.pb": {
+   "category": "label",
+   "context": "A size in PB (binary multiples of 1024), e.g. '12.5 PB'. Keep the unit symbol unless your language has its own.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   },
+   "geometry": "Size columns: at most eight characters in English ('999.9 GB')."
+  },
+  "format.rate.kb": {
+   "category": "label",
+   "context": "A transfer speed in KB per second, e.g. '3.25 KB/s'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.rate.mb": {
+   "category": "label",
+   "context": "A transfer speed in MB per second, e.g. '3.25 MB/s'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.rate.gb": {
+   "category": "label",
+   "context": "A transfer speed in GB per second, e.g. '3.25 GB/s'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.rate.tb": {
+   "category": "label",
+   "context": "A transfer speed in TB per second, e.g. '3.25 TB/s'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.rate.zero": {
+   "category": "label",
+   "context": "A transfer speed of nothing at all (the topbar badge while idle).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "format.rate.below_one_kb": {
+   "category": "label",
+   "context": "A transfer speed above zero but under one kilobyte per second.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "format.duration.seconds": {
+   "category": "label",
+   "context": "A duration in seconds, compact (Dashboard 'Mean download time').",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.duration.minutes": {
+   "category": "label",
+   "context": "A duration in minutes, compact.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "format.duration.hours": {
+   "category": "label",
+   "context": "A duration in hours, compact, e.g. '1.5h'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: the figure, already in the reader's digits and decimal mark"
+   }
+  },
+  "transfer.progress.percent": {
+   "category": "label",
+   "context": "A percentage figure (progress, success rate).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.verified": {
+   "category": "status-chip",
+   "context": "Progress of material DebridPulse has verified, shown while other work on the transfer is still in flight.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.active": {
+   "category": "status-chip",
+   "context": "Progress of download work on the current source that is not yet verified material.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.active_units": {
+   "category": "status-chip",
+   "context": "As 'in progress', counted in parts (e.g. media segments) rather than bytes.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.estimated": {
+   "category": "status-chip",
+   "context": "A best-effort estimate of a writer's whole progress; '~' marks it as approximate.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.in_progress": {
+   "category": "status-chip",
+   "context": "Not-yet-verified progress beside verified progress, and in Details.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.in_progress_units": {
+   "category": "status-chip",
+   "context": "As 'in progress', counted in parts.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.words.units": {
+   "category": "status-chip",
+   "context": "Words after a compact percentage ('42.0%' then this): what the figure counts. Hidden where the column is narrow.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.words.estimated": {
+   "category": "status-chip",
+   "context": "Words after a compact percentage: the figure is an estimate. Hidden where the column is narrow.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.words.verified": {
+   "category": "status-chip",
+   "context": "Word after a compact percentage: the figure is verified material.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.compact_unverified_units": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a compact progress figure counted in parts.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.compact_unverified_estimated": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a compact estimated progress figure.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "string: the percentage figure, already formatted"
+   }
+  },
+  "transfer.progress.processing": {
+   "category": "status-chip",
+   "context": "A running transfer whose writers are past downloading (repair, unpack, remux, finalizing).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.not_yet_verified": {
+   "category": "status-chip",
+   "context": "Small label beneath a progress bar whose figure is not verified material yet.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.unverified_title": {
+   "category": "tooltip/aria",
+   "context": "Tooltip and accessible name for in-flight progress that is not yet verified.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.processing_unverified": {
+   "category": "status-chip",
+   "context": "Details 'Progress' value while the transfer's writers are past downloading.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.progress.activity_unverified": {
+   "category": "status-chip",
+   "context": "Details 'Progress' value: an in-flight progress phrase, marked as not yet verified.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "activity": "string: a progress phrase such as 'in progress 42.0%'"
+   }
+  },
+  "transfer.eta.value": {
+   "category": "status-chip",
+   "context": "Estimated time remaining beneath a downloading transfer's progress bar. 'ETA' = estimated time of arrival; use your language's usual short form.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "time": "string: hours:minutes:seconds or minutes:seconds, e.g. 1:05:09; or ∞"
+   },
+   "geometry": "Right end of the progress line in Downloads and Dashboard rows; short."
+  },
+  "transfer.eta.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the ETA figure.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "time": "string: hours:minutes:seconds or minutes:seconds, e.g. 1:05:09; or ∞"
+   }
+  },
+  "transfer.eta.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the ETA figure.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.eta.indeterminate.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of 'ETA ∞': downloading, but no time can be estimated.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.eta.indeterminate.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of 'ETA ∞'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.eta.unavailable.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the ETA dash shown when there is no reliable estimate.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.eta.unavailable.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the ETA dash.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "extraction.failed_default": {
+   "category": "error",
+   "context": "Reason used when an archive could not be extracted and the server gave no reason.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "extraction.failed": {
+   "category": "toast",
+   "context": "Toast when a completed transfer's archive could not be extracted.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the reason, from the server (may be English)"
+   }
+  },
+  "status.aria2.checking": {
+   "category": "status-chip",
+   "context": "Sidebar status row (Admin): checking the aria2 download engine. 'aria2' is a program name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "status.aria2.version": {
+   "category": "status-chip",
+   "context": "Sidebar status row: the aria2 engine answers; its version.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "version": "string: the engine's version, e.g. 1.37.0"
+   }
+  },
+  "status.aria2.online": {
+   "category": "status-chip",
+   "context": "Sidebar status row: the aria2 engine answers.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "status.aria2.offline": {
+   "category": "status-chip",
+   "context": "Sidebar status row: the aria2 engine does not answer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "status.aria2.unknown": {
+   "category": "status-chip",
+   "context": "Sidebar status row before its first check.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "status.db.checking": {
+   "category": "status-chip",
+   "context": "Sidebar status row (Admin): checking the database. 'DB' = database.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "status.db.sqlite": {
+   "category": "status-chip",
+   "context": "Sidebar status row: the database (SQLite, a product name) answers.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "status.db.unknown": {
+   "category": "status-chip",
+   "context": "Sidebar status row before its first check.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "processing.pausing": {
+   "category": "status-chip",
+   "context": "Pause All's label while the request runs.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "processing.resuming": {
+   "category": "status-chip",
+   "context": "Resume All's or Resume Paused's label while the request runs.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "processing.paused_toast": {
+   "category": "toast",
+   "context": "Toast after Pause All succeeded.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "processing.resumed_toast": {
+   "category": "toast",
+   "context": "Toast after Resume All succeeded.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "processing.resumed_paused_toast": {
+   "category": "toast",
+   "context": "Toast after Resume Paused succeeded.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "operator_title.active": {
+   "category": "label",
+   "context": "Browser tab title while downloads run: 'DP' (DebridPulse) then the live speed and overall progress. Keep it short.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "speed": "string: the live speed without spaces, e.g. 3.25MB/s",
+    "percent": "string: the overall progress figure"
+   }
+  },
+  "dashboard.kpi.exact_count": {
+   "category": "tooltip/aria",
+   "context": "A Dashboard figure card's tooltip on a phone while the figure is drawn compactly (1.2K): its explanation, then the exact figure.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "explanation": "string: the card's own explanation",
+    "count": "string: the exact figure, formatted"
+   }
+  },
+  "dashboard.kpi.paused": {
+   "category": "status-chip",
+   "context": "Dashboard 'Processing' card value while all processing is paused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Dashboard figure card value: one short word."
+  },
+  "dashboard.kpi.blocked_files": {
+   "category": "label",
+   "context": "Line under the Dashboard 'Total Downloaded' figure: files blocked by the download safety rules.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: how many files"
+   }
+  },
+  "request.failed": {
+   "category": "error",
+   "context": "A request to the server failed and said nothing more.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.invalid_line": {
+   "category": "error",
+   "context": "Quick Add refused one input line. Protocol names (HTTP(S), FTP, SFTP, SCP, SSH, rsync, WebDAV) and 'magnet URI' are technical names.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "line": "number: the line number"
+   }
+  },
+  "quick_add.empty": {
+   "category": "error",
+   "context": "Quick Add had nothing it could submit.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.adding": {
+   "category": "status-chip",
+   "context": "Quick Add's Add button while it submits.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.not_submitted": {
+   "category": "error",
+   "context": "Quick Add's links were not accepted and the server said nothing more.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.partly_failed": {
+   "category": "toast",
+   "context": "Quick Add toast: how many lines were handled and how many failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "handled": "number: lines handled",
+    "failed": "number: lines that failed"
+   }
+  },
+  "quick_add.link_not_added": {
+   "category": "toast",
+   "context": "Quick Add toast: the person cancelled the choice of what to download, so nothing was added.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.local_not_added": {
+   "category": "toast",
+   "context": "Quick Add toast: the person declined a transfer to a local network address.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "quick_add.added_paused": {
+   "category": "toast",
+   "context": "Quick Add toast: everything was added but waits because processing is paused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number: lines added"
+   }
+  },
+  "quick_add.waiting_for_resume": {
+   "category": "toast",
+   "context": "Quick Add toast: some lines wait for processing to resume ('Resume All' is the topbar button's name).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "handled": "number: lines handled",
+    "deferred": "number: lines waiting"
+   }
+  },
+  "quick_add.submitted": {
+   "category": "toast",
+   "context": "Quick Add toast: lines submitted.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: lines submitted"
+   }
+  },
+  "recovery.actions_applied": {
+   "category": "label",
+   "context": "Part of the Recover All result: recovery actions taken.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: actions"
+   }
+  },
+  "recovery.transfers_imported": {
+   "category": "label",
+   "context": "Part of the Recover All result: transfers imported from a provider.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: transfers"
+   }
+  },
+  "recovery.recovering": {
+   "category": "status-chip",
+   "context": "Recover All's label while it runs.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "recovery.checking": {
+   "category": "toast",
+   "context": "Toast when Recover All starts.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "recovery.finished_with_errors": {
+   "category": "toast",
+   "context": "Toast: Recover All finished but some steps failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number: errors"
+   }
+  },
+  "recovery.complete": {
+   "category": "toast",
+   "context": "Toast: Recover All finished and did something.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "summary": "string: what it did, e.g. '2 recovery actions applied · 1 transfer imported'"
+   }
+  },
+  "recovery.nothing_found": {
+   "category": "toast",
+   "context": "Toast: Recover All found nothing to do.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "theme.switch_to_dark": {
+   "category": "tooltip/aria",
+   "context": "Topbar theme button in light mode (tooltip and accessible name).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "theme.switch_to_light": {
+   "category": "tooltip/aria",
+   "context": "Topbar theme button in dark mode (tooltip and accessible name).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "speed_cap.unlimited": {
+   "category": "status-chip",
+   "context": "No download speed cap: the topbar cap button and the cap menu's first choice.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "speed_cap.not_changed": {
+   "category": "toast",
+   "context": "Toast: the speed cap change failed for a technical reason.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: what failed"
+   }
+  },
+  "speed_cap.custom_invalid": {
+   "category": "error",
+   "context": "The custom speed cap field holds no valid number.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "runtime_badge.tooltip_admin": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the topbar badge (Admin): active downloads out of the maximum, live speed, the speed cap.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "runtime_badge.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the topbar badge for a User or ReadOnly User.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "speed_cap.saved_not_applied": {
+   "category": "toast",
+   "context": "The new speed cap is saved but the running downloads did not take it.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "speed_cap.not_applied": {
+   "category": "toast",
+   "context": "The new speed cap was neither saved nor applied.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "error_category.invalid_request": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'invalid_request' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.unsupported_request": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'unsupported_request' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.unsupported_capability": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'unsupported_capability' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.invalid_configuration": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'invalid_configuration' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.authentication_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'authentication_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.authorization_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'authorization_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.credential_missing": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'credential_missing' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.credential_expired": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'credential_expired' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.credential_invalid": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'credential_invalid' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.source_not_found": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'source_not_found' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.source_unavailable": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'source_unavailable' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.source_temporarily_unavailable": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'source_temporarily_unavailable' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.source_expired": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'source_expired' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.provider_unavailable": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'provider_unavailable' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.provider_degraded": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'provider_degraded' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.provider_maintenance": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'provider_maintenance' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resource_not_found": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resource_not_found' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resource_expired": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resource_expired' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.rate_limited": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'rate_limited' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.quota_exceeded": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'quota_exceeded' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.concurrency_limited": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'concurrency_limited' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.account_limited": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'account_limited' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resource_exhausted": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resource_exhausted' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resolution_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resolution_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resolution_temporarily_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resolution_temporarily_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.no_transfer_candidate": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'no_transfer_candidate' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.candidate_expired": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'candidate_expired' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.candidate_rejected": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'candidate_rejected' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.dns_failure": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'dns_failure' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.connection_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'connection_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.connection_refused": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'connection_refused' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.connection_timeout": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'connection_timeout' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.read_timeout": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'read_timeout' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.remote_reset": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'remote_reset' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.protocol_error": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'protocol_error' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.tls_failure": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'tls_failure' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.host_key_failure": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'host_key_failure' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.destination_blocked": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'destination_blocked' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.egress_policy_violation": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'egress_policy_violation' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.unsafe_redirect": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'unsafe_redirect' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.tls_identity_failure": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'tls_identity_failure' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.path_policy_violation": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'path_policy_violation' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.security_policy_rejected": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'security_policy_rejected' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.executor_unavailable": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'executor_unavailable' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.executor_rejected": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'executor_rejected' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.transfer_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'transfer_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.transfer_stalled": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'transfer_stalled' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.transfer_interrupted": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'transfer_interrupted' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.remote_read_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'remote_read_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.remote_write_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'remote_write_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.size_mismatch": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'size_mismatch' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.checksum_mismatch": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'checksum_mismatch' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.content_invalid": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'content_invalid' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.materialization_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'materialization_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.local_path_conflict": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'local_path_conflict' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.disk_full": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'disk_full' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.permission_denied": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'permission_denied' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.local_io_failure": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'local_io_failure' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.path_unavailable": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'path_unavailable' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.local_resource_exhausted": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'local_resource_exhausted' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.ownership_conflict": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'ownership_conflict' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.resource_state_conflict": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'resource_state_conflict' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.reconciliation_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'reconciliation_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.orphaned_resource": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'orphaned_resource' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.recovery_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'recovery_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.state_inconsistent": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'state_inconsistent' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.remote_cleanup_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'remote_cleanup_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.local_cleanup_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'local_cleanup_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.post_processing_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'post_processing_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.extraction_failed": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'extraction_failed' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.provider_protocol_violation": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'provider_protocol_violation' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.executor_protocol_violation": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'executor_protocol_violation' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.invalid_adapter_response": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'invalid_adapter_response' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.unmapped_provider_error": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'unmapped_provider_error' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.unmapped_executor_error": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'unmapped_executor_error' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "error_category.internal_error": {
+   "category": "status-chip",
+   "context": "Name of a failed transfer's failure category 'internal_error' (a fixed server code), shown in its status badge and in Details. Title Case in English; use your language's convention for short status names.",
+   "owner": "frontend/static/ui-error-semantics.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: two or three short words; the badge may show its glyph alone where the column is narrow."
+  },
+  "status.pending": {
+   "category": "status-chip",
+   "context": "A transfer's status: submitted, not yet taken up.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.uploading": {
+   "category": "status-chip",
+   "context": "A transfer's status: being sent to a premium service.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.processing": {
+   "category": "status-chip",
+   "context": "A transfer's status: a provider is preparing it.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.input_required": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting for the person (e.g. a password or a file choice).",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.extracting": {
+   "category": "status-chip",
+   "context": "A transfer's status: its archives are being unpacked.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.queued": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting for its turn to download.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.paused": {
+   "category": "status-chip",
+   "context": "A transfer's status: paused.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.downloading": {
+   "category": "status-chip",
+   "context": "A transfer's status: downloading.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.downloading_with_errors": {
+   "category": "status-chip",
+   "context": "A transfer's status: downloading while some files failed.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.ready": {
+   "category": "status-chip",
+   "context": "A transfer's status: ready to download.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.completed": {
+   "category": "status-chip",
+   "context": "A transfer's status: finished.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.consolidated": {
+   "category": "status-chip",
+   "context": "A transfer's status: merged into an existing download it duplicated.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.completed_with_errors": {
+   "category": "status-chip",
+   "context": "A transfer's status: finished, but some files failed.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.error": {
+   "category": "status-chip",
+   "context": "A transfer's status: stopped with an error.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.missing": {
+   "category": "status-chip",
+   "context": "A transfer's status: its downloaded file is gone.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.failed": {
+   "category": "status-chip",
+   "context": "A transfer's status: failed.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.verifying": {
+   "category": "status-chip",
+   "context": "A transfer's status: its downloaded data is being checked.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.cancelled": {
+   "category": "status-chip",
+   "context": "A transfer's status: cancelled.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.unknown": {
+   "category": "status-chip",
+   "context": "A transfer's status: its state is being confirmed with the provider.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.unresolved": {
+   "category": "status-chip",
+   "context": "A transfer's status: its source is being resolved into downloadable files.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.refresh_pending": {
+   "category": "status-chip",
+   "context": "A transfer's status: its source link is being renewed.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.lost": {
+   "category": "status-chip",
+   "context": "A transfer's status: its download engine job disappeared.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.deleted": {
+   "category": "status-chip",
+   "context": "A transfer's status: deleted.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.imported": {
+   "category": "status-chip",
+   "context": "A transfer's status: imported from a provider's inventory.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.partial": {
+   "category": "status-chip",
+   "context": "A transfer's status: partly complete.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.recovering": {
+   "category": "status-chip",
+   "context": "A transfer's status: being recovered after an interruption.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.requires_attention": {
+   "category": "status-chip",
+   "context": "A transfer's status: stopped until the person acts.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.waiting_for_slot": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting until a download slot is free.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.waiting_for_retry": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting before trying again.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.waiting_for_provider": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting for a premium service or source.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.waiting_for_storage": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting until its storage is available.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.waiting_for_executor": {
+   "category": "status-chip",
+   "context": "A transfer's status: waiting for a download engine.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.consolidated_unverified": {
+   "category": "status-chip",
+   "context": "A transfer's status: merged into an existing download, but the match is not yet proven.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "status.unrecognized": {
+   "category": "status-chip",
+   "context": "A transfer's status when the server sent none.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "geometry": "Status badge in Downloads and Dashboard rows: one to three short words; glyph alone where the column is narrow."
+  },
+  "consolidation.files.title": {
+   "category": "toast",
+   "context": "Title of the notice when some submitted files duplicated an existing download and were merged into it.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal"
+  },
+  "consolidation.files.body": {
+   "category": "toast",
+   "context": "Body of that notice. A 'failover candidate' is a spare source kept for use if the current one fails.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "args": {
+    "matched": "plural: matching files merged",
+    "unmatched": "plural: new files",
+    "targets": "plural: existing downloads they merged into"
+   }
+  },
+  "consolidation.downloads.title": {
+   "category": "toast",
+   "context": "Title of the notice when a whole submission duplicated existing downloads and was merged.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "args": {
+    "targets": "plural: existing downloads they merged into"
+   }
+  },
+  "consolidation.downloads.body": {
+   "category": "toast",
+   "context": "Body of that notice.",
+   "owner": "frontend/static/operator-title.js",
+   "criticality": "normal",
+   "args": {
+    "matched": "plural: matching files merged",
+    "targets": "plural: existing downloads they merged into"
+   }
+  },
+  "dashboard.kpi.total.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Total Downloads'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.total.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Total Downloads' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.completed.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Completed'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.completed.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Completed' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.active.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Active Now'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.active.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Active Now' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.processing.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Processing'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.processing.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Processing' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.errors.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Errors'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.errors.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Errors' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.downloaded.label": {
+   "category": "card-title",
+   "context": "Dashboard figure card title 'Total Downloaded'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line above the card's figure; at 320px the cards are two across."
+  },
+  "dashboard.kpi.downloaded.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the 'Total Downloaded' figure card: its name, then what it counts.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "quick_add.title": {
+   "category": "card-title",
+   "context": "Dashboard card for submitting links, magnets and files.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "quick_add.subtitle": {
+   "category": "card-title",
+   "context": "Quick Add's subtitle.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line beside the title from 780px; on a phone the short form replaces it where it does not fit."
+  },
+  "quick_add.subtitle_short": {
+   "category": "card-title",
+   "context": "Quick Add's short subtitle on a phone: a separate translation, not a truncation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "About 20 characters."
+  },
+  "quick_add.placeholder": {
+   "category": "placeholder",
+   "context": "Quick Add field placeholder: two lines (keep the line break).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "quick_add.placeholder_concise": {
+   "category": "placeholder",
+   "context": "Shorter placeholder on a phone; two lines.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Each line fits one line of the field at 390px."
+  },
+  "quick_add.placeholder_minimum": {
+   "category": "placeholder",
+   "context": "Shortest placeholder on a narrow phone; two lines.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Each line fits one line of the field at 320px."
+  },
+  "quick_add.input_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Quick Add field tooltip.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "quick_add.add": {
+   "category": "action",
+   "context": "Quick Add's submit button.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Button beside the field; short."
+  },
+  "quick_add.add_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of Quick Add's Add button.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "processing.paused_banner.title": {
+   "category": "status-chip",
+   "context": "Banner in Quick Add's header while all processing is paused (written in capitals in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "processing.paused_banner.copy": {
+   "category": "hint",
+   "context": "Banner text under PROCESSING PAUSED.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "recovery.recover_all": {
+   "category": "action",
+   "context": "Quick Add header button (Admin): checks every transfer for recoverable work.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "recovery.recover_all_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of Recover All.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.activity.title": {
+   "category": "card-title",
+   "context": "Dashboard card listing the most recent downloads.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.activity.loading": {
+   "category": "status-chip",
+   "context": "Download Activity's count line before the list arrives.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.activity.view_all": {
+   "category": "action",
+   "context": "Download Activity button that opens the Downloads page.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "dashboard.activity.shown": {
+   "category": "label",
+   "context": "Download Activity's count line: how many rows are drawn.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: rows drawn"
+   }
+  },
+  "dashboard.activity.none": {
+   "category": "label",
+   "context": "Download Activity's count line when there are none.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "dashboard.activity.empty": {
+   "category": "hint",
+   "context": "Download Activity's empty list.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.column.name": {
+   "category": "table-header",
+   "context": "Transfer table column 'Name' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "transfer.column.status": {
+   "category": "table-header",
+   "context": "Transfer table column 'Status' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "transfer.column.progress": {
+   "category": "table-header",
+   "context": "Transfer table column 'Progress' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "transfer.column.size": {
+   "category": "table-header",
+   "context": "Transfer table column 'Size' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "transfer.column.date_added": {
+   "category": "table-header",
+   "context": "Transfer table column 'Date Added' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "transfer.column.action": {
+   "category": "table-header",
+   "context": "Transfer table column 'Action' (Dashboard Download Activity).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Table header; the column may be stacked or hidden on a phone by the existing layout, never by language."
+  },
+  "common.loading": {
+   "category": "status-chip",
+   "context": "Placeholder while a list or chart loads.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "transfer.action.pause": {
+   "category": "action",
+   "context": "Row button that pauses one download.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.action.resume": {
+   "category": "action",
+   "context": "Row button that resumes one paused download.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.action.pause_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a row's Pause.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.action.resume_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a row's Resume.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.unnamed": {
+   "category": "label",
+   "context": "A transfer without a name yet.",
+   "owner": "frontend/static/ui-dashboard-transfer-presentation.js",
+   "criticality": "normal"
+  },
+  "provider_status.heading": {
+   "category": "card-title",
+   "context": "Sidebar heading (Admin) above the premium services' and sources' health rows.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "provider_status.checking": {
+   "category": "status-chip",
+   "context": "Sidebar placeholder row before provider health is known.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "provider_status.checking_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of that placeholder row in the compact rail.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "provider_status.checking_dot": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that row's status dot.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.set_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the topbar speed-cap button (Admin).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.title": {
+   "category": "card-title",
+   "context": "Title of the speed-cap menu.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_1": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 1 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_5": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 5 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_10": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 10 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_20": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 20 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_30": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 30 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_50": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 50 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.preset_100": {
+   "category": "action",
+   "context": "Speed-cap menu choice: 100 megabytes per second.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.custom_label": {
+   "category": "label",
+   "context": "Label of the speed-cap menu's own-value field.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.custom_placeholder": {
+   "category": "placeholder",
+   "context": "Placeholder of that field: the unit.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "speed_cap.set_custom": {
+   "category": "action",
+   "context": "Applies the own value.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "theme.choose": {
+   "category": "tooltip/aria",
+   "context": "Topbar button that opens the theme list (tooltip and accessible name).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "theme.picker.title_dark": {
+   "category": "card-title",
+   "context": "Title of the theme list in dark mode.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "theme.picker.title_light": {
+   "category": "card-title",
+   "context": "Title of the theme list in light mode.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.picker.note_dark": {
+   "category": "hint",
+   "context": "Note under that title in dark mode.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "theme.picker.note_light": {
+   "category": "hint",
+   "context": "Note under that title in light mode.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "activity.title": {
+   "category": "page-title",
+   "context": "Activity Log card title (a light-hearted name for the event log).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line; on a phone the shorter titles replace it where it does not fit."
+  },
+  "activity.title_short": {
+   "category": "page-title",
+   "context": "Shorter Activity Log title on a phone: a separate translation, not a truncation.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.title_shorter": {
+   "category": "page-title",
+   "context": "Shorter still; the shortest title that stays intelligible.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.title_shortest": {
+   "category": "page-title",
+   "context": "Shortest title, only where nothing longer fits.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "geometry": "About 4 characters."
+  },
+  "activity.subtitle": {
+   "category": "page-title",
+   "context": "Activity Log subtitle (light-hearted).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.subtitle_short": {
+   "category": "page-title",
+   "context": "Shorter subtitle on a phone.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.subtitle_shortest": {
+   "category": "page-title",
+   "context": "Shortest subtitle on a phone.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.live.label": {
+   "category": "label",
+   "context": "Switch that keeps the Activity Log following new events.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.live.off": {
+   "category": "status-chip",
+   "context": "Auto Refresh is off (screen-reader status of the switch).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.live.on": {
+   "category": "status-chip",
+   "context": "Auto Refresh is on and connected.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.live.unavailable": {
+   "category": "tooltip/aria",
+   "context": "Auto Refresh is on but the live connection is down ('Refresh' is the button beside it).",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.refresh": {
+   "category": "action",
+   "context": "Activity Log button that loads the newest events.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.refresh_label": {
+   "category": "tooltip/aria",
+   "context": "Tooltip and accessible name of Refresh.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.search.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Activity Log search field.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.search.placeholder": {
+   "category": "placeholder",
+   "context": "Activity Log search field placeholder.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.search.index_incomplete": {
+   "category": "hint",
+   "context": "Under the Activity Log: the search could not yet read the newest events.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.filter.open": {
+   "category": "action",
+   "context": "Opens the Activity Log filter panel (from 780px).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.open_short": {
+   "category": "action",
+   "context": "The same on a phone.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "geometry": "Phone: one short word."
+  },
+  "activity.filter.clear": {
+   "category": "action",
+   "context": "The same control while filters are applied: removes them (from 780px).",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.filter.clear_short": {
+   "category": "action",
+   "context": "The same on a phone.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "geometry": "Phone: one short word."
+  },
+  "activity.filter.clear_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of Clear Filters, naming what is applied.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "args": {
+    "applied": "string: the applied filters, e.g. 'Time Window: Last hour · Severity: Error'"
+   }
+  },
+  "activity.filter.restriction": {
+   "category": "label",
+   "context": "One applied filter: its group's name and the chosen option.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the filter group, e.g. Severity",
+    "value": "string: the chosen option, e.g. Error"
+   }
+  },
+  "activity.filter.panel_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the filter panel.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.time_window": {
+   "category": "label",
+   "context": "Filter group: how far back events are shown.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.available": {
+   "category": "label",
+   "context": "Time Window option 'Available history'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_hour": {
+   "category": "label",
+   "context": "Time Window option 'Last hour'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_12_hours": {
+   "category": "label",
+   "context": "Time Window option 'Last 12 hours'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_day": {
+   "category": "label",
+   "context": "Time Window option 'Last day'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_3_days": {
+   "category": "label",
+   "context": "Time Window option 'Last 3 days'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_week": {
+   "category": "label",
+   "context": "Time Window option 'Last week'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.timeframe.last_30_days": {
+   "category": "label",
+   "context": "Time Window option 'Last 30 days'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.severity": {
+   "category": "label",
+   "context": "Filter group: the event's severity.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.all": {
+   "category": "label",
+   "context": "Filter option: no restriction in this group.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.event_type": {
+   "category": "label",
+   "context": "Filter group: the kind of event.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.transfer": {
+   "category": "label",
+   "context": "Event Type option: events about transfers.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.routing": {
+   "category": "label",
+   "context": "Event Type option: events about routing.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.resource": {
+   "category": "label",
+   "context": "Event Type option: events about provider resources.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.selection": {
+   "category": "label",
+   "context": "Event Type option: events about file selection.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.consolidation": {
+   "category": "label",
+   "context": "Event Type option: events about consolidation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.execution": {
+   "category": "label",
+   "context": "Event Type option: events about downloads.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.recovery": {
+   "category": "label",
+   "context": "Event Type option: events about recovery.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.storage": {
+   "category": "label",
+   "context": "Event Type option: events about storage.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.extraction": {
+   "category": "label",
+   "context": "Event Type option: events about extraction.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.input": {
+   "category": "label",
+   "context": "Event Type option: events about input required.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.integration": {
+   "category": "label",
+   "context": "Event Type option: events about integrations.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.configuration": {
+   "category": "label",
+   "context": "Event Type option: events about configuration.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.filter.category.administration": {
+   "category": "label",
+   "context": "Event Type option: events about administration.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.category.transfer": {
+   "category": "label",
+   "context": "An event row's category ('Transfer'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.routing": {
+   "category": "label",
+   "context": "An event row's category ('Routing'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.resource": {
+   "category": "label",
+   "context": "An event row's category ('Provider Resource'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.selection": {
+   "category": "label",
+   "context": "An event row's category ('File Selection'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.consolidation": {
+   "category": "label",
+   "context": "An event row's category ('Consolidation'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.execution": {
+   "category": "label",
+   "context": "An event row's category ('Download'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.recovery": {
+   "category": "label",
+   "context": "An event row's category ('Recovery'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.storage": {
+   "category": "label",
+   "context": "An event row's category ('Storage'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.extraction": {
+   "category": "label",
+   "context": "An event row's category ('Extraction'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.input": {
+   "category": "label",
+   "context": "An event row's category ('Input Required'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.integration": {
+   "category": "label",
+   "context": "An event row's category ('Integration'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.configuration": {
+   "category": "label",
+   "context": "An event row's category ('Configuration'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.administration": {
+   "category": "label",
+   "context": "An event row's category ('Administration'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.category.event": {
+   "category": "label",
+   "context": "An event row's category ('Event'), first in the line under its message.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.level.info": {
+   "category": "status-chip",
+   "context": "Event severity 'Info': a filter option, and the accessible name of a row's severity dot.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.level.warning": {
+   "category": "status-chip",
+   "context": "Event severity 'Warning': a filter option, and the accessible name of a row's severity dot.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.level.error": {
+   "category": "status-chip",
+   "context": "Event severity 'Error': a filter option, and the accessible name of a row's severity dot.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.details": {
+   "category": "action",
+   "context": "Disclosure under an event that shows its technical detail.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.empty.searched_so_far": {
+   "category": "hint",
+   "context": "Activity Log: the incomplete search found nothing.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.empty.filtered": {
+   "category": "hint",
+   "context": "Activity Log: nothing matches the filters or search.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.empty.history_begins": {
+   "category": "hint",
+   "context": "Activity Log: no events since history began.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "args": {
+    "date": "string: a date and time, formatted"
+   }
+  },
+  "activity.empty.none": {
+   "category": "hint",
+   "context": "Activity Log: no events at all.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.last_page_unproven": {
+   "category": "tooltip/aria",
+   "context": "Why the pager's Last button is unavailable.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal"
+  },
+  "activity.page_of": {
+   "category": "label",
+   "context": "Activity Log page position.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "args": {
+    "page": "number: this page",
+    "pages": "number: all pages"
+   }
+  },
+  "activity.load_failed": {
+   "category": "error",
+   "context": "Activity Log failed to load.",
+   "owner": "frontend/static/ui-activity-log-runtime.js",
+   "criticality": "normal",
+   "args": {
+    "message": "string: why, from the server (may be English)"
+   }
+  },
+  "activity.pages_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Activity Log pagination.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.page_navigation_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the pager's buttons.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "activity.show_newest": {
+   "category": "action",
+   "context": "Shown when newer events exist than the page on screen.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "common.apply": {
+   "category": "action",
+   "context": "Applies the choices in a panel.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.title": {
+   "category": "page-title",
+   "context": "Statistics card title (light-hearted).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line; on a phone the shorter titles replace it where it does not fit."
+  },
+  "stats.title_short": {
+   "category": "page-title",
+   "context": "Shorter Statistics title on a phone.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.title_shortest": {
+   "category": "page-title",
+   "context": "Shortest Statistics title on a phone.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "About 5 characters."
+  },
+  "stats.subtitle": {
+   "category": "page-title",
+   "context": "Statistics subtitle (light-hearted).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.subtitle_short": {
+   "category": "page-title",
+   "context": "Shorter subtitle on a phone.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.subtitle_shortest": {
+   "category": "page-title",
+   "context": "Shortest subtitle on a phone.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.period.hour": {
+   "category": "action",
+   "context": "Statistics period choice: the last hour. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.day": {
+   "category": "action",
+   "context": "Statistics period choice: the last 24 hours. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.week": {
+   "category": "action",
+   "context": "Statistics period choice: the last 7 days. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.month": {
+   "category": "action",
+   "context": "Statistics period choice: the last 30 days. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.year": {
+   "category": "action",
+   "context": "Statistics period choice: the last year. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.all": {
+   "category": "action",
+   "context": "Statistics period choice: all recorded history. Compact in English (number and unit run together).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Period chip: short; all six share one row from 780px."
+  },
+  "stats.period.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the period choices.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.period.current": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the phone's period control.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "string: the chosen period's label"
+   }
+  },
+  "stats.metric.downloads.label": {
+   "category": "card-title",
+   "context": "Statistics figure card 'Downloads Added'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.metric.downloads.description": {
+   "category": "hint",
+   "context": "Line under the 'Downloads Added' figure for the selected period: one whole sentence per period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.metric.completed.label": {
+   "category": "card-title",
+   "context": "Statistics figure card 'Downloads Completed'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.metric.completed.description": {
+   "category": "hint",
+   "context": "Line under the 'Downloads Completed' figure for the selected period: one whole sentence per period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.metric.progress.label": {
+   "category": "card-title",
+   "context": "Statistics figure card 'In Progress'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.metric.progress.description": {
+   "category": "hint",
+   "context": "Line under the 'In Progress' figure for the selected period: one whole sentence per period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.metric.success.label": {
+   "category": "card-title",
+   "context": "Statistics figure card 'Success Rate'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.metric.success.description": {
+   "category": "hint",
+   "context": "Line under the 'Success Rate' figure for the selected period: one whole sentence per period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.metric.data.label": {
+   "category": "card-title",
+   "context": "Statistics figure card 'Total Data Downloaded'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.metric.data.description": {
+   "category": "hint",
+   "context": "Line under the 'Total Data Downloaded' figure for the selected period: one whole sentence per period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.metric.data.label_handheld": {
+   "category": "card-title",
+   "context": "The data card's shorter title on a phone.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.label": {
+   "category": "card-title",
+   "context": "Separator above the Statistics figures that ignore the chosen period.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.last_day.label": {
+   "category": "card-title",
+   "context": "Statistics figure 'Last 24 Hours' (capitals as written in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.last_day.description": {
+   "category": "hint",
+   "context": "Line under 'Last 24 Hours'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.last_week.label": {
+   "category": "card-title",
+   "context": "Statistics figure 'Last 7 Days' (capitals as written in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.last_week.description": {
+   "category": "hint",
+   "context": "Line under 'Last 7 Days'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.mean_time.label": {
+   "category": "card-title",
+   "context": "Statistics figure 'MEAN DOWNLOAD TIME' (capitals as written in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.mean_time.description": {
+   "category": "hint",
+   "context": "Line under 'MEAN DOWNLOAD TIME'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.lifetime_success.label": {
+   "category": "card-title",
+   "context": "Statistics figure 'LIFETIME SUCCESS RATE' (capitals as written in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.lifetime_success.description": {
+   "category": "hint",
+   "context": "Line under 'LIFETIME SUCCESS RATE'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.mean_size.label": {
+   "category": "card-title",
+   "context": "Statistics figure 'MEAN DOWNLOAD SIZE' (capitals as written in English).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.history.mean_size.description": {
+   "category": "hint",
+   "context": "Line under 'MEAN DOWNLOAD SIZE'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.chart.title": {
+   "category": "card-title",
+   "context": "Statistics chart title.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.chart.subtitle": {
+   "category": "hint",
+   "context": "The chart's subtitle for the chosen period.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "period": "select: hour, day, week, month, year, all, other (a period the page does not know)"
+   }
+  },
+  "stats.chart.legend_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the chart's legend.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.chart.total": {
+   "category": "label",
+   "context": "Chart legend: each bar's total.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.chart.premium": {
+   "category": "label",
+   "context": "Chart legend: completions delivered by premium services.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.chart.network": {
+   "category": "label",
+   "context": "Chart legend: completions delivered by network sources.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.chart.dataset": {
+   "category": "label",
+   "context": "The chart's data series name.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.chart.tooltip_total": {
+   "category": "tooltip/aria",
+   "context": "Chart bar tooltip line.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "stats.chart.tooltip_family": {
+   "category": "tooltip/aria",
+   "context": "Chart bar tooltip line for one source family.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "family": "string: Premium Sources or Network Sources",
+    "count": "number"
+   }
+  },
+  "stats.chart.tooltip_unattributed": {
+   "category": "tooltip/aria",
+   "context": "Chart bar tooltip line: completions with no known source family.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "stats.breakdown.transfer_disposition": {
+   "category": "card-title",
+   "context": "Statistics breakdown card 'Transfer Disposition'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.breakdown.file_status": {
+   "category": "card-title",
+   "context": "Statistics breakdown card 'File Status'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.breakdown.events_severity": {
+   "category": "card-title",
+   "context": "Statistics breakdown card 'Events Severity'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.breakdown.transfer_methods": {
+   "category": "card-title",
+   "context": "Statistics breakdown card 'Transfer Methods'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "stats.severity.error": {
+   "category": "label",
+   "context": "Events Severity row 'Errors'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.severity.warning": {
+   "category": "label",
+   "context": "Events Severity row 'Warnings'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.severity.info": {
+   "category": "label",
+   "context": "Events Severity row 'Informational'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.completed": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Completed'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.deleted": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Deleted'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.error": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Error'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.missing": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Missing'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.duplicate": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Duplicate'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.pending": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Pending'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.uploading": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Uploading'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.processing": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Processing'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.ready": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Ready'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.queued": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Queued'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.downloading": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Downloading'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.paused": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Paused'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.partial": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Partial'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.blocked": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Blocked'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.extracting": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Extracting'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.status.unknown": {
+   "category": "label",
+   "context": "Statistics breakdown row: transfers or files whose stored status is 'Unknown'.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.full_list": {
+   "category": "modal-title",
+   "context": "Title of the dialog listing every row of a breakdown card.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "title": "string: the card's title"
+   }
+  },
+  "stats.overflow.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a breakdown card that holds more rows than it shows.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "title": "string: the card's title",
+    "shown": "number: rows shown",
+    "more": "number: rows not shown"
+   }
+  },
+  "stats.overflow.more": {
+   "category": "label",
+   "context": "Marker on a breakdown card that holds more rows.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "more": "number"
+   }
+  },
+  "stats.no_data": {
+   "category": "hint",
+   "context": "A breakdown card with nothing to show.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal"
+  },
+  "stats.duration.days": {
+   "category": "label",
+   "context": "Part of a compact duration, e.g. '1D 2H 3M' (Mean download time): days.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "value": "number"
+   }
+  },
+  "stats.duration.hours": {
+   "category": "label",
+   "context": "Part of a compact duration, e.g. '1D 2H 3M' (Mean download time): hours.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "value": "number"
+   }
+  },
+  "stats.duration.minutes": {
+   "category": "label",
+   "context": "Part of a compact duration, e.g. '1D 2H 3M' (Mean download time): minutes.",
+   "owner": "frontend/static/ui-statistics.js",
+   "criticality": "normal",
+   "args": {
+    "value": "number"
+   }
+  },
+  "storage.region_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the storage warnings region above every page (Admin).",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.domain.application": {
+   "category": "card-title",
+   "context": "Where DebridPulse keeps its own state (database, configuration).",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.domain.download": {
+   "category": "card-title",
+   "context": "Where downloads are written.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.state.healthy": {
+   "category": "status-chip",
+   "context": "A storage's state 'Healthy'.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.state.low_space": {
+   "category": "status-chip",
+   "context": "A storage's state 'Low space'.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.state.full": {
+   "category": "status-chip",
+   "context": "A storage's state 'Full'.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.state.read_only": {
+   "category": "status-chip",
+   "context": "A storage's state 'Read only'.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.state.unavailable": {
+   "category": "status-chip",
+   "context": "A storage's state 'Unavailable'.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.explanation.application.low_space": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.download.low_space": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.application.full": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.download.full": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.application.read_only": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.download.read_only": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.application.unavailable": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.explanation.download.unavailable": {
+   "category": "critical-warning",
+   "context": "A storage warning (banner and toast): what is wrong and what it stops. Keep every consequence.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "critical-warning"
+  },
+  "storage.recovered.download": {
+   "category": "toast",
+   "context": "Toast when download storage is healthy again.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.recovered.application": {
+   "category": "toast",
+   "context": "Toast when application storage is healthy again.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal"
+  },
+  "storage.capacity.free_of": {
+   "category": "label",
+   "context": "A storage's capacity line.",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal",
+   "args": {
+    "free": "string: a size",
+    "total": "string: a size"
+   }
+  },
+  "storage.capacity.free": {
+   "category": "label",
+   "context": "A storage's capacity line (total unknown).",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal",
+   "args": {
+    "free": "string: a size"
+   }
+  },
+  "storage.capacity.total": {
+   "category": "label",
+   "context": "A storage's capacity line (free space unknown).",
+   "owner": "frontend/static/ui-storage-health.js",
+   "criticality": "normal",
+   "args": {
+    "total": "string: a size"
+   }
+  },
+  "pager.first": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the pager's 'First page' button (a glyph alone).",
+   "owner": "frontend/static/ui-pager.js",
+   "criticality": "normal"
+  },
+  "pager.previous": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the pager's 'Previous page' button (a glyph alone).",
+   "owner": "frontend/static/ui-pager.js",
+   "criticality": "normal"
+  },
+  "pager.next": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the pager's 'Next page' button (a glyph alone).",
+   "owner": "frontend/static/ui-pager.js",
+   "criticality": "normal"
+  },
+  "pager.last": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the pager's 'Last page' button (a glyph alone).",
+   "owner": "frontend/static/ui-pager.js",
+   "criticality": "normal"
+  },
+  "pager.unavailable": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a pager button that cannot be used now.",
+   "owner": "frontend/static/ui-pager.js",
+   "criticality": "normal",
+   "args": {
+    "action": "string: the button's name",
+    "reason": "string: why"
+   }
+  },
+  "search.unavailable": {
+   "category": "toast",
+   "context": "Search could only match transfer IDs.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal"
+  },
+  "search.invalid": {
+   "category": "error",
+   "context": "The server refused a search query and gave no reason.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal"
+  },
+  "search.invalid_kept": {
+   "category": "toast",
+   "context": "A refused search: the server's reason, then what the list still shows.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal",
+   "args": {
+    "message": "string: the server's reason (may be English)",
+    "kept": "string: one of the search.still_for / showing_all sentences"
+   }
+  },
+  "search.still_for": {
+   "category": "toast",
+   "context": "After a refused search: the list still shows the previous search.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal",
+   "args": {
+    "query": "string: the previous search"
+   }
+  },
+  "search.showing_all_downloads": {
+   "category": "toast",
+   "context": "After a refused search on Downloads: the list shows everything.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal"
+  },
+  "search.showing_all_events": {
+   "category": "toast",
+   "context": "After a refused search on the Activity Log: the list shows everything.",
+   "owner": "frontend/static/ui-search.js",
+   "criticality": "normal"
+  },
+  "tooltip.index.current_section": {
+   "category": "tooltip/aria",
+   "context": "Eyebrow of a tab strip's index tooltip.",
+   "owner": "frontend/static/ui-tooltip.js",
+   "criticality": "normal"
+  },
+  "tooltip.index.position": {
+   "category": "tooltip/aria",
+   "context": "Position of the current tab in a tab strip's index tooltip.",
+   "owner": "frontend/static/ui-tooltip.js",
+   "criticality": "normal",
+   "args": {
+    "position": "number",
+    "count": "number"
+   }
+  },
+  "a11y.download_status_filter": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Downloads status filter chips.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.help_sections": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Help page's tabs.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.close_details": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Details dialog's close control.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.select_option": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a choice list that has no label.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.select_placeholder": {
+   "category": "placeholder",
+   "context": "A choice list with nothing chosen.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.select_no_matches": {
+   "category": "hint",
+   "context": "A searchable choice list found nothing.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "a11y.select_no_options": {
+   "category": "hint",
+   "context": "A choice list without choices.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "dashboard.kpi.errors.open": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Dashboard Errors card, which opens Downloads filtered to errors.",
+   "owner": "frontend/static/ui-accessibility-runtime.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.healthy": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Healthy': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.degraded": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Degraded': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.auth_required": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Sign-in required': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.unhealthy": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Unhealthy': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.unconfigured": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Not configured': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.unverified": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Not verified': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.unknown": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Status unknown': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.checking": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Checking': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.mixed": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Partly enabled': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.unavailable": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Unavailable': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.disabled": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Disabled': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.state.inactive": {
+   "category": "status-chip",
+   "context": "A provider's or group's health 'Inactive': its status dot's accessible name and tooltip.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.row_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a provider row in the compact sidebar rail.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the provider or group",
+    "state": "string: its health"
+   }
+  },
+  "provider_status.loading": {
+   "category": "status-chip",
+   "context": "Provider Status while it is first read.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.unavailable": {
+   "category": "status-chip",
+   "context": "Provider Status could not be read.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "provider_status.none_enabled": {
+   "category": "status-chip",
+   "context": "No premium service or source is enabled.",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "integration.tier.premium_service": {
+   "category": "card-title",
+   "context": "Provider Status heading over premium (debrid) services and Usenet (the server's tier 'premium_service').",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "integration.tier.general_family": {
+   "category": "card-title",
+   "context": "Provider Status heading over the network sources and media downloads (the server's tier 'general_family').",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "integration.group.direct_sources": {
+   "category": "card-title",
+   "context": "Provider Status row grouping HTTP & HTTPS, FTP & SFTP, SCP, rsync, WebDAV… (the server's group 'direct_sources').",
+   "owner": "frontend/static/ui-provider-status.js",
+   "criticality": "normal"
+  },
+  "premium.tier_default": {
+   "category": "status-chip",
+   "context": "A premium account's plan when the provider reports no plan name.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal"
+  },
+  "premium.until": {
+   "category": "label",
+   "context": "A premium account's expiry (also in the provider's Settings card).",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal",
+   "args": {
+    "tier": "string: the plan name, the provider's own (e.g. Premium)",
+    "date": "string: a date, formatted"
+   }
+  },
+  "premium.named_until": {
+   "category": "label",
+   "context": "Sidebar: one premium account's expiry, provider first.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the provider, e.g. AllDebrid",
+    "tier": "string: the plan name, the provider's own (e.g. Premium)",
+    "date": "string: a date, formatted"
+   }
+  },
+  "premium.days_remaining": {
+   "category": "label",
+   "context": "Under the expiry: days left.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "premium.expired": {
+   "category": "label",
+   "context": "Under the expiry: the account has expired.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal"
+  },
+  "premium.compact_remaining": {
+   "category": "label",
+   "context": "Sidebar, several accounts: one line each.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the provider",
+    "tier": "string: the plan name, the provider's own (e.g. Premium)",
+    "count": "number"
+   }
+  },
+  "premium.compact_expired": {
+   "category": "label",
+   "context": "Sidebar, several accounts: an expired one.",
+   "owner": "frontend/static/ui-premium-account-status.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the provider",
+    "tier": "string: the plan name, the provider's own (e.g. Premium)"
+   }
+  },
+  "transfer.source_icon.magnet": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a transfer row's magnet glyph.",
+   "owner": "frontend/static/ui-transfer-source-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.source_icon.torrent_file": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a transfer row's torrent-file glyph.",
+   "owner": "frontend/static/ui-transfer-source-presentation.js",
+   "criticality": "normal"
+  },
+  "transfer.source_icon.link": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a transfer row's link glyph.",
+   "owner": "frontend/static/ui-transfer-source-presentation.js",
+   "criticality": "normal"
+  },
+  "theme.palette.native": {
+   "category": "label",
+   "context": "The native DebridPulse palette in the theme list ('DebridPulse' is the product name).",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.title": {
+   "category": "card-title",
+   "context": "Theme list section (Admin): the theme the sign-in page shows.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.current_label": {
+   "category": "label",
+   "context": "Label before the sign-in page's current theme.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.value_dark": {
+   "category": "label",
+   "context": "The sign-in page's theme: a dark palette.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal",
+   "args": {
+    "palette": "string: the palette's name"
+   }
+  },
+  "theme.login.value_light": {
+   "category": "label",
+   "context": "The sign-in page's theme: a light palette.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal",
+   "args": {
+    "palette": "string: the palette's name"
+   }
+  },
+  "theme.login.checking": {
+   "category": "status-chip",
+   "context": "The sign-in page's theme is being read.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.unavailable": {
+   "category": "status-chip",
+   "context": "The sign-in page's theme could not be read.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.setting": {
+   "category": "status-chip",
+   "context": "Set current's label while it saves.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.current": {
+   "category": "action",
+   "context": "Set current's label when the sign-in page already shows this theme.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.set_current": {
+   "category": "action",
+   "context": "Makes the theme in use the sign-in page's theme.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.not_saved_yet": {
+   "category": "error",
+   "context": "Set current refused: the theme is unsaved.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.changed_meanwhile": {
+   "category": "error",
+   "context": "Set current refused: the theme changed.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.login.failed": {
+   "category": "error",
+   "context": "Set current failed.",
+   "owner": "frontend/static/ui-theme-picker.js",
+   "criticality": "normal"
+  },
+  "theme.not_saved": {
+   "category": "toast",
+   "context": "A theme change could not be saved to the account.",
+   "owner": "frontend/static/ui-theme-bootstrap.js",
+   "criticality": "normal"
+  },
+  "theme.saved": {
+   "category": "toast",
+   "context": "After a failure, the theme was saved after all.",
+   "owner": "frontend/static/ui-theme-bootstrap.js",
+   "criticality": "normal"
+  },
+  "quick_add.not_a_link": {
+   "category": "error",
+   "context": "Light-hearted refusal of an input that is not a link (an older wording the toast bridge replaces).",
+   "owner": "frontend/static/ui-toast-contract.js",
+   "criticality": "normal"
+  },
+  "shell.version_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the version line below the page.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "shell.logo_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the sidebar logo.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
   }
  }
 }

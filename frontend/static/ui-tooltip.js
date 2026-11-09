@@ -155,9 +155,9 @@
     };
     const head = document.createElement('div');
     head.className = 'dp-tooltip-index-head';
-    head.append(node('span', 'dp-tooltip-index-eyebrow', 'Current section'), ' ',
+    head.append(node('span', 'dp-tooltip-index-eyebrow', window.DPI18n.t('tooltip.index.current_section')), ' ',
       node('strong', 'dp-tooltip-index-current', label(tabs[current])), ' ',
-      node('span', 'dp-tooltip-index-count', `${current + 1} of ${tabs.length}`));
+      node('span', 'dp-tooltip-index-count', window.DPI18n.t('tooltip.index.position', {position: current + 1, count: tabs.length})));
     const all = document.createElement('div');
     all.className = 'dp-tooltip-index-list';
     tabs.forEach((tab, k) => {
