@@ -44,7 +44,9 @@ async function show(page, view) {
 const englishLeft = (page, scopes) => page.evaluate(([scopes, names]) => {
   const proper = new RegExp(names);
   const visible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
-  const userData = element => element.closest('.dp-activity-message, .t-name, .dp-activity-detail-text, .dp-provider-status-name, .dp-theme-picker-name, #sidebar-version');
+  // What the server or the person wrote, and dates (Intl writes them; a pseudo
+  // locale formats as English by design, DPI18n.intlLocale).
+  const userData = element => element.closest('.dp-activity-message, .t-name, .dp-activity-detail-text, .dp-provider-status-name, .dp-theme-picker-name, #sidebar-version, .dp-activity-time, .dp-downloads-date-value');
   const english = text => {
     if (text.includes('⟦')) return false;
     const words = (text.match(/[A-Za-z]{3,}/g) || []).filter(word => !proper.test(word));
@@ -96,7 +98,8 @@ test('L10-WS3a: in en-XA every shell, Dashboard, Activity Log and Statistics wor
   expect(await englishLeft(page, [...SHELL, '#view-dashboard'])).toEqual([]);
   for (const view of ['events', 'stats']) {
     await show(page, view);
-    if (view === 'events') await expect(page.locator('#event-list .empty')).toContainText('⟦');
+    // The journal may hold events already (a shared runtime): its rows or its empty state, said again.
+    if (view === 'events') await expect(page.locator('#event-list .empty, #event-list .dp-activity-transfer').first()).toContainText('⟦');
     if (view === 'stats') await expect(page.locator('#detail-file-status')).toContainText('⟦');
     expect(await englishLeft(page, [...SHELL, `#view-${view}`])).toEqual([]);
   }

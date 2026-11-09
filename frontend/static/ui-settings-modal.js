@@ -296,6 +296,18 @@
       accept.textContent = String(spec.acceptLabel || window.DPI18n.t('dialog.confirm'));
       accept.disabled = spec.acceptDisabled === true;
     }
+    // ``spec.keys`` ({title, titleValues, accept, cancel, message, messageValues}):
+    // the catalog keys these words were said from, so an open dialog is re-worded
+    // in place on a language change (ui-i18n.js render). Optional; words alone stay.
+    const keys = spec.keys || {};
+    const name = (node, key, values) => {
+      if (!node || !key) return;
+      node.dataset.i18n = key;
+      if (values) node.dataset.i18nValues = JSON.stringify(values);
+    };
+    name(overlay.querySelector(`#${dialogId}-title`), keys.title, keys.titleValues);
+    name(cancel, keys.cancel);
+    name(accept, keys.accept);
 
     let settled = false;
     let resolveClosed;
@@ -410,10 +422,12 @@
     tone = 'warning',
     typedPhrase = '',
     withExit = false,
+    keys = null,
   } = {}) {
     const dialog = open({
       role: 'alertdialog',
       tone,
+      keys: keys || undefined,
       title: title || window.DPI18n.t('dialog.confirm_action'),
       acceptLabel: confirmLabel || window.DPI18n.t('dialog.confirm'),
       cancelLabel: cancelLabel || window.DPI18n.t('common.cancel'),
@@ -422,6 +436,10 @@
         const messageEl = document.createElement('p');
         messageEl.className = 'dp-modal-message';
         messageEl.textContent = String(message || '');
+        if (keys && keys.message) {
+          messageEl.dataset.i18n = keys.message;
+          if (keys.messageValues) messageEl.dataset.i18nValues = JSON.stringify(keys.messageValues);
+        }
         body.appendChild(messageEl);
         if (typedPhrase) {
           const typed = document.createElement('label');

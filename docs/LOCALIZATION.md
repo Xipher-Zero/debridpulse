@@ -1,7 +1,7 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a complete;
-product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a and WS3b
+complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -13,11 +13,18 @@ These surfaces read the catalog:
   shared owners every page draws with: status badges and failure categories,
   progress and ETA, sizes, speeds and durations, toasts, the pager, search
   notices, storage warnings, premium accounts, source icons, tooltips' tab
-  index, and the accessible names the accessibility runtime sets.
+  index, and the accessible names the accessibility runtime sets;
+- WS3b, the download operations: Downloads (headings, filters, search, the
+  date menu, summaries, row and bulk actions, queue order, removal and
+  restart dialogs); Details (facts, route history, original resource, error
+  disclosure, withdrawal, trace, the per-file candidate disclosure); file
+  selection; provider switching (`ui-root-provider.js`) and source switching
+  (`ui-group-candidates.js`, its discard confirmation included); the
+  authentication-required dialog; the server folder picker; transfer uploads;
+  and the submission prompts (local network, acquisition scope).
 
-Every other surface is still English literals: Downloads, Details and the
-download operations (WS3b), Settings (WS3c, WS3d), the server's display
-messages (WS3e) and Help (WS4). The census below counts them. No language is
+Every other surface is still English literals: Settings (WS3c, WS3d), the
+server's display messages (WS3e) and Help (WS4). The census below counts them. No language is
 offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
@@ -122,11 +129,23 @@ such identifier, so API clients and a newer server are unaffected:
   `status.consolidated_unverified`);
 - a failed transfer's category (`error.category`) is `error_category.<category>`;
 - Provider Status's tier and group headings are `integration.tier.<id>` and
-  `integration.group.<id>`.
+  `integration.group.<id>`;
+- a Details candidate's relationship, disposition and source kind are
+  `details.candidate.*` by `relationship_code`, `disposition_code` and
+  `source_kind` (three additive read-model fields; the English fields are
+  unchanged);
+- a provider's state and reason in the provider picker are
+  `root_provider.status.<status>` and `root_provider.reason.<reason>`, and a
+  link's switch outcome is `root_provider.participation.*` /
+  `root_provider.refusal.*`;
+- the folder picker's reasons and errors are `directory_picker.reason.*` and
+  `directory_picker.error.*` by the server's code.
 
 Provider, integration, palette and plan names are proper names and stay as the
 server sends them. Activity Log event messages are the server's journal text
-and stay English until WS3e gives them codes.
+and stay English until WS3e gives them codes. So do a server refusal's own
+words where the interface shows them (a switch failure's `message`, a
+submission claimant's scope label, a route failure's detail).
 
 **Owners.** How a renderer uses the catalog:
 
@@ -141,6 +160,17 @@ and stay English until WS3e gives them codes.
   state it already holds: no request, no navigation. It keeps focus, open
   panels and dialogs, drafts, scroll, and open `<details>`. A list re-labels
   its rows in place where rebuilding them would lose the reader's place.
+- **A repaint for the words alone is no news.** Details repaints with
+  `relabel: true` on `debridpulse:detail-rendered`; the Files-header owners
+  (provider, file selection, source switching) then draw again from their
+  last answer and an open picker stays open. Owners that re-read Details when
+  a list renders ignore a list repaint caused by the language change (a
+  window-capture `locale-changed` listener marks it before any page owner
+  repaints).
+- **Pending controls and dialogs** take catalog keys: `setButtonPending(button,
+  true, 'key')` and `DPSettingsModal.open/confirm({keys: {title, message,
+  messageValues, accept, cancel}})`, so a pending label or an open dialog is
+  re-said in place.
 - **Figures** come from `DPI18n.number(value, digits)`: fixed decimals, no
   grouping, and the shown language's digits. In English it writes exactly
   what `toFixed` writes. `DPI18n.intlLocale()` names the tag for other `Intl`
@@ -186,7 +216,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS3a
+## 3. Census (WS0) — snapshot at WS3b
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -209,15 +239,15 @@ attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
 `data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
 entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 
-| Measure (at WS3a) | Count |
-|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) |
-| … rich text / with placeholders | 444 / 234 |
-| … critical-warning (destructive, security, data loss) | 231 |
-| … long-form Help | 962 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 |
-| Server display messages (`detail`) | 669 |
-| Catalog keys (English) | 690 |
+| Measure | At WS3a | At WS3b |
+|---|---|---|
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) |
+| … rich text / with placeholders | 444 / 234 | 408 / 176 |
+| … critical-warning (destructive, security, data loss) | 231 | 211 |
+| … long-form Help | 962 | 962 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 |
+| Server display messages (`detail`) | 669 | 669 |
+| Catalog keys (English) | 690 | 1,214 |
 
 The largest owners still outside the catalog:
 
@@ -226,11 +256,12 @@ The largest owners still outside the catalog:
 | `ui-settings-page.js` | 1,335 | WS3c / WS3d |
 | `ui-help-page.js` | 557 | WS4 |
 | `ui-settings-help.js` (all topics except My Account) | 405 | WS4 |
-| `ui-downloads.js` | 143 | WS3b |
-| `app.js` (Details, transfer actions, submission prompts, file upload) | 140 | WS3b |
-| `ui-root-provider.js` | 92 | WS3b |
+| `ui-settings-usenet-servers.js` | 63 | WS3c |
+| `ui-settings-backup-manager.js` | 44 | WS3d |
+| `ui-settings-executor-work.js` | 33 | WS3c |
 
-No WS3a owner holds an entry outside the catalog or the exemption register.
+No WS3a or WS3b owner holds an entry outside the catalog or the exemption
+register, and `index.html` holds none (`test_localization_catalogs.py`).
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 

@@ -65,7 +65,14 @@ def test_bounded_runtime_owners_are_present() -> None:
     assert "window.DPDashboardTransferPresentation" not in read("ui-dashboard-transfer-presentation.js")
     downloads = read("ui-downloads.js")
     assert "window.DPDownloads" in downloads and "window.loadTorrents" in downloads and "ResizeObserver" in downloads
-    assert all(token in downloads for token in ("Friendly", "International", "ISO", "12-hour", "24-hour", "window.DPPager.render("))
+    from i18n_node import english
+
+    # WS3b: the date menu's words are catalog keys (downloads.date_menu.*).
+    assert all(token in downloads for token in ("downloads.date_menu.format_${v}", "'downloads.date_menu.hour12'",
+                                                "'downloads.date_menu.hour24'", "window.DPPager.render("))
+    assert [english(f"downloads.date_menu.{key}") for key in ("format_friendly", "format_international", "format_iso",
+                                                               "hour12", "hour24")] == \
+        ["Friendly", "International", "ISO", "12-hour", "24-hour"]
     assert "window.DPProcessingPresentation" in read("ui-processing-presentation.js")
     assert "window.DPTransferSourcePresentation" in read("ui-transfer-source-presentation.js")
     activity = read("ui-activity-log-runtime.js")
@@ -308,8 +315,11 @@ def test_details_exposes_a_stable_file_selection_action_host() -> None:
     assert 'id="dp-detail-actions"' not in app
     runtime = read("ui-file-selection.js")
     assert "data-dp-file-selection-mount" in runtime
-    assert "Choose Files" in runtime
-    assert "Change Files" in runtime
+    from i18n_node import english
+
+    # WS3b: the launcher's words are catalog keys.
+    assert "'file_selection.choose'" in runtime and english("file_selection.choose") == "Choose Files"
+    assert "'file_selection.change'" in runtime and english("file_selection.change") == "Change Files"
     # The retired longer Details-launcher wording must not resurface (the
     # selector modal's own title bar, "Select files", is a separate, still-
     # accurate string unrelated to the launcher label and is untouched).

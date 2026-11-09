@@ -261,6 +261,7 @@ def test_every_fullscreen_modal_fades_in_place_through_its_own_owner() -> None:
         assert "window.DPMotion.focusOrigin()" in owner
     # Details: the shell appears with its content (or, slow, held at full height), one opening at a time.
     detail = app[app.index("const DETAIL_LOADING_GRACE_MS = 300;"):app.index("// Requested By:")]
-    assert "DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details', pending: true});" in detail
+    assert ("DPModal.open({mode: 'details', title: DPI18n.t('common.loading'), closeLabel: DPI18n.t('a11y.close_details'), "
+            "pending: true});") in detail
     assert "DPModal.reveal({hold: true})" in detail and "if (!current()) return;" in detail
     assert "modal.style.height = getComputedStyle(modal).maxHeight;" in app

@@ -15,49 +15,24 @@
 (function () {
   'use strict';
 
-  const DIRECTORY_REASON_LABELS = Object.freeze({
-    none: 'Ready to use',
-    low_space: 'Low free space',
-    capacity_exhausted: 'No free space',
-    quota_exhausted: 'Storage quota exhausted',
-    read_only: 'Read-only',
-    missing: 'Unavailable',
-    invalid_path: 'Invalid path',
-    inaccessible: 'Inaccessible',
-    stat_failed: 'Capacity unavailable',
-    io_error: 'Storage I/O unavailable',
-    sqlite_io_error: 'Storage I/O unavailable',
-    sqlite_open_failed: 'Storage unavailable',
-  });
-
-  const DIRECTORY_ERROR_LABELS = Object.freeze({
-    invalid_path: 'The requested directory path is invalid.',
-    relative_path: 'Only absolute server paths can be browsed.',
-    not_directory: 'The requested path is not a directory.',
-    symlink_loop: 'The requested path cannot be resolved safely.',
-    path_inaccessible: 'The requested directory is not accessible.',
-    path_unavailable: 'The requested directory is currently unavailable.',
-    browser_unavailable: 'The server filesystem browser is currently unavailable.',
-  });
+  // Words are the catalog's (directory_picker.*), by the server's codes; an
+  // unknown code is shown as its own words.
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const REASONS = new Set(['none', 'low_space', 'capacity_exhausted', 'quota_exhausted', 'read_only', 'missing', 'invalid_path',
+    'inaccessible', 'stat_failed', 'io_error', 'sqlite_io_error', 'sqlite_open_failed']);
+  const ERRORS = new Set(['invalid_path', 'relative_path', 'not_directory', 'symlink_loop', 'path_inaccessible', 'path_unavailable',
+    'browser_unavailable']);
 
   const DOWNLOAD_DIRECTORY_PICKER = Object.freeze({
     purpose: 'download',
     fieldSelector: '[data-setting="download_folder"]',
     browseAction: 'browse-download-folder',
-    browseAriaLabel: 'Browse server directories for Download Folder',
-    dialogTitle: 'Choose Download Folder',
-    selectableLabel: 'Selectable as Download Storage',
-    fallbackNoticeText: 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.',
   });
 
   const BACKUP_DIRECTORY_PICKER = Object.freeze({
     purpose: 'backup',
     fieldSelector: '[data-setting="backup_folder"]',
     browseAction: 'browse-backup-folder',
-    browseAriaLabel: 'Browse server directories for Backup Folder',
-    dialogTitle: 'Choose Backup Folder',
-    selectableLabel: 'Selectable as Backup Folder',
-    fallbackNoticeText: 'The current Backup Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.',
   });
 
   const PICKERS = Object.freeze({download: DOWNLOAD_DIRECTORY_PICKER, backup: BACKUP_DIRECTORY_PICKER});
@@ -65,29 +40,25 @@
 
   function directoryReasonLabel(reason) {
     const key = String(reason || '').trim();
-    if (Object.prototype.hasOwnProperty.call(DIRECTORY_REASON_LABELS, key)) {
-      return DIRECTORY_REASON_LABELS[key];
-    }
-    return key ? key.replaceAll('_', ' ') : 'Unavailable';
+    if (REASONS.has(key)) return t(`directory_picker.reason.${key}`);
+    return key ? key.replaceAll('_', ' ') : t('directory_picker.reason.missing');
   }
 
   function directoryErrorMessage(error) {
     const detail = error?.detail && typeof error.detail === 'object' ? error.detail : null;
     const code = String(error?.code || detail?.code || '').trim();
-    if (Object.prototype.hasOwnProperty.call(DIRECTORY_ERROR_LABELS, code)) {
-      return DIRECTORY_ERROR_LABELS[code];
-    }
+    if (ERRORS.has(code)) return t(`directory_picker.error.${code}`);
     if (typeof detail?.message === 'string' && detail.message.trim()) return detail.message.trim();
     const message = String(error?.message || '').trim();
     if (message && message !== '[object Object]' && message.length <= 240) return message;
-    return 'This directory cannot be browsed right now.';
+    return t('directory_picker.error.default');
   }
 
   function directorySize(value) {
     if (value == null) return null;
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0) return null;
-    if (number === 0) return '0 B';
+    if (number === 0) return t('format.size.b', {value: window.DPI18n.number(0)});
     if (typeof fmtSize === 'function') return fmtSize(number);
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let unit = 0;
@@ -96,7 +67,7 @@
       scaled /= 1024;
       unit += 1;
     }
-    return `${scaled.toFixed(1)} ${units[unit]}`;
+    return t(`format.size.${units[unit].toLowerCase()}`, {value: window.DPI18n.number(scaled, 1)});
   }
 
   function openDirectoryPicker(config) {
@@ -109,9 +80,14 @@
     let controller = null;
     let view = null;
 
+    const words = key => t(`directory_picker.${config.purpose}.${key}`);
+    let lastPayload = null;   // said again on a language change
+    let errorWords = null;    // {key} or {text}: the error shown, if any
+    let noticeShown = false;
     const dialog = window.DPSettingsModal.open({
-      title: config.dialogTitle,
-      acceptLabel: 'Use This Folder',
+      title: words('title'),
+      acceptLabel: t('directory_picker.accept'),
+      keys: {title: `directory_picker.${config.purpose}.title`, accept: 'directory_picker.accept', cancel: 'common.cancel'},
       acceptDisabled: true,
       className: 'dp-settings-directory-dialog',
       bodyClassName: 'dp-settings-directory-body',
@@ -120,19 +96,19 @@
           <div class="dp-settings-directory-browser">
             <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
             <div class="dp-settings-directory-current">
-              <span class="dp-settings-directory-current-label">Current server path</span>
+              <span class="dp-settings-directory-current-label" data-i18n="directory_picker.current">${esc(t('directory_picker.current'))}</span>
               <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
               <div class="dp-settings-directory-current-meta">
-                <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">Not validated</span>
-                <span data-directory-capacity>Capacity unavailable</span>
+                <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">${esc(t('directory_picker.not_validated'))}</span>
+                <span data-directory-capacity>${esc(t('directory_picker.reason.stat_failed'))}</span>
               </div>
             </div>
             <div class="dp-settings-directory-toolbar">
-              <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled>Up</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled data-i18n="directory_picker.up">${esc(t('directory_picker.up'))}</button>
               <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
             </div>
             <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
-            <div class="dp-settings-directory-list" data-directory-list aria-label="Directories"></div>
+            <div class="dp-settings-directory-list" data-directory-list aria-label="${esc(t('directory_picker.list_label'))}" data-i18n-attr="aria-label:directory_picker.list_label"></div>
           </div>`;
         view = {
           notice: body.querySelector('[data-directory-notice]'),
@@ -151,9 +127,11 @@
       },
     });
 
+    let loadingNow = false;
     const setLoading = busy => {
+      loadingNow = busy;
       dialog.setBusy(busy);
-      view.loading.textContent = busy ? 'Loading…' : '';
+      view.loading.textContent = busy ? t('common.loading') : '';
       dialog.setAcceptEnabled(!busy && currentResponse?.current?.selectable === true);
       view.up.disabled = busy || currentResponse?.parent == null;
       view.list.querySelectorAll('[data-directory-row]').forEach(row => {
@@ -161,18 +139,25 @@
       });
     };
 
-    const render = payload => {
+    // The one error presentation: whatever ``errorWords`` holds, in the page's language.
+    const paintError = () => {
+      view.errorBox.textContent = errorWords ? directoryErrorMessage(errorWords.error) : '';
+      view.errorBox.hidden = !errorWords;
+    };
+
+    // The listing only (current folder, its state and capacity, its folders);
+    // it never touches the error, which is the operation's state, not the listing's.
+    const paintListing = payload => {
       const current = payload?.current || null;
+      lastPayload = payload;
       currentResponse = payload && current ? payload : null;
-      view.errorBox.hidden = true;
-      view.errorBox.textContent = '';
       view.list.replaceChildren();
 
       if (!current) {
         view.currentPath.textContent = '—';
-        view.currentState.textContent = 'Not validated';
+        view.currentState.textContent = t('directory_picker.not_validated');
         view.currentState.dataset.selectable = 'false';
-        view.capacity.textContent = 'Capacity unavailable';
+        view.capacity.textContent = t('directory_picker.reason.stat_failed');
         dialog.setAcceptEnabled(false);
         view.up.disabled = true;
         return;
@@ -183,21 +168,21 @@
       const selectable = current.selectable === true;
       view.currentState.dataset.selectable = selectable ? 'true' : 'false';
       view.currentState.textContent = selectable
-        ? config.selectableLabel
-        : `Not selectable — ${directoryReasonLabel(current.reason)}`;
+        ? words('selectable')
+        : t('directory_picker.not_selectable', {reason: directoryReasonLabel(current.reason)});
 
       const total = directorySize(current.capacity?.total_bytes);
       const free = directorySize(current.capacity?.free_bytes);
       view.capacity.textContent = total !== null && free !== null
-        ? `${free} free of ${total}`
-        : 'Capacity unavailable';
+        ? t('storage.capacity.free_of', {free, total})
+        : t('directory_picker.reason.stat_failed');
 
       view.up.disabled = payload.parent == null;
       const children = Array.isArray(payload.children) ? payload.children : [];
       if (!children.length) {
         const empty = document.createElement('div');
         empty.className = 'dp-settings-directory-empty';
-        empty.textContent = 'No child directories.';
+        empty.textContent = t('directory_picker.empty');
         view.list.appendChild(empty);
       } else {
         children.forEach(child => {
@@ -213,12 +198,12 @@
           const name = document.createElement('span');
           name.className = 'dp-settings-directory-name';
           name.dataset.directoryName = '1';
-          name.textContent = String(child?.name ?? child?.path ?? 'Directory');
+          name.textContent = String(child?.name ?? child?.path ?? t('directory_picker.directory_fallback'));
 
           const hint = document.createElement('span');
           hint.className = 'dp-settings-directory-row-hint';
           hint.textContent = child?.accessible === true
-            ? 'Open to validate'
+            ? t('directory_picker.open_to_validate')
             : directoryReasonLabel(child?.reason);
 
           row.append(name, hint);
@@ -233,12 +218,19 @@
       dialog.setAcceptEnabled(selectable);
     };
 
+    // A new answer: its listing, and no error.
+    const render = payload => {
+      errorWords = null;
+      paintListing(payload);
+      paintError();
+    };
+
     const loadDirectory = async (path, {fallbackOnFailure = false} = {}) => {
       const requestGeneration = ++generation;
       if (controller) controller.abort();
       controller = new AbortController();
-      view.errorBox.hidden = true;
-      view.errorBox.textContent = '';
+      errorWords = null;
+      paintError();
       setLoading(true);
 
       const queryParams = {purpose: config.purpose};
@@ -253,17 +245,34 @@
         if (requestGeneration !== generation || error?.name === 'AbortError' || !dialog.isOpen) return;
         if (fallbackOnFailure) {
           view.notice.hidden = false;
-          view.notice.textContent = config.fallbackNoticeText;
+          noticeShown = true;
+          view.notice.textContent = words('fallback_notice');
           void loadDirectory(null);
           return;
         }
-        view.errorBox.textContent = directoryErrorMessage(error);
-        view.errorBox.hidden = false;
+        errorWords = {error};
+        paintError();
         setLoading(false);
       }
     };
 
+    // A language change while it is open: everything it shows, said again from
+    // what it already holds (no request); a focused folder keeps focus by its path.
+    const relabel = () => {
+      if (!dialog.isOpen || !view) return;
+      const focusedPath = document.activeElement?.matches?.('[data-directory-row]') ? document.activeElement.dataset.path : null;
+      const upFocused = document.activeElement === view.up;
+      if (lastPayload) paintListing(lastPayload);   // the error shown stays shown
+      paintError();
+      if (noticeShown) view.notice.textContent = words('fallback_notice');
+      setLoading(loadingNow);           // the load in flight, if any, stays in flight
+      if (focusedPath != null) Array.from(view.list.querySelectorAll('[data-directory-row]')).find(row => row.dataset.path === focusedPath)?.focus({preventScroll: true});
+      else if (upFocused) view.up.focus({preventScroll: true});
+    };
+    document.addEventListener('debridpulse:locale-changed', relabel);
+
     void dialog.closed.then(({accepted}) => {
+      document.removeEventListener('debridpulse:locale-changed', relabel);
       generation += 1;
       if (controller) controller.abort();
       controller = null;

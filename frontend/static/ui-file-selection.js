@@ -19,6 +19,7 @@
  */
 (function () {
   'use strict';
+  const t = (key, values) => window.DPI18n.t(key, values);
 
   const OFFERS_URL = '/file-selections/offers';
   const PENDING_MODE = 'file-selection-pending';
@@ -52,6 +53,7 @@
   let countdownDeadlineMs = null;         // wall-clock ms when the hold expires
   let confirmInFlight = false;
   let detailTransferId = null;            // transfer currently shown in Details
+  let detailEntryShown = null;            // {transferId, view}: the Details entry's last answer, said again on relabel
 
   // ── Path / tree helpers ─────────────────────────────────────────────────
   function normalizePath(value) {
@@ -131,11 +133,11 @@
   function truncationNotice(view) {
     if (!view.source_truncated) return '';
     const shown = Array.isArray(view.entries) ? view.entries.length : 0;
-    const total = Number.isInteger(view.source_total) && view.source_total > shown
-      ? 'This collection has ' + view.source_total + ' entries'
-      : 'This collection has more entries; its total length is unknown';
-    return '<p class="dp-fs-notice" role="note">Only the first ' + shown +
-      ' entries are shown and can be selected. ' + total + '; later entries are not shown or downloaded.</p>';
+    const known = Number.isInteger(view.source_total) && view.source_total > shown;
+    const key = known ? 'file_selection.truncated_known' : 'file_selection.truncated_unknown';
+    const values = known ? {shown, total: view.source_total} : {shown};
+    return '<p class="dp-fs-notice" role="note" data-i18n="' + key + '" data-i18n-values=\'' + esc(JSON.stringify(values)) + '\'>'
+      + esc(t(key, values)) + '</p>';
   }
 
   function renderSelector(view) {
@@ -151,8 +153,7 @@
       '<button type="button" class="btn btn-ghost btn-sm dp-fs-toggle-all"></button>' +
       '</div>' +
       truncationNotice(view) +
-      '<div class="dp-fs-tree" role="tree" aria-label="' +
-      (selectorExplicitOnly ? 'Entries in this collection' : 'Files in this transfer') + '">' +
+      '<div class="dp-fs-tree" role="tree" data-i18n-attr="aria-label:' + treeKey() + '" aria-label="' + esc(t(treeKey())) + '">' +
       renderNode(tree, 0) + '</div>' +
       '<div class="dp-fs-summary">' +
       '<span class="dp-fs-count"></span>' +
@@ -166,28 +167,34 @@
     updateSummary();
   }
 
+  function treeKey() { return selectorExplicitOnly ? 'file_selection.tree_entries' : 'file_selection.tree_files'; }
+  // Keyed footer markup: a language change re-words it in place (ui-i18n.js
+  // render); the countdown sentence holds the live clock and is said here.
+  const keyed = (tag, cls, key) => '<' + tag + ' class="' + cls + '" data-i18n="' + key + '">' + esc(t(key)) + '</' + tag + '>';
+  const keyedButton = (cls, key) => '<button type="button" class="' + cls + '" data-i18n="' + key + '">' + esc(t(key)) + '</button>';
+  function paintCountdown(paragraph) {
+    if (!paragraph) return;
+    const clock = paragraph.querySelector('.dp-fs-clock') || Object.assign(document.createElement('span'), {className: 'dp-fs-clock', textContent: '—'});
+    paragraph.replaceChildren(window.DPI18n.rich('file_selection.countdown', {clock}));
+  }
+
   function renderFooter(view) {
     const footer = modal().footer();
     if (!footer) return;
     const hasHold = view.decision_deadline != null;
     footer.innerHTML =
       '<div class="dp-fs-footer' + (selectorExplicitOnly ? ' dp-fs-footer--collection' : '') + '">' +
-      (selectorExplicitOnly
-        ? '<p class="dp-fs-foot-note">Confirm downloads only the selected entries. Nothing downloads until ' +
-          'you confirm; Close or Cancel Transfer cancels the entire transfer.</p>'
-        : '<p class="dp-fs-foot-note">Confirm downloads only the selected files. ' +
-          'Cancel stops the entire transfer.</p>') +
-      '<p class="dp-fs-foot-countdown"' + (hasHold ? '' : ' hidden') + '>' +
-      'All files will download automatically in <span class="dp-fs-clock">—</span> ' +
-      'if no selection is confirmed.</p>' +
+      keyed('p', 'dp-fs-foot-note', selectorExplicitOnly ? 'file_selection.note_entries' : 'file_selection.note_files') +
+      '<p class="dp-fs-foot-countdown"' + (hasHold ? '' : ' hidden') + '></p>' +
       '<div class="dp-fs-actions">' +
-      '<button type="button" class="btn btn-danger dp-fs-cancel">Cancel Transfer</button>' +
+      keyedButton('btn btn-danger dp-fs-cancel', 'submission.scope.cancel') +
       '<span class="dp-fs-actions-spacer"></span>' +
-      '<button type="button" class="btn btn-ghost dp-fs-close">Close</button>' +
-      '<button type="button" class="btn btn-primary dp-fs-confirm">Confirm</button>' +
+      keyedButton('btn btn-ghost dp-fs-close', 'dialog.close') +
+      keyedButton('btn btn-primary dp-fs-confirm', 'dialog.confirm') +
       '</div>' +
       '</div>';
     footer.hidden = false;
+    paintCountdown(footer.querySelector('.dp-fs-foot-countdown'));
 
     footer.querySelector('.dp-fs-cancel').addEventListener('click', onCancelTransfer);
     footer.querySelector('.dp-fs-close').addEventListener('click', function () {
@@ -272,14 +279,13 @@
     const countNode = body.querySelector('.dp-fs-count');
     const bytesNode = body.querySelector('.dp-fs-bytes');
     if (countNode) {
-      countNode.textContent = selected.length + ' of ' + total + (selectorExplicitOnly ? ' entries' : ' files') +
-        ' selected';
+      countNode.textContent = t(selectorExplicitOnly ? 'file_selection.count_entries' : 'file_selection.count_files', {selected: selected.length, total});
     }
     if (bytesNode) bytesNode.textContent = bytes > 0 ? fmtSize(bytes) : '';
     const toggle = body.querySelector('.dp-fs-toggle-all');
     if (toggle) {
       const selectable = selectableEntryIds();
-      toggle.textContent = allSelected(selectable) ? 'Deselect All' : 'Select All';
+      toggle.textContent = t(allSelected(selectable) ? 'file_selection.deselect_all' : 'file_selection.select_all');
       toggle.disabled = selectable.length === 0;
     }
     const footer = modal().footer();
@@ -361,7 +367,7 @@
   }
 
   function affordanceLabel(affordance) {
-    return affordance === 'change' ? 'Change Files' : 'Choose Files';
+    return t(affordance === 'change' ? 'file_selection.change' : 'file_selection.choose');
   }
 
   function initialDraftFromView(view) {
@@ -395,8 +401,8 @@
 
     modal().open({
       mode: 'file-selection',
-      title: selectorExplicitOnly ? 'Select entries' : 'Select files',
-      closeLabel: selectorExplicitOnly ? 'Cancel transfer' : 'Close file selection',
+      title: t(selectorExplicitOnly ? 'file_selection.title_entries' : 'file_selection.title_files'),
+      closeLabel: t(selectorExplicitOnly ? 'file_selection.close_entries' : 'file_selection.close_files'),
       contain: selectorExplicitOnly,
       onClose: handleModalClose,
     });
@@ -422,7 +428,7 @@
       if (!view || !view.eligible || !view.mutable || view.decision !== 'pending') {
         modal().finishClose('expired');
         resetSelectorState();
-        toast('The file-selection window closed. All files will download.', 'info');
+        toast(t('file_selection.expired'), 'info');
         refreshTransferViews();
         return;
       }
@@ -430,7 +436,7 @@
         // The bound provider resource changed — this generation is stale.
         modal().finishClose('superseded');
         resetSelectorState();
-        toast('The file list changed. Reopen file selection from Details to choose again.', 'warn');
+        toast(t('file_selection.superseded'), 'warn');
         refreshTransferViews();
         return;
       }
@@ -454,19 +460,19 @@
       confirmInFlight = false;
       const count = entryIds.length;
       stopCountdown();
-      const noun = selectorExplicitOnly ? (count === 1 ? 'entry' : 'entries') : (count === 1 ? 'file' : 'files');
+      const explicit = selectorExplicitOnly;
       modal().finishClose('confirmed');
       resetSelectorState();
-      toast(count + ' ' + noun + ' selected for download', 'success');
+      toast(t(explicit ? 'file_selection.confirmed_entries' : 'file_selection.confirmed_files', {count}), 'success');
       refreshTransferViews();
     }).catch(function (error) {
       confirmInFlight = false;
       const message = String(error && error.message || '');
       if (/already|committed|conflict|superseded|stale|no longer/i.test(message)) {
-        toast('Selection changed or the download already started. Refreshing…', 'warn');
+        toast(t('file_selection.conflict'), 'warn');
         refreshAuthoritative();
       } else {
-        toast(message || 'That file selection could not be applied.', 'error');
+        toast(message || t('file_selection.failed'), 'error');
       }
       updateSummary();
     });
@@ -483,10 +489,10 @@
 
   function cancelTransfer(transferId) {
     api('POST', '/torrents/' + transferId + '/cancel').then(function () {
-      toast('Transfer cancelled', 'success');
+      toast(t('file_selection.transfer_cancelled'), 'success');
       refreshTransferViews();
     }).catch(function (error) {
-      toast(String(error && error.message || 'The transfer could not be cancelled.'), 'error');
+      toast(String(error && error.message || t('file_selection.cancel_failed')), 'error');
       refreshTransferViews();
     });
   }
@@ -584,15 +590,12 @@
     }
     modal().open({
       mode: PENDING_MODE,
-      title: 'File list not available yet',
-      closeLabel: 'Close',
+      title: t('file_selection.pending_title'),
+      closeLabel: t('dialog.close'),
     });
     const body = bodyEl();
     if (body) {
-      body.innerHTML = '<div class="dp-fs-pending-manifest">' +
-        '<p>DebridPulse is still waiting for the file list for this download. ' +
-        'The transfer will continue preparing in the background. Try again shortly.</p>' +
-        '</div>';
+      body.innerHTML = '<div class="dp-fs-pending-manifest">' + keyed('p', 'dp-fs-pending-copy', 'file_selection.pending_message') + '</div>';
     }
   }
 
@@ -621,11 +624,11 @@
         return;
       }
       // No longer applicable/mutable: never open a stale picker (§6.8.4).
-      toast('File selection is no longer available for this transfer.', 'info');
+      toast(t('file_selection.no_longer'), 'info');
       if (detailTransferId === transferId) renderDetailEntry(transferId);
       refreshTransferViews();
     }).catch(function (error) {
-      toast(String(error && error.message || 'File selection is unavailable.'), 'error');
+      toast(String(error && error.message || t('file_selection.unavailable')), 'error');
     });
   }
 
@@ -642,40 +645,72 @@
   }
 
   // ── Details manual entry point (Files-section header, right side) ───────
-  function renderDetailEntry(transferId) {
+  // ``relabel``: Details re-said the same transfer in another language; the
+  // entry is drawn again from its last answer, without asking again.
+  function renderDetailEntry(transferId, relabel) {
     const host = document.querySelector(
       '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
     if (!host) return;
+    if (relabel && detailEntryShown && detailEntryShown.transferId === transferId) {
+      paintDetailEntry(host, transferId, detailEntryShown.view);
+      return;
+    }
     mayChoose(transferId).then(function (allowed) {
       return allowed ? fetchSelection(transferId) : null;
     }).then(function (view) {
       const currentHost = document.querySelector(
         '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
       if (currentHost !== host) return;
-      if (!view || !view.eligible) { host.innerHTML = ''; return; }
-      const affordance = affordanceOf(view);
-      if (affordance === 'choose' || affordance === 'change' || affordance === 'pending_manifest') {
-        const label = affordance === 'pending_manifest' ? 'Choose Files' : affordanceLabel(affordance);
-        host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry" ' +
-          'data-tooltip="' + esc(label) + '">' + esc(label) + '</button>';
-        host.querySelector('.dp-file-selection-entry').addEventListener('click', function () {
-          handleAffordanceClick(transferId);
-        });
-        return;
-      }
-      // Locked/not-applicable: a truthful passive summary only when an
-      // explicit subset was actually recorded (§6.9) -- otherwise no dead
-      // button, nothing rendered.
-      const selectedCount = Array.isArray(view.selected_entry_ids)
-        ? view.selected_entry_ids.length : 0;
-      if (view.decision === 'explicit' && selectedCount > 0) {
-        host.innerHTML = '<span class="dp-file-selection-summary">' + selectedCount + ' of ' +
-          esc(String(view.file_count || selectedCount)) + ' files selected</span>';
-      } else {
-        host.innerHTML = '';
-      }
+      detailEntryShown = {transferId: transferId, view: view};
+      paintDetailEntry(host, transferId, view);
     }).catch(function () { host.innerHTML = ''; });
   }
+
+  function paintDetailEntry(host, transferId, view) {
+    if (!view || !view.eligible) { host.innerHTML = ''; return; }
+    const affordance = affordanceOf(view);
+    if (affordance === 'choose' || affordance === 'change' || affordance === 'pending_manifest') {
+      const key = affordance === 'change' ? 'file_selection.change' : 'file_selection.choose';
+      host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry" ' +
+        'data-i18n="' + key + '" data-i18n-attr="data-tooltip:' + key + '" data-tooltip="' + esc(t(key)) + '">' + esc(t(key)) + '</button>';
+      host.querySelector('.dp-file-selection-entry').addEventListener('click', function () {
+        handleAffordanceClick(transferId);
+      });
+      return;
+    }
+    // Locked/not-applicable: a truthful passive summary only when an
+    // explicit subset was actually recorded (§6.9) -- otherwise no dead
+    // button, nothing rendered.
+    const selectedCount = Array.isArray(view.selected_entry_ids)
+      ? view.selected_entry_ids.length : 0;
+    if (view.decision === 'explicit' && selectedCount > 0) {
+      const values = {selected: selectedCount, total: Number(view.file_count || selectedCount)};
+      host.innerHTML = '<span class="dp-file-selection-summary" data-i18n="file_selection.count_files" data-i18n-values=\'' +
+        esc(JSON.stringify(values)) + '\'>' + esc(t('file_selection.count_files', values)) + '</span>';
+    } else {
+      host.innerHTML = '';
+    }
+  }
+
+  // A language change: the open chooser's keyed words are re-rendered in place
+  // (ui-i18n.js); here its title, close name, count, Select All and countdown
+  // sentence -- the draft, focus and countdown are untouched.
+  document.addEventListener('debridpulse:locale-changed', function () {
+    const mode = modal().mode;
+    const title = document.getElementById('modal-title');
+    const close = document.querySelector('#modal .modal-close');
+    if (selectorTransferId != null && mode === 'file-selection') {
+      if (title) title.textContent = t(selectorExplicitOnly ? 'file_selection.title_entries' : 'file_selection.title_files');
+      const label = t(selectorExplicitOnly ? 'file_selection.close_entries' : 'file_selection.close_files');
+      if (close) { close.setAttribute('aria-label', label); close.dataset.tooltip = label; }
+      updateSummary();
+      const footer = modal().footer();
+      paintCountdown(footer ? footer.querySelector('.dp-fs-foot-countdown') : null);
+    } else if (mode === PENDING_MODE) {
+      if (title) title.textContent = t('file_selection.pending_title');
+      if (close) { close.setAttribute('aria-label', t('dialog.close')); close.dataset.tooltip = t('dialog.close'); }
+    }
+  });
 
   // ── Wiring ──────────────────────────────────────────────────────────────
   function init() {
@@ -691,10 +726,11 @@
       const transferId = Number(payload.transferId);
       if (!Number.isFinite(transferId)) { detailTransferId = null; return; }
       detailTransferId = transferId;
-      renderDetailEntry(transferId);
+      renderDetailEntry(transferId, Boolean(payload.relabel));
     });
     document.addEventListener('debridpulse:detail-closed', function () {
       detailTransferId = null;
+      detailEntryShown = null;
     });
     // Semantic invalidation (§7/§12 -- stale Choose File must clear itself):
     // the backend crossed the durable manifest-commit boundary and the

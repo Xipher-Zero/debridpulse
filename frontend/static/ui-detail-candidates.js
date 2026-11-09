@@ -4,6 +4,7 @@
  */
 (function () {
   'use strict';
+  const t = (key, values) => window.DPI18n.t(key, values);
 
   const expandedRows = new Set();
   const switchingRows = new Set();
@@ -89,7 +90,7 @@
     if (!relationship || relationship === 'original') return '';
     const contributor = Number(file.contributing_transfer_id);
     if (!Number.isInteger(contributor) || contributor <= 0) return '';
-    return '<div class="dp-detail-file-origin">From #' + html(String(contributor)) + '</div>';
+    return '<div class="dp-detail-file-origin">' + html(t('details.from_transfer', {id: contributor})) + '</div>';
   }
 
   function integrationNames(settings) {
@@ -106,10 +107,18 @@
 
   function providerName(candidate) {
     const identity = String(candidate && candidate.provider_id || '').trim();
-    return providerNames.get(identity) || 'Provider';
+    return providerNames.get(identity) || t('details.candidate.provider_fallback');
   }
 
+  // The candidate's relationship and disposition from the server's codes
+  // (relationship_code, disposition_code), said in the page's language; a
+  // server without the codes is shown as it words them.
   function candidateDisposition(candidate) {
+    if (candidate && candidate.relationship_code) {
+      const parts = [t(`details.candidate.relationship.${candidate.relationship_code === 'original' ? 'original' : 'consolidated'}`)];
+      if (candidate.disposition_code === 'failed') parts.push(t('details.candidate.failed'));
+      return parts.join(' · ');
+    }
     const values = Array.isArray(candidate && candidate.dispositions)
       ? candidate.dispositions.map(String).filter(Boolean).filter(function (value) {
         return !/^(active|selected|delivering)$/i.test(value);
@@ -121,7 +130,7 @@
   function candidateAction(file, candidate) {
     const active = Boolean(candidate && (candidate.is_active || candidate.is_selected));
     if (active) {
-      return '<span class="dp-detail-candidate-active" aria-label="Active source">ACTIVE</span>';
+      return '<span class="dp-detail-candidate-active" aria-label="' + html(t('details.candidate.active_label')) + '">' + html(t('details.candidate.active')) + '</span>';
     }
     if (!candidate || !candidate.switch_eligible || !switchAllowed) return '';
     // No real artifact-mutation identity, no switch control. A contributed or
@@ -132,7 +141,7 @@
     const busy = switchingRows.has(rowKey(file));
     return '<button type="button" class="dp-detail-candidate-switch" ' +
       'data-dp-artifact-id="' + html(artifactId) + '" data-dp-candidate-id="' + html(candidateId) + '"' +
-      (busy ? ' disabled aria-disabled="true"' : '') + '>Switch to this source</button>';
+      (busy ? ' disabled aria-disabled="true"' : '') + '>' + html(t('details.candidate.switch')) + '</button>';
   }
 
   function candidateList(file) {
@@ -140,7 +149,8 @@
     return '<div class="dp-detail-candidate-list">' + candidates.map(function (candidate) {
       return '<div class="dp-detail-candidate-item" data-dp-candidate-id="' + html(candidate.candidate_id || '') + '">' +
         '<div class="dp-detail-candidate-copy"><div class="dp-detail-candidate-route">' +
-        '<span class="dp-detail-candidate-source">' + html(candidate.source_label || 'Source') + '</span>' +
+        '<span class="dp-detail-candidate-source">' + html(candidate.source_kind === 'unknown' || !candidate.source_label
+          ? t('details.candidate.source_fallback') : candidate.source_label) + '</span>' +
         '<span class="dp-detail-candidate-arrow" aria-hidden="true">→</span>' +
         '<span class="dp-detail-candidate-provider">' + html(providerName(candidate)) + '</span></div>' +
         '<div class="dp-detail-candidate-disposition">' + html(candidateDisposition(candidate)) + '</div></div>' +
@@ -164,7 +174,7 @@
     const key = rowKey(file);
     const open = expandedRows.has(key);
     const detailsId = 'dp-detail-candidates-' + key;
-    const filename = String(file.filename || 'artifact');
+    const filename = String(file.filename || t('details.candidate.file_fallback'));
     // One coherent ghost-style rounded button sharing the passive chip visual
     // family (dp-candidate-chip) and the canonical Network glyph. No circular
     // count badge. Interactive: aria-expanded / aria-controls / dynamic
@@ -172,15 +182,15 @@
     return '<button type="button" class="dp-candidate-chip dp-detail-candidate-disclosure" data-dp-row-id="' + html(key) + '" ' +
       'data-dp-candidate-count="' + count + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
       'aria-controls="' + html(detailsId) + '" aria-label="' +
-      html((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename) + '">' +
+      html(t(open ? 'details.candidates.hide' : 'details.candidates.show', {count, filename})) + '">' +
       candidateGlyph() +
       '<span class="dp-candidate-chip-count">' + count + '</span>' +
-      '<span>Candidates</span></button>';
+      '<span>' + html(t('details.candidates.chip')) + '</span></button>';
   }
 
   function blockedPresentation(file) {
     if (file.blocked) {
-      return '<span class="badge badge-error dp-detail-file-blocked">BLOCKED: ' + html(file.block_reason) + '</span>';
+      return '<span class="badge badge-error dp-detail-file-blocked">' + html(t('details.file.blocked', {reason: file.block_reason})) + '</span>';
     }
     if (file.block_reason) return '<div class="dp-detail-file-block-reason">' + html(file.block_reason) + '</div>';
     return '';
@@ -209,8 +219,8 @@
       // mutation, so nothing can address a contributed or association row as an
       // artifact by selector either.
       const reason = file.unverified_reason
-        ? ' data-tooltip="Equivalence unproven: ' + html(file.unverified_reason) + '"'
-        : (file.failure_reason ? ' data-tooltip="Source failed: ' + html(file.failure_reason) + '"' : '');
+        ? ' data-tooltip="' + html(t('details.reason.unverified', {reason: file.unverified_reason})) + '"'
+        : (file.failure_reason ? ' data-tooltip="' + html(t('details.reason.failed', {reason: file.failure_reason})) + '"' : '');
       const main = '<tr class="dp-detail-file-row" data-dp-row-id="' + html(key) + '"' +
         (artifactId ? ' data-dp-artifact-id="' + html(artifactId) + '"' : '') + '>' +
         '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + html(file.filename) + '</span>' +
@@ -230,10 +240,10 @@
     if (!key || !owner) return;
     const count = Number(file && file.candidate_count || control.dataset.dpCandidateCount || 0);
     const filenameNode = owner.querySelector('.dp-detail-filename-copy');
-    const filename = String((file && file.filename) || (filenameNode && filenameNode.textContent) || 'artifact');
+    const filename = String((file && file.filename) || (filenameNode && filenameNode.textContent) || t('details.candidate.file_fallback'));
     control.dataset.dpCandidateCount = String(count);
     control.setAttribute('aria-expanded', open ? 'true' : 'false');
-    control.setAttribute('aria-label', (open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename);
+    control.setAttribute('aria-label', t(open ? 'details.candidates.hide' : 'details.candidates.show', {count, filename}));
     const countNode = control.querySelector('.dp-candidate-chip-count');
     if (countNode) countNode.textContent = String(count);
     const existing = owner.parentElement ? owner.parentElement.querySelector(
@@ -268,7 +278,7 @@
       if (detail.category) return String(detail.category).replace(/_/g, ' ').toLowerCase();
     }
     if (typeof detail === 'string' && detail.trim()) return detail.trim();
-    return String(fallback || 'The selected candidate could not be established.');
+    return String(fallback || t('details.candidate.switch_failed_default'));
   }
 
   async function refreshAfterSwitch(transferId, key) {
@@ -312,14 +322,15 @@
       switchingRows.delete(key);
       await refreshAfterSwitch(activeTransferId, key);
       if (typeof window.toast === 'function') {
-        window.toast(String(result.filename || file.filename || 'artifact') + ' file source switched to ' + String(result.source_host || 'source'), 'success');
+        window.toast(t('details.candidate.switched', {filename: String(result.filename || file.filename || t('details.candidate.file_fallback')),
+          source: String(result.source_host || t('details.candidate.source_fallback'))}), 'success');
       }
     } catch (error) {
       switchingRows.delete(key);
       await refreshAfterSwitch(activeTransferId, key).catch(function () {});
       if (typeof window.toast === 'function') {
         window.toast({
-          title: 'Unable to switch source for ' + String(file.filename || 'artifact'),
+          title: t('details.candidate.switch_failed', {filename: String(file.filename || t('details.candidate.file_fallback'))}),
           body: normalizedFailure(error && error.detail, error && error.message)
         }, 'error');
       }
@@ -481,8 +492,17 @@
       modalBody.dataset.dpCandidatePointerGuard = '1';
     }
 
-    document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
-    document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
+    // A list re-rendered only to say the same answer in another language is
+    // no news about the open transfer: Details re-says itself, without a read.
+    // (Window capture: set before any page owner repaints for the change.)
+    let relabeling = false;
+    window.addEventListener('debridpulse:locale-changed', function () {
+      relabeling = true;
+      window.setTimeout(function () { relabeling = false; }, 0);
+    }, true);
+    const onSurfaceRendered = function () { if (!relabeling) queueRefresh(); };
+    document.addEventListener('debridpulse:downloads-rendered', onSurfaceRendered);
+    document.addEventListener('debridpulse:dashboard-recent-rendered', onSurfaceRendered);
     // A semantic change the server published for the open transfer (e.g. a
     // newly committed candidate) re-reads it through the same coalesced,
     // generation-guarded refresh -- whichever page Details was opened from.
@@ -492,7 +512,10 @@
     });
   }
 
-  window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows});
+  // ``latest()``: the newest payload this owner holds for the open transfer
+  // (a refresh may be newer than the one Details was opened with).
+  window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows,
+    latest: function () { return latestDetail; }});
 
   // Candidate styling is loaded through the canonical style.css @import
   // graph, not injected here, so it has one loaded owner.

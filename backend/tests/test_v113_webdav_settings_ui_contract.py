@@ -158,6 +158,9 @@ def test_selectors_share_one_tuning_geometry_that_reads_values_whole():
 def test_the_input_question_names_another_authority_as_text_only():
     modal = _read("ui-auth-required.js")
     assert "const authority = text(active.challenge && active.challenge.authority).trim();" in modal
-    assert "querySelector('[data-dp-auth-authority]').textContent = `Sign in to ${authority}`" in modal
+    from i18n_node import english
+
+    assert "querySelector('[data-dp-auth-authority]').textContent = t('auth_required.sign_in_to', {authority})" in modal
+    assert english("auth_required.sign_in_to") == "Sign in to {authority}"
     # Shown as text, never markup; no protocol or URL logic in the modal.
     assert "${authority}</" not in modal and "dav" not in modal.casefold()

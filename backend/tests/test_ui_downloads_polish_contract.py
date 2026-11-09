@@ -123,14 +123,21 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
     # the sole Downloads controller/renderer owner -- not app.js.
     app = DOWNLOADS_JS.read_text(encoding="utf-8")
     index = (STATIC / "index.html").read_text(encoding="utf-8")
+    from i18n_node import english
+
     required_app = (
-        "download tracked", "downloads tracked", "No downloads yet. Add a link, magnet, or torrent file to get started.",
-        "No downloads match your current filters.", "No downloads match your search.",
-        "Showing all ", "matching downloads", "window.DPPager.render(",
+        "'downloads.tracked.", "'dashboard.activity.empty'", "'downloads.empty.filtered'", "'downloads.empty.search'",
+        "'downloads.summary.search_all'", "window.DPPager.render(",
         "function renderTorrentPagination(", "function setFilter(",
     )
     missing = [fragment for fragment in required_app if fragment not in app]
     assert not missing, f"Downloads direct owner is missing: {missing}"
+    # WS3b: the words are the catalog's, by those keys.
+    assert "download tracked" in english("downloads.tracked.full") and "downloads tracked" in english("downloads.tracked.full")
+    assert english("dashboard.activity.empty") == "No downloads yet. Add a link, magnet, or torrent file to get started."
+    assert english("downloads.empty.filtered") == "No downloads match your current filters."
+    assert english("downloads.empty.search") == "No downloads match your search."
+    assert english("downloads.summary.search_all") == "Showing all {count} matching downloads"
     for fragment in ("card-download.svg?v=11", "On the Books", "Search downloads…", "dp-downloads-table-wrap"):
         assert fragment in index
     # 1.0.14: the header Refresh control is retired (the list refreshes itself).

@@ -37,9 +37,12 @@
   const TRIGGER_ATTR = 'data-dp-group-candidates-trigger';
   const TRIGGER_SELECTOR = '[' + TRIGGER_ATTR + ']';
   const MOUNT_SELECTOR = '[data-dp-group-candidates-mount]';
-  const SWITCH_ACTION = 'Switch to this source';
+  const t = function (key, values) { return window.DPI18n.t(key, values); };
 
   let menuEl = null;
+  // What the open chooser shows, held so a language change re-says it
+  // without a request: {kind: 'loading'|'group'|'artifact'|'progress', ...}.
+  let menuView = null;
   let anchorTrigger = null;       // best-known LIVE DOM node for the open anchor, or null
   let lastValidRect = null;       // last known geometry; survives transient trigger loss
   let menuTransferId = null;
@@ -255,12 +258,10 @@
   function actionLauncherMarkup(transferId, variant, surface, mode, artifactId, count) {
     const total = Math.max(0, Math.round(Number(count) || 0));
     const labeled = variant === 'labeled';
-    const title = mode === 'artifact'
-      ? total + ' sources available for this file'
-      : total + ' sources can converge for remaining files';
-    const ariaLabel = mode === 'artifact'
-      ? 'Choose a source for this file; ' + total + ' sources are available.'
-      : 'Choose a source for remaining files; ' + total + ' sources can converge.';
+    const title = t(mode === 'artifact' ? 'group_candidates.chip.artifact_title' : 'group_candidates.chip.group_title',
+      {count: total});
+    const ariaLabel = t(mode === 'artifact' ? 'group_candidates.chip.artifact_label' : 'group_candidates.chip.group_label',
+      {count: total});
     return '<button type="button" class="dp-candidate-chip dp-group-candidate-launcher" ' +
       TRIGGER_ATTR + ' data-dp-transfer-id="' + esc(String(transferId == null ? '' : transferId)) + '" ' +
       (surface ? 'data-dp-surface="' + esc(surface) + '" ' : '') +
@@ -271,7 +272,7 @@
       'aria-label="' + esc(ariaLabel) + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
-      (labeled ? ' <span>Candidates</span>' : '') +
+      (labeled ? ' <span>' + esc(t('group_candidates.chip.candidates')) + '</span>' : '') +
       '</button>';
   }
 
@@ -280,17 +281,17 @@
     if (!Number.isFinite(count) || count < 2) return '';
     const total = Math.round(count);
     const labeled = variant === 'labeled';
-    const historyTitle = total + ' sources common to every file';
+    const historyTitle = t('group_candidates.chip.history_title', {count: total});
     // No meaningful current candidate-switch action: the common-source count
     // remains useful HISTORY. Render a visually equivalent, non-interactive
     // indicator — not a <button>, no aria-haspopup/aria-expanded, never opens
     // a chooser. common_candidate_count itself is never overwritten.
     return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
       'data-tooltip="' + esc(historyTitle) + '" ' +
-      'aria-label="' + esc(total + ' sources were common to every file') + '">' +
+      'aria-label="' + esc(t('group_candidates.chip.history_label', {count: total})) + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
-      (labeled ? ' <span>Candidates</span>' : '') +
+      (labeled ? ' <span>' + esc(t('group_candidates.chip.candidates')) + '</span>' : '') +
       '</span>';
   }
 
@@ -307,14 +308,14 @@
     const remainingField = item && item.group_remaining_count;
     const hasRemainingWork = remainingField == null || !Number.isFinite(Number(remainingField))
       ? true : Number(remainingField) > 0;
-    const historyTitle = total + ' sources common to every file';
+    const historyTitle = t('group_candidates.chip.history_title', {count: total});
     if (!hasRemainingWork) {
       return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
         'data-tooltip="' + esc(historyTitle) + '" ' +
-        'aria-label="' + esc(total + ' sources were common to every file') + '">' +
+        'aria-label="' + esc(t('group_candidates.chip.history_label', {count: total})) + '">' +
         glyph() +
         '<span class="dp-candidate-chip-count">' + total + '</span>' +
-        (labeled ? ' <span>Candidates</span>' : '') +
+        (labeled ? ' <span>' + esc(t('group_candidates.chip.candidates')) + '</span>' : '') +
         '</span>';
     }
     return '<button type="button" class="dp-candidate-chip dp-group-candidate-launcher" ' +
@@ -322,10 +323,10 @@
       (surface ? 'data-dp-surface="' + esc(surface) + '" ' : '') +
       'aria-haspopup="dialog" aria-expanded="false" ' +
       'data-tooltip="' + esc(historyTitle) + '" ' +
-      'aria-label="' + esc('Choose a source for remaining files; ' + total + ' sources are common to every file.') + '">' +
+      'aria-label="' + esc(t('group_candidates.chip.legacy_label', {count: total})) + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
-      (labeled ? ' <span>Candidates</span>' : '') +
+      (labeled ? ' <span>' + esc(t('group_candidates.chip.candidates')) + '</span>' : '') +
       '</button>';
   }
 
@@ -411,7 +412,7 @@
   function onDetailRendered(event) {
     const transferId = Number(event && event.detail && event.detail.transferId);
     detailTransferId = Number.isFinite(transferId) ? transferId : null;
-    closeMenu();
+    if (!(event && event.detail && event.detail.relabel)) closeMenu();
     renderMount(event && event.detail && event.detail.transfer);
   }
 
@@ -465,11 +466,12 @@
       const active = group.activeHost === host;
       const actionable = group.actionableHosts.indexOf(host) !== -1;
       const action = active
-        ? '<span class="dp-group-candidate-active" aria-label="Active for remaining files">ACTIVE</span>'
+        ? '<span class="dp-group-candidate-active" aria-label="' + esc(t('group_candidates.active_group_label')) + '">' +
+          esc(t('group_candidates.active')) + '</span>'
         : actionable
           ? '<button type="button" class="dp-group-candidate-switch" data-dp-host="' + esc(host) + '"' +
-            (menuBusy ? ' disabled aria-disabled="true"' : '') + '>' + SWITCH_ACTION + '</button>'
-          : '<span class="dp-group-candidate-unavailable">Not switchable for every remaining file</span>';
+            (menuBusy ? ' disabled aria-disabled="true"' : '') + '>' + esc(t('group_candidates.switch')) + '</button>'
+          : '<span class="dp-group-candidate-unavailable">' + esc(t('group_candidates.not_switchable_group')) + '</span>';
       return '<div class="dp-group-candidate-row" role="group" aria-label="' + esc(host) + '">' +
         '<span class="dp-group-candidate-host">' + esc(host) + '</span>' +
         '<span class="dp-group-candidate-action">' + action + '</span></div>';
@@ -484,11 +486,11 @@
   // task) -- do not fork a second implementation.
   function progressMarkup(host, completed, total, title) {
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return '<div class="dp-group-candidate-title">' + esc(title || 'Common sources') + '</div>' +
+    return '<div class="dp-group-candidate-title">' + esc(t(title || 'group_candidates.title_group')) + '</div>' +
       '<div class="dp-group-candidate-progress">' +
-        '<div class="dp-group-candidate-progress-label">Switching to ' + esc(host) + '</div>' +
-        '<div class="dp-group-candidate-progress-count">' + completed + ' of ' + total +
-          ' file' + (total === 1 ? '' : 's') + '</div>' +
+        '<div class="dp-group-candidate-progress-label">' + esc(t('group_candidates.progress.switching', {host: host})) + '</div>' +
+        '<div class="dp-group-candidate-progress-count">' +
+          esc(t('group_candidates.progress.count', {completed: completed, count: total})) + '</div>' +
         '<div class="dp-group-candidate-progress-bar" aria-hidden="true">' +
           '<div class="dp-group-candidate-progress-fill" style="width:' + pct + '%"></div></div>' +
       '</div>';
@@ -502,6 +504,7 @@
   // internal content and repositions relative to the SAME semantic anchor.
   function renderProgress(host, completed, total, title) {
     if (!menuEl || !menuVisible) return;
+    menuView = {kind: 'progress', host: host, completed: completed, total: total, title: title};
     menuEl.setAttribute('aria-busy', 'true');
     menuEl.innerHTML = progressMarkup(host, completed, total, title);
     positionMenu();
@@ -511,15 +514,16 @@
     if (!menuEl) return;
     menuGroup = group;
     if (group.count < 2) { closeMenu(); return; }
+    menuView = {kind: 'group', group: group};
     menuEl.hidden = false;
     menuVisible = true;
     menuEl.removeAttribute('aria-busy');
     const heading = 'dp-group-candidates-heading';
     const note = group.actionParticipants.length
-      ? 'Switches the remaining files in this transfer.'
-      : 'No remaining files can be switched.';
+      ? t('group_candidates.note_group')
+      : t('group_candidates.note_group_none');
     menuEl.innerHTML =
-      '<div class="dp-group-candidate-title" id="' + heading + '">Common sources</div>' +
+      '<div class="dp-group-candidate-title" id="' + heading + '">' + esc(t('group_candidates.title_group')) + '</div>' +
       '<div class="dp-group-candidate-note">' + esc(note) + '</div>' +
       rowMarkup(group);
     menuEl.setAttribute('aria-labelledby', heading);
@@ -619,7 +623,7 @@
         // Never silently morph one semantic operation into another under the
         // operator: close and let them act on the freshly rendered control.
         closeMenu();
-        toast('Candidate options changed.', 'info');
+        toast(t('group_candidates.options_changed'), 'info');
         return;
       }
       anchorTrigger = resolved;
@@ -652,6 +656,30 @@
     if (!container) return;
     if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
     container.focus({preventScroll: true});
+  }
+
+  function paintLoading() {
+    menuView = {kind: 'loading'};
+    menuEl.innerHTML = '<div class="dp-group-candidate-note">' + esc(t('group_candidates.loading')) + '</div>';
+  }
+
+  // A language change re-says the open chooser from what it holds (no
+  // request): the same row's control keeps focus. A Details repaint for the
+  // same reason (``relabel``) keeps it open and re-anchors it.
+  function onLocaleChanged() {
+    const view = menuView;
+    if (!menuEl || !menuVisible || !view) return;
+    const active = menuEl.contains(document.activeElement) ? document.activeElement : null;
+    const host = active && active.getAttribute('data-dp-host');
+    const candidate = active && active.getAttribute('data-dp-candidate-id');
+    if (view.kind === 'group') renderMenu(view.group);
+    else if (view.kind === 'artifact') renderArtifactMenu(view.file);
+    else if (view.kind === 'progress') renderProgress(view.host, view.completed, view.total, view.title);
+    else paintLoading();
+    if (!active) return;
+    const again = (host && menuEl.querySelector('[data-dp-host="' + CSS.escape(host) + '"]')) ||
+      (candidate && menuEl.querySelector('[data-dp-candidate-id="' + CSS.escape(candidate) + '"]'));
+    (again || menuEl).focus({preventScroll: true});
   }
 
   function ensureMenu() {
@@ -731,6 +759,7 @@
     lastValidRect = null;
     menuVisible = false;
     menuGroup = null;
+    menuView = null;
     menuSession += 1;
     if (!menuBusy) {
       menuTransferId = null;
@@ -781,7 +810,7 @@
     const session = menuSession;
     if (anchorTrigger) anchorTrigger.setAttribute('aria-expanded', 'true');
     menuEl.hidden = false;
-    menuEl.innerHTML = '<div class="dp-group-candidate-note">Loading sources…</div>';
+    paintLoading();
     positionMenu();
     try {
       const transfer = await fetchTransfer(menuTransferId);
@@ -790,7 +819,7 @@
         const fresh = classifyFreshScope(transfer);
         if (fresh.scope !== 'group') {
           closeMenu();
-          toast('Candidate options changed.', 'info');
+          toast(t('group_candidates.options_changed'), 'info');
           await refreshSurfaces();
           return;
         }
@@ -803,7 +832,7 @@
     } catch (_) {
       if (menuSession !== session) return;
       closeMenu({focusTrigger: true});
-      toast('Common sources are unavailable right now.', 'error');
+      toast(t('group_candidates.unavailable_group'), 'error');
     }
   }
 
@@ -822,12 +851,13 @@
     return candidates.map(function (candidate) {
       const active = Boolean(candidate && candidate.is_selected);
       const action = active
-        ? '<span class="dp-group-candidate-active" aria-label="Active source">ACTIVE</span>'
+        ? '<span class="dp-group-candidate-active" aria-label="' + esc(t('group_candidates.active_source_label')) + '">' +
+          esc(t('group_candidates.active')) + '</span>'
         : (candidate && candidate.switch_eligible)
           ? '<button type="button" class="dp-group-candidate-switch" data-dp-candidate-id="' + esc(candidate.candidate_id) + '"' +
-            (menuBusy ? ' disabled aria-disabled="true"' : '') + '>' + SWITCH_ACTION + '</button>'
-          : '<span class="dp-group-candidate-unavailable">Not currently switchable</span>';
-      const label = String((candidate && candidate.source_label) || 'Source');
+            (menuBusy ? ' disabled aria-disabled="true"' : '') + '>' + esc(t('group_candidates.switch')) + '</button>'
+          : '<span class="dp-group-candidate-unavailable">' + esc(t('group_candidates.not_switchable')) + '</span>';
+      const label = String((candidate && candidate.source_label) || t('group_candidates.source'));
       return '<div class="dp-group-candidate-row" role="group" aria-label="' + esc(label) + '">' +
         '<span class="dp-group-candidate-host">' + esc(label) + '</span>' +
         '<span class="dp-group-candidate-action">' + action + '</span></div>';
@@ -837,13 +867,14 @@
   function renderArtifactMenu(file) {
     if (!menuEl) return;
     menuArtifactFile = file;
+    menuView = {kind: 'artifact', file: file};
     menuEl.hidden = false;
     menuVisible = true;
     menuEl.removeAttribute('aria-busy');
     const heading = 'dp-group-candidates-heading';
     menuEl.innerHTML =
-      '<div class="dp-group-candidate-title" id="' + heading + '">Candidate sources</div>' +
-      '<div class="dp-group-candidate-note">Switches the source for this file.</div>' +
+      '<div class="dp-group-candidate-title" id="' + heading + '">' + esc(t('group_candidates.title_artifact')) + '</div>' +
+      '<div class="dp-group-candidate-note">' + esc(t('group_candidates.note_artifact')) + '</div>' +
       artifactRowMarkup(file);
     menuEl.setAttribute('aria-labelledby', heading);
     positionMenu();
@@ -877,7 +908,7 @@
     const session = menuSession;
     if (anchorTrigger) anchorTrigger.setAttribute('aria-expanded', 'true');
     menuEl.hidden = false;
-    menuEl.innerHTML = '<div class="dp-group-candidate-note">Loading sources…</div>';
+    paintLoading();
     positionMenu();
     try {
       const transfer = await fetchTransfer(menuTransferId);
@@ -885,7 +916,7 @@
       const fresh = classifyFreshScope(transfer);
       if (fresh.scope !== 'artifact' || fresh.artifactId !== menuArtifactId) {
         closeMenu();
-        toast('Candidate options changed.', 'info');
+        toast(t('group_candidates.options_changed'), 'info');
         await refreshSurfaces();
         return;
       }
@@ -893,7 +924,7 @@
         .find(function (item) { return Number(item.id) === menuArtifactId; });
       if (!file) {
         closeMenu();
-        toast('Candidate options changed.', 'info');
+        toast(t('group_candidates.options_changed'), 'info');
         await refreshSurfaces();
         return;
       }
@@ -904,7 +935,7 @@
     } catch (_) {
       if (menuSession !== session) return;
       closeMenu({focusTrigger: true});
-      toast('Candidate sources are unavailable right now.', 'error');
+      toast(t('group_candidates.unavailable_artifact'), 'error');
     }
   }
 
@@ -923,7 +954,7 @@
       transfer = await fetchTransfer(transferId);
     } catch (_) {
       menuBusy = false;
-      toast('Could not re-check the transfer. Nothing was changed.', 'error');
+      toast(t('group_candidates.recheck_failed'), 'error');
       await refreshSurfaces();
       if (menuSession === session) closeMenu();
       return;
@@ -937,7 +968,7 @@
       menuBusy = false;
       if (menuSession === session) { menuArtifactFile = file || null; renderArtifactMenu(file || {acquisition_candidates: []}); }
       await refreshSurfaces();
-      toast('That source is no longer switchable for this file.', 'error');
+      toast(t('group_candidates.no_longer_switchable'), 'error');
       return;
     }
 
@@ -945,8 +976,8 @@
     // (Section 8.1): a one-item operation, not a second overlay/subsystem.
     // The label is the already-projected safe source label artifact mode
     // already renders (artifactRowMarkup) -- never a raw URL/candidate key.
-    const label = String((candidate && candidate.source_label) || 'source');
-    if (menuSession === session) renderProgress(label, 0, 1, 'Candidate sources');
+    const label = String((candidate && candidate.source_label) || t('group_candidates.source_lower'));
+    if (menuSession === session) renderProgress(label, 0, 1, 'group_candidates.title_artifact');
 
     try {
       const result = await switchArtifact(transferId, artifactId, candidateId, file.filename, label);
@@ -962,7 +993,7 @@
       // has already transferred bytes, so this progress step still only
       // reports the operator-requested mutation, never a fabricated
       // ACTIVE/Downloading transfer-lifecycle state.
-      if (menuSession === session) renderProgress(label, 1, 1, 'Candidate sources');
+      if (menuSession === session) renderProgress(label, 1, 1, 'group_candidates.title_artifact');
       menuBusy = false;
       await refreshSurfaces();
       if (menuSession === session && menuVisible) {
@@ -975,14 +1006,15 @@
         if (freshFile && isMovableFile(freshFile)) renderArtifactMenu(freshFile);
         else closeMenu();
       }
-      toast(String(result.filename || file.filename || 'artifact') + ' file source switched to ' + String(result.source_host || 'source'), 'success');
+      toast(t('group_candidates.artifact_switched', {file: String(result.filename || file.filename || t('group_candidates.artifact')),
+        host: String(result.source_host || t('group_candidates.source_lower'))}), 'success');
     } catch (error) {
       menuBusy = false;
       await refreshSurfaces();
       if (menuSession === session) closeMenu();
       toast({
-        title: 'Unable to switch source for ' + String(file.filename || 'artifact'),
-        body: String((error && error.message) || 'The selected candidate could not be established.'),
+        title: t('group_candidates.artifact_failed', {file: String(file.filename || t('group_candidates.artifact'))}),
+        body: String((error && error.message) || t('group_candidates.artifact_failed_body')),
       }, 'error');
     }
   }
@@ -1001,7 +1033,7 @@
     const message = (detail && typeof detail === 'object')
       ? (detail.message || String(detail.category || '').replace(/_/g, ' ').toLowerCase())
       : detail;
-    const error = new Error(String(message || response.statusText || 'switch failed'));
+    const error = new Error(String(message || response.statusText || t('group_candidates.switch_failed')));
     error.detail = detail;
     return error;
   }
@@ -1057,27 +1089,33 @@
   function confirmDiscard(consequences, target) {
     if (!window.DPSettingsModal) return Promise.resolve(false);
     const total = consequences.reduce(function (sum, item) { return sum + Number(item.discarded_bytes || 0); }, 0);
+    // One whole message per case: the dialog owner re-says it in the page's
+    // language while it stays open (sizes are formatted once, on open).
     let message;
     if (consequences.length === 1) {
       const only = consequences[0];
-      message = 'This source cannot reuse ' + bytes(only.discarded_bytes) + ' of verified material already ' +
-        'downloaded for ' + String(only.filename || 'this file') + '; that part is downloaded again from ' + target +
-        '.' + (Number(only.retained_bytes) > 0 ? ' ' + bytes(only.retained_bytes) + ' of verified material is kept.' : '') +
-        (Number(only.abandoned_bytes) > 0 ? ' The current source\'s unverified reconstruction (' +
-          bytes(only.abandoned_bytes) + ') is abandoned.' : '');
+      message = {key: 'group_candidates.discard.one', values: {
+        discarded: bytes(only.discarded_bytes), file: String(only.filename || t('group_candidates.this_file')), target: target,
+        kept: Number(only.retained_bytes) > 0 ? 'yes' : 'no', retained: bytes(only.retained_bytes),
+        abandon: Number(only.abandoned_bytes) > 0 ? 'yes' : 'no', abandoned: bytes(only.abandoned_bytes)}};
     } else {
       const listed = consequences.slice(0, 5).map(function (item) {
-        return String(item.filename || 'file') + ' (' + bytes(item.discarded_bytes) + ')';
+        return t('group_candidates.discard.item', {file: String(item.filename || t('group_candidates.file')),
+          size: bytes(item.discarded_bytes)});
       });
-      if (consequences.length > listed.length) listed.push('and ' + (consequences.length - listed.length) + ' more');
-      message = 'Switching to ' + target + ' cannot reuse ' + bytes(total) + ' of verified material across ' +
-        consequences.length + ' files: ' + listed.join(', ') + '. That part is downloaded again from ' + target + '.';
+      message = {key: 'group_candidates.discard.many', values: {target: target, total: bytes(total),
+        count: consequences.length, listed: listed.join(', '), more: consequences.length - listed.length}};
     }
+    const one = consequences.length === 1;
+    const keys = {title: 'group_candidates.discard.title', message: message.key, messageValues: message.values,
+      accept: one ? 'group_candidates.discard.accept_one' : 'group_candidates.discard.accept_many',
+      cancel: one ? 'group_candidates.discard.cancel_one' : 'group_candidates.discard.cancel_many'};
     return window.DPSettingsModal.confirm({
-      title: 'Discard downloaded progress?',
-      message: message + ' Cancel switches nothing; confirming applies only to this switch.',
-      confirmLabel: consequences.length === 1 ? 'Switch Source' : 'Switch Sources',
-      cancelLabel: consequences.length === 1 ? 'Keep Current Source' : 'Keep Current Sources',
+      title: t(keys.title),
+      message: t(keys.message, keys.messageValues),
+      confirmLabel: t(keys.accept),
+      cancelLabel: t(keys.cancel),
+      keys: keys,
     });
   }
 
@@ -1093,7 +1131,7 @@
       const confirmed = await confirmDiscard([{
         filename: filename, discarded_bytes: detail.discarded_bytes, retained_bytes: detail.retained_bytes,
         abandoned_bytes: detail.abandoned_bytes,
-      }], target || 'this source');
+      }], target || t('group_candidates.this_source'));
       if (!confirmed) return null;
       return switchOne(transferId, artifactId, candidateId, detail);
     }
@@ -1120,7 +1158,7 @@
       transfer = await fetchTransfer(transferId);
     } catch (_) {
       menuBusy = false;
-      toast('Could not re-check the transfer. Nothing was changed.', 'error');
+      toast(t('group_candidates.recheck_failed'), 'error');
       await refreshSurfaces();
       if (menuSession === session) closeMenu();
       return;
@@ -1136,14 +1174,14 @@
       menuBusy = false;
       if (menuSession === session) renderMenu(group);
       await refreshSurfaces();
-      toast(host + ' is no longer common to the entire transfer.', 'error');
+      toast(t('group_candidates.no_longer_common', {host: host}), 'error');
       return;
     }
     if (group.actionableHosts.indexOf(host) === -1) {
       menuBusy = false;
       if (menuSession === session) renderMenu(group);
       await refreshSurfaces();
-      toast(host + ' is currently not switchable for every remaining file.', 'error');
+      toast(t('group_candidates.not_switchable_now', {host: host}), 'error');
       return;
     }
     const targets = group.targetsByHost[host];
@@ -1171,7 +1209,7 @@
         menuBusy = false;
         if (menuSession === session && menuGroup) renderMenu(menuGroup);
         await refreshSurfaces();
-        toast('Could not check what switching to ' + host + ' keeps. Nothing was changed.', 'error');
+        toast(t('group_candidates.preview_failed', {host: host}), 'error');
         return;
       }
     }
@@ -1226,14 +1264,14 @@
     if (failure) {
       // Non-transactional: whatever already switched stays switched.
       toast({
-        title: 'Group did not fully converge on ' + host,
-        body: switched + ' of ' + moves.length + ' file' + (moves.length === 1 ? '' : 's') +
-          ' switched — convergence incomplete: ' + (failure.message || 'a file could not switch') + '.',
+        title: t('group_candidates.partial_title', {host: host}),
+        body: t('group_candidates.partial_body', {switched: switched, count: moves.length,
+          reason: failure.message || t('group_candidates.partial_reason')}),
       }, 'error');
     } else if (alreadyOn) {
-      toast('Remaining files are already on ' + host + '.', 'info');
+      toast(t('group_candidates.already_on', {host: host}), 'info');
     } else {
-      toast('Remaining files switched to ' + host + '.', 'success');
+      toast(t('group_candidates.switched', {host: host}), 'success');
     }
   }
 
@@ -1272,6 +1310,7 @@
     document.addEventListener('debridpulse:detail-rendered', onDetailRendered);
     document.addEventListener('debridpulse:detail-closed', onDetailClosed);
     document.addEventListener('debridpulse:transfer-updated', onTransferUpdated);
+    document.addEventListener('debridpulse:locale-changed', onLocaleChanged);
     // Deferred to a microtask defensively: Downloads and Dashboard Recent
     // both render the group launcher inline, in the same pass as the rest
     // of the row, before this event fires -- but a microtask still runs

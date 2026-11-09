@@ -50,7 +50,9 @@ def test_details_files_rows_have_exactly_one_renderer():
     assert "<tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles, t)}</tbody>" in app
     assert "t.files.map(" not in app
     assert "t.file_presentations.map(" not in app
-    assert "window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows});" in owner
+    # WS3b: it also hands Details its newest payload, so a language change re-says it without a read.
+    assert ("window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows,\n"
+            "    latest: function () { return latestDetail; }});") in owner
     # The owner does not re-fetch or re-render what app.js just rendered from
     # the same payload; it only binds its own disclosures.
     handler = owner.split("function onDetailRendered(event) {", 1)[1].split("function onDetailClosed()", 1)[0]

@@ -148,9 +148,12 @@ def test_a_mixed_or_unknown_upload_gets_a_truthful_neutral_label():
 
 def test_both_surfaces_use_the_one_formatter_with_the_canonical_fact():
     # Details renders each reading through its one cell helper (1.0.13 ``ebdcb8f5``).
-    details = APP_JS[APP_JS.index("cell('Submitted As',"):]
+    from i18n_node import english
+
+    details = APP_JS[APP_JS.index("cell('submitted_as',"):]
     details = details[:details.index("\n")]
     assert "sourceLabel(t.source, t.request_kinds)" in details
+    assert english("details.field.submitted_as") == "Submitted As"         # the cell's label, by key (WS3b)
     # 1.0.14 unified table: the Downloads list no longer repeats the source
     # description beneath its provider (the operator retired that caption);
     # it says it nowhere else either -- Details, opened from the row, is

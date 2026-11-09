@@ -130,5 +130,10 @@ def test_the_classifier_waits_only_where_a_file_list_always_comes():
 def test_the_waiting_message_names_no_resource_type():
     source = (ROOT / "frontend" / "static" / "ui-file-selection.js").read_text()
     message = source.split("function openPendingManifestModal()", 1)[1].split("\n  }\n", 1)[0]
-    assert "torrent" not in message.lower()
-    assert "DebridPulse is still waiting for the file list for this download." in message
+    from i18n_node import english
+
+    # WS3b: the message is the catalog's, by key.
+    assert "'file_selection.pending_message'" in message
+    words = english("file_selection.pending_message")
+    assert "torrent" not in message.lower() and "torrent" not in words.lower()
+    assert words.startswith("DebridPulse is still waiting for the file list for this download.")

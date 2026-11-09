@@ -187,22 +187,22 @@ WS3A_OWNERS = ("operator-title.js", "ui-statistics.js", "ui-activity-log-runtime
                "ui-storage-health.js", "ui-pager.js", "ui-search.js", "ui-toast-contract.js", "ui-tooltip.js",
                "ui-accessibility-runtime.js", "ui-theme-picker.js", "ui-theme-bootstrap.js",
                "ui-transfer-source-presentation.js", "ui-i18n.js", "auth.js")
+# WS3b: the download operations -- Downloads, Details, file selection,
+# provider and source switching, authentication prompts, the folder picker.
+# app.js is whole from WS3b on (its Details, route history and upload owners).
+WS3B_OWNERS = ("app.js", "ui-downloads.js", "ui-detail-candidates.js", "ui-file-selection.js", "ui-root-provider.js",
+               "ui-group-candidates.js", "ui-auth-required.js", "ui-settings-directory-picker.js", "ui-settings-modal.js")
 
 
-def test_the_ws3a_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
+def test_the_ws3a_and_ws3b_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
     import inventory
 
     data = inventory.census()
     left = [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]
-            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS]
+            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS + WS3B_OWNERS]
     assert left == []
-    index = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8").splitlines()
-    downloads = next(i for i, line in enumerate(index, 1) if '<div class="view" id="view-torrents">' in line)
-    events = next(i for i, line in enumerate(index, 1) if '<div class="view" id="view-events"' in line)
-    modal = next(i for i, line in enumerate(index, 1) if '<div id="modal" class="dp-card dp-detail-modal"' in line)
-    shell = [(entry["line"], entry["english"]) for entry in data["entries"] if entry["owner"].endswith("index.html")
-             and not (downloads <= entry["line"] < events - 1 or entry["line"] >= modal)]
-    assert shell == []
+    # index.html is whole: its shell and pages (WS3a) and Downloads and the dialogs (WS3b).
+    assert [(entry["line"], entry["english"]) for entry in data["entries"] if entry["owner"].endswith("index.html")] == []
     # Every exemption names its reason, and still matches something (no stale entry).
     reviewed = json.loads((ROOT / ".github" / "localization" / "nonlocalizable.json").read_text(encoding="utf-8"))["exempt"]
     assert all(item["reason"].strip() for item in reviewed)

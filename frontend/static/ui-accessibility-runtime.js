@@ -759,7 +759,10 @@
       installFilterSemantics();
       installTabSemantics();
       installDashboardErrorCardSemantics();
-      installModalCloseSemantics();
+      // The shared dialog's close control is Details' only while Details holds it
+      // (another owner names it for its own mode, and says it again itself).
+      const mode = document.getElementById('overlay')?.dataset.dpModalMode;
+      if (!mode || mode === 'details') installModalCloseSemantics();
       document.querySelectorAll('select[data-dp-dropdown-enhanced="1"]').forEach(syncProjectedSelect);
     });
     // A filter, a Help tab, or a period chosen from the handheld Statistics

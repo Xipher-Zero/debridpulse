@@ -40,6 +40,14 @@
 
   const text = value => String(value == null ? '' : value);
   const lower = value => text(value).trim().toLowerCase();
+  // Words are the catalog's (auth_required.*). Markup carries its keys, so a
+  // language change re-words the open dialog in place (ui-i18n.js render):
+  // nothing is rebuilt, and typed values and focus stay.
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const keyed = key => `data-i18n="${key}">${escapeText(t(key))}`;
+  function escapeText(value) {
+    return text(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
   function request(method, path, body, timeout) {
     if (typeof window.api !== 'function') {
@@ -133,11 +141,14 @@
     else active.password = secret ? secret.value : active.password;
   }
 
-  function setInlineError(message, kind = 'error') {
+  // ``key``: the message's catalog key ('' for none); kept, so a language
+  // change says it again.
+  function setInlineError(key, kind = 'error') {
+    state.errorKey = key || '';
     const error = state.overlay && state.overlay.querySelector('[data-dp-auth-error]');
     if (!error) return;
-    error.textContent = text(message);
-    error.hidden = !message;
+    error.textContent = key ? t(key) : '';
+    error.hidden = !key;
     error.dataset.tone = kind === 'info' ? 'info' : 'error';
   }
 
@@ -153,9 +164,9 @@
     const continueButton = state.overlay.querySelector('[data-dp-auth-continue]');
     if (continueButton) {
       const identity = !!(state.active && identityChallenge(state.active.challenge));
-      continueButton.textContent = state.busy
-        ? (identity ? 'Verifying…' : 'Authenticating…')
-        : (identity ? 'Verify & Continue' : 'Continue');
+      continueButton.textContent = t(state.busy
+        ? (identity ? 'auth_required.verifying' : 'auth_required.authenticating')
+        : (identity ? 'auth_required.verify_continue' : 'auth_required.continue'));
     }
   }
 
@@ -176,7 +187,7 @@
   }
 
   function selectedKeyLabel(active) {
-    return active.keySelected ? 'Key supplied · Replace key' : 'Select Keyfile';
+    return t(active.keySelected ? 'auth_required.key_replace' : 'auth_required.key_select');
   }
 
   function renderActive({focus = true, capture = true} = {}) {
@@ -186,7 +197,7 @@
 
     active.mode = chooseMode(active);
     const allowed = allowedModes(active.challenge);
-    const secretLabel = active.mode === 'key' ? 'Passphrase' : 'Password';
+    const secretLabel = t(active.mode === 'key' ? 'auth_required.passphrase' : 'auth_required.password');
     const secretValue = active.mode === 'key' ? active.passphrase : active.password;
     const secretRequired = active.mode === 'password'
       ? fieldRequired(active.challenge, METHOD_PASSWORD, 'password')
@@ -230,7 +241,7 @@
                aria-labelledby="dp-auth-required-title"
                aria-describedby="${authority ? 'dp-auth-required-authority ' : ''}${identity ? 'dp-auth-required-identity-note ' : ''}dp-auth-required-error">
         <header class="dp-modal-header dp-auth-required-header">
-          <div class="dp-modal-title" id="dp-auth-required-title">${identity ? 'Verify Server Identity' : 'Authentication Required'}</div>
+          <div class="dp-modal-title" id="dp-auth-required-title" ${keyed(identity ? 'auth_required.title_identity' : 'auth_required.title')}</div>
         </header>
         <div class="dp-modal-body dp-auth-required-body">
           ${authority ? `
@@ -240,17 +251,17 @@
               <div class="dp-auth-required-identity-server" data-dp-identity-host></div>
               <div class="form-label" data-dp-identity-algorithm></div>
               <code class="dp-auth-required-fingerprint" data-dp-identity-fingerprint></code>
-              <p class="dp-auth-required-identity-note" id="dp-auth-required-identity-note">Compare this fingerprint with the server's expected identity before continuing.</p>
+              <p class="dp-auth-required-identity-note" id="dp-auth-required-identity-note" ${keyed('auth_required.identity_note')}</p>
             </div>` : ''}
           ${active.mode === 'identity' ? `
-            <p class="dp-auth-required-identity-note" data-dp-auth-credentials-held>Credentials for this server were already supplied.</p>` : `
+            <p class="dp-auth-required-identity-note" data-dp-auth-credentials-held ${keyed('auth_required.credentials_held')}</p>` : `
           <label class="dp-auth-required-field">
-            <span class="form-label">Username</span>
+            <span class="form-label" ${keyed('auth_required.username')}</span>
             <input class="input" type="text" autocomplete="off" spellcheck="false"
                    data-dp-auth-username>
           </label>
           <label class="dp-auth-required-field">
-            <span class="form-label" data-dp-auth-secret-label>${secretLabel}</span>
+            <span class="form-label" data-dp-auth-secret-label>${escapeText(secretLabel)}</span>
             <input class="input" type="password" autocomplete="off"
                    ${secretRequired ? 'required' : ''}
                    data-dp-auth-secret>
@@ -259,28 +270,28 @@
                data-dp-auth-error role="status" aria-live="polite" hidden></div>
         </div>
         <footer class="dp-modal-footer dp-auth-required-footer">
-          ${window.debridPulseAuth?.mayDestroy(active) === true ? '<button class="btn btn-ghost" type="button" data-dp-auth-cancel>Cancel</button>' : ''}
+          ${window.debridPulseAuth?.mayDestroy(active) === true ? `<button class="btn btn-ghost" type="button" data-dp-auth-cancel ${keyed('common.cancel')}</button>` : ''}
           ${showKey ? `
             <button class="btn btn-ghost dp-auth-required-key${active.keySelected ? ' is-selected' : ''}"
                     type="button" data-dp-auth-key
                     aria-pressed="${active.keySelected ? 'true' : 'false'}">
-              ${selectedKeyLabel(active)}
+              ${escapeText(selectedKeyLabel(active))}
             </button>` : ''}
-          <button class="btn btn-primary" type="button" data-dp-auth-continue>${identity ? 'Verify &amp; Continue' : 'Continue'}</button>
+          <button class="btn btn-primary" type="button" data-dp-auth-continue>${escapeText(t(identity ? 'auth_required.verify_continue' : 'auth_required.continue'))}</button>
         </footer>
         ${showKey ? '<input type="file" data-dp-auth-key-input hidden>' : ''}
       </section>`;
 
     const username = overlay.querySelector('[data-dp-auth-username]');
     const secret = overlay.querySelector('[data-dp-auth-secret]');
-    if (authority) overlay.querySelector('[data-dp-auth-authority]').textContent = `Sign in to ${authority}`;
+    if (authority) overlay.querySelector('[data-dp-auth-authority]').textContent = t('auth_required.sign_in_to', {authority});
     if (username) username.value = active.username || '';
     if (secret) secret.value = secretValue || '';
     if (identity) {
       // Challenge facts are server-supplied text: assigned, never parsed as markup.
       overlay.querySelector('[data-dp-identity-host]').textContent = challengeFact(active.challenge, FACT_SERVER);
       overlay.querySelector('[data-dp-identity-algorithm]').textContent =
-        `${challengeFact(active.challenge, FACT_ALGORITHM).toUpperCase()} fingerprint`;
+        t('auth_required.fingerprint_of', {algorithm: challengeFact(active.challenge, FACT_ALGORITHM).toUpperCase()});
       overlay.querySelector('[data-dp-identity-fingerprint]').textContent = challengeFact(active.challenge, FACT_FINGERPRINT);
     }
 
@@ -341,11 +352,11 @@
     if (active.mode === 'password') {
       snapshotFields();
       if (!text(active.username).trim()) {
-        setInlineError('Username is required.');
+        setInlineError('auth_required.error.username_required');
         return;
       }
       if (!active.password) {
-        setInlineError('Password is required.');
+        setInlineError('auth_required.error.password_required');
         return;
       }
     }
@@ -435,12 +446,12 @@
       }
       setInlineError(
         error && error.message === 'empty'
-          ? 'The selected key is empty.'
+          ? 'auth_required.error.key_empty'
           : error && error.message === 'large'
-            ? 'The selected key is too large.'
+            ? 'auth_required.error.key_too_large'
             : error && error.message === 'invalid'
-              ? 'The selected key is not valid.'
-              : 'The selected key could not be read.'
+              ? 'auth_required.error.key_invalid'
+              : 'auth_required.error.key_unreadable'
       );
       if (previous) {
         active.keyMaterial = previous;
@@ -454,19 +465,19 @@
   function validationError(active) {
     snapshotFields();
     if (active.mode === 'identity') {
-      return methodAdvertised(active.challenge, METHOD_IDENTITY) ? '' : 'Identity confirmation is no longer available.';
+      return methodAdvertised(active.challenge, METHOD_IDENTITY) ? '' : 'auth_required.error.identity_unavailable';
     }
     const username = text(active.username).trim();
     if (fieldRequired(active.challenge, active.mode === 'key' ? METHOD_PRIVATE_KEY : METHOD_PASSWORD, 'username') && !username) {
-      return 'Username is required.';
+      return 'auth_required.error.username_required';
     }
     if (active.mode === 'key') {
-      if (!active.keySelected || !active.keyMaterial) return 'Select a private key before continuing.';
-      if (!methodAdvertised(active.challenge, METHOD_PRIVATE_KEY)) return 'Private-key authentication is no longer available.';
+      if (!active.keySelected || !active.keyMaterial) return 'auth_required.error.key_missing';
+      if (!methodAdvertised(active.challenge, METHOD_PRIVATE_KEY)) return 'auth_required.error.key_unavailable';
       return '';
     }
-    if (!methodAdvertised(active.challenge, METHOD_PASSWORD)) return 'Password authentication is no longer available.';
-    if (fieldRequired(active.challenge, METHOD_PASSWORD, 'password') && !active.password) return 'Password is required.';
+    if (!methodAdvertised(active.challenge, METHOD_PASSWORD)) return 'auth_required.error.password_unavailable';
+    if (fieldRequired(active.challenge, METHOD_PASSWORD, 'password') && !active.password) return 'auth_required.error.password_required';
     return '';
   }
 
@@ -505,7 +516,7 @@
       clearPayload(payload);
       if (state.session !== session || !state.active) return;
       setBusy(false);
-      setInlineError('Authentication failed. Check your credentials and try again.');
+      setInlineError('auth_required.error.failed');
       scheduleScan(0);
     }
   }
@@ -572,8 +583,8 @@
     renderActive({focus: false, capture: false});
     setInlineError(
       remoteRejected
-        ? 'Authentication failed. Check your credentials and try again.'
-        : 'Authentication requirements changed. Review the available method and try again.',
+        ? 'auth_required.error.failed'
+        : 'auth_required.error.requirements_changed',
       remoteRejected ? 'error' : 'info'
     );
   }
@@ -594,7 +605,7 @@
       if (state.session !== session || !state.active) return;
       state.cancelling = false;
       setBusy(false);
-      setInlineError('The authentication request could not be cancelled. Try again.');
+      setInlineError('auth_required.error.cancel_failed');
     }
   }
 
@@ -692,6 +703,26 @@
       scanNow();
     }, delay);
   }
+
+  // A language change: the open dialog's keyed words are re-rendered in place
+  // (ui-i18n.js); the words that follow its state are said again here. Typed
+  // values, focus, the busy state and the answer in flight are untouched.
+  document.addEventListener('debridpulse:locale-changed', () => {
+    const active = state.active, overlay = state.overlay;
+    if (!active || !overlay) return;
+    const secretLabel = overlay.querySelector('[data-dp-auth-secret-label]');
+    if (secretLabel) secretLabel.textContent = t(active.mode === 'key' ? 'auth_required.passphrase' : 'auth_required.password');
+    const keyButton = overlay.querySelector('[data-dp-auth-key]');
+    if (keyButton) keyButton.textContent = selectedKeyLabel(active);
+    const authority = text(active.challenge && active.challenge.authority).trim();
+    const authorityNode = overlay.querySelector('[data-dp-auth-authority]');
+    if (authority && authorityNode) authorityNode.textContent = t('auth_required.sign_in_to', {authority});
+    const algorithm = overlay.querySelector('[data-dp-identity-algorithm]');
+    if (algorithm) algorithm.textContent = t('auth_required.fingerprint_of', {algorithm: challengeFact(active.challenge, FACT_ALGORITHM).toUpperCase()});
+    const error = overlay.querySelector('[data-dp-auth-error]');
+    if (error && state.errorKey) error.textContent = t(state.errorKey);
+    setBusy(state.busy || state.cancelling);
+  });
 
   function bootstrap() {
     // Answering a challenge is an operation; a caller without it is never asked.

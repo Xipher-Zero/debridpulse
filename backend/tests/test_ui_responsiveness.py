@@ -33,10 +33,13 @@ def test_async_controls_acknowledge_clicks_immediately():
 
     # Pause/Resume are shared with Dashboard Recent and stay in app.js;
     # Retry/Delete are Downloads-only and live in ui-downloads.js.
-    for label in ("Pausing…", "Resuming…"):
-        assert label in js
-    for label in ("Retrying…", "Deleting…"):
-        assert label in downloads_js
+    from i18n_node import english
+
+    # WS3b: each pending label is a catalog key the shared pending owner says.
+    for key, label in (("processing.pausing", "Pausing…"), ("processing.resuming", "Resuming…")):
+        assert f"setButtonPending(button, true, '{key}')" in js and english(key) == label
+    for key, label in (("details.route.retrying", "Retrying…"), ("downloads.action.deleting", "Deleting…")):
+        assert f"setButtonPending(button, true, '{key}')" in downloads_js and english(key) == label
 
     assert ':is(.dp-btn, .btn):not(:disabled):active' in css
     assert 'aria-busy' in js
@@ -64,7 +67,9 @@ def test_detail_modal_opens_before_detail_request_finishes():
         "function requestModalClose"
     )
 
-    assert "Loading transfer details…" in detail
+    from i18n_node import english
+
+    assert "DPI18n.t('details.loading')" in detail and english("details.loading") == "Loading transfer details…"
 
 
 def test_settings_put_response_is_reused_without_followup_get():

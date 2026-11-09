@@ -45,9 +45,13 @@ def test_downloads_rows_emit_final_status_and_action_language() -> None:
     downloads = read("ui-downloads.js")
     transfer = read("ui-transfer-contract.css")
     desktop = read("ui-downloads-page.css")
+    from i18n_node import english
+
+    # WS3b: each action's idle label is its catalog key, said in the page's language.
+    for action, word in (("pause", "Pause"), ("resume", "Resume"), ("remove", "Remove"), ("retry", "Retry")):
+        assert f"data-default-label=\"${{T('transfer.action.{action}')}}\"" in downloads
+        assert english(f"transfer.action.{action}") == word
     for fragment in (
-        'data-default-label="Pause"', 'data-default-label="Resume"',
-        'data-default-label="Remove"', 'data-default-label="Retry"',
         "pauseT(${t.id},this)", "resumeT(${t.id},this)",
         "deleteT(${t.id},event,this)", "retryT(${t.id},this)",
     ):
@@ -85,7 +89,13 @@ def test_downloads_footer_language_tracks_selected_filter() -> None:
         "No Downloads Completed Yet", "1 Download Completed", "Downloads Completed",
         "No Downloads Have Errors", "1 Download Has Errors", "Downloads Have Errors",
     )
-    missing = [fragment for fragment in matrix if fragment not in app]
+    from i18n_node import english
+
+    # WS3b: one plural message per filter (its zero form included), said by key.
+    assert "const key = `downloads.summary.${status}`;" in app
+    said = " ".join(english(f"downloads.summary.{status}")
+                    for status in ("all", "downloading", "paused", "processing", "ready", "completed", "error"))
+    missing = [fragment for fragment in matrix if fragment.replace("1 ", "{count} ", 1) not in said]
     assert not missing, f"filter footer language is missing: {missing}"
     assert "downloadPaginationSummary(n, from, to)" in app
 

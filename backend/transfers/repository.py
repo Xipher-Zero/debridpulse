@@ -215,6 +215,15 @@ _RUNTIME_TOTAL_STATES = frozenset({
 _FAILED_CANDIDATE_OUTCOMES = frozenset({"failed", "error", "rejected", "absent"})
 
 
+def _source_kind(scope, key) -> str:
+    """What ``_safe_source_label`` names: a host, a scheme, or nothing known
+    (its English "Source"), so the interface can word the last itself."""
+    normalized_scope = str(scope or "").strip().lower()
+    if not str(key or "").strip():
+        return "unknown"
+    return "host" if normalized_scope == "host" else "scheme" if normalized_scope in {"scheme", "protocol"} else "unknown"
+
+
 def _safe_source_label(scope, key) -> str:
     """Project durable source identity without exposing opaque candidate keys."""
     normalized_scope = str(scope or "").strip().lower()
@@ -1670,7 +1679,11 @@ class TransferRepository(_QualifiedTransferRepository):
             elif failed: dispositions.append("Failed")
             elif active: dispositions.append("Active")
             elif selected: dispositions.append("Selected")
-            by_artifact.setdefault(artifact_id, []).append({"candidate_id": candidate_id, "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")), "provider_id": str(row.get("provider_id") or "").strip() or None, "relationship": "Original" if row.get("role") == "canonical" else "Consolidated", "dispositions": dispositions, "is_selected": selected, "is_delivering": delivered,
+            # The same facts as codes (1.0.14 localization): the interface words
+            # them in its language; the English fields stay for API clients.
+            disposition_code = ("delivering" if delivered else "failed" if failed else "active" if active
+                                else "selected" if selected else None)
+            by_artifact.setdefault(artifact_id, []).append({"candidate_id": candidate_id, "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")), "source_kind": _source_kind(row.get("source_scope"), row.get("source_key")), "provider_id": str(row.get("provider_id") or "").strip() or None, "relationship": "Original" if row.get("role") == "canonical" else "Consolidated", "relationship_code": "original" if row.get("role") == "canonical" else "consolidated", "dispositions": dispositions, "disposition_code": disposition_code, "is_selected": selected, "is_delivering": delivered,
                 # Read-side, provider/candidate-neutral switch-presentation
                 # eligibility (DP 1.0.12 Contextual Candidate Action Scope
                 # task, §6.1/§10.1): the exact same backend-owned

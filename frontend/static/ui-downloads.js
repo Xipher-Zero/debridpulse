@@ -150,10 +150,16 @@ function previousKey(p) {
   const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day) - 86400000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
-// A 24-hour wall-clock reading in the preferred time style.
+// The tag dates are written in: the page's language (English as en-US, as always).
+function dateLocale() { const tag = window.DPI18n.intlLocale(); return tag === 'en' ? 'en-US' : tag; }
+// A 24-hour wall-clock reading in the preferred time style (12-hour in the
+// page's language: its own day-period words).
 function clock(p) {
   if (!pref.hour12) return `${p.hour}:${p.minute}`;
-  return `${String((+p.hour + 11) % 12 + 1).padStart(2, '0')}:${p.minute} ${+p.hour < 12 ? 'AM' : 'PM'}`;
+  // English keeps its written form exactly (engines differ in the space before AM).
+  if (dateLocale() === 'en-US') return `${String((+p.hour + 11) % 12 + 1).padStart(2, '0')}:${p.minute} ${+p.hour < 12 ? 'AM' : 'PM'}`;
+  return new Intl.DateTimeFormat(dateLocale(), {timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: true})
+    .format(Date.UTC(1970, 0, 1, +p.hour, +p.minute));
 }
 /* One calendar reading in the preferred format. Its fields are wall-clock
  * values already in the preference's time zone: a date with or without its
@@ -162,20 +168,23 @@ function clock(p) {
 function formatCalendar(p) {
   const c = p.hour == null ? '' : clock(p);
   if (p.year == null) return c;
-  const timed = date => c ? `${date} ${c}` : date;
+  const timed = date => c ? window.DPI18n.t('format.date_time', {date, time: c}) : date;
   const now = parts(new Date());
-  const month = new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', month: 'short'}).format(Date.UTC(+p.year, +p.month - 1, 1));
+  // The friendly forms in the page's language; US, International and ISO are the
+  // operator's explicit numeric formats and are written as chosen.
+  const friendly = options => new Intl.DateTimeFormat(dateLocale(), {timeZone: 'UTC', ...options})
+    .format(Date.UTC(+p.year, +p.month - 1, p.day == null ? 1 : +p.day));
   if (p.day == null) {
     if (pref.format === 'iso') return `${p.year}-${p.month}`;
     if (pref.format === 'us' || pref.format === 'international') return `${p.month}/${p.year}`;
-    return +p.year === +now.year ? month : `${month} ${p.year}`;
+    return +p.year === +now.year ? friendly({month: 'short'}) : friendly({month: 'short', year: 'numeric'});
   }
   if (pref.format === 'us') return timed(`${p.month}/${p.day}/${p.year}`);
   if (pref.format === 'international') return timed(`${p.day}/${p.month}/${p.year}`);
   if (pref.format === 'iso') return timed(`${p.year}-${p.month}-${p.day}`);
-  if (dateKey(p) === dateKey(now)) return timed('Today');
-  if (dateKey(p) === previousKey(now)) return timed('Yesterday');
-  return timed(+p.year === +now.year ? `${month} ${+p.day}` : `${month} ${+p.day}, ${p.year}`);
+  if (dateKey(p) === dateKey(now)) return timed(window.DPI18n.t('format.today'));
+  if (dateKey(p) === previousKey(now)) return timed(window.DPI18n.t('format.yesterday'));
+  return timed(+p.year === +now.year ? friendly({month: 'short', day: 'numeric'}) : friendly({month: 'short', day: 'numeric', year: 'numeric'}));
 }
 function formatDownloadsDate(value) {
   if (!value) return '—';
@@ -193,7 +202,7 @@ function exactDate(value) {
   if (!value) return '';
   const d = typeof parseApiDate === 'function' ? parseApiDate(value) : new Date(value);
   if (!d || Number.isNaN(d.getTime())) return String(value);
-  return new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short', hour12: false}).format(d);
+  return new Intl.DateTimeFormat(dateLocale(), {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short', hour12: false}).format(d);
 }
 function dateMarkup(value) {
   return `<span class="dp-downloads-date-value" tabindex="0" data-tooltip="${esc(exactDate(value))}">${esc(formatDownloadsDate(value))}</span>`;
@@ -210,23 +219,27 @@ function dayMarkup(value) {
 /* Every list whose date column presents formatDownloadsDate: Downloads and
  * Dashboard Recent Activity. Each heading carries the ONE menu below, writing
  * the ONE preference above, so a choice in either list re-renders both. */
+// Each heading by its own identity (never its words) and the key its label says.
 const DATE_HEADINGS = Object.freeze([
-  ['#view-torrents .dp-downloads-table-wrap table', ['Added', 'Date'], 'Date'],
-  ['#view-dashboard .dash-activity-table-wrap table', ['Date Added'], 'Date Added'],
+  ['#view-torrents .dp-downloads-table-wrap table thead th.dp-downloads-date-cell', 'downloads.column.date'],
+  ['#view-dashboard .dash-activity-table-wrap table thead th[data-i18n="transfer.column.date_added"]', 'transfer.column.date_added'],
 ]);
 const dateMenuSyncs = [];
 function ensureDateMenus() { DATE_HEADINGS.forEach(heading => ensureDateMenu(...heading)); }
-function ensureDateMenu(tableSelector, headings, text) {
-  const table = document.querySelector(tableSelector);
-  const heading = table ? Array.from(table.querySelectorAll('thead th')).find(n => headings.includes(n.textContent.trim())) : null;
+function ensureDateMenu(headingSelector, labelKey) {
+  const heading = document.querySelector(headingSelector);
   if (!heading || heading.querySelector('.dp-date-menu-trigger')) return;
+  // The heading's words move to its label: this owner holds the heading now.
+  heading.removeAttribute('data-i18n');
   heading.textContent = '';
   const label = document.createElement('span');
-  label.textContent = text;
+  label.dataset.i18n = labelKey;
+  label.textContent = window.DPI18n.t(labelKey);
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'dp-date-menu-trigger';
-  trigger.setAttribute('aria-label', 'Date presentation options');
+  trigger.dataset.i18nAttr = 'aria-label:downloads.date_menu.label';
+  trigger.setAttribute('aria-label', window.DPI18n.t('downloads.date_menu.label'));
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
@@ -234,7 +247,12 @@ function ensureDateMenu(tableSelector, headings, text) {
   menu.className = 'dp-date-menu';
   menu.hidden = true;
   menu.setAttribute('role', 'menu');
-  menu.innerHTML = `<div class="dp-date-menu-title">Date format</div>${[['friendly', 'Friendly'], ['us', 'US'], ['international', 'International'], ['iso', 'ISO']].map(([v, l]) => `<button type="button" role="menuitemradio" data-date-format="${v}">${l}</button>`).join('')}<div class="dp-date-menu-title">Time style</div><button type="button" role="menuitemradio" data-hour12="false">24-hour</button><button type="button" role="menuitemradio" data-hour12="true">12-hour</button>`;
+  // Keyed markup: a language change re-words the menu in place (ui-i18n.js render).
+  const item = (attribute, value, key) => `<button type="button" role="menuitemradio" ${attribute}="${value}" data-i18n="${key}">${esc(window.DPI18n.t(key))}</button>`;
+  menu.innerHTML = `<div class="dp-date-menu-title" data-i18n="downloads.date_menu.format">${esc(window.DPI18n.t('downloads.date_menu.format'))}</div>`
+    + ['friendly', 'us', 'international', 'iso'].map(v => item('data-date-format', v, `downloads.date_menu.format_${v}`)).join('')
+    + `<div class="dp-date-menu-title" data-i18n="downloads.date_menu.time">${esc(window.DPI18n.t('downloads.date_menu.time'))}</div>`
+    + item('data-hour12', 'false', 'downloads.date_menu.hour24') + item('data-hour12', 'true', 'downloads.date_menu.hour12');
   const sync = () => {
     menu.querySelectorAll('[data-date-format]').forEach(b => b.setAttribute('aria-checked', b.dataset.dateFormat === pref.format ? 'true' : 'false'));
     menu.querySelectorAll('[data-hour12]').forEach(b => b.setAttribute('aria-checked', String(pref.hour12) === b.dataset.hour12 ? 'true' : 'false'));
@@ -366,24 +384,17 @@ function activeDownloadFilterStatus() {
   return document.querySelector('#view-torrents .filter-tabs .ftab.active')?.dataset.dpStatus || '';
 }
 function downloadPaginationSummary(total, from, to) {
+  const t = (key, values) => window.DPI18n.t(key, values);
   if (searchControl().accepted()) {
-    if (total <= 0) return 'No downloads match your search';
-    if (total === 1 && from === 1 && to === 1) return 'Showing 1 matching download';
-    if (from === 1 && to === total) return 'Showing all ' + total + ' matching downloads';
-    return 'Showing ' + from + '–' + to + ' of ' + total + ' matching downloads';
+    if (total <= 0) return t('downloads.summary.search_none');
+    if (total === 1 && from === 1 && to === 1) return t('downloads.summary.search_one');
+    if (from === 1 && to === total) return t('downloads.summary.search_all', {count: total});
+    return t('downloads.summary.search_range', {from, to, total});
   }
-  const status = activeDownloadFilterStatus();
-  const language = {
-    '': ['No Retained Items', 'Showing 1 Retained Item', n => 'Showing ' + n + ' Retained Items'],
-    downloading: ['No Active Downloads', '1 Active Download', n => n + ' Active Downloads'],
-    paused: ['No Paused Downloads', '1 Paused Download', n => n + ' Paused Downloads'],
-    processing: ['No Downloads Currently Processing', '1 Download Currently Processing', n => n + ' Downloads Currently Processing'],
-    ready: ['No Downloads in Ready State', '1 Download in Ready State', n => n + ' Downloads in Ready State'],
-    completed: ['No Downloads Completed Yet', '1 Download Completed', n => n + ' Downloads Completed'],
-    error: ['No Downloads Have Errors', '1 Download Has Errors', n => n + ' Downloads Have Errors'],
-  }[status];
-  if (!language) return total === 1 ? '1 Download' : total + ' Downloads';
-  return total <= 0 ? language[0] : total === 1 ? language[1] : language[2](total);
+  // One plural message per filter, its zero form included (downloads.summary.<filter>).
+  const status = activeDownloadFilterStatus() || 'all';
+  const key = `downloads.summary.${status}`;
+  return window.DPI18n.has(key) ? t(key, {count: Math.max(0, total)}) : t('downloads.summary.other', {count: total});
 }
 /* One count, four presentations: the full hint, "N downloads tracked",
  * "N downloads", and the number alone in the title's place. From 780px the
@@ -391,20 +402,23 @@ function downloadPaginationSummary(total, from, to) {
  * longest of the first three that fits (fitDownloadsHeaderHint). The full
  * wording stays the title's name, and its DP tooltip while the full hint is
  * not shown. */
+let lastTrackedCount = null;   // said again on a language change
 function updateDownloadsTrackedCopy(total) {
   const count = Math.max(0, Number(total) || 0);
-  const copy = count === 1 ? '1 download tracked. It behaved.' : count + ' downloads tracked. Most of them behaved.';
-  const downloads = count === 1 ? '1 download' : count + ' downloads';
+  lastTrackedCount = count;
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const copy = t('downloads.tracked.full', {count});
   const title = document.getElementById('torrent-card-title');
   if (!title) return;
-  const text = {'.dp-downloads-subtitle': copy, '[data-dp-copy="tracked"]': downloads + ' tracked',
-    '[data-dp-copy="downloads"]': downloads, '.dp-downloads-count': String(count)};
+  const text = {'.dp-downloads-subtitle': copy, '[data-dp-copy="tracked"]': t('downloads.tracked.short', {count}),
+    '[data-dp-copy="downloads"]': t('downloads.tracked.shortest', {count}), '.dp-downloads-count': String(count)};
   for (const [selector, value] of Object.entries(text)) {
     const node = title.querySelector(selector);
-    if (node) node.textContent = value;
+    if (node) { node.removeAttribute('data-i18n'); node.textContent = value; }
   }
-  title.setAttribute('aria-label', 'On the Books. ' + copy);
-  title.setAttribute('data-tooltip', 'On the Books. ' + copy);
+  title.removeAttribute('data-i18n-attr');      // its first-paint words; this owner's from here
+  title.setAttribute('aria-label', t('downloads.tracked.label', {copy}));
+  title.setAttribute('data-tooltip', t('downloads.tracked.label', {copy}));
   fitDownloadsHeaderHint();
 }
 /* Below 780px the header is one row: the identity, then the status filter
@@ -430,21 +444,21 @@ function fitDownloadsHeaderHint() {
  * is "Search downloads…" wherever that is drawn whole in the field, else
  * "Search…"; its name stays "Search downloads" (aria-label), and what is
  * typed is never touched. From 780px it is always the full placeholder. */
-const SEARCH_PLACEHOLDERS = Object.freeze(['Search downloads…', 'Search…']);
+const SEARCH_PLACEHOLDERS = () => [window.DPI18n.t('downloads.search.placeholder'), window.DPI18n.t('downloads.search.placeholder_short')];
 let placeholderMeasure = null;
 function fitDownloadsSearchPlaceholder() {
   const input = document.getElementById('torrent-search');
   if (!input) return;
   if (titleFocusMedia.matches || !input.clientWidth) {
-    if (titleFocusMedia.matches) input.placeholder = SEARCH_PLACEHOLDERS[0];
+    if (titleFocusMedia.matches) input.placeholder = SEARCH_PLACEHOLDERS()[0];
     return;
   }
   const style = getComputedStyle(input);
   const room = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   placeholderMeasure ||= document.createElement('canvas').getContext('2d');
   placeholderMeasure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  input.placeholder = SEARCH_PLACEHOLDERS.find(text => placeholderMeasure.measureText(text).width <= room)
-    ?? SEARCH_PLACEHOLDERS[SEARCH_PLACEHOLDERS.length - 1];
+  const choices = SEARCH_PLACEHOLDERS();
+  input.placeholder = choices.find(text => placeholderMeasure.measureText(text).width <= room) ?? choices[choices.length - 1];
 }
 /* The title is a tab stop from 780px up, where a reduced header shows its full
  * wording in DP's tooltip on keyboard focus. Mobile keeps its own tab order:
@@ -459,9 +473,9 @@ function syncTitleFocus() {
 titleFocusMedia.addEventListener('change', syncTitleFocus);
 syncTitleFocus();
 function downloadEmptyMessage() {
-  if (searchControl().accepted()) return 'No downloads match your search.';
-  if (activeDownloadFilterStatus()) return 'No downloads match your current filters.';
-  return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
+  if (searchControl().accepted()) return window.DPI18n.t('downloads.empty.search');
+  if (activeDownloadFilterStatus()) return window.DPI18n.t('downloads.empty.filtered');
+  return window.DPI18n.t('dashboard.activity.empty');
 }
 function renderTorrentPagination(total, limit, offset) {
   // Pure projector: authoritative (total, limit, offset) -> DOM. Holds no
@@ -511,8 +525,9 @@ function syncStatusFilterControl() {
   if (!trigger || !menu) return;
   const active = statusFilters().find(tab => tab.classList.contains('active') && tab.dataset.dpStatus);
   trigger.dataset.state = active ? 'clear' : 'filter';
+  trigger.removeAttribute('data-i18n-attr');      // index.html's first-paint name; this owner's from here
   if (active) {
-    const name = `Clear ${active.textContent.trim()} filter`;
+    const name = window.DPI18n.t('downloads.filter.clear_named', {filter: active.textContent.trim()});
     if (menu.matches(':popover-open')) menu.hidePopover();
     trigger.removeAttribute('popovertarget');
     trigger.removeAttribute('aria-haspopup');
@@ -523,7 +538,7 @@ function syncStatusFilterControl() {
     trigger.setAttribute('popovertarget', menu.id);
     trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.setAttribute('aria-expanded', String(menu.matches(':popover-open')));
-    trigger.setAttribute('aria-label', 'Status filter');
+    trigger.setAttribute('aria-label', window.DPI18n.t('downloads.filter.label'));
     trigger.removeAttribute('data-tooltip');
   }
 }
@@ -674,7 +689,7 @@ function syncDownloadSelectionUi() {
   syncBulkDelete(bar);
   if (_selectedIds.size > 0) {
     bar?.classList.add('visible');
-    if (count) count.textContent = _selectedIds.size + ' Selected';
+    if (count) count.textContent = window.DPI18n.t('downloads.selection.count', {count: _selectedIds.size});
   } else {
     bar?.classList.remove('visible');
     if (count) count.textContent = '';
@@ -746,12 +761,13 @@ function rowMarkup(t) {
     {providerId: providerChipId(t)}) : '';
   const fileSelectionMarkup = window.DPFileSelection?.chipMarkup?.(t) || '';
   const groupMarkup = window.DPGroupCandidates?.launcherMarkup?.(t, 'compact', 'downloads') || '';
-  const name = esc(t.display_name || t.name) || '(unnamed)';
+  const T = (key, values) => esc(window.DPI18n.t(key, values));
+  const name = esc(t.display_name || t.name) || T('transfer.unnamed');
   const movable = operable && queueEditable() && t.queue_member === true;
   // Admission found this promoted transfer waiting only on restarts nobody
   // confirmed: the operator may reaffirm its place (reaffirmQueue).
   const consent = operable && t.queue_member === true && t.queue_restart_consent === true
-    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" data-tooltip="Start Now: lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">${window.DPIcons.iconLabel('play', 'Start Now')}</button>`
+    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="${T('downloads.queue.start_now')}" data-tooltip="${T('downloads.queue.start_now_tooltip')}" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">${window.DPIcons.iconLabel('play', window.DPI18n.t('downloads.queue.start_now'))}</button>`
     : '';
   // The name's secondary bar, as Download Activity draws it: verified
   // progress while the transfer is still on its way (app.js patches its fill
@@ -785,13 +801,13 @@ function rowMarkup(t) {
     ${operable ? `<td class="dp-downloads-action-cell" onclick="event.stopPropagation()">
       <div class="actions">
         ${consent ? consent.replace('class="btn btn-warn btn-sm dp-queue-consent"', 'class="btn btn-warn btn-sm dp-queue-consent-action"') : ''}
-        ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)" data-tooltip="Pause this download">${window.DPIcons.iconLabel('pause', 'Pause')}</button>` : ''}
-        ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)" data-tooltip="Resume this download">${window.DPIcons.iconLabel('play', 'Resume')}</button>` : ''}
-        ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)" data-tooltip="Retry this download">${window.DPIcons.iconLabel('refresh', 'Retry')}</button>` : ''}
-        ${destroyable ? `<button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)" data-tooltip="Remove this download">${window.DPIcons.iconLabel('trash2', 'Remove')}</button>` : ''}
+        ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="${T('transfer.action.pause')}" onclick="event.stopPropagation();pauseT(${t.id},this)" data-tooltip="${T('transfer.action.pause_tooltip')}">${window.DPIcons.iconLabel('pause', window.DPI18n.t('transfer.action.pause'))}</button>` : ''}
+        ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="${T('transfer.action.resume')}" onclick="event.stopPropagation();resumeT(${t.id},this)" data-tooltip="${T('transfer.action.resume_tooltip')}">${window.DPIcons.iconLabel('play', window.DPI18n.t('transfer.action.resume'))}</button>` : ''}
+        ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="${T('transfer.action.retry')}" onclick="event.stopPropagation();retryT(${t.id},this)" data-tooltip="${T('transfer.action.retry_tooltip')}">${window.DPIcons.iconLabel('refresh', window.DPI18n.t('transfer.action.retry'))}</button>` : ''}
+        ${destroyable ? `<button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="${T('transfer.action.remove')}" onclick="event.stopPropagation();deleteT(${t.id},event,this)" data-tooltip="${T('transfer.action.remove_tooltip')}">${window.DPIcons.iconLabel('trash2', window.DPI18n.t('transfer.action.remove'))}</button>` : ''}
       </div>
     </td>
-    <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="Select ${name}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>` : ''}
+    <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="${T('downloads.select_row', {name: t.display_name || t.name || window.DPI18n.t('transfer.unnamed')})}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>` : ''}
   </tr>`;
 }
 
@@ -859,6 +875,7 @@ async function fetchAndRenderTorrents() {
       if (reorder) paintReorder();
       renderedTorrentPage = _requestedPage;
     };
+    lastTorrentPaint = paint;
     // The page turn the pager asked for is already sliding to this page: its
     // placeholder crossfades into it, or -- not yet drawn -- the slide draws
     // it. Anything else is painted in place.
@@ -915,7 +932,7 @@ async function fetchAndRenderTorrents() {
     // never resolves.
     const tb = document.getElementById('t-tbody');
     if (tb && 'dpPlaceholder' in tb.dataset) replaceTorrentRows(() => {
-      tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 7 : 5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>Downloads could not be loaded: ${esc(sanitizeErrorMsg(e.message))}</div></td></tr>`;
+      tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 7 : 5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${esc(window.DPI18n.t('downloads.load_failed', {reason: sanitizeErrorMsg(e.message)}))}</div></td></tr>`;
       renderTorrentPagination(0, torrentPageSize, 0);
       syncDownloadSelectionUi();
     });
@@ -980,7 +997,7 @@ function announce(text) {
   if (status) status.textContent = text;
 }
 function rowId(row) { return stableDownloadId(row?.dataset?.torrentId); }
-function rowName(row) { return row?.querySelector('.t-name')?.textContent || 'Transfer'; }
+function rowName(row) { return row?.querySelector('.t-name')?.textContent || window.DPI18n.t('downloads.transfer_fallback'); }
 function pageCount() { return Math.max(1, Math.ceil(torrentTotal / Math.max(1, torrentPageSize))); }
 /* The page's queue rows other than the held one, and how many of them
  * precede the held one when it is on this page (-1 when it is not). */
@@ -1049,20 +1066,18 @@ function beginReorder(id, mode) {
     document.body.appendChild(ghost);
     reorder.ghost = ghost;
     reorder.zones = {};
-    for (const [direction, label, icon] of [['previous', 'Previous page', 'chevronLeft'], ['next', 'Next page', 'chevronRight']]) {
+    for (const [direction, label, icon] of [['previous', window.DPI18n.t('pager.previous'), 'chevronLeft'], ['next', window.DPI18n.t('pager.next'), 'chevronRight']]) {
       const zone = document.createElement('div');
       zone.className = 'dp-queue-page-zone';
       zone.dataset.direction = direction;
       zone.hidden = true;
-      zone.innerHTML = `${window.DPIcons?.svg?.(icon) || ''}<span>${label}</span>`;
+      zone.innerHTML = `${window.DPIcons?.svg?.(icon) || ''}<span>${esc(label)}</span>`;
       document.body.appendChild(zone);
       reorder.zones[direction] = zone;
     }
   }
   document.addEventListener('keydown', onReorderKey, true);
-  announce(mode === 'keyboard'
-    ? `Picked up ${reorder.name}. Use the arrow keys to move it, Enter or Space to drop it, Escape to cancel.`
-    : `Moving ${reorder.name}.`);
+  announce(window.DPI18n.t(mode === 'keyboard' ? 'downloads.queue.picked_up' : 'downloads.queue.moving_name', {name: reorder.name}));
   paintReorder();
 }
 function disarmDwell() {
@@ -1096,7 +1111,7 @@ async function navigateReorder(delta) {
   try { await fetchAndRenderTorrents(); } finally { if (reorder) reorder.navigating = false; }
   if (!reorder) return false;
   reorder.page = torrentPage;
-  announce(`Page ${torrentPage}.`);
+  announce(window.DPI18n.t('downloads.queue.page', {page: torrentPage}));
   return true;
 }
 function armDwell(direction) {
@@ -1176,7 +1191,7 @@ function onPointerUp(event) {
 function onPointerCancel() {
   releasePointer();
   if (reorder && reorder.mode === 'pointer' && !reorder.committing) {
-    announce('Move cancelled. Nothing was moved.');
+    announce(window.DPI18n.t('downloads.queue.move_cancelled'));
     endReorder();
   }
 }
@@ -1204,15 +1219,16 @@ async function stepReorder(delta) {
   const target = rows[gap] || rows[gap - 1];
   target?.querySelector('td[data-queue-drag="true"]')?.focus({preventScroll: false});
   const place = anchors();
-  announce(place === 'unchanged' ? `${reorder.name}: its current place.`
-    : rows[gap] ? `${reorder.name}: before ${rowName(rows[gap])}.` : `${reorder.name}: after ${rowName(rows[gap - 1])}.`);
+  announce(place === 'unchanged' ? window.DPI18n.t('downloads.queue.place_current', {name: reorder.name})
+    : rows[gap] ? window.DPI18n.t('downloads.queue.place_before', {name: reorder.name, other: rowName(rows[gap])})
+      : window.DPI18n.t('downloads.queue.place_after', {name: reorder.name, other: rowName(rows[gap - 1])}));
 }
 function onReorderKey(event) {
   if (!reorder || reorder.committing) return;
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    announce('Move cancelled. Nothing was moved.');
+    announce(window.DPI18n.t('downloads.queue.move_cancelled'));
     endReorder();
     return;
   }
@@ -1230,7 +1246,7 @@ async function dropReorder() {
   disarmDwell();
   const place = anchors();
   if (!place || place === 'unchanged') {
-    announce(place ? `${reorder.name} was not moved.` : 'Move cancelled. Nothing was moved.');
+    announce(place ? window.DPI18n.t('downloads.queue.not_moved', {name: reorder.name}) : window.DPI18n.t('downloads.queue.move_cancelled'));
     endReorder();
     return;
   }
@@ -1244,33 +1260,38 @@ function restartProgress(item) {
   const total = Number(item?.total_bytes) || 0;
   const done = Math.max(0, Number(item?.completed_bytes) || 0);
   const estimate = item?.estimated_percentage;
-  if (total > 0) return `${fmtSize(done)} of ${fmtSize(total)} downloaded`;
-  if (typeof estimate === 'number' && Number.isFinite(estimate)) return `About ${Math.floor(estimate)}% downloaded (estimated)`;
-  return done > 0 ? `${fmtSize(done)} downloaded` : '';
+  if (total > 0) return window.DPI18n.t('downloads.restart.progress_of', {done: fmtSize(done), total: fmtSize(total)});
+  if (typeof estimate === 'number' && Number.isFinite(estimate)) return window.DPI18n.t('downloads.restart.progress_estimated', {percent: Math.floor(estimate)});
+  return done > 0 ? window.DPI18n.t('downloads.restart.progress_done', {done: fmtSize(done)}) : '';
 }
 /* The destructive-preemption confirmation, through the canonical dialog
  * owner. Resolves to every attempt the operator confirmed, or null. */
 async function confirmRestart(transfers) {
   const modal = window.DPSettingsModal;
   if (!modal || typeof modal.open !== 'function') {
-    toast('Reorder confirmation is unavailable. Nothing was moved.', 'error');
+    toast(window.DPI18n.t('downloads.restart.unavailable'), 'error');
     return null;
   }
   const one = transfers.length === 1;
+  // Every word names its key, so the open dialog is re-worded in place on a language change.
+  const keyed = (node, key, values) => {
+    node.dataset.i18n = key;
+    if (values) node.dataset.i18nValues = JSON.stringify(values);
+    node.textContent = window.DPI18n.t(key, values);
+    return node;
+  };
   const handle = modal.open({
-    role: 'alertdialog', tone: 'warning', title: 'Transfer Restart Required',
-    acceptLabel: 'Confirm Reorder', acceptTone: 'warning', cancelLabel: 'Cancel',
+    role: 'alertdialog', tone: 'warning', title: window.DPI18n.t('downloads.restart.title'),
+    acceptLabel: window.DPI18n.t('downloads.restart.confirm'), acceptTone: 'warning', cancelLabel: window.DPI18n.t('common.cancel'),
+    keys: {title: 'downloads.restart.title', accept: 'downloads.restart.confirm', cancel: 'common.cancel'},
     className: 'dp-queue-restart-dialog',
     mount(body) {
-      const hint = text => {
+      const hint = (key, values) => {
         const node = document.createElement('p');
         node.className = 'dp-modal-message dp-modal-message--center';
-        node.textContent = text;
-        return node;
+        return keyed(node, key, values);
       };
-      const top = hint(one
-        ? 'Reordering the queue will interrupt 1 active transfer that cannot resume its current download.'
-        : `Reordering the queue will interrupt ${transfers.length} active transfers that cannot resume their current downloads.`);
+      const top = hint('downloads.restart.intro', {count: transfers.length});
       const list = document.createElement('ul');
       list.className = 'dp-queue-restart-list';
       for (const item of transfers) {
@@ -1278,7 +1299,7 @@ async function confirmRestart(transfers) {
         entry.className = 'dp-queue-restart-item';
         const name = document.createElement('strong');
         name.className = 'dp-queue-restart-name';
-        name.textContent = name.dataset.tooltip = String(item?.display_name || item?.name || 'Transfer');
+        name.textContent = name.dataset.tooltip = String(item?.display_name || item?.name || window.DPI18n.t('downloads.transfer_fallback'));
         entry.appendChild(name);
         const progress = restartProgress(item);
         if (progress) {
@@ -1287,15 +1308,12 @@ async function confirmRestart(transfers) {
           line.textContent = progress;
           entry.appendChild(line);
         }
-        const consequence = document.createElement('span');
+        const consequence = keyed(document.createElement('span'), 'downloads.restart.consequence');
         consequence.className = 'dp-queue-restart-consequence';
-        consequence.textContent = 'This transfer will restart downloading from the beginning when it becomes eligible again.';
         entry.appendChild(consequence);
         list.appendChild(entry);
       }
-      body.append(top, list, hint(one
-        ? 'Downloaded progress for this transfer will be lost. Are you sure you want to proceed?'
-        : 'Downloaded progress for these transfers will be lost. Are you sure you want to proceed?'));
+      body.append(top, list, hint('downloads.restart.loss', {count: transfers.length}));
       return top;
     },
   });
@@ -1307,14 +1325,13 @@ async function commitMove(id, place, confirmed) {
   if (confirmed) body.confirm_restart = confirmed;
   try {
     const result = await api('PATCH', `/torrents/${id}/priority`, body);
-    announce(result?.outcome === 'preempting'
-      ? `${reorder?.name || 'Transfer'} moved. It starts once lower-ranked work has stopped.`
-      : `${reorder?.name || 'Transfer'} moved.`);
+    const name = reorder?.name || window.DPI18n.t('downloads.transfer_fallback');
+    announce(window.DPI18n.t(result?.outcome === 'preempting' ? 'downloads.queue.moved_preempting' : 'downloads.queue.moved', {name}));
   } catch (e) {
     if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
       const attempts = await confirmRestart(e.detail.transfers);
       if (attempts) return commitMove(id, place, attempts);
-      announce('Reorder cancelled. Nothing was moved.');
+      announce(window.DPI18n.t('downloads.queue.reorder_cancelled'));
       return;
     }
     toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
@@ -1324,23 +1341,21 @@ async function commitMove(id, place, confirmed) {
  * through the same restart confirmation a move asks for: nothing changes
  * unless the operator confirms the restarts the server names now. */
 async function reaffirmQueue(id, button) {
-  const name = button?.closest('tr')?.querySelector('.t-name')?.textContent || 'Transfer';
-  setButtonPending(button, true, 'Checking…');
+  const name = button?.closest('tr')?.querySelector('.t-name')?.textContent || window.DPI18n.t('downloads.transfer_fallback');
+  setButtonPending(button, true, 'downloads.queue.checking');
   try {
     let confirmed = null;
     for (;;) {
       try {
         const result = await api('PATCH', `/torrents/${id}/priority`,
           confirmed ? {reaffirm: true, confirm_restart: confirmed} : {reaffirm: true});
-        announce(result?.outcome === 'preempting'
-          ? `${name} starts once lower-ranked work has stopped.`
-          : `${name} keeps its place. No restart needs confirming now.`);
+        announce(window.DPI18n.t(result?.outcome === 'preempting' ? 'downloads.queue.starts_after' : 'downloads.queue.keeps_place', {name}));
         break;
       } catch (e) {
         if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
           confirmed = await confirmRestart(e.detail.transfers);
           if (confirmed) continue;
-          announce('Cancelled. Nothing changed.');
+          announce(window.DPI18n.t('downloads.queue.cancelled'));
           return;
         }
         toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
@@ -1361,7 +1376,7 @@ let topPending = false;
 async function moveToTop(ids, {button = null, name = '', focusId = null, selection = false} = {}) {
   if (topPending || !ids.length) return;
   topPending = true;
-  setButtonPending(button, true, 'Moving…');
+  setButtonPending(button, true, 'downloads.queue.moving');
   try {
     let confirmed = null;
     let result = null;
@@ -1373,7 +1388,7 @@ async function moveToTop(ids, {button = null, name = '', focusId = null, selecti
         if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
           confirmed = await confirmRestart(e.detail.transfers);
           if (confirmed) continue;
-          announce('Move to Top cancelled. Nothing was moved.');
+          announce(window.DPI18n.t('downloads.queue.top_cancelled'));
           return;
         }
         toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
@@ -1381,10 +1396,13 @@ async function moveToTop(ids, {button = null, name = '', focusId = null, selecti
       }
     }
     const moved = Number(result?.moved) || 0;
-    const subject = ids.length === 1 ? (name || 'Transfer') : `${moved} transfer${moved === 1 ? '' : 's'}`;
+    // Whole sentences: one transfer by its name, several by their count.
+    const t = (key, values) => window.DPI18n.t(key, values);
+    const one = ids.length === 1, named = name || t('downloads.transfer_fallback');
     const message = result?.outcome === 'unchanged'
-      ? `${ids.length === 1 ? subject : 'The selection'} already leads the queue.`
-      : `${subject} moved to the top of the queue.${result?.outcome === 'preempting' ? ' Lower-ranked work stops to make room.' : ''}`;
+      ? (one ? t('downloads.queue.top_unchanged_one', {name: named}) : t('downloads.queue.top_unchanged_selection'))
+      : (one ? t(result?.outcome === 'preempting' ? 'downloads.queue.top_moved_one_preempting' : 'downloads.queue.top_moved_one', {name: named})
+        : t(result?.outcome === 'preempting' ? 'downloads.queue.top_moved_many_preempting' : 'downloads.queue.top_moved_many', {count: moved}));
     announce(message);
     // The unfiltered Priority view shows the new top on its first page; any
     // other view stays as the operator chose it and says what happened. A
@@ -1416,8 +1434,8 @@ function contextMenu(event) {
   const id = rowId(row);
   const name = rowName(row);
   return dpOpenContextMenu(event, row, {
-    label: `${name} actions`,
-    items: [{text: 'Move to Top', run: () => moveToTop([id], {name, focusId: id})}],
+    label: window.DPI18n.t('downloads.row_menu.label', {name}),
+    items: [{text: window.DPI18n.t('downloads.move_to_top'), run: () => moveToTop([id], {name, focusId: id})}],
     restore: () => document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`)?.focus(),
   });
 }
@@ -1444,20 +1462,20 @@ async function deleteT(id, eventObj, button) {
   if (!confirmedIds) return;
   const restored = removalConfirmationGone;
   const targetId = confirmedIds[0];
-  setButtonPending(button, true, 'Deleting…');
+  setButtonPending(button, true, 'downloads.action.deleting');
   try {
     await api('DELETE', `/torrents/${targetId}?from_alldebrid=true`);
-    toast('Deleted', 'success');
+    toast(window.DPI18n.t('downloads.action.deleted'), 'success');
     await loadTorrents();
     loadStats();
   } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
   finally { setButtonPending(button, false); await settleRemovalFocus(button, restored); }
 }
 async function retryT(id, button) {
-  setButtonPending(button, true, 'Retrying…');
+  setButtonPending(button, true, 'details.route.retrying');
   try {
     await api('POST', `/torrents/${id}/retry`);
-    toast('Queued for retry', 'success');
+    toast(window.DPI18n.t('downloads.action.retry_queued'), 'success');
     loadTorrents();
   } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
   finally { setButtonPending(button, false); }
@@ -1467,14 +1485,16 @@ async function confirmDownloadRemoval(ids) {
   if (!stableIds.length) return null;
   const modal = window.DPSettingsModal;
   if (!modal || typeof modal.confirm !== 'function') {
-    toast('Removal confirmation is unavailable. No downloads were removed.', 'error');
+    toast(window.DPI18n.t('downloads.remove.unavailable'), 'error');
     return null;
   }
   const count = stableIds.length;
   const confirmed = await modal.confirm({
-    title: count === 1 ? 'Remove download?' : `Remove ${count} downloads?`,
-    message: count === 1 ? 'Remove this download from Downloads?' : `Remove these ${count} downloads from Downloads?`,
-    confirmLabel: 'Remove', cancelLabel: 'Cancel', tone: 'danger', withExit: true,
+    title: window.DPI18n.t('downloads.remove.title', {count}),
+    message: window.DPI18n.t('downloads.remove.message', {count}),
+    confirmLabel: window.DPI18n.t('transfer.action.remove'), cancelLabel: window.DPI18n.t('common.cancel'), tone: 'danger', withExit: true,
+    keys: {title: 'downloads.remove.title', titleValues: {count}, message: 'downloads.remove.message', messageValues: {count},
+           accept: 'transfer.action.remove', cancel: 'common.cancel'},
   });
   removalConfirmationGone = confirmed.accepted ? confirmed.gone : null;
   return confirmed.accepted ? stableIds : null;
@@ -1492,11 +1512,11 @@ async function bulkAction(action, button) {
     ids = confirmedIds;
     restored = removalConfirmationGone;
   }
-  const pendingLabels = {delete: 'Deleting…', reset: 'Resetting…', pause: 'Pausing…', resume: 'Resuming…'};
-  setButtonPending(button, true, pendingLabels[action] || 'Working…');
+  const pendingLabels = {delete: 'downloads.action.deleting', reset: 'downloads.action.resetting', pause: 'processing.pausing', resume: 'processing.resuming'};
+  setButtonPending(button, true, pendingLabels[action] || 'downloads.action.working');
   try {
     const r = await api('POST', '/torrents/bulk', {ids, action});
-    toast(`Done: ${r.ok} ok, ${r.failed} failed`, r.failed ? 'warn' : 'success');
+    toast(window.DPI18n.t('downloads.bulk.done', {ok: r.ok, failed: r.failed}), r.failed ? 'warn' : 'success');
     // A completed action ends the selection it acted on, and the list shows
     // what happened. When nothing completed the selection stays to retry.
     if (r.ok > 0 || !r.failed) clearSelection();
@@ -1514,19 +1534,45 @@ async function setLabel(id) {
   // The canonical application dialog owner, never a browser-native prompt.
   // Semantics are unchanged: cancel is a no-op, blank clears the label.
   const label = await window.DPSettingsModal.prompt({
-    title: 'Set Label',
-    label: 'Label',
-    hint: 'Leave empty to clear the label.',
-    acceptLabel: 'Save',
+    title: window.DPI18n.t('downloads.label.title'),
+    label: window.DPI18n.t('downloads.label.field'),
+    hint: window.DPI18n.t('downloads.label.hint'),
+    acceptLabel: window.DPI18n.t('common.save'),
   });
   if (label === null) return;
   try {
     // A label edit never carries a priority: the queue position stays.
     await api('PUT', `/torrents/${id}/label`, {label: label.trim()});
-    toast('Label updated', 'success');
+    toast(window.DPI18n.t('downloads.label.updated'), 'success');
     loadTorrents();
   } catch (e) { toast(e.message, 'error'); }
 }
+
+// ── Language changes ────────────────────────────────────────────────────
+// The page on screen is painted again from the answer it already holds (no
+// request), and the control that had focus gets it back -- found by its row's
+// transfer and its action, never by its words -- else its row, else Search.
+let lastTorrentPaint = null;
+document.addEventListener('debridpulse:locale-changed', () => {
+  if (lastTrackedCount !== null) updateDownloadsTrackedCopy(lastTrackedCount);
+  fitDownloadsSearchPlaceholder();
+  syncStatusFilterControl();
+  if (!lastTorrentPaint || torrentPageTurn) return;
+  const body = document.getElementById('t-tbody');
+  const active = document.activeElement;
+  const inside = Boolean(body && active && body.contains(active));
+  const row = inside ? active.closest('tr[data-torrent-id]') : null;
+  const kind = !inside ? '' : active === row ? 'row' : active.classList.contains('t-chk') ? 'check'
+    : active.matches('td[data-queue-drag]') ? 'name' : 'action';
+  const action = inside ? active.getAttribute('onclick') || '' : '';
+  lastTorrentPaint();
+  if (!inside) return;
+  const again = row ? body.querySelector(`tr[data-torrent-id="${CSS.escape(row.dataset.torrentId)}"]`) : null;
+  const target = !again ? null : kind === 'row' ? again : kind === 'check' ? again.querySelector('.t-chk')
+    : kind === 'name' ? again.querySelector('td[data-queue-drag]')
+      : Array.from(again.querySelectorAll('[onclick]')).find(node => node.getAttribute('onclick') === action);
+  (target || again || document.getElementById('torrent-search'))?.focus({preventScroll: true});
+});
 
 // ── Init/wiring ──────────────────────────────────────────────────────────
 function init() {

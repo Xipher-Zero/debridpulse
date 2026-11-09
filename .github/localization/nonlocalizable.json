@@ -116,6 +116,96 @@
    "owner": "frontend/static/app.js",
    "english": "ResizeObserver",
    "reason": "A browser feature name in a feature test."
+  },
+  {
+   "owner": "frontend/static/app.js",
+   "english": "icon short",
+   "reason": "Class names of the Quick Add header fitting stages (QUICK_ADD_HEADER_FITS), never shown."
+  },
+  {
+   "owner": "frontend/static/app.js",
+   "english": "Clipboard API unavailable",
+   "reason": "Internal Error thrown and caught by the copy path; the operator sees the keyed failure toast, never this text."
+  },
+  {
+   "owner": "frontend/static/ui-auth-required.js",
+   "english": "Application API client is unavailable",
+   "reason": "Internal Error for a missing script dependency; never shown to the operator."
+  },
+  {
+   "owner": "frontend/static/ui-auth-required.js",
+   "english": "empty",
+   "reason": "Internal Error token classifying a chosen key file; mapped to a keyed message (auth_required.*)."
+  },
+  {
+   "owner": "frontend/static/ui-auth-required.js",
+   "english": "large",
+   "reason": "Internal Error token classifying a chosen key file; mapped to a keyed message (auth_required.*)."
+  },
+  {
+   "owner": "frontend/static/ui-auth-required.js",
+   "english": "invalid",
+   "reason": "Internal Error token classifying a chosen key file; mapped to a keyed message (auth_required.*)."
+  },
+  {
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "english": "disabled aria-disabled=\"true\"",
+   "reason": "HTML attribute or markup fragment in a renderer; the words beside it are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "english": "class=\"dp-detail-candidate-panel\">",
+   "reason": "HTML attribute or markup fragment in a renderer; the words beside it are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-downloads.js",
+   "english": "ResizeObserver",
+   "reason": "Browser API name tested with \"in window\"; not text."
+  },
+  {
+   "owner": "frontend/static/ui-file-selection.js",
+   "english": "\" data-i18n-values='",
+   "reason": "HTML attribute or markup fragment in a renderer; the words beside it are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-file-selection.js",
+   "english": "file-selection",
+   "reason": "Machine reason in the debridpulse:detail-closed event detail; never shown."
+  },
+  {
+   "owner": "frontend/static/ui-group-candidates.js",
+   "english": "disabled aria-disabled=\"true\"",
+   "reason": "HTML attribute or markup fragment in a renderer; the words beside it are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-group-candidates.js",
+   "english": "offline",
+   "reason": "Internal Error when the API client is missing; the chooser shows its keyed unavailable toast instead."
+  },
+  {
+   "owner": "frontend/static/ui-root-provider.js",
+   "english": "data-provider-state=\"known\"",
+   "reason": "HTML attribute or markup fragment in a renderer; the words beside it are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-root-provider.js",
+   "english": "route status",
+   "reason": "Internal Error text (with the HTTP status) for a failed route read; callers show keyed words, never this."
+  },
+  {
+   "owner": "frontend/static/ui-root-provider.js",
+   "english": "\"][data-dp-surface=\"",
+   "reason": "CSS attribute selector fragment."
+  },
+  {
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "english": "directory_picker.{0}.title",
+   "reason": "Catalog key template (the dialog title key per purpose), not text."
+  },
+  {
+   "owner": "frontend/static/index.html",
+   "english": "<span>Details</span>",
+   "reason": "Placeholder text of #modal-title: every opening of the shared dialog sets its title (Details sets the transfer name, or details.title_fallback) before it is shown."
   }
  ]
 }

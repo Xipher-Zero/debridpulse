@@ -4629,6 +4629,3615 @@
    "context": "Accessible name of the sidebar logo.",
    "owner": "frontend/static/index.html",
    "criticality": "normal"
+  },
+  "auth_required.title": {
+   "category": "modal-title",
+   "context": "Dialog title: a transfer's source asks for a username and a password or private key.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.title_identity": {
+   "category": "modal-title",
+   "context": "Dialog title: a transfer's server presented an identity (fingerprint) to confirm.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.identity_note": {
+   "category": "critical-warning",
+   "context": "Under a server's fingerprint: confirming an unchecked identity can connect to an impostor.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "critical-warning"
+  },
+  "auth_required.credentials_held": {
+   "category": "hint",
+   "context": "Only the identity is asked for; the sign-in is already known.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.username": {
+   "category": "label",
+   "context": "Field label.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.password": {
+   "category": "label",
+   "context": "Field label.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.passphrase": {
+   "category": "label",
+   "context": "Field label: the passphrase of a private key.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.key_select": {
+   "category": "action",
+   "context": "Button that chooses a private-key file.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.key_replace": {
+   "category": "action",
+   "context": "The same button once a key was chosen: it replaces it.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.continue": {
+   "category": "action",
+   "context": "Sends the answer.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.verify_continue": {
+   "category": "action",
+   "context": "Confirms the server identity (and any sign-in) and continues the transfer.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.authenticating": {
+   "category": "status-chip",
+   "context": "Continue's label while the answer is checked.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.verifying": {
+   "category": "status-chip",
+   "context": "Verify & Continue's label while it is checked.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.sign_in_to": {
+   "category": "label",
+   "context": "Names the server asking, when it is not the source's own.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal",
+   "args": {
+    "authority": "string: the server's origin, e.g. sftp://files.example.com"
+   }
+  },
+  "auth_required.fingerprint_of": {
+   "category": "label",
+   "context": "Label of the server's identity fingerprint.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal",
+   "args": {
+    "algorithm": "string: the algorithm, e.g. SHA256 (a technical name)"
+   }
+  },
+  "auth_required.error.username_required": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the username is empty.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.password_required": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the password is empty.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_empty": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the chosen key file is empty.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_too_large": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the chosen key file exceeds the size limit.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_invalid": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the chosen file is not a private key.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_unreadable": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the chosen file could not be read.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_missing": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: no key is chosen.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.identity_unavailable": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the server no longer offers identity confirmation.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.key_unavailable": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the server no longer offers private-key sign-in.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.password_unavailable": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the server no longer offers password sign-in.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.failed": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the server refused the answer.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.requirements_changed": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: the server now asks differently.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "auth_required.error.cancel_failed": {
+   "category": "error",
+   "context": "Message inside the sign-in dialog: Cancel did not reach the server.",
+   "owner": "frontend/static/ui-auth-required.js",
+   "criticality": "normal"
+  },
+  "downloads.title": {
+   "category": "page-title",
+   "context": "Downloads card title (light-hearted).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.tracked.full": {
+   "category": "page-title",
+   "context": "Downloads subtitle: how many downloads are kept (light-hearted).",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads"
+   }
+  },
+  "downloads.tracked.short": {
+   "category": "page-title",
+   "context": "Shorter subtitle on a phone.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads"
+   }
+  },
+  "downloads.tracked.shortest": {
+   "category": "page-title",
+   "context": "Shortest subtitle on a phone.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads"
+   }
+  },
+  "downloads.tracked.label": {
+   "category": "tooltip/aria",
+   "context": "The Downloads title's accessible name and tooltip: title, then subtitle.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "copy": "string: the subtitle sentence"
+   }
+  },
+  "downloads.tracked.label_initial": {
+   "category": "tooltip/aria",
+   "context": "The same before the first count arrives (zero downloads).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.summary.all": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'all' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.downloading": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'downloading' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.paused": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'paused' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.processing": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'processing' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.ready": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'ready' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.completed": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'completed' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.error": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'error' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.other": {
+   "category": "label",
+   "context": "Downloads pagination line for the 'other' filter: how many downloads it holds.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads shown"
+   }
+  },
+  "downloads.summary.search_none": {
+   "category": "label",
+   "context": "Pagination line: the search found nothing.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.summary.search_one": {
+   "category": "label",
+   "context": "Pagination line: the search found one.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.summary.search_all": {
+   "category": "label",
+   "context": "Pagination line: every match is on this page.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "downloads.summary.search_range": {
+   "category": "label",
+   "context": "Pagination line: one page of the matches.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "from": "number",
+    "to": "number",
+    "total": "number"
+   }
+  },
+  "downloads.search.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Downloads search field.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.search.placeholder": {
+   "category": "placeholder",
+   "context": "Downloads search placeholder.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.search.placeholder_short": {
+   "category": "placeholder",
+   "context": "Shorter placeholder where the full one does not fit.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.empty.search": {
+   "category": "hint",
+   "context": "Downloads list: the search found nothing.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.empty.filtered": {
+   "category": "hint",
+   "context": "Downloads list: the filter shows nothing.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.load_failed": {
+   "category": "error",
+   "context": "Downloads list failed to load.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (may be English)"
+   }
+  },
+  "downloads.filter.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the phone's status filter control.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.filter.clear_named": {
+   "category": "tooltip/aria",
+   "context": "The phone's filter control while a status is chosen: it clears it.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "filter": "string: the chosen filter's name"
+   }
+  },
+  "downloads.filter.all": {
+   "category": "action",
+   "context": "Downloads status filter 'All'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.downloading": {
+   "category": "action",
+   "context": "Downloads status filter 'Downloading'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.paused": {
+   "category": "action",
+   "context": "Downloads status filter 'Paused'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.processing": {
+   "category": "action",
+   "context": "Downloads status filter 'Processing'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.ready": {
+   "category": "action",
+   "context": "Downloads status filter 'Ready'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.completed": {
+   "category": "action",
+   "context": "Downloads status filter 'Done'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.error": {
+   "category": "action",
+   "context": "Downloads status filter 'Error'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "Filter chip: short; seven share one row from 780px."
+  },
+  "downloads.filter.status": {
+   "category": "action",
+   "context": "The phone's filter control, nothing chosen.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.filter.clear": {
+   "category": "action",
+   "context": "The phone's filter control while a status is chosen.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.paused_shim": {
+   "category": "hint",
+   "context": "Notice over Downloads while all processing is paused.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.order.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the order choice.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.order.priority": {
+   "category": "label",
+   "context": "Order: the queue's own order.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.order.newest": {
+   "category": "label",
+   "context": "Order: newest first.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.queue.help": {
+   "category": "hint",
+   "context": "Screen-reader instructions for moving a transfer in the queue.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.pause": {
+   "category": "action",
+   "context": "Bulk action for the selected downloads: Pause.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.pause_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the bulk Pause.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.resume": {
+   "category": "action",
+   "context": "Bulk action for the selected downloads: Resume.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.resume_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the bulk Resume.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.reset": {
+   "category": "action",
+   "context": "Bulk action for the selected downloads: Reset.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.reset_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the bulk Reset.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.top": {
+   "category": "action",
+   "context": "Bulk action for the selected downloads: Move to Top.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.top_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the bulk Move to Top.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.delete": {
+   "category": "action",
+   "context": "Bulk action for the selected downloads: Delete.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.delete_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the bulk Delete.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.clear": {
+   "category": "action",
+   "context": "Clears the selection (accessible name and tooltip).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.clear_short": {
+   "category": "action",
+   "context": "Clear Selections' first word, drawn alone where the bar is narrow.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.clear_rest": {
+   "category": "action",
+   "context": "The rest of 'Clear Selections' after 'Clear' (keep the leading space if your language needs it), hidden where the bar is narrow.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.bulk.done": {
+   "category": "toast",
+   "context": "A bulk action finished.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "ok": "number",
+    "failed": "number"
+   }
+  },
+  "downloads.column.date": {
+   "category": "table-header",
+   "context": "Downloads column: when it was added (with the date-format menu).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.column.actions": {
+   "category": "table-header",
+   "context": "Downloads column of row buttons.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.select_all": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the select-all box.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.select_row": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a row's selection box.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the download's name"
+   }
+  },
+  "downloads.selection.count": {
+   "category": "status-chip",
+   "context": "How many downloads are selected.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "downloads.pages_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Downloads pager.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "downloads.transfer_fallback": {
+   "category": "label",
+   "context": "A transfer's stand-in name when it has none.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.label": {
+   "category": "tooltip/aria",
+   "context": "Button by the date column that opens the date-format menu.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.format": {
+   "category": "label",
+   "context": "Menu section title.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.format_friendly": {
+   "category": "label",
+   "context": "Date format choice 'Friendly'.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.format_us": {
+   "category": "label",
+   "context": "Date format choice 'US'.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.format_international": {
+   "category": "label",
+   "context": "Date format choice 'International'.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.format_iso": {
+   "category": "label",
+   "context": "Date format choice 'ISO'.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.time": {
+   "category": "label",
+   "context": "Menu section title.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.hour24": {
+   "category": "label",
+   "context": "Time style choice.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.date_menu.hour12": {
+   "category": "label",
+   "context": "Time style choice.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "format.today": {
+   "category": "label",
+   "context": "Friendly date: today.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "format.yesterday": {
+   "category": "label",
+   "context": "Friendly date: yesterday.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "format.date_time": {
+   "category": "label",
+   "context": "A date followed by its time of day.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "date": "string: the date",
+    "time": "string: the time of day"
+   }
+  },
+  "downloads.queue.start_now": {
+   "category": "action",
+   "context": "Reaffirms a promoted transfer's place: lower-ranked work restarts so it can start.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.start_now_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of Start Now.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.picked_up": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.moving_name": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.place_current": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.not_moved": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.moved": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.moved_preempting": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.starts_after": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.keeps_place": {
+   "category": "hint",
+   "context": "Screen-reader announcement while moving a transfer in the queue.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.place_before": {
+   "category": "hint",
+   "context": "Announcement: the transfer would go before another.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name",
+    "other": "string: the neighbour's name"
+   }
+  },
+  "downloads.queue.place_after": {
+   "category": "hint",
+   "context": "Announcement: the transfer would go after another.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name",
+    "other": "string: the neighbour's name"
+   }
+  },
+  "downloads.queue.page": {
+   "category": "hint",
+   "context": "Announcement: the queue page shown while moving.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "page": "number"
+   }
+  },
+  "downloads.queue.move_cancelled": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.reorder_cancelled": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.cancelled": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.top_cancelled": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.checking": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.moving": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.top_unchanged_selection": {
+   "category": "hint",
+   "context": "A queue move's outcome or progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.queue.top_unchanged_one": {
+   "category": "hint",
+   "context": "Move to Top: nothing to move.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.top_moved_one": {
+   "category": "hint",
+   "context": "Move to Top: one transfer moved.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.top_moved_one_preempting": {
+   "category": "hint",
+   "context": "Move to Top: moved, and lower-ranked work stops.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.queue.top_moved_many": {
+   "category": "hint",
+   "context": "Move to Top: several moved.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: transfers"
+   }
+  },
+  "downloads.queue.top_moved_many_preempting": {
+   "category": "hint",
+   "context": "Move to Top: several moved, and lower-ranked work stops.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: transfers"
+   }
+  },
+  "downloads.move_to_top": {
+   "category": "action",
+   "context": "Row menu command.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.row_menu.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a row's menu.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the transfer's name"
+   }
+  },
+  "downloads.restart.title": {
+   "category": "modal-title",
+   "context": "Dialog: a queue change would restart active transfers.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.restart.confirm": {
+   "category": "action",
+   "context": "Accepts the restarts.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.restart.intro": {
+   "category": "critical-warning",
+   "context": "Dialog intro: which active transfers restart.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "critical-warning",
+   "args": {
+    "count": "plural: transfers"
+   }
+  },
+  "downloads.restart.consequence": {
+   "category": "critical-warning",
+   "context": "Under each transfer listed: what happens to it.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "critical-warning"
+  },
+  "downloads.restart.loss": {
+   "category": "critical-warning",
+   "context": "Dialog question: progress is lost.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "critical-warning",
+   "args": {
+    "count": "plural: transfers"
+   }
+  },
+  "downloads.restart.progress_of": {
+   "category": "label",
+   "context": "A listed transfer's progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "done": "string: a size",
+    "total": "string: a size"
+   }
+  },
+  "downloads.restart.progress_estimated": {
+   "category": "label",
+   "context": "A listed transfer's estimated progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "percent": "number"
+   }
+  },
+  "downloads.restart.progress_done": {
+   "category": "label",
+   "context": "A listed transfer's progress (total unknown).",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "done": "string: a size"
+   }
+  },
+  "downloads.restart.unavailable": {
+   "category": "error",
+   "context": "The confirmation dialog could not open.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.remove.title": {
+   "category": "modal-title",
+   "context": "Removal confirmation title.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: downloads"
+   }
+  },
+  "downloads.remove.message": {
+   "category": "critical-warning",
+   "context": "Removal confirmation question.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "critical-warning",
+   "args": {
+    "count": "plural: downloads"
+   }
+  },
+  "downloads.remove.unavailable": {
+   "category": "error",
+   "context": "The confirmation dialog could not open.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.action.deleting": {
+   "category": "status-chip",
+   "context": "A delete in progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.action.deleted": {
+   "category": "toast",
+   "context": "A download was removed.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.action.resetting": {
+   "category": "status-chip",
+   "context": "A bulk reset in progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.action.working": {
+   "category": "status-chip",
+   "context": "A bulk action in progress.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.action.retry_queued": {
+   "category": "toast",
+   "context": "A failed download will be tried again.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.label.title": {
+   "category": "modal-title",
+   "context": "Dialog that sets a download's label.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.label.field": {
+   "category": "label",
+   "context": "The label field.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.label.hint": {
+   "category": "hint",
+   "context": "Under the label field.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "downloads.label.updated": {
+   "category": "toast",
+   "context": "The label was saved.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "transfer.action.retry": {
+   "category": "action",
+   "context": "Row button that tries a failed download again.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "transfer.action.retry_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a row's Retry.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "transfer.action.remove": {
+   "category": "action",
+   "context": "Row button that removes a download.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "transfer.action.remove_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of a row's Remove.",
+   "owner": "frontend/static/ui-downloads.js",
+   "criticality": "normal"
+  },
+  "transfer.action.paused_toast": {
+   "category": "toast",
+   "context": "One download was paused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "transfer.action.resumed_toast": {
+   "category": "toast",
+   "context": "One download was resumed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.title_fallback": {
+   "category": "modal-title",
+   "context": "Details title when the transfer has no name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.loading": {
+   "category": "status-chip",
+   "context": "Details while its transfer loads.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.load_failed": {
+   "category": "error",
+   "context": "Details could not load.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (may be English)"
+   }
+  },
+  "details.field.status": {
+   "category": "label",
+   "context": "Details field label 'Status'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.provider": {
+   "category": "label",
+   "context": "Details field label 'Provider'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.progress": {
+   "category": "label",
+   "context": "Details field label 'Progress'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.size": {
+   "category": "label",
+   "context": "Details field label 'Size'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.submitted_as": {
+   "category": "label",
+   "context": "Details field label 'Submitted As'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.added": {
+   "category": "label",
+   "context": "Details field label 'Added'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.completed": {
+   "category": "label",
+   "context": "Details field label 'Completed'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.original_resource": {
+   "category": "label",
+   "context": "Details field label 'Original Resource'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.transfer_id": {
+   "category": "label",
+   "context": "Details field label 'Transfer ID'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.hash": {
+   "category": "label",
+   "context": "Details field label 'Hash'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.local_path": {
+   "category": "label",
+   "context": "Details field label 'Local Path'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.error": {
+   "category": "label",
+   "context": "Details field label 'Error'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.extraction": {
+   "category": "label",
+   "context": "Details field label 'Extraction'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.extraction_error": {
+   "category": "label",
+   "context": "Details field label 'Extraction Error'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.reason": {
+   "category": "label",
+   "context": "Details field label 'Reason'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.field.requested_by": {
+   "category": "label",
+   "context": "Details field label 'Requested By'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.title": {
+   "category": "card-title",
+   "context": "Details card: each provider or source tried for the transfer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.empty": {
+   "category": "hint",
+   "context": "Route History is empty.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.empty_legacy": {
+   "category": "hint",
+   "context": "Route History of an old transfer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.original": {
+   "category": "label",
+   "context": "A route this transfer itself submitted.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.unverified": {
+   "category": "status-chip",
+   "context": "A contributed source whose sameness is not yet proven.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.relation_aside": {
+   "category": "label",
+   "context": "Where a route came from, as an aside beside its address.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: e.g. Original, or From #12"
+   }
+  },
+  "details.route.retry": {
+   "category": "action",
+   "context": "Checks again whether a contributed source is the same file.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.retry_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of that Retry.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.retry_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that Retry.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "id": "number: the contributing transfer"
+   }
+  },
+  "details.route.retrying": {
+   "category": "status-chip",
+   "context": "A Retry in progress.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.route.retry_started": {
+   "category": "toast",
+   "context": "The Retry was accepted.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.from_transfer": {
+   "category": "label",
+   "context": "A source another transfer contributed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "id": "number: that transfer"
+   }
+  },
+  "details.reason.unverified": {
+   "category": "tooltip/aria",
+   "context": "Why a source is not yet proven the same.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the server's reason (may be English)"
+   }
+  },
+  "details.reason.failed": {
+   "category": "tooltip/aria",
+   "context": "Why a source failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the server's reason"
+   }
+  },
+  "details.reason.next_attempt": {
+   "category": "label",
+   "context": "Before the date of the next automatic retry.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.reason.no_retry": {
+   "category": "hint",
+   "context": "No retry will happen by itself.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.advanced.title": {
+   "category": "card-title",
+   "context": "Disclosure of internal identifiers.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.advanced.executor": {
+   "category": "label",
+   "context": "The download engine(s) that ran it.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.advanced.origin_provider": {
+   "category": "label",
+   "context": "Identifier of the provider it was first sent to.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.advanced.current_provider": {
+   "category": "label",
+   "context": "Identifier of the provider handling it now.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.advanced.delivering_provider": {
+   "category": "label",
+   "context": "Identifier of the provider that delivered it.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.files.title": {
+   "category": "card-title",
+   "context": "Details card listing the transfer's files.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.files.title_count": {
+   "category": "card-title",
+   "context": "The same with how many there are.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "details.files.filename": {
+   "category": "table-header",
+   "context": "Files column.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.source_warnings": {
+   "category": "card-title",
+   "context": "Details card of sources that failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "details.events": {
+   "category": "card-title",
+   "context": "Details card of the transfer's events.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.extraction.pending": {
+   "category": "status-chip",
+   "context": "Archive extraction state 'pending' (shown lower-case, as the server's code).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.extraction.extracting": {
+   "category": "status-chip",
+   "context": "Archive extraction state 'extracting' (shown lower-case, as the server's code).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.extraction.completed": {
+   "category": "status-chip",
+   "context": "Archive extraction state 'completed' (shown lower-case, as the server's code).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.extraction.error": {
+   "category": "status-chip",
+   "context": "Archive extraction state 'error' (shown lower-case, as the server's code).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.extraction.skipped": {
+   "category": "status-chip",
+   "context": "Archive extraction state 'skipped' (shown lower-case, as the server's code).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.integration_id": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Reported by.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Origin.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Domain.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.diagnostic": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Diagnostic.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.native_code": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Native code.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Stage.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.permanence": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Permanence.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability": {
+   "category": "label",
+   "context": "Label of an error fact in the Error disclosure: Retry.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.user": {
+   "category": "label",
+   "context": "The error model's origin code 'user', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.core": {
+   "category": "label",
+   "context": "The error model's origin code 'core', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.provider": {
+   "category": "label",
+   "context": "The error model's origin code 'provider', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.executor": {
+   "category": "label",
+   "context": "The error model's origin code 'executor', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.remote_source": {
+   "category": "label",
+   "context": "The error model's origin code 'remote_source', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.local_system": {
+   "category": "label",
+   "context": "The error model's origin code 'local_system', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.security_policy": {
+   "category": "label",
+   "context": "The error model's origin code 'security_policy', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.origin.post_processor": {
+   "category": "label",
+   "context": "The error model's origin code 'post_processor', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.request": {
+   "category": "label",
+   "context": "The error model's domain code 'request', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.provider": {
+   "category": "label",
+   "context": "The error model's domain code 'provider', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.resolution": {
+   "category": "label",
+   "context": "The error model's domain code 'resolution', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.executor": {
+   "category": "label",
+   "context": "The error model's domain code 'executor', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.network": {
+   "category": "label",
+   "context": "The error model's domain code 'network', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.security": {
+   "category": "label",
+   "context": "The error model's domain code 'security', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.local_resource": {
+   "category": "label",
+   "context": "The error model's domain code 'local_resource', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.integrity": {
+   "category": "label",
+   "context": "The error model's domain code 'integrity', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.lifecycle": {
+   "category": "label",
+   "context": "The error model's domain code 'lifecycle', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.reconciliation": {
+   "category": "label",
+   "context": "The error model's domain code 'reconciliation', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.cleanup": {
+   "category": "label",
+   "context": "The error model's domain code 'cleanup', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.post_processing": {
+   "category": "label",
+   "context": "The error model's domain code 'post_processing', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.domain.internal": {
+   "category": "label",
+   "context": "The error model's domain code 'internal', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.submission": {
+   "category": "label",
+   "context": "The error model's stage code 'submission', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.resolution": {
+   "category": "label",
+   "context": "The error model's stage code 'resolution', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.candidate_preparation": {
+   "category": "label",
+   "context": "The error model's stage code 'candidate_preparation', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.queue": {
+   "category": "label",
+   "context": "The error model's stage code 'queue', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.execution": {
+   "category": "label",
+   "context": "The error model's stage code 'execution', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.verification": {
+   "category": "label",
+   "context": "The error model's stage code 'verification', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.post_processing": {
+   "category": "label",
+   "context": "The error model's stage code 'post_processing', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.reconciliation": {
+   "category": "label",
+   "context": "The error model's stage code 'reconciliation', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.stage.cleanup": {
+   "category": "label",
+   "context": "The error model's stage code 'cleanup', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.permanence.temporary": {
+   "category": "label",
+   "context": "The error model's permanence code 'temporary', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.permanence.permanent": {
+   "category": "label",
+   "context": "The error model's permanence code 'permanent', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.permanence.unknown": {
+   "category": "label",
+   "context": "The error model's permanence code 'unknown', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.never": {
+   "category": "label",
+   "context": "The error model's retryability code 'never', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.immediate": {
+   "category": "label",
+   "context": "The error model's retryability code 'immediate', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.backoff": {
+   "category": "label",
+   "context": "The error model's retryability code 'backoff', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.after_reauth": {
+   "category": "label",
+   "context": "The error model's retryability code 'after_reauth', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.after_reresolution": {
+   "category": "label",
+   "context": "The error model's retryability code 'after_reresolution', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.after_resource_change": {
+   "category": "label",
+   "context": "The error model's retryability code 'after_resource_change', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.error_fact.retryability.unknown": {
+   "category": "label",
+   "context": "The error model's retryability code 'unknown', shown in the Error disclosure (lower-case words in English).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.resource.menu_label": {
+   "category": "tooltip/aria",
+   "context": "Menu of the Original Resource field.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.resource.copy": {
+   "category": "action",
+   "context": "Copies the original address.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.resource.copied": {
+   "category": "toast",
+   "context": "Copy succeeded.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.resource.copy_failed": {
+   "category": "error",
+   "context": "Copy failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.resource.changed": {
+   "category": "toast",
+   "context": "The field changed before the copy.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.servers": {
+   "category": "label",
+   "context": "Details field: the news servers that delivered it.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: servers"
+   }
+  },
+  "details.usenet.reported_share": {
+   "category": "tooltip/aria",
+   "context": "A server's reported share.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "share": "string: a share, e.g. 80%"
+   }
+  },
+  "details.usenet.unattributed": {
+   "category": "tooltip/aria",
+   "context": "A server named only by the job report.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.removed_note": {
+   "category": "tooltip/aria",
+   "context": "A server since removed from Settings.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.removed_name": {
+   "category": "label",
+   "context": "A removed server's name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string"
+   }
+  },
+  "details.usenet.unnamed": {
+   "category": "label",
+   "context": "A server without a name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.none": {
+   "category": "label",
+   "context": "No server delivered articles.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.none_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of None reported.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.unavailable": {
+   "category": "label",
+   "context": "No server report exists.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.usenet.unavailable_tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of Not available.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.none": {
+   "category": "hint",
+   "context": "Requested By is empty.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.integration": {
+   "category": "label",
+   "context": "A request made by an integration (API token).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.integration_token": {
+   "category": "label",
+   "context": "The same, naming its token.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "token": "string: the token's label"
+   }
+  },
+  "details.requested_by.account_disabled": {
+   "category": "label",
+   "context": "The requesting account's standing: disabled account.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.account_deleted": {
+   "category": "label",
+   "context": "The requesting account's standing: deleted account.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.account_merged": {
+   "category": "label",
+   "context": "The requesting account's standing: merged account.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.requested_by.via": {
+   "category": "label",
+   "context": "The request reached this transfer through a merged one.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "id": "number"
+   }
+  },
+  "details.requested_by.requested": {
+   "category": "label",
+   "context": "When the request was made (the date is drawn in its place).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "date": "string: a date"
+   }
+  },
+  "details.requested_by.withdrawn": {
+   "category": "label",
+   "context": "When it was withdrawn.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "date": "string: a date"
+   }
+  },
+  "details.requested_by.more": {
+   "category": "action",
+   "context": "Disclosure of the later requests.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: requests"
+   }
+  },
+  "details.requested_by.more_withdrawn": {
+   "category": "action",
+   "context": "The same, saying how many were withdrawn.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: requests",
+    "withdrawn": "number"
+   }
+  },
+  "details.withdraw.button": {
+   "category": "action",
+   "context": "Withdraws the reader's own requests for this transfer.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: requests"
+   }
+  },
+  "details.withdraw.confirm_title": {
+   "category": "modal-title",
+   "context": "Confirmation title.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: requests"
+   }
+  },
+  "details.withdraw.confirm_message": {
+   "category": "critical-warning",
+   "context": "Confirmation: what withdrawing does and keeps.",
+   "owner": "frontend/static/app.js",
+   "criticality": "critical-warning"
+  },
+  "details.withdraw.confirm": {
+   "category": "action",
+   "context": "Confirms the withdrawal.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.withdraw.pending": {
+   "category": "status-chip",
+   "context": "Withdrawal in progress.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.withdraw.done": {
+   "category": "toast",
+   "context": "One request withdrawn.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.withdraw.already": {
+   "category": "toast",
+   "context": "Nothing to withdraw.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.withdraw.refused": {
+   "category": "toast",
+   "context": "The server refused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the server's reason"
+   }
+  },
+  "details.withdraw.unknown": {
+   "category": "toast",
+   "context": "No answer arrived.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.withdraw.summary": {
+   "category": "toast",
+   "context": "Outcome of withdrawing several requests.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "parts": "string: the parts, e.g. '2 withdrawn, 1 refused (reason)'"
+   }
+  },
+  "details.withdraw.part_withdrawn": {
+   "category": "label",
+   "context": "Part of that outcome.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "details.withdraw.part_already": {
+   "category": "label",
+   "context": "Part of that outcome.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "details.withdraw.part_refused": {
+   "category": "label",
+   "context": "Part of that outcome.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number",
+    "reasons": "string"
+   }
+  },
+  "details.withdraw.part_unknown": {
+   "category": "label",
+   "context": "Part of that outcome.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "details.trace.button": {
+   "category": "action",
+   "context": "Details button (Admin): downloads the transfer's trace file.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "details.trace.generating": {
+   "category": "status-chip",
+   "context": "The trace is being built.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.trace.failed": {
+   "category": "error",
+   "context": "The trace download failed.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "details.file.blocked": {
+   "category": "status-chip",
+   "context": "A file the safety rules blocked (capitals in English).",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the rule's reason"
+   }
+  },
+  "details.candidates.chip": {
+   "category": "action",
+   "context": "The Files row button that shows a file's sources.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidates.show": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that button while closed.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources",
+    "filename": "string"
+   }
+  },
+  "details.candidates.hide": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that button while open.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources",
+    "filename": "string"
+   }
+  },
+  "details.candidate.active": {
+   "category": "status-chip",
+   "context": "The source in use (capitals in English).",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.active_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of ACTIVE.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.switch": {
+   "category": "action",
+   "context": "Makes this source the file's source.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.provider_fallback": {
+   "category": "label",
+   "context": "A source's provider when its name is unknown.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.source_fallback": {
+   "category": "label",
+   "context": "A source's name when the server names neither host nor scheme.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.file_fallback": {
+   "category": "label",
+   "context": "A file's stand-in name when it has none (lower-case in English).",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.relationship.original": {
+   "category": "status-chip",
+   "context": "A source this transfer itself submitted (server code 'original').",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.relationship.consolidated": {
+   "category": "status-chip",
+   "context": "A source merged from a duplicate (server code 'consolidated').",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.failed": {
+   "category": "status-chip",
+   "context": "The source failed (server code 'failed').",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "details.candidate.switched": {
+   "category": "toast",
+   "context": "A switch succeeded.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "filename": "string",
+    "source": "string: a host"
+   }
+  },
+  "details.candidate.switch_failed": {
+   "category": "toast",
+   "context": "A switch failed (title).",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "filename": "string"
+   }
+  },
+  "details.candidate.switch_failed_default": {
+   "category": "error",
+   "context": "A switch failed without a reason.",
+   "owner": "frontend/static/ui-detail-candidates.js",
+   "criticality": "normal"
+  },
+  "submission.local_network.title": {
+   "category": "modal-title",
+   "context": "Confirmation before a transfer reaches the private network.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.local_network.message": {
+   "category": "critical-warning",
+   "context": "The confirmation's explanation.",
+   "owner": "frontend/static/app.js",
+   "criticality": "critical-warning"
+  },
+  "submission.local_network.message_named": {
+   "category": "critical-warning",
+   "context": "The same, naming the addresses.",
+   "owner": "frontend/static/app.js",
+   "criticality": "critical-warning",
+   "args": {
+    "hosts": "string: the addresses"
+   }
+  },
+  "submission.local_network.allow": {
+   "category": "action",
+   "context": "Allows this transfer only.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.scope.title": {
+   "category": "modal-title",
+   "context": "A link names an item inside a collection.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.scope.message": {
+   "category": "hint",
+   "context": "The dialog's explanation.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.scope.item": {
+   "category": "action",
+   "context": "Choice: only the linked item (used when the server gives no label).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.scope.collection": {
+   "category": "action",
+   "context": "Choice: the whole collection (used when the server gives no label).",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "submission.scope.cancel": {
+   "category": "action",
+   "context": "Adds nothing for this link.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "upload.added": {
+   "category": "toast",
+   "context": "An uploaded file was added.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "kind": "select: torrent, nzb, metalink, link_file"
+   }
+  },
+  "upload.added_paused": {
+   "category": "toast",
+   "context": "Added, but waits because processing is paused.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "kind": "select: torrent, nzb, metalink, link_file"
+   }
+  },
+  "upload.added_duplicate": {
+   "category": "toast",
+   "context": "Added, possibly a duplicate.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "kind": "select: torrent, nzb, metalink, link_file"
+   }
+  },
+  "upload.too_large": {
+   "category": "error",
+   "context": "The chosen file is too large.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "kind": "select: torrent, nzb, metalink, link_file",
+    "limit": "string: a size, e.g. 16 MB"
+   }
+  },
+  "upload.already_queued": {
+   "category": "toast",
+   "context": "The file duplicates one already queued.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string"
+   }
+  },
+  "upload.scope_declined": {
+   "category": "toast",
+   "context": "A link file needs per-link choices.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "upload.picker_unavailable": {
+   "category": "error",
+   "context": "The file chooser could not open.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "file_selection.truncated_known": {
+   "category": "critical-warning",
+   "context": "A collection larger than what is shown: later entries are never downloaded.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "critical-warning",
+   "args": {
+    "shown": "number",
+    "total": "number"
+   }
+  },
+  "file_selection.truncated_unknown": {
+   "category": "critical-warning",
+   "context": "The same when the collection's size is unknown.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "critical-warning",
+   "args": {
+    "shown": "number"
+   }
+  },
+  "file_selection.tree_entries": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a collection's list of entries.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.tree_files": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of a transfer's list of files.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.note_entries": {
+   "category": "critical-warning",
+   "context": "Footer note for a collection: closing cancels the transfer.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "critical-warning"
+  },
+  "file_selection.note_files": {
+   "category": "critical-warning",
+   "context": "Footer note for a transfer's files.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "critical-warning"
+  },
+  "file_selection.countdown": {
+   "category": "critical-warning",
+   "context": "Countdown: unless a choice is confirmed, everything downloads. {clock} is the remaining time.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "critical-warning",
+   "args": {
+    "clock": "string: the remaining time, e.g. 4:59 (drawn as its own element)"
+   }
+  },
+  "file_selection.count_entries": {
+   "category": "label",
+   "context": "How many entries are chosen.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal",
+   "args": {
+    "selected": "number",
+    "total": "number"
+   }
+  },
+  "file_selection.count_files": {
+   "category": "label",
+   "context": "How many files are chosen.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal",
+   "args": {
+    "selected": "number",
+    "total": "number"
+   }
+  },
+  "file_selection.select_all": {
+   "category": "action",
+   "context": "Checks every file.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.deselect_all": {
+   "category": "action",
+   "context": "Unchecks every file.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.choose": {
+   "category": "action",
+   "context": "Opens the file chooser for a transfer.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.change": {
+   "category": "action",
+   "context": "Opens it again to change the choice.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.title_entries": {
+   "category": "modal-title",
+   "context": "Chooser title for a collection.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.title_files": {
+   "category": "modal-title",
+   "context": "Chooser title for a transfer's files.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.close_entries": {
+   "category": "tooltip/aria",
+   "context": "Close control of a collection's chooser: it cancels the transfer.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.close_files": {
+   "category": "tooltip/aria",
+   "context": "Close control of the files chooser.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.expired": {
+   "category": "toast",
+   "context": "The time to choose ran out.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.superseded": {
+   "category": "toast",
+   "context": "The list changed while open.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.confirmed_entries": {
+   "category": "toast",
+   "context": "The choice was confirmed.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: entries"
+   }
+  },
+  "file_selection.confirmed_files": {
+   "category": "toast",
+   "context": "The choice was confirmed.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: files"
+   }
+  },
+  "file_selection.conflict": {
+   "category": "toast",
+   "context": "The choice could not be confirmed as it was.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.failed": {
+   "category": "error",
+   "context": "Confirm failed.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.transfer_cancelled": {
+   "category": "toast",
+   "context": "The transfer was cancelled from the chooser.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.cancel_failed": {
+   "category": "error",
+   "context": "Cancel failed.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.pending_title": {
+   "category": "modal-title",
+   "context": "The provider has not delivered the file list.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.pending_message": {
+   "category": "hint",
+   "context": "Explains the wait.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.no_longer": {
+   "category": "toast",
+   "context": "The chooser can no longer change anything.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "file_selection.unavailable": {
+   "category": "error",
+   "context": "The chooser could not be read.",
+   "owner": "frontend/static/ui-file-selection.js",
+   "criticality": "normal"
+  },
+  "directory_picker.download.title": {
+   "category": "modal-title",
+   "context": "Server folder picker for the Download Folder setting.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.download.selectable": {
+   "category": "status-chip",
+   "context": "The folder shown can be chosen.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.download.fallback_notice": {
+   "category": "hint",
+   "context": "The configured folder could not be opened; another place is shown.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.backup.title": {
+   "category": "modal-title",
+   "context": "Server folder picker for the Backup Folder setting.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.backup.selectable": {
+   "category": "status-chip",
+   "context": "The folder shown can be chosen.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.backup.fallback_notice": {
+   "category": "hint",
+   "context": "The configured folder could not be opened; another place is shown.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.accept": {
+   "category": "action",
+   "context": "Chooses the folder shown.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.current": {
+   "category": "label",
+   "context": "Label of the folder shown.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.not_validated": {
+   "category": "status-chip",
+   "context": "The folder has not been checked yet.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.not_selectable": {
+   "category": "status-chip",
+   "context": "The folder cannot be chosen, and why.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string"
+   }
+  },
+  "directory_picker.up": {
+   "category": "action",
+   "context": "Opens the parent folder.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.list_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the folder list.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.empty": {
+   "category": "hint",
+   "context": "The folder has no sub-folders.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.directory_fallback": {
+   "category": "label",
+   "context": "A folder without a name.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.open_to_validate": {
+   "category": "hint",
+   "context": "A folder that must be opened to be checked.",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.none": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'none').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.low_space": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'low_space').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.capacity_exhausted": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'capacity_exhausted').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.quota_exhausted": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'quota_exhausted').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.read_only": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'read_only').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.missing": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'missing').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.invalid_path": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'invalid_path').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.inaccessible": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'inaccessible').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.stat_failed": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'stat_failed').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.io_error": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'io_error').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.sqlite_io_error": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'sqlite_io_error').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.reason.sqlite_open_failed": {
+   "category": "status-chip",
+   "context": "A folder's state (server code 'sqlite_open_failed').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.invalid_path": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'invalid_path').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.relative_path": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'relative_path').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.not_directory": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'not_directory').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.symlink_loop": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'symlink_loop').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.path_inaccessible": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'path_inaccessible').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.path_unavailable": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'path_unavailable').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.browser_unavailable": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'browser_unavailable').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "directory_picker.error.default": {
+   "category": "error",
+   "context": "Why a folder cannot be browsed (server code 'default').",
+   "owner": "frontend/static/ui-settings-directory-picker.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.current": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.prepared": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.preparing": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.waiting_for_selection": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.deferred": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.retrying": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.available": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.failed_earlier": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status.unavailable": {
+   "category": "status-chip",
+   "context": "A provider's state for this link in the provider picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.disabled": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.not_entitled": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.entitlement_unknown": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.unhealthy": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.declined": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.applicability_unknown": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.reason.held": {
+   "category": "label",
+   "context": "Why a provider cannot take this link; shown after its state.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.already_selected": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.unsupported": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.unavailable": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.preparing": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.pending": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.inactive": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.decomposed": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.shared": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation.no_route": {
+   "category": "label",
+   "context": "Lower-case phrase: why a link takes no part in a transfer-wide provider choice; follows a count (e.g. '2 already on it').",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.concurrency_limited": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.account_limited": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.provider_unavailable": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.resource_state_conflict": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.unsupported_request": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.changed": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.gone": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.error": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.not_attempted": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refusal.discard_confirmation_required": {
+   "category": "label",
+   "context": "Lower-case phrase in parentheses: why a link's switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.not_switchable": {
+   "category": "label",
+   "context": "Lower-case fallback phrase: a link that cannot switch.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.refused": {
+   "category": "label",
+   "context": "Lower-case fallback phrase: a refused link without a known reason.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.pending": {
+   "category": "status-chip",
+   "context": "Provider badge before any provider is chosen.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.preparing": {
+   "category": "status-chip",
+   "context": "Providers whose copy is being prepared on request.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "names": "string: comma-separated provider names"
+   }
+  },
+  "root_provider.destination_host": {
+   "category": "label",
+   "context": "A switch destination: provider and the host it uses.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: provider name",
+    "host": "string: host name"
+   }
+  },
+  "root_provider.switch_on_resume": {
+   "category": "status-chip",
+   "context": "A paused download's accepted provider switch, applied on Resume.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "destination": "string: provider (and host)"
+   }
+  },
+  "root_provider.switching_to": {
+   "category": "status-chip",
+   "context": "A provider switch in progress.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "destination": "string: provider (and host)"
+   }
+  },
+  "root_provider.launcher.root": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the provider badge that opens the picker.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name"
+   }
+  },
+  "root_provider.launcher.transfer": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the badge that chooses one provider for all of a transfer's links.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name"
+   }
+  },
+  "root_provider.launcher.busy": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the badge while a switch runs.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name"
+   }
+  },
+  "root_provider.wait.seconds": {
+   "category": "label",
+   "context": "A short wait in seconds.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "seconds": "number"
+   }
+  },
+  "root_provider.wait.minutes": {
+   "category": "label",
+   "context": "A wait in whole minutes.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "minutes": "number"
+   }
+  },
+  "root_provider.wait.minutes_seconds": {
+   "category": "label",
+   "context": "A wait in minutes and seconds.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "minutes": "number",
+    "seconds": "number"
+   }
+  },
+  "root_provider.next_attempt_in": {
+   "category": "label",
+   "context": "Lower-case phrase: when a failed preparation is tried again.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "wait": "string: a wait, e.g. 2 min 5 s"
+   }
+  },
+  "root_provider.next_attempt_now": {
+   "category": "label",
+   "context": "Lower-case phrase: it is tried again now.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.current": {
+   "category": "status-chip",
+   "context": "Marks the provider this link is on (upper case in English).",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.switch": {
+   "category": "action",
+   "context": "Switches to this provider.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.participation_count": {
+   "category": "label",
+   "context": "A count of links with one reason, e.g. '2 already on it'.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "label": "string: a reason phrase"
+   }
+  },
+  "root_provider.transfer.on_all": {
+   "category": "status-chip",
+   "context": "Every link of the transfer is already on this provider.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links"
+   }
+  },
+  "root_provider.transfer.can_take": {
+   "category": "status-chip",
+   "context": "How many of the transfer's links this provider can take now.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "eligible": "number",
+    "count": "plural: links"
+   }
+  },
+  "root_provider.transfer.none": {
+   "category": "status-chip",
+   "context": "This provider can take none of the links.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.title": {
+   "category": "modal-title",
+   "context": "Provider picker title.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.title_transfer": {
+   "category": "modal-title",
+   "context": "Picker title when choosing for every link.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.best_effort": {
+   "category": "hint",
+   "context": "Explains that a transfer-wide switch is not all-or-nothing.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.status_unavailable": {
+   "category": "error",
+   "context": "The picker could not be read.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.failure.concurrency_limited": {
+   "category": "error",
+   "context": "Why a switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.failure.provider_unavailable": {
+   "category": "error",
+   "context": "Why a switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.failure.account_limited": {
+   "category": "error",
+   "context": "Why a switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal"
+  },
+  "root_provider.failure.provider_preparing": {
+   "category": "error",
+   "context": "Why a switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning"
+  },
+  "root_provider.failure.transfer_changed": {
+   "category": "error",
+   "context": "Why a switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning"
+  },
+  "root_provider.failure.nothing": {
+   "category": "error",
+   "context": "A switch changed nothing.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning"
+  },
+  "root_provider.outcome.already": {
+   "category": "toast",
+   "context": "Part of a switch result.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.outcome.pending": {
+   "category": "toast",
+   "context": "Part of a switch result: links waiting for the provider's copy.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.outcome.not_switched": {
+   "category": "toast",
+   "context": "Part of a switch result: links the provider could not take.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "reason": "string: a reason phrase"
+   }
+  },
+  "root_provider.outcome.refused": {
+   "category": "toast",
+   "context": "Part of a switch result: links whose switch was refused.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "reason": "string: a reason phrase"
+   }
+  },
+  "root_provider.outcome.body": {
+   "category": "toast",
+   "context": "A switch result's details: the parts joined by semicolons, as one sentence.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "parts": "string: the joined parts"
+   }
+  },
+  "root_provider.outcome.complete": {
+   "category": "toast",
+   "context": "Every eligible link switched.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: links",
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.outcome.preparing": {
+   "category": "toast",
+   "context": "Some links switched; the rest wait for the provider's copy.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "switched": "plural: links switched",
+    "count": "plural: links waiting",
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.outcome.partial": {
+   "category": "toast",
+   "context": "Only some links switched.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "switched": "number",
+    "count": "plural: links",
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.outcome.none": {
+   "category": "toast",
+   "context": "No link switched.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning",
+   "args": {
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.transfer_failed": {
+   "category": "toast",
+   "context": "A transfer-wide switch failed.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning",
+   "args": {
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.transfer_failed_body": {
+   "category": "toast",
+   "context": "Body of that failure: the reason, then what happens next.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "message": "string: why it failed"
+   }
+  },
+  "root_provider.switched": {
+   "category": "toast",
+   "context": "A link's provider switched.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "normal",
+   "args": {
+    "target": "string: provider name"
+   }
+  },
+  "root_provider.switch_failed": {
+   "category": "toast",
+   "context": "A switch failed; nothing moved.",
+   "owner": "frontend/static/ui-root-provider.js",
+   "criticality": "critical-warning",
+   "args": {
+    "current": "string: provider name"
+   }
+  },
+  "group_candidates.chip.artifact_title": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the sources chip for a file.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.group_title": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the sources chip for the files still downloading.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.artifact_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that chip for a file.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.group_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of that chip for the remaining files.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.legacy_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the chip when only the common sources are known.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.history_title": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the non-interactive sources count.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.history_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the non-interactive sources count (history).",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: sources (English always says 'sources'; the chip appears from two)"
+   }
+  },
+  "group_candidates.chip.candidates": {
+   "category": "label",
+   "context": "Word beside the sources count in Details.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.active": {
+   "category": "status-chip",
+   "context": "Marks the source in use (upper case in English).",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.active_group_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of ACTIVE for a group.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.active_source_label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of ACTIVE for one file.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.switch": {
+   "category": "action",
+   "context": "Switches to this source.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.not_switchable_group": {
+   "category": "label",
+   "context": "A common source no file group can use now.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.not_switchable": {
+   "category": "label",
+   "context": "A source this file cannot use now.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.source": {
+   "category": "label",
+   "context": "Fallback name of an unnamed source.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.source_lower": {
+   "category": "label",
+   "context": "Lower-case fallback name of an unnamed source, inside a sentence.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.this_source": {
+   "category": "label",
+   "context": "Fallback for an unnamed destination, inside a sentence.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.this_file": {
+   "category": "label",
+   "context": "Fallback for an unnamed file, inside a sentence.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.file": {
+   "category": "label",
+   "context": "Fallback for an unnamed file in a list.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.artifact": {
+   "category": "label",
+   "context": "Fallback for an unnamed file in a message.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.title_group": {
+   "category": "modal-title",
+   "context": "Chooser title: sources every file has.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.title_artifact": {
+   "category": "modal-title",
+   "context": "Chooser title: one file's sources.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.note_group": {
+   "category": "hint",
+   "context": "What the group chooser does.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.note_group_none": {
+   "category": "hint",
+   "context": "The group chooser can do nothing now.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.note_artifact": {
+   "category": "hint",
+   "context": "What the file chooser does.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.loading": {
+   "category": "status-chip",
+   "context": "The chooser is reading the sources.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.progress.switching": {
+   "category": "status-chip",
+   "context": "A source switch in progress.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.progress.count": {
+   "category": "status-chip",
+   "context": "How many files have switched so far.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "completed": "number",
+    "count": "plural: files"
+   }
+  },
+  "group_candidates.options_changed": {
+   "category": "toast",
+   "context": "The chooser's choices changed before it opened.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.unavailable_group": {
+   "category": "error",
+   "context": "The group chooser could not be read.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.unavailable_artifact": {
+   "category": "error",
+   "context": "The file chooser could not be read.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.recheck_failed": {
+   "category": "error",
+   "context": "The switch was not made: the transfer could not be re-read.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning"
+  },
+  "group_candidates.no_longer_switchable": {
+   "category": "error",
+   "context": "The switch was not made.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning"
+  },
+  "group_candidates.artifact_switched": {
+   "category": "toast",
+   "context": "One file's source switched.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "file": "string: file name",
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.artifact_failed": {
+   "category": "toast",
+   "context": "One file's switch failed.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "file": "string: file name"
+   }
+  },
+  "group_candidates.artifact_failed_body": {
+   "category": "error",
+   "context": "Why it failed, when unknown.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.switch_failed": {
+   "category": "error",
+   "context": "Lower-case fallback reason for a failed switch.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.discard.title": {
+   "category": "modal-title",
+   "context": "Confirmation: switching discards verified downloaded material.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning"
+  },
+  "group_candidates.discard.one": {
+   "category": "critical-warning",
+   "context": "What switching one file discards and keeps; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "discarded": "string: a size",
+    "file": "string: file name",
+    "target": "string: the source",
+    "kept": "select: yes|no",
+    "retained": "string: a size",
+    "abandon": "select: yes|no",
+    "abandoned": "string: a size"
+   }
+  },
+  "group_candidates.discard.many": {
+   "category": "critical-warning",
+   "context": "What switching several files discards; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "target": "string: the source",
+    "total": "string: a size",
+    "count": "plural: files (two or more)",
+    "listed": "string: up to five 'file (size)' items, comma-separated",
+    "more": "plural: files not listed"
+   }
+  },
+  "group_candidates.discard.item": {
+   "category": "label",
+   "context": "One file in that list, with what it discards.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "file": "string: file name",
+    "size": "string: a size"
+   }
+  },
+  "group_candidates.discard.accept_one": {
+   "category": "action",
+   "context": "Confirms the switch of one file.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.discard.accept_many": {
+   "category": "action",
+   "context": "Confirms the switch of several files.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.discard.cancel_one": {
+   "category": "action",
+   "context": "Cancels: nothing switches.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.discard.cancel_many": {
+   "category": "action",
+   "context": "Cancels: nothing switches.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.no_longer_common": {
+   "category": "error",
+   "context": "The group switch was not made.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.not_switchable_now": {
+   "category": "error",
+   "context": "The group switch was not made.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.preview_failed": {
+   "category": "error",
+   "context": "The group switch was not made.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.partial_title": {
+   "category": "toast",
+   "context": "Only some files switched.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "critical-warning",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.partial_body": {
+   "category": "toast",
+   "context": "How many switched, and why the rest did not; what switched stays switched.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "switched": "number",
+    "count": "plural: files",
+    "reason": "string: why"
+   }
+  },
+  "group_candidates.partial_reason": {
+   "category": "error",
+   "context": "Lower-case fallback reason.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal"
+  },
+  "group_candidates.already_on": {
+   "category": "toast",
+   "context": "Nothing needed to switch.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "host": "string: the source"
+   }
+  },
+  "group_candidates.switched": {
+   "category": "toast",
+   "context": "The group switched.",
+   "owner": "frontend/static/ui-group-candidates.js",
+   "criticality": "normal",
+   "args": {
+    "host": "string: the source"
+   }
   }
  }
 }

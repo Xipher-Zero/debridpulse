@@ -538,13 +538,14 @@ document.addEventListener('debridpulse:locale-changed', () => {
 async function confirmLocalNetwork(hosts) {
   if (!window.DPSettingsModal || typeof window.DPSettingsModal.confirm !== 'function') return false;
   const named = (Array.isArray(hosts) ? hosts : []).filter(Boolean).join(', ');
+  const messageKey = named ? 'submission.local_network.message_named' : 'submission.local_network.message';
   return window.DPSettingsModal.confirm({
-    title: 'Connect to a local network address?',
-    message: 'This transfer connects to an address on your private network'
-      + (named ? ' (' + named + ')' : '') + '. Only continue if you trust the source and intended this '
-      + 'connection. Allowing applies to this transfer only; cancelling changes no settings.',
-    confirmLabel: 'Allow',
-    cancelLabel: 'Cancel',
+    title: DPI18n.t('submission.local_network.title'),
+    message: DPI18n.t(messageKey, {hosts: named}),
+    confirmLabel: DPI18n.t('submission.local_network.allow'),
+    cancelLabel: DPI18n.t('common.cancel'),
+    keys: {title: 'submission.local_network.title', message: messageKey, messageValues: named ? {hosts: named} : null,
+           accept: 'submission.local_network.allow', cancel: 'common.cancel'},
   });
 }
 
@@ -560,20 +561,22 @@ async function chooseAcquisitionScope(link, choices) {
     .filter(choice => choice && (choice.scope === 'item' || choice.scope === 'collection'));
   if (offered.length !== 2) return '';
   let chosen = '';
-  const fallback = {item: 'This Item', collection: 'Collection'};
+  // The claimant's own labels where it gives them (its words); ours otherwise.
+  const fallback = {item: DPI18n.t('submission.scope.item'), collection: DPI18n.t('submission.scope.collection')};
   const handle = window.DPSettingsModal.open({
-    title: 'Download the item or its collection?',
+    title: DPI18n.t('submission.scope.title'),
+    keys: {title: 'submission.scope.title', cancel: 'submission.scope.cancel'},
     dismiss: true,
     blocking: true,
     closeControl: true,
-    cancelLabel: 'Cancel Transfer',
+    cancelLabel: DPI18n.t('submission.scope.cancel'),
     cancelTone: 'danger',
     actions: offered.map(choice => ({id: choice.scope, label: String(choice.label || fallback[choice.scope])})),
     mount(body) {
       const message = document.createElement('p');
       message.className = 'dp-modal-message dp-modal-message--center';
-      message.textContent = 'This link points to one item inside a collection. Choose what to download; '
-        + 'the choice applies to this link only.';
+      message.dataset.i18n = 'submission.scope.message';
+      message.textContent = DPI18n.t('submission.scope.message');
       const address = document.createElement('code');
       address.className = 'dp-modal-message dp-modal-code';
       address.textContent = String(link || '');
@@ -877,9 +880,8 @@ function routeOutcomePresentation(value) {
 function renderRouteHistory(t) {
   const attempts = Array.isArray(t?.route_attempts) ? t.route_attempts : [];
   if (!attempts.length) {
-    const message = t?.provider_provenance_status === 'unknown_legacy'
-      ? 'Provider history was not recorded for this legacy transfer.'
-      : 'No provider route has been established yet.';
+    const message = DPI18n.t(t?.provider_provenance_status === 'unknown_legacy'
+      ? 'details.route.empty_legacy' : 'details.route.empty');
     return `<div class="dp-detail-route-empty">${esc(message)}</div>`;
   }
   // Relationship is the backend's projection (relation + contributing_transfer_id):
@@ -891,23 +893,24 @@ function renderRouteHistory(t) {
     const contributed = Number.isInteger(contributor) && contributor > 0 && contributor !== Number(t?.id);
     // One provenance wording for any route another transfer contributed; the
     // status column alone says whether it was verified.
-    if (state === 'consolidated' && contributed) return {state, label: `From #${contributor}`};
-    if (state === 'unverified' || state === 'failed') return {state, label: contributed ? `From #${contributor}` : 'Original'};
-    if (state === 'original') return {state, label: 'Original'};
+    const from = () => DPI18n.t('details.from_transfer', {id: contributor});
+    if (state === 'consolidated' && contributed) return {state, label: from()};
+    if (state === 'unverified' || state === 'failed') return {state, label: contributed ? from() : DPI18n.t('details.route.original')};
+    if (state === 'original') return {state, label: DPI18n.t('details.route.original')};
     return {state: '', label: ''};
   };
   // Where the source came from reads as a parenthetical aside beside the URL;
   // what happened to that route keeps the plain status wording to its right.
   // Parentheses are the only change to the label text.
-  const originLabel = (label) => label ? `(${label})` : '';
+  const originLabel = (label) => label ? DPI18n.t('details.route.relation_aside', {label}) : '';
   return `<div class="dp-detail-route-list">${attempts.map((attempt) => {
-    const provider = attempt.provider_name || 'Unknown';
+    const provider = attempt.provider_name || DPI18n.t('transfer.provider.unknown');
     // An unverified association is the backend's statement about this source; it
     // replaces the route's own outcome label and never reads as a verified candidate.
     const unverified = attempt.verification_state === 'unverified';
-    const outcome = unverified ? {label: 'Unverified', state: 'unverified'} : routeOutcomePresentation(attempt.outcome);
-    const outcomeTitle = unverified && attempt.unverified_reason ? `Equivalence unproven: ${attempt.unverified_reason}`
-      : (attempt.failure_reason ? `Source failed: ${attempt.failure_reason}` : '');
+    const outcome = unverified ? {label: DPI18n.t('details.route.unverified'), state: 'unverified'} : routeOutcomePresentation(attempt.outcome);
+    const outcomeTitle = unverified && attempt.unverified_reason ? DPI18n.t('details.reason.unverified', {reason: attempt.unverified_reason})
+      : (attempt.failure_reason ? DPI18n.t('details.reason.failed', {reason: attempt.failure_reason}) : '');
     const relation = relationOf(attempt);
     const identity = attempt.route_identity || '—';
     const identityTitle = attempt.route_location || attempt.route_identity || '';
@@ -919,7 +922,7 @@ function renderRouteHistory(t) {
     const retry = unverified && attempt.reconsider_available === true && Number.isInteger(contributor)
       && contributor > 0 && contributor !== Number(t?.id) && dpCan('transfers.operate');
     const outcomeCell = retry
-      ? `<span class="dp-detail-route-outcome-cell">${outcomeMarkup}<button type="button" class="btn btn-blue btn-sm dp-detail-route-retry" data-default-label="Retry" onclick="retryUnverifiedContribution(${contributor},${Number(t.id)},this)" data-tooltip="Check again whether this source is the same file" aria-label="Retry verifying the source from #${contributor}">${window.DPIcons.iconLabel('refresh', 'Retry')}</button></span>`
+      ? `<span class="dp-detail-route-outcome-cell">${outcomeMarkup}<button type="button" class="btn btn-blue btn-sm dp-detail-route-retry" data-default-label="${esc(DPI18n.t('details.route.retry'))}" onclick="retryUnverifiedContribution(${contributor},${Number(t.id)},this)" data-tooltip="${esc(DPI18n.t('details.route.retry_tooltip'))}" aria-label="${esc(DPI18n.t('details.route.retry_label', {id: contributor}))}">${window.DPIcons.iconLabel('refresh', DPI18n.t('details.route.retry'))}</button></span>`
       : outcomeMarkup;
     return `<div class="dp-detail-route-row" data-route-relation="${esc(relation.state)}">
       <span class="dp-detail-route-order">${esc(attempt.presentation_ordinal ?? attempt.ordinal ?? '')}</span>
@@ -935,10 +938,10 @@ function renderRouteHistory(t) {
 // (POST /torrents/{contributor}/retry: the engine reconsiders a consolidated
 // contributor's unverified association); then Details shows the server's state.
 async function retryUnverifiedContribution(contributorId, targetId, button) {
-  setButtonPending(button, true, 'Retrying…');
+  setButtonPending(button, true, 'details.route.retrying');
   try {
     await api('POST', `/torrents/${contributorId}/retry`);
-    toast('Checking the source again', 'success');
+    toast(DPI18n.t('details.route.retry_started'), 'success');
   } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
   if (DPModal.mode === 'details') showDetail(targetId);
   else setButtonPending(button, false);
@@ -2366,7 +2369,7 @@ window.__dpRegisterRecentRenderer = function registerRecentRenderer(renderer) {
 function openTorrentFilePicker() {
   const input = document.getElementById('torrent-file-input');
   if (!input) {
-    toast('Torrent file selector is unavailable', 'error');
+    toast(DPI18n.t('upload.picker_unavailable'), 'error');
     return;
   }
   input.value = '';
@@ -2378,20 +2381,21 @@ function openTorrentFilePicker() {
  * server reads by its content, never its name. The browser never learns how
  * anything is acquired. */
 const TRANSFER_UPLOADS = Object.freeze({
-  '.torrent': {endpoint: '/torrents/add-file', label: 'Torrent file', interactive: true},
-  '.nzb':     {endpoint: '/usenet/add-file',   label: 'NZB',          interactive: false,
+  // ``kind``: what the toasts call the file (upload.* select messages, one per kind).
+  '.torrent': {endpoint: '/torrents/add-file', kind: 'torrent', interactive: true},
+  '.nzb':     {endpoint: '/usenet/add-file',   kind: 'nzb',     interactive: false,
                // A posting's manifest is routinely tens or hundreds of
                // megabytes and is streamed straight to durable storage, so it
                // is not judged by a metafile's ceiling. This mirrors the one
                // server-side ceiling (transfers/staged_input.py).
-               maxBytes: 1024 * 1024 * 1024, maxLabel: '1 GB'},
+               maxBytes: 1024 * 1024 * 1024, maxLimit: ['1', 'gb']},
   // A Metalink file describes files and their sources: one that describes
   // several offers the file selector like any other collection.
-  '.meta4':   {endpoint: '/multimeta/add-file', label: 'Metalink file', interactive: true},
+  '.meta4':   {endpoint: '/multimeta/add-file', kind: 'metalink', interactive: true},
 });
 // Mirrors the server's link file ceiling (transfers/requests.py).
 const LINK_FILE_UPLOAD = Object.freeze(
-  {endpoint: '/links/add-file', label: 'Link file', interactive: true, maxBytes: 1024 * 1024, maxLabel: '1 MB'});
+  {endpoint: '/links/add-file', kind: 'link_file', interactive: true, maxBytes: 1024 * 1024, maxLimit: ['1', 'mb']});
 
 function uploadKindFor(name) {
   const lower = String(name || '').toLowerCase();
@@ -2406,7 +2410,8 @@ async function uploadTransferFile(input) {
   const kind = uploadKindFor(file.name) || LINK_FILE_UPLOAD;
   const maxBytes = kind.maxBytes || 16 * 1024 * 1024;
   if (file.size > maxBytes) {
-    toast(`${kind.label} exceeds the ${kind.maxLabel || '16 MB'} upload limit`, 'error');
+    const [value, unit] = kind.maxLimit || ['16', 'mb'];
+    toast(DPI18n.t('upload.too_large', {kind: kind.kind, limit: DPI18n.t(`format.size.${unit}`, {value})}), 'error');
     input.value = '';
     return;
   }
@@ -2432,26 +2437,25 @@ async function uploadTransferFile(input) {
       // resubmits THIS file with consent; neither answer changes a setting.
       if (error?.detail?.confirmation === 'acquisition_scope') {
         // A file carries no per-link answers: it is declined, never guessed.
-        toast('Some links in this file point to an item inside a collection. '
-          + 'Add those links through Quick Add to choose what to download.', 'warn');
+        toast(DPI18n.t('upload.scope_declined'), 'warn');
         return;
       }
       if (error?.detail?.confirmation !== 'local_network') throw error;
       if (!await confirmLocalNetwork(error.detail.hosts)) {
-        toast('Local network transfer not added', 'info');
+        toast(DPI18n.t('quick_add.local_not_added'), 'info');
         return;
       }
       form.append('allow_local_network', 'true');
       res = await api('POST', kind.endpoint, form, timeout);
     }
     if (res && res._duplicate && res._duplicate.action === 'skip') {
-      toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
+      toast(DPI18n.t('upload.already_queued', {name: res.name || res._duplicate.reason}), 'warn');
     } else if (res && res._duplicate && res._duplicate.action === 'warn') {
-      toast(`${kind.label} added (possible duplicate)`, 'warn');
+      toast(DPI18n.t('upload.added_duplicate', {kind: kind.kind}), 'warn');
     } else if (res && res._deferred) {
-      toast(`${kind.label} added · processing is paused`, 'success');
+      toast(DPI18n.t('upload.added_paused', {kind: kind.kind}), 'success');
     } else {
-      toast(`${kind.label} added!`, 'success');
+      toast(DPI18n.t('upload.added', {kind: kind.kind}), 'success');
     }
     loadStats();
     loadRecent();
@@ -2795,11 +2799,11 @@ async function recoverAll(button) {
 }
 
 async function pauseT(id, button) {
-  setButtonPending(button, true, 'Pausing…');
+  setButtonPending(button, true, 'processing.pausing');
 
   try {
     await api('POST',`/torrents/${id}/pause`);
-    toast('Transfer paused','warn');
+    toast(DPI18n.t('transfer.action.paused_toast'),'warn');
     loadTorrents();
     loadStats();
     loadRecent();
@@ -2811,7 +2815,7 @@ async function pauseT(id, button) {
 }
 
 async function resumeT(id, button) {
-  setButtonPending(button, true, 'Resuming…');
+  setButtonPending(button, true, 'processing.resuming');
 
   try {
     const result =
@@ -2823,7 +2827,7 @@ async function resumeT(id, button) {
       renderTopbarActions();
     }
 
-    toast('Transfer resumed','success');
+    toast(DPI18n.t('transfer.action.resumed_toast'),'success');
     loadTorrents();
     loadStats();
     loadRecent();
@@ -2896,7 +2900,7 @@ const DPModal = (function () {
     if (modal) modal.dataset.dpModalMode = activeMode;
     if (titleEl && opts.title != null) titleEl.textContent = opts.title;
     if (closeBtn) {
-      const label = opts.closeLabel || 'Close details';
+      const label = opts.closeLabel || DPI18n.t('a11y.close_details');
       closeBtn.setAttribute('aria-label', label);
       closeBtn.dataset.tooltip = label;
     }
@@ -2993,24 +2997,24 @@ function dpOriginalResourceMenu(event) {
   const node = event.target.closest?.('.dp-detail-resource');
   if (!snapshot || !node || node !== snapshot.node || !node.isConnected) return false;
   return dpOpenContextMenu(event, node, {
-    label: 'Original Resource actions',
-    items: [{text: 'Copy URL', run: () => dpCopyOriginalResource(snapshot)}],
+    label: DPI18n.t('details.resource.menu_label'),
+    items: [{text: DPI18n.t('details.resource.copy'), run: () => dpCopyOriginalResource(snapshot)}],
     restore: () => { if (snapshot.node.isConnected) snapshot.node.focus({preventScroll: true}); },
   });
 }
 async function dpCopyOriginalResource(snapshot) {
   if (dpDetailResource !== snapshot || !snapshot.node.isConnected) {
-    toast('Details changed. Nothing was copied.', 'warn');
+    toast(DPI18n.t('details.resource.changed'), 'warn');
     return;
   }
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
     await navigator.clipboard.writeText(snapshot.url);
   } catch (_) {
-    toast('Could not copy the URL.', 'error');
+    toast(DPI18n.t('details.resource.copy_failed'), 'error');
     return;
   }
-  toast('URL copied.', 'success');
+  toast(DPI18n.t('details.resource.copied'), 'success');
 }
 function dpRenderOriginalResource(modalBody, t) {
   const full = typeof t.original_resource_sanitized_full === 'string' ? t.original_resource_sanitized_full : '';
@@ -3034,10 +3038,10 @@ document.addEventListener('debridpulse:detail-closed', () => { dpDetailResource 
  * discloses facts of that very error (error_disclosure, bound to it by the
  * Details route) -- the same message as a collapsed disclosure revealing
  * them. Every value is text; nothing here interprets a provider or an error. */
-const DP_ERROR_FACTS = Object.freeze([
-  ['integration_id', 'Reported by'], ['origin', 'Origin'], ['domain', 'Domain'], ['diagnostic', 'Diagnostic'],
-  ['native_code', 'Native code'], ['stage', 'Stage'], ['permanence', 'Permanence'], ['retryability', 'Retry'],
-]);
+// Each fact's label is details.error_fact.<fact>; an enumerated value is
+// details.error_fact.<fact>.<value> (the error model's codes), else its own words.
+const DP_ERROR_FACTS = Object.freeze(['integration_id', 'origin', 'domain', 'diagnostic', 'native_code', 'stage',
+  'permanence', 'retryability']);
 // Classifications read as words; a diagnostic, native code or identifier is shown exactly.
 const DP_ERROR_VERBATIM = new Set(['diagnostic', 'native_code', 'integration_id']);
 function dpRenderErrorDisclosure(modalBody, t) {
@@ -3045,10 +3049,12 @@ function dpRenderErrorDisclosure(modalBody, t) {
   const facts = t.error_disclosure && typeof t.error_disclosure === 'object' ? t.error_disclosure : null;
   if (!field || !facts) return;
   const rows = [];
-  for (const [key, label] of DP_ERROR_FACTS) {
+  for (const key of DP_ERROR_FACTS) {
     const raw = facts[key];
     if (typeof raw !== 'string' || !raw) continue;
-    let value = DP_ERROR_VERBATIM.has(key) ? raw : raw.replace(/_/g, ' ');
+    const label = DPI18n.t(`details.error_fact.${key}`);
+    const coded = `details.error_fact.${key}.${raw}`;
+    let value = DP_ERROR_VERBATIM.has(key) ? raw : (DPI18n.has(coded) ? DPI18n.t(coded) : raw.replace(/_/g, ' '));
     if (key === 'integration_id' && typeof facts.integration_name === 'string' && facts.integration_name && facts.integration_name !== raw) {
       value = `${facts.integration_name} (${raw})`;
     }
@@ -3079,49 +3085,24 @@ function dpErrorReasonMarkup(t) {
   if (!reason || typeof reason.reason !== 'string' || !reason.reason) return '';
   const at = Number(reason.scheduled_retry_at);
   const schedule = reason.scheduled_retry_at != null && Number.isFinite(at) && at > 0
-    ? 'Next automatic attempt: ' + window.downloadsDateMarkup(new Date(at * 1000).toISOString())
-    : 'No automatic retry is scheduled.';
+    ? esc(DPI18n.t('details.reason.next_attempt')) + ' ' + window.downloadsDateMarkup(new Date(at * 1000).toISOString())
+    : esc(DPI18n.t('details.reason.no_retry'));
   const explanation = typeof reason.explanation === 'string' && reason.explanation
     ? `<div class="dp-detail-error-reason-explanation">${esc(reason.explanation)}</div>` : '';
-  return `<div class="dp-detail-error-reason" style="grid-column:1/-1"><div class="dk">Reason</div><div class="dv">`
+  return `<div class="dp-detail-error-reason" style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.reason'))}</div><div class="dv">`
     + `<div class="dp-detail-error-reason-text">${esc(reason.reason)}</div>${explanation}`
     + `<div class="dp-detail-error-reason-schedule">${schedule}</div></div></div>`;
 }
 
-/* Details opens its backdrop at once and its shell with its content: the
- * shell stays unseen until the transfer is rendered into it, so it never
- * appears small and then grows. Only an answer slower than
- * DETAIL_LOADING_GRACE_MS shows the loading line first -- inside the shell at
- * its full height, which the content then fills without resizing it.
- * Each opening is its own: an answer for an earlier one, or one arriving after
- * the shell was closed or given to another view, is never shown. */
-const DETAIL_LOADING_GRACE_MS = 300;
-let dpDetailOpening = 0;
-async function showDetail(id) {
+/* Details' body and title from one payload: drawn when it arrives, and again --
+ * from the same payload, with no request -- when the page's language changes. */
+let dpDetailShown = null;
+function dpPaintDetail(t, relabel) {
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
-  dpDetailResource = null;
-  dpCloseContextMenu(false);
-  const opening = ++dpDetailOpening;
-  const current = () => opening === dpDetailOpening && DPModal.mode === 'details';
-
-  DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details', pending: true});
-  const slow = setTimeout(() => { if (current()) DPModal.reveal({hold: true}); }, DETAIL_LOADING_GRACE_MS);
-  const traceButton = document.querySelector('#modal .dp-detail-trace');
-  if (traceButton) traceButton.dataset.dpTransferId = String(id);
-
-  if (modalBody) {
-    modalBody.innerHTML =
-      '<div class="empty" style="padding:24px">Loading transfer details…</div>';
-  }
-
-  try {
-    const t = await api('GET',`/torrents/${id}`);
-    if (!current()) return;
-
     if (modalTitle) {
       modalTitle.textContent =
-        t.display_name || t.name || 'Torrent Details';
+        t.display_name || t.name || DPI18n.t('details.title_fallback');
     }
 
     const providerPresentation = transferProviderPresentation(t);
@@ -3140,33 +3121,33 @@ async function showDetail(id) {
     if (modalBody) modalBody.innerHTML = `
       <div class="detail-grid">
         ${dpDetailFactCells(t, providerPresentation)}
-        <div class="dp-detail-original-resource" style="grid-column:${t.requested_by ? '1' : '1/-1'}"><div class="dk">Original Resource</div><div class="dv"></div></div>
+        <div class="dp-detail-original-resource" style="grid-column:${t.requested_by ? '1' : '1/-1'}"><div class="dk">${esc(DPI18n.t('details.field.original_resource'))}</div><div class="dv"></div></div>
         ${dpRequestedByMarkup(t.requested_by)}
-        <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
-        <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
-        ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
+        <div style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.transfer_id'))}</div><div class="dv">${t.id}</div></div>
+        <div style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.hash'))}</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
+        ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.local_path'))}</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
         ${dpErrorReasonMarkup(t)}
-        ${t.error_message?`<div class="dp-detail-error" style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
-        ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
-        ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
+        ${t.error_message?`<div class="dp-detail-error" style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.error'))}</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
+        ${t.extraction_status?`<div><div class="dk">${esc(DPI18n.t('details.field.extraction'))}</div><div class="dv">${esc(DPI18n.has(`details.extraction.${t.extraction_status}`) ? DPI18n.t(`details.extraction.${t.extraction_status}`) : t.extraction_status)}</div></div>`:''}
+        ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">${esc(DPI18n.t('details.field.extraction_error'))}</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
       <div class="card dp-detail-section-card dp-detail-route-history">
-        <div class="card-header"><span class="card-title">Route History</span></div>
+        <div class="card-header"><span class="card-title">${esc(DPI18n.t('details.route.title'))}</span></div>
         <div class="dp-detail-route-body">${renderRouteHistory(t)}</div>
       </div>
       <details class="dp-detail-advanced">
-        <summary>Advanced acquisition details</summary>
+        <summary>${esc(DPI18n.t('details.advanced.title'))}</summary>
         <div class="dp-detail-advanced-grid">
-          <div><span>Executor</span><strong>${esc((t.executors || []).join(', ') || '—')}</strong></div>
-          <div><span>Origin Provider ID</span><strong>${esc(t.origin_provider_id || '—')}</strong></div>
-          <div><span>Current Provider ID</span><strong>${esc(t.current_provider_id || '—')}</strong></div>
-          <div><span>Delivering Provider ID</span><strong>${esc(t.delivering_provider_id || '—')}</strong></div>
+          <div><span>${esc(DPI18n.t('details.advanced.executor'))}</span><strong>${esc((t.executors || []).join(', ') || '—')}</strong></div>
+          <div><span>${esc(DPI18n.t('details.advanced.origin_provider'))}</span><strong>${esc(t.origin_provider_id || '—')}</strong></div>
+          <div><span>${esc(DPI18n.t('details.advanced.current_provider'))}</span><strong>${esc(t.current_provider_id || '—')}</strong></div>
+          <div><span>${esc(DPI18n.t('details.advanced.delivering_provider'))}</span><strong>${esc(t.delivering_provider_id || '—')}</strong></div>
         </div>
       </details>
       ${dpShowFilesCard?`
         <div class="card dp-detail-section-card dp-detail-files-card">
           <div class="card-header dp-detail-files-header">
-            <span class="card-title">Files${dpDisplayFiles.length?` (${dpDisplayFiles.length})`:''}</span>
+            <span class="card-title">${esc(dpDisplayFiles.length ? DPI18n.t('details.files.title_count', {count: dpDisplayFiles.length}) : DPI18n.t('details.files.title'))}</span>
             <span class="dp-detail-files-header-actions">
               <span class="dp-detail-files-provider-slot" data-dp-root-provider-mount data-dp-transfer-id="${t.id}"></span>
               <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
@@ -3176,7 +3157,7 @@ async function showDetail(id) {
           ${dpDisplayFiles.length?`
           <div class="dp-detail-table-wrap">
             <table class="t-table">
-              <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
+              <thead><tr><th>${esc(DPI18n.t('details.files.filename'))}</th><th>${esc(DPI18n.t('transfer.column.size'))}</th><th>${esc(DPI18n.t('transfer.column.status'))}</th></tr></thead>
               <tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles, t)}</tbody>
             </table>
           </div>
@@ -3185,7 +3166,7 @@ async function showDetail(id) {
       `:''}
       ${t.source_outcomes && t.source_outcomes.length ? `
         <div class="card dp-detail-section-card">
-          <div class="card-header"><span class="card-title">Source Warnings (${t.source_outcomes.length})</span></div>
+          <div class="card-header"><span class="card-title">${esc(DPI18n.t('details.source_warnings', {count: t.source_outcomes.length}))}</span></div>
           <div class="dp-detail-table-wrap"><table class="t-table"><tbody>
             ${t.source_outcomes.map(source => `<tr><td>${esc(source.name)}</td><td>${badge('error', source)}</td></tr>`).join('')}
           </tbody></table></div>
@@ -3194,7 +3175,7 @@ async function showDetail(id) {
       ${t.events&&t.events.length?`
         <div class="card dp-detail-section-card dp-detail-events-card">
           <div class="card-header">
-            <span class="card-title">Events</span>
+            <span class="card-title">${esc(DPI18n.t('details.events'))}</span>
           </div>
           <div class="dp-detail-events-list">
             ${t.events.map(ev=>`
@@ -3211,13 +3192,80 @@ async function showDetail(id) {
     dpRenderErrorDisclosure(modalBody, t);
     dpRenderWithdrawal(t);
 
+    // ``relabel``: the same transfer re-said in another language; the Files
+    // header owners re-word from what they hold instead of re-reading.
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
-      {detail: {transferId: Number(id), transfer: t}}));
+      {detail: {transferId: Number(t.id), transfer: t, relabel: Boolean(relabel)}}));
+}
+
+/* Repaint ``root`` from data it already shows, keeping the reader's place: its
+ * scroll, which <details> are open, and focus -- the element at the same place
+ * (the same data draws the same structure), else the dialog's close control. */
+function dpRepaintKeepingPlace(root, paint) {
+  const scroll = root.scrollTop;
+  const opened = Array.from(root.querySelectorAll('details'), node => node.open);
+  const active = document.activeElement;
+  const path = [];
+  if (active && active !== root && root.contains(active)) {
+    for (let node = active; node !== root; node = node.parentElement) path.unshift(Array.prototype.indexOf.call(node.parentElement.children, node));
+  }
+  paint();
+  root.querySelectorAll('details').forEach((node, index) => { if (index < opened.length) node.open = opened[index]; });
+  root.scrollTop = scroll;
+  if (!path.length) return;
+  let target = root;
+  for (const index of path) target = target && target.children[index];
+  const same = target && active && target.tagName === active.tagName && target.className === active.className;
+  (same ? target : document.querySelector('#modal .modal-close'))?.focus?.({preventScroll: true});
+}
+document.addEventListener('debridpulse:locale-changed', () => {
+  const body = document.getElementById('modal-body');
+  if (DPModal.mode !== 'details' || !dpDetailShown || !body) return;
+  // The newest payload held for this transfer (the Files owner may have refreshed it).
+  const newer = window.DPDetailCandidates?.latest?.();
+  if (newer && Number(newer.id) === Number(dpDetailShown.id)) dpDetailShown = newer;
+  dpRepaintKeepingPlace(body, () => dpPaintDetail(dpDetailShown, true));
+});
+document.addEventListener('debridpulse:detail-closed', () => { dpDetailShown = null; });
+
+/* Details opens its backdrop at once and its shell with its content: the
+ * shell stays unseen until the transfer is rendered into it, so it never
+ * appears small and then grows. Only an answer slower than
+ * DETAIL_LOADING_GRACE_MS shows the loading line first -- inside the shell at
+ * its full height, which the content then fills without resizing it.
+ * Each opening is its own: an answer for an earlier one, or one arriving after
+ * the shell was closed or given to another view, is never shown. */
+const DETAIL_LOADING_GRACE_MS = 300;
+let dpDetailOpening = 0;
+async function showDetail(id) {
+  const modalTitle = document.getElementById('modal-title');
+  const modalBody = document.getElementById('modal-body');
+  dpDetailResource = null;
+  dpCloseContextMenu(false);
+  const opening = ++dpDetailOpening;
+  const current = () => opening === dpDetailOpening && DPModal.mode === 'details';
+
+  DPModal.open({mode: 'details', title: DPI18n.t('common.loading'), closeLabel: DPI18n.t('a11y.close_details'), pending: true});
+  const slow = setTimeout(() => { if (current()) DPModal.reveal({hold: true}); }, DETAIL_LOADING_GRACE_MS);
+  const traceButton = document.querySelector('#modal .dp-detail-trace');
+  if (traceButton) traceButton.dataset.dpTransferId = String(id);
+
+  if (modalBody) {
+    modalBody.innerHTML =
+      `<div class="empty" style="padding:24px">${esc(DPI18n.t('details.loading'))}</div>`;
+  }
+
+  try {
+    const t = await api('GET',`/torrents/${id}`);
+    if (!current()) return;
+
+    dpDetailShown = t;
+    dpPaintDetail(t);
   } catch(e) {
     if (!current()) return;
     if (modalBody) {
       modalBody.innerHTML =
-        `<div class="empty" style="padding:24px">Failed to load details: ${esc(sanitizeErrorMsg(e.message))}</div>`;
+        `<div class="empty" style="padding:24px">${esc(DPI18n.t('details.load_failed', {reason: sanitizeErrorMsg(e.message)}))}</div>`;
     }
 
     toast(sanitizeErrorMsg(e.message),'error');
@@ -3240,14 +3288,15 @@ async function showDetail(id) {
 // Provider, Size, Added -- and, for a Usenet transfer, the servers its own
 // execution evidence names, second, beneath Provider.
 function dpDetailFactCells(t, providerPresentation) {
-  const cell = (label, value, cls) => `<div${cls ? ` class="${cls}"` : ''}><div class="dk">${label}</div><div class="dv">${value}</div></div>`;
-  const status = cell('Status', badge(transferDisplayStatus(t), t));
-  const provider = cell('Provider', esc(providerPresentation.label), 'dp-detail-provider');
-  const progress = cell('Progress', dpDetailProgress(t));
-  const size = cell('Size', fmtSize(t.size_bytes));
-  const submitted = cell('Submitted As', sourceLabel(t.source, t.request_kinds));
-  const added = cell('Added', window.downloadsDateMarkup(t.created_at));
-  const completed = cell('Completed', window.downloadsDateMarkup(t.completed_at));
+  // ``key``: the label's catalog key (details.field.*).
+  const cell = (key, value, cls) => `<div${cls ? ` class="${cls}"` : ''}><div class="dk">${esc(DPI18n.t(`details.field.${key}`))}</div><div class="dv">${value}</div></div>`;
+  const status = cell('status', badge(transferDisplayStatus(t), t));
+  const provider = cell('provider', esc(providerPresentation.label), 'dp-detail-provider');
+  const progress = cell('progress', dpDetailProgress(t));
+  const size = cell('size', esc(fmtSize(t.size_bytes)));
+  const submitted = cell('submitted_as', sourceLabel(t.source, t.request_kinds));
+  const added = cell('added', window.downloadsDateMarkup(t.created_at));
+  const completed = cell('completed', window.downloadsDateMarkup(t.completed_at));
   const servers = dpUsenetServersCell(t.usenet_servers);
   return (servers
     ? [status, provider, progress, servers, submitted, size, completed, added]
@@ -3258,34 +3307,39 @@ function dpDetailFactCells(t, providerPresentation) {
 function dpUsenetServersCell(evidence) {
   if (!evidence || typeof evidence !== 'object') return '';
   const servers = Array.isArray(evidence.servers) ? evidence.servers : [];
-  const label = servers.length > 1 ? 'Usenet Servers' : 'Usenet Server';
+  const T = (key, values) => esc(DPI18n.t(key, values));
+  const label = T('details.usenet.servers', {count: servers.length});
   let value;
   if (evidence.state === 'known' && servers.length) {
     value = servers.map(server => {
       const notes = [];
-      if (server.reported) notes.push('about ' + server.reported + ' of articles delivered');
-      if (!server.attributed) notes.push('reported by name only; not matched to one configured server');
-      if (server.removed) notes.push('no longer configured');
-      const name = esc(server.name || server.recorded_name || 'Unnamed server') + (server.removed ? ' (removed)' : '');
+      if (server.reported) notes.push(DPI18n.t('details.usenet.reported_share', {share: server.reported}));
+      if (!server.attributed) notes.push(DPI18n.t('details.usenet.unattributed'));
+      if (server.removed) notes.push(DPI18n.t('details.usenet.removed_note'));
+      const named = server.name || server.recorded_name || DPI18n.t('details.usenet.unnamed');
+      const name = server.removed ? T('details.usenet.removed_name', {name: named}) : esc(named);
       return `<span class="dp-detail-usenet-server"${notes.length ? ` data-tooltip="${esc(notes.join('; '))}"` : ''}>${name}</span>`;
     }).join(', ');
   } else if (evidence.state === 'none') {
-    value = '<span class="dp-detail-usenet-server is-unknown" data-tooltip="The job\'s report names no server that delivered articles">None reported</span>';
+    value = `<span class="dp-detail-usenet-server is-unknown" data-tooltip="${T('details.usenet.none_tooltip')}">${T('details.usenet.none')}</span>`;
   } else {
-    value = '<span class="dp-detail-usenet-server is-unknown" data-tooltip="No server report has been recorded for this transfer">Not available</span>';
+    value = `<span class="dp-detail-usenet-server is-unknown" data-tooltip="${T('details.usenet.unavailable_tooltip')}">${T('details.usenet.unavailable')}</span>`;
   }
   return `<div class="dp-detail-usenet-servers"><div class="dk">${label}</div><div class="dv">${value}</div></div>`;
 }
 function dpRequestedByMarkup(requested) {
   if (!requested) return '';
-  const standing = {disabled: 'Disabled', deleted: 'Deleted', merged: 'Merged'};
+  const T = (key, values) => esc(DPI18n.t(key, values));
+  const standing = new Set(['disabled', 'deleted', 'merged']);
+  // (A date is the date owner's markup: placed beside its words, never inside a translation.)
+  const dated = (key, at) => DPI18n.t(key, {date: '\u0000'}).split('\u0000').map(esc).join(window.downloadsDateMarkup(at));
   const entry = item => {
     const facts = [];
-    if (item.kind === 'integration') facts.push(item.token_label ? `Integration · token “${esc(item.token_label)}”` : 'Integration');
-    if (standing[item.standing]) facts.push(`${standing[item.standing]} account`);
-    if (item.via_transfer_id != null) facts.push(`via consolidated transfer #${esc(item.via_transfer_id)}`);
-    facts.push(`requested ${window.downloadsDateMarkup(item.requested_at)}`);
-    if (item.withdrawn_at) facts.push(`withdrawn ${window.downloadsDateMarkup(item.withdrawn_at)}`);
+    if (item.kind === 'integration') facts.push(item.token_label ? T('details.requested_by.integration_token', {token: item.token_label}) : T('details.requested_by.integration'));
+    if (standing.has(item.standing)) facts.push(T(`details.requested_by.account_${item.standing}`));
+    if (item.via_transfer_id != null) facts.push(T('details.requested_by.via', {id: item.via_transfer_id}));
+    facts.push(dated('details.requested_by.requested', item.requested_at));
+    if (item.withdrawn_at) facts.push(dated('details.requested_by.withdrawn', item.withdrawn_at));
     return `<li class="dp-detail-requester${item.withdrawn_at ? ' is-withdrawn' : ''}">
         <span class="dp-detail-requester-name">${esc(item.name)}${item.reference ? ` <span class="dp-detail-requester-ref">#${esc(item.reference)}</span>` : ''}</span>
         <span class="dp-detail-requester-facts">${facts.join(' · ')}</span>
@@ -3294,12 +3348,12 @@ function dpRequestedByMarkup(requested) {
   const requests = Array.isArray(requested.requests) ? requested.requests : [];
   const [first, ...later] = requests;
   const withdrawn = later.filter(item => item.withdrawn_at).length;
-  const summary = `${later.length} more request${later.length === 1 ? '' : 's'}${withdrawn ? ` (${withdrawn} withdrawn)` : ''}`;
+  const summary = T(withdrawn ? 'details.requested_by.more_withdrawn' : 'details.requested_by.more', {count: later.length, withdrawn});
   return `
-        <div class="dp-detail-requested-by"><div class="dk">Requested By</div><div class="dv">
+        <div class="dp-detail-requested-by"><div class="dk">${T('details.field.requested_by')}</div><div class="dv">
           ${first
             ? `<ul class="dp-detail-requesters">${entry(first)}</ul>`
-            : '<div class="dp-detail-requesters-empty">No requests recorded.</div>'}
+            : `<div class="dp-detail-requesters-empty">${T('details.requested_by.none')}</div>`}
           ${later.length ? `
           <details class="dp-detail-requesters-more">
             <summary>${summary}</summary>
@@ -3321,20 +3375,21 @@ function dpRenderWithdrawal(t) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-ghost btn-sm dp-detail-withdraw';
-  button.textContent = own.length > 1 ? 'Withdraw My Requests' : 'Withdraw My Request';
+  button.textContent = DPI18n.t('details.withdraw.button', {count: own.length});
+  button.dataset.defaultLabel = button.textContent;
+  button.dataset.dpWithdrawCount = String(own.length);     // a language change says it again
   button.addEventListener('click', () => dpWithdrawOwnRequests(t, own, button));
   field.appendChild(button);
 }
 
 async function dpWithdrawOwnRequests(t, own, button) {
   const confirmed = await window.DPSettingsModal.confirm({
-    title: own.length > 1 ? 'Withdraw your requests?' : 'Withdraw your request?',
-    message: 'This transfer stops only if no other outstanding request still needs it. '
-      + 'Completed downloads and history are kept.',
-    confirmLabel: 'Withdraw',
+    title: DPI18n.t('details.withdraw.confirm_title', {count: own.length}),
+    message: DPI18n.t('details.withdraw.confirm_message'),
+    confirmLabel: DPI18n.t('details.withdraw.confirm'),
   });
   if (!confirmed) return;
-  setButtonPending(button, true, 'Withdrawing…');
+  setButtonPending(button, true, 'details.withdraw.pending');
   // Each request's outcome is what the server answered for it: withdrawn now,
   // already withdrawn, refused (with the server's own reason), or unknown when
   // no answer arrived. Nothing is inferred beyond that.
@@ -3349,16 +3404,16 @@ async function dpWithdrawOwnRequests(t, own, button) {
     }
   }
   const parts = [];
-  if (outcome.withdrawn) parts.push(`${outcome.withdrawn} withdrawn`);
-  if (outcome.already) parts.push(`${outcome.already} already withdrawn`);
-  if (outcome.refused.length) parts.push(`${outcome.refused.length} refused (${[...new Set(outcome.refused)].join('; ')})`);
-  if (outcome.unknown) parts.push(`${outcome.unknown} not confirmed — no response; check this transfer again`);
+  if (outcome.withdrawn) parts.push(DPI18n.t('details.withdraw.part_withdrawn', {count: outcome.withdrawn}));
+  if (outcome.already) parts.push(DPI18n.t('details.withdraw.part_already', {count: outcome.already}));
+  if (outcome.refused.length) parts.push(DPI18n.t('details.withdraw.part_refused', {count: outcome.refused.length, reasons: [...new Set(outcome.refused)].join('; ')}));
+  if (outcome.unknown) parts.push(DPI18n.t('details.withdraw.part_unknown', {count: outcome.unknown}));
   const failed = outcome.refused.length + outcome.unknown;
-  const message = own.length > 1 ? `Requests: ${parts.join(', ')}.`
-    : outcome.withdrawn ? 'Request withdrawn.'
-    : outcome.already ? 'This request was already withdrawn.'
-    : outcome.refused.length ? `Request not withdrawn: ${outcome.refused[0]}`
-    : 'Withdrawal not confirmed: no response from the server. Check this transfer again.';
+  const message = own.length > 1 ? DPI18n.t('details.withdraw.summary', {parts: parts.join(', ')})
+    : outcome.withdrawn ? DPI18n.t('details.withdraw.done')
+    : outcome.already ? DPI18n.t('details.withdraw.already')
+    : outcome.refused.length ? DPI18n.t('details.withdraw.refused', {reason: outcome.refused[0]})
+    : DPI18n.t('details.withdraw.unknown');
   toast(message, !failed ? 'success' : (outcome.withdrawn || outcome.already ? 'warning' : 'error'));
   // Whatever happened, Details shows the server's state now.
   if (DPModal.mode === 'details') showDetail(t.id);
@@ -3370,7 +3425,7 @@ async function dpWithdrawOwnRequests(t, own, button) {
 async function downloadTransferTrace(button) {
   const id = button && button.dataset.dpTransferId;
   if (!id) return;
-  setButtonPending(button, true, 'Generating…');
+  setButtonPending(button, true, 'details.trace.generating');
   try {
     const r = await window.debridPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
     if (!r.ok) {
@@ -3379,7 +3434,7 @@ async function downloadTransferTrace(button) {
       // through its message, never as "[object Object]".
       const detail = data.detail;
       throw new Error((detail && typeof detail === 'object' ? detail.message : detail)
-        || 'The trace log could not be downloaded.');
+        || DPI18n.t('details.trace.failed'));
     }
     const named = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
     const url = URL.createObjectURL(await r.blob());

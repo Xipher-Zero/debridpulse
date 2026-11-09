@@ -307,10 +307,17 @@ async def test_public_projection_hides_raw_bindings_and_capabilities(details_run
         # so the frontend can render per-candidate switch actions without
         # recreating lifecycle policy in JS. ``is_active`` is the same overlay's
         # active-source flag. The single ``presentation()`` owner emits both.
+        # 1.0.14 localization: the relationship, disposition and source kind
+        # also as codes, which the interface words in its language (the
+        # English fields stay for API clients).
         assert set(candidate) == {
             "candidate_id", "source_label", "provider_id", "relationship",
             "dispositions", "is_selected", "is_delivering", "is_active", "switch_eligible",
+            "relationship_code", "disposition_code", "source_kind",
         }
+        assert candidate["relationship_code"] in {"original", "consolidated"}
+        assert candidate["disposition_code"] in {"delivering", "failed", "active", "selected", None}
+        assert candidate["source_kind"] in {"host", "scheme", "unknown"}
         serialized = repr(candidate).lower()
         assert "http://" not in serialized
         assert "https://" not in serialized
