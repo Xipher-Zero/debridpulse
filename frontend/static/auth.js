@@ -439,12 +439,25 @@
     if (passwordAction) actions.push({id: 'password', label: passwordAction, placement: 'leading'});
     if (clearable) actions.push({id: 'clear', label: 'Clear Password', tone: 'danger', placement: 'leading'});
 
-    // Easy | Advanced, for every account that owns a presentation.
+    // The header's far end: My Account's Help, then Easy | Advanced for every
+    // account that owns a presentation. Help explains what this dialog offers
+    // this account, from the facts it was opened with, over this dialog.
     const selector = presentation.owned ? presentationSelector() : null;
+    const headerEnd = document.createElement('div');
+    headerEnd.className = 'dp-account-header-end';
+    headerEnd.innerHTML = '<button type="button" class="dp-settings-help-chip" aria-label="Help: My Account" '
+      + `data-tooltip="Help: My Account">${window.DPIcons?.svg ? window.DPIcons.svg('help', 'dp-settings-help-glyph') : '?'}</button>`;
+    headerEnd.querySelector('button').addEventListener('click', () => window.DPSettingsHelp?.open('my-account', {account: {
+      standalone, open: sessionKind(data) === 'standalone', signInRequired: required, hasPassword: own?.has_password === true,
+      passwordAction, first, standaloneFirst, clearable, showsUsername: !standalone,
+      email: Boolean(profile.email), emailSelfEntered: profile.email_self_entered === true,
+      presentation: presentation.owned,
+    }}));
+    if (selector) headerEnd.append(selector.element);
     const dialog = modal.open({
       title: 'My Account',
       titleHint: statusHint,
-      headerEnd: selector?.element,
+      headerEnd,
       acceptLabel: 'Save',
       cancelLabel: 'Cancel',
       className: 'dp-account-dialog',
@@ -846,6 +859,24 @@
       omits,
       choose: choosePresentation,
       state: presentationState,
+      // The interface this page composes, as the explanations of it read it:
+      // the role's capabilities, the deployment type and the presentation,
+      // with the Easy list's omissions -- this owner's facts, nothing more.
+      context: () => Object.freeze({
+        role: String(authority.role || ''),
+        deployment: authority.deployment_type === 'standalone' ? 'standalone' : 'server',
+        standalone: authority.deployment_type === 'standalone',
+        server: authority.deployment_type !== 'standalone',
+        mode: presentation.mode,
+        easy: presentation.mode === 'easy',
+        advanced: presentation.mode !== 'easy',
+        admin: can('administer'),
+        personal: can('notifications.self'),
+        submit: can('transfers.submit'),
+        operate: can('transfers.operate'),
+        omits: part => omits(part),
+        shows: part => !omits(part),
+      }),
     }),
   });
 

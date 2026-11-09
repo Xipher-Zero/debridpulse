@@ -12,6 +12,16 @@
  * or names a stored value, and every sentence states behaviour the backend
  * implements today. Text is assigned through textContent; no topic carries
  * markup.
+ *
+ * A topic explains the interface its reader actually has. The one context
+ * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
+ * the role's capabilities, the deployment type, Easy or Advanced and the
+ * Easy list's omissions), plus any facts the opener states about its own
+ * subject (My Account's profile). A section, a paragraph or a list item may
+ * carry `when(c)`: it is shown only where that holds, so a part the reader's
+ * interface does not show is never explained as if it were there. Without a
+ * context the reader is treated as having no Admin or personal page: never
+ * a fuller explanation than it can use.
  */
 (function () {
   'use strict';
@@ -42,6 +52,13 @@
     ],
   });
 
+  // The conditions topics name: a part the reader's presentation shows (or
+  // omits), and the deployment type.
+  const shown = part => c => c.shows(part);
+  const omitted = part => c => !c.shows(part);
+  const onServer = c => c.server;
+  const onStandalone = c => c.standalone;
+
   const TOPICS = Object.freeze({
     /* ── Services ─────────────────────────────────────────────────────── */
     'premium-services': {
@@ -56,7 +73,10 @@
           'Help on each card explains that service: how it connects, what your account with it can do, and its own settings.',
           'The credentials are stored on the server and are never shown again after saving; leave a secret field blank to keep the stored value.',
           'Test checks the saved configuration against the service. The status beside it reports Unconfigured (enabled but nothing usable is saved), Unverified (saved but not yet proven by a test), or Verified (the current saved configuration passed a test).',
-          'Additional Settings hold that service’s own limits and options; they apply to that service only. Provider Poll Interval, Full Sync Interval, Resolution Failure Retries, and Retry Delay are configured under Downloads → Download Behavior & Limits → Advanced Settings. Full Sync applies to eligible premium services; resolution retries also cover Network Sources.',
+          {text: 'Additional Settings hold that service’s own limits and options; they apply to that service only. Provider Poll Interval, Full Sync Interval, Resolution Failure Retries, and Retry Delay are configured under Downloads → Download Behavior & Limits → Advanced Settings. Full Sync applies to eligible premium services; resolution retries also cover Network Sources.',
+            when: shown('provider-additional-settings')},
+          {text: 'Each service’s own limits and options keep working with their saved values; their controls are part of the Advanced presentation.',
+            when: omitted('provider-additional-settings')},
         ]},
         {heading: 'Usenet', text: [
           'Usenet uses your configured news servers rather than a debrid account. Open the Usenet card’s help for server configuration and download behavior.',
@@ -85,10 +105,14 @@
         {heading: 'Downloads and recovery', list: [
           'A Usenet download is an ordinary DebridPulse transfer: it counts toward Maximum Concurrent Downloads, can be paused and resumed, and follows the Stalled Download Timeout and download error retries. After a restart DebridPulse finds its Usenet jobs again rather than submitting them twice.',
           'DebridPulse verifies and repairs the downloaded files, but never unpacks them in the Usenet service; Automatic Extraction handles archives afterwards, as for any download.',
-          'Behavior shared by every server is under Downloads, Transfer Method Settings, Usenet: the article cache, Direct Write, how many times one article is retried on a server before that server is given up for it (not the download retry count), and how long DebridPulse waits for its Usenet service to answer.',
+          {text: 'Behavior shared by every server is under Downloads, Transfer Method Settings, Usenet: the article cache, Direct Write, how many times one article is retried on a server before that server is given up for it (not the download retry count), and how long DebridPulse waits for its Usenet service to answer.',
+            when: shown('transfer-method-settings')},
         ]},
         {heading: 'NZBs and premium services', list: [
-          'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
+          {text: 'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
+            when: shown('provider-additional-settings')},
+          {text: 'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first, unless that service was set to go before Usenet.',
+            when: omitted('provider-additional-settings')},
           'If the first service in that order cannot resolve the NZB, the next one is tried.',
         ]},
       ],
@@ -107,13 +131,16 @@
           'Per AllDebrid’s documentation, magnets and .torrent files need a premium account. When AllDebrid reports that your account is not premium, or its premium time has ended, DebridPulse stops sending it torrents.',
           'Hoster links work for the hosts AllDebrid lists for your account; per its documentation, a free account can use only the hosts it marks as free.',
         ]},
-        {heading: 'Additional Settings', list: [
+        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
           'Prepare Backup Torrents (on by default): AllDebrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of AllDebrid’s active magnet slots, and new work takes a slot back when it needs one.',
           'Maximum Active Torrents: left empty, DebridPulse follows AllDebrid’s documented maximum of 30 active magnets. A lower number keeps fewer active; it never goes above 30.',
           'API Calls per Minute (60 by default): how many requests DebridPulse sends to AllDebrid each minute. 0 means no local limit.',
         ]},
         {heading: 'Shared settings', text: [
-          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+            when: shown('download-behavior-advanced')},
+          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+            when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
@@ -132,12 +159,15 @@
           'A free account can use hoster links only for the hosts Debrid-Link marks as usable without premium. Debrid-Link does not document seedbox use for free accounts, so DebridPulse sends them no torrents. Other paid account types are given hoster links; what else they include is not documented.',
           'Limits Debrid-Link applies to your account, such as its link, data, or torrent allowances, are respected as Debrid-Link reports them; DebridPulse retries later or uses another service.',
         ]},
-        {heading: 'Additional Settings', list: [
+        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
           'Prepare Backup Torrents (on by default): Debrid-Link may also add a torrent to your seedbox as a backup source while another service delivers it.',
           'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Debrid-Link. Debrid-Link documents no request-rate limit, so there is no API Calls per Minute setting.',
         ]},
         {heading: 'Shared settings', text: [
-          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+            when: shown('download-behavior-advanced')},
+          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+            when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
@@ -156,13 +186,16 @@
           'What a free or expired account can do through Premiumize’s API is not documented, so DebridPulse sends it no new work; the account stays connected.',
           'Premiumize refuses work it cannot take now (its fair-use limit, booster points, or active jobs). DebridPulse treats that as temporary: it retries later or uses another service.',
         ]},
-        {heading: 'Additional Settings', list: [
+        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
           'Use Premiumize Before Usenet (off by default): tries Premiumize before your Usenet service for NZBs. It needs an active Premiumize premium account; your Usenet service stays available either way.',
           'Prepare Backup Torrents (on by default): Premiumize may also add a torrent to your cloud as a backup source while another service delivers it. A backup uses your account’s resources.',
           'Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Premiumize. Premiumize documents no request-rate limit, so there is no API Calls per Minute setting.',
         ]},
         {heading: 'Shared settings', text: [
-          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+            when: shown('download-behavior-advanced')},
+          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+            when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
@@ -181,14 +214,17 @@
           'Per Real-Debrid’s documentation, torrents need a premium account. When Real-Debrid reports that your account is free, or its premium time has ended, DebridPulse stops sending it torrents.',
           'A free account may still be able to use some hosters; Real-Debrid decides that per hoster.',
         ]},
-        {heading: 'Additional Settings', list: [
+        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
           'Prepare Backup Torrents (on by default): Real-Debrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of your account’s active torrent slots, and new work takes a slot back when it needs one.',
           'Maximum Active Torrents: left empty, DebridPulse follows your account’s current Real-Debrid limit. A lower number keeps fewer active; it never goes above your limit.',
           'API Calls per Minute (240 by default): how many requests DebridPulse sends to Real-Debrid each minute; Real-Debrid documents a maximum of 250.',
           'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Real-Debrid.',
         ]},
         {heading: 'Shared settings', text: [
-          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+            when: shown('download-behavior-advanced')},
+          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+            when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
@@ -209,14 +245,17 @@
           'DebridPulse sends no new work to a Free account: TorBox refused the torrent request DebridPulse makes on one. If TorBox refuses a feature as not part of your plan, DebridPulse stops offering that feature to it.',
           'TorBox is separate from your Usenet service: turning TorBox on or off never changes your news servers.',
         ]},
-        {heading: 'Additional Settings', list: [
+        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
           'Prepare Backup Torrents (off by default, unlike the other debrid services, because TorBox’s create limits and active slots are tighter): when on, TorBox may also add a torrent as a backup source while another service delivers it, and new work takes a slot back when it needs one.',
           'Maximum Active Torrents: left empty, DebridPulse follows your plan’s active-slot count as TorBox documents it. A lower number keeps fewer active.',
           'Use TorBox Before Usenet (off by default): tries TorBox before your Usenet service for NZBs. It needs a plan that includes Usenet; your Usenet service stays available either way.',
           'API Calls per Minute (240 by default): TorBox documents a maximum of 300. Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to TorBox.',
         ]},
         {heading: 'Shared settings', text: [
-          'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+            when: shown('download-behavior-advanced')},
+          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+            when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
@@ -230,7 +269,7 @@
           'The Enable switch in this card’s header turns the whole group on or off. A source takes part only while both the group and the source itself are enabled.',
           'Turning the group off does not change any source’s own setting, so turning it back on restores each source exactly as it was.',
         ]},
-        {heading: 'Related', text: [
+        {heading: 'Related', when: shown('transfer-method-settings'), text: [
           'How each protocol transfers files, such as timeouts, folder depth, and file limits, is set under Downloads, Transfer Method Settings.',
         ]},
       ],
@@ -247,7 +286,10 @@
           'Download Folder is where completed downloads are saved on the server.',
           'Maximum Concurrent Downloads is one limit for all download engines together, not a limit per engine. Further downloads wait their turn.',
         ]},
-        {heading: 'Advanced Settings', list: [
+        {heading: 'Everything else', when: omitted('download-behavior-advanced'), text: [
+          'Retries, the disk-space guard, and how each kind of download transfers keep working with their saved values. Their controls are part of the Advanced presentation.',
+        ]},
+        {heading: 'Advanced Settings', when: shown('download-behavior-advanced'), list: [
           'Material Checkpoint Interval sets how often reusable download progress is recorded, so less work is repeated after an unexpected interruption.',
           'Graceful Stop Timeout is how long DebridPulse waits for a download engine to stop cleanly before forcing it.',
           'Local Network Connections allows downloads you enter explicitly to reach private LAN addresses. Skip Local Connection Confirmation can be used only while that is on; it stops DebridPulse asking each time.',
@@ -438,6 +480,9 @@
           'Log Out Current Session ends only this browser’s session.',
           'Sessions concern the browser interface only. Downloads continue whether or not anyone is signed in.',
         ]},
+        {heading: 'Changing how people sign in', when: omitted('username-password'), text: [
+          'Turning Username & Password or OpenID Connect on or off, and changing their settings, are done in their own cards, which are part of the Advanced presentation: choose Advanced in My Account to show them. Sign-in itself keeps working exactly as configured.',
+        ]},
         {heading: 'Related', text: [
           'Integration accounts never use browser sessions; they authenticate with API tokens under Users & Access.',
         ]},
@@ -519,7 +564,8 @@
           'Issue Token creates a new token. Its secret is shown once, when it is issued; copy it into the application then. Only a fingerprint is stored, so it cannot be shown again.',
           'Each token is its own client: it sees only the jobs submitted with it.',
           'Revoke stops a token from authenticating at once. It does not withdraw any job.',
-          'Only Integration accounts hold API tokens; Admin and User accounts do not.',
+          {text: 'Only Integration accounts hold API tokens; Admin and User accounts do not.', when: onServer},
+          {text: 'Only Integration accounts hold API tokens; the built-in Administrator does not.', when: onStandalone},
         ]},
         {heading: 'What an integration can do', list: [
           'Submit jobs into a Delivery Profile category it is allowed to use, follow them, and withdraw them.',
@@ -597,7 +643,11 @@
           'Test sends a test message to the saved webhooks.',
         ]},
         {heading: 'Related', text: [
-          'Each User can also set up their own notifications about their own downloads; those are separate and never receive these alerts. Statistics Reporting sends periodic summaries rather than event alerts.',
+          {text: 'Each User can also set up their own notifications about their own downloads; those are separate and never receive these alerts.',
+            when: onServer},
+          {text: 'Statistics Reporting sends periodic summaries rather than event alerts.', when: shown('statistics-reporting')},
+          {text: 'Statistics reports, which are periodic summaries rather than event alerts, keep being sent as they were set up; their card is part of the Advanced presentation.',
+            when: omitted('statistics-reporting')},
         ]},
       ],
     },
@@ -609,7 +659,8 @@
         ]},
         {heading: 'Who receives it', list: [
           'Only the configured destination: the Reporting Webhook, or the Primary Webhook from Webhook Notifications when no Reporting Webhook is set.',
-          'It is not sent to DebridPulse users. Users who set up their own reports receive only reports about their own activity, at their own destination.',
+          'It is not sent to DebridPulse users.',
+          {text: 'Users who set up their own reports receive only reports about their own activity, at their own destination.', when: onServer},
         ]},
         {heading: 'What and when', list: [
           'Report Window chooses how much recent activity each report summarizes: 24 hours, 7 days, 30 days, or 1 year.',
@@ -633,6 +684,9 @@
           'Your Primary Webhook receives your alerts; an optional Download Added Webhook receives only Download Added alerts. Nothing falls back to an Admin’s webhook.',
           'Choose which events you are told about: Download Added, Download Completed, Download Error, and Extraction Result.',
           'An alert is sent only while your own request is part of that download; withdrawn requests send nothing.',
+        ]},
+        {heading: 'Your statistics reports', when: omitted('statistics-reporting'), text: [
+          'Statistics reports you previously configured continue on their saved schedule. To change their settings, select Advanced in My Account, then open Notifications → Statistics Reporting.',
         ]},
       ],
     },
@@ -672,12 +726,19 @@
         {heading: 'Backups', list: [
           'A backup holds the database, the configuration, and an uploaded avatar, stored in the Backup Folder.',
           'While Enable is on, a backup is made every Backup Interval, and Run Backup makes one now. Backups lists the stored backups, and lets you add, save, restore, or remove one.',
-          'A backup is deleted once it is older than Backup Retention or is no longer among the newest Maximum Retained Backups, whichever comes first.',
-          'Restoring and resetting the database each make a safety backup first.',
+          {text: 'A backup is deleted once it is older than Backup Retention or is no longer among the newest Maximum Retained Backups, whichever comes first.',
+            when: shown('backup-additional-settings')},
+          {text: 'Older backups are deleted by the saved retention rules, which keep working; their settings are part of the Advanced presentation.',
+            when: omitted('backup-additional-settings')},
+          {text: 'Restoring and resetting the database each make a safety backup first.', when: shown('database-reset')},
+          {text: 'Restoring makes a safety backup first.', when: omitted('database-reset')},
         ]},
-        {heading: 'Statistics Snapshots', list: [
+        {heading: 'Statistics Snapshots', when: shown('backup-additional-settings'), list: [
           'Separately, DebridPulse saves a record of the previous 24 hours of activity every Statistics Snapshot Interval, inside its own database, and deletes snapshots older than Statistics Snapshot Retention. 0 stops new snapshots.',
           'Snapshots are internal: they are not reports, are not sent anywhere, and are not currently viewable in the interface.',
+        ]},
+        {heading: 'Statistics Snapshots', when: omitted('backup-additional-settings'), list: [
+          'DebridPulse keeps saving its internal statistics snapshots as configured. They are not reports, are not sent anywhere, and are not currently viewable in the interface.',
         ]},
       ],
     },
@@ -694,6 +755,66 @@
         {heading: 'Safeguards', list: [
           'Reset Database works only while Allow Database Reset is on, and asks you to confirm.',
           'Processing pauses for the reset and returns to its previous state afterwards. A safety backup is made first; if it fails, nothing is erased.',
+        ]},
+      ],
+    },
+
+    /* ── My Account (auth.js openAccountDialog) ─────────────────────────────
+     * Read for the account the dialog was opened for: `c.account` is what
+     * that dialog knows and decided from (the profile read, including the
+     * deployment type it states; never a credential), so only what it offers
+     * this account is explained. */
+    'my-account': {
+      title: 'My Account',
+      sections: [
+        {text: [
+          'My Account is your own profile. What you change here applies to your account only.',
+          {text: 'Sign-in is off, so DebridPulse is used as its built-in Administrator, and this is that account.',
+            when: c => c.account?.open === true},
+        ]},
+        {heading: 'Profile', list: [
+          {text: 'DP Username is the name your account signs in with when it uses a local password. It is separate from your display name, and only an Admin can change it.',
+            when: c => c.account?.showsUsername === true},
+          'Display Name is the name DebridPulse shows for you.',
+          'Actual Name is your full name, if you want to record it. It is profile information only: it never signs you in or decides what you may do.',
+          {text: 'Email: while none is recorded you may enter one; it is stored as unverified. An email you entered yourself can be corrected with the pencil beside it. An email never signs you in, links accounts, or grants anything.',
+            when: c => c.account?.standalone === true || !c.account?.email || c.account?.emailSelfEntered === true},
+          {text: 'Email: your identity provider supplied it, so it is shown read-only here. An email never signs you in, links accounts, or grants anything.',
+            when: c => c.account?.standalone !== true && c.account?.email === true && c.account?.emailSelfEntered !== true},
+          'Save saves your changes to the names and the email; Cancel leaves them as they were.',
+        ]},
+        {heading: 'Password', when: c => c.account?.passwordAction === 'Change Password', list: [
+          'Change Password asks for your current password and a new one, entered twice. They are never shown or kept after the dialog closes.',
+          'Saving the new password ends your browser sessions; where sign-in is required, sign in again with it.',
+        ]},
+        {heading: 'Password', when: c => c.account?.passwordAction === 'Set Password' && c.account?.standaloneFirst !== true, list: [
+          'Your account has no local password: it signs in through your identity provider. Set Password gives it one, under your DP Username.',
+          'That password works for sign-in only while an Admin has Username & Password sign-in enabled.',
+        ]},
+        {heading: 'Password', when: c => c.account?.standaloneFirst === true, list: [
+          'Set Password gives the built-in Administrator its password.',
+          'Saving it also turns on password sign-in: from then on DebridPulse asks for this password, and only this password, before anyone can use it.',
+        ]},
+        {heading: 'Sign-in', when: c => c.account?.standalone === true && typeof c.account?.signInRequired === 'boolean', list: [
+          {text: 'Password required to sign in: password sign-in is on now, so DebridPulse asks for your password before anyone can use it.',
+            when: c => c.account.signInRequired === true},
+          {text: 'No password required to sign in: sign-in is off now, so anyone who can reach DebridPulse can use it as the built-in Administrator.',
+            when: c => c.account.signInRequired === false},
+          'This line says whether sign-in is required now. It is not a reading of whether a password is stored.',
+        ]},
+        {heading: 'Clear Password', when: c => c.account?.clearable === true, list: [
+          'Clear Password asks for your current password and then a confirmation. It removes your password and turns password sign-in off, together.',
+          'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse can then access this installation without a password, until you set a new one in My Account.',
+        ]},
+        {heading: 'Easy and Advanced', when: c => c.account?.presentation !== false, list: [
+          'Easy | Advanced chooses how much of the interface you see. Advanced, the default, shows the full interface your role and this installation’s deployment type allow; Easy hides further advanced pages, cards, and tuning.',
+          {text: 'In Easy, for example, the Activity Log and Settings cards such as Transfer Method Settings, Event Logging, and Database Reset Controls are hidden.',
+            when: c => c.admin},
+          {text: 'In Easy, for example, the Statistics Reporting card of your Notifications is hidden.', when: c => c.personal},
+          'It changes only what is shown. Your role and permissions, your saved settings, and everything DebridPulse does in the background stay the same, and settings you no longer see keep working with their saved values. Choosing Advanced never adds anything your role or the deployment type does not allow.',
+          'Your choice applies at once, without Save, and is saved to your account, so it follows you to every browser.',
+          {text: 'While sign-in is off it belongs to the built-in Administrator, so every browser of this installation shows the same choice.',
+            when: c => c.account?.open === true},
         ]},
       ],
     },
@@ -778,10 +899,23 @@
     return list;
   }
 
-  function render(body, topic) {
+  /* The context a topic is read in (see the header). `shows(part)` is
+   * whether the presentation shows a part its Easy list names. */
+  const UNREAD = Object.freeze({admin: false, personal: false, submit: false, operate: false, standalone: false, server: true,
+    easy: false, advanced: true, shows: () => true});
+
+  function context(facts = {}) {
+    return {...(window.debridPulseAuth?.presentation?.context?.() || UNREAD), ...facts};
+  }
+
+  // A part applies unless its own condition says otherwise.
+  const applies = (part, c) => typeof part?.when !== 'function' || part.when(c) === true;
+  const words = (part, c) => (applies(part, c) ? [typeof part === 'string' ? part : part.text] : []);
+
+  function render(body, topic, c) {
     const content = document.createElement('div');
     content.className = 'dp-settings-help-content';
-    topic.sections.forEach(section => {
+    topic.sections.filter(section => applies(section, c)).forEach(section => {
       const block = document.createElement('section');
       block.className = 'dp-settings-help-section';
       if (section.heading) {
@@ -790,11 +924,13 @@
         heading.textContent = section.heading;
         block.appendChild(heading);
       }
-      (section.text || []).forEach(text => block.appendChild(paragraph(text, 'dp-settings-help-text')));
-      if (section.list) {
+      (section.text || []).flatMap(text => words(text, c))
+        .forEach(text => block.appendChild(paragraph(text, 'dp-settings-help-text')));
+      const items = (section.list || []).flatMap(text => words(text, c));
+      if (items.length) {
         const list = document.createElement('ul');
         list.className = 'dp-settings-help-list';
-        section.list.forEach(text => {
+        items.forEach(text => {
           const item = document.createElement('li');
           item.textContent = text;
           list.appendChild(item);
@@ -808,15 +944,18 @@
     return content.querySelector('.dp-settings-help-text, .dp-settings-help-list');
   }
 
-  function open(name) {
+  /* Open a topic over whatever dialog is open (the dialog stack), for this
+   * page's context and the opener's own `facts`. */
+  function open(name, facts = {}) {
     const topic = Object.prototype.hasOwnProperty.call(TOPICS, name) ? TOPICS[name] : null;
     if (!topic || !window.DPSettingsModal) return null;
+    const c = context(facts);
     return window.DPSettingsModal.open({
       title: topic.title,
       dismiss: true,
       closeControl: true,
       className: 'dp-settings-help-dialog',
-      mount: body => render(body, topic),
+      mount: body => render(body, topic, c),
     });
   }
 

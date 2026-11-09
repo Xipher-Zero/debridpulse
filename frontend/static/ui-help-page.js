@@ -3,6 +3,17 @@
  * Help deliberately does not consume the inherited Help tab markup or legacy
  * tab lifecycle. This runtime owns the current user-facing documentation,
  * master-card/tab composition, and performs no API or backend work.
+ *
+ * The manual explains the interface its reader actually has: the one context
+ * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
+ * the role's capabilities, the deployment type, Easy or Advanced and the
+ * Easy list's omissions), read again at every composition (`c`). It decides
+ * the eligible sections (`eligibleTabs`: an Admin's Settings reference, a
+ * User's own Notifications in its place, none for a ReadOnly User) -- the one
+ * collection the strip, Previous / Next, the keys and the panels follow --
+ * and which parts each section says. A presentation change while Help is
+ * shown composes it again, keeping an eligible section. Without a context the
+ * reader is treated as having no Admin or personal page.
  */
 (function () {
   'use strict';
@@ -20,6 +31,25 @@
 
   const state = { activeTab: 'quickstart' };
   const root = () => document.getElementById('view-help');
+
+  const UNREAD = Object.freeze({admin: false, personal: false, submit: false, operate: false, standalone: false, server: true,
+    easy: false, advanced: true, shows: () => true});
+  const context = () => window.debridPulseAuth?.presentation?.context?.() || UNREAD;
+  // The context the sections were composed for.
+  let c = context();
+  // What a composition depends on: the same signature composes the same manual.
+  const signature = given => [given.admin, given.personal, given.submit, given.standalone, given.easy].join('|');
+  // An Admin who sees a part its Easy list names (advanced Admin controls).
+  const adminSees = part => c.admin && c.shows(part);
+
+  /* The ONE collection of the sections this reader has, in order, with the
+   * labels it reads them by. */
+  function eligibleTabs() {
+    return TABS.flatMap(([id, label, icon]) => {
+      if (id !== 'settings' || c.admin) return [[id, label, icon]];
+      return c.personal ? [[id, 'Notifications', 'bell-ring']] : [];
+    });
+  }
 
   /* The header's one row: the complete strip or the compact navigator,
    * measured and placed by the shared section navigator (ui-section-nav.js),
@@ -74,6 +104,7 @@
   }
 
   function quickStartPanel() {
+    if (!c.admin) return memberQuickStartPanel();
     return `
       <section class="dp-help-document" aria-labelledby="dp-help-quickstart-heading">
         <div class="dp-help-section-heading">
@@ -89,8 +120,12 @@
         ${inset('Before you begin', `
           <ul>
             <li><b>Storage:</b> DebridPulse needs a folder it is allowed to write to. This can be a folder on the computer running DebridPulse or a mounted network share.</li>
-            <li><b>Login protection:</b> If people or devices you do not fully trust can reach DebridPulse, open <b>Settings → Authentication</b> first and set up <b>Username &amp; Password</b>. A new installation does not ask anyone to sign in.</li>
-            <li><b>Who can do what:</b> these steps are for an <b>Admin</b>, the role that manages Settings. Other people can have their own accounts with the <b>User</b> or <b>ReadOnly User</b> role; see <b>Everyday Use</b>.</li>
+            ${c.standalone ? `
+            <li><b>Login protection:</b> A new installation does not ask anyone to sign in. If people or devices you do not fully trust can reach DebridPulse, open <b>My Account</b> and use <b>Set Password</b>: DebridPulse then asks for that password before anyone can use it.</li>
+            <li><b>Who can do what:</b> only the built-in <b>Administrator</b> can sign in to a Standalone installation, and it manages Settings. Other people's accounts, kept from a time this installation was a Server, are not deleted or converted: they keep their data but cannot sign in while it is Standalone. Other applications connect as <b>Integration</b> accounts, under <b>Settings → Access &amp; Integrations</b>.</li>` : `
+            ${c.shows('username-password') ? `<li><b>Login protection:</b> If people or devices you do not fully trust can reach DebridPulse, open <b>Settings → Authentication</b> first and set up <b>Username &amp; Password</b>. A new installation does not ask anyone to sign in.</li>`
+              : `<li><b>Login protection:</b> If people or devices you do not fully trust can reach DebridPulse, set up <b>Username &amp; Password</b> first, in <b>Settings → Authentication</b>; its card is shown when <b>My Account</b> is set to <b>Advanced</b>. A new installation does not ask anyone to sign in.</li>`}
+            <li><b>Who can do what:</b> these steps are for an <b>Admin</b>, the role that manages Settings. Other people can have their own accounts with the <b>User</b> or <b>ReadOnly User</b> role; see <b>Everyday Use</b>.</li>`}
           </ul>`)}
 
         <div class="dp-help-steps">
@@ -121,7 +156,8 @@
           ${step(4, 'Follow it to the finish', `
             <div class="dp-help-prose">
               <p>The download appears in <b>Download Activity</b> on the Dashboard and in <b>Downloads</b>. Click it to open its details: the service delivering it, its files, and its events.</p>
-              <p>If something does not go as expected, read the download's details and, as an Admin, the <b>Activity Log</b> before deleting anything. The <b>Troubleshooting</b> tab starts from common symptoms.</p>
+              ${c.shows('activity-log') ? `<p>If something does not go as expected, read the download's details and, as an Admin, the <b>Activity Log</b> before deleting anything. The <b>Troubleshooting</b> tab starts from common symptoms.</p>`
+                : `<p>If something does not go as expected, read the download's details and its events before deleting anything. The <b>Troubleshooting</b> tab starts from common symptoms.</p>`}
             </div>`)}
         </div>
 
@@ -132,7 +168,7 @@
             <li><b>Services</b> and <b>Engines:</b> what each service and engine can and cannot do.</li>
             <li><b>Settings:</b> every Settings tab, card and important option. In Settings itself, the <b>Help</b> button (?) on each card explains that card.</li>
           </ul>
-          <p>Optional features such as automatic archive extraction, webhook notifications, backups and OpenID Connect sign-in can be added whenever you need them.</p>`)}
+          <p>Optional features such as automatic archive extraction, webhook notifications, backups and ${c.standalone ? 'a sign-in password' : 'OpenID Connect sign-in'} can be added whenever you need them.</p>`)}
       </section>`;
   }
 
@@ -145,31 +181,41 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Review</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>
-          <p>What you see depends on your role. Settings, the Activity Log and the controls marked <b>Admin only</b> below appear only for an Admin; a <b>User</b> sees <b>Notifications</b> in place of Settings, and a <b>ReadOnly User</b> can look but not change anything.</p>
+          ${adminSees('activity-log') ? `<p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Review</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>`
+            : `<p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Review</b> (<b>Statistics</b>) and <b>System</b> (${c.admin ? '<b>Settings</b> and ' : c.personal ? '<b>Notifications</b> and ' : ''}<b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>`}
+          ${c.standalone ? `<p>On a Standalone installation only the built-in <b>Administrator</b> signs in, and the interface is the Standalone one: it has no Authentication tab and no User Accounts card. Integration accounts still connect other applications.</p>`
+            : `<p>What you see depends on your role. Settings, the Activity Log and the controls marked <b>Admin only</b> below appear only for an Admin; a <b>User</b> sees <b>Notifications</b> in place of Settings, and a <b>ReadOnly User</b> can look but not change anything.</p>`}
+          ${c.easy ? `<p>Your presentation is <b>Easy</b>, so some advanced pages, cards and tuning are hidden. <b>Advanced</b>, chosen in <b>My Account</b>, shows the full interface your role and this installation's deployment type allow; neither changes what you may do.</p>` : ''}
         </div>
 
         <div class="dp-help-accordion-list">
-          ${accordion('What your role lets you do', `
+          ${c.standalone ? accordion('Who uses this installation', `
+            <ul>
+              <li><b>The built-in Administrator</b> is the only person who can sign in. It has the Admin's pages and controls described here, as a Standalone installation presents them: Settings, Pause All, the speed cap, Provider Status, Recover All and every download.</li>
+              <li><b>Other people's accounts</b>, kept from a time this installation was a Server, are not deleted or converted. They keep their data but cannot sign in while it is Standalone.</li>
+              <li><b>Integration</b> accounts are for other applications. They use API tokens and cannot sign in to these pages.</li>
+            </ul>
+            <p><b>My Account</b>, opened from the account control in the sidebar, changes the display name and actual name, sets, changes or clears the password, and chooses <b>Easy</b> or <b>Advanced</b>. <b>Log Out</b> appears beside it while sign-in is on.</p>`, true) : accordion('What your role lets you do', `
             <ul>
               <li><b>Admin:</b> everything, including Settings, the Activity Log, Pause All, the speed cap, Provider Status, Recover All and every download.</li>
               <li><b>User:</b> adds downloads, and pauses, resumes, retries and reorders them. Removing, cancelling or switching the source of a download is allowed only when no other account still needs it; otherwise you can withdraw your own request from the download's details (<b>Requested By</b>). Your own Discord alerts and statistics reports are under <b>Notifications</b>.</li>
-              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, download details and Statistics, and changes nothing.</li>
+              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, download details and Statistics, and changes nothing in downloads or settings; its own profile and presentation in <b>My Account</b> remain its own to change.</li>
               <li><b>Integration</b> accounts are for other applications. They use API tokens and cannot sign in to these pages.</li>
             </ul>
-            <p>Your name at the bottom of the sidebar opens <b>My Account</b>, where you can change your display name and, if you sign in with one, your password. <b>Log Out</b> is beside it.</p>`, true)}
+            <p>Your name at the bottom of the sidebar opens <b>My Account</b>, where you can change your display name and, if you sign in with one, your password. <b>Log Out</b> is beside it.</p>
+            <p>My Account's <b>Easy | Advanced</b> chooses how much of the interface you see; it is saved to your account.</p>`, true)}
 
           ${accordion('Header controls', `
             <ul>
-              <li><b>Pause All</b> (Admin only): pauses every download and stops DebridPulse from starting new work. You can still add downloads while paused; they wait in the queue. The button then reads <b>Resume All</b>, which resumes everything, including downloads you paused one by one.</li>
+              ${c.admin ? `<li><b>Pause All</b> (Admin only): pauses every download and stops DebridPulse from starting new work. You can still add downloads while paused; they wait in the queue. The button then reads <b>Resume All</b>, which resumes everything, including downloads you paused one by one.</li>
               <li><b>Resume Paused (N)</b> (Admin only): appears when processing is running but some downloads are individually paused. It resumes them all.</li>
-              <li><b>Activity badge:</b> shows how many downloads are running out of the maximum allowed, the current combined speed, and the speed cap. An Admin can open its menu to pick a cap (Unlimited, 1, 5, 10, 20, 30, 50 or 100 MB/s), or type one in <b>Custom cap (MB/s)</b> and press <b>Set Custom</b>. The cap covers every download together, whichever engine runs it, and stays in place after a restart.</li>
-              <li><b>Update badge:</b> appears when a newer DebridPulse version is available and links to its change log.</li>
+              <li><b>Activity badge:</b> shows how many downloads are running out of the maximum allowed, the current combined speed, and the speed cap. An Admin can open its menu to pick a cap (Unlimited, 1, 5, 10, 20, 30, 50 or 100 MB/s), or type one in <b>Custom cap (MB/s)</b> and press <b>Set Custom</b>. The cap covers every download together, whichever engine runs it, and stays in place after a restart.</li>` : `<li><b>Activity badge:</b> shows the current combined download speed and the speed cap, which an Admin sets for every download together.</li>
+              <li>When an Admin pauses all processing, downloads wait without starting until it is resumed.</li>`}
               <li><b>Theme button:</b> switches between dark and light mode.</li>
             </ul>
             <p>While downloads are running, the browser tab title shows the overall speed and progress.</p>`, true)}
 
-          ${accordion('Provider Status (sidebar, Admin only)', `
+          ${c.admin ? accordion('Provider Status (sidebar, Admin only)', `
             <p>The sidebar lists your services with a coloured dot. The colour is the whole message:</p>
             <ul>
               <li><b>Green:</b> working. For a premium service this also means its current settings have passed a Test.</li>
@@ -177,11 +223,11 @@
               <li><b>Red:</b> not usable. For example: the sign-in was rejected, the service is unavailable, or it is switched off.</li>
               <li><b>Pulsing amber:</b> still checking, or not known yet.</li>
             </ul>
-            <p>Network Sources share one row. If a status check briefly fails, DebridPulse keeps showing the last good answer for up to five minutes rather than flashing red, as long as that service's settings have not changed. A premium account's expiry is shown above the services. The <b>aria2</b> engine and the database appear only when they report a problem (for example <b>aria2: offline</b>), and the DebridPulse version is shown at the bottom of the sidebar.</p>`)}
+            <p>Network Sources share one row. If a status check briefly fails, DebridPulse keeps showing the last good answer for up to five minutes rather than flashing red, as long as that service's settings have not changed. A premium account's expiry is shown above the services. The <b>aria2</b> engine and the database appear only when they report a problem (for example <b>aria2: offline</b>), and the DebridPulse version is shown at the bottom of the sidebar.</p>`) : ''}
 
-          ${accordion('Dashboard and Quick Add', `
+          ${accordion(c.submit ? 'Dashboard and Quick Add' : 'Dashboard', `
             <p>The summary cards count <b>Total Downloads</b>, <b>Completed</b>, <b>Active Now</b>, <b>Processing</b>, <b>Errors</b> and <b>Total Downloaded</b>. Click <b>Errors</b> to open Downloads filtered to failed downloads.</p>
-            <p><b>Quick Add</b> (for Admins and Users) accepts:</p>
+${c.submit ? `<p><b>Quick Add</b> (for Admins and Users) accepts:</p>
             <ul>
               <li><b>Links:</b> <code>http://</code>, <code>https://</code>, <code>ftp://</code>, <code>sftp://</code>, <code>scp://</code>, <code>ssh://</code>, <code>rsync://</code>, <code>rsync+ssh://</code>, <code>webdav://</code>, <code>webdavs://</code>, <code>dav://</code> and <code>davs://</code>. One download per line; up to <b>100 different links</b> at once (magnets are not counted). Exact duplicate lines are ignored.</li>
               <li><b>Magnet links</b> (they start with <code>magnet:?</code>), one per line.</li>
@@ -194,20 +240,21 @@
               <li><code>.nzb</code>: a Usenet download, up to 1 GB.</li>
               <li><code>.meta4</code>: a Metalink file, up to 16 MB.</li>
               <li><b>Any other file:</b> read as a list of links, up to 1 MB. Plain text with one link per line works; so do simple JSON, XML or YAML lists. Lines beginning with <code>#</code> are ignored.</li>
-            </ul>
-            <p><b>Recover All</b> (Admin only), in the Quick Add header, asks DebridPulse to check all tracked work and pick up anything that can safely continue. See the <b>How It Works</b> tab.</p>
-            <p><b>Download Activity</b> shows the downloads at the top of the queue with their status, progress, size and date. Admins and Users can pause or resume them there; click a row to open its details, or <b>View All</b> to open Downloads.</p>`)}
+            </ul>` : ''}
 
-          ${accordion('Questions DebridPulse may ask while adding', `
+            ${c.admin ? '<p><b>Recover All</b> (Admin only), in the Quick Add header, asks DebridPulse to check all tracked work and pick up anything that can safely continue. See the <b>How It Works</b> tab.</p>' : ''}
+            <p><b>Download Activity</b> shows the downloads at the top of the queue with their status, progress, size and date. ${c.submit ? 'Admins and Users can pause or resume them there; click' : 'Click'} a row to open its details, or <b>View All</b> to open Downloads.</p>`)}
+
+          ${c.submit ? accordion('Questions DebridPulse may ask while adding', `
             <ul>
               <li><b>Connect to a local network address?</b> appears when a link points at a device on your private network and <b>Local Network Connections</b> is on (unless <b>Skip Local Connection Confirmation</b> is also on). <b>Allow</b> applies to that download only. When Local Network Connections is off, such links are refused.</li>
               <li><b>Download the item or its collection?</b> appears when a link points at one item inside a collection, for example a video that is part of a playlist. Choose the item, the whole collection, or <b>Cancel Transfer</b>.</li>
               <li><b>Authentication Required</b> appears when a server needs a username and password, or, for SSH-based servers, a key file and its passphrase. <b>Cancel</b>, when shown, cancels the download.</li>
               <li><b>Verify Server Identity</b> appears before DebridPulse first connects to an SFTP, SCP or SSH server whose identity has not been confirmed yet. Compare the fingerprint shown with the one the server's owner gave you, then press <b>Verify &amp; Continue</b>.</li>
             </ul>
-            <p>These dialogs do not close when you click outside them; choose one of their buttons.</p>`)}
+            <p>These dialogs do not close when you click outside them; choose one of their buttons.</p>`) : ''}
 
-          ${accordion('Choosing files', `
+          ${c.submit ? accordion('Choosing files', `
             <p>When a torrent, magnet, Metalink file or folder link contains more than one file, <b>Select files</b> opens automatically once the file list is known. Every file starts ticked. Untick what you do not want and press <b>Confirm</b>.</p>
             <ul>
               <li>If you do nothing, every file downloads when the countdown ends. <b>Close</b> also keeps all files.</li>
@@ -215,15 +262,15 @@
               <li>You can reopen the selection later with <b>Choose Files</b> or <b>Change Files</b> on the download, while it can still be changed.</li>
               <li>For a collection of separate items (titled <b>Select entries</b>), nothing downloads until you confirm, and Close cancels the download.</li>
               <li>NZB downloads always fetch the whole posting; there is no file selection.</li>
-            </ul>`)}
+            </ul>`) : ''}
 
           ${accordion('Downloads page', `
             <ul>
               <li><b>Filters:</b> All, Downloading, Paused, Processing, Ready, Done, Error. <b>Search</b> matches as you type.</li>
               <li><b>Order:</b> <b>Priority</b> (queue order, the default) or <b>Newest</b>.</li>
-              <li><b>Row actions:</b> <b>Pause</b>, <b>Resume</b>, <b>Retry</b> (on a failed download) and <b>Remove</b>. <b>Start Now</b> appears when a download you moved up can only start if lower downloads restart. For a User, <b>Remove</b> appears only on downloads no other account still needs.</li>
+              ${c.operate ? `<li><b>Row actions:</b> <b>Pause</b>, <b>Resume</b>, <b>Retry</b> (on a failed download) and <b>Remove</b>. <b>Start Now</b> appears when a download you moved up can only start if lower downloads restart. For a User, <b>Remove</b> appears only on downloads no other account still needs.</li>
               <li><b>Several at once:</b> tick rows to show <b>Pause</b>, <b>Resume</b>, <b>Reset</b> (retry), <b>Move to Top</b> and <b>Delete</b>. Delete is offered only when you may remove every selected download.</li>
-              <li><b>Queue order:</b> in Priority order with no filter or search, drag a download by its name to move it, or use the keyboard (Space or Enter to pick up, arrow keys to move, Space or Enter to drop, Escape to cancel). Right-click offers <b>Move to Top</b>. If a move would interrupt a running download, DebridPulse asks first because that download's progress would be lost.</li>
+              <li><b>Queue order:</b> in Priority order with no filter or search, drag a download by its name to move it, or use the keyboard (Space or Enter to pick up, arrow keys to move, Space or Enter to drop, Escape to cancel). Right-click offers <b>Move to Top</b>. If a move would interrupt a running download, DebridPulse asks first because that download's progress would be lost.</li>` : ''}
               <li>Beneath each <b>name</b>, the row shows where the download came from and which service is handling it (how it was submitted is in its details). Where you may change it, the service name is a button that opens the service picker. A network icon with a number shows how many sources are known for its files; when another source can be chosen it is a button that opens the source chooser. Both are explained under <b>How It Works → Switching service or source</b>.</li>
               <li>The <b>Date</b> column's menu sets the date format and 12- or 24-hour time, for Downloads and the Dashboard.</li>
             </ul>`)}
@@ -235,14 +282,14 @@
               <li><b>Requested By</b> lists the accounts that asked for this download. A User can withdraw their own request there; the download itself continues while another account still needs it.</li>
               <li><b>Route History</b> lists every service DebridPulse tried for this download and how each attempt ended.</li>
               <li><b>Advanced acquisition details</b> separates the engine, the service you started with, the current service, and the service that actually delivered the files.</li>
-              <li><b>Files</b> lists each file with its size and status. Depending on the download, its header lets you switch service (<b>Provider</b>), switch the remaining files to another common source, or change the file selection. Each file's <b>Candidates</b> list shows the other sources known for it. If a switch would throw away progress, DebridPulse asks <b>Discard downloaded progress?</b> first.</li>
-              <li><b>Events</b> is this download's own history. <b>Transfer Trace Log</b> (Admin only) saves a detailed record you can attach to a bug report; DebridPulse removes passwords and private link details from it, but read it before sharing.</li>
+              <li><b>Files</b> lists each file with its size and status. ${c.operate ? "Depending on the download, its header lets you switch service (<b>Provider</b>), switch the remaining files to another common source, or change the file selection. Each file's <b>Candidates</b> list shows the other sources known for it. If a switch would throw away progress, DebridPulse asks <b>Discard downloaded progress?</b> first." : "Each file's <b>Candidates</b> list shows the other sources known for it."}</li>
+              <li><b>Events</b> is this download's own history.${c.admin ? " <b>Transfer Trace Log</b> (Admin only) saves a detailed record you can attach to a bug report; DebridPulse removes passwords and private link details from it, but read it before sharing." : ''}</li>
             </ul>
             <p>Progress marked <b>not yet verified</b> or <b>estimated</b> is DebridPulse's best estimate until the files are checked.</p>`)}
 
-          ${accordion('Activity Log (Admin only)', `
+          ${adminSees('activity-log') ? accordion('Activity Log (Admin only)', `
             <p>The Activity Log is the full event history of DebridPulse: transfers, routing decisions, recovery, storage, extraction, settings changes and more. Filter it by <b>Time Window</b>, <b>Severity</b> (Info, Warning, Error) and <b>Event Type</b>, or search for a name or transfer ID. Expand <b>Details</b> on an event for more information.</p>
-            <p>Events are kept until you reset the database. The number shown per page is set in <b>Settings → Data &amp; Maintenance → Event Logging</b>.</p>`)}
+            <p>Events are kept until you reset the database. The number shown per page is set in <b>Settings → Data &amp; Maintenance → Event Logging</b>.</p>`) : ''}
 
           ${accordion('Statistics', `
             <ul>
@@ -305,7 +352,8 @@
           ${accordion('When something fails', `
             <p>DebridPulse sorts failures by how far they reach, and only does what each one allows:</p>
             <ul>
-              <li><b>A temporary problem</b> (a timeout, a busy server, a rate limit) is retried automatically. A download uses <b>Download Error Retries</b> and <b>Retry Delay</b>; a service that fails to resolve a download into something it can fetch, Network Sources included, uses <b>Resolution Failure Retries</b> and <b>Retry Delay (minutes)</b> under <b>Settings → Downloads → Download Behavior &amp; Limits → Advanced Settings</b>. The wait grows with each attempt, up to about five minutes unless the server asks for longer.</li>
+              ${adminSees('download-behavior-advanced') ? `<li><b>A temporary problem</b> (a timeout, a busy server, a rate limit) is retried automatically. A download uses <b>Download Error Retries</b> and <b>Retry Delay</b>; a service that fails to resolve a download into something it can fetch, Network Sources included, uses <b>Resolution Failure Retries</b> and <b>Retry Delay (minutes)</b> under <b>Settings → Downloads → Download Behavior &amp; Limits → Advanced Settings</b>. The wait grows with each attempt, up to about five minutes unless the server asks for longer.</li>`
+                : `<li><b>A temporary problem</b> (a timeout, a busy server, a rate limit) is retried automatically, a set number of times: a download after an error, and a service that fails to resolve a download into something it can fetch, Network Sources included. The wait grows with each attempt, up to about five minutes unless the server asks for longer.</li>`}
               <li><b>A problem with one service</b> (for example, its retries are used up, or it refuses this download) makes DebridPulse try the next service that can handle the download, if there is one. A service that only failed temporarily may be tried again later, but it does not replace a service that is working.</li>
               <li><b>A problem with the download itself</b> (the file no longer exists, the source is invalid) stops it, because no other service can fix that.</li>
               <li><b>Other sources for a file</b> found by DebridPulse are used only when it can confirm they hold the same file, for example the same size and matching content or checksum. It never assumes two files match because of their names or positions. Alternatives you list yourself on one Quick Add line are tried in order, each as a separate attempt.</li>
@@ -326,8 +374,9 @@
             </ul>
             <p><b>While a download is paused:</b> choosing another source for a file that had already started downloading is accepted and saved, but nothing starts. The service and source shown stay the current ones, and beside the service name a message names where the file will go, for example <b>Switch to Real-Debrid (rapidgator.net) on resume</b>. Choosing again replaces it; choosing the source already in use removes it. After you resume it reads <b>Switching to …</b> until the switch has taken effect, then disappears. If the paused files of a download would go to different places, or the destination is not known, no destination is shown. A file that never started has nothing to hand over, so its new source simply applies when it starts. Choosing a <b>service</b> while paused works as described above, except that the download stays paused: a service that can take the link in use takes over at once (the badge shows it), and one that must first prepare a copy shows <b>Preparing …</b> and takes over only after you resume. These messages appear on the Download Activity and Downloads rows; both kinds can appear at once.</p>`)}
 
-          ${accordion('Backup torrents', `
-            <p>Each debrid service has a <b>Prepare Backup Torrents</b> switch. It is on by default for AllDebrid, Debrid-Link, Premiumize and Real-Debrid, and off by default for TorBox, whose torrent limits are tighter. While it is on, that service also adds torrents another service is delivering, so it is ready to take over if needed, and when you switch a download to another service, the torrent it already started is kept as a backup instead of being removed. This uses that account's torrent slots and limits; a new download that needs a slot takes it back first. Turn it off to keep that service's slots for its own downloads: its backups are then removed. A choice you already saved is kept.</p>`)}
+          ${accordion('Backup torrents', adminSees('provider-additional-settings') ? `
+            <p>Each debrid service has a <b>Prepare Backup Torrents</b> switch. It is on by default for AllDebrid, Debrid-Link, Premiumize and Real-Debrid, and off by default for TorBox, whose torrent limits are tighter. While it is on, that service also adds torrents another service is delivering, so it is ready to take over if needed, and when you switch a download to another service, the torrent it already started is kept as a backup instead of being removed. This uses that account's torrent slots and limits; a new download that needs a slot takes it back first. Turn it off to keep that service's slots for its own downloads: its backups are then removed. A choice you already saved is kept.</p>` : `
+            <p>A debrid service can also add torrents another service is delivering, so it is ready to take over if needed, and when a download switches to another service, the torrent it already started can be kept as a backup instead of being removed. This is each service's <b>Prepare Backup Torrents</b> setting: on by default for AllDebrid, Debrid-Link, Premiumize and Real-Debrid, and off by default for TorBox${c.admin ? ", in that service's Additional Settings, part of the Advanced presentation" : ''}. Backups use that account's torrent slots and limits; a new download that needs a slot takes it back first.</p>`)}
 
           ${accordion('Pause, resume, retry, recover and remove', `
             <ul>
@@ -357,19 +406,22 @@
       <section class="dp-help-document" aria-labelledby="dp-help-services-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-services-heading">Services and sources</h2>
-          <p>What each service in <b>Settings → Services</b> is for, what it needs, and what to expect from it.</p>
+          ${c.admin ? `<p>What each service in <b>Settings → Services</b> is for, what it needs, and what to expect from it.</p>`
+            : `<p>What each service DebridPulse can use is for, and what to expect from it.</p>`}
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
           <p>Settings → Services has two groups. <b>Premium Services</b> need your own account with an outside service. <b>Network Sources</b> download directly from a server and need no account with anyone (although the server itself may ask for a password).</p>
         </div>
 
-        ${inset('How a service card works', `
+        ${!c.admin ? inset('Who sets up services', `
+          <p>An Admin connects and configures services in Settings. The descriptions below explain what each one does and what to expect from it.</p>`) : inset('How a service card works', `
           <ul>
             <li><b>Enable</b> switches the service on or off immediately.</li>
             <li>The status word says whether it is <b>Unconfigured</b> (switched on but not connected), <b>Unverified</b> (connected, but the current settings have not passed a Test) or <b>Verified</b>.</li>
             <li><b>Test</b> checks the saved connection. A passing Test means the account and settings worked at that moment; it does not guarantee that every link or plan feature will work later.</li>
-            <li><b>Additional Settings</b> holds optional tuning. The defaults suit most people. Each debrid service's <b>Prepare Backup Torrents</b> is explained under <b>How It Works → Backup torrents</b>.</li>
+            ${c.shows('provider-additional-settings') ? `<li><b>Additional Settings</b> holds optional tuning. The defaults suit most people. Each debrid service's <b>Prepare Backup Torrents</b> is explained under <b>How It Works → Backup torrents</b>.</li>`
+              : `<li>Each card's optional tuning (<b>Additional Settings</b>) keeps its saved values and is part of the Advanced presentation. The defaults suit most people.</li>`}
             <li>While a service still has downloads in progress, DebridPulse will not let you change its account (or, for Usenet, its news servers); finish or remove those downloads first.</li>
             <li>The <b>Help</b> button (?) on a card explains that card in Settings itself.</li>
           </ul>`)}
@@ -378,55 +430,56 @@
         <div class="dp-help-accordion-list">
           ${accordion('AllDebrid', `
             <p><b>For:</b> magnets, <code>.torrent</code> files and links to file hosters AllDebrid supports.</p>
-            <p><b>You need:</b> an AllDebrid account and its API key, from AllDebrid's API key page. Paste it into <b>API Key</b>; it is saved when you leave the field and then shows <b>Key present</b>. <b>Remove API Key</b> deletes it.</p>
+            ${c.admin ? `<p><b>You need:</b> an AllDebrid account and its API key, from AllDebrid's API key page. Paste it into <b>API Key</b>; it is saved when you leave the field and then shows <b>Key present</b>. <b>Remove API Key</b> deletes it.</p>` : ''}
             <p><b>What happens:</b> AllDebrid fetches the content on its own servers, then DebridPulse downloads the files from AllDebrid with aria2. Your computer never joins a torrent swarm. For a multi-file torrent you can choose files.</p>
-            <p><b>Good to know:</b> off by default, like every premium service. With a free account, only hosts AllDebrid offers to free users can be used, and torrents are refused. <b>Maximum Active Torrents</b> left empty follows AllDebrid's own limit; per AllDebrid's documentation that is 30 active magnets.</p>
-            <p><b>If it fails:</b> a Test error usually means a wrong or revoked key. A torrent refused on a free account needs a premium account or another service.</p>`)}
+            <p><b>Good to know:</b> off by default, like every premium service. With a free account, only hosts AllDebrid offers to free users can be used, and torrents are refused. ${adminSees('provider-additional-settings') ? "<b>Maximum Active Torrents</b> left empty follows AllDebrid's own limit; per AllDebrid's documentation that is 30 active magnets." : "Per AllDebrid's documentation, an account can have up to 30 active magnets."}</p>
+            ${c.admin ? `<p><b>If it fails:</b> a Test error usually means a wrong or revoked key. A torrent refused on a free account needs a premium account or another service.</p>` : ''}`)}
 
           ${accordion('Debrid-Link', `
             <p><b>For:</b> magnets, <code>.torrent</code> files (through your Debrid-Link seedbox) and links to supported file hosters.</p>
-            <p><b>You need:</b> a Debrid-Link account and its API key, pasted into <b>API Key</b>.</p>
+            ${c.admin ? `<p><b>You need:</b> a Debrid-Link account and its API key, pasted into <b>API Key</b>.</p>` : ''}
             <p><b>What happens:</b> Debrid-Link prepares the files; DebridPulse downloads them with aria2. A hoster link that contains several files offers file selection.</p>
-            <p><b>Good to know:</b> off by default. The supported host list is refreshed every 24 hours by default (<b>Supported Host Refresh Interval</b>). What your account may use depends on your Debrid-Link plan: DebridPulse only uses torrents on an account it can confirm is premium, and on a free account only hosts Debrid-Link marks as free.</p>
-            <p><b>If it fails:</b> check the API key with Test, and the download's details for an account or quota message.</p>`)}
+            <p><b>Good to know:</b> off by default. The supported host list is refreshed every 24 hours by default${adminSees('provider-additional-settings') ? ' (<b>Supported Host Refresh Interval</b>)' : ''}. What your account may use depends on your Debrid-Link plan: DebridPulse only uses torrents on an account it can confirm is premium, and on a free account only hosts Debrid-Link marks as free.</p>
+            ${c.admin ? `<p><b>If it fails:</b> check the API key with Test, and the download's details for an account or quota message.</p>` : ''}`)}
 
           ${accordion('Premiumize', `
             <p><b>For:</b> magnets, <code>.torrent</code> files, NZBs and links to supported file hosters.</p>
-            <p><b>You need:</b> a Premiumize premium account and its API key, pasted into <b>API Key</b>.</p>
+            ${c.admin ? `<p><b>You need:</b> a Premiumize premium account and its API key, pasted into <b>API Key</b>.</p>` : ''}
             <p><b>What happens:</b> DebridPulse first asks Premiumize for immediate download links. If that is not possible, it adds the item to your Premiumize cloud storage and downloads it from there once ready. Files are downloaded with aria2.</p>
-            <p><b>Good to know:</b> off by default. A free or expired Premiumize account stays connected but cannot start anything. For NZBs, Premiumize is normally tried after your own Usenet servers; switch on <b>Use Premiumize Before Usenet</b> to try it first. Either way both stay in the running: if the first cannot take the NZB, the other is tried.</p>
-            <p><b>Premiumize as a news server:</b> per Premiumize's documentation, a Premiumize account also includes Usenet access that you can add as an ordinary news server under <b>Usenet</b> with <b>Add Server</b>. Take the server details from Premiumize's own instructions. That server is separate from this card.</p>
-            <p><b>If it fails:</b> an account limit or fair-use message is treated as temporary and DebridPulse may try another service.</p>`)}
+            <p><b>Good to know:</b> off by default. A free or expired Premiumize account stays connected but cannot start anything. ${adminSees('provider-additional-settings') ? 'For NZBs, Premiumize is normally tried after your own Usenet servers; switch on <b>Use Premiumize Before Usenet</b> to try it first. Either way' : 'For NZBs, Premiumize is normally tried after your own Usenet servers, unless it is set to go first. Either way'} both stay in the running: if the first cannot take the NZB, the other is tried.</p>
+            ${c.admin ? `<p><b>Premiumize as a news server:</b> per Premiumize's documentation, a Premiumize account also includes Usenet access that you can add as an ordinary news server under <b>Usenet</b> with <b>Add Server</b>. Take the server details from Premiumize's own instructions. That server is separate from this card.</p>` : ''}
+            ${c.admin ? `<p><b>If it fails:</b> an account limit or fair-use message is treated as temporary and DebridPulse may try another service.</p>` : ''}`)}
 
           ${accordion('Real-Debrid', `
             <p><b>For:</b> magnets, <code>.torrent</code> files and links to supported file hosters.</p>
-            <p><b>You need:</b> a Real-Debrid account. There is no key to paste. Press <b>Connect Real-Debrid</b>; DebridPulse shows a code. Press <b>Open Real-Debrid</b>, sign in on Real-Debrid's site and enter the code (<b>Copy</b> copies it). The card then shows <b>Connected as</b> your account name. Connecting is your choice to use the account, so Real-Debrid is switched on as soon as the new connection is proven to work; a later <b>Test</b> never switches it on.</p>
+            ${c.admin ? `<p><b>You need:</b> a Real-Debrid account. There is no key to paste. Press <b>Connect Real-Debrid</b>; DebridPulse shows a code. Press <b>Open Real-Debrid</b>, sign in on Real-Debrid's site and enter the code (<b>Copy</b> copies it). The card then shows <b>Connected as</b> your account name. Connecting is your choice to use the account, so Real-Debrid is switched on as soon as the new connection is proven to work; a later <b>Test</b> never switches it on.</p>` : ''}
             <p><b>What happens:</b> Real-Debrid fetches the content; DebridPulse downloads the files with aria2.</p>
-            <p><b>Good to know:</b> the code expires after a while; press Connect again for a new one. <b>Disconnect</b> makes DebridPulse forget the authorization and also asks Real-Debrid to cancel it. With a free account, torrents are refused and only free hosts work. Per Real-Debrid's documentation it allows at most 250 requests a minute; <b>API Calls per Minute</b> defaults to 240.</p>
-            <p><b>If it fails:</b> if the card says it is not connected, connect again.</p>`)}
+            <p><b>Good to know:</b> the code expires after a while; press Connect again for a new one. <b>Disconnect</b> makes DebridPulse forget the authorization and also asks Real-Debrid to cancel it. With a free account, torrents are refused and only free hosts work. Per Real-Debrid's documentation it allows at most 250 requests a minute${adminSees('provider-additional-settings') ? '; <b>API Calls per Minute</b> defaults to 240' : ''}.</p>
+            ${c.admin ? `<p><b>If it fails:</b> if the card says it is not connected, connect again.</p>` : ''}`)}
 
           ${accordion('TorBox', `
             <p><b>For:</b> magnets, <code>.torrent</code> files, links to supported file hosters and, depending on your plan, NZBs.</p>
-            <p><b>You need:</b> a TorBox account. Like Real-Debrid, it uses a code instead of a key: press <b>Connect TorBox</b>, then <b>Open TorBox</b> and approve the code there. TorBox is switched on as soon as the new connection is proven to work; a later <b>Test</b> never switches it on.</p>
+            ${c.admin ? `<p><b>You need:</b> a TorBox account. Like Real-Debrid, it uses a code instead of a key: press <b>Connect TorBox</b>, then <b>Open TorBox</b> and approve the code there. TorBox is switched on as soon as the new connection is proven to work; a later <b>Test</b> never switches it on.</p>` : ''}
             <p><b>What happens:</b> TorBox fetches the content; DebridPulse downloads the files with aria2. TorBox can report whether something is already available on its side, which lets it be tried first.</p>
-            <p><b>Your plan matters:</b> a free TorBox plan stays connected, but TorBox refuses the downloads DebridPulse asks for on it, so DebridPulse starts nothing there; per TorBox's documentation, the paid plans include torrents and web downloads, and only the Pro plan includes NZB downloads. DebridPulse follows what TorBox reports for your account: if it is known not to include Usenet, switching on <b>Use TorBox Before Usenet</b> is refused with <b>Requires TorBox Pro.</b> That switch only changes the order for NZBs; TorBox still handles NZBs as a fallback when your plan allows it. <b>Maximum Active Torrents</b> left empty follows your plan's limit.</p>
+            <p><b>Your plan matters:</b> a free TorBox plan stays connected, but TorBox refuses the downloads DebridPulse asks for on it, so DebridPulse starts nothing there; per TorBox's documentation, the paid plans include torrents and web downloads, and only the Pro plan includes NZB downloads. DebridPulse follows what TorBox reports for your account${adminSees('provider-additional-settings') ? ": if it is known not to include Usenet, switching on <b>Use TorBox Before Usenet</b> is refused with <b>Requires TorBox Pro.</b> That switch only changes the order for NZBs; TorBox still handles NZBs as a fallback when your plan allows it. <b>Maximum Active Torrents</b> left empty follows your plan's limit." : '; NZBs go to TorBox only when your plan allows it.'}</p>
             <p><b>Good to know:</b> <b>Disconnect</b> only makes DebridPulse forget the token. TorBox offers no way to cancel it remotely, so reset your token on TorBox's website if you want it revoked there.</p>`)}
 
           ${accordion('Usenet', `
             <p><b>For:</b> NZB files. An NZB is a small file that lists the parts of a Usenet posting; Usenet is a network of news servers, usually reached through a paid news server subscription.</p>
-            <p><b>You need:</b> at least one news server account. Press <b>Add Server</b> and fill in <b>Host</b>, <b>Port</b> (563 by default), <b>SSL</b> (on by default), <b>Username</b> and <b>Password</b>. Under <b>Advanced</b> you can set <b>Connections</b>, <b>Priority</b> (lower values have priority; 0 is the highest), <b>Articles per Request</b> and <b>Server Timeout</b>. Press the server's own <b>Test</b> to check it, and the pencil to give it a display name.</p>
+            ${c.admin ? `<p><b>You need:</b> at least one news server account. Press <b>Add Server</b> and fill in <b>Host</b>, <b>Port</b> (563 by default), <b>SSL</b> (on by default), <b>Username</b> and <b>Password</b>. Under <b>Advanced</b> you can set <b>Connections</b>, <b>Priority</b> (lower values have priority; 0 is the highest), <b>Articles per Request</b> and <b>Server Timeout</b>. Press the server's own <b>Test</b> to check it, and the pencil to give it a display name.</p>` : ''}
             <p><b>What happens:</b> DebridPulse runs its own private SABnzbd download engine for Usenet; there is nothing to install or sign in to. It downloads the posting, checks it and repairs it with the posting's repair files when needed. Extraction is done afterwards by DebridPulse's own <b>Automatic Extraction</b>, using your <b>Archive Passwords</b>.</p>
-            <p><b>Good to know:</b> Usenet is off by default and counts as set up only when at least one enabled server has a host and at least one connection. It shows <b>Verified</b> only when every such server has passed a Test with its current settings. NZB files are added through Quick Add; there is no file selection. Global Usenet settings are under <b>Settings → Downloads → Transfer Method Settings → Usenet</b>, and the Usenet card's own <b>Help</b> button explains its settings.</p>
-            <p><b>If it fails:</b> the header <b>Test</b> reports how many servers passed. If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</p>`)}
+            <p><b>Good to know:</b> Usenet is off by default and counts as set up only when at least one enabled server has a host and at least one connection. It shows <b>Verified</b> only when every such server has passed a Test with its current settings. NZB files are added through Quick Add; there is no file selection. ${adminSees('transfer-method-settings') ? "Global Usenet settings are under <b>Settings → Downloads → Transfer Method Settings → Usenet</b>, and the Usenet card's own <b>Help</b> button explains its settings." : c.admin ? "The Usenet card's own <b>Help</b> button explains its settings." : ''}</p>
+            ${c.admin ? `<p><b>If it fails:</b> the header <b>Test</b> reports how many servers passed. If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</p>` : ''}`)}
         </div>
 
         <h3>Network Sources</h3>
         <div class="dp-help-copy dp-help-prose">
-          <p>All network sources are switched on in a new installation. The group's <b>Enable</b> turns the whole group off or back on; each box also has its own, and a source works only while both are on. Turning the group back on restores each box as it was. They have no Test button: whether a link works depends on that server. Their tuning is under <b>Settings → Downloads → Transfer Method Settings</b>.</p>
+          ${c.admin ? `<p>All network sources are switched on in a new installation. The group's <b>Enable</b> turns the whole group off or back on; each box also has its own, and a source works only while both are on. Turning the group back on restores each box as it was. They have no Test button: whether a link works depends on that server.${c.shows('transfer-method-settings') ? ' Their tuning is under <b>Settings → Downloads → Transfer Method Settings</b>.' : ''}</p>`
+            : `<p>All network sources are switched on in a new installation, and need no account with anyone. Whether a link works depends on that server.</p>`}
         </div>
         <div class="dp-help-accordion-list">
           ${accordion('HTTP(S)', `
-            <p>Ordinary web links (<code>http://</code> and <code>https://</code>) that no specialist service claims. Each link is one file, downloaded with aria2. A server that needs a password asks for one, or you can write it into the link. Tuning: <b>Transfer Method Settings → Network Sources</b>.</p>`)}
+            <p>Ordinary web links (<code>http://</code> and <code>https://</code>) that no specialist service claims. Each link is one file, downloaded with aria2. A server that needs a password asks for one, or you can write it into the link.${adminSees('transfer-method-settings') ? ' Tuning: <b>Transfer Method Settings → Network Sources</b>.' : ''}</p>`)}
 
           ${accordion('(S)FTP', `
             <p><code>ftp://</code> and <code>sftp://</code> links to a file or a folder. A folder means the files directly inside it (no subfolders), offered in file selection. Sign-in is by username and password; SFTP asks you to confirm the server's identity first. Downloaded with aria2.</p>`)}
@@ -438,11 +491,11 @@
           ${accordion('rsync', `
             <p><code>rsync://host/path</code> names a file or folder on an rsync server; <code>rsync://host/</code> lists the server's shared areas. DebridPulse asks the rsync service first. If it does not share that path, or does not answer within <b>Connection Timeout</b>, the same path is read over SSH instead. A link with its own port always means that rsync service, and <code>rsync+ssh://host/path</code> always means SSH.</p>
             <p>A folder includes its subfolders, down to the <b>Directory Depth</b> you choose (all levels by default), and opens file selection. Links on the server are never followed and names are taken literally (no wildcards). rsync only reads from the server; it never changes, deletes or uploads anything there.</p>
-            <p>Over SSH, the server's identity is confirmed first and you sign in with a password or a key file (and its passphrase). An rsync service's shared areas may ask for their own password. Downloaded by DebridPulse's rsync engine. Tuning: <b>Transfer Method Settings → rsync</b>.</p>`)}
+            <p>Over SSH, the server's identity is confirmed first and you sign in with a password or a key file (and its passphrase). An rsync service's shared areas may ask for their own password. Downloaded by DebridPulse's rsync engine.${adminSees('transfer-method-settings') ? ' Tuning: <b>Transfer Method Settings → rsync</b>.' : ''}</p>`)}
 
           ${accordion('WebDAV', `
             <p><code>webdavs://</code> or <code>davs://</code> links (or <code>webdav://</code> and <code>dav://</code> for a server without HTTPS) to a file or folder on a WebDAV server, a common way to share files from cloud storage and NAS devices. A plain <code>http://</code> or <code>https://</code> link ending in <code>/</code> (with no <code>?</code> query) is tried as WebDAV first and becomes an ordinary download if the server does not offer WebDAV there.</p>
-            <p>A folder opens file selection with the files directly inside it; <b>Directory Depth</b> adds subfolder levels. A folder with more files than <b>Maximum Files</b>, or whose files cannot all be found within <b>Collection Scan Timeout</b> (no limit by default), is not added at all rather than added in part. A protected server asks for its password once per server for that download, not once for every file. Files are downloaded with aria2. Tuning: <b>Transfer Method Settings → WebDAV</b>.</p>`)}
+            <p>A folder opens file selection with the files directly inside it; <b>Directory Depth</b> adds subfolder levels. A folder with more files than <b>Maximum Files</b>, or whose files cannot all be found within <b>Collection Scan Timeout</b> (no limit by default), is not added at all rather than added in part. A protected server asks for its password once per server for that download, not once for every file. Files are downloaded with aria2.${adminSees('transfer-method-settings') ? ' Tuning: <b>Transfer Method Settings → WebDAV</b>.' : ''}</p>`)}
 
           ${accordion('Metalink (Multimeta)', `
             <p>Reads Metalink files: an uploaded <code>.meta4</code> file, or a web link ending in <code>.meta4</code>. A Metalink file lists one or more files with several download addresses for each. Each address is downloaded through whichever service handles it, in the order the publisher prefers; if one fails, the next listed address is used. A declared size or checksum is checked when the file completes. A Metalink file describing several files opens file selection. Older Metalink 3 files are not supported, and links to other metadata (such as torrents) inside a Metalink file are not followed.</p>`)}
@@ -451,7 +504,8 @@
             <p>Downloads video and audio from web pages on sites the bundled yt-dlp media downloader recognises, for example many popular video sites. A link to a page yt-dlp does not specifically recognise stays an ordinary HTTP(S) download.</p>
             <ul>
               <li><b>What you get:</b> one file per item, named <code>Title [id]</code>, in the site's own format when possible and otherwise MKV. Video and audio are combined without re-encoding, so quality is not reduced. Title, description and date are written into the file, and one subtitle in your <b>Preferred Subtitle Language</b> is embedded when the site offers it.</li>
-              <li><b>Choices:</b> <b>Target Resolution</b>, <b>Video Quality</b> and <b>Preferred Video Codec</b> choose among the versions the site offers; DebridPulse never converts media. Settings are under <b>Transfer Method Settings → Media Downloads</b>.</li>
+              ${adminSees('transfer-method-settings') ? `<li><b>Choices:</b> <b>Target Resolution</b>, <b>Video Quality</b> and <b>Preferred Video Codec</b> choose among the versions the site offers; DebridPulse never converts media. Settings are under <b>Transfer Method Settings → Media Downloads</b>.</li>`
+                : `<li><b>Choices:</b> the saved resolution, quality and codec preferences choose among the versions the site offers; DebridPulse never converts media.</li>`}
               <li><b>Playlists:</b> up to the first 100 entries. A video link that is also part of a playlist asks whether you want the <b>Current Video</b> or the <b>Playlist</b>.</li>
               <li><b>Not supported:</b> media that needs a sign-in, cookies or a subscription; live or upcoming streams; DRM-protected media; and media on your local network.</li>
               <li><b>Good to know:</b> an interrupted media download starts that item again from the beginning.</li>
@@ -488,11 +542,12 @@
           <ul>
             <li><b>Maximum Concurrent Downloads</b> (<b>Settings → Downloads → Download Behavior &amp; Limits</b>, 3 by default) is one limit for all engines together.</li>
             <li>The <b>speed cap</b> in the header is shared between the engines that are downloading at that moment, and together they never exceed it. An engine that needs less keeps what it uses and the rest goes to the engines that can use it; engines that all want more share it equally. An engine with work waiting keeps a small part, so it can never start above the cap.</li>
-            <li><b>Disk Space &amp; Recovery</b> settings (free space, retries, stalled downloads) apply to every engine.</li>
+            ${adminSees('disk-space-recovery') ? `<li><b>Disk Space &amp; Recovery</b> settings (free space, retries, stalled downloads) apply to every engine.</li>`
+              : `<li>The free-space guard, retries and stalled-download recovery apply to every engine.</li>`}
           </ul>`)}
 
-        <div class="dp-help-accordion-list">
-          ${accordion('Tuning aria2: Transfer Method Settings → Network Sources', `
+        ${adminSees('transfer-method-settings') || adminSees('download-engine-activity') ? `<div class="dp-help-accordion-list">
+          ${adminSees('transfer-method-settings') ? accordion('Tuning aria2: Transfer Method Settings → Network Sources', `
             <ul>
               <li><b>Connections per Server</b> and <b>Segments per File:</b> how many connections and pieces one file may use at once.</li>
               <li><b>Minimum Split Size:</b> the smallest piece a file is split into; larger values mean fewer, bigger pieces.</li>
@@ -501,18 +556,18 @@
               <li><b>Disk Cache:</b> memory used to reduce disk writes.</li>
               <li><b>File Allocation:</b> how disk space is reserved for a new file.</li>
             </ul>
-            <p>More connections do not guarantee more speed: the server, the service, your network or your disk can each be the limit. Change one setting at a time.</p>`, true)}
+            <p>More connections do not guarantee more speed: the server, the service, your network or your disk can each be the limit. Change one setting at a time.</p>`, true) : ''}
 
-          ${accordion('Tuning rsync, Usenet and Media Downloads', `
+          ${adminSees('transfer-method-settings') ? accordion('Tuning rsync, Usenet and Media Downloads', `
             <ul>
               <li><b>rsync:</b> <b>Partial Transfers</b>, <b>Compression</b>, <b>Preserve Modification Time</b>, <b>Connection Timeout</b>, <b>Transfer Timeout</b> and <b>Directory Depth</b>.</li>
               <li><b>Usenet:</b> <b>Article Cache Limit</b>, <b>Maximum Retries</b> (for each part of a posting, separate from DebridPulse's own download retries), <b>Request Timeout</b> and <b>Direct Write</b>. Settings for each news server are on its card under Services.</li>
               <li><b>Media Downloads:</b> <b>Target Resolution</b>, <b>Video Quality</b>, <b>Preferred Video Codec</b>, <b>Preferred Subtitle Language</b>, <b>Concurrent Fragment Downloads</b> (pieces of one streamed video fetched at once) and <b>YouTube Player Clients</b> (empty is Automatic, yt-dlp's own choice; a different choice can change the formats offered and does not guarantee passing a YouTube sign-in check).</li>
-            </ul>`)}
+            </ul>`) : ''}
 
-          ${accordion('Download Engine Activity', `
-            <p><b>Settings → Downloads → Download Engine Activity</b> lists the engines' jobs (filter by Active, Waiting, Paused or Stopped), with <b>Pause</b>, <b>Resume</b> or <b>Terminate</b> where that engine supports it. Terminate asks first. It is a recovery tool for a job that is truly stuck. For normal work, use the Downloads page, which keeps DebridPulse's own records in step.</p>`)}
-        </div>
+          ${adminSees('download-engine-activity') ? accordion('Download Engine Activity', `
+            <p><b>Settings → Downloads → Download Engine Activity</b> lists the engines' jobs (filter by Active, Waiting, Paused or Stopped), with <b>Pause</b>, <b>Resume</b> or <b>Terminate</b> where that engine supports it. Terminate asks first. It is a recovery tool for a job that is truly stuck. For normal work, use the Downloads page, which keeps DebridPulse's own records in step.</p>`) : ''}
+        </div>` : ''}
       </section>`;
   }
 
@@ -521,7 +576,8 @@
       <section class="dp-help-document" aria-labelledby="dp-help-settings-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-settings-heading">Settings reference</h2>
-          <p>The seven Settings tabs, their cards, and the options most people need. Settings is available to Admins.</p>
+          ${c.server && c.advanced ? `<p>The seven Settings tabs, their cards, and the options most people need. Settings is available to Admins.</p>`
+            : `<p>The ${c.standalone ? 'six' : 'seven'} Settings tabs, their cards${c.easy ? ' as the <b>Easy</b> presentation shows them' : ''}, and the options most people need. Settings is available to Admins.</p>`}
         </div>
 
         ${inset('How saving works', `
@@ -533,17 +589,20 @@
         <div class="dp-help-accordion-list">
           ${accordion('Services', `
             <ul>
-              <li><b>Premium Services:</b> one card each for Usenet, AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox, with <b>Enable</b>, <b>Test</b>, the account connection and <b>Additional Settings</b>.</li>
+              ${c.shows('provider-additional-settings') ? `<li><b>Premium Services:</b> one card each for Usenet, AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox, with <b>Enable</b>, <b>Test</b>, the account connection and <b>Additional Settings</b>.</li>`
+                : `<li><b>Premium Services:</b> one card each for Usenet, AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox, with <b>Enable</b>, <b>Test</b> and the account connection. Each service's <b>Additional Settings</b> keep their saved values and are part of the Advanced presentation.</li>`}
               <li><b>Network Sources:</b> one <b>Enable</b> for the group and one for each of HTTP(S), (S)FTP, SCP, rsync, WebDAV, Metalink (Multimeta) and Media Downloads.</li>
             </ul>
             <p>The <b>Services</b> tab of this manual explains each one.</p>`, true)}
 
           ${accordion('Downloads', `
             <ul>
-              <li><b>Download Behavior &amp; Limits:</b> <b>Download Folder</b> (with <b>Browse</b>) and <b>Maximum Concurrent Downloads</b>. Under <b>Advanced Settings</b>: <b>Material Checkpoint Interval</b> and <b>Graceful Stop Timeout</b> (best left alone), <b>Local Network Connections</b> (off by default) to allow downloads from devices on your private network, and <b>Skip Local Connection Confirmation</b> to stop asking each time. Even when allowed, DebridPulse never connects to the computer it runs on or other non-private local addresses. Also there: <b>Provider Poll Interval</b> (how often a service is checked for progress on work it is preparing), <b>Full Sync Interval</b> (how often downloads are reconciled with every enabled premium account that lists its transfers; 0 turns it off), and <b>Resolution Failure Retries</b> with <b>Retry Delay (minutes)</b> (how often and how soon a failed resolution is tried again, for any service including Network Sources).</li>
+${c.shows('download-behavior-advanced') ? `              <li><b>Download Behavior &amp; Limits:</b> <b>Download Folder</b> (with <b>Browse</b>) and <b>Maximum Concurrent Downloads</b>. Under <b>Advanced Settings</b>: <b>Material Checkpoint Interval</b> and <b>Graceful Stop Timeout</b> (best left alone), <b>Local Network Connections</b> (off by default) to allow downloads from devices on your private network, and <b>Skip Local Connection Confirmation</b> to stop asking each time. Even when allowed, DebridPulse never connects to the computer it runs on or other non-private local addresses. Also there: <b>Provider Poll Interval</b> (how often a service is checked for progress on work it is preparing), <b>Full Sync Interval</b> (how often downloads are reconciled with every enabled premium account that lists its transfers; 0 turns it off), and <b>Resolution Failure Retries</b> with <b>Retry Delay (minutes)</b> (how often and how soon a failed resolution is tried again, for any service including Network Sources).</li>
               <li><b>Transfer Method Settings:</b> tuning for <b>Network Sources</b> (aria2), <b>rsync</b>, <b>WebDAV</b>, <b>Usenet</b> and <b>Media Downloads</b>. See the <b>Engines</b> and <b>Services</b> tabs of this manual.</li>
               <li><b>Disk Space &amp; Recovery:</b> <b>Minimum Free Disk Space</b> (0 turns the guard off) holds new downloads when free space falls below it; <b>Resume Free Space Buffer</b> is how much extra must be free before they continue, so downloads do not stop and start repeatedly. <b>Download Error Retries</b>, <b>Retry Delay</b> and <b>Stalled Download Timeout</b> (0 turns it off) control automatic recovery.</li>
-              <li><b>Download Engine Activity:</b> the engines' current jobs, for troubleshooting only.</li>
+              <li><b>Download Engine Activity:</b> the engines' current jobs, for troubleshooting only.</li>`
+              : `<li><b>Download Behavior &amp; Limits:</b> <b>Download Folder</b> (with <b>Browse</b>) and <b>Maximum Concurrent Downloads</b>.</li>
+              <li>The rest of this tab -- the Advanced Settings of Download Behavior &amp; Limits, Transfer Method Settings, Disk Space &amp; Recovery and Download Engine Activity -- is part of the Advanced presentation. Those settings keep working with their saved values: retries, the free-space guard and each transfer method's tuning are not reset or turned off.</li>`}
             </ul>`)}
 
           ${accordion('Extraction', `
@@ -555,44 +614,69 @@
             </ul>
             <p>Supported formats include ZIP, 7z, RAR (including multi-part RAR), TAR with gzip, bzip2, xz, zstd or lzma compression, and single gzip, bzip2 or xz files. Archives that would write outside the download folder, contain links, or would be unreasonably large when unpacked are refused for your safety.</p>`)}
 
-          ${accordion('Authentication', `
+          ${c.standalone ? accordion('Signing in', `
+            <p>A Standalone installation has no Authentication tab. Its built-in Administrator, the only person who can sign in, signs in with a password alone, set, changed or cleared in <b>My Account</b>: with a password, the sign-in page asks for it, with no username; without one, no sign-in is required and anyone who can reach DebridPulse uses it as the Administrator. OpenID Connect is not available.</p>
+            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Access &amp; Integrations</b>.</p>`)
+            : c.easy ? accordion('Authentication', `
+            <ul>
+              <li><b>Authentication Status:</b> the current mode, the state of each sign-in method, <b>Active Browser Sessions</b> with <b>Log Out Current Session</b>, and <b>Browser Session Lifetime</b> (12 hours by default).</li>
+              <li>Turning <b>Username &amp; Password</b> or <b>OpenID Connect</b> on or off, and changing their settings, are done in their own cards, which are part of the Advanced presentation: choose <b>Advanced</b> in <b>My Account</b> to show them. Sign-in keeps working exactly as configured.</li>
+            </ul>
+            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b>.</p>`)
+            : ''}
+          ${c.server && c.advanced ? accordion('Authentication', `
             <ul>
               <li><b>Authentication Status:</b> the current mode, the state of each sign-in method, <b>Active Browser Sessions</b> with <b>Log Out Current Session</b>, and <b>Browser Session Lifetime</b> (12 hours by default).</li>
               <li><b>Username &amp; Password:</b> <b>Enable</b> turns password sign-in on for everyone, and needs an active Admin with a password. The <b>Username</b> and <b>Password</b> fields are your own account's; other people's are managed in <b>Users &amp; Access</b>. The same username and password also work for scripts that use HTTP Basic sign-in.</li>
               <li><b>OpenID Connect</b> (OIDC): sign in through an identity service you already run, such as Authentik or Keycloak. Set <b>Public DebridPulse Base URL</b> to the HTTPS address people use to reach DebridPulse; DebridPulse then shows the exact <b>OIDC Callback URL</b> to register with your identity service. Fill in <b>Issuer URL</b>, <b>Client ID</b> and, if needed, <b>Client Secret</b>, then press <b>Test</b>, which runs a real sign-in in a pop-up window. <b>Access Control</b> decides who may sign in: with <b>Allow Any Authenticated OIDC Identity</b> on, anyone your identity service signs in is admitted; with it off, a person must match every list that is filled in: <b>Allowed Subjects</b> (written <code>issuer|subject-id</code>), <b>Allowed Emails</b> (the email must be verified, <code>email_verified=true</code>) and <b>Allowed Groups</b> (read from the <b>Group Claim</b>). If every list is empty, no one can sign in through OIDC. <b>Default Role for New OIDC Users</b> (User or ReadOnly User) is the role an identity receives the first time it signs in; OIDC never creates an Admin. A new OIDC identity always gets its own account; it is never joined to an existing account just because the email matches. If the base URL is set by the <code>PUBLIC_BASE_URL</code> environment variable, the field is read-only here; change it in your installation instead.</li>
             </ul>
             <p>Turning off the last sign-in method asks for confirmation, because it leaves DebridPulse open to anyone who can reach it. Failed sign-ins are slowed down rather than locked out.</p>
-            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b> (an Admin's HTTP Basic credentials also work).</p>`)}
+            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b> (an Admin's HTTP Basic credentials also work).</p>`) : ''}
 
-          ${accordion('Users &amp; Access', `
+          ${c.standalone ? accordion('Access &amp; Integrations', `
+            ${c.shows('deployment-type') ? '<p><b>Deployment Type</b>, first on this tab, shows that this installation is <b>Standalone</b> and switches it to <b>Server</b> after a confirmation; its <b>Help</b> button says what each type keeps and changes.</p>' : ''}
+            <p>Only the built-in Administrator can sign in to a Standalone installation. Other people's accounts, kept from a time this installation was a Server, are not deleted or converted: they keep their data but cannot sign in while it is Standalone. Standalone has no User Accounts card; they are managed again once the installation is a Server.</p>
+            <p><b>Integration</b> accounts keep working as before: an external application, not a person, that cannot sign in to these pages; with its API tokens it can add downloads through the API, submit and follow its own jobs through the external-client and download-client interfaces, and read metrics.</p>
+            <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. Each token sees only the jobs submitted with it. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
+            <p><b>Integration Delivery Profiles</b> tell an external application, such as Sonarr or Radarr, which <b>categories</b> it may submit to, which kinds of source it may send (<b>Source Types</b>), which of its tokens may use the profile (<b>Authorized API Tokens</b>), and where it will find the finished files (<b>DP Download Path</b> in DebridPulse's download folder, and <b>External Import Path</b> as the application sees that folder). Files are shared in place: nothing is copied, moved or deleted for the application. The download-client interfaces stay unavailable until a profile has a category, a Source Type and an authorized API token that is active.</p>
+            <p>The Administrator changes its display name, actual name and email, sets, changes or clears its password, and chooses <b>Easy</b> or <b>Advanced</b> in <b>My Account</b>.</p>`) : ''}
+          ${c.server ? accordion('Users &amp; Access', `
             <p>Every account has one of four fixed roles:</p>
             <ul>
               <li><b>Admin:</b> everything, including Settings, the Activity Log and every transfer.</li>
               <li><b>User:</b> adds downloads and pauses, resumes, retries and reorders them; sees every transfer; can remove, cancel or switch a download only when no other account still needs it, and otherwise withdraws their own request. Has their own <b>Notifications</b> page; Settings are not available.</li>
-              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, Details and Statistics, and changes nothing.</li>
+              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, Details and Statistics, and changes nothing in downloads or settings; its own profile and presentation in <b>My Account</b> remain its own to change.</li>
               <li><b>Integration:</b> an external application, not a person. It cannot sign in to these pages; with its API tokens it can add downloads through the API, submit and follow its own jobs through the external-client and download-client interfaces, and read metrics.</li>
             </ul>
             <p>The <b>Help</b> button (?) on the User Accounts card compares the roles in a table, and the same help opens from the <b>Role</b> selector in <b>Add Local Account</b> and <b>Edit User</b>.</p>
             <p><b>User Accounts</b> lists each person with their role, how they sign in and whether the account is enabled. <b>Add Local Account</b> creates a username-and-password account. A role changed in <b>Edit User</b> applies at once: that person's open pages reload with the new role, without signing them out. Every person has a DebridPulse username, separate from their display name: an OIDC account takes it from its first sign-in, and it is the name a local password signs in with; the pencil beside it in <b>Edit User</b>'s title changes it and keeps any stored password. Click an account's name for its details and its activity, where an outstanding request can be withdrawn on its own. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are withdrawn, a transfer someone else also asked for keeps going, and finished downloads are never touched. Disabling also ends the account's sign-ins and stops its tokens; removing keeps the account's history and deletes its own notification settings. A removed OIDC sign-in that comes back gets a new account that stays disabled until you enable it. <b>Merge</b> joins two or more accounts into the one you choose to keep; two accounts that share a verified email are pointed out, but only a Merge joins them. DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account.</p>
             <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. Each token sees only the jobs submitted with it. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
             <p><b>Integration Delivery Profiles</b> tell an external application, such as Sonarr or Radarr, which <b>categories</b> it may submit to, which kinds of source it may send (<b>Source Types</b>), which of its tokens may use the profile (<b>Authorized API Tokens</b>), and where it will find the finished files (<b>DP Download Path</b> in DebridPulse's download folder, and <b>External Import Path</b> as the application sees that folder). Files are shared in place: nothing is copied, moved or deleted for the application. The download-client interfaces stay unavailable until a profile has a category, a Source Type and an authorized API token that is active.</p>
-            <p>Anyone signed in can change their own display name and actual name (and add an email if none is set) from <b>My Account</b>, opened from their name at the bottom of the sidebar beside <b>Log Out</b>, which also shows their DP Username (read-only), and use <b>Change Password</b> when they sign in with one.</p>`)}
+            <p>Anyone signed in can change their own display name and actual name (and add an email if none is set) from <b>My Account</b>, opened from their name at the bottom of the sidebar beside <b>Log Out</b>, which also shows their DP Username (read-only), and use <b>Change Password</b> when they sign in with one.</p>            ${c.shows('deployment-type') ? '<p><b>Deployment Type</b>, first on this tab, shows that this installation is a <b>Server</b> and switches it to <b>Standalone</b> after a confirmation; its <b>Help</b> button says what each type keeps and changes.</p>' : ''}
+            <p>My Account also has <b>Easy | Advanced</b>, which chooses how much of the interface that person sees.</p>`) : ''}
 
           ${accordion('Notifications', `
             <ul>
               <li><b>Webhook Notifications:</b> sends messages through a <b>webhook</b>, a private address a service such as Discord creates for a channel. A Discord webhook receives Discord messages; any other webhook receives a JSON summary of each event. Fill in <b>Primary Webhook</b>; <b>Download Added Webhook</b> optionally sends new-download messages elsewhere. <b>Display Name</b> and <b>Avatar URL</b> (or its <b>Upload</b> button) set how messages appear in Discord. Under <b>Notification Events &amp; Delivery Options</b>, choose <b>Download Added</b>, <b>Download Completed</b>, <b>Download Error</b>, <b>Extraction Result</b> and <b>Update Available</b>, and the <b>Update Check Interval</b> (0 turns update checks off). <b>Test</b> sends a test message using the saved settings.</li>
-              <li><b>Statistics Reporting:</b> sends periodic summaries of this DebridPulse's activity to a webhook. They go only to <b>Reporting Webhook</b>, or to the Primary Webhook when that is empty, never to DebridPulse's users. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now, even while automatic reports are off. Reports are separate from the statistics snapshots under Data &amp; Maintenance.</li>
+              ${c.shows('statistics-reporting') ? `<li><b>Statistics Reporting:</b> sends periodic summaries of this DebridPulse's activity to a webhook. They go only to <b>Reporting Webhook</b>, or to the Primary Webhook when that is empty, never to DebridPulse's users. <b>Automatic Report Interval</b> is 0 (off) by default; <b>Report Window</b> sets how much history each report covers. <b>Test</b> sends one report now, even while automatic reports are off. Reports are separate from the statistics snapshots under Data &amp; Maintenance.</li>`
+                : `<li><b>Statistics Reporting</b>, periodic summaries of this DebridPulse's activity sent to a webhook, keeps working as it was set up; its card is part of the Advanced presentation.</li>`}
             </ul>
-            <p>A <b>User</b> has their own <b>Notifications</b> page with the same two cards: webhook alerts about downloads they asked for, and reports of their own activity, sent only to the Discord webhooks they enter there. Nothing falls back to the Admin's webhooks. Admins, ReadOnly Users and Integration accounts have no personal notifications.</p>
+            ${c.server ? `<p>A <b>User</b> has their own <b>Notifications</b> page with the same two cards: webhook alerts about downloads they asked for, and reports of their own activity, sent only to the Discord webhooks they enter there. Nothing falls back to the Admin's webhooks. Admins, ReadOnly Users and Integration accounts have no personal notifications.</p>` : ''}
             <p>An uploaded avatar is served by DebridPulse itself, so Discord must be able to reach it over the internet. If DebridPulse is only reachable on your private network, use an avatar link hosted elsewhere.</p>`)}
 
-          ${accordion('Data &amp; Maintenance', `
+          ${c.easy ? accordion('Data &amp; Maintenance', `
+            <ul>
+              <li><b>Backups &amp; Retention:</b> scheduled backups (on by default) to <b>Backup Folder</b>; <b>Run Backup</b> makes a backup now (only while backups are enabled). Their interval and retention, and the statistics snapshots, keep working with their saved values; those settings are part of the Advanced presentation.</li>
+              <li><b>Backups</b> opens the backup list. Select one backup to <b>Save Backup</b> (download a copy), <b>Restore Backup</b> or <b>Remove</b> it; <b>Add Backup</b> uploads a saved copy after checking it. Restoring pauses processing, makes a safety backup of the current state, checks the chosen backup again, replaces the current database and settings, and restarts DebridPulse's services. If the check fails, nothing changes, and every pause you or an *arr client had set is put back as it was.</li>
+              <li>Events keep being recorded; the Activity Log, Event Logging and Database Reset Controls are part of the Advanced presentation.</li>
+            </ul>`) : ''}
+          ${c.advanced ? accordion('Data &amp; Maintenance', `
             <ul>
               <li><b>Event Logging:</b> <b>Activity Log Page Size</b>, and <b>Recorded Events</b>, the number of events stored. Events are kept until the database is reset.</li>
               <li><b>Backups &amp; Retention:</b> scheduled backups (on by default) to <b>Backup Folder</b>, with <b>Backup Interval</b>, <b>Backup Retention</b> and <b>Maximum Retained Backups</b> under <b>Additional Backup &amp; Retention Settings</b>; a backup is removed once it is too old or no longer among the newest you keep. The same section sets how often <b>statistics snapshots</b> are taken and how long they are kept: a record of the previous 24 hours of activity saved inside DebridPulse's database. Snapshots are not reports, are not sent anywhere and are not currently viewable in the interface. <b>Run Backup</b> makes a backup now (only while backups are enabled).</li>
               <li><b>Backups</b> opens the backup list. Select one backup to <b>Save Backup</b> (download a copy), <b>Restore Backup</b> or <b>Remove</b> it; <b>Add Backup</b> uploads a saved copy after checking it. Restoring pauses processing, makes a safety backup of the current state, checks the chosen backup again, replaces the current database and settings, and restarts DebridPulse's services. If the check fails, nothing changes, and every pause you or an *arr client had set is put back as it was.</li>
               <li><b>Database Reset Controls:</b> switch on <b>Allow Database Reset</b>, press <b>Reset Database</b>, type <code>WIPE</code> and press <b>Wipe Database</b>. This erases all downloads, their requests and history, events and statistics snapshots. Accounts, passwords, OIDC links, API tokens, personal notification settings and all settings are kept. DebridPulse always makes a safety backup first and stops if that backup fails. It stops running downloads and pauses processing for the reset, then restores the previous pause state afterwards. Finished files already in your download folder are not deleted.</li>
-            </ul>`)}
+            </ul>`) : ''}
         </div>
       </section>`;
   }
@@ -606,93 +690,106 @@
         </div>
 
         ${inset('Before changing anything', `
-          <p>Open the download's details and read its <b>Status</b>, <b>Error</b>, <b>Route History</b> and <b>Events</b>. Then check the <b>Activity Log</b> around the same time. Together they usually show whether the problem was the service, the server, the download itself, your storage or extraction.</p>
-          <p>Avoid removing a download just to clear an error: DebridPulse keeps its source and history so it can retry or recover. If you need help, <b>Transfer Trace Log</b> in the details (Admin only) saves a record without passwords or private link details. Read it before sharing, and never share API keys, tokens or links that contain passwords.</p>`)}
+          <p>Open the download's details and read its <b>Status</b>, <b>Error</b>, <b>Route History</b> and <b>Events</b>.${adminSees('activity-log') ? ' Then check the <b>Activity Log</b> around the same time.' : ''} Together they usually show whether the problem was the service, the server, the download itself, your storage or extraction.</p>
+          ${c.admin ? `<p>Avoid removing a download just to clear an error: DebridPulse keeps its source and history so it can retry or recover. If you need help, <b>Transfer Trace Log</b> in the details (Admin only) saves a record without passwords or private link details. Read it before sharing, and never share API keys, tokens or links that contain passwords.</p>`
+            : `<p>${c.operate ? 'Avoid removing a download just to clear an error: DebridPulse keeps its source and history so it can retry or recover. ' : ''}If a problem needs looking into, an Admin can save a <b>Transfer Trace Log</b> of the download for a bug report.</p>`}`)}
 
         <div class="dp-help-accordion-list">
           ${accordion('A button, page or setting is missing', `
-            <p>Most likely your role does not include it. Settings, the Activity Log, Pause All, the speed cap menu, Provider Status, Recover All and Transfer Trace Log are for Admins. A User cannot remove or switch a download another account still needs, and a ReadOnly User cannot change anything. See <b>Everyday Use → What your role lets you do</b>; an Admin can change roles in <b>Settings → Users &amp; Access</b>.</p>`, true)}
+            ${c.easy ? `<p>Your presentation is <b>Easy</b>, which hides advanced pages, cards and tuning. Choose <b>Advanced</b> in <b>My Account</b> to show the full interface your role and this installation's deployment type allow; it never adds anything either of them does not allow.</p>` : ''}
+            ${c.standalone ? `<p>On a Standalone installation only the built-in Administrator signs in, and Standalone itself has no Authentication tab and no User Accounts card; Advanced does not add them. Other people's accounts are kept, but cannot sign in until the installation is a Server again.</p>`
+              : `<p>Most likely your role does not include it. Settings, the Activity Log, Pause All, the speed cap menu, Provider Status, Recover All and Transfer Trace Log are for Admins. A User cannot remove or switch a download another account still needs, and a ReadOnly User cannot change downloads or settings. See <b>Everyday Use → What your role lets you do</b>; an Admin can change roles in <b>Settings → Users &amp; Access</b>.</p>`}`, true)}
 
           ${accordion('I added something, but nothing starts', `
             <ul>
-              <li>Check for <b>Pause All</b> (the header shows <b>Resume All</b> and the Dashboard shows <b>PROCESSING PAUSED</b>). New downloads are accepted while paused but wait.</li>
+              ${c.admin ? '<li>Check for <b>Pause All</b> (the header shows <b>Resume All</b> and the Dashboard shows <b>PROCESSING PAUSED</b>). New downloads are accepted while paused but wait.</li>'
+                : '<li>Processing may be paused by an Admin: downloads are accepted while paused but wait until it is resumed.</li>'}
               <li><b>Queued</b> or <b>Waiting for execution slot</b> means other downloads are using all <b>Maximum Concurrent Downloads</b>.</li>
-              <li><b>Input Required</b> means DebridPulse is waiting for you: a password, a server identity check or a file selection. Open the download if no dialog is showing.</li>
-              <li><b>Waiting for provider</b> means no enabled service can take it right now. Check that the service you expect is switched on, connected and showing green or amber in Provider Status.</li>
+              ${c.submit ? '<li><b>Input Required</b> means DebridPulse is waiting for you: a password, a server identity check or a file selection. Open the download if no dialog is showing.</li>'
+                : '<li><b>Input Required</b> means DebridPulse is waiting for an answer, such as a password or a file selection, from someone who can operate the download.</li>'}
+              <li><b>Waiting for provider</b> means no enabled service can take it right now. ${c.admin ? 'Check that the service you expect is switched on, connected and showing green or amber in Provider Status.' : 'An Admin can check that the service you expect is switched on and connected.'}</li>
               <li><b>Waiting for storage</b> means free space is below <b>Minimum Free Disk Space</b>.</li>
             </ul>`)}
 
-          ${accordion('Quick Add refuses a link or file', `
+          ${c.submit ? accordion('Quick Add refuses a link or file', `
             <ul>
               <li><b>Line N: enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI</b>: that line is not a supported link. Fix or remove it; nothing else was added.</li>
               <li>A batch of more than 100 different links (magnets are not counted) is refused; split it.</li>
               <li><b>Local network transfer not added</b>: you cancelled the local network question, or <b>Local Network Connections</b> is off.</li>
               <li>A file over its size limit is refused (16 MB for <code>.torrent</code> and <code>.meta4</code>, 1 GB for <code>.nzb</code>, 1 MB for a link list).</li>
               <li>A link list that points at items inside a collection must be added through Quick Add so you can choose what to download.</li>
-            </ul>`)}
+            </ul>`) : ''}
 
-          ${accordion('A service is amber or red, or its Test fails', `
+          ${c.admin ? accordion('A service is amber or red, or its Test fails', `
             <ul>
               <li><b>API key services</b> (AllDebrid, Debrid-Link, Premiumize): check the key on the service's website, paste it again and press <b>Test</b>.</li>
               <li><b>Real-Debrid and TorBox:</b> if the code expired, press <b>Connect Real-Debrid</b> or <b>Connect TorBox</b> again. If the card is connected but the Test fails, <b>Disconnect</b> and connect again.</li>
               <li><b>Usenet:</b> test each server separately to find the one that fails, and check its host, port, SSL setting and sign-in.</li>
               <li>Amber after a plan change usually means a free or expired account: some or all features stop working until the plan is renewed.</li>
               <li><b>Finish or remove existing ... resources before changing its connection</b>: that service still has downloads in progress.</li>
-            </ul>`)}
+            </ul>`) : ''}
 
           ${accordion('A download stays in Processing for a long time', `
-            <p>A torrent may take time while the debrid service fetches it; no files arrive during that time. Read the Events for a message from the service. If the service is healthy but the download seems out of step, an Admin can use <b>Recover All</b>. If one service keeps failing, choose another by clicking the service name (see <b>Switching service or source</b>), or let DebridPulse move on after its retries.</p>
-            <p>The timing lives under <b>Settings → Downloads → Download Behavior &amp; Limits → Advanced Settings</b>. <b>Provider Poll Interval</b> is how often DebridPulse rechecks work a service is still preparing. <b>Full Sync Interval</b> is how often it reconciles its downloads with each enabled premium service that can list your account's transfers; it does not apply to Network Sources. <b>Resolution Failure Retries</b> and <b>Retry Delay (minutes)</b> decide how often and how soon a download that a service, premium or Network Source, failed to resolve is tried again before DebridPulse tries another service or gives up; the wait doubles after each failure but stays at about five minutes or less unless the service asks for longer. Shorter intervals can mean more requests to a service's API without making it prepare files faster.</p>`)}
+            <p>A torrent may take time while the debrid service fetches it; no files arrive during that time. Read the Events for a message from the service. If the service is healthy but the download seems out of step, an Admin can use <b>Recover All</b>. ${c.operate ? 'If one service keeps failing, choose another by clicking the service name (see <b>Switching service or source</b>), or let DebridPulse move on after its retries.' : 'If one service keeps failing, DebridPulse moves on after its retries.'}</p>
+${adminSees('download-behavior-advanced') ? `<p>The timing lives under <b>Settings → Downloads → Download Behavior &amp; Limits → Advanced Settings</b>. <b>Provider Poll Interval</b> is how often DebridPulse rechecks work a service is still preparing. <b>Full Sync Interval</b> is how often it reconciles its downloads with each enabled premium service that can list your account's transfers; it does not apply to Network Sources. <b>Resolution Failure Retries</b> and <b>Retry Delay (minutes)</b> decide how often and how soon a download that a service, premium or Network Source, failed to resolve is tried again before DebridPulse tries another service or gives up; the wait doubles after each failure but stays at about five minutes or less unless the service asks for longer. Shorter intervals can mean more requests to a service's API without making it prepare files faster.</p>` : ''}`)}
 
           ${accordion('A download is slow, stalls or fails', `
             <ul>
               <li>Check the speed cap in the header first.</li>
               <li>Read the error in the details. Temporary errors are retried automatically; a permanent one (for example a file that no longer exists) will not succeed on retry.</li>
-              <li>If other sources are listed, you can switch the remaining files to one of them from the details.</li>
-              <li>If the sidebar shows <b>aria2: offline</b>, the engine is not responding; restarting DebridPulse starts it again.</li>
-              <li>For a job that is truly stuck, <b>Download Engine Activity</b> under Settings → Downloads can terminate it. Prefer <b>Retry</b> on the download itself.</li>
+              ${c.operate ? '<li>If other sources are listed, you can switch the remaining files to one of them from the details.</li>' : ''}
+              ${c.admin ? '<li>If the sidebar shows <b>aria2: offline</b>, the engine is not responding; restarting DebridPulse starts it again.</li>' : ''}
+              ${adminSees('download-engine-activity') ? '<li>For a job that is truly stuck, <b>Download Engine Activity</b> under Settings → Downloads can terminate it. Prefer <b>Retry</b> on the download itself.</li>' : ''}
             </ul>`)}
 
-          ${accordion('A server keeps asking for a password, or rejects its identity', `
-            <p>A rejected password is never retried automatically; the prompt returns so you can correct it. A failed identity check (<b>Host Identity Failed</b>) means the server's fingerprint did not match: confirm with the server's owner before continuing, because it can mean you are not talking to the server you expect.</p>`)}
+          ${c.submit ? accordion('A server keeps asking for a password, or rejects its identity', `
+            <p>A rejected password is never retried automatically; the prompt returns so you can correct it. A failed identity check (<b>Host Identity Failed</b>) means the server's fingerprint did not match: confirm with the server's owner before continuing, because it can mean you are not talking to the server you expect.</p>`) : ''}
 
-          ${accordion('A Usenet download fails', `
+          ${c.admin ? accordion('A Usenet download fails', `
             <ul>
               <li><b>Usenet: no enabled news server is configured</b> (shown when you press the Usenet card's <b>Test</b>): add a server or switch one on.</li>
               <li>If a posting is incomplete on your servers, a server with longer retention or different coverage may have the missing parts.</li>
               <li>Passworded 7z or RAR archives inside a posting are unpacked with your <b>Archive Passwords</b>; add the password there. A password-protected ZIP is not unlocked this way.</li>
-            </ul>`)}
+            </ul>`) : ''}
 
           ${accordion('A media download fails', `
             <p>Media Downloads cannot sign in, so media that needs an account or subscription fails. Live or upcoming streams, region-blocked media, DRM-protected media and sites yt-dlp does not recognise are also not supported. The download's error names the reason.</p>`)}
 
-          ${accordion('Files are not where I expect, or disk space runs out', `
+          ${c.admin ? accordion('Files are not where I expect, or disk space runs out', `
             <ul>
               <li>Check <b>Download Folder</b> and, with Docker, how that folder is mapped to your real storage. Use <b>Browse</b> to see what DebridPulse can reach.</li>
               <li>DebridPulse must be allowed to create and change files there. Check the folder's permissions for the user DebridPulse runs as.</li>
-              <li>When free space falls below <b>Minimum Free Disk Space</b>, new downloads wait until enough space, plus the <b>Resume Free Space Buffer</b>, is free again.</li>
-            </ul>`)}
+              ${c.shows('disk-space-recovery') ? '<li>When free space falls below <b>Minimum Free Disk Space</b>, new downloads wait until enough space, plus the <b>Resume Free Space Buffer</b>, is free again.</li>' : '<li>When free space falls below the saved minimum, new downloads wait until enough space is free again; the guard is set in <b>Disk Space &amp; Recovery</b>, part of the Advanced presentation.</li>'}
+            </ul>`) : ''}
 
-          ${accordion('Automatic extraction did not run or failed', `
-            <p>Check that <b>Settings → Extraction → Automatic Extraction</b> is enabled; extraction only starts after the download is complete. Read the download's <b>Extraction</b> and <b>Extraction Error</b> fields. A protected archive needs its password in <b>Archive Passwords</b>, and the destination needs enough space. When extraction fails, the archive is kept so you can try again.</p>`)}
+          ${c.admin ? accordion('Automatic extraction did not run or failed', `
+            <p>Check that <b>Settings → Extraction → Automatic Extraction</b> is enabled; extraction only starts after the download is complete. Read the download's <b>Extraction</b> and <b>Extraction Error</b> fields. A protected archive needs its password in <b>Archive Passwords</b>, and the destination needs enough space. When extraction fails, the archive is kept so you can try again.</p>`) : ''}
 
-          ${accordion('Webhook notifications or Prometheus are not working', `
-            <p>For webhook notifications, press <b>Test</b> on the card, check the webhook still exists at its service (in Discord, in the channel's settings), and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper an Integration token from <b>Users &amp; Access</b>.</p>`)}
+          ${c.admin ? accordion('Webhook notifications or Prometheus are not working', `
+            <p>For webhook notifications, press <b>Test</b> on the card, check the webhook still exists at its service (in Discord, in the channel's settings), and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper an Integration token from <b>${c.standalone ? 'Access &amp; Integrations' : 'Users &amp; Access'}</b>.</p>`)
+            : c.personal ? accordion('My webhook notifications are not arriving', `
+            <p>On your <b>Notifications</b> page, press <b>Test</b> on <b>Webhook Notifications</b>, check the webhook still exists in Discord (in the channel's settings), and that the event you expect is switched on. Alerts are sent only for downloads your own request is part of.</p>`) : ''}
 
           ${accordion('The page stops updating live', `
             <p>DebridPulse sends live updates over a long-lived connection (Server-Sent Events) and falls back to checking every 15 seconds if that fails. If updates are often late, a reverse proxy in front of DebridPulse is probably buffering or cutting the connection: it must allow long-running streamed responses. Reloading the page reconnects.</p>`)}
 
-          ${accordion('I cannot sign in', `
+          ${c.standalone ? accordion('I cannot sign in', `
+            <p>A Standalone installation signs in with the built-in Administrator's password alone; there is no username to enter.</p>
+            <p><b>If the password is lost:</b> this needs access to the computer running DebridPulse. Stop DebridPulse and back up its configuration file (normally <code>/app/config/config.json</code> inside the container). In that file set <code>auth_password</code> to a new password, keeping the file valid JSON; DebridPulse refuses to start with a damaged configuration file. Start DebridPulse: the new password replaces the Administrator's.</p>`)
+            : c.admin ? accordion('I cannot sign in', `
             <p>If another sign-in method still works, use it and open <b>Settings → Authentication</b>. For OIDC, check that <b>Public DebridPulse Base URL</b> is the real HTTPS address with no extra path, that the identity service has the exact <b>OIDC Callback URL</b>, and press <b>Test</b>.</p>
-            <p><b>Last resort, if no sign-in method works:</b> this needs access to the computer running DebridPulse and temporarily removes all protection, so do it only on a trusted network. Stop DebridPulse and back up its configuration file (normally <code>/app/config/config.json</code> inside the container). In that file set <code>auth_password_enabled</code> and <code>auth_oidc_enabled</code> to <code>false</code>, keeping the file valid JSON; DebridPulse refuses to start with a damaged configuration file. Start DebridPulse; it is now open to anyone who can reach it, including its API. Your stored password and OIDC settings are kept, so repair them in Settings → Authentication and switch protection back on straight away.</p>`)}
+            ${c.easy ? '<p>The <b>Username &amp; Password</b> and <b>OpenID Connect</b> cards there are shown when My Account is set to <b>Advanced</b>.</p>' : ''}
+            <p><b>Last resort, if no sign-in method works:</b> this needs access to the computer running DebridPulse and temporarily removes all protection, so do it only on a trusted network. Stop DebridPulse and back up its configuration file (normally <code>/app/config/config.json</code> inside the container). In that file set <code>auth_password_enabled</code> and <code>auth_oidc_enabled</code> to <code>false</code>, keeping the file valid JSON; DebridPulse refuses to start with a damaged configuration file. Start DebridPulse; it is now open to anyone who can reach it, including its API. Your stored password and OIDC settings are kept, so repair them in Settings → Authentication and switch protection back on straight away.</p>`)
+            : accordion('I cannot sign in', `
+            <p>Sign-in methods and accounts are managed by an Admin. If your password or your identity provider's sign-in stops working, ask an Admin to check your account; your downloads are kept meanwhile.</p>`)}
 
-          ${accordion('Backup, restore or reset will not run', `
+          ${c.admin ? accordion('Backup, restore or reset will not run', `
             <ul>
               <li><b>Backup is disabled in Settings</b>: switch on backups in <b>Backups &amp; Retention</b>.</li>
-              <li>A reset needs <b>Allow Database Reset</b> switched on and <code>WIPE</code> typed in the confirmation.</li>
+              ${c.shows('database-reset') ? '<li>A reset needs <b>Allow Database Reset</b> switched on and <code>WIPE</code> typed in the confirmation.</li>' : ''}
               <li>If the safety backup fails, the reset or restore stops. Fix the <b>Backup Folder</b> (location, permissions, free space); the safety backup cannot be skipped.</li>
               <li>If a restore could neither finish nor be undone (for example, the disk stopped accepting changes part-way), DebridPulse stops using its stored data: every page and request answers that it must be restarted, and its health check reports it unhealthy. Your previous database and settings are kept. Restart the DebridPulse container yourself once the disk is writable again; starting up puts the previous state back. Docker does not restart it on its own for an unhealthy health check.</li>
-            </ul>`)}
+            </ul>`) : ''}
         </div>
       </section>`;
   }
@@ -735,6 +832,96 @@
       </section>`;
   }
 
+  /* Quick Start for a person who is not an Admin: what their role does, in
+   * the order they meet it. */
+  function memberQuickStartPanel() {
+    return `
+      <section class="dp-help-document" aria-labelledby="dp-help-quickstart-heading">
+        <div class="dp-help-section-heading">
+          <h2 id="dp-help-quickstart-heading">Getting started with DebridPulse</h2>
+          <p>${c.submit ? 'What you can do with your account, from your first download to its finish.' : 'What you can see with your account.'}</p>
+        </div>
+
+        <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
+          <p><b>DebridPulse is the application that submits, routes, tracks, and manages downloads.</b> An Admin sets up its storage and the services it uses; ${c.submit ? 'you add downloads and follow them to the finish.' : 'you can follow every download and its statistics; you cannot change downloads or settings.'}</p>
+        </div>
+
+        <div class="dp-help-steps">
+          ${c.submit ? `
+          ${step(1, 'Add your first download', `
+            <div class="dp-help-prose">
+              <p>On the <b>Dashboard</b>, paste a link into <b>Quick Add</b> and press <b>Add</b>. Put each download on its own line. To add a file instead, leave the box empty and press <b>Add</b> to choose a <code>.torrent</code>, <code>.nzb</code>, <code>.meta4</code> or a text file that lists links.</p>
+              <p>If the download contains several files, DebridPulse may ask you which ones you want. If a server needs a password, it asks for one.</p>
+            </div>`)}
+          ${step(2, 'Follow it to the finish', `
+            <div class="dp-help-prose">
+              <p>The download appears in <b>Download Activity</b> on the Dashboard and in <b>Downloads</b>. Click it to open its details: the service delivering it, its files, and its events. You can pause, resume and retry downloads; you can remove one only when no other account still needs it, and otherwise withdraw your own request in <b>Requested By</b>.</p>
+            </div>`)}
+          ${c.personal ? step(3, 'Hear about it', `
+            <div class="dp-help-prose">
+              <p><b>Notifications</b> in the sidebar is your own page: <b>Webhook Notifications</b> sends alerts about downloads you asked for to the Discord webhooks you enter there${c.shows('statistics-reporting') ? ', and <b>Statistics Reporting</b> sends reports of your own activity' : ''}. Nothing there changes anyone else's notifications.</p>
+            </div>`) : ''}` : `
+          ${step(1, 'See what is happening', `
+            <div class="dp-help-prose">
+              <p>The <b>Dashboard</b> shows the downloads at the top of the queue and summary counts; <b>Downloads</b> lists every download with its status and progress.</p>
+            </div>`)}
+          ${step(2, 'Open a download', `
+            <div class="dp-help-prose">
+              <p>Click any download to read its details: the service delivering it, its files, who asked for it and its events.</p>
+            </div>`)}
+          ${step(3, 'Look back', `
+            <div class="dp-help-prose">
+              <p><b>Statistics</b> shows completions and transfer history over the period you choose.</p>
+            </div>`)}`}
+        </div>
+
+        ${inset('Where to read next', `
+          <ul>
+            <li><b>Everyday Use:</b> every page, button and prompt you will meet day to day.</li>
+            <li><b>How It Works:</b> how a service is chosen, what happens when something fails, and what pausing, retrying and removing do.</li>
+            <li><b>Services</b> and <b>Engines:</b> what each service and engine can and cannot do.</li>
+            ${c.personal ? '<li><b>Notifications:</b> your own Notifications page, card by card.</li>' : ''}
+          </ul>
+          <p>${c.submit ? 'Settings and the controls marked <b>Admin only</b> belong to an Admin.' : 'Changes to downloads are made by an Admin or a User, and to settings by an Admin; ask one if something needs to change.'} <b>My Account</b>, from your name in the sidebar, has your own profile, your password if you sign in with one, and <b>Easy | Advanced</b>.</p>`)}
+      </section>`;
+  }
+
+  /* A User's own Notifications, in the place of the Settings reference. */
+  function personalNotificationsPanel() {
+    return `
+      <section class="dp-help-document" aria-labelledby="dp-help-notifications-heading">
+        <div class="dp-help-section-heading">
+          <h2 id="dp-help-notifications-heading">Your Notifications</h2>
+          <p>Your own Notifications page, which stands where an Admin's Settings would be.</p>
+        </div>
+
+        ${inset('How saving works', `
+          <p>There is no Save button. Every setting is saved on its own: a typed value is saved when you leave the field, and a switch or list choice is saved the moment you change it. If a value cannot be saved, a message explains why and the field returns to its saved value. A stored webhook is never shown again; leaving its field blank keeps it, and <b>Clear</b> removes it.</p>
+          <p>Each card has a <b>Help</b> button (?) that explains it.</p>`)}
+
+        <div class="dp-help-accordion-list">
+          ${accordion('Webhook Notifications', `
+            <p>Alerts about downloads you asked for, sent only to the Discord webhooks you enter here. Nothing falls back to an Admin's webhooks, and nothing here changes the notifications an Admin manages for the whole installation.</p>
+            <ul>
+              <li><b>Enable</b> turns your alerts on or off.</li>
+              <li><b>Primary Webhook</b> receives your alerts; the optional <b>Download Added Webhook</b> receives only Download Added alerts.</li>
+              <li><b>Display Name</b> and <b>Avatar URL</b> set how the messages appear in Discord.</li>
+              <li>Choose which events you are told about: <b>Download Added</b>, <b>Download Completed</b>, <b>Download Error</b> and <b>Extraction Result</b>. An alert is sent only while your own request is part of that download.</li>
+              <li><b>Test</b> sends a test message to your saved webhooks.</li>
+            </ul>`, true)}
+          ${c.shows('statistics-reporting') ? accordion('Statistics Reporting', `
+            <p>A periodic summary of the download activity attributed to you, sent to your <b>Reporting Webhook</b>, or to your own Primary Webhook when that is empty. It never includes other accounts' activity, and an Admin's destinations are never used.</p>
+            <ul>
+              <li><b>Report Window</b> chooses how much recent activity each report covers.</li>
+              <li><b>Automatic Report Interval</b> sends a report that often while it is enabled and a destination exists; 0 sends no automatic reports.</li>
+              <li><b>Test</b> sends one report now.</li>
+            </ul>`)
+            : accordion('Your statistics reports', `
+            <p>Statistics reports you previously configured continue on their saved schedule. To change their settings, select <b>Advanced</b> in <b>My Account</b>, then open <b>Notifications → Statistics Reporting</b>.</p>`)}
+        </div>
+      </section>`;
+  }
+
   function canonicalDocumentMarkup(markup) {
     const template = document.createElement('template');
     template.innerHTML = String(markup || '').trim();
@@ -771,8 +958,8 @@
     showTabPanel();
   }
 
-  // A tab name, or Quick Start when it names no tab.
-  const tabName = name => (TABS.some(([id]) => id === name) ? name : 'quickstart');
+  // A tab name, or Quick Start when it names no section this reader has.
+  const tabName = name => (eligibleTabs().some(([id]) => id === name) ? name : 'quickstart');
 
   /* Select a tab at once; `motion` ({direction, distance}, the choice's own)
    * slides the compact navigator's window when the selection moves it. */
@@ -901,14 +1088,16 @@
   function render() {
     const view = root();
     if (!view) return;
-    if (view.dataset.dpHelpRendered === '1') {
+    c = context();
+    if (view.dataset.dpHelpRendered === signature(c)) {
       activateTab(state.activeTab);
       return;
     }
 
     view.classList.add('dp-help-clean-view');
+    state.activeTab = tabName(state.activeTab);
 
-    const tabs = TABS.map(([id, label, icon]) => {
+    const tabs = eligibleTabs().map(([id, label, icon]) => {
       const active = state.activeTab === id;
       return `
         <button class="dp-tab dp-help-tab${active ? ' is-active' : ''}" id="dp-help-tab-${id}"
@@ -954,7 +1143,8 @@
               ${panel('howitworks', howItWorksPanel())}
               ${panel('services', servicesPanel())}
               ${panel('engines', enginesPanel())}
-              ${panel('settings', settingsPanel())}
+              ${eligibleTabs().some(([id]) => id === 'settings')
+                ? panel('settings', c.admin ? settingsPanel() : personalNotificationsPanel()) : ''}
               ${panel('trouble', troubleshootingPanel())}
               ${panel('license', licensePanel())}
             </div>
@@ -962,7 +1152,7 @@
         </div>
       </section>`;
 
-    view.dataset.dpHelpRendered = '1';
+    view.dataset.dpHelpRendered = signature(c);
     bindEvents(view);
     activateTab(state.activeTab);
     navigation.fit({measure: true});
@@ -977,6 +1167,14 @@
 
   // Fonts that finish loading change the tabs' and the copy's own widths.
   document.fonts?.addEventListener?.('loadingdone', () => navigation.fit({measure: true}));
+
+  // The reader chose Easy or Advanced (auth.js) while Help is shown: compose
+  // it again for that interface, on the same section where it still has it.
+  // Shown later, its entry composes it (render compares the signature).
+  document.addEventListener('debridpulse:presentation-changed', () => {
+    const view = root();
+    if (view?.dataset.dpHelpRendered && view.classList.contains('active')) render();
+  });
 
   // app.js owns generic navigation and calls this canonical Help entry point.
   window.loadHelp = load;

@@ -127,17 +127,19 @@ test('E03/E18: My Account carries one contiguous, right-aligned Easy | Advanced 
       const switcher = node.querySelector('.dp-presentation-switch');
       const heading = node.querySelector('.dp-modal-heading');
       const rgb = value => (value.match(/rgba?\(([^)]+)\)/) || [, ''])[1].split(',').map(Number);
-      const chosen = rgb(getComputedStyle(advanced).boxShadow);
+      const chosen = rgb(getComputedStyle(advanced).borderTopColor);
       return {
         gap: box(advanced).left - box(easy).right, rows: [box(easy).top, box(advanced).top, box(easy).height, box(advanced).height],
         rightInset: box(header).right - box(switcher).right, headerPadding: parseFloat(getComputedStyle(header).paddingRight),
-        clear: box(heading).right <= box(switcher).left, clipped: [easy, advanced].some(item => item.scrollWidth > item.clientWidth),
+        // The title block ends before the pair, or the pair has its own row below it.
+        clear: box(heading).right <= box(switcher).left || box(switcher).top >= box(heading).bottom - 0.5,
+        clipped: [easy, advanced].some(item => item.scrollWidth > item.clientWidth),
         overflow: node.scrollWidth > node.clientWidth || document.documentElement.scrollWidth > window.innerWidth,
         chosen, accent: getComputedStyle(advanced).getPropertyValue('--dp-accent-rgb').split(',').map(Number),
         unchosenShadow: getComputedStyle(easy).boxShadow,
       };
     });
-    expect(geometry.gap).toBe(0);                               // contiguous, one outline
+    expect(geometry.gap).toBe(-1);                              // contiguous: one outline, one shared seam
     expect(geometry.rows[0]).toBeCloseTo(geometry.rows[1], 1);
     expect(geometry.rows[2]).toBeCloseTo(geometry.rows[3], 1);
     expect(geometry.rows[2]).toBeGreaterThanOrEqual(32);

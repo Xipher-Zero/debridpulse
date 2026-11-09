@@ -199,11 +199,14 @@ def test_every_referenced_topic_exists_and_none_is_orphaned():
         referenced |= {left, right}
     referenced |= set(re.findall(r"helpChip\('([a-z-]+)'", PAGE))
     referenced |= set(_tuning_topics())
+    # My Account's own Help (auth.js), the one topic opened outside Settings.
+    account = (ROOT / "frontend" / "static" / "auth.js").read_text(encoding="utf-8")
+    referenced |= set(re.findall(r"DPSettingsHelp\?\.open\('([a-z-]+)'", account))
     assert referenced == _topics()
     # 21, one topic for each of the five premium services that had none, and
-    # one for each of the five Transfer Method cards.
-    assert {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox"} <= referenced
-    assert len(referenced) == 32
+    # one for each of the five Transfer Method cards, and My Account's.
+    assert {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox", "my-account"} <= referenced
+    assert len(referenced) == 33
 
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():

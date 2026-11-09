@@ -202,8 +202,11 @@ def test_settings_locations_named_in_help_exist():
         assert card.replace("&", "&amp;") in HELP, card
     locations = re.findall(r"<b>Settings → ([A-Za-z &;]+?)(?: →|</b>)", HELP)
     assert len(locations) >= 10
+    # A Standalone installation names its `users` tab by its own label.
+    standalone = re.findall(r"'([^']+)'", page.split("const STANDALONE_TAB_LABELS", 1)[1].split(");", 1)[0])
+    assert standalone == ["Access & Integrations"]
     for location in locations:
-        assert location.replace("&amp;", "&") in tabs, location
+        assert location.replace("&amp;", "&") in tabs + standalone, location
     # Every Settings card has a help chip; the manual says where to find it.
     assert "function helpChip(topic, subject)" in page
     assert "<b>Help</b> button (?)" in _panel("settingsPanel")
@@ -213,6 +216,9 @@ def test_terminology_and_scope_stay_current():
     lowered = HELP.lower()
     assert "multilink" not in lowered
     assert "Metalink (Multimeta)" in HELP
-    # 1.0.14 contexts are future scope and are not described as present.
-    for future in ("wizard", "browser plugin", "browser extension", "standalone", "easy mode", "advanced mode"):
+    # Future scope is not described as present. Standalone (a deployment
+    # type) and Easy / Advanced (a presentation) are present since 1.0.14 and
+    # are read from the interface's own context, never as a "mode" name.
+    for future in ("wizard", "browser plugin", "browser extension", "easy mode", "advanced mode"):
         assert future not in lowered, future
+    assert "window.debridPulseAuth?.presentation?.context?.()" in HELP
