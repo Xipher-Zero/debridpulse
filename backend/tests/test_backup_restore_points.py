@@ -2306,3 +2306,123 @@ async def test_a_backup_taken_with_a_quota_hold_brings_it_back_and_a_wipe_forget
     await db_maintenance.wipe_database(verified_quiesced=True)
     assert backup.schema_version(database.DB_PATH) == live
     assert _quota_hold_rows(database.DB_PATH) == []
+
+
+# ── an account's Easy / Advanced presentation: one nullable column ──────────
+
+# Written by the 1.0.14 build immediately before an account's presentation
+# (574bef2d) with its own backup service: the default Admin with a password
+# (operator / pre-presentation-secret), an Admin (ann) whose own appearance is
+# Light / Catppuccin Latte, and a User (una) with Dracula and her own Discord
+# notifications (a syntactically valid, made-up webhook).
+PRE_PRESENTATION_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-574bef2d.zip"
+# The same build, backup service and accounts on an installation that also
+# holds the four tables a migration from before 1.0.12 keeps (empty; the
+# definitions of the 4180f015 retained-legacy-tables fixture).
+PRE_PRESENTATION_RETAINED_BACKUP = (Path(__file__).parent / "fixtures"
+                                    / "backup-1.0.14-574bef2d-retained-legacy-tables.zip")
+RETAINED_LEGACY_TABLES = ("adc_aria2_owned_gids", "debridpulse_aria2_owned_gids", "flexget_runs", "saved_searches")
+
+
+def _presentation_rows(path) -> list[tuple]:
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute("SELECT account_id, presentation_mode FROM account_appearance "
+                            "ORDER BY account_id").fetchall()
+
+
+async def test_a_fresh_installation_holds_the_presentation_column_and_starts_advanced(installation):
+    from auth.accounts import DEFAULT_ADMIN_ID
+    from services import account_appearance
+
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert [row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")] == [
+            "account_id", "mode", "dark_palette", "light_palette", "updated_at", "presentation_mode"]
+    assert await account_appearance.load_presentation(DEFAULT_ADMIN_ID) == "advanced"
+    live = backup.schema_version(database.DB_PATH)
+    await database.init_db()                                  # every later start: idempotent
+    assert backup.schema_version(database.DB_PATH) == live
+    assert live not in backup._UPGRADABLE_SCHEMAS
+
+
+@pytest.mark.parametrize("fixture", [PRE_PRESENTATION_BACKUP, PRE_PRESENTATION_RETAINED_BACKUP],
+                         ids=["fresh", "retained_legacy_tables"])
+async def test_a_backup_from_before_the_presentation_restores_advanced_with_every_account_kept(served, fixture):
+    """Upgraded on the private staged copy only, through the canonical
+    bootstrap: the column arrives NULL -- Advanced -- for every account, and
+    every theme, notification document and password comes back as recorded."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from services import account_appearance, account_notifications
+
+    _app, client, _composed, _calls = served
+    if fixture is PRE_PRESENTATION_RETAINED_BACKUP:
+        with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
+            scratch.deserialize(package.read("debridpulse.db"))
+            kept = [row[0] for row in scratch.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
+                RETAINED_LEGACY_TABLES)]
+        assert len(kept) == 4
+        with closing(sqlite3.connect(database.DB_PATH)) as conn:   # the live installation holds them as well
+            for ddl in kept:
+                conn.execute(ddl)
+            conn.commit()
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=fixture.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "presentation_mode" not in {row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    people = {row["username"]: row["id"] for row in await accounts.list_accounts() if row["username"]}
+    assert {account_id: mode for account_id, mode in _presentation_rows(database.DB_PATH)} == {
+        people["ann"]: None, people["una"]: None}
+    for account_id in (people["ann"], people["una"], accounts.DEFAULT_ADMIN_ID):
+        assert await account_appearance.load_presentation(account_id) == "advanced"
+    assert await account_appearance.load(people["ann"]) == {
+        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
+    assert (await account_appearance.load(people["una"]))["dark_palette"] == "dracula"
+    notifications = await account_notifications.load(people["una"])
+    assert notifications.discord_notifications_enabled is True
+    assert notifications.discord_webhook_url == "https://discord.com/api/webhooks/900001/fixture-pre-presentation"
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-presentation-secret")
+
+
+async def test_a_new_backup_brings_back_each_presentation_and_a_wipe_keeps_them(served):
+    from auth import accounts
+    from services import account_appearance, db_maintenance
+
+    _app, client, _composed, _calls = served
+    ann = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
+    await account_appearance.update(ann, account_appearance.AppearanceUpdate(mode="light"))
+    await account_appearance.set_presentation(ann, "easy")
+    await account_appearance.set_presentation(accounts.DEFAULT_ADMIN_ID, "easy")
+    point = await backup.create_restore_point()
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) == backup.schema_version(database.DB_PATH)
+    await account_appearance.set_presentation(ann, "advanced")
+    await account_appearance.set_presentation(accounts.DEFAULT_ADMIN_ID, "advanced")
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert await account_appearance.load_presentation(ann) == "easy"
+    assert await account_appearance.load_presentation(accounts.DEFAULT_ADMIN_ID) == "easy"
+    assert (await account_appearance.load(ann))["mode"] == "light"
+    # The wipe keeps every account's own appearance record, its presentation with it.
+    live = backup.schema_version(database.DB_PATH)
+    rows = _presentation_rows(database.DB_PATH)
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _presentation_rows(database.DB_PATH) == rows
+    assert await account_appearance.load_presentation(ann) == "easy"

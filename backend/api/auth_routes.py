@@ -636,6 +636,24 @@ async def public_auth_status():
     }
 
 
+async def _presentation(principal: Principal) -> dict:
+    """The account's own presentation, decided before the interface is
+    composed (``services.account_appearance``), so an Easy account's page
+    never shows an Advanced-only part first. ``owned`` is whether the request
+    has an account to own one (``presentation_owner``); ``mode`` is null when
+    it could not be read in time, and the interface is then Advanced and says
+    the choice is unavailable."""
+    account_id = account_appearance.presentation_owner(principal, get_settings())
+    if account_id is None:
+        return {"owned": False, "mode": None}
+    mode = None
+    try:
+        mode = await asyncio.wait_for(account_appearance.load_presentation(account_id), _APPEARANCE_READ_SECONDS)
+    except Exception as exc:
+        logger.warning("Account presentation unavailable at first paint: %s", type(exc).__name__)
+    return {"owned": True, "mode": mode}
+
+
 @router.get("/app.js", include_in_schema=False)
 async def application_javascript_bundle(request: Request):
     """Serve the protected browser bootstrap before the existing app script.
@@ -648,8 +666,10 @@ async def application_javascript_bundle(request: Request):
     app_js = _static_asset("app.js").read_text(encoding="utf-8")
     principal = getattr(request.state, "principal", Principal.anonymous())
     authority = json.dumps(_authority(principal), separators=(",", ":"))
+    presentation = json.dumps(await _presentation(principal), separators=(",", ":"))
     response = Response(
-        content=f"window.debridPulseAuthority=Object.freeze({authority});\n{auth_js}\n;\n{app_js}",
+        content=(f"window.debridPulseAuthority=Object.freeze({authority});\n"
+                 f"window.debridPulsePresentation=Object.freeze({presentation});\n{auth_js}\n;\n{app_js}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"

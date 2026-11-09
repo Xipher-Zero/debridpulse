@@ -39,6 +39,9 @@
  * save -- and while an `onAccept` is pending the accept slot is busy.
  * `titleHint` is one short line of plain text directly beneath the title, in
  * the header: a reading of what the title names, never a control.
+ * `headerEnd` (an element its client owns) is the header's far end: a choice
+ * about the whole dialog's subject, kept beside the title, never a footer
+ * action.
  * `closeControl: true` adds the upper-right close control, which is
  * the cancel slot's settlement under a second, conventional placement.
  * `cancelTone: 'danger'` makes the cancel slot a destructive abandonment: it
@@ -241,6 +244,7 @@
         <header class="dp-modal-header">
           ${titleHint ? `<div class="dp-modal-heading">${titleSlot}<p class="dp-modal-title-hint"></p></div>` : titleSlot}
           ${titled.map(() => '<button class="btn btn-ghost btn-sm dp-modal-title-action" type="button" data-modal-action><img alt="" aria-hidden="true"></button>').join('')}
+          ${spec.headerEnd instanceof HTMLElement ? '<div class="dp-modal-header-end"></div>' : ''}
           ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" data-tooltip="Close"></button>' : ''}
         </header>
         <div class="dp-modal-body"></div>
@@ -282,6 +286,7 @@
     if (spec.bodyClassName) body.classList.add(...String(spec.bodyClassName).split(/\s+/).filter(Boolean));
     overlay.querySelector(`#${dialogId}-title`).textContent = String(spec.title || '');
     if (titleHint) overlay.querySelector('.dp-modal-title-hint').textContent = titleHint;
+    overlay.querySelector('.dp-modal-header-end')?.append(spec.headerEnd);
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
     // the only outcome there is, so it needs no second name and no second
     // settlement path.

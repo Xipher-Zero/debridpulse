@@ -135,9 +135,10 @@ SCHEMA = (
         updated_at TEXT NOT NULL
     )""",
     # A human account's own appearance (``services.account_appearance``): its
-    # interface mode and the palette it chose for each mode, keyed by the
-    # durable account ID. It belongs to exactly that account: Remove and Merge
-    # retire it with the account, and nothing inherits it.
+    # interface mode and the palette it chose for each mode, and its Easy or
+    # Advanced presentation (``presentation_mode``, added by ``ensure_schema``),
+    # keyed by the durable account ID. It belongs to exactly that account:
+    # Remove and Merge retire it with the account, and nothing inherits it.
     """CREATE TABLE IF NOT EXISTS account_appearance (
         account_id TEXT PRIMARY KEY REFERENCES accounts(id),
         mode TEXT NOT NULL CHECK (mode IN ('dark','light')),
@@ -247,6 +248,9 @@ async def ensure_schema(db) -> None:
     await _ensure_column(db, "account_tokens", "client_id", "TEXT")
     await db.execute("UPDATE account_tokens SET client_id=id WHERE client_id IS NULL")
     await _ensure_column(db, "accounts", "username", "TEXT")
+    # NULL: the account never chose Easy or Advanced, which is Advanced
+    # (``services.account_appearance.load_presentation``).
+    await _ensure_column(db, "account_appearance", "presentation_mode", "TEXT")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "

@@ -18,6 +18,17 @@ While interactive sign-in is off there is no account to own an appearance:
 the installation's one standalone principal never reads or writes here, and
 the interface keeps its choices in the browser (``ui-theme-bootstrap.js``).
 
+The same record holds one more choice, of a different kind: the account's
+presentation, Easy or Advanced (``presentation_mode``; ``load_presentation``
+and ``set_presentation``). It decides which parts of the interface the
+account is shown -- never what it may do -- and an account that never chose
+is Advanced; a stored value that is neither reads as Advanced and is never
+rewritten by a read. Unlike the theme it is the account's even while
+interactive sign-in is off: the standalone principal is the default Admin
+account, and its presentation is that account's (``presentation_owner``), the
+same in every browser. Writing it changes that one column; writing the theme
+never changes it.
+
 The sign-in page has one appearance of its own, the installation's
 (``auth.accounts`` table ``login_appearance``, one row): a mode and that
 mode's palette, nothing else. A personal choice never changes it: only an
@@ -208,6 +219,66 @@ async def publish(account_id: str, shown: LoginAppearance) -> dict:
             raise LoginAppearanceStale()
         await _project(db, own)
     return {"mode": own[0], "palette": own[1]}
+
+
+PresentationMode = Literal["easy", "advanced"]
+DEFAULT_PRESENTATION = "advanced"
+
+
+class PresentationUpdate(BaseModel):
+    """An account's presentation choice: exactly one value, nothing else --
+    an account ID, a role or a theme key is refused, as is any other value,
+    type or an explicit null."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    presentation_mode: PresentationMode
+
+
+def presentation_owner(principal, settings) -> str | None:
+    """The account whose presentation a request reads and writes: the
+    signed-in human account, or -- while interactive sign-in is off -- the
+    standalone principal's default Admin, which is every request's account
+    then. No Integration, no anonymous caller and never an account the
+    request names."""
+    from auth.accounts import DEFAULT_ADMIN_ID, HUMAN_ROLES
+    from auth.policy import interactive_auth_enabled
+
+    account_id = str(getattr(principal, "account_id", "") or "")
+    if not account_id or getattr(principal, "role", "") not in {role.value for role in HUMAN_ROLES}:
+        return None
+    if principal.authenticated:
+        return account_id
+    if (principal.mechanism is None and account_id == DEFAULT_ADMIN_ID
+            and not interactive_auth_enabled(settings)):
+        return account_id
+    return None
+
+
+async def load_presentation(account_id: str) -> str:
+    from db.database import get_db
+
+    async with get_db() as db:
+        row = await db.fetchone(
+            "SELECT presentation_mode FROM account_appearance WHERE account_id=?", (str(account_id),))
+    mode = row["presentation_mode"] if row is not None else None
+    return mode if mode in get_args(PresentationMode) else DEFAULT_PRESENTATION
+
+
+async def set_presentation(account_id: str, mode: str) -> str:
+    """Record one account's presentation, atomically and alone: an account
+    without a record gets the native theme with it, and an existing record
+    keeps its theme exactly as stored."""
+    if mode not in get_args(PresentationMode):
+        raise ValueError("Unknown presentation")
+    async with _transaction() as db:
+        await db.execute(
+            "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,presentation_mode,updated_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET "
+            "presentation_mode=excluded.presentation_mode, updated_at=excluded.updated_at",
+            (str(account_id), DEFAULT["mode"], DEFAULT["dark_palette"], DEFAULT["light_palette"], mode,
+             datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
+    return mode
 
 
 def public(row) -> dict:

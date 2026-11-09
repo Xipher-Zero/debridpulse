@@ -169,8 +169,12 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
     assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
     assert "dp-settings-provider-recovery-card" not in sources
-    assert '<details class="dp-settings-additional">' in sources
-    assert "Additional Settings" in sources
+    # Each premium service's Additional Settings is the one disclosure helper's
+    # (providerAdditional), which Easy omits.
+    assert sources.count("${providerAdditional(tuningCells(") == 5
+    helper = runtime[runtime.index("function providerAdditional(body) {"):runtime.index("function sourcesPanel(s) {")]
+    assert '<details class="dp-settings-additional">' in helper and "Additional Settings" in helper
+    assert "omitted('provider-additional-settings')" in helper
     # The global provider intervals and resolution retries sit under Downloads,
     # not on any one provider's card.
     for key in ("poll_interval_seconds", "full_sync_interval_minutes", "upload_fail_retry_count", "upload_fail_retry_delay_minutes"):

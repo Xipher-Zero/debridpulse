@@ -33,7 +33,7 @@
     </div>
     <div class="nav-group">Review</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="events" data-dock="5" data-short-label="Activity" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+    <div class="nav-item" data-view="events" data-dock="5" data-presentation="activity-log" data-short-label="Activity" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label">Activity Log</span>
     </div>
     </template>
@@ -399,7 +399,7 @@
 
     <!-- Events -->
     <template data-requires="administer">
-    <div class="view" id="view-events">
+    <div class="view" id="view-events" data-presentation="activity-log">
       <div class="card dp-activity-card">
         <div class="card-header">
           <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading">For the Record</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
@@ -575,7 +575,7 @@
 <script src="/operator-title.js?v=27" defer></script>
 <script src="/app.js?v=27" defer></script>
 <!-- Canonical application-dialog owner: a direct dependency of Settings, the directory picker and Downloads. -->
-<script src="/ui-settings-modal.js?v=2" defer></script>
+<script src="/ui-settings-modal.js?v=3" defer></script>
 <script src="/ui-auth-required.js?v=1" defer></script>
 <script src="/ui-storage-health.js?v=2" defer></script>
 <script src="/ui-detail-candidates.js?v=6" defer></script>
@@ -610,7 +610,7 @@
 <script src="/ui-help-license-documents.js?v=4" defer></script>
 <script src="/ui-settings-persistence.js?v=1" defer></script>
 <script src="/ui-settings-help.js?v=5" defer></script>
-<script src="/ui-settings-page.js?v=36" defer></script>
+<script src="/ui-settings-page.js?v=37" defer></script>
 <script src="/ui-settings-directory-picker.js?v=1" defer></script>
 <script src="/ui-settings-backup-manager.js?v=3" defer></script>
 <script src="/ui-settings-executor-work.js?v=1" defer></script>

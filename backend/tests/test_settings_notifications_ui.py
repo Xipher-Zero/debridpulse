@@ -65,7 +65,7 @@ def discord_card() -> str:
 
 
 def reports_card() -> str:
-    return block(panel(), "const reports = card(", "return discord + reports;")
+    return block(panel(), "const reports = card(", "return discord + (omitted('statistics-reporting') ? '' : reports);")
 
 
 # ── Header rails ─────────────────────────────────────────────────────────────

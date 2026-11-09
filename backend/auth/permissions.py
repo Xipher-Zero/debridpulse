@@ -118,6 +118,10 @@ ACTIONS: dict[str, Capability] = {
     # The signed-in human account's own appearance (never another's).
     "api.account_routes.own_appearance": _I,
     "api.account_routes.update_own_appearance": _I,
+    # Its own Easy or Advanced presentation; while sign-in is off, the default
+    # Admin's, which every request acts as then.
+    "api.account_routes.own_presentation": _I,
+    "api.account_routes.choose_own_presentation": _I,
     # The installation's login appearance: read and published by an Admin.
     "api.account_routes.login_appearance": _A,
     "api.account_routes.publish_login_appearance": _A,

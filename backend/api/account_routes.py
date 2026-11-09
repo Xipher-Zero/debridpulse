@@ -317,6 +317,33 @@ async def update_own_appearance(body: account_appearance.AppearanceUpdate, reque
     return {"account_id": account_id, **await account_appearance.update(account_id, body)}
 
 
+# ── the account's own presentation: Easy or Advanced ───────────────────────
+# Classified ``interface``: every human role, and no Integration. The account
+# is ALWAYS the request's own (``account_appearance.presentation_owner``): the
+# signed-in account, or the default Admin that every request acts as while
+# sign-in is off -- never an account the request names, and the body model
+# refuses any other key. It changes what the interface shows, nothing the
+# account may do.
+
+def _presentation_owner(request: Request) -> str:
+    account_id = account_appearance.presentation_owner(request.state.principal, get_settings())
+    if account_id is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return account_id
+
+
+@router.get("/account/presentation")
+async def own_presentation(request: Request):
+    account_id = _presentation_owner(request)
+    return {"presentation_mode": await account_appearance.load_presentation(account_id)}
+
+
+@router.put("/account/presentation")
+async def choose_own_presentation(body: account_appearance.PresentationUpdate, request: Request):
+    account_id = _presentation_owner(request)
+    return {"presentation_mode": await account_appearance.set_presentation(account_id, body.presentation_mode)}
+
+
 # ── the installation's login appearance ─────────────────────────────────────
 # Classified ``administer``: an Admin reads what the sign-in page shows and
 # publishes its own active theme there. The publication is checked again in

@@ -1917,6 +1917,60 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1.45;
 }
 
+/* My Account's Easy | Advanced (auth.js presentationSelector): one control
+   of two contiguous compartments, in the theme control's grammar -- one
+   rounded outline, an internal divider. The chosen compartment has the
+   palette's accent as its border and a faint accent surface, with the full
+   text colour; the other stays readable and neutral. Unread, neither is
+   chosen; saving, the chosen border is fainter until the server answers. */
+.dp-presentation-switch {
+  display: inline-flex;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-md);
+  background: var(--dp-surface-input);
+  overflow: hidden;
+}
+.dp-presentation-option {
+  appearance: none;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dp-text-secondary);
+  font: 600 12.5px/1 var(--dp-font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .12s ease, background-color .12s ease, box-shadow .12s ease;
+}
+.dp-presentation-option + .dp-presentation-option {
+  border-left: 1px solid var(--dp-divider);
+}
+.dp-presentation-option:hover {
+  color: var(--dp-text-primary);
+}
+.dp-presentation-option[aria-checked="true"] {
+  color: var(--dp-text-primary);
+  background: rgba(var(--dp-accent-rgb), .12);
+  box-shadow: inset 0 0 0 1px rgba(var(--dp-accent-rgb), .78);
+}
+.dp-presentation-switch[data-state="saving"] .dp-presentation-option[aria-checked="true"] {
+  box-shadow: inset 0 0 0 1px rgba(var(--dp-accent-rgb), .4);
+}
+.dp-presentation-option:focus-visible {
+  outline: 2px solid rgba(var(--dp-accent-rgb), .9);
+  outline-offset: -3px;
+}
+.dp-presentation-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Clear Password's consequence, beneath its one field. */
 .dp-modal-dialog.dp-account-dialog .dp-account-clear-warning {
   margin: 0;

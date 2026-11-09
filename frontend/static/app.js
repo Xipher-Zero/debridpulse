@@ -179,12 +179,13 @@ function navigateTo(el) {
  * the first four do and More (#shell-more) holds the rest. A dock button
  * chooses its entry through nav(), so the page, its title and its entry work
  * are the sidebar's, and the dock marks whichever entry navigateTo() made
- * active. Built once: a change of authority reloads the page (auth.js). */
+ * active. A change of authority reloads the page (auth.js); a change of the
+ * account's presentation places or withdraws sidebar entries in place, and
+ * the dock is built again from the entries the sidebar then holds. */
 const SHELL_HANDHELD_QUERY = '(max-width: 779px)';
 const _shellHandheld = window.matchMedia(SHELL_HANDHELD_QUERY);
-const _shellDockEntries = [...document.querySelectorAll('#sidebar .nav-item[data-dock]')]
-  .sort((a, b) => Number(a.dataset.dock) - Number(b.dataset.dock));
-const _shellMoreEntries = _shellDockEntries.length > 5 ? _shellDockEntries.slice(4) : [];
+let _shellDockEntries = [];
+let _shellMoreEntries = [];
 const _shellDockButtons = new Map();
 
 function shellDockButton(entry, className) {
@@ -211,6 +212,10 @@ function renderShellDock() {
   const dock = document.getElementById('shell-dock');
   const list = document.getElementById('shell-more-list');
   if (!dock || !list) return;
+  _shellDockEntries = [...document.querySelectorAll('#sidebar .nav-item[data-dock]')]
+    .sort((a, b) => Number(a.dataset.dock) - Number(b.dataset.dock));
+  _shellMoreEntries = _shellDockEntries.length > 5 ? _shellDockEntries.slice(4) : [];
+  _shellDockButtons.clear();
   const overflow = _shellMoreEntries.length > 0;
   const direct = overflow ? _shellDockEntries.slice(0, 4) : _shellDockEntries;
   // The dock's signal field (index.html, <dp-signal-field>) stays its first
@@ -491,6 +496,17 @@ document.getElementById('shell-more')?.addEventListener('toggle', event => {
   if (event.newState === 'open') event.currentTarget.querySelector('[aria-current="page"], .dp-shell-sheet-item')?.focus({preventScroll: true});
 });
 renderShellDock();
+/* The account's presentation changed (auth.js): the sidebar already holds
+ * exactly the entries it shows. A withdrawn page that was the current one
+ * gives way to Dashboard, and the dock is built again from the sidebar. */
+document.addEventListener('debridpulse:presentation-changed', event => {
+  const withdrawn = event.detail?.withdrawn || [];
+  const current = withdrawn.some(node => node.classList.contains('active'));
+  withdrawn.forEach(node => { node.classList.remove('active'); node.removeAttribute('aria-current'); });
+  closeShellMore();
+  if (current) navigateTo(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
+  renderShellDock();
+});
 
 // ── API ────────────────────────────────────────────────────────────────────
 /* The per-transfer private-LAN confirmation, through the canonical dialog

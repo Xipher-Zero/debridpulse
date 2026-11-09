@@ -367,7 +367,11 @@
    * protected Standalone installation's signed-in Administrator is offered,
    * beside Change Password, Clear Password: a third view, destructive, that
    * proves the current password and, once confirmed, removes it and turns
-   * password sign-in off together (the server does both, or neither). */
+   * password sign-in off together (the server does both, or neither).
+   *
+   * At the header's far end, for every account that owns a presentation, is
+   * Easy | Advanced (presentationSelector): a choice that applies at once and
+   * is saved on its own, never by Save, and whose Cancel undoes nothing. */
   // What clearing a Standalone installation's one password does.
   const CLEAR_CONSEQUENCE = 'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse '
     + 'can then access this installation without a password, until you set a new one in My Account.';
@@ -435,9 +439,12 @@
     if (passwordAction) actions.push({id: 'password', label: passwordAction, placement: 'leading'});
     if (clearable) actions.push({id: 'clear', label: 'Clear Password', tone: 'danger', placement: 'leading'});
 
-    modal.open({
+    // Easy | Advanced, for every account that owns a presentation.
+    const selector = presentation.owned ? presentationSelector() : null;
+    const dialog = modal.open({
       title: 'My Account',
       titleHint: statusHint,
+      headerEnd: selector?.element,
       acceptLabel: 'Save',
       cancelLabel: 'Cancel',
       className: 'dp-account-dialog',
@@ -567,6 +574,7 @@
         return true;
       },
     });
+    if (selector) dialog.closed.then(selector.release);
   }
 
   async function refreshSession({force = false} = {}) {
@@ -645,6 +653,186 @@
     return false;
   }
 
+  /* The account's own presentation: Advanced -- the whole interface its role
+   * and the installation's deployment type allow -- or Easy, that same
+   * interface without the parts the Easy list of that deployment type names.
+   * It changes what is shown, never what the account may do: the server
+   * enforces that either way. The server states it before this bundle runs
+   * (window.debridPulsePresentation: whether the request has an account to
+   * own one, and that account's saved choice, null when it could not be read
+   * in time), so an Easy page never shows an Advanced-only part first; an
+   * unread choice is Advanced until it is read. The choice is the account's
+   * own record (PUT /api/account/presentation) -- the default Admin's while
+   * sign-in is off -- the same in every browser; the browser keeps none.
+   *
+   * One Easy list per deployment type, each the complete list of what Easy
+   * omits there; both name the same parts for now, and each may change
+   * without the other. Owners ask omits(part) when they compose; a shell part
+   * declares itself with data-presentation and is placed or withdrawn here
+   * (composePresented). A choice applies at once; its saves are sent one at a
+   * time, the newest choice last, so an older answer never overrides a newer
+   * choice; a refused or failed save returns to the last saved choice and
+   * says so. */
+  const EASY_PASS_1 = ['activity-log', 'provider-additional-settings', 'download-behavior-advanced',
+    'transfer-method-settings', 'disk-space-recovery', 'download-engine-activity', 'username-password',
+    'openid-connect', 'deployment-type', 'statistics-reporting', 'event-logging', 'backup-additional-settings',
+    'database-reset'];
+  const EASY = Object.freeze({
+    server: Object.freeze([...EASY_PASS_1]),
+    standalone: Object.freeze([...EASY_PASS_1]),
+  });
+  const PRESENTATION_MODES = ['easy', 'advanced'];
+  const stated = window.debridPulsePresentation || {};
+  const presentation = {
+    owned: stated.owned === true,
+    // The last choice the server confirmed (null: not read), and the one shown.
+    saved: PRESENTATION_MODES.includes(stated.mode) ? stated.mode : null,
+    mode: stated.mode === 'easy' ? 'easy' : 'advanced',
+    // The newest choice not yet sent, and the save on its way.
+    wanted: null,
+    writing: null,
+    listeners: new Set(),
+  };
+  // Every shell part that declares itself, with the place it is returned to.
+  const presentedParts = [];
+
+  function omits(part, deployment = authority.deployment_type) {
+    if (presentation.mode !== 'easy') return false;
+    return EASY[deployment === 'standalone' ? 'standalone' : 'server'].includes(String(part || ''));
+  }
+
+  // Place every declared shell part this presentation shows and withdraw the
+  // rest; returns the parts it withdrew now.
+  function composePresented() {
+    const withdrawn = [];
+    presentedParts.forEach(({node, anchor}) => {
+      const omitted = omits(node.dataset.presentation);
+      if (omitted && node.isConnected) { node.remove(); withdrawn.push(node); }
+      else if (!omitted && !node.isConnected && anchor.isConnected) anchor.after(node);
+    });
+    return withdrawn;
+  }
+
+  function presentationState() {
+    if (!presentation.owned) return 'none';
+    if (presentation.writing) return 'saving';
+    return presentation.saved ? 'saved' : 'unavailable';
+  }
+
+  function announcePresentation(detail = {}) {
+    presentation.listeners.forEach(listener => { try { listener(detail); } catch (_) {} });
+  }
+
+  function present(mode) {
+    if (mode === presentation.mode) return;
+    presentation.mode = mode;
+    const withdrawn = composePresented();
+    document.dispatchEvent(new CustomEvent('debridpulse:presentation-changed', {detail: {mode, withdrawn}}));
+  }
+
+  async function savePresentation() {
+    let outcome = {};
+    while (presentation.wanted) {
+      const mode = presentation.wanted;
+      presentation.wanted = null;
+      let accepted = null;
+      let message = 'Your presentation could not be saved.';
+      try {
+        const response = await debridPulseFetch('/api/account/presentation', {
+          method: 'PUT', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+          body: JSON.stringify({presentation_mode: mode}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && PRESENTATION_MODES.includes(payload?.presentation_mode)) accepted = payload.presentation_mode;
+        else if (typeof payload?.detail === 'string' && payload.detail) message = `Not saved: ${payload.detail}`;
+      } catch (_) {}
+      if (accepted) presentation.saved = accepted;
+      // A newer choice is on its way: its answer, not this one, decides.
+      if (presentation.wanted) continue;
+      if (accepted === mode) {
+        outcome = {saved: mode};
+      } else {
+        present(presentation.saved || 'advanced');
+        outcome = {failed: mode};
+        window.toast?.(message, 'error');
+      }
+    }
+    presentation.writing = null;
+    announcePresentation(outcome);
+  }
+
+  function choosePresentation(mode) {
+    if (!presentation.owned || !PRESENTATION_MODES.includes(mode)) return Promise.resolve(false);
+    present(mode);
+    presentation.wanted = mode;
+    if (!presentation.writing) presentation.writing = savePresentation();
+    announcePresentation();
+    return presentation.writing.then(() => presentation.saved === mode);
+  }
+
+  // An unread choice is read again where it is offered (My Account).
+  async function readPresentation() {
+    if (!presentation.owned || presentation.saved || presentation.writing) return;
+    try {
+      const response = await debridPulseFetch('/api/account/presentation', {headers: {'Accept': 'application/json'}});
+      const payload = response.ok ? await response.json() : null;
+      if (PRESENTATION_MODES.includes(payload?.presentation_mode) && !presentation.saved && !presentation.writing) {
+        presentation.saved = payload.presentation_mode;
+        present(payload.presentation_mode);
+      }
+    } catch (_) {}
+    announcePresentation();
+  }
+
+  /* My Account's Easy | Advanced: one control of two compartments, a radio
+   * group. While the choice is unread neither compartment is chosen; while a
+   * save is on its way the group is busy; its status line says what the
+   * server last answered. */
+  function presentationSelector() {
+    const group = document.createElement('div');
+    group.className = 'dp-presentation-switch';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Presentation');
+    group.innerHTML = PRESENTATION_MODES.map(mode => `<button type="button" class="dp-presentation-option" role="radio" `
+      + `data-presentation-mode="${mode}">${mode === 'easy' ? 'Easy' : 'Advanced'}</button>`).join('')
+      + '<span class="dp-presentation-status" role="status"></span>';
+    const options = [...group.querySelectorAll('[data-presentation-mode]')];
+    const status = group.querySelector('.dp-presentation-status');
+    const paint = (detail = {}) => {
+      const state = presentationState();
+      const chosen = state === 'unavailable' ? null : presentation.mode;
+      group.dataset.state = state;
+      group.setAttribute('aria-busy', state === 'saving' ? 'true' : 'false');
+      options.forEach(option => {
+        const checked = option.dataset.presentationMode === chosen;
+        option.setAttribute('aria-checked', String(checked));
+        option.tabIndex = checked || (!chosen && option === options[0]) ? 0 : -1;
+      });
+      const name = mode => (mode === 'easy' ? 'Easy' : 'Advanced');
+      if (detail.failed) status.textContent = `${name(detail.failed)} was not saved.`;
+      else if (state === 'saving') status.textContent = `Saving ${name(presentation.mode)}…`;
+      else if (detail.saved) status.textContent = `${name(detail.saved)} saved.`;
+      else if (state === 'unavailable') status.textContent = 'Presentation unavailable.';
+    };
+    const choose = option => {
+      void choosePresentation(option.dataset.presentationMode);
+      option.focus();
+    };
+    options.forEach((option, index) => {
+      option.addEventListener('click', () => choose(option));
+      option.addEventListener('keydown', event => {
+        const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key];
+        if (!step) return;
+        event.preventDefault();
+        choose(options[(index + step + options.length) % options.length]);
+      });
+    });
+    presentation.listeners.add(paint);
+    paint();
+    void readPresentation();
+    return {element: group, release: () => presentation.listeners.delete(paint)};
+  }
+
   window.debridPulseAuth = Object.freeze({
     fetch: debridPulseFetch,
     refreshSession,
@@ -653,9 +841,21 @@
     can,
     mayDestroy,
     authority,
+    presentation: Object.freeze({
+      mode: () => presentation.mode,
+      omits,
+      choose: choosePresentation,
+      state: presentationState,
+    }),
   });
 
   composeAuthorized();
+  document.querySelectorAll('[data-presentation]').forEach(node => {
+    const anchor = document.createComment(` ${node.dataset.presentation} `);
+    node.before(anchor);
+    presentedParts.push({node, anchor});
+  });
+  composePresented();
 
   // The signed-in account's own appearance. DPTheme (ui-theme-bootstrap.js)
   // owns the choices; this owner only carries them to and from the account's

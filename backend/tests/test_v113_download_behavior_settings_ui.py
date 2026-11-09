@@ -149,7 +149,7 @@ def test_the_global_provider_controls_live_here_with_their_keys_defaults_and_bou
     assert retries.index("'upload_fail_retry_count'") < retries.index("'upload_fail_retry_delay_minutes'")
     assert "Upload Failure Retries" not in PAGE
     alldebrid = PAGE[PAGE.index("providerCard('alldebrid'"):]
-    alldebrid = alldebrid[:alldebrid.index("          )}")]
+    alldebrid = alldebrid[:alldebrid.index("          ))}")]   # its Additional Settings (providerAdditional)
     for key, *_ in GLOBAL:
         assert f"'{key}'" not in alldebrid, key
 

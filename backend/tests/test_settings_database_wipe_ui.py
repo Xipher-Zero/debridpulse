@@ -124,7 +124,7 @@ def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
 
 def test_backup_folder_is_the_centred_bordered_island_with_browse_inside_the_field():
     body = panel()
-    island = body[body.index('<div class="dp-settings-backup-folder-island dp-settings-help-slot">'):body.index("${disclosureSection(")]
+    island = body[body.index('<div class="dp-settings-backup-folder-island dp-settings-help-slot">'):body.index("${omitted('backup-additional-settings') ? '' : disclosureSection(")]
     assert "directoryField('backup_folder', 'Backup Folder'" in island
     assert "Choose where DebridPulse stores database and configuration backups." in island
     # Title-over-Hint left + control right, centred against it: the shared
@@ -167,7 +167,7 @@ def test_the_disclosure_is_the_canonical_one_with_the_exact_label():
 
 def test_all_five_remaining_settings_moved_inside_using_the_compact_cell_treatment():
     body = panel()
-    start = body.index("${disclosureSection(")
+    start = body.index("${omitted('backup-additional-settings') ? '' : disclosureSection(")
     disclosure = body[start:body.index("    `, {", start)]
     # The #2 compact treatment from Downloads -> Disk Space & Recovery: the same
     # collection and the same relationship primitive, not a lookalike grid.
@@ -222,7 +222,8 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
 
 def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_island():
     body = panel()
-    assert "return eventLogging + backups + reset;" in body
+    # Easy omits Event Logging and Database Reset Controls (Advanced keeps the order).
+    assert "return (omitted('event-logging') ? '' : eventLogging) + backups + (omitted('database-reset') ? '' : reset);" in body
     card = body[body.index("const eventLogging = card('Event Logging',"):body.index("const backupEnabledId")]
     # The standard Data & Maintenance chipblock, with the Lucide file-text glyph.
     assert "titlePrefix: familyIcon('maintenance', 'file-text')" in card

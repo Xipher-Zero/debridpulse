@@ -523,7 +523,7 @@
 
   window.DPSettingsPersistence = Object.freeze({
     defineScope, adopt, baseline, dirty, commit, settle, perform, accept, resume, supersede, refusalMessage,
-    numberDraft,
+    numberDraft, identity,
     pending: () => outstanding,
   });
 })();

@@ -2356,6 +2356,18 @@
     };
   }
 
+  /* A premium service's Additional Settings: the native disclosure of its
+   * tuning, omitted from the card in Easy. */
+  function providerAdditional(body) {
+    return omitted('provider-additional-settings') ? '' : `
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          ${body}
+        </div>
+      </details>`;
+  }
+
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
@@ -2368,10 +2380,7 @@
     const provider = providerCard('alldebrid', 'AllDebrid', `
       <div data-alldebrid-account>${apiKeyAccountLine('alldebrid')}</div>
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${tuningCells(
+      ${providerAdditional(tuningCells(
             tuningGroup(
               tuningToggle('alldebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
                 'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
@@ -2385,9 +2394,7 @@
               type: 'number', min: 0, max: 600,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
             }),
-          )}
-        </div>
-      </details>
+          ))}
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
@@ -2402,10 +2409,7 @@
     const realDebrid = integrations.realdebrid || {enabled: false};
     const realDebridCard = providerCard('realdebrid', 'Real-Debrid', `
       <div class="dp-settings-account-connection" data-realdebrid-connection>${deviceConnectionMarkup('realdebrid')}</div>
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${tuningCells(
+      ${providerAdditional(tuningCells(
             tuningGroup(
               tuningToggle('realdebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
                 'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
@@ -2431,9 +2435,7 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Real-Debrid supports.'
             }),
-          )}
-        </div>
-      </details>
+          ))}
 `, realDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--realdebrid',
       titlePrefix: `
@@ -2451,10 +2453,7 @@
     const torBox = integrations.torbox || {enabled: false};
     const torBoxCard = providerCard('torbox', 'TorBox', `
       <div class="dp-settings-account-connection" data-torbox-connection>${deviceConnectionMarkup('torbox')}</div>
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${tuningCells(
+      ${providerAdditional(tuningCells(
             tuningGroup(
               tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
                 'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
@@ -2483,9 +2482,7 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts TorBox supports.'
             }),
-          )}
-        </div>
-      </details>
+          ))}
 `, torBox, {
       className: 'dp-settings-provider-card dp-settings-provider-card--torbox',
       titlePrefix: `
@@ -2517,10 +2514,7 @@
     const debridLinkCard = providerCard('debridlink', 'Debrid-Link', `
       <div data-debridlink-account>${apiKeyAccountLine('debridlink')}</div>
       ${apiKeyField('debridlink', API_KEY_ACCOUNTS.debridlink.configured(s))}
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${tuningCells(
+      ${providerAdditional(tuningCells(
             tuningToggle('debridlink_prepare_backup_torrents', 'Prepare Backup Torrents',
               'Also add torrents to your Debrid-Link seedbox as backup sources while another provider delivers them.',
               debridLinkOf(s).prepare_backup_torrents === true),
@@ -2536,9 +2530,7 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Debrid-Link supports.'
             }),
-          )}
-        </div>
-      </details>
+          ))}
 `, debridLink, {
       className: 'dp-settings-provider-card dp-settings-provider-card--debridlink',
       titlePrefix: `
@@ -2557,10 +2549,7 @@
     const premiumizeCard = providerCard('premiumize', 'Premiumize', `
       <div data-premiumize-account>${apiKeyAccountLine('premiumize')}</div>
       ${apiKeyField('premiumize', API_KEY_ACCOUNTS.premiumize.configured(s))}
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${tuningCells(
+      ${providerAdditional(tuningCells(
             tuningToggle('premiumize_prepare_backup_torrents', 'Prepare Backup Torrents',
               'Also add torrents to your Premiumize cloud as backup sources while another provider delivers them. Uses your Premiumize account resources.',
               premiumizeOf(s).prepare_backup_torrents === true),
@@ -2579,9 +2568,7 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Premiumize supports.'
             }),
-          )}
-        </div>
-      </details>
+          ))}
 `, premiumize, {
       className: 'dp-settings-provider-card dp-settings-provider-card--premiumize',
       titlePrefix: `
@@ -3101,7 +3088,7 @@
           })}
         </div>
       </div>
-      ${downloadBehaviorAdvanced(policy, s)}
+      ${omitted('download-behavior-advanced') ? '' : downloadBehaviorAdvanced(policy, s)}
     `, {
       className: 'dp-settings-download-engine-card',
       help: 'download-behavior',
@@ -3167,7 +3154,10 @@
       collapsible: {key: 'disk-recovery', expanded: false},
       headerCenter: '<span class="dp-settings-download-engine-header-copy">Protect free disk space and recover failed or stalled downloads.</span>'});
 
-    return delivery + tuning + recovery + executorWorkCard();
+    // Easy keeps Download Behavior & Limits' two ordinary fields alone.
+    return delivery + (omitted('transfer-method-settings') ? '' : tuning)
+      + (omitted('disk-space-recovery') ? '' : recovery)
+      + (omitted('download-engine-activity') ? '' : executorWorkCard());
   }
 
   /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
@@ -3538,7 +3528,7 @@
       testStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
     });
 
-    return discord + reports;
+    return discord + (omitted('statistics-reporting') ? '' : reports);
   }
 
   /* Converge the Notifications surface on ACCEPTED canonical state.
@@ -4417,7 +4407,9 @@
       testStatus: oidcConfigurationStatus(a),
     });
 
-    return authStatusCard(a) + credentials + oidc;
+    // Easy keeps Authentication Status alone: changing sign-in is Advanced.
+    return authStatusCard(a) + (omitted('username-password') ? '' : credentials)
+      + (omitted('openid-connect') ? '' : oidc);
   }
 
   /* ── Users & Access ───────────────────────────────────────────────────────
@@ -4635,11 +4627,12 @@
     return people + automation + delivery;
   }
 
-  /* Deployment Type first, then the account cards: paintUsers() replaces only
-   * the account cards, so the Deployment Type card and its fit are kept. */
+  /* Deployment Type first (Advanced), then the account cards: paintUsers()
+   * replaces only the account cards, so the Deployment Type card and its fit
+   * are kept. */
   function usersPanel() {
-    return `<div class="dp-settings-users">${deploymentCard()}<div class="dp-settings-users" data-users-mount>${
-      usersBody()}</div></div>`;
+    return `<div class="dp-settings-users">${omitted('deployment-type') ? '' : deploymentCard()}`
+      + `<div class="dp-settings-users" data-users-mount>${usersBody()}</div></div>`;
   }
 
   /* Deployment Type, first in the users section: the installation's type
@@ -6672,7 +6665,7 @@
           inline: true, embedAction: true, className: 'dp-settings-backup-folder-field',
         })}
       </div>
-      ${disclosureSection('Additional Backup & Retention Settings', 'backup-retention', tuningCells(
+      ${omitted('backup-additional-settings') ? '' : disclosureSection('Additional Backup & Retention Settings', 'backup-retention', tuningCells(
         tuningGroup(
           input('backup_interval_hours', 'Backup Interval', s.backup_interval_hours ?? 24, {
             type: 'number', min: 1, max: 168,
@@ -6747,7 +6740,7 @@
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
       hinted: true,
     });
-    return eventLogging + backups + reset;
+    return (omitted('event-logging') ? '' : eventLogging) + backups + (omitted('database-reset') ? '' : reset);
   }
 
   function panel(name, body) {
@@ -6834,6 +6827,7 @@
     snapshotProviderControls(view);
     // Whatever was just rendered FROM canonical state IS the accepted baseline.
     window.DPSettingsPersistence.adopt(view);
+    restoreDrafts(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
@@ -6843,6 +6837,75 @@
   }
 
   const standaloneDeployment = () => state.settings?.deployment_type === 'standalone';
+
+  /* Whether the account's presentation omits a part here: Easy, by the Easy
+   * list of this installation's deployment type (auth.js owns the lists and
+   * the choice). Role and deployment type have already decided what this
+   * page may hold; Easy only omits from that, and Advanced omits nothing. */
+  const omitted = part => window.debridPulseAuth?.presentation?.omits(part, state.settings?.deployment_type) === true;
+
+  /* Unsaved edits across a change of presentation. Composing for Easy or
+   * Advanced rebuilds the page from canonical state, so what the operator
+   * changed and has not saved -- a field whose save was refused, the
+   * Username & Password draft awaiting Apply -- is carried across: taken from
+   * every control that holds one, then put back into that same control once
+   * it is on the page again (at once, or after a later return to Advanced).
+   * Nothing is dispatched, so the change writes nothing and the field stays
+   * exactly as unsaved as it was; the persistence owner's baseline stays the
+   * canonical value. */
+  const drafts = new Map();
+  const DRAFTABLE = 'input:not([type="file"]):not([type="hidden"]):not([readonly]):not([disabled]), '
+    + 'textarea:not([readonly]), select';
+
+  function draftIdentity(control) {
+    if (control.dataset.commitKey) return `commit:${window.DPSettingsPersistence.identity(control)}`;
+    return control.id ? `id:${control.id}` : '';
+  }
+
+  function unsaved(control) {
+    if (control.dataset.commitKey) return window.DPSettingsPersistence.dirty(control);
+    if (control.type === 'checkbox' || control.type === 'radio') return control.checked !== control.defaultChecked;
+    if (control.tagName === 'SELECT') return [...control.options].some(option => option.selected !== option.defaultSelected);
+    return control.value !== control.defaultValue;
+  }
+
+  function keepDrafts(view) {
+    view.querySelectorAll(DRAFTABLE).forEach(control => {
+      const identity = draftIdentity(control);
+      if (!identity || !unsaved(control)) return;
+      drafts.set(identity, control.type === 'checkbox' || control.type === 'radio'
+        ? {checked: control.checked} : {value: control.value});
+    });
+  }
+
+  function restoreDrafts(view) {
+    if (!drafts.size) return;
+    view.querySelectorAll(DRAFTABLE).forEach(control => {
+      const identity = draftIdentity(control);
+      const draft = identity && drafts.get(identity);
+      if (!draft) return;
+      drafts.delete(identity);
+      if ('checked' in draft) {
+        control.checked = draft.checked;
+      } else {
+        control.value = draft.value;
+        if (control.tagName === 'SELECT') window.DPDropdowns?.sync(control);
+      }
+    });
+    projectCredentialDraft();
+  }
+
+  // The account chose Easy or Advanced (auth.js) while this page is shown: it
+  // is composed again for it, from canonical state, with every unsaved edit
+  // carried across. Shown later, it is composed by its entry, which -- as
+  // every entry -- starts from canonical state (load, loadOwnNotifications).
+  document.addEventListener('debridpulse:presentation-changed', () => {
+    const view = root();
+    if (!view || !state.settings || !settingsActive() || !view.querySelector('.dp-settings-master-card')) return;
+    keepDrafts(view);
+    if (selfContext()) renderOwnNotifications();
+    else if (state.auth) renderPreservingViewport();
+  });
 
   /* The ONE collection of the tabs this installation presents, in order, with
    * the labels it presents them by: the strip, Previous / Next, the arrow
@@ -8475,6 +8538,7 @@
   // The one Settings entry (app.js navigation): every entry opens on Services.
   async function load() {
     if (selfContext()) return loadOwnNotifications();
+    drafts.clear();
     state.activeTab = 'sources';
     document.getElementById('content')?.classList.remove('settings-active');
 
@@ -8534,6 +8598,7 @@
   /* A standard User's own Notifications: the same entry, the same owner and
    * the same two cards, read from and written to the User's own document. */
   async function loadOwnNotifications() {
+    drafts.clear();
     state.activeTab = 'notifications';
     document.getElementById('content')?.classList.remove('settings-active');
     if (state.loading) return state.loading;
@@ -8592,6 +8657,7 @@
     fitHeaderHints();
     bindEvents(view);
     window.DPSettingsPersistence.adopt(view);
+    restoreDrafts(view);
   }
 
   // app.js owns generic navigation and calls this canonical Settings entry point.
