@@ -33,6 +33,8 @@
  * `handle.setAcceptLabel` / `setCancelLabel` -- and, for a view that asks a
  * different question, its title and tone through `handle.setTitle(title)` and
  * `handle.setTone(tone, acceptTone)`, the same two choices `open` takes -- and
+ * (a title or slot label may be said words, {key, values}: its key is kept with
+ * it, so a language change re-says it in place; plain text drops any key) -- and
  * may guard settlement:
  * `onAccept()` and `onCancel()` (also reached by Enter and Escape) keep the
  * dialog open by returning (or resolving to) `false` -- a Back, a refused
@@ -205,6 +207,26 @@
     }
   }
 
+  /* Words into a node. Said words ({key, values}, Settings' Said) keep their key
+   * on the node, so DPI18n.render() re-says them where they are; plain text
+   * drops any key the node held, so it is never re-said as earlier words. */
+  function sayInto(node, value) {
+    if (!node) return;
+    node.textContent = String(value ?? '');
+    if (value && typeof value === 'object' && typeof value.key === 'string') {
+      node.dataset.i18n = value.key;
+      if (value.values) node.dataset.i18nValues = JSON.stringify(value.values);
+      else delete node.dataset.i18nValues;
+    } else {
+      delete node.dataset.i18n;
+      delete node.dataset.i18nValues;
+    }
+  }
+  const isSaid = value => !!value && typeof value === 'object' && typeof value.key === 'string';
+  // A catalog message as said words: its key travels with it, so the node it
+  // names is re-said on a language change (a default slot word or title).
+  const catalogSaid = key => ({key, values: null, toString: () => window.DPI18n.t(key)});
+
   function open(spec = {}) {
     const role = spec.role === 'alertdialog' ? 'alertdialog' : 'dialog';
     const toneOf = value => (value === 'danger' || value === 'warning' || value === 'success' ? value : '');
@@ -270,10 +292,15 @@
         button.querySelector('img').src = String(action.icon || '');
         button.setAttribute('aria-label', String(action.label || ''));
         button.dataset.tooltip = String(action.label || '');
+        // Said words: the name and tooltip are re-said in place.
+        if (isSaid(action.label)) {
+          button.dataset.i18nAttr = `aria-label:${action.label.key};data-tooltip:${action.label.key}`;
+          if (action.label.values) button.dataset.i18nValues = JSON.stringify(action.label.values);
+        }
       } else {
         button.classList.add(action.tone === 'success' ? 'btn-success' : action.tone === 'danger' ? 'btn-danger' : 'btn-ghost');
         if (action.placement === 'leading') button.classList.add('dp-modal-action-leading');
-        button.textContent = String(action.label || '');
+        sayInto(button, action.label || '');
       }
       button.disabled = action.disabled === true;
       actionButtons.set(id, button);
@@ -309,6 +336,13 @@
     name(overlay.querySelector(`#${dialogId}-title`), keys.title, keys.titleValues);
     name(cancel, keys.cancel, keys.cancelValues);
     name(accept, keys.accept, keys.acceptValues);
+    // The default slot words are the catalog's too, keyed like any other.
+    if (!spec.cancelLabel && !keys.cancel) name(cancel, dismissOnly ? 'dialog.close' : 'common.cancel');
+    if (!spec.acceptLabel && !keys.accept) name(accept, 'dialog.confirm');
+    // Said words name their own node (a key given in ``keys`` is kept first).
+    if (isSaid(spec.title) && !keys.title) sayInto(overlay.querySelector(`#${dialogId}-title`), spec.title);
+    if (isSaid(spec.cancelLabel) && !keys.cancel) sayInto(cancel, spec.cancelLabel);
+    if (isSaid(spec.acceptLabel) && !keys.accept) sayInto(accept, spec.acceptLabel);
 
     let settled = false;
     let resolveClosed;
@@ -379,9 +413,9 @@
         if (button) button.hidden = !!hidden;
       },
       focusAction(id) { actionButtons.get(String(id))?.focus(); },
-      setAcceptLabel(label) { if (accept) accept.textContent = String(label || ''); },
-      setCancelLabel(label) { if (cancel) cancel.textContent = String(label || ''); },
-      setTitle(title) { if (!progress) overlay.querySelector(`#${dialogId}-title`).textContent = String(title || ''); },
+      setAcceptLabel(label) { sayInto(accept, label || ''); },
+      setCancelLabel(label) { sayInto(cancel, label || ''); },
+      setTitle(title) { if (!progress) sayInto(overlay.querySelector(`#${dialogId}-title`), title || ''); },
       setTone(next, acceptTone) {
         const value = toneOf(next);
         if (value) dialog.dataset.tone = value; else delete dialog.dataset.tone;
@@ -429,14 +463,18 @@
       role: 'alertdialog',
       tone,
       keys: keys || undefined,
-      title: title || window.DPI18n.t('dialog.confirm_action'),
-      acceptLabel: confirmLabel || window.DPI18n.t('dialog.confirm'),
-      cancelLabel: cancelLabel || window.DPI18n.t('common.cancel'),
+      // Defaults are the catalog's keyed words; a caller's own label (plain or
+      // said) is used as it is, and a key in ``keys`` still names its node.
+      title: title || (keys && keys.title ? window.DPI18n.t(keys.title) : catalogSaid('dialog.confirm_action')),
+      acceptLabel: confirmLabel || (keys && keys.accept ? window.DPI18n.t(keys.accept) : catalogSaid('dialog.confirm')),
+      cancelLabel: cancelLabel || (keys && keys.cancel ? window.DPI18n.t(keys.cancel) : catalogSaid('common.cancel')),
       acceptDisabled: !!typedPhrase,
       mount(body, handle) {
         const messageEl = document.createElement('p');
         messageEl.className = 'dp-modal-message';
-        messageEl.textContent = String(message || '');
+        // Said words keep their key (re-said in place); ``keys.message`` names plain words' key.
+        if (isSaid(message)) sayInto(messageEl, message);
+        else messageEl.textContent = String(message || '');
         if (keys && keys.message) {
           messageEl.dataset.i18n = keys.message;
           if (keys.messageValues) messageEl.dataset.i18nValues = JSON.stringify(keys.messageValues);
@@ -447,7 +485,8 @@
           typed.className = 'dp-modal-typed';
           typed.innerHTML = '<span class="form-label"></span><input class="input" type="text" autocomplete="off" spellcheck="false">';
           // The phrase itself is typed as it is, in every language.
-          typed.querySelector('.form-label').textContent = window.DPI18n.t('dialog.type_to_confirm', {phrase: typedPhrase});
+          sayInto(typed.querySelector('.form-label'), {key: 'dialog.type_to_confirm', values: {phrase: typedPhrase},
+            toString: () => window.DPI18n.t('dialog.type_to_confirm', {phrase: typedPhrase})});
           const typedInput = typed.querySelector('input');
           typedInput.placeholder = typedPhrase;
           typedInput.addEventListener('input', () => handle.setAcceptEnabled(typedInput.value === typedPhrase));
@@ -537,7 +576,7 @@
         detail.className = 'dp-modal-progress-detail';
         for (const line of lines) {
           const text = document.createElement('p');
-          text.textContent = String(line);
+          sayInto(text, line);
           detail.appendChild(text);
         }
         body.appendChild(detail);

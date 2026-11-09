@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+
+from i18n_node import says
 from urllib.parse import urlsplit
 
 
@@ -127,7 +129,8 @@ def test_accepted_authentication_structure_and_copy_exist_independent_of_layerin
         "OpenID Connect",
         "Default Role for New OIDC Users",
     )
-    missing = [fragment for fragment in required if fragment not in js]
+    # 1.0.14: a fragment may be said through the catalog key the source names.
+    missing = [fragment for fragment in required if not says(js, fragment)]
     assert not missing, f"Accepted Authentication contract is missing: {missing}"
 
 

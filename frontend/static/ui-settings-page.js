@@ -114,6 +114,10 @@
   // A field's hint: a Said, keyed; a string is the caller's own markup, as before.
   const hintMarkup = hint => (hint instanceof Said
     ? `<span class="form-hint"${keyed(hint)}>${html(hint)}</span>` : `<span class="form-hint">${hint}</span>`);
+  // An icon and its label (the icon owner's markup), the label keyed.
+  const keyedIconLabel = (icon, said) => (window.DPIcons?.iconLabel
+    ? window.DPIcons.iconLabel(icon, String(said)) : `<span data-dp-icon-label="1">${html(said)}</span>`)
+    .replace('<span data-dp-icon-label="1">', `<span data-dp-icon-label="1"${keyed(said)}>`);
   // Words as markup: a Said in its own span (re-sayable), anything else escaped.
   const words = value => (value instanceof Said ? `<span${keyed(value)}>${html(value)}</span>` : html(value));
   // An element whose words an owner sets again later: its key moves with them,
@@ -416,26 +420,26 @@
     if (!auth?.oidc_configured) {
       // Enabled but incomplete is broken; simply unused is not.
       return auth?.oidc_enabled
-        ? {primary: 'Configuration Error', secondary: '', tone: 'red'}
-        : {primary: 'Unconfigured', secondary: '', tone: 'neutral'};
+        ? {primary: 'config_error', secondary: '', tone: 'red'}
+        : {primary: 'unconfigured', secondary: '', tone: 'neutral'};
     }
     if (!auth?.oidc_enabled) {
-      return {primary: 'Configured', secondary: '', tone: 'yellow'};
+      return {primary: 'configured', secondary: '', tone: 'yellow'};
     }
     if (available === false) {
       return {
-        primary: 'Runtime Unavailable',
-        secondary: auth?.oidc_verified ? '(Verified)' : '',
+        primary: 'runtime_unavailable',
+        secondary: auth?.oidc_verified ? 'verified' : '',
         tone: 'red',
       };
     }
     if (auth?.oidc_verified) {
-      return {primary: 'Enabled', secondary: '', tone: 'green'};
+      return {primary: 'enabled', secondary: '', tone: 'green'};
     }
     if (auth?.oidc_ready) {
-      return {primary: 'Enabled', secondary: '(Untested)', tone: 'green'};
+      return {primary: 'enabled', secondary: 'untested', tone: 'green'};
     }
-    return {primary: 'Configuration Error', secondary: '', tone: 'red'};
+    return {primary: 'config_error', secondary: '', tone: 'red'};
   }
 
   window.DPSettingsOidcStatePresentation = Object.freeze({resolve: oidcStatePresentation});
@@ -1882,7 +1886,7 @@
     return `<div class="dp-settings-header-test-group"${from ? ` data-menu-from="${from}"` : ''}>
         <span class="dp-settings-header-test-shell">
           <button class="btn btn-ghost btn-sm dp-settings-header-test-trigger" type="button" popovertarget="${menu}"
-                  aria-controls="${menu}" aria-expanded="false">${short ? fitLabel(label, short) : html(label)}</button>
+                  aria-controls="${menu}" aria-expanded="false">${short ? fitLabel(label, short) : words(label)}</button>
           <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group"${keyed(null, {'aria-label': say('settings.actions_label', {title})})}></div>
         </span>${toggle}</div>`;
   }
@@ -3424,8 +3428,8 @@
    * It is deliberately never blank: participation is a separate fact, so a
    * switched-off section still tells the operator what it is holding. */
   function notificationStatus(configured, verified) {
-    if (!configured) return {text: 'Unconfigured', tone: 'error'};
-    return verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+    if (!configured) return {text: say('settings.status.unconfigured'), tone: 'error'};
+    return verified ? {text: say('settings.status.verified'), tone: 'success'} : {text: say('settings.status.configured'), tone: 'warning'};
   }
 
   /* The three stored webhooks, declared ONCE.
@@ -3439,44 +3443,17 @@
    * ``fallback`` is what the operator loses by erasing this one, in the
    * application's own terms; it is copy, not a second definition of the
    * delivery fallback, which the backend owns. */
-  const WEBHOOK_CONTROLS = Object.freeze({
-    discord_webhook_url: {
-      label: 'Primary Webhook',
-      placeholder: 'Primary webhook',
-      hint: 'Primary destination for enabled notifications.',
-      aria: 'Clear the stored primary webhook',
-      confirm: {
-        title: 'Clear the primary webhook?',
-        message: 'The stored primary webhook will be removed. Webhook notifications '
-          + 'cannot be delivered until a webhook is configured again.',
-      },
-    },
-    discord_webhook_added: {
-      label: 'Download Added Webhook',
-      placeholder: 'Optional added-event webhook',
-      hint: 'Optional destination for new-download notifications. Leave blank to use the primary webhook.',
-      aria: 'Clear the stored Download Added webhook',
-      confirm: {
-        title: 'Clear the Download Added webhook?',
-        message: 'The dedicated Download Added destination will be removed. New-download '
-          + 'notifications return to the primary webhook.',
-      },
-    },
-    stats_report_webhook_url: {
-      label: 'Reporting Webhook',
-      placeholder: 'Optional reporting webhook',
-      hint: 'Optional destination for statistics reports. Leave blank to use the primary webhook.',
-      aria: 'Clear the stored reporting webhook',
-      confirm: {
-        title: 'Clear the reporting webhook?',
-        message: 'The dedicated statistics-report destination will be removed. Reports return '
-          + 'to the primary webhook when one is configured.',
-      },
-    },
-  });
+  const WEBHOOK_CONTROLS = Object.freeze(Object.fromEntries(
+    ['discord_webhook_url', 'discord_webhook_added', 'stats_report_webhook_url'].map(key => [key, {
+      label: say(`settings.webhook.${key}.label`),
+      placeholder: say(`settings.webhook.${key}.placeholder`),
+      hint: say(`settings.webhook.${key}.hint`),
+      aria: say(`settings.webhook.${key}.clear_label`),
+      confirm: {title: say(`settings.webhook.${key}.clear_title`), message: say(`settings.webhook.${key}.clear_message`)},
+    }])));
 
   const webhookPlaceholder = (key, configured) => configured
-    ? `${WEBHOOK_CONTROLS[key].placeholder} configured — blank keeps current value`
+    ? say('settings.webhook.configured_placeholder', {name: WEBHOOK_CONTROLS[key].placeholder})
     : WEBHOOK_CONTROLS[key].placeholder;
 
   /* Erasing a stored webhook is destructive, so it is an explicit action behind
@@ -3489,8 +3466,8 @@
   const WEBHOOK_CLEAR = (key, configured) => `
             <button type="button" class="btn btn-danger btn-sm dp-settings-webhook-clear"
                     data-action="clear-webhook" data-webhook="${html(key)}"
-                    aria-label="${html(WEBHOOK_CONTROLS[key].aria)}" data-tooltip="${html(WEBHOOK_CONTROLS[key].aria)}"${
-                      configured ? '' : ' disabled'}>Clear</button>`;
+                   ${keyed(say('settings.webhook.clear'), {'aria-label': WEBHOOK_CONTROLS[key].aria, 'data-tooltip': WEBHOOK_CONTROLS[key].aria})}${
+                      configured ? '' : ' disabled'}>${html(t('settings.webhook.clear'))}</button>`;
 
   function webhookField(key, configured) {
     const spec = WEBHOOK_CONTROLS[key];
@@ -3513,15 +3490,15 @@
    * the file input Upload opens is the hidden one beside it -- so it keeps its
    * own tab stop. */
   const AVATAR_ACTIONS = Object.freeze({
-    upload: {action: 'upload-avatar', label: 'Upload', name: 'Upload Avatar', tone: 'btn-ghost'},
-    clear: {action: 'clear-avatar', label: 'Clear', name: 'Clear Avatar', tone: 'btn-danger'},
+    upload: {action: 'upload-avatar', label: say('settings.avatar.upload'), name: say('settings.avatar.upload_label'), tone: 'btn-ghost'},
+    clear: {action: 'clear-avatar', label: say('settings.avatar.clear'), name: say('settings.avatar.clear_label'), tone: 'btn-danger'},
   });
 
   const avatarAction = url => {
     const mode = AVATAR_ACTIONS[String(url || '').trim() ? 'clear' : 'upload'];
     return `
             <button type="button" class="btn ${mode.tone} btn-sm dp-settings-avatar-action" data-avatar-action
-                    data-action="${mode.action}" aria-label="${mode.name}" data-tooltip="${mode.name}">${mode.label}</button>
+                    data-action="${mode.action}"${keyed(mode.label, {'aria-label': mode.name, 'data-tooltip': mode.name})}>${html(mode.label)}</button>
             <input id="dp-settings-avatar-file" type="file"
                    accept="image/png,image/jpeg,image/gif,image/webp" hidden>`;
   };
@@ -3534,9 +3511,9 @@
     button.dataset.action = mode.action;
     button.classList.toggle('btn-danger', mode.tone === 'btn-danger');
     button.classList.toggle('btn-ghost', mode.tone === 'btn-ghost');
-    button.setAttribute('aria-label', mode.name);
-    button.dataset.tooltip = mode.name;
-    button.textContent = mode.label;
+    sayAttr(button, 'aria-label', mode.name);
+    sayAttr(button, 'data-tooltip', mode.name);
+    sayInto(button, mode.label);
   }
 
   /* What the stored URL currently resolves to -- a reading, never a control. It
@@ -3544,7 +3521,7 @@
    * own second-line slot rather than dropped in beside the input. */
   const avatarPreview = url => `
             <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact"${
-              url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Avatar preview"><span>${html(url)}</span>` : ''}</div>`;
+              url ? '' : ' hidden'}>${url ? `<img src="${html(url)}"${keyed(null, {alt: say('settings.avatar.preview')})}><span>${html(url)}</span>` : ''}</div>`;
 
   /* ``own``: a standard User's own configuration. The same two cards and
    * controls, less what is not theirs to set: instance update notices and
@@ -3554,17 +3531,17 @@
    * the event itself (services/notifications.py) -- so their hints name
    * Discord. */
   function notificationsPanel(s, own = false) {
-    const discord = card('Webhook Notifications', `
+    const discord = card(say('settings.notifications.webhook_title'), `
       <div class="dp-settings-notifications-identity-row dp-settings-help-slot">
-        ${input('discord_username', 'Display Name', own ? s.discord_username || '' : s.discord_username || 'DebridPulse', {
+        ${input('discord_username', say('settings.notifications.display_name'), own ? s.discord_username || '' : s.discord_username || 'DebridPulse', {
           placeholder: own ? 'DebridPulse' : '',
-          hint: 'Name shown as the sender of Discord notifications.',
+          hint: say('settings.notifications.display_name_hint'),
           inline: true,
         })}
-        ${input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
+        ${input('discord_avatar_url', say('settings.notifications.avatar_url'), s.discord_avatar_url || '', {
           placeholder: 'https://example.com/avatar.png',
-          hint: own ? 'Image shown with your Discord notifications. Paste a direct HTTPS image URL.'
-            : 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
+          hint: own ? say('settings.notifications.avatar_hint_own')
+            : say('settings.notifications.avatar_hint'),
           embedAction: own ? '' : avatarAction(s.discord_avatar_url),
           controlClass: own ? '' : 'dp-settings-avatar-field-control',
           secondLine: avatarPreview(s.discord_avatar_url || ''),
@@ -3576,60 +3553,60 @@
         ${webhookField('discord_webhook_url', s.discord_webhook_url_configured)}
         ${webhookField('discord_webhook_added', s.discord_webhook_added_configured)}
       </div>
-      ${disclosureSection('Notification Events & Delivery Options', 'notifications-events', tuningCells(
-        tuningToggle('discord_notify_added', 'Download Added',
-          'Send a notification when a new download is accepted.', s.discord_notify_added),
-        tuningToggle('discord_notify_finished', 'Download Completed',
-          'Send a notification when a download finishes successfully.', s.discord_notify_finished),
-        tuningToggle('discord_notify_error', 'Download Error',
-          'Send a notification when a download fails.', s.discord_notify_error),
-        tuningToggle('discord_notify_extract', 'Extraction Result',
-          'Send a notification when archive extraction completes or fails.', s.discord_notify_extract),
+      ${disclosureSection(say('settings.notifications.events'), 'notifications-events', tuningCells(
+        tuningToggle('discord_notify_added', say('settings.notifications.event_added'),
+          say('settings.notifications.event_added_hint'), s.discord_notify_added),
+        tuningToggle('discord_notify_finished', say('settings.notifications.event_finished'),
+          say('settings.notifications.event_finished_hint'), s.discord_notify_finished),
+        tuningToggle('discord_notify_error', say('settings.notifications.event_error'),
+          say('settings.notifications.event_error_hint'), s.discord_notify_error),
+        tuningToggle('discord_notify_extract', say('settings.notifications.event_extract'),
+          say('settings.notifications.event_extract_hint'), s.discord_notify_extract),
         own ? [] : [
-          tuningToggle('discord_notify_update', 'Update Available',
-            'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update),
-          input('update_check_interval_hours', 'Update Check Interval', s.update_check_interval_hours ?? 12, {
+          tuningToggle('discord_notify_update', say('settings.notifications.event_update'),
+            say('settings.notifications.event_update_hint'), s.discord_notify_update),
+          input('update_check_interval_hours', say('settings.notifications.update_interval'), s.update_check_interval_hours ?? 12, {
             type: 'number', min: 0, max: 168, step: 1,
-            hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.',
-            embedAction: fieldUnit('hours'),
+            hint: say('settings.notifications.update_interval_hint'),
+            embedAction: fieldUnit(say('settings.unit.hours')),
             controlClass: 'dp-settings-unit-field',
           }),
         ],
-      ), false, 'Delivery Options')}
+      ), false, say('settings.notifications.events_short'))}
     `, {
       className: 'dp-settings-discord-card',
       help: own ? 'discord-own' : 'discord',
       headerFit: 'wrap',
       helpRow: false,
       titlePrefix: familyIcon('notifications', 'message-square'),
-      headerCenter: own ? 'Configure your identity, Discord destinations, and alerts for your own downloads.'
-        : 'Configure notification identity, delivery destinations, and event alerts.',
+      headerCenter: own ? say('settings.notifications.webhook_copy_own')
+        : say('settings.notifications.webhook_copy'),
       headerCenterClass: 'dp-settings-notifications-header-copy',
       hinted: true,
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
       headerAction: providerTestAction('test-discord'),
       action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false, '',
-        'Enable Webhook Notifications'),
+        say('settings.notifications.webhook_enable')),
       testStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
     });
 
-    const reports = card('Statistics Reporting', `
+    const reports = card(say('settings.reports.title'), `
       <div class="dp-settings-statistics-reporting-row dp-settings-help-slot">
         ${webhookField('stats_report_webhook_url', s.stats_report_webhook_url_configured)}
         <div class="dp-settings-statistics-cadence-group dp-settings-island" data-island-columns>
-          ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
+          ${input('stats_report_interval_hours', say('settings.reports.interval'), s.stats_report_interval_hours ?? 0, {
             type: 'number', min: 0, max: 168, step: 1,
-            hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
-            embedAction: fieldUnit('hours'),
+            hint: say('settings.reports.interval_hint'),
+            embedAction: fieldUnit(say('settings.unit.hours')),
             controlClass: 'dp-settings-unit-field',
             inline: true, className: 'dp-settings-report-interval-row',
           })}
-          ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
-            [24, '24 hours'],
-            [168, '7 days'],
-            [720, '30 days'],
-            [8760, '1 year'],
-          ], 'Choose how much recent activity each statistics report includes.',
+          ${selectField('stats_report_window_hours', say('settings.reports.window'), s.stats_report_window_hours ?? 24, [
+            [24, say('settings.reports.window_day')],
+            [168, say('settings.reports.window_week')],
+            [720, say('settings.reports.window_month')],
+            [8760, say('settings.reports.window_year')],
+          ], say('settings.reports.window_hint'),
             {inline: true, className: 'dp-settings-report-window-row'})}
         </div>
       </div>
@@ -3639,14 +3616,14 @@
       headerFit: 'wrap',
       helpRow: false,
       titlePrefix: familyIcon('notifications', 'chart-line'),
-      headerCenter: own ? 'Configure where reports of your own activity are sent, how often, and how much they summarize.'
-        : 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
+      headerCenter: own ? say('settings.reports.copy_own')
+        : say('settings.reports.copy'),
       headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
       hinted: true,
       headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
       headerAction: providerTestAction('send-report'),
       action: headerEnableToggle('stats_reporting_enabled', s.stats_reporting_enabled !== false, '',
-        'Enable Statistics Reporting'),
+        say('settings.reports.enable')),
       testStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
     });
 
@@ -3683,7 +3660,7 @@
   function renderWebhookRow(key) {
     const configured = !!state.settings?.[`${key}_configured`];
     const field = fieldFor(key);
-    if (field) field.placeholder = webhookPlaceholder(key, configured);
+    if (field) sayAttr(field, 'placeholder', webhookPlaceholder(key, configured));
     const clear = root()?.querySelector(`[data-action="clear-webhook"][data-webhook="${key}"]`);
     if (clear) clear.disabled = !configured;
   }
@@ -3695,7 +3672,7 @@
     if (!preview) return;
     preview.hidden = !url;
     preview.innerHTML = url
-      ? `<img src="${html(url)}" alt="Avatar preview"><span>${html(url)}</span>` : '';
+      ? `<img src="${html(url)}"${keyed(null, {alt: say('settings.avatar.preview')})}><span>${html(url)}</span>` : '';
   }
 
   /* The accepted notification state a Test just established, adopted through
@@ -3751,7 +3728,7 @@
     const id = fieldId('oidc_allow_all');
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-oidc-allow-all" for="${id}">
-        <span class="toggle-info"><span class="tl"><span class="dp-settings-oidc-allow-all-full">Allow Any Authenticated OIDC Identity</span><span class="dp-settings-oidc-allow-all-short" aria-hidden="true" data-short-label="Allow Any Identity"></span></span></span>
+        <span class="toggle-info"><span class="tl"><span class="dp-settings-oidc-allow-all-full"${keyed(say('settings.oidc.allow_all'))}>${html(t('settings.oidc.allow_all'))}</span><span class="dp-settings-oidc-allow-all-short" aria-hidden="true"${keyed(null, {'data-short-label': say('settings.oidc.allow_all_short')})}></span></span></span>
         <span class="toggle">
           <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)} ${commitAttributes('oidc_allow_all')}>
           <span class="ttrack"></span>
@@ -3835,9 +3812,9 @@
     }
     notice.replaceChildren();
     const title = document.createElement('b');
-    title.textContent = 'Authentication status unavailable';
+    sayInto(title, say('settings.auth.unavailable_title'));
     const detail = document.createElement('span');
-    detail.textContent = text(error?.message || error || 'The local authentication status request failed. Other Settings remain available.');
+    sayInto(detail, text(error?.message || error || '') || say('settings.auth.unavailable'));
     notice.append(title, detail);
   }
 
@@ -3862,7 +3839,7 @@
 
     const callback = callbackFromPublicBase(source.value);
     input.value = callback;
-    input.placeholder = callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.';
+    sayAttr(input, 'placeholder', callback ? '' : say('settings.oidc.callback_placeholder'));
     button.disabled = !callback;
     field.classList.toggle('is-callback-unavailable', !callback);
   }
@@ -3876,14 +3853,14 @@
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(callback);
-      notify('OIDC callback URL copied', 'success');
+      notify(t('settings.oidc.callback_copied'), 'success');
       return;
     } catch (_) {
       try {
         input.focus();
         input.select();
         if (document.execCommand('copy')) {
-          notify('OIDC callback URL copied', 'success');
+          notify(t('settings.oidc.callback_copied'), 'success');
           return;
         }
       } catch (_) {}
@@ -3891,7 +3868,7 @@
 
     input.focus();
     input.select();
-    notify('Select and copy the callback URL manually', 'info');
+    notify(t('settings.oidc.callback_copy_manually'), 'info');
   }
 
   /* The live-probe result is nothing but one more piece of canonical auth
@@ -4004,9 +3981,9 @@
     // Not an open-mode transition: nothing to confirm and nothing to prove.
     if (!state.auth?.authentication_required || password || oidc) return AUTH_ALLOWED;
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Disable interactive authentication?',
-      message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
-      confirmLabel: 'Continue to Open Mode',
+      title: say('settings.auth.open_mode_title'),
+      message: say('settings.auth.open_mode_message'),
+      confirmLabel: say('settings.auth.open_mode_accept'),
       tone: 'warning',
     });
     return confirmed ? Object.freeze({allowed: true, proof: {confirm_open_mode: true}}) : AUTH_DENIED;
@@ -4069,7 +4046,7 @@
         value.appendChild(document.createElement('br'));
         const secondary = document.createElement('span');
         secondary.className = 'dp-settings-auth-kpi-secondary';
-        secondary.textContent = item.secondary;
+        secondary.textContent = String(item.secondary);
         value.appendChild(secondary);
       }
       kpi.dataset.c = item.tone;
@@ -4212,28 +4189,22 @@
     projectCredentialDraft();
 
     const passwordField = fieldFor('auth_password');
-    if (passwordField) passwordField.placeholder = passwordPlaceholder(a);
+    if (passwordField) sayAttr(passwordField, 'placeholder', passwordPlaceholder(a));
     const secretField = fieldFor('oidc_client_secret');
-    if (secretField) secretField.placeholder = clientSecretPlaceholder(a);
+    if (secretField) sayAttr(secretField, 'placeholder', clientSecretPlaceholder(a));
   }
 
-  const passwordPlaceholder = a => (a?.password_configured
-    ? 'Password is set'
-    : 'Set a password before enabling');
+  const passwordPlaceholder = a => say(a?.password_configured ? 'settings.auth.password_set' : 'settings.auth.password_unset');
 
-  const clientSecretPlaceholder = a => (a?.oidc_client_secret_configured
-    ? 'Stored Client Secret Configured. Blank keeps it.'
-    : 'Optional for public clients');
+  const clientSecretPlaceholder = a => say(a?.oidc_client_secret_configured ? 'settings.oidc.secret_stored' : 'settings.oidc.secret_optional');
 
   /* The four status readings, as data. ONE derivation, used both by the markup
    * that first renders them and by the painter that repaints them in place. */
   function authKpiItems(a) {
-    const modeRaw = String(a.mode || 'Unknown');
-    const modeValue = modeRaw === 'OIDC'
-      ? 'OpenID Connect'
-      : modeRaw === 'No authentication'
-        ? 'No Authentication'
-        : modeRaw;
+    // The mode from the same two flags the server builds its mode from
+    // (password_auth_enabled, oidc_auth_enabled), never from its English words.
+    const mode = a.password_enabled && a.oidc_enabled ? 'both' : a.password_enabled ? 'password'
+      : a.oidc_enabled ? 'oidc' : 'none';
 
     const passwordOperational = !!a.password_enabled && !!a.password_ready;
     const oidcOperational = !!a.oidc_enabled && !!a.oidc_ready && a.oidc_available !== false;
@@ -4251,9 +4222,9 @@
      * red Username & Password card, nor the reverse. Red is reserved for the
      * one case that really is broken: enabled, but not actually usable. */
     const mechanismState = (configured, enabled, ready) => {
-      if (enabled && !ready) return {value: 'Configuration Error', tone: 'red'};
-      if (!configured) return {value: 'Unconfigured', tone: 'neutral'};
-      return enabled ? {value: 'Enabled', tone: 'green'} : {value: 'Configured', tone: 'yellow'};
+      if (enabled && !ready) return {value: 'config_error', tone: 'red'};
+      if (!configured) return {value: 'unconfigured', tone: 'neutral'};
+      return enabled ? {value: 'enabled', tone: 'green'} : {value: 'configured', tone: 'yellow'};
     };
 
     const password = mechanismState(
@@ -4266,39 +4237,37 @@
     // The same state, never a different one; the full words stay its
     // accessible text.
     return [
-      {id: 'mode', label: 'Authentication Mode', labelShort: 'Auth Mode',
-        value: modeValue, valueShort: KPI_SHORT_VALUES[modeValue] || modeValue, tone: modeTone, secondary: ''},
-      {id: 'password', label: 'Username & Password', labelShort: 'Password',
-        value: password.value, valueShort: KPI_SHORT_VALUES[password.value] || password.value, tone: password.tone, secondary: ''},
-      {id: 'oidc', label: 'OIDC State', labelShort: 'OIDC',
-        value: oidcState.primary, valueShort: KPI_SHORT_VALUES[oidcState.primary] || oidcState.primary, tone: oidcState.tone,
-        secondary: oidcState.secondary},
+      {id: 'mode', label: say('settings.auth.kpi.mode'), labelShort: say('settings.auth.kpi.mode_short'),
+        ...kpiValue(`mode.${mode}`), tone: modeTone, secondary: ''},
+      {id: 'password', label: say('settings.auth.kpi.password'), labelShort: say('settings.auth.kpi.password_short'),
+        ...kpiValue(password.value), tone: password.tone, secondary: ''},
+      {id: 'oidc', label: say('settings.auth.kpi.oidc'), labelShort: say('settings.auth.kpi.oidc_short'),
+        ...kpiValue(oidcState.primary), tone: oidcState.tone,
+        secondary: oidcState.secondary ? say(`settings.auth.kpi.${oidcState.secondary}`) : ''},
     ];
   }
 
   // The status words a narrow KPI may shorten, and to what; every other word
   // is already short.
-  const KPI_SHORT_VALUES = Object.freeze({
-    'Configuration Error': 'Config Error',
-    'Runtime Unavailable': 'Unavailable',
-    'OpenID Connect': 'OIDC',
-    'Username & Password': 'Password',
-  });
+  // A KPI value by its state's key, with its shorter words where it has them.
+  const KPI_SHORT_VALUES = Object.freeze(new Set(['config_error', 'runtime_unavailable', 'mode.oidc', 'mode.password']));
+  const kpiValue = state => ({value: say(`settings.auth.kpi.${state}`),
+    valueShort: KPI_SHORT_VALUES.has(state) ? say(`settings.auth.kpi.${state}_short`) : ''});
 
   // A KPI's words as markup: the full words, and -- where they differ -- the
   // short ones, drawn instead only while the grid says so (data-kpi-words).
-  const kpiWords = (full, short) => (short && short !== full
-    ? `<span class="dp-settings-kpi-words--full">${html(full)}</span><span class="dp-settings-kpi-words--short" aria-hidden="true">${html(short)}</span>`
-    : html(full));
+  const kpiWords = (full, short) => (short && String(short) !== String(full)
+    ? `<span class="dp-settings-kpi-words--full"${keyed(full)}>${html(full)}</span><span class="dp-settings-kpi-words--short" aria-hidden="true"${keyed(short)}>${html(short)}</span>`
+    : words(full));
 
   // The same, as nodes, for the painter.
   function kpiWordNodes(full, short) {
-    if (!short || short === full) return [document.createTextNode(full)];
+    if (!short || String(short) === String(full)) return [document.createTextNode(String(full))];
     const node = (form, text) => {
       const span = document.createElement('span');
       span.className = `dp-settings-kpi-words--${form}`;
       if (form === 'short') span.setAttribute('aria-hidden', 'true');
-      span.textContent = text;
+      span.textContent = String(text);
       return span;
     };
     return [node('full', full), node('short', short)];
@@ -4307,7 +4276,7 @@
   function authStatusCard(a) {
     const lifetimeId = fieldId('auth_session_lifetime_hours');
 
-    return card('Authentication Status', `
+    return card(say('settings.auth.status_title'), `
       <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
         ${authKpiItems(a).map(item => `
           <div class="dash-hero-stat dp-settings-auth-kpi" data-auth-kpi="${html(item.id)}" data-c="${html(item.tone)}">
@@ -4317,26 +4286,26 @@
             </div>
           </div>`).join('')}
       </div>
-      <div class="dp-settings-auth-session-row dp-settings-island" role="group" aria-label="Browser session information and controls">
-        ${inlineField(lifetimeId, 'Browser Session Lifetime',
-          'How long a browser login remains valid before the session expires and you must sign in again. Signing in starts a new session. Active downloads continue uninterrupted.',
+      <div class="dp-settings-auth-session-row dp-settings-island" role="group"${keyed(null, {'aria-label': say('settings.auth.session_group')})}>
+        ${inlineField(lifetimeId, say('settings.auth.session_lifetime'),
+          say('settings.auth.session_lifetime_hint'),
           `<span class="dp-settings-auth-duration-control">
             <input class="input" id="${lifetimeId}" data-setting="auth_session_lifetime_hours" type="number"
                    min="1" max="168" value="${html(a.session_lifetime_hours || 12)}"
-                   aria-label="Browser Session Lifetime in hours" ${commitAttributes('auth_session_lifetime_hours')}>
-            <span class="dp-settings-auth-duration-unit" aria-hidden="true">hours</span>
+                  ${keyed(null, {'aria-label': say('settings.auth.session_lifetime_label')})} ${commitAttributes('auth_session_lifetime_hours')}>
+            <span class="dp-settings-auth-duration-unit" aria-hidden="true"${keyed(say('settings.unit.hours'))}>${html(t('settings.unit.hours'))}</span>
           </span>`,
           {className: 'dp-settings-auth-session-lifetime'})}
-        ${inlineField('', 'Active Browser Sessions', 'Browser logins currently holding a valid session.',
+        ${inlineField('', say('settings.auth.sessions'), say('settings.auth.sessions_hint'),
           `<span class="dp-settings-auth-session-count-value" data-auth-session-count>${html(a.session_count ?? 0)}</span>`,
           {
             className: 'dp-settings-auth-session-count',
-            action: '<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session">Log Out Current Session</button>',
+            action: `<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session"${keyed(say('settings.auth.logout'))}>${html(t('settings.auth.logout'))}</button>`,
           })}
       </div>
     `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check'),
       help: 'auth-status', hinted: true, headerFit: 'wrap',
-      headerCenter: 'How people sign in, and how long a browser stays signed in.',
+      headerCenter: say('settings.auth.status_copy'),
       headerCenterClass: 'dp-settings-auth-header-copy'});
   }
 
@@ -4350,12 +4319,12 @@
     /* Username and Password are ONE credential, applied together and only by
      * Apply (applyCredentials): neither is enrolled in field-boundary
      * persistence, so typing, blurring or reflowing them writes nothing. */
-    const usernameField = input('auth_username', 'Username', a.username || '', {
+    const usernameField = input('auth_username', say('settings.auth.username'), a.username || '', {
       inline: true,
       commit: false,
       autocomplete: 'username',
       placeholder: 'operator',
-      hint: 'Username used for browser and HTTP Basic authentication.',
+      hint: say('settings.auth.username_hint'),
       className: 'dp-settings-auth-username-field',
     });
 
@@ -4364,20 +4333,20 @@
      * Erasing it is Clear Stored Password, the confirmed action inside the
      * field, never an inference from an empty field; Apply, in the field's
      * action slot, is the one act that changes the credential. */
-    const passwordField = input('auth_password', 'Password', '', {
+    const passwordField = input('auth_password', say('settings.auth.password'), '', {
       inline: true,
       commit: false,
       type: 'password',
       autocomplete: 'new-password',
       maxlength: 4096,
       placeholder: passwordPlaceholder(a),
-      hint: 'Leave blank to keep the current password. Enter a new password to replace it.',
+      hint: say('settings.auth.password_hint'),
       className: 'dp-settings-auth-password-field',
-      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" aria-label="Clear Stored Password" data-tooltip="Clear Stored Password" ${a.password_configured ? '' : 'disabled'}>Clear</button>`,
-      action: '<button class="btn btn-blue btn-sm" type="button" data-action="apply-credentials" disabled>Apply</button>',
+      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password"${keyed(say('settings.auth.clear'), {'aria-label': say('settings.auth.clear_password'), 'data-tooltip': say('settings.auth.clear_password')})} ${a.password_configured ? '' : 'disabled'}>${html(t('settings.auth.clear'))}</button>`,
+      action: `<button class="btn btn-blue btn-sm" type="button" data-action="apply-credentials"${keyed(say('settings.auth.apply'))} disabled>${html(t('settings.auth.apply'))}</button>`,
     });
 
-    const credentials = card('Username & Password', `
+    const credentials = card(say('settings.auth.credentials_title'), `
       <div class="dp-settings-auth-credentials-row">${usernameField}${passwordField}</div>
     `, {
       className: 'dp-settings-username-password-card',
@@ -4385,55 +4354,53 @@
       hinted: true,
       headerFit: 'wrap',
       titlePrefix: familyIcon('authentication', 'user-lock'),
-      headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
+      headerCenter: say('settings.auth.credentials_copy'),
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
       headerStatus: credentialStatus(a),
-      action: headerEnableToggle('auth_password_enabled', a.password_enabled, '', 'Enable Username & Password'),
+      action: headerEnableToggle('auth_password_enabled', a.password_enabled, '', say('settings.auth.credentials_enable')),
     });
 
-    const providerField = input('oidc_provider_name', 'Provider Name', a.oidc_provider_name || 'OpenID Connect', {
+    const providerField = input('oidc_provider_name', say('settings.oidc.provider_name'), a.oidc_provider_name || 'OpenID Connect', {
       inline: true,
-      hint: 'Name shown on the sign-in page.',
+      hint: say('settings.oidc.provider_name_hint'),
       className: 'dp-settings-oidc-provider-field',
     });
 
     /* PUBLIC_BASE_URL, when the environment sets it, is the deployment's
      * value and not this page's to write -- so the control is not enrolled in
      * persistence at all, rather than enrolled and then never written. */
-    const publicBaseField = input('public_base_url', 'Public DebridPulse Base URL', externalBase, {
+    const publicBaseField = input('public_base_url', say('settings.oidc.public_base'), externalBase, {
       inline: true,
       commit: !publicBaseManaged,
       readonly: publicBaseManaged,
       placeholder: 'https://download.example.com',
-      hint: publicBaseManaged
-        ? 'Managed by PUBLIC_BASE_URL. Used for secure browser sessions and OIDC callback generation.'
-        : 'Externally reachable HTTPS address used for secure browser sessions and OIDC callback generation.',
+      hint: say(publicBaseManaged ? 'settings.oidc.public_base_hint_managed' : 'settings.oidc.public_base_hint'),
       className: 'dp-settings-auth-public-base-field',
     });
 
     /* Derived from Public Base URL, so it is a reading rather than a setting:
      * read-only, and never enrolled in persistence. */
-    const callbackField = input('oidc_callback_url', 'OIDC Callback URL', callback, {
+    const callbackField = input('oidc_callback_url', say('settings.oidc.callback'), callback, {
       inline: true,
       commit: false,
       readonly: true,
       autocomplete: 'off',
-      placeholder: callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.',
-      hint: "Copy this exact URL into your identity provider's redirect/callback URI configuration.",
+      placeholder: callback ? '' : say('settings.oidc.callback_placeholder'),
+      hint: say('settings.oidc.callback_hint'),
       className: `dp-settings-auth-callback-field${callback ? '' : ' is-callback-unavailable'}`,
-      embedAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-oidc-callback" aria-label="Copy OIDC Callback URL" ${callback ? '' : 'disabled'}>Copy</button>`,
+      embedAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-oidc-callback"${keyed(say('settings.oidc.copy_callback'), {'aria-label': say('settings.oidc.copy_callback_label')})} ${callback ? '' : 'disabled'}>${html(t('settings.oidc.copy_callback'))}</button>`,
     });
 
-    const issuerField = input('oidc_issuer_url', 'Issuer URL', a.oidc_issuer_url || '', {
+    const issuerField = input('oidc_issuer_url', say('settings.oidc.issuer'), a.oidc_issuer_url || '', {
       inline: true,
       placeholder: 'https://id.example/application/o/debridpulse',
-      hint: 'OIDC issuer URL published by your identity provider.',
+      hint: say('settings.oidc.issuer_hint'),
       className: 'dp-settings-oidc-issuer-field',
     });
 
-    const clientIdField = input('oidc_client_id', 'Client ID', a.oidc_client_id || '', {
+    const clientIdField = input('oidc_client_id', say('settings.oidc.client_id'), a.oidc_client_id || '', {
       inline: true,
-      hint: 'Client identifier issued by your OIDC provider.',
+      hint: say('settings.oidc.client_id_hint'),
       className: 'dp-settings-oidc-client-id-field',
     });
 
@@ -4441,71 +4408,71 @@
      * baseline and an untouched field writes nothing; erasing the stored
      * secret is the confirmed action inside the field, in the password's own
      * embedded treatment. */
-    const secretField = input('oidc_client_secret', 'Client Secret', '', {
+    const secretField = input('oidc_client_secret', say('settings.oidc.client_secret'), '', {
       inline: true,
       type: 'password',
       autocomplete: 'off',
       maxlength: 8192,
       placeholder: clientSecretPlaceholder(a),
-      hint: 'Leave blank to keep the stored secret. Enter a new value to replace it.',
+      hint: say('settings.oidc.client_secret_hint'),
       className: 'dp-settings-oidc-client-secret-field',
-      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-oidc-secret" aria-label="Clear Stored Secret" data-tooltip="Clear Stored Secret" ${a.oidc_client_secret_configured ? '' : 'disabled'}>Clear</button>`,
+      embedAction: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-oidc-secret"${keyed(say('settings.auth.clear'), {'aria-label': say('settings.oidc.clear_secret'), 'data-tooltip': say('settings.oidc.clear_secret')})} ${a.oidc_client_secret_configured ? '' : 'disabled'}>${html(t('settings.auth.clear'))}</button>`,
     });
 
-    const scopesField = input('oidc_scopes', 'Scopes', scopes, {
+    const scopesField = input('oidc_scopes', say('settings.oidc.scopes'), scopes, {
       inline: true,
       placeholder: 'openid profile email',
-      hint: 'The information DebridPulse requests from your identity provider when you sign in. The usual values are openid profile email, separated by spaces.',
+      hint: say('settings.oidc.scopes_hint'),
       className: 'dp-settings-oidc-scopes-field',
     });
 
-    const groupClaimField = input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups', {
+    const groupClaimField = input('oidc_group_claim', say('settings.oidc.group_claim'), a.oidc_group_claim || 'groups', {
       inline: true,
-      hint: 'The name of the field your identity provider uses to report which groups a user belongs to. Usually groups.',
+      hint: say('settings.oidc.group_claim_hint'),
       className: 'dp-settings-oidc-group-claim-field',
     });
 
     /* The role an OIDC identity receives the first time it signs in. An
      * identity is provisioned as its own account; it is never linked to an
      * existing one by a matching email (Users & Access links explicitly). */
-    const defaultRoleField = selectField('auth_oidc_default_role', 'Default Role for New OIDC Users',
+    const defaultRoleField = selectField('auth_oidc_default_role', say('settings.oidc.default_role'),
       a.oidc_default_role === 'readonly' ? 'readonly' : 'user',
-      [['user', 'User'], ['readonly', 'ReadOnly User']],
-      'Role given to an OIDC identity the first time it signs in. Change any account later in Users & Access.',
+      [['user', say('settings.role.user')], ['readonly', say('settings.role.readonly')]],
+      say('settings.oidc.default_role_hint'),
       {inline: true, className: 'dp-settings-oidc-default-role-field'});
 
-    const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
+    const subjects = fieldClass(textarea('oidc_allowed_subjects', say('settings.oidc.subjects'), lines(a.oidc_allowed_subjects), {
       rows: 3,
-      hint: 'Enter one identity-provider subject per line as issuer|subject-id. Use the provider’s unique subject ID, not a username.',
+      hint: say('settings.oidc.subjects_hint'),
     }), 'dp-settings-oidc-sandwich');
-    const emails = fieldClass(textarea('oidc_allowed_emails', 'Allowed Emails', lines(a.oidc_allowed_emails), {
+    const emails = fieldClass(textarea('oidc_allowed_emails', say('settings.oidc.emails'), lines(a.oidc_allowed_emails), {
       rows: 3,
-      hint: 'Allow users with these verified email addresses to sign in. Enter one address per line. Requires email_verified=true.',
+      hint: say('settings.oidc.emails_hint'),
     }), 'dp-settings-oidc-sandwich');
-    const groups = fieldClass(textarea('oidc_allowed_groups', 'Allowed Groups', lines(a.oidc_allowed_groups), {
+    const groups = fieldClass(textarea('oidc_allowed_groups', say('settings.oidc.groups'), lines(a.oidc_allowed_groups), {
       rows: 3,
-      hint: 'Allow users belonging to these identity provider groups to sign in. Enter one group name per line.',
+      hint: say('settings.oidc.groups_hint'),
     }), 'dp-settings-oidc-sandwich');
 
-    const oidc = card('OpenID Connect', `
-      <div class="dp-settings-oidc-group dp-settings-oidc-group--identity dp-settings-help-slot" role="group" aria-label="Provider identity and callback">
+    const oidc = card(say('settings.oidc.title'), `
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--identity dp-settings-help-slot" role="group"${keyed(null, {'aria-label': say('settings.oidc.group_identity')})}>
         ${providerField}${publicBaseField}${callbackField}
       </div>
       <div class="dp-settings-oidc-issuer-band">${issuerField}</div>
-      <div class="dp-settings-oidc-group dp-settings-oidc-group--credentials" role="group" aria-label="Client credentials">
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--credentials" role="group"${keyed(null, {'aria-label': say('settings.oidc.group_credentials')})}>
         ${clientIdField}${secretField}
       </div>
-      <div class="dp-settings-oidc-group dp-settings-oidc-group--protocol" role="group" aria-label="Scopes and group claim">
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--protocol" role="group"${keyed(null, {'aria-label': say('settings.oidc.group_protocol')})}>
         ${scopesField}${groupClaimField}
       </div>
       <section class="dp-settings-oidc-access">
         <div class="dp-settings-oidc-section-heading">
-          <span class="dp-settings-oidc-section-title">Access Control</span>
+          <span class="dp-settings-oidc-section-title"${keyed(say('settings.oidc.access'))}>${html(t('settings.oidc.access'))}</span>
           ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
         <div class="dp-settings-oidc-policy-band">
           <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
-          <small class="dp-settings-oidc-section-copy">When enabled, anyone who successfully signs in through your identity provider can access DebridPulse. Turn this off to restrict access using the allowed subjects, email addresses, and groups below; a user must match every list that is filled in.</small>
+          <small class="dp-settings-oidc-section-copy"${keyed(say('settings.oidc.access_copy'))}>${html(t('settings.oidc.access_copy'))}</small>
         </div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
@@ -4514,9 +4481,9 @@
       help: 'oidc',
       headerFit: 'wrap',
       helpRow: false,
-      shortTitle: 'OIDC',
+      shortTitle: say('settings.oidc.title_short'),
       titlePrefix: familyIcon('authentication', 'id-card'),
-      headerCenter: 'Configure an external identity provider for browser sign-in.',
+      headerCenter: say('settings.oidc.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
       hinted: true,
       // Test is a provider-level action proving provider-level state, so it
@@ -4525,7 +4492,7 @@
       headerStatus: oidcHeaderStatus(a),
       headerAction: providerTestAction('verify-oidc'),
       action: headerEnableToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable',
-        'Enable OpenID Connect'),
+        say('settings.oidc.enable')),
       testStatus: oidcConfigurationStatus(a),
     });
 
@@ -4543,35 +4510,41 @@
    * only truth this page shows; the page then re-reads the directory. The
    * server enforces every invariant (self, last Admin, default accounts), so
    * a refusal is reported as the server words it. */
-  const ROLE_LABELS = Object.freeze({admin: 'Admin', user: 'User', readonly: 'ReadOnly User', integration: 'Integration'});
-  const HUMAN_ROLES = Object.freeze([['admin', 'Admin'], ['user', 'User'], ['readonly', 'ReadOnly User']]);
+  // Roles by their identifier (words from the catalog; the identifier is what is stored).
+  const ROLE_LABELS = Object.freeze(Object.fromEntries(['admin', 'user', 'readonly', 'integration']
+    .map(role => [role, say(`settings.role.${role}`)])));
+  const HUMAN_ROLES = Object.freeze(['admin', 'user', 'readonly'].map(role => [role, ROLE_LABELS[role]]));
   /* One sentence per selectable role, shown beneath a Role selector. The full
    * comparison is the User Accounts help (ui-settings-help.js), opened from
    * beside the selector; neither changes what a role may do. */
-  const ROLE_DESCRIPTIONS = Object.freeze({
-    admin: 'Full control of DebridPulse, including Settings, accounts, maintenance, the Activity Log, and every transfer.',
-    user: 'Adds and operates downloads, and can delete or redirect a transfer only when no other account still needs it.',
-    readonly: 'Views downloads and Statistics, but cannot add, change, or remove anything.',
-  });
+  const ROLE_DESCRIPTIONS = Object.freeze(Object.fromEntries(['admin', 'user', 'readonly']
+    .map(role => [role, say(`settings.role.${role}_description`)])));
 
   const liveAccount = account => !account.deleted_at && !account.merged_into;
   const isIntegration = account => account.role === 'integration';
   const selfId = () => text(window.debridPulseAuth?.authority?.account_id);
-  const accountName = account => text(account?.display_name || account?.username || 'Unnamed account');
+  const accountName = account => text(account?.display_name || account?.username || '') || say('settings.users.unnamed');
 
   function signInMethodList(account) {
     const methods = [];
-    if (account.has_password) methods.push(`Password${account.username ? ` (${account.username})` : ''}`);
-    if (account.oidc_identities) methods.push(account.oidc_identities > 1 ? `OIDC ×${account.oidc_identities}` : 'OIDC');
-    return methods.length ? methods : ['No sign-in method'];
+    if (account.has_password) {
+      methods.push(account.username ? say('settings.users.signin.password_named', {username: account.username})
+        : say('settings.users.signin.password'));
+    }
+    if (account.oidc_identities) {
+      methods.push(account.oidc_identities > 1 ? say('settings.users.signin.oidc_count', {count: account.oidc_identities})
+        : say('settings.users.signin.oidc'));
+    }
+    return methods.length ? methods : [say('settings.users.signin.none')];
   }
 
-  const signInMethods = account => signInMethodList(account).join(' · ');
+  // Each method keyed in its own span, so a language change says it again in place.
+  const signInMethods = account => signInMethodList(account).map(words).join(' · ');
 
   function accountStatus(account) {
     return account.enabled
-      ? '<span class="dp-settings-users-status" data-tone="success">Enabled</span>'
-      : '<span class="dp-settings-users-status" data-tone="neutral">Disabled</span>';
+      ? `<span class="dp-settings-users-status" data-tone="success"${keyed(say('settings.users.enabled'))}>${html(t('settings.users.enabled'))}</span>`
+      : `<span class="dp-settings-users-status" data-tone="neutral"${keyed(say('settings.users.disabled'))}>${html(t('settings.users.disabled'))}</span>`;
   }
 
   /* A verified email shared by two live human accounts is only a HINT that
@@ -4591,30 +4564,30 @@
    * Administrator's local credential is Authentication's; neither is editable
    * here, and the server refuses both regardless. */
   function userActions(account) {
-    if (account.id === selfId()) return '<span class="dp-settings-users-self">You</span>';
+    if (account.id === selfId()) return `<span class="dp-settings-users-self"${keyed(say('settings.users.you'))}>${html(t('settings.users.you'))}</span>`;
     // Below 780px the table may draw the notice in fewer words
     // (fitUsersTable); its full words stay what it says.
     if (account.protected === 'default_admin') {
-      return '<span class="dp-settings-users-hint"><span>Password managed</span> <span>in Authentication</span>'
-        + '<span class="dp-settings-users-hint-short" aria-hidden="true" data-label-1="Built-in Admin&#10;Account" data-label-2="Default"></span></span>';
+      return `<span class="dp-settings-users-hint">${words(say('settings.users.default_admin_lead'))} ${words(say('settings.users.default_admin_rest'))}`
+        + `<span class="dp-settings-users-hint-short" aria-hidden="true"${keyed(null, {'data-label-1': say('settings.users.default_admin_short'), 'data-label-2': say('settings.users.default_admin_shortest')})}></span></span>`;
     }
     if (account.protected) return '';
-    return `<button class="btn btn-ghost btn-sm" type="button" data-user-action="edit" data-account-id="${html(account.id)}">Edit</button>`;
+    return `<button class="btn btn-ghost btn-sm" type="button" data-user-action="edit" data-account-id="${html(account.id)}"${keyed(say('settings.users.edit'))}>${html(t('settings.users.edit'))}</button>`;
   }
 
   function humanRows(humans) {
-    if (!humans.length) return '<div class="dp-settings-users-empty">No accounts.</div>';
+    if (!humans.length) return `<div class="dp-settings-users-empty"${keyed(say('settings.users.none'))}>${html(t('settings.users.none'))}</div>`;
     return `
       <div class="dp-settings-users-table-wrap">
         <table class="t-table dp-settings-users-table">
-          <thead><tr><th>Account</th><th>Role</th><th>Sign-In</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+          <thead><tr>${['account', 'role', 'signin', 'status'].map(column => `<th>${words(say(`settings.users.column.${column}`))}</th>`).join('')}<th class="dp-settings-users-actions-head">${words(say('settings.users.column.actions'))}</th></tr></thead>
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
-              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" data-tooltip="Account details" data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button><span class="dp-settings-users-state">${
-                account.enabled ? 'Enabled' : 'Disabled'}</span>${
+              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}"${keyed(accountName(account) instanceof Said ? accountName(account) : null, {'data-tooltip': say('settings.users.details')})} data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button>${
+                words(say(account.enabled ? 'settings.users.enabled' : 'settings.users.disabled')).replace('<span', '<span class="dp-settings-users-state"')}${
                 account.email ? `<div class="dp-settings-users-detail">${html(account.email)}</div>` : ''}</td>
-              <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
-              <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
+              <td>${words(ROLE_LABELS[account.role] || account.role)}</td>
+              <td class="dp-settings-users-detail">${signInMethods(account)}</td>
               <td>${accountStatus(account)}</td>
               <td><div class="dp-settings-users-actions">${userActions(account)}</div></td>
             </tr>`).join('')}
@@ -4628,15 +4601,15 @@
     if (!groups.length) return '';
     return `
       <div class="dp-settings-users-duplicates" role="note">
-        <b>Possible duplicate accounts</b>
+        <b${keyed(say('settings.users.duplicates'))}>${html(t('settings.users.duplicates'))}</b>
         ${groups.map(([email, group]) => {
           return `
           <div class="dp-settings-users-duplicate">
-            <span>${html(group.map(accountName).join(', '))} share the verified email ${html(email)}.</span>
-            <button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-merge-ids="${html(group.map(item => item.id).join(','))}">Review &amp; Merge…</button>
+            ${words(say('settings.users.duplicate_shared', {names: group.map(accountName).map(String).join(', '), email}))}
+            <button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-merge-ids="${html(group.map(item => item.id).join(','))}"${keyed(say('settings.users.review_merge'))}>${html(t('settings.users.review_merge'))}</button>
           </div>`;
         }).join('')}
-        <span class="dp-settings-users-detail">A shared email is only a suggestion. Accounts are never linked automatically.</span>
+        <span class="dp-settings-users-detail"${keyed(say('settings.users.duplicates_note'))}>${html(t('settings.users.duplicates_note'))}</span>
       </div>`;
   }
 
@@ -4650,32 +4623,32 @@
   // as a tooltip (fitIntegrationAccounts); from 780px neither is drawn.
   function tokenRows(account) {
     const tokens = state.users.tokens[account.id];
-    if (!Array.isArray(tokens)) return '<div class="dp-settings-users-detail">Tokens could not be read.</div>';
-    if (!tokens.length) return '<div class="dp-settings-users-detail">No API tokens. Issue one to connect automation.</div>';
+    if (!Array.isArray(tokens)) return `<div class="dp-settings-users-detail"${keyed(say('settings.tokens.unreadable'))}>${html(t('settings.tokens.unreadable'))}</div>`;
+    if (!tokens.length) return `<div class="dp-settings-users-detail"${keyed(say('settings.tokens.none'))}>${html(t('settings.tokens.none'))}</div>`;
     const issued = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value);
     const day = value => window.downloadsDayMarkup ? window.downloadsDayMarkup(value) : html(value);
-    const revoke = window.DPIcons?.iconLabel ? window.DPIcons.iconLabel('trash2', 'Revoke') : '<span data-dp-icon-label="1">Revoke</span>';
+    const revoke = keyedIconLabel('trash2', say('settings.tokens.revoke'));
     return `
       <table class="t-table dp-settings-users-tokens">
-        <thead><tr><th>Token</th><th>Issued</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+        <thead><tr>${['token', 'issued', 'status'].map(column => `<th>${words(say(`settings.tokens.column.${column}`))}</th>`).join('')}<th class="dp-settings-users-actions-head">${words(say('settings.users.column.actions'))}</th></tr></thead>
         <tbody>${tokens.map(token => `
           <tr>
             <td><span class="dp-settings-users-token-name">${html(token.label)}</span><span class="dp-settings-users-token-issued dp-settings-users-detail">${day(token.created_at)}</span></td>
             <td class="dp-settings-users-detail">${issued(token.created_at)}</td>
-            <td><span class="dp-settings-users-status" data-tone="success">Active</span></td>
-            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}" data-tooltip="${html(`Revoke ${token.label}`)}" data-tooltip-label="[data-dp-icon-label]" data-tooltip-touch>${revoke}<span class="dp-settings-users-token-target"> ${html(token.label)}</span></button></div></td>
+            <td><span class="dp-settings-users-status" data-tone="success"${keyed(say('settings.tokens.active'))}>${html(t('settings.tokens.active'))}</span></td>
+            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}"${keyed(null, {'data-tooltip': say('settings.tokens.revoke_named', {name: token.label})})} data-tooltip-label="[data-dp-icon-label]" data-tooltip-touch>${revoke}<span class="dp-settings-users-token-target"> ${html(token.label)}</span></button></div></td>
           </tr>`).join('')}
         </tbody>
       </table>`;
   }
 
   function integrationBlocks(integrations) {
-    if (!integrations.length) return '<div class="dp-settings-users-empty">No Integration accounts.</div>';
+    if (!integrations.length) return `<div class="dp-settings-users-empty"${keyed(say('settings.integrations.none'))}>${html(t('settings.integrations.none'))}</div>`;
     return integrations.map(account => {
       const id = html(account.id);
       const lifecycle = account.enabled
-        ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}" data-menu-closes>Disable</button>`
-        : `<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}" data-menu-closes>Enable</button>`;
+        ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}" data-menu-closes${keyed(say('settings.users.disable'))}>${html(t('settings.users.disable'))}</button>`
+        : `<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}" data-menu-closes${keyed(say('settings.users.enable'))}>${html(t('settings.users.enable'))}</button>`;
       // Below 780px its actions may become one Manage Tokens (then Manage)
       // menu holding each of them, and its status its name's colour, the
       // state then said beside the name to assistive technology
@@ -4683,15 +4656,15 @@
       return `
         <section class="dp-settings-users-integration" data-account-row="${id}">
           <div class="dp-settings-users-integration-head">
-            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" data-tooltip="Account details" data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button><span class="dp-settings-users-state">${
-              account.enabled ? 'Enabled' : 'Disabled'}</span>
+            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}"${keyed(accountName(account) instanceof Said ? accountName(account) : null, {'data-tooltip': say('settings.users.details')})} data-enabled="${account.enabled ? 'true' : 'false'}">${html(accountName(account))}</button>${
+              words(say(account.enabled ? 'settings.users.enabled' : 'settings.users.disabled')).replace('<span', '<span class="dp-settings-users-state"')}
             ${accountStatus(account)}
             <div class="dp-settings-users-actions">
-              ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}" data-menu-closes>Issue Token</button>` : ''}
+              ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}" data-menu-closes${keyed(say('settings.tokens.issue'))}>${html(t('settings.tokens.issue'))}</button>` : ''}
               ${lifecycle}
-              ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}" data-menu-closes>Delete</button>`}
+              ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}" data-menu-closes${keyed(say('settings.users.delete'))}>${html(t('settings.users.delete'))}</button>`}
             </div>
-            ${actionsMenuGroup(accountName(account), 'Manage Tokens', '', {from: 1, short: 'Manage'})}
+            ${actionsMenuGroup(accountName(account), say('settings.tokens.manage'), '', {from: 1, short: say('settings.users.manage')})}
           </div>
           ${tokenRows(account)}
         </section>`;
@@ -4700,51 +4673,51 @@
 
   function usersBody() {
     const users = state.users;
-    if (users.error) return `<div class="dp-settings-load-error"><b>Accounts could not be loaded.</b><span>${html(users.error)}</span></div>`;
-    if (!Array.isArray(users.accounts)) return '<div class="dp-settings-loading">Loading accounts…</div>';
+    if (users.error) return `<div class="dp-settings-load-error"><b${keyed(say('settings.users.load_failed'))}>${html(t('settings.users.load_failed'))}</b><span>${html(users.error)}</span></div>`;
+    if (!Array.isArray(users.accounts)) return `<div class="dp-settings-loading"${keyed(say('settings.users.loading'))}>${html(t('settings.users.loading'))}</div>`;
     const live = users.accounts.filter(liveAccount);
     const humans = live.filter(account => !isIntegration(account));
     const integrations = live.filter(isIntegration);
     // Standalone has no User Accounts card: the built-in Administrator is its
     // one person, and no other person's account is offered to manage.
-    const people = standaloneDeployment() ? '' : card('User Accounts', duplicateNotice(humans) + humanRows(humans), {
+    const people = standaloneDeployment() ? '' : card(say('settings.users.title'), duplicateNotice(humans) + humanRows(humans), {
       className: 'dp-settings-users-card',
       help: 'user-accounts',
       titlePrefix: familyIcon('users', 'users'),
-      headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
+      headerCenter: say('settings.users.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
       // Below 780px its two actions become one Manage menu from header step
       // 3 (headerActionsMenu), Add Local Account reading "Add Account" at 2.
-      action: headerActionsMenu('User Accounts', 'Manage',
-        '<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-menu-closes>Merge</button>'
-        + `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local" data-menu-label="Add Local Account" data-menu-closes>${
-          fitLabel('Add Local Account', 'Add Account')}</button>`, '', {from: 3}),
+      action: headerActionsMenu(say('settings.users.title'), say('settings.users.manage'),
+        `<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-menu-closes${keyed(say('settings.users.merge'))}>${html(t('settings.users.merge'))}</button>`
+        + `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local"${keyed(null, {'data-menu-label': say('settings.users.add_local')})} data-menu-closes>${
+          fitLabel(say('settings.users.add_local'), say('settings.users.add_short'))}</button>`, '', {from: 3}),
     });
-    const automation = card('Integration Accounts', integrationBlocks(integrations), {
+    const automation = card(say('settings.integrations.title'), integrationBlocks(integrations), {
       className: 'dp-settings-users-card dp-settings-users-integrations-card',
       help: 'integration-accounts',
       titlePrefix: familyIcon('users', 'key-round'),
-      headerCenter: 'Automation that submits downloads through the API. A token is shown once, when it is issued.',
+      headerCenter: say('settings.integrations.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
       headerAction: `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">${
-        fitLabel('Add Integration Account', 'Add Account', 'Add')}</button>`,
+        fitLabel(say('settings.integrations.add'), say('settings.users.add_short'), say('settings.users.add'))}</button>`,
     });
-    const delivery = card('Integration Delivery Profiles', profileRows(), {
+    const delivery = card(say('settings.profiles.title'), profileRows(), {
       className: 'dp-settings-delivery-profiles-card',
       help: 'delivery-profiles',
       titlePrefix: familyIcon('users', 'workflow-users'),
-      headerCenter: 'Configure how external applications access completed downloads.',
+      headerCenter: say('settings.profiles.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
-      shortTitle: 'Delivery Profiles',
+      shortTitle: say('settings.profiles.title_short'),
       shortTitleFirst: true,
       headerAction: `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">${
-        fitLabel('Create Delivery Profile', 'Create Profile', 'Create')}</button>`,
+        fitLabel(say('settings.profiles.create'), say('settings.profiles.create_short'), say('settings.profiles.create_shortest'))}</button>`,
     });
     return people + automation + delivery;
   }
@@ -4766,32 +4739,18 @@
    * makes it whole or not at all, and the page then starts again. */
   /* Each type's hint, longest first: fitDeploymentType shows the longest
    * that keeps the reading on one row, and none in the stacked last form. */
+  // Each type's words by its identifier: its name, its hint at each header step, and its switch confirmation.
   const DEPLOYMENT_TYPES = Object.freeze({
-    server: {label: 'Server', other: 'standalone',
-      hints: ['People sign in with their own accounts and roles.', 'Individual accounts and roles.', 'Multiple accounts.']},
-    standalone: {label: 'Standalone', other: 'server',
-      hints: ['Only the built-in Administrator uses DebridPulse as a person.', 'Only the default Admin.', 'Admin only.']},
+    server: {label: say('settings.deployment.server'), other: 'standalone',
+      hints: ['hint', 'hint_short', 'hint_shortest'].map(step => say(`settings.deployment.server_${step}`))},
+    standalone: {label: say('settings.deployment.standalone'), other: 'server',
+      hints: ['hint', 'hint_short', 'hint_shortest'].map(step => say(`settings.deployment.standalone_${step}`))},
   });
-  const DEPLOYMENT_CONFIRMATIONS = Object.freeze({
-    standalone: {
-      title: 'Switch to Standalone?',
-      confirmLabel: 'Switch to Standalone',
-      message: 'Only the built-in Administrator will be able to use DebridPulse as a person. Other user accounts '
-        + 'and their settings will be retained, but cannot sign in while Standalone is selected. Password and OIDC '
-        + "login will be disabled, and the Administrator's current password will be cleared. Existing browser "
-        + 'sessions will end. The installation will be accessible to anyone who can reach it, without a password, '
-        + 'until you set one in My Account. Integration accounts and their API tokens remain available. Continue?',
-    },
-    server: {
-      title: 'Switch to Server?',
-      confirmLabel: 'Switch to Server',
-      message: 'Existing user accounts return to their saved enabled/disabled status; none will be deleted. '
-        + "Password and OIDC login will be disabled, the built-in Administrator's password will be cleared if "
-        + 'present, and existing browser sessions will end. The installation will be accessible to anyone who can '
-        + 'reach it, without authentication, until you enable it in Settings. Saved authentication configuration '
-        + 'is retained. Continue?',
-    },
-  });
+  const DEPLOYMENT_CONFIRMATIONS = Object.freeze(Object.fromEntries(['standalone', 'server'].map(type => [type, {
+    title: say(`settings.deployment.${type}_confirm_title`),
+    confirmLabel: say(`settings.deployment.${type}_confirm_accept`),
+    message: say(`settings.deployment.${type}_confirm_message`),
+  }])));
 
   /* One centred assembly: the reading -- the title over the hint, beside the
    * type itself, a state reading like Active Browser Sessions' count -- and,
@@ -4800,23 +4759,23 @@
     const current = standaloneDeployment() ? 'standalone' : 'server';
     const type = DEPLOYMENT_TYPES[current];
     const other = DEPLOYMENT_TYPES[type.other];
-    return card('Deployment Type', `
+    return card(say('settings.deployment.title'), `
       <div class="dp-settings-deployment" data-deployment-type="${current}" data-deployment-fit="0">
         <div class="dp-settings-deployment-reading">
           <span class="dp-settings-deployment-copy">
-            <span class="form-label">Current Deployment Type</span>
-            <span class="form-hint" data-deployment-hint>${html(type.hints[0])}</span>
+            <span class="form-label"${keyed(say('settings.deployment.current'))}>${html(t('settings.deployment.current'))}</span>
+            <span class="form-hint" data-deployment-hint${keyed(type.hints[0])}>${html(type.hints[0])}</span>
           </span>
-          <span class="dp-settings-deployment-value">${type.label}</span>
+          <span class="dp-settings-deployment-value"${keyed(type.label)}>${html(type.label)}</span>
         </div>
         <button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
-          type.other}">Switch to ${other.label}</button>
+          type.other}"${keyed(say('settings.deployment.switch_to', {type: other.label}))}>${html(t('settings.deployment.switch_to', {type: other.label}))}</button>
       </div>
     `, {
       className: 'dp-settings-deployment-card',
       help: 'deployment-type',
       titlePrefix: familyIcon('users', 'settings-users'),
-      headerCenter: 'Whether people sign in with their own accounts, or only the built-in Administrator.',
+      headerCenter: say('settings.deployment.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
@@ -4850,7 +4809,7 @@
       hint.hidden = false;
       for (let step = 0; step < DEPLOYMENT_FIT_STACKED; step += 1) {
         assembly.dataset.deploymentFit = String(step);
-        hint.textContent = hints[step];
+        sayInto(hint, hints[step]);
         if (reading.getBoundingClientRect().width + 2 * DEPLOYMENT_GUTTER <= assembly.clientWidth) return;
       }
       assembly.dataset.deploymentFit = String(DEPLOYMENT_FIT_STACKED);
@@ -4870,7 +4829,7 @@
     if (!copy) return;
     const confirmed = await window.DPSettingsModal.confirm({tone: 'danger', ...copy});
     if (!confirmed) return;
-    setBusy(button, true, 'Switching…');
+    setBusy(button, true, say('settings.deployment.switching'));
     try {
       await request('PUT', '/auth/deployment-type', {deployment_type: target, confirm: true}, 15000);
     } catch (error) {
@@ -5195,29 +5154,29 @@
 
   const accountById = id => (state.users.accounts || []).find(account => account.id === id) || null;
 
-  const ROLE_FIELD_HELP = Object.freeze({describe: ROLE_DESCRIPTIONS, help: 'user-accounts', helpSubject: 'User Account Roles'});
+  const ROLE_FIELD_HELP = Object.freeze({describe: ROLE_DESCRIPTIONS, help: 'user-accounts', helpSubject: say('settings.users.roles_help')});
 
   // One modal body of labelled fields; returns the inputs by name.
   function mountFields(body, intro, fields) {
     body.innerHTML = `${intro ? '<p class="dp-modal-message"></p>' : ''}${fields.map(field => `
-      <label class="dp-modal-field"><span class="form-label">${html(field.label)}</span>${
+      <label class="dp-modal-field"><span class="form-label"${keyed(field.label instanceof Said ? field.label : null)}>${html(field.label)}</span>${
         field.choices
           ? `<select class="input" data-field="${html(field.name)}"${
               field.describe ? ` aria-describedby="dp-users-${html(field.name)}-description"` : ''}>${field.choices.map(([value, label]) =>
-              `<option value="${html(value)}" ${selected(field.value, value)}>${html(label)}</option>`).join('')}</select>`
+              `<option value="${html(value)}" ${selected(field.value, value)}${keyed(label instanceof Said ? label : null)}>${html(label)}</option>`).join('')}</select>`
           : `<input class="input" data-field="${html(field.name)}" type="${html(field.type || 'text')}" maxlength="${html(field.maxlength || 256)}" autocomplete="${html(field.autocomplete || 'off')}" value="${html(field.value || '')}">`}
       </label>${field.describe ? `
       <div class="dp-users-choice-description">
         <span id="dp-users-${html(field.name)}-description" data-field-description="${html(field.name)}" aria-live="polite"></span>
         ${helpChip(field.help, field.helpSubject)}
       </div>` : ''}`).join('')}`;
-    if (intro) body.querySelector('.dp-modal-message').textContent = intro;
+    if (intro) sayInto(body.querySelector('.dp-modal-message'), intro);
     const inputs = {};
     body.querySelectorAll('[data-field]').forEach(control => { inputs[control.dataset.field] = control; });
     for (const field of fields.filter(entry => entry.describe)) {
       const control = inputs[field.name];
       const description = body.querySelector(`[data-field-description="${field.name}"]`);
-      const describe = () => { description.textContent = field.describe[control.value] || ''; };
+      const describe = () => { sayInto(description, field.describe[control.value] || ''); };
       control.addEventListener('change', describe);
       describe();
     }
@@ -5244,10 +5203,13 @@
     return Object.fromEntries(Object.entries(inputs).map(([name, control]) => [name, control.value]));
   }
 
+  // Said words (one, or a list said as sentences) as a toast's text.
+  const spoken = value => (Array.isArray(value) ? value.filter(Boolean).map(String).join(' ') : String(value ?? ''));
+
   async function accountAct(work, success) {
     try {
       const result = await work();
-      if (success) notify(typeof success === 'function' ? success(result) : success, 'success');
+      if (success) notify(spoken(typeof success === 'function' ? success(result) : success), 'success');
       return result;
     } catch (error) {
       notify(error.message, 'error');
@@ -5259,27 +5221,27 @@
 
   async function createLocalAccount() {
     const values = await fieldsDialog({
-      title: 'Add Local Account', acceptLabel: 'Create Account',
+      title: say('settings.users.add_local'), acceptLabel: say('settings.users.create'),
       fields: [
-        {name: 'display_name', label: 'Display Name'},
-        {name: 'username', label: 'Username', autocomplete: 'off'},
-        {name: 'password', label: 'Password', type: 'password', maxlength: 4096, autocomplete: 'new-password'},
-        {name: 'role', label: 'Role', choices: HUMAN_ROLES, value: 'user', ...ROLE_FIELD_HELP},
+        {name: 'display_name', label: say('settings.users.field.display_name')},
+        {name: 'username', label: say('settings.users.field.username'), autocomplete: 'off'},
+        {name: 'password', label: say('settings.users.field.password'), type: 'password', maxlength: 4096, autocomplete: 'new-password'},
+        {name: 'role', label: say('settings.users.field.role'), choices: HUMAN_ROLES, value: 'user', ...ROLE_FIELD_HELP},
       ],
     });
     if (!values) return;
-    await accountAct(() => request('POST', '/accounts', {kind: 'local', ...values}, 10000), 'Account created');
+    await accountAct(() => request('POST', '/accounts', {kind: 'local', ...values}, 10000), say('settings.users.created'));
   }
 
   async function createIntegrationAccount() {
     const values = await fieldsDialog({
-      title: 'Add Integration Account', acceptLabel: 'Create Account',
-      intro: 'An Integration account submits downloads through the API with its own tokens. It cannot sign in to this interface.',
-      fields: [{name: 'display_name', label: 'Name', value: ''}],
+      title: say('settings.integrations.add'), acceptLabel: say('settings.users.create'),
+      intro: say('settings.integrations.add_intro'),
+      fields: [{name: 'display_name', label: say('settings.integrations.field.name'), value: ''}],
     });
     if (!values) return;
     await accountAct(() => request('POST', '/accounts', {kind: 'integration', display_name: values.display_name}, 10000),
-      'Integration account created');
+      say('settings.integrations.created'));
   }
 
   /* Merge Accounts: ONE dialog, two steps. Choose two or more accounts, then
@@ -5295,55 +5257,52 @@
     let refusal = '';
     let body = null;
     const reference = item => `#${item.id.slice(-8)}`;
-    const describe = item => [ROLE_LABELS[item.role] || item.role, signInMethods(item), item.email || '', reference(item)]
-      .filter(Boolean).map(html).join(' · ');
+    // Its role and sign-in methods keyed (re-said in place); email and reference as they are.
+    const describe = item => [words(ROLE_LABELS[item.role] || item.role), signInMethods(item), html(item.email || ''), html(reference(item))]
+      .filter(Boolean).join(' · ');
     const selected = () => candidates.filter(item => chosen.has(item.id));
 
     const paint = handle => {
       if (!body) return;
       if (step === 'select') {
         body.innerHTML = `
-          <p class="dp-modal-message">Choose the accounts to merge into one. You choose which one remains in the next step.</p>
-          <div class="dp-merge-list" role="group" aria-label="Accounts">${candidates.map(item => `
+          <p class="dp-modal-message"${keyed(say('settings.merge.select_intro'))}>${html(t('settings.merge.select_intro'))}</p>
+          <div class="dp-merge-list" role="group"${keyed(null, {'aria-label': say('settings.merge.accounts')})}>${candidates.map(item => `
             <label class="dp-merge-option">
               <input type="checkbox" data-merge-account="${html(item.id)}" ${chosen.has(item.id) ? 'checked' : ''}>
               <span class="dp-merge-identity"><b>${html(accountName(item))}</b><span>${describe(item)}</span></span>
             </label>`).join('')}
           </div>`;
-        handle.setAcceptLabel('Merge');
-        handle.setCancelLabel('Cancel');
+        handle.setAcceptLabel(say('settings.users.merge'));
+        handle.setCancelLabel(say('common.cancel'));
         handle.setAcceptEnabled(chosen.size >= 2);
         return;
       }
       const absorbed = selected().filter(item => item.id !== survivor);
       body.innerHTML = `
-        <p class="dp-modal-message">Choose the account that remains. The others are merged into it.</p>
-        <div class="dp-merge-list" role="radiogroup" aria-label="Account that remains">${selected().map(item => `
+        <p class="dp-modal-message"${keyed(say('settings.merge.survivor_intro'))}>${html(t('settings.merge.survivor_intro'))}</p>
+        <div class="dp-merge-list" role="radiogroup"${keyed(null, {'aria-label': say('settings.merge.survivor')})}>${selected().map(item => `
           <label class="dp-merge-option">
             <input type="radio" name="dp-merge-survivor" data-merge-survivor="${html(item.id)}" ${item.id === survivor ? 'checked' : ''}>
             <span class="dp-merge-identity"><b>${html(accountName(item))}</b><span>${describe(item)}</span></span>
           </label>`).join('')}
         </div>
-        ${survivor ? `<p class="dp-merge-absorbed"><b>Merged into it:</b> ${absorbed.map(item => html(`${accountName(item)} ${reference(item)}`)).join(', ')}</p>` : ''}
+        ${survivor ? `<p class="dp-merge-absorbed">${words(say('settings.merge.absorbed')).replace('<span', '<b').replace(/<\/span>$/, '</b>')} ${absorbed.map(item => html(`${accountName(item)} ${reference(item)}`)).join(', ')}</p>` : ''}
         <ul class="dp-merge-consequences">
-          <li>The account that remains keeps its own role and status. The merged accounts are retired and redirect to it.</li>
-          <li>Their OIDC sign-in identities move to it, and so does a local password when exactly one of these accounts has one.</li>
-          <li>Every selected account is signed out.</li>
-          <li>Each account’s past requests stay attributed to it; its outstanding requests stay outstanding, now owned through the account that remains. Completed downloads are unchanged.</li>
-          <li>The server checks every rule when you confirm. If any of these accounts cannot be merged, nothing changes.</li>
+          ${[1, 2, 3, 4, 5].map(n => `<li${keyed(say(`settings.merge.consequence_${n}`))}>${html(t(`settings.merge.consequence_${n}`))}</li>`).join('')}
         </ul>
         ${refusal ? `<p class="dp-merge-refusal" role="alert"></p>` : ''}`;
-      if (refusal) body.querySelector('.dp-merge-refusal').textContent = `Not merged: ${refusal}`;
-      handle.setAcceptLabel('Confirm Merge');
-      handle.setCancelLabel('Back');
+      if (refusal) sayInto(body.querySelector('.dp-merge-refusal'), say('settings.merge.refused', {reason: refusal}));
+      handle.setAcceptLabel(say('settings.merge.confirm'));
+      handle.setCancelLabel(say('settings.common.back'));
       handle.setAcceptEnabled(Boolean(survivor));
     };
 
     const dialog = window.DPSettingsModal.open({
-      title: 'Merge Accounts',
+      title: say('settings.merge.title'),
       tone: 'danger',
-      acceptLabel: 'Merge',
-      cancelLabel: 'Cancel',
+      acceptLabel: say('settings.users.merge'),
+      cancelLabel: say('common.cancel'),
       className: 'dp-users-dialog dp-merge-dialog',
       mount(mounted, handle) {
         body = mounted;
@@ -5385,11 +5344,11 @@
           }, 15000);
         } catch (error) {
           refusal = error?.status ? text(error.message)
-            : 'no response from the server; reload Users & Access to see what happened';
+            : say('settings.merge.unanswered');
           paint(handle);
           return false;
         }
-        notify('Accounts merged', 'success');
+        notify(t('settings.merge.done'), 'success');
         return true;
       },
     });
@@ -5404,20 +5363,22 @@
    * are never assumed; the mutation re-reads everything itself, and its own
    * answer is what the page reports afterwards. */
   function impactFigures(impact) {
+    // [figure, value, whether a bounded read may hold more than it says]
     const rows = [
-      ['Outstanding download requests withdrawn', impact.outstanding_requests],
-      ['Transfers kept for another account’s request', impact.shared_transfers_protected],
-      ['Completed downloads (not affected)', impact.completed_unaffected],
+      ['outstanding', impact.outstanding_requests, true],
+      ['shared', impact.shared_transfers_protected, false],
+      ['completed', impact.completed_unaffected, false],
     ];
-    return `<dl class="dp-account-impact-figures">${rows.map(([label, value]) =>
-      `<div><dt>${html(label)}</dt><dd>${html(Number(value || 0).toLocaleString('en-US'))}${impact.bounded && label.startsWith('Outstanding') ? '+' : ''}</dd></div>`).join('')}</dl>`;
+    return `<dl class="dp-account-impact-figures">${rows.map(([figure, value, bounded]) =>
+      `<div><dt>${words(say(`settings.impact.${figure}`))}</dt><dd>${html(Number(value || 0).toLocaleString('en-US'))}${impact.bounded && bounded ? '+' : ''}</dd></div>`).join('')}</dl>`;
   }
 
-  const IMPACT = Object.freeze({
-    disable: {title: 'Disable', accept: 'Disable account', lead: 'Disabling'},
-    remove: {title: 'Remove', accept: 'Remove account', lead: 'Removing'},
-    delete: {title: 'Delete', accept: 'Delete account', lead: 'Deleting'},
-  });
+  // Each act's words: its question (naming the account), its accept, and its lead sentence.
+  const IMPACT = Object.freeze(Object.fromEntries(['disable', 'remove', 'delete'].map(act => [act, {
+    title: name => say(`settings.impact.${act}_title`, {name}),
+    accept: say(`settings.impact.${act}_accept`),
+    lead: say(`settings.impact.${act}_lead`),
+  }])));
 
   // The confirmation's content: the consequence, the server's figures and the
   // qualifier. Its lead sentence is set by the caller (impactLead).
@@ -5425,14 +5386,14 @@
     return `
       <p class="dp-modal-message dp-account-impact-lead"></p>
       ${impactFigures(impact)}
-      ${act !== 'disable' ? '<p class="dp-account-impact-note">Transfers other accounts still need continue, and completed downloads are not undone. The account’s history and the provenance of its past requests are retained.</p>' : ''}
-      <p class="dp-account-impact-qualifier">These figures reflect the current account and transfer state. They may change before confirmation.</p>`;
+      ${act !== 'disable' ? `<p class="dp-account-impact-note"${keyed(say('settings.impact.note'))}>${html(t('settings.impact.note'))}</p>` : ''}
+      <p class="dp-account-impact-qualifier"${keyed(say('settings.impact.qualifier'))}>${html(t('settings.impact.qualifier'))}</p>`;
   }
 
-  const impactLead = act => `${IMPACT[act].lead} this account will revoke its access and withdraw its outstanding download requests.`;
+  const impactLead = act => IMPACT[act].lead;
 
   async function confirmImpact(account, act) {
-    const words = IMPACT[act];
+    const copy = IMPACT[act];
     const destructive = act !== 'disable';
     let impact;
     try {
@@ -5443,16 +5404,16 @@
     }
     const dialog = window.DPSettingsModal.open({
       role: 'alertdialog',
-      title: `${words.title} ${accountName(account)}?`,
-      acceptLabel: words.accept,
-      cancelLabel: 'Cancel',
+      title: copy.title(accountName(account)),
+      acceptLabel: copy.accept,
+      cancelLabel: say('common.cancel'),
       tone: destructive ? 'danger' : '',
       acceptTone: destructive ? '' : 'warning',
       className: 'dp-account-impact',
       mount(body) {
         body.innerHTML = impactMarkup(impact, act);
         const lead = body.querySelector('.dp-account-impact-lead');
-        lead.textContent = impactLead(act);
+        sayInto(lead, impactLead(act));
         return lead;
       },
     });
@@ -5463,11 +5424,10 @@
   function withdrawalReport(verb, result) {
     const withdrawn = Array.isArray(result?.withdrawn_transfers) ? result.withdrawn_transfers.length : 0;
     const stopped = Array.isArray(result?.cancelled_transfers) ? result.cancelled_transfers.length : 0;
-    if (!withdrawn) return `Account ${verb}. It had no outstanding requests.`;
-    const plural = withdrawn === 1 ? '' : 's';
-    if (stopped >= withdrawn) return `Account ${verb}. Requests withdrawn on ${withdrawn} transfer${plural}; all stopped.`;
-    return `Account ${verb}. Requests withdrawn on ${withdrawn} transfer${plural}; ${stopped} stopped so far. `
-      + 'The rest stop as the withdrawal settles, unless another account still needs them.';
+    const lead = say(`settings.withdrawal.${verb}`);
+    if (!withdrawn) return [lead, say('settings.withdrawal.none')];
+    if (stopped >= withdrawn) return [lead, say('settings.withdrawal.all', {count: withdrawn})];
+    return [lead, say('settings.withdrawal.some', {count: withdrawn, stopped})];
   }
 
   async function disableAccount(account) {
@@ -5486,7 +5446,7 @@
 
   async function enableAccount(account) {
     await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {enabled: true}, 10000),
-      'Account enabled');
+      say('settings.users.account_enabled'));
   }
 
   /* Edit User: ONE dialog for a person's username, role, local password and
@@ -5527,7 +5487,7 @@
     const appliedName = () => account?.username || '';
     const wantedName = () => usernameDraft ?? appliedName();
     const usernameChanged = () => usernameDraft !== null && usernameDraft !== appliedName();
-    const editTitle = () => `Edit User: ${wantedName() || accountName(account || initial)}`;
+    const editTitle = () => say('settings.users.edit_title', {name: wantedName() || accountName(account || initial)});
     const passwordState = () => {
       const next = nodes.password.value;
       const confirmed = nodes.confirm.value;
@@ -5538,9 +5498,12 @@
     const roleChanged = () => Boolean(account) && nodes.role.value !== account.role;
     const renameAlone = () => usernameChanged() && passwordState() === 'empty';
 
-    const say = (message, tone = '') => {
-      nodes.outcome.textContent = message;
-      nodes.outcome.hidden = !message;
+    // The outcome: one Said, or a list of them said as sentences, each keyed
+    // (re-said in place); a server's own words are an argument, as it sent them.
+    const tell = (message, tone = '') => {
+      const parts = (Array.isArray(message) ? message : [message]).filter(Boolean);
+      nodes.outcome.innerHTML = parts.map(words).join(' ');
+      nodes.outcome.hidden = !parts.length;
       nodes.outcome.dataset.tone = tone;
     };
 
@@ -5549,22 +5512,20 @@
       nodes.confirmField.dataset.match = String(state === 'match');
       nodes.confirm.setAttribute('aria-invalid', String(state === 'mismatch'));
       nodes.passwordStatus.dataset.state = state;
-      nodes.passwordStatus.textContent = {
-        empty: '', incomplete: 'Enter the new password in both fields.',
-        mismatch: 'Passwords do not match', match: 'Passwords match',
-      }[state];
+      sayInto(nodes.passwordStatus, state === 'empty' ? '' : say(`settings.users.password.${state}`));
       nodes.usernameDraft.hidden = !usernameChanged();
-      nodes.usernameDraft.textContent = usernameChanged()
-        ? `Username ${wantedName()} is not yet applied. The account’s username is still ${appliedName()}.` : '';
-      nodes.identity.textContent = account
-        ? [account.email, roleLabel(account.role), account.enabled ? 'Enabled' : 'Disabled'].filter(Boolean).join(' · ')
-        : 'This account no longer exists.';
+      sayInto(nodes.usernameDraft, usernameChanged()
+        ? say('settings.users.username_draft', {wanted: wantedName(), applied: appliedName()}) : '');
+      nodes.identity.innerHTML = account
+        ? [html(account.email || ''), words(roleLabel(account.role)), words(say(account.enabled ? 'settings.users.enabled' : 'settings.users.disabled'))]
+          .filter(Boolean).join(' · ')
+        : words(say('settings.users.gone'));
       // Below 780px the table has no Sign-In column: the line says it
       // (its stylesheet draws this item only there).
       if (account) {
         const methods = document.createElement('span');
         methods.className = 'dp-users-edit-signin';
-        methods.textContent = ` · ${signInMethodList(account).join(', ')}`;
+        methods.innerHTML = ` · ${signInMethodList(account).map(words).join(', ')}`;
         nodes.identity.append(methods);
       }
       nodes.stale.hidden = reread;
@@ -5614,9 +5575,9 @@
       nodes.usernameView.hidden = next !== 'username';
       if (next !== 'edit') ['username', 'disable', 'enable', 'remove'].forEach(action => handle.setActionHidden(action, true));
       if (next === 'username') {
-        handle.setTitle('Edit Username');
-        handle.setAcceptLabel('Done');
-        handle.setCancelLabel('Back');
+        handle.setTitle(say('settings.users.edit_username'));
+        handle.setAcceptLabel(say('settings.common.done'));
+        handle.setCancelLabel(say('settings.common.back'));
         nodes.usernameInput.value = wantedName();
         paint();
         nodes.usernameInput.focus();
@@ -5625,17 +5586,17 @@
       }
       if (next === 'confirm') {
         const destructive = act !== 'disable';
-        handle.setTitle(`${IMPACT[act].title} ${accountName(account)}?`);
+        handle.setTitle(IMPACT[act].title(accountName(account)));
         handle.setTone(destructive ? 'danger' : '', destructive ? '' : 'warning');
         handle.setAcceptLabel(IMPACT[act].accept);
-        handle.setCancelLabel('Back');
+        handle.setCancelLabel(say('settings.common.back'));
         paint();
         nodes.confirmView.querySelector('.dp-account-impact-lead').focus();
         return;
       }
       handle.setTone('', '');
-      handle.setAcceptLabel('Apply');
-      handle.setCancelLabel('Cancel');
+      handle.setAcceptLabel(say('common.apply'));
+      handle.setCancelLabel(say('common.cancel'));
       paint();
       if (focus === 'username') handle.focusAction('username');
       else (focus || nodes.role).focus();
@@ -5658,7 +5619,7 @@
       const signsOut = Boolean(account?.has_password);
       if (!sendRole && !sendPassword && !sendRename) return false;
       pending = true;
-      say('');
+      tell('');
       paint();
       const done = [];
       let failure = '';
@@ -5668,10 +5629,10 @@
         try {
           await request('PATCH', path, {role}, 10000);
           acknowledge({role});
-          done.push(`Role changed to ${roleLabel(role)}.`);
+          done.push(say('settings.users.role_changed', {role: roleLabel(role)}));
         } catch (error) {
           roleUnanswered = !error?.status;
-          failure = roleUnanswered ? '' : `Role not changed: ${text(error.message)}`;
+          failure = roleUnanswered ? '' : say('settings.users.role_refused', {reason: text(error.message)});
         }
       }
       if (!failure && !roleUnanswered && sendRename) {
@@ -5679,10 +5640,10 @@
           await request('PUT', `${path}/username`, {username: name}, 10000);
           acknowledge({username: name});
           usernameDraft = null;
-          done.push(`Username changed to ${name}${signsOut ? '; the account is signed out everywhere' : ''}.`);
+          done.push(say(signsOut ? 'settings.users.renamed_signed_out' : 'settings.users.renamed', {name}));
         } catch (error) {
           renameUnanswered = !error?.status;
-          failure = renameUnanswered ? '' : `Username not changed: ${text(error.message)}`;
+          failure = renameUnanswered ? '' : say('settings.users.rename_refused', {reason: text(error.message)});
         }
       }
       if (!failure && !roleUnanswered && sendPassword) {
@@ -5691,15 +5652,15 @@
           acknowledge({has_password: true, ...(withName ? {username: name} : {})});
           if (withName) {
             usernameDraft = null;
-            done.push(`Username changed to ${name}.`);
+            done.push(say('settings.users.renamed', {name}));
           }
-          done.push('Password saved; the account is signed out everywhere.');
+          done.push(say('settings.users.password_saved'));
           clearPassword();
         } catch (error) {
           if (error?.status) {
-            failure = `Password not saved: ${text(error.message)}`;
+            failure = say('settings.users.password_refused', {reason: text(error.message)});
           } else {
-            failure = 'The password request got no response, so the password may or may not have changed. It is not sent again; enter it again to set it.';
+            failure = say('settings.users.password_unanswered');
             clearPassword();
           }
         }
@@ -5707,34 +5668,34 @@
       const read = await refresh();
       if (roleUnanswered) {
         // Unanswered: only a re-read account says whether it took effect.
-        if (!read) failure = 'The role change got no response and the account could not be re-read, so whether it took effect is unknown.';
-        else if (account?.role === role) done.push(`Role changed to ${roleLabel(role)}.`);
-        else failure = 'The role change got no response and the account still has its previous role.';
-        if (sendPassword) failure = [failure, 'The password was not sent.'].filter(Boolean).join(' ');
-        if (sendRename) failure = [failure, 'The username was not sent.'].filter(Boolean).join(' ');
+        if (!read) failure = say('settings.users.role_unknown');
+        else if (account?.role === role) done.push(say('settings.users.role_changed', {role: roleLabel(role)}));
+        else failure = say('settings.users.role_unchanged');
+        if (sendPassword) failure = [failure, say('settings.users.password_not_sent')].filter(Boolean);
+        if (sendRename) failure = [failure, say('settings.users.username_not_sent')].flat().filter(Boolean);
       } else if (renameUnanswered) {
-        if (!read) failure = 'The username change got no response and the account could not be re-read, so whether it took effect is unknown.';
+        if (!read) failure = say('settings.users.rename_unknown');
         else if (account?.username === name) {
           usernameDraft = null;
-          done.push(`Username changed to ${name}${signsOut ? '; the account is signed out everywhere' : ''}.`);
+          done.push(say(signsOut ? 'settings.users.renamed_signed_out' : 'settings.users.renamed', {name}));
         }
-        else failure = 'The username change got no response and the account still has its previous username.';
+        else failure = say('settings.users.rename_unchanged');
       } else if (failure && sendRole && !done.length && (sendPassword || sendRename)) {
-        failure += sendPassword ? ' The password was not sent.' : ' The username was not sent.';
+        failure = [failure, say(sendPassword ? 'settings.users.password_not_sent' : 'settings.users.username_not_sent')];
       }
       pending = false;
       if (!failure && account) {
-        notify(done.join(' '), 'success');
+        notify(spoken(done), 'success');
         return true;
       }
-      say([...done, failure || 'This account no longer exists.'].join(' '), 'error');
+      tell([...done, ...[failure || say('settings.users.gone')].flat()], 'error');
       paint();
       return false;
     }
 
     async function enable() {
       pending = true;
-      say('');
+      tell('');
       paint();
       let failure = '';
       let unanswered = false;
@@ -5743,26 +5704,26 @@
         acknowledge({enabled: true});
       } catch (error) {
         unanswered = !error?.status;
-        failure = unanswered ? 'The request got no response.' : `Not enabled: ${text(error.message)}`;
+        failure = unanswered ? say('settings.users.unanswered') : say('settings.users.enable_refused', {reason: text(error.message)});
       }
       const read = await refresh();
       pending = false;
-      if (account?.enabled) say('Account enabled.', 'success');
-      else if (unanswered && !read) say('The enable request got no response and the account could not be re-read, so whether it is enabled is unknown.', 'error');
-      else say(failure || 'The account is still disabled.', 'error');
+      if (account?.enabled) tell(say('settings.users.enabled_done'), 'success');
+      else if (unanswered && !read) tell(say('settings.users.enable_unknown'), 'error');
+      else tell(failure || say('settings.users.still_disabled'), 'error');
       paint();
       nodes.role.focus();
     }
 
     async function confirmAct(next) {
       pending = true;
-      say('');
+      tell('');
       paint();
       let impact = null;
       try {
         impact = await request('GET', `${path}/impact`, undefined, 10000);
       } catch (error) {
-        say(`The account's impact could not be read, so nothing was changed: ${text(error.message)}`, 'error');
+        tell(say('settings.users.impact_unreadable', {reason: text(error.message)}), 'error');
       }
       pending = false;
       if (!impact) {
@@ -5772,7 +5733,7 @@
       act = next;
       nodes.confirmView.innerHTML = `${impactMarkup(impact, act)}<p class="dp-account-impact-refusal" role="alert" hidden></p>`;
       const lead = nodes.confirmView.querySelector('.dp-account-impact-lead');
-      lead.textContent = impactLead(act);
+      sayInto(lead, impactLead(act));
       lead.tabIndex = -1;
       show('confirm');
     }
@@ -5792,23 +5753,23 @@
         if (!removing) acknowledge({enabled: false});
       } catch (error) {
         unanswered = !error?.status;
-        failure = unanswered ? 'no response from the server' : text(error.message);
+        failure = unanswered ? say('settings.users.no_response') : text(error.message);
       }
       const read = await refresh();
       pending = false;
       if (removing && (!failure || (read && !account))) {
-        notify(result ? withdrawalReport('removed', result) : 'Account removed.', 'success');
+        notify(spoken(result ? withdrawalReport('removed', result) : say('settings.withdrawal.removed')), 'success');
         return true;
       }
       if (!removing && account && (!failure || (read && !account.enabled))) {
         show('edit');
-        say(result ? withdrawalReport('disabled', result) : 'Account disabled.', 'success');
+        tell(result ? withdrawalReport('disabled', result) : say('settings.withdrawal.disabled'), 'success');
         return false;
       }
       const refusal = nodes.confirmView.querySelector('.dp-account-impact-refusal');
-      refusal.textContent = unanswered && !read
-        ? `The request got no response and the account could not be re-read, so whether it was ${removing ? 'removed' : 'disabled'} is unknown.`
-        : `${removing ? 'Not removed' : 'Not disabled'}: ${failure || 'the account no longer exists'}`;
+      sayInto(refusal, unanswered && !read
+        ? say(removing ? 'settings.users.remove_unknown' : 'settings.users.disable_unknown')
+        : say(removing ? 'settings.users.remove_refused' : 'settings.users.disable_refused', {reason: failure || say('settings.users.gone_reason')}));
       refusal.hidden = false;
       paint();
       return false;
@@ -5816,15 +5777,15 @@
 
     const dialog = window.DPSettingsModal.open({
       title: editTitle(),
-      acceptLabel: 'Apply',
-      cancelLabel: 'Cancel',
+      acceptLabel: say('common.apply'),
+      cancelLabel: say('common.cancel'),
       acceptDisabled: true,
       className: 'dp-users-dialog dp-users-edit-dialog',
       actions: [
-        {id: 'username', label: 'Edit Username', placement: 'title', icon: '/icons/lucide/pencil.svg'},
-        {id: 'disable', label: 'Disable', placement: 'leading'},
-        {id: 'enable', label: 'Enable', placement: 'leading'},
-        {id: 'remove', label: 'Remove', tone: 'danger', placement: 'leading'},
+        {id: 'username', label: say('settings.users.edit_username'), placement: 'title', icon: '/icons/lucide/pencil.svg'},
+        {id: 'disable', label: say('settings.users.disable'), placement: 'leading'},
+        {id: 'enable', label: say('settings.users.enable'), placement: 'leading'},
+        {id: 'remove', label: say('settings.users.remove'), tone: 'danger', placement: 'leading'},
       ],
       mount(body, mounted) {
         const has = Boolean(account.has_password);
@@ -5833,33 +5794,32 @@
             <p class="dp-modal-message dp-users-edit-identity"></p>
             <p class="dp-users-username-draft" data-username-draft role="status" hidden></p>
             <section class="dp-users-edit-group">
-              <h3 class="dp-users-edit-heading">Account Role</h3>
+              <h3 class="dp-users-edit-heading"${keyed(say('settings.users.edit.role_heading'))}>${html(t('settings.users.edit.role_heading'))}</h3>
               <div data-edit-role></div>
-              <p class="dp-users-edit-note">The new role applies to the account’s next request. Its open browsers reload with the new role; it is not signed out.</p>
+              <p class="dp-users-edit-note"${keyed(say('settings.users.edit.role_note'))}>${html(t('settings.users.edit.role_note'))}</p>
             </section>
             <section class="dp-users-edit-group">
-              <h3 class="dp-users-edit-heading">${has ? 'Reset' : 'Set'} Local Password</h3>
-              <label class="dp-modal-field"><span class="form-label">New Password</span>
+              <h3 class="dp-users-edit-heading">${words(say(has ? 'settings.users.edit.reset_password' : 'settings.users.edit.set_password'))}</h3>
+              <label class="dp-modal-field"><span class="form-label"${keyed(say('settings.users.edit.new_password'))}>${html(t('settings.users.edit.new_password'))}</span>
                 <input class="input" data-edit-field="password" type="password" maxlength="4096" autocomplete="new-password"></label>
-              <label class="dp-modal-field dp-users-password-confirm"><span class="form-label">Confirm New Password</span>
+              <label class="dp-modal-field dp-users-password-confirm"><span class="form-label"${keyed(say('settings.users.edit.confirm_password'))}>${html(t('settings.users.edit.confirm_password'))}</span>
                 <span class="dp-users-password-input">
                   <input class="input" data-edit-field="confirm" type="password" maxlength="4096" autocomplete="new-password"
                          aria-describedby="dp-users-password-status">
                   <span class="dp-users-password-check" aria-hidden="true">${window.DPIcons?.svg('circleCheck') || ''}</span>
                 </span></label>
               <p class="dp-users-password-status" id="dp-users-password-status" aria-live="polite"></p>
-              <p class="dp-users-edit-note">${has ? 'Leave both password fields blank to keep the existing password.'
-                : 'Leave both password fields blank to keep the account without a local password.'}</p>
-              <p class="dp-users-edit-note">The account is signed out everywhere and signs in again with its username and this password. Its OIDC sign-in, if it has one, stays linked.</p>
+              <p class="dp-users-edit-note">${words(say(has ? 'settings.users.edit.keep_password' : 'settings.users.edit.keep_no_password'))}</p>
+              <p class="dp-users-edit-note"${keyed(say('settings.users.edit.password_note'))}>${html(t('settings.users.edit.password_note'))}</p>
             </section>
             <p class="dp-users-edit-outcome" role="alert" hidden></p>
-            <p class="dp-users-edit-stale" role="status" hidden>The account list could not be re-read. Shown here: the account as last read, with the changes the server confirmed since.</p>
+            <p class="dp-users-edit-stale" role="status" hidden${keyed(say('settings.users.edit.stale'))}>${html(t('settings.users.edit.stale'))}</p>
           </div>
           <div class="dp-users-edit-view dp-users-edit-confirm" data-edit-view="confirm" hidden></div>
           <div class="dp-users-edit-view" data-edit-view="username" hidden>
-            <label class="dp-modal-field"><span class="form-label">Username</span>
+            <label class="dp-modal-field"><span class="form-label"${keyed(say('settings.users.field.username'))}>${html(t('settings.users.field.username'))}</span>
               <input class="input" data-username-input type="text" maxlength="256" autocomplete="off" spellcheck="false"></label>
-            <p class="dp-users-edit-note">The account’s DebridPulse username: the name its local password signs in with. It is not the account’s display name, and its OIDC sign-in is unaffected. It takes effect when you apply${has ? ', keeps the password and signs the account out everywhere' : ''}.</p>
+            <p class="dp-users-edit-note">${words(say(has ? 'settings.users.edit.username_note_password' : 'settings.users.edit.username_note'))}</p>
           </div>`;
         handle = mounted;
         Object.assign(nodes, {
@@ -5874,7 +5834,7 @@
           usernameInput: body.querySelector('[data-username-input]'),
           usernameDraft: body.querySelector('[data-username-draft]'),
           role: mountFields(body.querySelector('[data-edit-role]'), '',
-            [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}]).role,
+            [{name: 'role', label: say('settings.users.field.role'), choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}]).role,
         });
         body.querySelectorAll('[data-edit-field]').forEach(input => { nodes[input.dataset.editField] = input; });
         body.addEventListener('input', paint);
@@ -5912,18 +5872,18 @@
    * cannot be shown again. */
   async function issueToken(account) {
     const values = await fieldsDialog({
-      title: `Issue Token: ${accountName(account)}`, acceptLabel: 'Issue Token',
-      intro: 'Name the automation that will use this token, so it can be told apart and revoked later.',
-      fields: [{name: 'label', label: 'Token Label', maxlength: 128}],
+      title: say('settings.tokens.issue_title', {name: accountName(account)}), acceptLabel: say('settings.tokens.issue'),
+      intro: say('settings.tokens.issue_intro'),
+      fields: [{name: 'label', label: say('settings.tokens.field.label'), maxlength: 128}],
     });
     if (!values) return;
     const issued = await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/tokens`,
       {label: values.label}, 10000));
     if (!issued?.token) return;
     const dialog = window.DPSettingsModal.open({
-      title: 'Copy Your New Token',
+      title: say('settings.tokens.copy_title'),
       dismiss: true,
-      cancelLabel: 'Done',
+      cancelLabel: say('settings.common.done'),
       className: 'dp-token-disclosure-dialog',
       mount(body) {
         return tokenDisclosure(body, issued);
@@ -5937,21 +5897,21 @@
    * Issue Token and a delivery profile's Create API Token both show it. */
   function tokenDisclosure(container, issued) {
     container.innerHTML = `
-      <div class="dp-token-disclosure" role="group" aria-label="One-time API token disclosure">
-        <b class="dp-token-disclosure-warning">Copy this token now. DebridPulse will not display it again.</b>
+      <div class="dp-token-disclosure" role="group"${keyed(null, {'aria-label': say('settings.tokens.disclosure')})}>
+        <b class="dp-token-disclosure-warning"${keyed(say('settings.tokens.copy_now'))}>${html(t('settings.tokens.copy_now'))}</b>
         ${embeddedActionField(
-          '<input class="input" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly issued API token">',
-          '<button class="btn btn-ghost btn-sm" type="button" data-token-copy>Copy</button>')}
+          `<input class="input" type="text" readonly autocomplete="off" spellcheck="false"${keyed(null, {'aria-label': say('settings.tokens.new_token')})}>`,
+          `<button class="btn btn-ghost btn-sm" type="button" data-token-copy${keyed(say('settings.tokens.copy'))}>${html(t('settings.tokens.copy'))}</button>`)}
       </div>`;
     const field = container.querySelector('input');
     field.value = issued.token;
     container.querySelector('[data-token-copy]').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(field.value);
-        notify('Token copied', 'success');
+        notify(t('settings.tokens.copied'), 'success');
       } catch (_) {
         field.select();
-        notify('Select and copy the token manually', 'info');
+        notify(t('settings.tokens.copy_manually'), 'info');
       }
     });
     return field;
@@ -5959,14 +5919,14 @@
 
   async function revokeToken(account, tokenId) {
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Revoke this token?',
-      message: 'Automation using this token loses access at once. Downloads it already submitted are not affected.',
-      confirmLabel: 'Revoke Token',
+      title: say('settings.tokens.revoke_title'),
+      message: say('settings.tokens.revoke_message'),
+      confirmLabel: say('settings.tokens.revoke_accept'),
       tone: 'danger',
     });
     if (!confirmed) return;
     await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}/tokens/${encodeURIComponent(tokenId)}`,
-      undefined, 10000), 'Token revoked');
+      undefined, 10000), say('settings.tokens.revoked'));
   }
 
   /* ── Integration Delivery Profiles ─────────────────────────────────────
@@ -5980,9 +5940,8 @@
    * own count) -- and its refusal is what this card shows. A profile stores
    * stable client IDs; tokens are shown by their labels, read from the
    * account directory this page already holds. */
-  const PROFILE_SOURCE_KINDS = Object.freeze([
-    ['links', 'Direct Links'], ['magnet', 'Magnet Links'], ['torrent', 'Torrent Files'],
-    ['nzb_link', 'NZB Links'], ['nzb', 'NZB Files']]);
+  const PROFILE_SOURCE_KINDS = Object.freeze(['links', 'magnet', 'torrent', 'nzb_link', 'nzb']
+    .map(kind => [kind, say(`settings.profiles.kind.${kind}`)]));
   // The category strings *arr download clients send by default: suggestions
   // to pick, never a policy. Any other category may be typed.
   const PROFILE_CATEGORY_SUGGESTIONS = Object.freeze([
@@ -6008,7 +5967,7 @@
 
   function clientLabel(clients, clientId) {
     const entry = clients.get(clientId);
-    if (!entry) return 'Client with no active token';
+    if (!entry) return say('settings.profiles.no_token_client');
     return entry.tokens.map(token => `${token.label} · ${token.account}`).join(', ');
   }
 
@@ -6016,17 +5975,19 @@
   // 780px, fitProfilesTable): each authorized client's live tokens, or the
   // table's own words for a client with none, or None.
   function profileTokenNames(clients, profile) {
-    if (!profile.clients.length) return {text: 'None', missing: true};
+    if (!profile.clients.length) return {text: say('settings.profiles.none'), missing: true};
     const names = profile.clients.flatMap(clientId => clients.get(clientId)?.tokens.map(token => token.label) || [clientLabel(clients, clientId)]);
-    return {text: names.join(', '), missing: !profile.clients.some(clientId => clients.has(clientId))};
+    // ``markup``: each name, the table's own words keyed (re-said in place).
+    return {text: names.map(String).join(', '), markup: names.map(words).join(', '),
+      missing: !profile.clients.some(clientId => clients.has(clientId))};
   }
 
   function profileRows() {
     const profiles = state.profiles;
-    if (profiles.error) return `<div class="dp-settings-load-error"><b>Delivery profiles could not be loaded.</b><span>${html(profiles.error)}</span></div>`;
-    if (!profiles.catalog) return '<div class="dp-settings-loading">Loading delivery profiles…</div>';
+    if (profiles.error) return `<div class="dp-settings-load-error"><b${keyed(say('settings.profiles.load_failed'))}>${html(t('settings.profiles.load_failed'))}</b><span>${html(profiles.error)}</span></div>`;
+    if (!profiles.catalog) return `<div class="dp-settings-loading"${keyed(say('settings.profiles.loading'))}>${html(t('settings.profiles.loading'))}</div>`;
     if (!profiles.catalog.profiles.length) {
-      return '<div class="dp-settings-users-empty">No delivery profiles. Create one so an external application can import what DebridPulse downloads.</div>';
+      return `<div class="dp-settings-users-empty"${keyed(say('settings.profiles.empty'))}>${html(t('settings.profiles.empty'))}</div>`;
     }
     const clients = tokenClients();
     // Source Types are the editor's alone. Each path is one line; the
@@ -6034,30 +5995,32 @@
     return `
       <div class="dp-settings-users-table-wrap dp-settings-profiles-table-wrap">
         <table class="t-table dp-settings-profiles-table">
-          <thead><tr><th>Profile</th><th>Categories</th><th>API Tokens</th><th class="dp-settings-profiles-paths">Paths</th><th class="dp-settings-profiles-retention">Retention</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+          <thead><tr>${['profile', 'categories', 'tokens'].map(column => `<th>${words(say(`settings.profiles.column.${column}`))}</th>`).join('')}<th class="dp-settings-profiles-paths">${
+            words(say('settings.profiles.column.paths'))}</th><th class="dp-settings-profiles-retention">${words(say('settings.profiles.column.retention'))}</th><th class="dp-settings-users-actions-head">${
+            words(say('settings.users.column.actions'))}</th></tr></thead>
           <tbody>${profiles.catalog.profiles.map(profile => {
             const id = html(profile.id);
             const importRoot = profile.import_root || profile.local_root;
             const tokens = profile.clients.length
-              ? profile.clients.map(clientId => `<div${clients.has(clientId) ? '' : ' class="dp-settings-users-detail"'}>${html(clientLabel(clients, clientId))}</div>`).join('')
-              : '<span class="dp-settings-users-detail">None</span>';
+              ? profile.clients.map(clientId => `<div${clients.has(clientId) ? '' : ' class="dp-settings-users-detail"'}>${words(clientLabel(clients, clientId))}</div>`).join('')
+              : `<span class="dp-settings-users-detail">${words(say('settings.profiles.none'))}</span>`;
             const mapped = importRoot !== profile.local_root;
             const route = mapped ? `${profile.local_root} → ${importRoot}` : profile.local_root;
             const names = profileTokenNames(clients, profile);
             return `
             <tr data-profile-row="${id}">
-              <td><b class="dp-settings-profile-name">${id}</b><span class="dp-settings-profile-token${names.missing ? ' dp-settings-users-detail' : ''}">${html(names.text)}</span></td>
-              <td>${profile.categories.length ? profile.categories.map(category => `<span class="dp-settings-profile-chip">${html(category)}</span>`).join('') : '<span class="dp-settings-users-detail">None</span>'}</td>
+              <td><b class="dp-settings-profile-name">${id}</b><span class="dp-settings-profile-token${names.missing ? ' dp-settings-users-detail' : ''}">${names.markup ?? words(names.text)}</span></td>
+              <td>${profile.categories.length ? profile.categories.map(category => `<span class="dp-settings-profile-chip">${html(category)}</span>`).join('') : `<span class="dp-settings-users-detail">${words(say('settings.profiles.none'))}</span>`}</td>
               <td>${tokens}</td>
               <td class="dp-settings-users-detail dp-settings-profiles-paths">
-                <div class="dp-settings-profile-path-lines" role="group" aria-label="Paths" tabindex="0" data-tooltip="${html(route)}">
+                <div class="dp-settings-profile-path-lines" role="group"${keyed(null, {'aria-label': say('settings.profiles.column.paths')})} tabindex="0" data-tooltip="${html(route)}">
                   <div class="dp-settings-profile-path"><span class="dp-settings-profile-path-text">${html(profile.local_root)}</span></div>${mapped ? `
                   <div class="dp-settings-profile-path"><span class="dp-settings-profile-path-arrow">→</span> <span class="dp-settings-profile-path-text">${html(importRoot)}</span></div>` : ''}
                 </div>
               </td>
-              <td class="dp-settings-users-detail dp-settings-profiles-retention">${html(profile.retention_hours)} h</td>
+              <td class="dp-settings-users-detail dp-settings-profiles-retention">${words(say('settings.profiles.retention_hours', {hours: html(profile.retention_hours)}))}</td>
               <td><div class="dp-settings-users-actions">
-                <button class="btn btn-ghost btn-sm" type="button" data-user-action="edit-profile" data-profile-id="${id}">Edit</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-user-action="edit-profile" data-profile-id="${id}"${keyed(say('settings.users.edit'))}>${html(t('settings.users.edit'))}</button>
               </div></td>
             </tr>`;
           }).join('')}
@@ -6070,14 +6033,14 @@
   function profileRefusal(error) {
     const detail = error?.detail && typeof error.detail === 'object' && !Array.isArray(error.detail) ? error.detail : {};
     if (error?.status === 409 && detail.code === 'stale_revision') {
-      return {code: 'stale_revision', message: 'The profile catalog was changed elsewhere. Reload it, review your changes, and save again. Your draft is kept.'};
+      return {code: 'stale_revision', message: say('settings.profiles.stale')};
     }
     if (error?.status === 409 && detail.code === 'profile_in_use') {
       return {code: 'profile_in_use', message: text(detail.message || error.message),
         affected: Number(detail.affected_jobs || 0),
         profiles: (Array.isArray(detail.profiles) ? detail.profiles : []).map(item => text(item?.id)).filter(Boolean)};
     }
-    return {code: text(detail.code || 'error'), message: text(error?.message || 'The profile could not be saved')};
+    return {code: text(detail.code || 'error'), message: error?.message ? text(error.message) : say('settings.profiles.not_saved')};
   }
 
   async function writeCatalog(profiles, revision, retire = []) {
@@ -6090,68 +6053,66 @@
     return saved;
   }
 
-  const jobsPhrase = count => `${count} external job${count === 1 ? '' : 's'}`;
+  const jobsPhrase = count => say('settings.profiles.jobs', {count});
 
   // The server's own outcome of a retiring write, never assumed.
   function retirementOutcome(saved, done) {
     const retired = Number(saved?.retired_jobs || 0);
     if (!retired) return done;
     return saved?.cleanup_pending
-      ? `${done}; ${jobsPhrase(retired)} retired, cleanup still in progress`
-      : `${done}; ${jobsPhrase(retired)} retired`;
+      ? say('settings.profiles.retired_pending', {done, jobs: jobsPhrase(retired)})
+      : say('settings.profiles.retired', {done, jobs: jobsPhrase(retired)});
   }
 
   // The consequence of retiring a profile's dependent jobs, stated before the
   // explicit authorization is given.
-  const retirementMessage = count => `This profile is associated with ${jobsPhrase(count)}. Confirming will also retire `
-    + `${count === 1 ? 'that job' : 'those jobs'} and withdraw their claims. Downloads still required by `
-    + 'another client or an independent DP submission are kept; work no one else needs is stopped and '
-    + 'cleaned up by DP’s normal cleanup. Downloaded files are not deleted.';
+  const retirementMessage = count => say('settings.profiles.retire_message', {count});
 
   function confirmRetirement({title, count, confirmLabel}) {
+    // Said words, keyed by the modal (an open confirmation is re-said in place).
     return window.DPSettingsModal.confirm({title, message: retirementMessage(count), confirmLabel, tone: 'danger'});
   }
 
   function profileFormMarkup(profile, creating) {
     const field = (name, label, control, hint = '') => `
       <div class="dp-modal-field dp-profile-field" data-profile-section="${html(name)}">
-        <span class="form-label">${html(label)}</span>${control}${hint ? `<span class="form-hint">${hint}</span>` : ''}
+        <span class="form-label"${keyed(label)}>${html(label)}</span>${control}${hint ? `<span class="form-hint"${keyed(hint)}>${html(hint)}</span>` : ''}
       </div>`;
     return `
       <div class="dp-profile-view" data-profile-view="form">
-        ${field('id', 'Profile ID', `<input class="input" data-profile-input="id" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-label="Profile ID"${creating ? '' : ' readonly'}>`,
-          creating ? 'Lowercase letters, digits, ".", "_" or "-". It identifies the profile and cannot be changed later.' : 'A profile’s ID cannot be changed.')}
-        ${field('categories', 'Categories', `
-          <div class="dp-profile-chips" data-profile-categories role="list" aria-label="Selected categories"></div>
+        ${field('id', say('settings.profiles.field.id'), `<input class="input" data-profile-input="id" type="text" maxlength="64" autocomplete="off" spellcheck="false" ${keyed(null, {'aria-label': say('settings.profiles.field.id')})}${creating ? '' : ' readonly'}>`,
+          say(creating ? 'settings.profiles.id_hint_create' : 'settings.profiles.id_hint_edit'))}
+        ${field('categories', say('settings.profiles.column.categories'), `
+          <div class="dp-profile-chips" data-profile-categories role="list"${keyed(null, {'aria-label': say('settings.profiles.selected_categories')})}></div>
           <div class="dp-profile-suggestions" data-profile-suggestions></div>
-          ${embeddedActionField('<input class="input" data-profile-input="category" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-label="Custom category">',
-            '<button class="btn btn-ghost btn-sm" type="button" data-profile-add-category>Add</button>')}`,
-          'The category the external application sends with each download. Suggestions are the defaults Sonarr and Radarr use.')}
-        ${field('clients', 'Authorized API Tokens', `
-          <div class="dp-profile-checks" data-profile-clients role="group" aria-label="Authorized API Tokens"></div>
-          <button class="btn btn-ghost btn-sm dp-profile-create-token" type="button" data-profile-create-token>Create API Token</button>`,
-          'The external applications allowed to use this profile.')}
-        ${field('source_kinds', 'Source Types', `
-          <div class="dp-profile-checks dp-profile-kinds" role="group" aria-label="Source Types">${PROFILE_SOURCE_KINDS.map(([kind, label]) => `
-            <label class="dp-profile-check"><input type="checkbox" data-profile-kind="${html(kind)}"> <span>${html(label)}</span></label>`).join('')}
+          ${embeddedActionField(`<input class="input" data-profile-input="category" type="text" maxlength="64" autocomplete="off" spellcheck="false"${keyed(null, {'aria-label': say('settings.profiles.custom_category')})}>`,
+            `<button class="btn btn-ghost btn-sm" type="button" data-profile-add-category${keyed(say('settings.users.add'))}>${html(t('settings.users.add'))}</button>`)}`,
+          say('settings.profiles.categories_hint'))}
+        ${field('clients', say('settings.profiles.field.clients'), `
+          <div class="dp-profile-checks" data-profile-clients role="group"${keyed(null, {'aria-label': say('settings.profiles.field.clients')})}></div>
+          <button class="btn btn-ghost btn-sm dp-profile-create-token" type="button" data-profile-create-token${keyed(say('settings.profiles.create_token'))}>${html(t('settings.profiles.create_token'))}</button>`,
+          say('settings.profiles.clients_hint'))}
+        ${field('source_kinds', say('settings.profiles.field.kinds'), `
+          <div class="dp-profile-checks dp-profile-kinds" role="group"${keyed(null, {'aria-label': say('settings.profiles.field.kinds')})}>${PROFILE_SOURCE_KINDS.map(([kind, label]) => `
+            <label class="dp-profile-check"><input type="checkbox" data-profile-kind="${html(kind)}"> ${words(label)}</label>`).join('')}
           </div>`)}
-        ${field('local_root', 'DP Download Path', '<input class="input" data-profile-input="local_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false" aria-label="DP Download Path">',
-          'Where DebridPulse’s completed downloads for this profile lie: the download folder or a folder beneath it.')}
-        ${field('import_root', 'External Import Path', '<input class="input" data-profile-input="import_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false" aria-label="External Import Path">',
-          'The same folder as the external application sees it, when it mounts it at another path.')}
-        <div class="dp-profile-path-summary" data-profile-path-summary role="group" aria-label="Path Summary">
-          <span class="form-label">Path Summary</span>
+        ${field('local_root', say('settings.profiles.field.local_root'), '<input class="input" data-profile-input="local_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false"' + keyed(null, {'aria-label': say('settings.profiles.field.local_root')}) + '>',
+          say('settings.profiles.local_root_hint'))}
+        ${field('import_root', say('settings.profiles.field.import_root'), '<input class="input" data-profile-input="import_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false"' + keyed(null, {'aria-label': say('settings.profiles.field.import_root')}) + '>',
+          say('settings.profiles.import_root_hint'))}
+        <div class="dp-profile-path-summary" data-profile-path-summary role="group"${keyed(null, {'aria-label': say('settings.profiles.path_summary')})}>
+          <span class="form-label"${keyed(say('settings.profiles.path_summary'))}>${html(t('settings.profiles.path_summary'))}</span>
           <div class="dp-profile-path-summary-route" data-profile-path-route></div>
         </div>
-        ${field('retention_hours', 'Retention', embeddedActionField('<input class="input" data-profile-input="retention_hours" type="number" min="1" max="8760" step="1" aria-label="Retention in hours">', fieldUnit('hours')),
-          'How long a completed download is offered to the application. Nothing is deleted when it ends.')}
+        ${field('retention_hours', say('settings.profiles.column.retention'), embeddedActionField('<input class="input" data-profile-input="retention_hours" type="number" min="1" max="8760" step="1"' + keyed(null, {'aria-label': say('settings.profiles.retention_label')}) + '>', fieldUnit(say('settings.unit.hours'))),
+          say('settings.profiles.retention_hint'))}
         <p class="dp-profile-error" data-profile-error role="alert" hidden></p>
       </div>
       <div class="dp-profile-view" data-profile-view="token" hidden>
-        <p class="dp-modal-message">Create an API token for an Integration account. Your profile draft is kept.</p>
-        <label class="dp-modal-field"><span class="form-label">Integration Account</span><select class="input" data-token-input="account"></select></label>
-        <label class="dp-modal-field" data-token-new-account hidden><span class="form-label">New Integration Account Name</span><input class="input" data-token-input="account_name" type="text" maxlength="256" autocomplete="off"></label>
-        <label class="dp-modal-field"><span class="form-label">Token Label</span><input class="input" data-token-input="label" type="text" maxlength="128" autocomplete="off"></label>
+        <p class="dp-modal-message"${keyed(say('settings.profiles.token_intro'))}>${html(t('settings.profiles.token_intro'))}</p>
+        <label class="dp-modal-field"><span class="form-label"${keyed(say('settings.profiles.token_account'))}>${html(t('settings.profiles.token_account'))}</span><select class="input" data-token-input="account"></select></label>
+        <label class="dp-modal-field" data-token-new-account hidden><span class="form-label"${keyed(say('settings.profiles.token_new_account'))}>${html(t('settings.profiles.token_new_account'))}</span><input class="input" data-token-input="account_name" type="text" maxlength="256" autocomplete="off"></label>
+        <label class="dp-modal-field"><span class="form-label"${keyed(say('settings.tokens.field.label'))}>${html(t('settings.tokens.field.label'))}</span><input class="input" data-token-input="label" type="text" maxlength="128" autocomplete="off"></label>
         <p class="dp-profile-error" data-token-error role="alert" hidden></p>
       </div>
       <div class="dp-profile-view" data-profile-view="disclosure" hidden></div>
@@ -6192,7 +6153,7 @@
     let controls = {};
     let dialogBody = null;
 
-    const title = creating ? 'Create Delivery Profile' : `Edit Delivery Profile: ${existing.id}`;
+    const title = creating ? say('settings.profiles.create') : say('settings.profiles.edit_title', {id: existing.id});
     let deleting = null;      // {count} while the Delete confirmation is shown
     let pending = false;
 
@@ -6206,37 +6167,36 @@
         handle.setAcceptEnabled(true);
       }
       if (next === 'form') {
-        handle.setAcceptLabel(creating ? 'Create Profile' : 'Save Profile');
-        handle.setCancelLabel('Cancel');
+        handle.setAcceptLabel(say(creating ? 'settings.profiles.create_short' : 'settings.profiles.save'));
+        handle.setCancelLabel(say('common.cancel'));
         handle.setActionHidden('reload', !dialogBody.dataset.stale);
       } else if (next === 'delete') {
         handle.setActionHidden('reload', true);
-        handle.setTitle(deleting.count ? 'Delete delivery profile?' : `Delete the ${existing.id} profile?`);
+        handle.setTitle(deleting.count ? say('settings.profiles.delete_title') : say('settings.profiles.delete_named', {id: existing.id}));
         handle.setTone('danger', '');
-        handle.setAcceptLabel(deleting.count ? 'Delete Profile & Retire Jobs' : 'Delete Profile');
-        handle.setCancelLabel('Back');
+        handle.setAcceptLabel(say(deleting.count ? 'settings.profiles.delete_retire' : 'settings.profiles.delete'));
+        handle.setCancelLabel(say('settings.common.back'));
         const message = dialogBody.querySelector('[data-profile-delete-message]');
-        message.textContent = deleting.count ? retirementMessage(deleting.count)
-          : 'This removes only the delivery profile. API tokens, downloads, and files are not deleted.';
+        sayInto(message, deleting.count ? retirementMessage(deleting.count) : say('settings.profiles.delete_only'));
         message.tabIndex = -1;
         message.focus();
       } else if (next === 'token') {
-        handle.setAcceptLabel('Create Token');
-        handle.setCancelLabel('Back');
+        handle.setAcceptLabel(say('settings.profiles.create_token_accept'));
+        handle.setCancelLabel(say('settings.common.back'));
         handle.setActionHidden('reload', true);
       } else {
-        handle.setAcceptLabel('Done');
-        handle.setCancelLabel('Back to Profile');
+        handle.setAcceptLabel(say('settings.common.done'));
+        handle.setCancelLabel(say('settings.profiles.back'));
         handle.setActionHidden('reload', true);
       }
     };
-    const showError = (node, message) => { node.textContent = message || ''; node.hidden = !message; };
+    const showError = (node, message) => { sayInto(node, message || ''); node.hidden = !message; };
 
     function paintCategories() {
       const list = dialogBody.querySelector('[data-profile-categories]');
       list.innerHTML = draft.categories.map(category => `
-        <span class="dp-settings-profile-chip" role="listitem">${html(category)}<button class="dp-profile-chip-remove" type="button" data-profile-remove-category="${html(category)}" aria-label="Remove category ${html(category)}">×</button></span>`).join('')
-        || '<span class="dp-settings-users-detail">No categories yet.</span>';
+        <span class="dp-settings-profile-chip" role="listitem">${html(category)}<button class="dp-profile-chip-remove" type="button" data-profile-remove-category="${html(category)}" ${keyed(null, {'aria-label': say('settings.profiles.remove_category', {name: category})})}>×</button></span>`).join('')
+        || `<span class="dp-settings-users-detail">${words(say('settings.profiles.no_categories'))}</span>`;
       dialogBody.querySelector('[data-profile-suggestions]').innerHTML = PROFILE_CATEGORY_SUGGESTIONS
         .filter(([category]) => !draft.categories.includes(category))
         .map(([category, label]) => `<button class="btn btn-ghost btn-sm" type="button" data-profile-suggest="${html(category)}" data-tooltip="${html(label)}">+ ${html(category)}</button>`).join('');
@@ -6247,8 +6207,8 @@
       const ids = [...new Set([...clients.keys(), ...draft.retained])];
       const list = dialogBody.querySelector('[data-profile-clients]');
       list.innerHTML = ids.length ? ids.map(clientId => `
-        <label class="dp-profile-check"><input type="checkbox" data-profile-client="${html(clientId)}"${draft.clients.has(clientId) ? ' checked' : ''}> <span>${html(clientLabel(clients, clientId))}</span></label>`).join('')
-        : '<span class="dp-settings-users-detail">No API tokens yet. Create one here.</span>';
+        <label class="dp-profile-check"><input type="checkbox" data-profile-client="${html(clientId)}"${draft.clients.has(clientId) ? ' checked' : ''}> ${words(clientLabel(clients, clientId)).replace(/^(?!<span)(.*)$/s, '<span>$1</span>')}</label>`).join('')
+        : `<span class="dp-settings-users-detail">${words(say('settings.profiles.no_tokens'))}</span>`;
     }
 
     // Below 780px: the two paths as the table maps them, from the form's
@@ -6287,23 +6247,23 @@
 
     // What the form can say before asking: the server still decides.
     function invalid(profile) {
-      if (!PROFILE_ID_PATTERN.test(profile.id)) return 'Enter a Profile ID of lowercase letters, digits, ".", "_" or "-".';
-      if (creating && base.profiles.some(item => item.id === profile.id)) return `A profile named ${profile.id} already exists.`;
-      if (!profile.categories.length) return 'Add at least one category.';
+      if (!PROFILE_ID_PATTERN.test(profile.id)) return say('settings.profiles.invalid.id');
+      if (creating && base.profiles.some(item => item.id === profile.id)) return say('settings.profiles.invalid.exists', {id: profile.id});
+      if (!profile.categories.length) return say('settings.profiles.invalid.categories');
       const taken = new Set(base.profiles.filter(item => item.id !== profile.id)
         .flatMap(item => item.categories.map(category => category.toLowerCase())));
       const clash = profile.categories.find(category => taken.has(category.toLowerCase()));
-      if (clash) return `The category ${clash} already selects another profile.`;
-      if (!profile.clients.length) return 'Authorize at least one API token.';
-      if (!profile.source_kinds.length) return 'Choose at least one source type.';
+      if (clash) return say('settings.profiles.invalid.clash', {category: clash});
+      if (!profile.clients.length) return say('settings.profiles.invalid.clients');
+      if (!profile.source_kinds.length) return say('settings.profiles.invalid.kinds');
       const folder = text(state.settings?.download_folder || '/download').replace(/\/+$/, '') || '/';
       const local = profile.local_root.replace(/\/+$/, '') || '/';
       if (!local.startsWith('/') || (local !== folder && !local.startsWith(`${folder === '/' ? '' : folder}/`))) {
-        return `The DP Download Path must be ${folder} or a folder beneath it.`;
+        return say('settings.profiles.invalid.local_root', {folder});
       }
-      if (profile.import_root && !profile.import_root.startsWith('/')) return 'The External Import Path must be an absolute path.';
+      if (profile.import_root && !profile.import_root.startsWith('/')) return say('settings.profiles.invalid.import_root');
       if (!Number.isInteger(profile.retention_hours) || profile.retention_hours < 1 || profile.retention_hours > 8760) {
-        return 'Retention is a whole number of hours from 1 to 8760.';
+        return say('settings.profiles.invalid.retention');
       }
       return '';
     }
@@ -6328,7 +6288,7 @@
         // Changing paths or tokens takes the profile away from unsettled
         // jobs: only an explicit retirement of exactly those jobs proceeds.
         if (refusal.code === 'profile_in_use' && !creating && await confirmRetirement({
-          title: 'Save delivery profile?', count: refusal.affected, confirmLabel: 'Save Profile & Retire Jobs'})) {
+          title: say('settings.profiles.save_title'), count: refusal.affected, confirmLabel: say('settings.profiles.save_retire')})) {
           try {
             saved = await writeCatalog(next, base.revision, [existing.id]);
           } catch (retry) {
@@ -6340,7 +6300,7 @@
           return false;
         }
       }
-      notify(retirementOutcome(saved, creating ? 'Delivery profile created' : 'Delivery profile saved'), 'success');
+      notify(String(retirementOutcome(saved, say(creating ? 'settings.profiles.created' : 'settings.profiles.saved'))), 'success');
       return true;
     }
 
@@ -6350,24 +6310,24 @@
       const errorNode = dialogBody.querySelector('[data-profile-error]');
       await loadProfiles();
       paintUsers();
-      if (!state.profiles.catalog) { showError(errorNode, state.profiles.error || 'The catalog could not be read.'); return; }
+      if (!state.profiles.catalog) { showError(errorNode, state.profiles.error || say('settings.profiles.unreadable')); return; }
       base = state.profiles.catalog;
       delete dialogBody.dataset.stale;
       handle.setActionHidden('reload', true);
       if (!creating && !base.profiles.some(item => item.id === existing.id)) {
         handle.setAcceptEnabled(false);
-        showError(errorNode, 'This profile was deleted elsewhere. Close this dialog to continue.');
+        showError(errorNode, say('settings.profiles.deleted_elsewhere'));
         return;
       }
-      showError(errorNode, 'The catalog was reloaded. Review your changes and save again.');
+      showError(errorNode, say('settings.profiles.reloaded'));
     }
 
     async function createToken(handle) {
       const errorNode = dialogBody.querySelector('[data-token-error]');
       const accountId = controls.account.value;
       const label = controls.label.value.trim();
-      if (!label) { showError(errorNode, 'Enter a token label.'); return; }
-      if (accountId === '__new__' && !controls.account_name.value.trim()) { showError(errorNode, 'Name the new Integration account.'); return; }
+      if (!label) { showError(errorNode, say('settings.profiles.token_label_missing')); return; }
+      if (accountId === '__new__' && !controls.account_name.value.trim()) { showError(errorNode, say('settings.profiles.token_account_missing')); return; }
       showError(errorNode, '');
       let issued;
       try {
@@ -6377,11 +6337,11 @@
         }
         issued = await request('POST', `/accounts/${encodeURIComponent(id)}/tokens`, {label}, 10000);
       } catch (error) {
-        showError(errorNode, text(error.message || 'The token could not be created'));
+        showError(errorNode, error.message ? text(error.message) : say('settings.profiles.token_failed'));
         await loadUsers();
         return;
       }
-      if (!issued?.token || !issued.client_id) { showError(errorNode, 'The token could not be created'); return; }
+      if (!issued?.token || !issued.client_id) { showError(errorNode, say('settings.profiles.token_failed')); return; }
       draft.clients.add(issued.client_id);
       if (!draft.retained.includes(issued.client_id)) draft.retained.push(issued.client_id);
       const pane = dialogBody.querySelector('[data-profile-view="disclosure"]');
@@ -6403,7 +6363,7 @@
           undefined, 10000);
         deleting = {count: Number(dependents?.affected_jobs || 0)};
       } catch (error) {
-        showError(errorNode, `${text(error?.message || 'The profile’s jobs could not be counted')}. Nothing was deleted.`);
+        showError(errorNode, say('settings.profiles.count_failed', {reason: error?.message ? text(error.message) : say('settings.profiles.count_failed_reason')}));
         return;
       } finally {
         pending = false;
@@ -6418,7 +6378,7 @@
     async function commitDelete(handle) {
       const errorNode = dialogBody.querySelector('[data-profile-delete-error]');
       const catalog = state.profiles.catalog;
-      if (!catalog) { showError(errorNode, 'The catalog could not be read. Nothing was deleted.'); return false; }
+      if (!catalog) { showError(errorNode, say('settings.profiles.unreadable_kept')); return false; }
       const remaining = catalog.profiles.filter(item => item.id !== existing.id);
       let saved;
       try {
@@ -6430,7 +6390,7 @@
           // them, so it is asked for again, with their own count.
           deleting = {count: refusal.affected};
           show(handle, 'delete');
-          showError(errorNode, `Jobs now depend on this profile. Confirm again to retire ${jobsPhrase(refusal.affected)}.`);
+          showError(errorNode, say('settings.profiles.jobs_arrived', {jobs: jobsPhrase(refusal.affected)}));
           return false;
         }
         if (refusal.code === 'stale_revision') dialogBody.dataset.stale = '1';
@@ -6440,16 +6400,16 @@
         paintUsers();
         const read = state.profiles.catalog;
         if (!error?.status && read && !read.profiles.some(item => item.id === existing.id)) {
-          notify('Delivery profile deleted', 'success');
+          notify(t('settings.profiles.deleted'), 'success');
           return true;
         }
-        showError(errorNode, error?.status ? `Not deleted: ${refusal.message}`
-          : read ? 'The delete got no response, and the profile is still listed: it was not deleted.'
-            : 'The delete got no response and the catalog could not be read, so whether the profile was deleted is unknown.');
+        showError(errorNode, error?.status ? say('settings.profiles.delete_refused', {reason: refusal.message})
+          : read ? say('settings.profiles.delete_unanswered')
+            : say('settings.profiles.delete_unknown'));
         handle.setAcceptEnabled(false);
         return false;
       }
-      notify(retirementOutcome(saved, 'Delivery profile deleted'), 'success');
+      notify(String(retirementOutcome(saved, say('settings.profiles.deleted'))), 'success');
       return true;
     }
 
@@ -6464,7 +6424,7 @@
     function openTokenView(handle) {
       const integrations = (state.users.accounts || []).filter(account => liveAccount(account) && isIntegration(account) && account.enabled);
       controls.account.innerHTML = integrations.map(account => `<option value="${html(account.id)}">${html(accountName(account))}</option>`).join('')
-        + '<option value="__new__">New Integration Account…</option>';
+        + `<option value="__new__"${keyed(say('settings.profiles.new_account'))}>${html(t('settings.profiles.new_account'))}</option>`;
       controls.account_name.value = '';
       controls.label.value = '';
       dialogBody.querySelector('[data-token-new-account]').hidden = controls.account.value !== '__new__';
@@ -6475,10 +6435,10 @@
 
     const dialog = window.DPSettingsModal.open({
       title,
-      acceptLabel: creating ? 'Create Profile' : 'Save Profile',
+      acceptLabel: say(creating ? 'settings.profiles.create_short' : 'settings.profiles.save'),
       className: 'dp-users-dialog dp-profile-dialog',
-      actions: [{id: 'reload', label: 'Reload Catalog', placement: 'leading'},
-        ...(creating ? [] : [{id: 'delete', label: 'Delete', tone: 'danger', placement: 'leading'}])],
+      actions: [{id: 'reload', label: say('settings.profiles.reload'), placement: 'leading'},
+        ...(creating ? [] : [{id: 'delete', label: say('settings.users.delete'), tone: 'danger', placement: 'leading'}])],
       mount(body, handle) {
         dialogBody = body;
         body.innerHTML = profileFormMarkup(existing, creating);
@@ -6575,39 +6535,38 @@
     return rows.length ? `
       <div class="dp-users-activity-wrap">
         <table class="t-table dp-users-activity">
-          <thead><tr><th>Download</th><th>Status</th><th>Requested</th><th>Request</th></tr></thead>
+          <thead><tr>${['download', 'status', 'requested', 'request'].map(column => `<th>${words(say(`settings.activity.column.${column}`))}</th>`).join('')}</tr></thead>
           <tbody>${rows.map(row => `
             <tr>
-              <td>${html(row.name || `Transfer ${row.transfer_id}`)}</td>
+              <td>${row.name ? html(row.name) : words(say('settings.activity.transfer', {id: row.transfer_id}))}</td>
               <td>${html(row.status)}</td>
               <td>${date(row.created_at)}</td>
-              <td>${row.withdrawn_at ? `Withdrawn ${date(row.withdrawn_at)}`
-                : `<span class="dp-users-activity-outstanding">Outstanding<button class="btn btn-ghost btn-sm" type="button" data-withdraw-demand="${html(row.id)}">Withdraw</button></span>`}</td>
+              <td>${row.withdrawn_at ? `${words(say('settings.activity.withdrawn'))} ${date(row.withdrawn_at)}`
+                : `<span class="dp-users-activity-outstanding">${words(say('settings.activity.outstanding'))}<button class="btn btn-ghost btn-sm" type="button" data-withdraw-demand="${html(row.id)}"${keyed(say('settings.activity.withdraw'))}>${html(t('settings.activity.withdraw'))}</button></span>`}</td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>
-      <p class="dp-modal-message">The 50 most recent requests.</p>`
-      : '<p class="dp-modal-message">This account has not requested any downloads.</p>';
+      <p class="dp-modal-message"${keyed(say('settings.activity.recent'))}>${html(t('settings.activity.recent'))}</p>`
+      : `<p class="dp-modal-message"${keyed(say('settings.activity.none'))}>${html(t('settings.activity.none'))}</p>`;
   }
 
   // One request's withdrawal, reported as the server answered it: withdrawn,
   // already withdrawn, refused with its reason, or unconfirmed without an answer.
   async function withdrawAccountRequest(account, demandId, button) {
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Withdraw this request?',
-      message: `${accountName(account)}'s request is withdrawn. The transfer stops only if no other `
-        + 'outstanding request still needs it. Completed downloads and history are kept.',
-      confirmLabel: 'Withdraw Request',
+      title: say('settings.activity.withdraw_title'),
+      message: say('settings.activity.withdraw_message', {name: accountName(account)}),
+      confirmLabel: say('settings.activity.withdraw_accept'),
     });
     if (!confirmed) return;
-    setBusy(button, true, 'Withdrawing…');
+    setBusy(button, true, say('settings.activity.withdrawing'));
     try {
       const result = await request('POST', `/requests/${encodeURIComponent(demandId)}/withdraw`, undefined, 15000);
-      notify(result?.already_withdrawn ? 'This request was already withdrawn.' : 'Request withdrawn.', 'success');
+      notify(t(result?.already_withdrawn ? 'settings.activity.already_withdrawn' : 'settings.activity.withdrawn_done'), 'success');
     } catch (error) {
-      notify(error?.status ? `Request not withdrawn: ${error.message}`
-        : 'Withdrawal not confirmed: no response from the server. Check the request again.', 'error');
+      notify(error?.status ? t('settings.activity.withdraw_refused', {reason: text(error.message)})
+        : t('settings.activity.withdraw_unanswered'), 'error');
     }
   }
 
@@ -6617,16 +6576,18 @@
    * its requests, each outstanding one withdrawable on its own. Read-only
    * otherwise; it is not the signed-in account's My Account. */
   const EMAIL_STATE = account => (!account.email ? ''
-    : account.email_self_entered ? 'Not verified, entered by the account'
-      : account.email_verified ? 'Verified' : account.email_verified_known ? 'Not verified' : 'Verification not stated');
+    : say(`settings.email.${account.email_self_entered ? 'self_entered'
+      : account.email_verified ? 'verified' : account.email_verified_known ? 'unverified' : 'unstated'}`));
 
   function accountProfileMarkup(account) {
-    const row = (label, value, missing) => `<div><dt>${html(label)}</dt><dd${value ? '' : ' class="is-missing"'}>${
-      value ? html(value) : html(missing)}</dd></div>`;
+    // ``value``: markup (the account's own words escaped, the page's keyed).
+    const row = (label, value, missing) => `<div><dt>${words(label)}</dt><dd${value ? '' : ' class="is-missing"'}>${
+      value || words(missing)}</dd></div>`;
+    const unset = say('settings.account.not_set');
     return `<dl class="dp-account-details-profile">
-      ${row('Display Name', account.display_name, 'Not set')}
-      ${row('Actual Name', account.actual_name, 'Not set')}
-      ${row('Email', account.email ? `${account.email} (${EMAIL_STATE(account)})` : '', 'None provided')}
+      ${row(say('settings.users.field.display_name'), html(account.display_name || ''), unset)}
+      ${row(say('settings.account.actual_name'), html(account.actual_name || ''), unset)}
+      ${row(say('settings.account.email'), account.email ? `${html(account.email)} (${words(EMAIL_STATE(account))})` : '', say('settings.account.no_email'))}
     </dl>`;
   }
 
@@ -6648,14 +6609,14 @@
       if (activity?.isConnected) activity.innerHTML = activityMarkup(rows);
     };
     const dialog = window.DPSettingsModal.open({
-      title: `Account Details: ${accountName(account)}`,
+      title: say('settings.account.details_title', {name: accountName(account)}),
       dismiss: true,
       className: 'dp-users-activity-dialog dp-account-details-dialog',
       mount(body) {
         body.innerHTML = `
           ${accountProfileMarkup(account)}
-          <section class="dp-account-details-activity" aria-label="Activity">
-            <h3 class="dp-account-details-heading">Activity</h3>
+          <section class="dp-account-details-activity"${keyed(null, {'aria-label': say('settings.account.activity')})}>
+            <h3 class="dp-account-details-heading"${keyed(say('settings.account.activity'))}>${html(t('settings.account.activity'))}</h3>
             <div data-account-activity></div>
           </section>`;
         activity = body.querySelector('[data-account-activity]');
@@ -6709,7 +6670,7 @@
    * password, so this never says Verified. */
   function credentialStatus(a) {
     return a?.password_configured && text(a?.username).trim()
-      ? {text: 'Configured', tone: 'warning'} : {text: 'Unconfigured', tone: 'error'};
+      ? {text: say('settings.status.configured'), tone: 'warning'} : {text: say('settings.status.unconfigured'), tone: 'error'};
   }
 
   function oidcHeaderStatus(a) {
@@ -6720,8 +6681,8 @@
   // the header rail says nothing while it is off (above); the handheld Test's
   // colour always says it (headerTestControls).
   function oidcConfigurationStatus(a) {
-    if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
-    return a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+    if (!a?.oidc_configured) return {text: say('settings.status.unconfigured'), tone: 'error'};
+    return a?.oidc_verified ? {text: say('settings.status.verified'), tone: 'success'} : {text: say('settings.status.configured'), tone: 'warning'};
   }
 
   /* ── Data & Maintenance ───────────────────────────────────────────────────
@@ -6757,15 +6718,15 @@
     /* Event Logging selects only how many events one Activity Log page shows;
      * the journal itself is kept indefinitely, so nothing here retains, prunes
      * or enables anything and the header rail stays empty. */
-    const eventLogging = card('Event Logging', `
+    const eventLogging = card(say('settings.events.title'), `
       <div class="dp-settings-event-logging-island dp-settings-island">
-        ${selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,
-          [[50, '50 events'], [100, '100 events'], [250, '250 events']],
-          'Number of events displayed per page in the Activity Log.',
+        ${selectField('activity_log_page_size', say('settings.events.page_size'), s.activity_log_page_size ?? 100,
+          [50, 100, 250].map(count => [count, say('settings.events.count', {count})]),
+          say('settings.events.page_size_hint'),
           {inline: true, className: 'dp-settings-event-logging-field'})}
-        ${input('event_journal_recorded', 'Recorded Events', recordedEventsText(), {
+        ${input('event_journal_recorded', say('settings.events.recorded'), recordedEventsText(), {
           inline: true, commit: false, readonly: true,
-          hint: 'Total events retained in the activity journal.',
+          hint: say('settings.events.recorded_hint'),
           className: 'dp-settings-event-logging-field dp-settings-event-logging-recorded',
         })}
       </div>
@@ -6773,83 +6734,83 @@
       className: 'dp-settings-event-logging-card',
       help: 'event-logging',
       titlePrefix: familyIcon('maintenance', 'file-text'),
-      headerCenter: 'Configure how many activity log entries are displayed per page.',
+      headerCenter: say('settings.events.copy'),
       headerCenterClass: 'dp-settings-event-logging-header-copy',
       hinted: true,
     });
     const backupEnabledId = fieldId('backup_enabled');
-    const backups = card('Backups & Retention', `
+    const backups = card(say('settings.backups.title'), `
       <div class="dp-settings-backup-folder-island dp-settings-help-slot">
-        ${directoryField('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups', {
-          hint: 'Choose where DebridPulse stores database and configuration backups.',
+        ${directoryField('backup_folder', say('settings.backups.folder'), s.backup_folder || '/app/data/backups', {
+          hint: say('settings.backups.folder_hint'),
           browseAction: 'browse-backup-folder',
-          browseLabel: 'Browse server directories for Backup Folder',
+          browseLabel: say('settings.backups.folder_browse'),
           inline: true, embedAction: true, className: 'dp-settings-backup-folder-field',
         })}
       </div>
-      ${omitted('backup-additional-settings') ? '' : disclosureSection('Additional Backup & Retention Settings', 'backup-retention', tuningCells(
+      ${omitted('backup-additional-settings') ? '' : disclosureSection(say('settings.backups.additional'), 'backup-retention', tuningCells(
         tuningGroup(
-          input('backup_interval_hours', 'Backup Interval', s.backup_interval_hours ?? 24, {
+          input('backup_interval_hours', say('settings.backups.interval'), s.backup_interval_hours ?? 24, {
             type: 'number', min: 1, max: 168,
-            hint: 'Set how often an automatic backup is created.',
-            embedAction: fieldUnit('hours'), controlClass: 'dp-settings-unit-field',
+            hint: say('settings.backups.interval_hint'),
+            embedAction: fieldUnit(say('settings.unit.hours')), controlClass: 'dp-settings-unit-field',
           }),
-          input('backup_keep_days', 'Backup Retention', s.backup_keep_days ?? 7, {
+          input('backup_keep_days', say('settings.backups.keep_days'), s.backup_keep_days ?? 7, {
             type: 'number', min: 1, max: 365,
-            hint: 'Delete backup files older than the configured number of days.',
-            embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+            hint: say('settings.backups.keep_days_hint'),
+            embedAction: fieldUnit(say('settings.unit.days')), controlClass: 'dp-settings-unit-field',
           }),
-          input('backup_max_retained', 'Maximum Retained Backups', s.backup_max_retained ?? 7, {
+          input('backup_max_retained', say('settings.backups.max_retained'), s.backup_max_retained ?? 7, {
             type: 'number', min: 1, max: 365,
-            hint: 'Keep at most this many backups. Older excess backups are removed even when they are within the retention period.',
-            embedAction: fieldUnit('backups'), controlClass: 'dp-settings-unit-field',
+            hint: say('settings.backups.max_retained_hint'),
+            embedAction: fieldUnit(say('settings.unit.backups')), controlClass: 'dp-settings-unit-field',
           }),
         ),
         tuningGroup(
-          input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval', s.stats_snapshot_interval_minutes ?? 60, {
+          input('stats_snapshot_interval_minutes', say('settings.backups.snapshot_interval'), s.stats_snapshot_interval_minutes ?? 60, {
             type: 'number', min: 0, max: 1440,
-            hint: 'How often DebridPulse saves a record of download activity and statistics from the previous 24 hours to its internal database. These snapshots are not sent as reports.',
-            embedAction: fieldUnit('minutes'), controlClass: 'dp-settings-unit-field',
+            hint: say('settings.backups.snapshot_interval_hint'),
+            embedAction: fieldUnit(say('settings.unit.minutes')), controlClass: 'dp-settings-unit-field',
           }),
-          input('stats_snapshot_keep_days', 'Statistics Snapshot Retention', s.stats_snapshot_keep_days ?? 30, {
+          input('stats_snapshot_keep_days', say('settings.backups.snapshot_keep_days'), s.stats_snapshot_keep_days ?? 30, {
             type: 'number', min: 1, max: 365,
-            hint: 'How many days DebridPulse keeps its saved statistics snapshots before automatically deleting older records. Snapshots are stored internally and are not currently viewable in the interface.',
-            embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+            hint: say('settings.backups.snapshot_keep_days_hint'),
+            embedAction: fieldUnit(say('settings.unit.days')), controlClass: 'dp-settings-unit-field',
           }),
         ),
-      ), false, 'Backup Settings')}
+      ), false, say('settings.backups.additional_short'))}
     `, {
       className: 'dp-settings-backups-retention-card',
       help: 'backups',
       headerFit: 'wrap',
       helpRow: false,
-      shortTitle: 'Backup Control',
+      shortTitle: say('settings.backups.title_short'),
       titlePrefix: familyIcon('maintenance', 'archive'),
-      headerCenter: 'Configure automated backups and retention for backups and statistics snapshots.',
+      headerCenter: say('settings.backups.copy'),
       headerCenterClass: 'dp-settings-backups-header-copy',
       hinted: true,
       // Below 780px the two actions are one Backups menu (headerActionsMenu).
-      action: headerActionsMenu('Backups & Retention', 'Backups', `<button class="btn btn-ghost btn-sm" type="button" data-action="backups"
-                  data-menu-label="Backup Management" data-menu-closes>Backups</button>
-          <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
+      action: headerActionsMenu(say('settings.backups.title'), say('settings.backups.menu'), `<button class="btn btn-ghost btn-sm" type="button" data-action="backups"
+                  ${keyed(say('settings.backups.menu'), {'data-menu-label': say('settings.backups.management')})} data-menu-closes>${html(t('settings.backups.menu'))}</button>
+          <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup"${keyed(say('settings.backups.run'))}>${html(t('settings.backups.run'))}</button>`,
       `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
         <span class="toggle">
           <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${commitAttributes('backup_enabled')} ${checked(s.backup_enabled !== false)}
-                 aria-label="Enable Backups & Retention">
+                 ${keyed(null, {'aria-label': say('settings.backups.enable')})}>
           <span class="ttrack"></span>
         </span>
       </label>`),
     });
-    const reset = card('Database Reset Controls', `
+    const reset = card(say('settings.reset.title'), `
       <div class="dp-settings-caution">
-        <b>Database Reset is Destructive</b>
-        <span>Processing is paused automatically for the reset and returned to its previous state afterwards. A safety backup is always created first; the reset is aborted if it fails.</span>
+        <b${keyed(say('settings.reset.caution'))}>${html(t('settings.reset.caution'))}</b>
+        ${words(say('settings.reset.caution_detail'))}
       </div>
       <div class="dp-settings-database-reset-spacer" aria-hidden="true"></div>
       <div class="dp-settings-database-wipe-row dp-settings-island">
-        ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle dp-settings-island-member')}
+        ${toggle('db_wipe_enabled', say('settings.reset.allow'), say('settings.reset.allow_hint'), s.db_wipe_enabled, 'dp-settings-database-wipe-toggle dp-settings-island-member')}
         <div class="dp-settings-actions dp-settings-database-wipe-action dp-settings-island-member">
-          <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database">Reset Database</button>
+          <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database"${keyed(say('settings.reset.action'))}>${html(t('settings.reset.action'))}</button>
         </div>
       </div>
     `, {
@@ -6858,7 +6819,7 @@
       headerFit: 'wrap',
       helpRow: false,
       titlePrefix: familyIcon('maintenance', 'database-x'),
-      headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
+      headerCenter: say('settings.reset.copy'),
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
       hinted: true,
     });
@@ -7364,7 +7325,13 @@
     if (!actions) return;
     menu.replaceChildren(...Array.from(actions.querySelectorAll(':scope > :is(button[data-action], button[data-user-action])'), button => {
       const item = button.cloneNode(true);
-      if (item.dataset.menuLabel) item.textContent = item.dataset.menuLabel;
+      if (item.dataset.menuLabel) {
+        // Its menu words, and their key: a language change says these, not the button's.
+        item.textContent = item.dataset.menuLabel;
+        const key = /(?:^|;)data-menu-label:([^;]+)/.exec(item.dataset.i18nAttr || '')?.[1];
+        if (key) item.dataset.i18n = key;
+        else delete item.dataset.i18n;
+      }
       return item;
     }));
   }
@@ -8080,16 +8047,16 @@
    * bit anywhere. */
   async function testDiscordDelivery(button) {
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Testing…');
+    setBusy(button, true, say('settings.testing'));
     try {
       const result = selfContext()
         ? await request('POST', `${OWN_NOTIFICATIONS}/test-discord`, undefined, 20000)
         : await request('POST', '/settings/validate-discord', undefined, 20000);
       adoptNotifications(result.notifications);
-      notify('Test notification sent', 'success');
+      notify(t('settings.notifications.test_sent'), 'success');
     } catch (error) {
       await refreshNotificationState();
-      notify(`Webhook Notifications: ${error.message}`, 'error');
+      notify(t('settings.notifications.test_failed', {reason: text(error.message)}), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -8100,16 +8067,16 @@
    * exactly the terms above. */
   async function sendStatsReport(button) {
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Sending…');
+    setBusy(button, true, say('settings.reports.sending'));
     try {
       const result = selfContext()
         ? await request('POST', `${OWN_NOTIFICATIONS}/send-report`, undefined, 20000)
         : await request('POST', '/settings/send-stats-report', undefined, 20000);
       adoptNotifications(result.notifications);
-      notify(`Test report sent (${result.hours}h)`, 'success');
+      notify(t('settings.reports.sent', {hours: text(result.hours)}), 'success');
     } catch (error) {
       await refreshNotificationState();
-      notify(`Statistics report: ${error.message}`, 'error');
+      notify(t('settings.reports.failed', {reason: text(error.message)}), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -8168,7 +8135,7 @@
         window.DPSettingsPersistence.commit(avatar);
       }
       projectAvatarAction();
-      notify('Avatar uploaded', 'success');
+      notify(t('settings.avatar.uploaded'), 'success');
       if (result.warning) notify(result.warning, 'warn');
     } catch (error) {
       notify(error.message, 'error');
@@ -8203,10 +8170,9 @@
     if (avatar) avatar.value = accepted;
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: 'Clear the avatar?',
-      message: 'The stored avatar URL will be removed. Notifications will be sent to Discord '
-        + 'without a custom avatar until a new one is set.',
-      confirmLabel: 'Clear Avatar',
+      title: say('settings.avatar.clear_title'),
+      message: say('settings.avatar.clear_message'),
+      confirmLabel: say('settings.avatar.clear_accept'),
     });
     if (!confirmed) {
       if (avatar && avatar.value === accepted) avatar.value = draft;
@@ -8230,7 +8196,7 @@
       // not resurrected by the spinner being taken off it.
       setBusy(button, false);
       paintNotifications();
-      notify('Avatar cleared', 'success');
+      notify(t('settings.avatar.cleared'), 'success');
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -8257,17 +8223,17 @@
       tone: 'danger',
       title: spec.confirm.title,
       message: spec.confirm.message,
-      confirmLabel: 'Clear Webhook',
+      confirmLabel: say('settings.webhook.clear_accept'),
     });
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing\u2026');
+    setBusy(button, true, say('settings.key.clearing'));
     try {
       if (selfContext()) await writeOwnNotifications({}, [key]);
       else await writeSettingsDocument({}, [key]);
       setBusy(button, false);
       paintNotifications();
-      notify(`${spec.label} cleared`, 'success');
+      notify(t('settings.webhook.cleared', {name: String(spec.label)}), 'success');
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -8293,11 +8259,11 @@
 
   async function runBackup(button) {
     await settlePendingWrites();
-    setBusy(button, true, 'Running…');
+    setBusy(button, true, say('settings.backups.running'));
     try {
       const result = await request('POST', '/admin/backup', undefined, 30000);
-      if (result.skipped) notify('Backup is disabled in Settings', 'warn');
-      else notify('Backup completed', 'success');
+      if (result.skipped) notify(t('settings.backups.skipped'), 'warn');
+      else notify(t('settings.backups.completed'), 'success');
     } catch (error) {
       notify(error.message, 'error');
     } finally {
@@ -8326,22 +8292,22 @@
   async function wipeDatabaseClean(button) {
     await settlePendingWrites();
     if (!state.settings?.db_wipe_enabled) {
-      notify("Turn on 'Allow Database Reset' before resetting the database", 'warn');
+      notify(t('settings.reset.locked'), 'warn');
       return;
     }
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Wipe database?',
-      message: 'This permanently removes all database rows. DebridPulse pauses processing for the wipe and returns it to its previous state afterwards, and creates a safety backup first; if the backup fails, nothing is wiped.',
-      confirmLabel: 'Wipe Database',
+      title: say('settings.reset.confirm_title'),
+      message: say('settings.reset.confirm_message'),
+      confirmLabel: say('settings.reset.confirm_accept'),
       tone: 'danger',
       typedPhrase: 'WIPE',
     });
     if (!confirmed) return;
 
-    setBusy(button, true, 'Wiping…');
+    setBusy(button, true, say('settings.reset.wiping'));
     try {
       const result = await request('POST', '/admin/database/wipe', {confirm: true}, 60000);
-      notify('Database wiped. Pre-wipe backup created.', 'success');
+      notify(t('settings.reset.done'), 'success');
       try { if (typeof loadStats === 'function') loadStats(); } catch (_) {}
       try { if (typeof loadRecent === 'function') loadRecent(); } catch (_) {}
       try {
@@ -8364,17 +8330,17 @@
   async function clearPassword(button) {
     const entersOpenMode = !state.auth?.oidc_enabled && !!state.auth?.authentication_required;
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Clear stored password?',
+      title: say('settings.auth.clear_password_title'),
       message: entersOpenMode
-        ? 'The stored local password will be removed and Username & Password authentication will be disabled. Because OpenID Connect is also disabled, DebridPulse will enter open mode.'
-        : 'The stored local password will be removed and Username & Password authentication will be disabled.',
-      confirmLabel: 'Clear Password',
+        ? say('settings.auth.clear_password_open')
+        : say('settings.auth.clear_password_message'),
+      confirmLabel: say('settings.auth.clear_password_accept'),
       tone: 'danger',
     });
     if (!confirmed) return;
 
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
+    setBusy(button, true, say('settings.key.clearing'));
     try {
       // Erasing the last interactive credential IS an open-mode transition, and
       // the modal above is where the operator confirmed that exact act -- its
@@ -8385,7 +8351,7 @@
         clear_password: true,
         ...(entersOpenMode ? {confirm_open_mode: true} : {}),
       });
-      notify('Stored password cleared', 'success');
+      notify(t('settings.auth.password_cleared'), 'success');
       // Releasing the busy state re-enables the button, so the derived state is
       // projected again afterwards: with nothing stored the action stays in
       // place, disabled. The password field is where the operator goes next.
@@ -8423,8 +8389,8 @@
     const applied = text(state.auth?.username).trim();
     const renamed = username !== applied;
     let problem = '';
-    if (!username && (password || applied)) problem = 'Enter a username.';
-    else if (renamed && !password) problem = 'Enter a new password to change the username.';
+    if (!username && (password || applied)) problem = say('settings.auth.enter_username');
+    else if (renamed && !password) problem = say('settings.auth.rename_needs_password');
     return {username, password, renamed, dirty: renamed || !!password, problem};
   }
 
@@ -8434,19 +8400,19 @@
     if (!button || credentialApply) return;
     const draft = credentialDraft();
     button.disabled = !draft.dirty || !!draft.problem;
-    button.dataset.tooltip = draft.dirty && draft.problem ? draft.problem : 'Apply username and password';
+    sayAttr(button, 'data-tooltip', draft.dirty && draft.problem ? draft.problem : say('settings.auth.apply_credentials'));
   }
 
   async function applyCredentials(button) {
     const draft = credentialDraft();
     if (credentialApply || !draft.dirty) return;
     if (draft.problem) {
-      notify(draft.problem, 'error');
+      notify(String(draft.problem), 'error');
       return;
     }
     const payload = {auth_password: draft.password};
     if (draft.renamed) payload.auth_username = draft.username;
-    setBusy(button, true, 'Applying…');
+    setBusy(button, true, say('settings.auth.applying'));
     credentialApply = writeAuthentication(payload);
     try {
       await credentialApply;
@@ -8456,7 +8422,7 @@
       if (passwordField && passwordField.value === draft.password) passwordField.value = '';
       const usernameField = fieldFor('auth_username');
       if (usernameField && text(usernameField.value).trim() === draft.username) usernameField.value = text(state.auth?.username);
-      notify('Username and password applied', 'success');
+      notify(t('settings.auth.credentials_applied'), 'success');
     } catch (error) {
       // Nothing was changed by the server; the draft stays for correction.
       notify(error.message, 'error');
@@ -8469,18 +8435,18 @@
 
   async function clearOidcSecret(button) {
     const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Clear stored client secret?',
-      message: 'The stored OIDC client secret will be removed. Sign-in through this provider will fail until a new secret is entered, unless the client is public.',
-      confirmLabel: 'Clear Stored Secret',
+      title: say('settings.oidc.clear_secret_title'),
+      message: say('settings.oidc.clear_secret_message'),
+      confirmLabel: say('settings.oidc.clear_secret_accept'),
       tone: 'danger',
     });
     if (!confirmed) return;
 
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
+    setBusy(button, true, say('settings.key.clearing'));
     try {
       await writeAuthentication({clear_oidc_client_secret: true});
-      notify('Stored client secret cleared', 'success');
+      notify(t('settings.oidc.secret_cleared'), 'success');
       setBusy(button, false);
       paintAuthDerived();
       focusSurvivor(`#${fieldId('oidc_client_secret')}`);
@@ -8530,10 +8496,13 @@
     } catch (_) {}
 
     const ok = !!result?.ok;
+    // A key the verification window names is said from the catalog; its own
+    // words are the fallback.
+    const named = typeof result?.message_key === 'string' && window.DPI18n.has(result.message_key) ? t(result.message_key) : '';
     notify(
-      result?.message || (ok
-        ? 'OIDC verification successful — provider sign-in and authorization completed.'
-        : 'OIDC verification failed — provider sign-in or authorization did not complete successfully.'),
+      named || result?.message || (ok
+        ? t('settings.oidc.verify_ok')
+        : t('settings.oidc.verify_failed')),
       ok ? 'success' : 'error'
     );
   }
@@ -8568,7 +8537,7 @@
       window.setTimeout(() => {
         if (!oidc.completed) finishOidc({
           ok: false,
-          message: 'OIDC verification did not complete — the verification window was closed.',
+          message: t('settings.oidc.window_closed'),
         });
       }, 250);
     }, 300);
@@ -8577,7 +8546,8 @@
   function renderOidcWaiting(popup) {
     try {
       popup.document.open();
-      popup.document.write('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Testing OIDC · DebridPulse</title></head><body style="font-family:system-ui;background:#090812;color:#f4f1ff;display:grid;place-items:center;min-height:100vh;margin:0"><main style="text-align:center"><h1 style="font-size:20px">Testing OpenID Connect…</h1><p>Waiting for the provider sign-in flow.</p></main></body></html>');
+      // Another document, written once: its words in the shown language, as text.
+      popup.document.write(`<!doctype html><html lang="${html(window.DPI18n.locale())}"><head><meta charset="utf-8"><title>${html(t('settings.oidc.waiting_title'))}</title></head><body style="font-family:system-ui;background:#090812;color:#f4f1ff;display:grid;place-items:center;min-height:100vh;margin:0"><main style="text-align:center"><h1 style="font-size:20px">${html(t('settings.oidc.waiting_heading'))}</h1><p>${html(t('settings.oidc.waiting_detail'))}</p></main></body></html>`);
       popup.document.close();
     } catch (_) {}
   }
@@ -8595,13 +8565,13 @@
     const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || screen.height) - height) / 2));
     const popup = window.open('', 'debridpulse-oidc-verification', `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
     if (!popup) {
-      notify('OIDC verification could not start because the verification window was blocked by the browser.', 'error');
+      notify(t('settings.oidc.popup_blocked'), 'error');
       return;
     }
 
     renderOidcWaiting(popup);
     armOidc(popup, button);
-    setBusy(button, true, 'Testing…');
+    setBusy(button, true, say('settings.testing'));
     // The window is opened synchronously from the click so the browser does
     // not block it; only then is every pending field commit flushed.
     await window.DPSettingsPersistence.settle(root());
@@ -8629,8 +8599,8 @@
 
     try {
       const result = await request('POST', '/auth/oidc/verify-config', verification, 10000);
-      if (!result.authorization_url) throw new Error('OIDC verification did not return an authorization URL');
-      if (popup.closed) throw new Error('OIDC verification window was closed before provider sign-in began');
+      if (!result.authorization_url) throw new Error(t('settings.oidc.no_authorization_url'));
+      if (popup.closed) throw new Error(t('settings.oidc.closed_early'));
       popup.location.replace(result.authorization_url);
     } catch (error) {
       oidc.completed = true;
@@ -8640,9 +8610,9 @@
   }
 
   async function logoutSession(button) {
-    setBusy(button, true, 'Logging out…');
+    setBusy(button, true, say('settings.auth.logging_out'));
     try {
-      if (!window.debridPulseAuth) throw new Error('No browser application session is available');
+      if (!window.debridPulseAuth) throw new Error(t('settings.auth.no_session'));
       await window.debridPulseAuth.logout();
     } catch (error) {
       notify(error.message, 'error');
@@ -8722,13 +8692,13 @@
       const view = root();
       if (!view) return;
       view.classList.add('dp-settings-clean-view');
-      view.innerHTML = '<div class="dp-settings-loading">Loading Notifications…</div>';
+      view.innerHTML = `<div class="dp-settings-loading"${keyed(say('settings.notifications.loading'))}>${html(t('settings.notifications.loading'))}</div>`;
       let own;
       try {
         own = await request('GET', OWN_NOTIFICATIONS, undefined, 10000);
       } catch (error) {
         if (generation !== loadGeneration || !settingsActive()) return;
-        view.innerHTML = `<div class="dp-settings-load-error"><b>Notifications could not be loaded.</b><span>${html(error.message)}</span></div>`;
+        view.innerHTML = `<div class="dp-settings-load-error"><b${keyed(say('settings.notifications.load_failed'))}>${html(t('settings.notifications.load_failed'))}</b><span>${html(error.message)}</span></div>`;
         notify(error.message, 'error');
         return;
       }
@@ -8750,13 +8720,13 @@
     if (!view || !state.settings) return;
     view.classList.add('dp-settings-clean-view');
     view.innerHTML = `
-      <section class="card dp-settings-master-card dp-settings-master-card--own" aria-label="Notifications">
+      <section class="card dp-settings-master-card dp-settings-master-card--own"${keyed(null, {'aria-label': say('settings.tab.notifications')})}>
         <div class="card-header dp-settings-master-header">
           <div class="dp-settings-header-copy">
             ${familyIcon('notifications', 'bell-ring')}
             <div>
-              <div class="dp-settings-header-title">The Grapevine</div>
-              <div class="dp-settings-header-subtitle">Good news travels fast. Download news travels faster.</div>
+              <div class="dp-settings-header-title"${keyed(say('settings.own_notifications.title'))}>${html(t('settings.own_notifications.title'))}</div>
+              <div class="dp-settings-header-subtitle"${keyed(say('settings.own_notifications.subtitle'))}>${html(t('settings.own_notifications.subtitle'))}</div>
             </div>
           </div>
         </div>
@@ -8833,7 +8803,8 @@
    * said every keyed word in place (labels, hints, names, open dialogs) --
    * values, focus, open disclosures and tests in flight untouched. Here, what
    * it cannot: the busy labels, the account lines worded by the premium
-   * account owner, the subtitle languages Intl names, and the fitters, which
+   * account owner, the subtitle languages Intl names, the Authentication
+   * Status values (their painter's text), and the fitters, which
    * measure words. Nothing is read from the server and nothing is written. */
   document.addEventListener('debridpulse:locale-changed', () => {
     const view = root();
@@ -8850,6 +8821,8 @@
       if (line) line.textContent = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
     }
     relabelSubtitleLanguages();
+    // The Authentication Status values, which its painter writes as text.
+    if (state.auth && view.querySelector('.dp-settings-auth-kpi')) paintAuthKpis(state.auth);
     view.querySelectorAll('.dp-settings-help-chip').forEach(chip => { chip.dataset.tooltip = chip.getAttribute('aria-label') || ''; });
     fitPage();
   });

@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from i18n_node import english
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -67,7 +69,7 @@ def test_log_out_lives_inside_the_sessions_field_as_a_flex_sibling_of_the_count(
     css = source(STYLE)
 
     session = js[js.index("<div class=\"dp-settings-auth-session-row dp-settings-island\""):js.index("`, {className: 'dp-settings-auth-status-card',")]
-    assert "inlineField('', 'Active Browser Sessions'" in session
+    assert "inlineField('', say('settings.auth.sessions')" in session and english("settings.auth.sessions") == "Active Browser Sessions"
     assert "className: 'dp-settings-auth-session-count'" in session
     assert 'data-action="logout-session"' in session
     assert "btn-ghost" in session

@@ -10800,6 +10800,3782 @@
    "context": "Downloads › WebDAV tuning: explanatory hint beside a control.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
+  },
+  "backups.add": {
+   "category": "action",
+   "context": "Data & Maintenance › Backups manager dialog: button label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.add_failed": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups manager dialog: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.added": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.api_unavailable": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups manager dialog: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.column.actions": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.column.backup": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.column.contents": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.column.selected": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.column.size": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.empty": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups manager dialog: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.instruction": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.package_type": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.remove": {
+   "category": "action",
+   "context": "Data & Maintenance › Backups manager dialog: button label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.remove_accept": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.remove_failed": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups manager dialog: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.remove_message": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning",
+   "args": {
+    "when": "string: a date and time"
+   }
+  },
+  "backups.remove_title": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.removed": {
+   "category": "toast",
+   "context": "Data & Maintenance › Backups manager dialog: result notification.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.restore": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.restore_before": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_failed": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_label": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_replaces": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_step_1": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_step_2": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_step_3": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_title": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restore_unchanged": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Backups manager dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "critical-warning"
+  },
+  "backups.restored": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.restoring": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.restoring_paused": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.restoring_restart": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.save": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.save_failed": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups manager dialog: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.saved": {
+   "category": "toast",
+   "context": "Data & Maintenance › Backups manager dialog: result notification.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "backups.select": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal",
+   "args": {
+    "when": "string: a date and time"
+   }
+  },
+  "backups.selected": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal",
+   "args": {
+    "when": "string: a date and time"
+   }
+  },
+  "backups.selected_contents": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal",
+   "args": {
+    "contents": "string: the backup contents"
+   }
+  },
+  "backups.selected_id": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups manager dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal",
+   "args": {
+    "id": "string: an identifier"
+   }
+  },
+  "backups.title": {
+   "category": "card-title",
+   "context": "Data & Maintenance › Backups manager dialog: card or group title.",
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "criticality": "normal"
+  },
+  "settings.account.activity": {
+   "category": "label",
+   "context": "Users & Access › Account Details: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.actual_name": {
+   "category": "label",
+   "context": "Users & Access › Account Details: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.details_title": {
+   "category": "modal-title",
+   "context": "Users & Access › Account Details: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.account.email": {
+   "category": "label",
+   "context": "Users & Access › Account Details: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.no_email": {
+   "category": "label",
+   "context": "Users & Access › Account Details: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.not_set": {
+   "category": "label",
+   "context": "Users & Access › Account Details: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.already_withdrawn": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.column.download": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.column.request": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.column.requested": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.column.status": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.none": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.outstanding": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.recent": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.transfer": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "id": "string: an identifier"
+   }
+  },
+  "settings.activity.withdraw": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.withdraw_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › Account Details › Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.activity.withdraw_message": {
+   "category": "critical-warning",
+   "context": "Users & Access › Account Details › Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.activity.withdraw_refused": {
+   "category": "error",
+   "context": "Users & Access › Account Details › Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.activity.withdraw_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › Account Details › Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.activity.withdraw_unanswered": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.withdrawing": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.withdrawn": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.activity.withdrawn_done": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.apply": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.apply_credentials": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.applying": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.clear": {
+   "category": "action",
+   "context": "Authentication › Username & Password and session: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.clear_password": {
+   "category": "tooltip/aria",
+   "context": "Authentication › Username & Password and session: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.clear_password_accept": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.clear_password_message": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.clear_password_open": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.clear_password_title": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.credentials_applied": {
+   "category": "toast",
+   "context": "Authentication › Username & Password and session: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.credentials_copy": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.credentials_enable": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.credentials_title": {
+   "category": "modal-title",
+   "context": "Authentication › Username & Password and session: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.enter_username": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.config_error": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.config_error_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.configured": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.enabled": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.both": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.none": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.oidc": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.oidc_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.password": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode.password_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.mode_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.oidc": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.oidc_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.password": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.password_short": {
+   "category": "hint",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.runtime_unavailable": {
+   "category": "error",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): refusal or failure wording. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.runtime_unavailable_short": {
+   "category": "error",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): refusal or failure wording. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.unconfigured": {
+   "category": "status-chip",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): short status. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.untested": {
+   "category": "label",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.kpi.verified": {
+   "category": "status-chip",
+   "context": "Authentication › Authentication Status figures (shorter forms at narrow widths): short status. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.logging_out": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.logout": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.no_session": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.open_mode_accept": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.open_mode_message": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.open_mode_title": {
+   "category": "critical-warning",
+   "context": "Authentication › Username & Password and session: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.auth.password": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.password_cleared": {
+   "category": "toast",
+   "context": "Authentication › Username & Password and session: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.password_hint": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.password_set": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.password_unset": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.rename_needs_password": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.session_group": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.session_lifetime": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.session_lifetime_hint": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.session_lifetime_label": {
+   "category": "tooltip/aria",
+   "context": "Authentication › Username & Password and session: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.sessions": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.sessions_hint": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.status_copy": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.status_title": {
+   "category": "modal-title",
+   "context": "Authentication › Username & Password and session: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.unavailable": {
+   "category": "error",
+   "context": "Authentication › Username & Password and session: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.unavailable_title": {
+   "category": "modal-title",
+   "context": "Authentication › Username & Password and session: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.username": {
+   "category": "label",
+   "context": "Authentication › Username & Password and session: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.auth.username_hint": {
+   "category": "hint",
+   "context": "Authentication › Username & Password and session: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.clear": {
+   "category": "action",
+   "context": "Notifications › Discord avatar: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.clear_accept": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord avatar: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.avatar.clear_label": {
+   "category": "tooltip/aria",
+   "context": "Notifications › Discord avatar: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.clear_message": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord avatar: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.avatar.clear_title": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord avatar: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.avatar.cleared": {
+   "category": "toast",
+   "context": "Notifications › Discord avatar: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.preview": {
+   "category": "label",
+   "context": "Notifications › Discord avatar: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.upload": {
+   "category": "label",
+   "context": "Notifications › Discord avatar: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.upload_label": {
+   "category": "tooltip/aria",
+   "context": "Notifications › Discord avatar: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.avatar.uploaded": {
+   "category": "label",
+   "context": "Notifications › Discord avatar: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.additional": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.additional_short": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.completed": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.copy": {
+   "category": "action",
+   "context": "Data & Maintenance › Backups & Retention: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.enable": {
+   "category": "action",
+   "context": "Data & Maintenance › Backups & Retention: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.folder": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.folder_browse": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.folder_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.interval": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.interval_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.keep_days": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.keep_days_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.management": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.max_retained": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.max_retained_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.menu": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.run": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.running": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.skipped": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.snapshot_interval": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.snapshot_interval_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.snapshot_keep_days": {
+   "category": "label",
+   "context": "Data & Maintenance › Backups & Retention: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.snapshot_keep_days_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.title": {
+   "category": "card-title",
+   "context": "Data & Maintenance › Backups & Retention: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.backups.title_short": {
+   "category": "hint",
+   "context": "Data & Maintenance › Backups & Retention: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.common.back": {
+   "category": "label",
+   "context": "Settings dialogs: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.common.done": {
+   "category": "label",
+   "context": "Settings dialogs: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.copy": {
+   "category": "action",
+   "context": "Users & Access › Deployment Type: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.current": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.server": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.server_confirm_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.server_confirm_message": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.server_confirm_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.server_hint": {
+   "category": "hint",
+   "context": "Users & Access › Deployment Type: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.server_hint_short": {
+   "category": "hint",
+   "context": "Users & Access › Deployment Type: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.server_hint_shortest": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.standalone": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.standalone_confirm_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.standalone_confirm_message": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.standalone_confirm_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.deployment.standalone_hint": {
+   "category": "hint",
+   "context": "Users & Access › Deployment Type: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.standalone_hint_short": {
+   "category": "hint",
+   "context": "Users & Access › Deployment Type: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.standalone_hint_shortest": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.switch_to": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "type": "string: a deployment type name"
+   }
+  },
+  "settings.deployment.switching": {
+   "category": "label",
+   "context": "Users & Access › Deployment Type: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.deployment.title": {
+   "category": "card-title",
+   "context": "Users & Access › Deployment Type: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.email.self_entered": {
+   "category": "label",
+   "context": "Users & Access › Account Details › email verification: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.email.unstated": {
+   "category": "label",
+   "context": "Users & Access › Account Details › email verification: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.email.unverified": {
+   "category": "status-chip",
+   "context": "Users & Access › Account Details › email verification: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.email.verified": {
+   "category": "status-chip",
+   "context": "Users & Access › Account Details › email verification: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.copy": {
+   "category": "action",
+   "context": "Data & Maintenance › Event Logging: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.count": {
+   "category": "label",
+   "context": "Data & Maintenance › Event Logging: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.events.page_size": {
+   "category": "label",
+   "context": "Data & Maintenance › Event Logging: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.page_size_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Event Logging: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.recorded": {
+   "category": "label",
+   "context": "Data & Maintenance › Event Logging: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.recorded_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Event Logging: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.events.title": {
+   "category": "card-title",
+   "context": "Data & Maintenance › Event Logging: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.impact.completed": {
+   "category": "label",
+   "context": "Users & Access › account impact confirmation: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.impact.delete_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.delete_lead": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.delete_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.impact.disable_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.disable_lead": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.disable_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.impact.note": {
+   "category": "label",
+   "context": "Users & Access › account impact confirmation: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.impact.outstanding": {
+   "category": "label",
+   "context": "Users & Access › account impact confirmation: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.impact.qualifier": {
+   "category": "label",
+   "context": "Users & Access › account impact confirmation: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.impact.remove_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.remove_lead": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.impact.remove_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › account impact confirmation: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.impact.shared": {
+   "category": "label",
+   "context": "Users & Access › account impact confirmation: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.add": {
+   "category": "action",
+   "context": "Users & Access › Integration Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.add_intro": {
+   "category": "label",
+   "context": "Users & Access › Integration Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.copy": {
+   "category": "action",
+   "context": "Users & Access › Integration Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.created": {
+   "category": "label",
+   "context": "Users & Access › Integration Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.field.name": {
+   "category": "label",
+   "context": "Users & Access › Integration Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.none": {
+   "category": "label",
+   "context": "Users & Access › Integration Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.integrations.title": {
+   "category": "card-title",
+   "context": "Users & Access › Integration Accounts: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.absorbed": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.accounts": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.confirm": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.consequence_1": {
+   "category": "critical-warning",
+   "context": "Users & Access › Merge Accounts dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.merge.consequence_2": {
+   "category": "critical-warning",
+   "context": "Users & Access › Merge Accounts dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.merge.consequence_3": {
+   "category": "critical-warning",
+   "context": "Users & Access › Merge Accounts dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.merge.consequence_4": {
+   "category": "critical-warning",
+   "context": "Users & Access › Merge Accounts dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.merge.consequence_5": {
+   "category": "critical-warning",
+   "context": "Users & Access › Merge Accounts dialog: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.merge.done": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.refused": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.merge.select_intro": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.survivor": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.survivor_intro": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.title": {
+   "category": "card-title",
+   "context": "Users & Access › Merge Accounts dialog: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.merge.unanswered": {
+   "category": "label",
+   "context": "Users & Access › Merge Accounts dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.avatar_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.avatar_hint_own": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.avatar_url": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.display_name": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.display_name_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_added": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_added_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_error": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_error_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_extract": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_extract_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_finished": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_finished_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_update": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.event_update_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.events": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.events_short": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.load_failed": {
+   "category": "error",
+   "context": "Notifications tab: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.loading": {
+   "category": "status-chip",
+   "context": "Notifications tab: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.test_failed": {
+   "category": "error",
+   "context": "Notifications tab: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.notifications.test_sent": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.update_interval": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.update_interval_hint": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.webhook_copy": {
+   "category": "hint",
+   "context": "Notifications tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.webhook_copy_own": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.webhook_enable": {
+   "category": "label",
+   "context": "Notifications tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.notifications.webhook_title": {
+   "category": "modal-title",
+   "context": "Notifications tab: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.access": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.access_copy": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.allow_all": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.allow_all_short": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.callback": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.callback_copied": {
+   "category": "toast",
+   "context": "Authentication › OpenID Connect: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.callback_copy_manually": {
+   "category": "toast",
+   "context": "Authentication › OpenID Connect: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.callback_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.callback_placeholder": {
+   "category": "placeholder",
+   "context": "Authentication › OpenID Connect: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.clear_secret": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.clear_secret_accept": {
+   "category": "critical-warning",
+   "context": "Authentication › OpenID Connect: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.oidc.clear_secret_message": {
+   "category": "critical-warning",
+   "context": "Authentication › OpenID Connect: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.oidc.clear_secret_title": {
+   "category": "critical-warning",
+   "context": "Authentication › OpenID Connect: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.oidc.client_id": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.client_id_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.client_secret": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.client_secret_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.closed_early": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.complete_closing": {
+   "category": "label",
+   "context": "OIDC verification window (closes itself): field or option label.",
+   "owner": "frontend/static/oidc-verify-complete.html",
+   "criticality": "normal"
+  },
+  "settings.oidc.complete_heading": {
+   "category": "label",
+   "context": "OIDC verification window (closes itself): field or option label.",
+   "owner": "frontend/static/oidc-verify-complete.html",
+   "criticality": "normal"
+  },
+  "settings.oidc.complete_status": {
+   "category": "label",
+   "context": "OIDC verification window (closes itself): field or option label.",
+   "owner": "frontend/static/oidc-verify-complete.html",
+   "criticality": "normal"
+  },
+  "settings.oidc.complete_title": {
+   "category": "modal-title",
+   "context": "OIDC verification window (closes itself): dialog title.",
+   "owner": "frontend/static/oidc-verify-complete.html",
+   "criticality": "normal"
+  },
+  "settings.oidc.copy": {
+   "category": "action",
+   "context": "Authentication › OpenID Connect: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.copy_callback": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.copy_callback_label": {
+   "category": "tooltip/aria",
+   "context": "Authentication › OpenID Connect: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.default_role": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.default_role_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.emails": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.emails_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.enable": {
+   "category": "action",
+   "context": "Authentication › OpenID Connect: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.group_claim": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.group_claim_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.group_credentials": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.group_identity": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.group_protocol": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.groups": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.groups_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.issuer": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.issuer_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.no_authorization_url": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.popup_blocked": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.provider_name": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.provider_name_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.public_base": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.public_base_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.public_base_hint_managed": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.scopes": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.scopes_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.secret_cleared": {
+   "category": "toast",
+   "context": "Authentication › OpenID Connect: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.secret_optional": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.secret_stored": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.subjects": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.subjects_hint": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.title": {
+   "category": "card-title",
+   "context": "Authentication › OpenID Connect: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.title_short": {
+   "category": "hint",
+   "context": "Authentication › OpenID Connect: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.verify_failed": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.verify_ok": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/oidc-verify-complete.html",
+   "criticality": "normal"
+  },
+  "settings.oidc.waiting_detail": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.waiting_heading": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.waiting_title": {
+   "category": "modal-title",
+   "context": "Authentication › OpenID Connect: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.oidc.window_closed": {
+   "category": "label",
+   "context": "Authentication › OpenID Connect: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.own_notifications.subtitle": {
+   "category": "page-title",
+   "context": "Notifications (a standard User’s own) page header: page heading.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.own_notifications.title": {
+   "category": "page-title",
+   "context": "Notifications (a standard User’s own) page header: page heading.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.back": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.categories_hint": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.clients_hint": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.column.categories": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.column.paths": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.column.profile": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.column.retention": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.column.tokens": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.copy": {
+   "category": "action",
+   "context": "Users & Access › Integration Delivery Profiles: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.count_failed": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.profiles.count_failed_reason": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.create": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.create_short": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.create_shortest": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.create_token": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.create_token_accept": {
+   "category": "action",
+   "context": "Users & Access › Integration Delivery Profiles: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.created": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.custom_category": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.delete": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.delete_named": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "id": "string: an identifier"
+   }
+  },
+  "settings.profiles.delete_only": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.profiles.delete_refused": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.profiles.delete_retire": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.profiles.delete_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.profiles.delete_unanswered": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.profiles.delete_unknown": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.profiles.deleted": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.deleted_elsewhere": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.edit_title": {
+   "category": "modal-title",
+   "context": "Users & Access › Integration Delivery Profiles: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "id": "string: an identifier"
+   }
+  },
+  "settings.profiles.empty": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.field.clients": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.field.id": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.field.import_root": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.field.kinds": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.field.local_root": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.id_hint_create": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.id_hint_edit": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.import_root_hint": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.categories": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.clash": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "category": "string: a category"
+   }
+  },
+  "settings.profiles.invalid.clients": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.exists": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "id": "string: an identifier"
+   }
+  },
+  "settings.profiles.invalid.id": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.import_root": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.kinds": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.invalid.local_root": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "folder": "string: a folder path"
+   }
+  },
+  "settings.profiles.invalid.retention": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.jobs": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.profiles.jobs_arrived": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "jobs": "string: a number of external jobs, said"
+   }
+  },
+  "settings.profiles.kind.links": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.kind.magnet": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.kind.nzb": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.kind.nzb_link": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.kind.torrent": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.load_failed": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.loading": {
+   "category": "status-chip",
+   "context": "Users & Access › Integration Delivery Profiles: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.local_root_hint": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.new_account": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.no_categories": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.no_token_client": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.no_tokens": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.none": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.not_saved": {
+   "category": "toast",
+   "context": "Users & Access › Integration Delivery Profiles: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.path_summary": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.reload": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.reloaded": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.remove_category": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.profiles.retention_hint": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.retention_hours": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "hours": "number"
+   }
+  },
+  "settings.profiles.retention_label": {
+   "category": "tooltip/aria",
+   "context": "Users & Access › Integration Delivery Profiles: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.retire_message": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration Delivery Profiles: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.profiles.retired": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "done": "string: the outcome sentence",
+    "jobs": "string: a number of external jobs, said"
+   }
+  },
+  "settings.profiles.retired_pending": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "done": "string: the outcome sentence",
+    "jobs": "string: a number of external jobs, said"
+   }
+  },
+  "settings.profiles.save": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.save_retire": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.save_title": {
+   "category": "modal-title",
+   "context": "Users & Access › Integration Delivery Profiles: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.saved": {
+   "category": "toast",
+   "context": "Users & Access › Integration Delivery Profiles: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.selected_categories": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.stale": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.title": {
+   "category": "card-title",
+   "context": "Users & Access › Integration Delivery Profiles: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.title_short": {
+   "category": "hint",
+   "context": "Users & Access › Integration Delivery Profiles: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_account": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_account_missing": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_failed": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_intro": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_label_missing": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.token_new_account": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.unreadable": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.profiles.unreadable_kept": {
+   "category": "label",
+   "context": "Users & Access › Integration Delivery Profiles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.copy": {
+   "category": "action",
+   "context": "Notifications › Statistics reports: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.copy_own": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.enable": {
+   "category": "action",
+   "context": "Notifications › Statistics reports: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.failed": {
+   "category": "error",
+   "context": "Notifications › Statistics reports: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.reports.interval": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.interval_hint": {
+   "category": "hint",
+   "context": "Notifications › Statistics reports: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.sending": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.sent": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "hours": "number"
+   }
+  },
+  "settings.reports.title": {
+   "category": "card-title",
+   "context": "Notifications › Statistics reports: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window_day": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window_hint": {
+   "category": "hint",
+   "context": "Notifications › Statistics reports: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window_month": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window_week": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reports.window_year": {
+   "category": "label",
+   "context": "Notifications › Statistics reports: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.action": {
+   "category": "label",
+   "context": "Data & Maintenance › Database Reset Controls: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.allow": {
+   "category": "label",
+   "context": "Data & Maintenance › Database Reset Controls: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.allow_hint": {
+   "category": "hint",
+   "context": "Data & Maintenance › Database Reset Controls: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.caution": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Database Reset Controls: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.reset.caution_detail": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Database Reset Controls: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.reset.confirm_accept": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Database Reset Controls: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.reset.confirm_message": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Database Reset Controls: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.reset.confirm_title": {
+   "category": "critical-warning",
+   "context": "Data & Maintenance › Database Reset Controls: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.reset.copy": {
+   "category": "action",
+   "context": "Data & Maintenance › Database Reset Controls: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.done": {
+   "category": "label",
+   "context": "Data & Maintenance › Database Reset Controls: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.locked": {
+   "category": "label",
+   "context": "Data & Maintenance › Database Reset Controls: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.title": {
+   "category": "card-title",
+   "context": "Data & Maintenance › Database Reset Controls: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.reset.wiping": {
+   "category": "label",
+   "context": "Data & Maintenance › Database Reset Controls: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.admin": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.admin_description": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.integration": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.readonly": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.readonly_description": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.user": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.role.user_description": {
+   "category": "label",
+   "context": "Users & Access › account roles: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.status.configured": {
+   "category": "status-chip",
+   "context": "Settings card header status: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.active": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.column.issued": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.column.status": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.column.token": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.copied": {
+   "category": "toast",
+   "context": "Users & Access › Integration account API tokens: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.copy": {
+   "category": "action",
+   "context": "Users & Access › Integration account API tokens: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.copy_manually": {
+   "category": "toast",
+   "context": "Users & Access › Integration account API tokens: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.copy_now": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.copy_title": {
+   "category": "modal-title",
+   "context": "Users & Access › Integration account API tokens: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.disclosure": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.field.label": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.issue": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.issue_intro": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.issue_title": {
+   "category": "modal-title",
+   "context": "Users & Access › Integration account API tokens: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.tokens.manage": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.new_token": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.none": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.revoke": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.revoke_accept": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration account API tokens: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.tokens.revoke_message": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration account API tokens: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.tokens.revoke_named": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.tokens.revoke_title": {
+   "category": "critical-warning",
+   "context": "Users & Access › Integration account API tokens: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.tokens.revoked": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tokens.unreadable": {
+   "category": "label",
+   "context": "Users & Access › Integration account API tokens: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.unit.backups": {
+   "category": "label",
+   "context": "Settings › a field’s unit: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.unit.days": {
+   "category": "label",
+   "context": "Settings › a field’s unit: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.unit.hours": {
+   "category": "label",
+   "context": "Settings › a field’s unit: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.unit.minutes": {
+   "category": "label",
+   "context": "Settings › a field’s unit: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.account_enabled": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.add": {
+   "category": "action",
+   "context": "Users & Access › User Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.add_local": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.add_short": {
+   "category": "hint",
+   "context": "Users & Access › User Accounts: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.column.account": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.column.actions": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.column.role": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.column.signin": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.column.status": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.copy": {
+   "category": "action",
+   "context": "Users & Access › User Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.create": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.created": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.default_admin_lead": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.default_admin_rest": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.default_admin_short": {
+   "category": "hint",
+   "context": "Users & Access › User Accounts: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.default_admin_shortest": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.delete": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.details": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.disable": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.disable_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.disable_unknown": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.disabled": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.duplicate_shared": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "names": "string: comma-separated account names",
+    "email": "string: an email address"
+   }
+  },
+  "settings.users.duplicates": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.duplicates_note": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.confirm_password": {
+   "category": "hint",
+   "context": "Users & Access › Edit User dialog: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.keep_no_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.keep_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.new_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.password_note": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.reset_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.role_heading": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.role_note": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.set_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.stale": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.username_note": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit.username_note_password": {
+   "category": "label",
+   "context": "Users & Access › Edit User dialog: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.edit_title": {
+   "category": "modal-title",
+   "context": "Users & Access › User Accounts: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.users.edit_username": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.enable": {
+   "category": "action",
+   "context": "Users & Access › User Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.enable_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.enable_unknown": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.enabled": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.enabled_done": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.field.display_name": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.field.password": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.field.role": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.field.username": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.gone": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.gone_reason": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.impact_unreadable": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.load_failed": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.loading": {
+   "category": "status-chip",
+   "context": "Users & Access › User Accounts: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.manage": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.merge": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.no_response": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.none": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password.incomplete": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password.match": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password.mismatch": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password_not_sent": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.password_saved": {
+   "category": "toast",
+   "context": "Users & Access › User Accounts: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.password_unanswered": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.remove": {
+   "category": "action",
+   "context": "Users & Access › User Accounts: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.remove_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.remove_unknown": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.rename_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.rename_unchanged": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.rename_unknown": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.renamed": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.users.renamed_signed_out": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.users.review_merge": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.role_changed": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "role": "string: a role name"
+   }
+  },
+  "settings.users.role_refused": {
+   "category": "error",
+   "context": "Users & Access › User Accounts: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.users.role_unchanged": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.role_unknown": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.roles_help": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.signin.none": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.signin.oidc": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.signin.oidc_count": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.users.signin.password": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.signin.password_named": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "username": "string: the account username"
+   }
+  },
+  "settings.users.still_disabled": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.title": {
+   "category": "card-title",
+   "context": "Users & Access › User Accounts: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.unanswered": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.unnamed": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.username_draft": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "wanted": "string: the chosen username",
+    "applied": "string: the applied username"
+   }
+  },
+  "settings.users.username_not_sent": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.users.you": {
+   "category": "label",
+   "context": "Users & Access › User Accounts: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.validation.invalid": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal"
+  },
+  "settings.validation.max": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name",
+    "max": "number"
+   }
+  },
+  "settings.validation.min": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name",
+    "min": "number"
+   }
+  },
+  "settings.validation.not_saved": {
+   "category": "toast",
+   "context": "Settings › a refused field value ({label} is the field’s name): result notification.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal"
+  },
+  "settings.validation.number": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name"
+   }
+  },
+  "settings.validation.required": {
+   "category": "error",
+   "context": "Settings › a refused field value ({label} is the field’s name): refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name"
+   }
+  },
+  "settings.validation.requirement": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name",
+    "requirement": "string: the server's own requirement"
+   }
+  },
+  "settings.validation.smaller": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name"
+   }
+  },
+  "settings.validation.this_value": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal"
+  },
+  "settings.validation.whole": {
+   "category": "label",
+   "context": "Settings › a refused field value ({label} is the field’s name): field or option label.",
+   "owner": "frontend/static/ui-settings-persistence.js",
+   "criticality": "normal",
+   "args": {
+    "label": "string: the field name"
+   }
+  },
+  "settings.webhook.clear": {
+   "category": "action",
+   "context": "Notifications › Discord webhooks: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.clear_accept": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.cleared": {
+   "category": "toast",
+   "context": "Notifications › Discord webhooks: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.webhook.configured_placeholder": {
+   "category": "placeholder",
+   "context": "Notifications › Discord webhooks: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.webhook.discord_webhook_added.clear_label": {
+   "category": "tooltip/aria",
+   "context": "Notifications › Discord webhooks: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_added.clear_message": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.discord_webhook_added.clear_title": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.discord_webhook_added.hint": {
+   "category": "hint",
+   "context": "Notifications › Discord webhooks: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_added.label": {
+   "category": "label",
+   "context": "Notifications › Discord webhooks: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_added.placeholder": {
+   "category": "placeholder",
+   "context": "Notifications › Discord webhooks: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_url.clear_label": {
+   "category": "tooltip/aria",
+   "context": "Notifications › Discord webhooks: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_url.clear_message": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.discord_webhook_url.clear_title": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.discord_webhook_url.hint": {
+   "category": "hint",
+   "context": "Notifications › Discord webhooks: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_url.label": {
+   "category": "label",
+   "context": "Notifications › Discord webhooks: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.discord_webhook_url.placeholder": {
+   "category": "placeholder",
+   "context": "Notifications › Discord webhooks: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.stats_report_webhook_url.clear_label": {
+   "category": "tooltip/aria",
+   "context": "Notifications › Discord webhooks: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.stats_report_webhook_url.clear_message": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.stats_report_webhook_url.clear_title": {
+   "category": "critical-warning",
+   "context": "Notifications › Discord webhooks: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.webhook.stats_report_webhook_url.hint": {
+   "category": "hint",
+   "context": "Notifications › Discord webhooks: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.stats_report_webhook_url.label": {
+   "category": "label",
+   "context": "Notifications › Discord webhooks: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webhook.stats_report_webhook_url.placeholder": {
+   "category": "placeholder",
+   "context": "Notifications › Discord webhooks: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.withdrawal.all": {
+   "category": "label",
+   "context": "Users & Access › outcome of disabling or removing an account: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.withdrawal.deleted": {
+   "category": "label",
+   "context": "Users & Access › outcome of disabling or removing an account: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.withdrawal.disabled": {
+   "category": "label",
+   "context": "Users & Access › outcome of disabling or removing an account: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.withdrawal.none": {
+   "category": "label",
+   "context": "Users & Access › outcome of disabling or removing an account: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.withdrawal.removed": {
+   "category": "toast",
+   "context": "Users & Access › outcome of disabling or removing an account: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.withdrawal.some": {
+   "category": "label",
+   "context": "Users & Access › outcome of disabling or removing an account: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count",
+    "stopped": "number"
+   }
   }
  }
 }

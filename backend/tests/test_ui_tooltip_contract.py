@@ -13,17 +13,18 @@ from pathlib import Path
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 
 # Document titles, not tooltips: the shell's own, the OIDC completion page's, and
-# the OIDC test popup's (written by ui-settings-page.js).
+# the OIDC test popup's (written by ui-settings-page.js). 1.0.14: the latter two
+# are said from the catalog (a keyed title; the popup's written in the shown language).
 DOCUMENT_TITLES = {
     ("index.html", "<title>DebridPulse</title>"),
-    ("oidc-verify-complete.html", "<title>OIDC verification · DebridPulse</title>"),
-    ("ui-settings-page.js", "<title>Testing OIDC · DebridPulse</title>"),
+    ("oidc-verify-complete.html", '<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>'),
+    ("ui-settings-page.js", "<title>${html(t('settings.oidc.waiting_title'))}</title>"),
 }
 NATIVE = (
     re.compile(r"""(?<![\w-])title=(?=["'$\\])"""),          # a title attribute in markup or a template
     re.compile(r"""(?<!document)\.title\s*=(?!=)"""),          # element.title = ...
     re.compile(r"""(?:set|remove)Attribute\(\s*['"]title"""),
-    re.compile(r"""<title>[^<]*</title>"""),                    # an SVG (or document) title
+    re.compile(r"""<title(?:\s[^>]*)?>[^<]*</title>"""),          # an SVG (or document) title, with or without attributes
 )
 
 
@@ -40,7 +41,7 @@ def test_no_owner_writes_a_native_title_tooltip() -> None:
                 found.add((path.name, match.group(0)))
     leftovers = {item for item in found if item not in DOCUMENT_TITLES}
     assert leftovers == set(), sorted(leftovers)
-    assert {item for item in found if item[1].startswith("<title>")} == DOCUMENT_TITLES
+    assert {item for item in found if item[1].startswith("<title")} == DOCUMENT_TITLES
 
 
 def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() -> None:

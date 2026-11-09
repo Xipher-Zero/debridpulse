@@ -84,4 +84,8 @@ def says(source: str, words: str) -> bool:
         stem = key.rsplit(".", 1)[0] + "."
         if re.search(rf"""['"`]{re.escape(key)}['"`]""", source) or re.search(rf"""['"`]{re.escape(stem)}\$\{{""", source):
             return True
+        # A key built with a segment in its middle (`settings.webhook.${key}.label`).
+        if any(re.fullmatch(re.sub(r"\\\$\\\{[^`]*?\\\}", r"[\\w.]+", re.escape(built)), key)
+               for built in re.findall(r"`([a-z][\w.]*\$\{[^`]*?\}[\w.]*)`", source)):
+            return True
     return False

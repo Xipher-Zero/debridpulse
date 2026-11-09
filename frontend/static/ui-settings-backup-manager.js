@@ -26,7 +26,8 @@
   'use strict';
 
   const INVENTORY = '/admin/backups';
-  const PACKAGE_TYPE = {description: 'DebridPulse backup', accept: {'application/zip': ['.zip']}};
+  // The native save dialog's file type: its description is said when the dialog is asked for.
+  const packageType = () => ({description: t('backups.package_type'), accept: {'application/zip': ['.zip']}});
   // Presentation only: "the restore this page just asked for succeeded".
   const RESTORED_MARKER = 'dp.backupRestored';
 
@@ -38,8 +39,26 @@
     body: null,
   };
 
+  // The catalog's words (ui-i18n.js). ``say`` is said words that keep their key
+  // (DPSettingsModal names its node with it, so an open dialog is re-said);
+  // ``keyed`` is the same key as markup attributes, for DPI18n.render().
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const say = (key, values) => ({key, values: values || null, toString: () => t(key, values)});
+  function keyed(key, values, attrs = {}) {
+    const parts = key ? [`data-i18n="${html(key)}"`] : [];
+    const pairs = Object.entries(attrs).map(([name, attrKey]) => `${name}:${attrKey}`);
+    Object.entries(attrs).forEach(([name, attrKey]) => parts.push(`${name}="${html(t(attrKey, values))}"`));
+    if (pairs.length) parts.push(`data-i18n-attr="${html(pairs.join(';'))}"`);
+    if (values) parts.push(`data-i18n-values="${html(JSON.stringify(values))}"`);
+    return ` ${parts.join(' ')}`;
+  }
+  // An element's words, keyed.
+  const words = (tag, key, values, extra = '') => `<${tag}${extra}${keyed(key, values)}>${html(t(key, values))}</${tag}>`;
+  // Dates in the shown language (a pseudo locale formats as English).
+  const dateLocale = () => window.DPI18n?.intlLocale?.() || 'en-US';
+
   function request(method, path, body, timeout) {
-    if (typeof api !== 'function') throw new Error('Application API client is unavailable');
+    if (typeof api !== 'function') throw new Error(t('backups.api_unavailable'));
     return api(method, path, body, timeout);
   }
 
@@ -65,8 +84,8 @@
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return String(iso || '');
     const timeZone = timezone();
-    const day = date.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone});
-    const time = date.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZone});
+    const day = date.toLocaleDateString(dateLocale(), {month: 'short', day: 'numeric', year: 'numeric', timeZone});
+    const time = date.toLocaleTimeString(dateLocale(), {hour: 'numeric', minute: '2-digit', timeZone});
     return `${day} · ${time}`;
   }
 
@@ -77,8 +96,8 @@
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return [String(iso || '')];
     const timeZone = timezone();
-    return [date.toLocaleDateString('en-US', {month: 'numeric', day: 'numeric', year: '2-digit', timeZone}),
-      date.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', timeZone})];
+    return [date.toLocaleDateString(dateLocale(), {month: 'numeric', day: 'numeric', year: '2-digit', timeZone}),
+      date.toLocaleTimeString(dateLocale(), {hour: 'numeric', minute: '2-digit', timeZone})];
   }
 
   function size(bytes) {
@@ -103,7 +122,7 @@
         <tr class="dp-backup-row${checked ? ' is-selected' : ''}" data-backup-id="${html(item.id)}">
           <td class="dp-backup-select">
             <input type="checkbox" class="dp-backup-check" data-backup-select="${html(item.id)}"
-                   aria-label="Select backup ${html(full)}" aria-describedby="dp-backup-contents-${index}"
+                   ${keyed('', {when: full}, {'aria-label': 'backups.select'})} aria-describedby="dp-backup-contents-${index}"
                    ${checked ? 'checked' : ''}>
           </td>
           <td class="dp-backup-when"><span class="dp-backup-when-full">${html(full)}</span><span class="dp-backup-when-short"
@@ -111,29 +130,29 @@
           <td class="dp-backup-contents" id="dp-backup-contents-${index}">${html(item.contents)}</td>
           <td class="dp-backup-size">${html(size(item.size_bytes))}</td>
           <td class="dp-backup-row-action">${checked
-            ? `<button class="btn btn-danger btn-sm" type="button" data-backup-remove="${html(item.id)}">Remove</button>`
+            ? words('button', 'backups.remove', null, ` class="btn btn-danger btn-sm" type="button" data-backup-remove="${html(item.id)}"`)
             : ''}</td>
         </tr>`;
     }).join('');
     body.innerHTML = `
-      <p class="dp-modal-message dp-backup-instruction">Select one backup to save, restore, or remove.</p>
+      ${words('p', 'backups.instruction', null, ' class="dp-modal-message dp-backup-instruction"')}
       <div class="dp-backup-table-wrap">
         ${state.inventory.length ? `
-          <table class="dp-backup-table" aria-label="Backups">
+          <table class="dp-backup-table"${keyed('', null, {'aria-label': 'backups.title'})}>
             <thead><tr>
-              <th scope="col" class="dp-backup-select" aria-label="Selected"></th>
-              <th scope="col">Backup</th>
-              <th scope="col" class="dp-backup-contents">Contents</th>
-              <th scope="col">Size</th>
-              <th scope="col" class="dp-backup-row-action" aria-label="Actions"></th>
+              <th scope="col" class="dp-backup-select"${keyed('', null, {'aria-label': 'backups.column.selected'})}></th>
+              ${words('th', 'backups.column.backup', null, ' scope="col"')}
+              ${words('th', 'backups.column.contents', null, ' scope="col" class="dp-backup-contents"')}
+              ${words('th', 'backups.column.size', null, ' scope="col"')}
+              <th scope="col" class="dp-backup-row-action"${keyed('', null, {'aria-label': 'backups.column.actions'})}></th>
             </tr></thead>
             <tbody>${rows}</tbody>
-          </table>` : '<div class="form-hint dp-backup-empty">No backups yet.</div>'}
+          </table>` : words('div', 'backups.empty', null, ' class="form-hint dp-backup-empty"')}
       </div>
       <div class="dp-backup-selection" data-backup-selection aria-live="polite">${selected ? `
-        <div>Selected: ${html(when(selected.created_at))}</div>
-        <div class="dp-backup-selected-contents">Contents: ${html(selected.contents)}</div>
-        <div class="dp-backup-id">Backup ID: ${html(selected.id)}</div>` : ''}</div>`;
+        ${words('div', 'backups.selected', {when: when(selected.created_at)})}
+        ${words('div', 'backups.selected_contents', {contents: String(selected.contents ?? '')}, ' class="dp-backup-selected-contents"')}
+        ${words('div', 'backups.selected_id', {id: String(selected.id)}, ' class="dp-backup-id"')}` : ''}</div>`;
     const dialog = state.dialog;
     if (dialog) {
       dialog.setActionEnabled('add', !state.busy);
@@ -199,9 +218,9 @@
         // while it streams rather than after it has all arrived.
         const result = await request('POST', INVENTORY, file, 600000);
         await load(result.backup && result.backup.id);
-        notify('Backup added', 'success');
+        notify(t('backups.added'), 'success');
       } catch (error) {
-        notify(error.message || 'Backup could not be added.', 'error');
+        notify(error.message || t('backups.add_failed'), 'error');
       }
     });
   }
@@ -225,7 +244,7 @@
       // asked for while the click is still the active user gesture.
       let handle;
       try {
-        handle = await window.showSaveFilePicker({suggestedName: packageName(id), types: [PACKAGE_TYPE]});
+        handle = await window.showSaveFilePicker({suggestedName: packageName(id), types: [packageType()]});
       } catch (error) {
         if (error && error.name === 'AbortError') return;
         handle = null;
@@ -237,9 +256,9 @@
             if (!response.ok || !response.body) throw new Error('save');
             const writable = await handle.createWritable();
             await response.body.pipeTo(writable);
-            notify('Backup saved', 'success');
+            notify(t('backups.saved'), 'success');
           } catch (_) {
-            notify('Backup could not be saved.', 'error');
+            notify(t('backups.save_failed'), 'error');
           }
         });
         return;
@@ -261,26 +280,24 @@
     const dialog = window.DPSettingsModal.open({
       role: 'alertdialog',
       tone: 'success',
-      title: 'Restore Backup?',
-      acceptLabel: 'Restore Backup',
-      cancelLabel: 'Cancel',
+      title: say('backups.restore_title'),
+      acceptLabel: say('backups.restore'),
+      cancelLabel: say('common.cancel'),
       closeControl: true,
       className: 'dp-backup-restore-dialog',
       mount(body) {
         const content = document.createElement('div');
         content.className = 'dp-backup-restore-copy';
         content.innerHTML = `
-          <div><div class="form-label">Restore:</div><div class="dp-backup-restore-target">${html(when(item.created_at))}</div></div>
-          <p class="dp-modal-message">This will replace the current DebridPulse database and configuration with the selected backup.</p>
+          <div>${words('div', 'backups.restore_label', null, ' class="form-label"')}<div class="dp-backup-restore-target" data-backup-when="${html(item.created_at)}">${html(when(item.created_at))}</div></div>
+          ${words('p', 'backups.restore_replaces', null, ' class="dp-modal-message"')}
           <div>
-            <p class="dp-modal-message">Before restore begins:</p>
+            ${words('p', 'backups.restore_before', null, ' class="dp-modal-message"')}
             <ul class="dp-modal-message dp-backup-restore-steps">
-              <li>Processing will be paused</li>
-              <li>A safety backup of the current state will be created automatically</li>
-              <li>The selected backup will be validated again</li>
+              ${[1, 2, 3].map(step => words('li', `backups.restore_step_${step}`)).join('')}
             </ul>
           </div>
-          <p class="dp-modal-message">If validation fails, the current installation will remain unchanged.</p>`;
+          ${words('p', 'backups.restore_unchanged', null, ' class="dp-modal-message"')}`;
         body.appendChild(content);
         return content;
       },
@@ -299,18 +316,15 @@
       restored = window.sessionStorage.getItem(RESTORED_MARKER) === '1';
       window.sessionStorage.removeItem(RESTORED_MARKER);
     } catch (_) {}
-    if (restored) notify('Backup restored successfully.', 'success');
+    if (restored) notify(t('backups.restored'), 'success');
   }
 
   async function restoreBackup() {
     const selected = selectedBackup();
     if (!selected || !(await confirmRestore(selected))) return;
     const progress = window.DPSettingsModal.progress({
-      title: 'Restoring DebridPulse…',
-      lines: [
-        'Processing is paused while the selected backup is restored.',
-        'DebridPulse will restart automatically when restoration is complete.',
-      ],
+      title: say('backups.restoring'),
+      lines: [say('backups.restoring_paused'), say('backups.restoring_restart')],
       className: 'dp-backup-restore-progress',
     });
     let failure = null;
@@ -330,7 +344,7 @@
       return;
     }
     progress.close();
-    notify(failure.message || 'Backup could not be restored. The current DebridPulse state was left unchanged.', 'error');
+    notify(failure.message || t('backups.restore_failed'), 'error');
   }
 
   // ── Remove ───────────────────────────────────────────────────────────────
@@ -338,19 +352,25 @@
   async function removeBackup(id) {
     const item = state.inventory.find(entry => entry.id === id);
     if (!item) return;
-    const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Remove Backup?',
-      message: `${when(item.created_at)} will be permanently removed from DebridPulse backup storage.`,
-      confirmLabel: 'Remove Backup',
+    const asked = window.DPSettingsModal.confirm({
+      title: say('backups.remove_title'),
+      message: say('backups.remove_message', {when: when(item.created_at)}),
+      confirmLabel: say('backups.remove_accept'),
       tone: 'danger',
     });
+    // The open confirmation's sentence (mounted as confirm() returns) names its
+    // date from the backup's own timestamp, so a language change formats it
+    // again (see the listener).
+    const sentence = document.querySelector('.dp-modal-dialog [data-i18n="backups.remove_message"]:not([data-backup-when])');
+    if (sentence) sentence.dataset.backupWhen = String(item.created_at ?? '');
+    const confirmed = await asked;
     if (!confirmed) return;
     await run(async () => {
       try {
         await request('DELETE', `${INVENTORY}/${encodeURIComponent(id)}`, undefined, 30000);
-        notify('Backup removed', 'success');
+        notify(t('backups.removed'), 'success');
       } catch (error) {
-        notify(error.message || 'Backup could not be removed.', 'error');
+        notify(error.message || t('backups.remove_failed'), 'error');
       }
       try { await load(''); } catch (error) { notify(error.message, 'error'); }
     });
@@ -379,15 +399,15 @@
     state.selected = '';
     state.busy = false;
     const dialog = window.DPSettingsModal.open({
-      title: 'Backups',
+      title: say('backups.title'),
       dismiss: true,
       closeControl: true,
       className: 'dp-backup-manager-dialog',
       bodyClassName: 'dp-backup-manager-body',
       actions: [
-        {id: 'add', label: 'Add Backup'},
-        {id: 'save', label: 'Save Backup', disabled: true},
-        {id: 'restore', label: 'Restore Backup', tone: 'success', disabled: true},
+        {id: 'add', label: say('backups.add')},
+        {id: 'save', label: say('backups.save'), disabled: true},
+        {id: 'restore', label: say('backups.restore'), tone: 'success', disabled: true},
       ],
       onAction,
       mount(body) {
@@ -420,6 +440,29 @@
       }
     });
   }
+
+  /* A language change: an open manager draws its inventory again, its dates
+   * formatted in the shown language. Its selection, busy state and the focused
+   * control (by what it is) are kept; nothing is read or sent. */
+  document.addEventListener('debridpulse:locale-changed', () => {
+    // An open restore or remove confirmation: its date, formatted again from
+    // the stored timestamp (the authority); a keyed sentence keeps its key.
+    document.querySelectorAll('.dp-modal-dialog [data-backup-when]').forEach(node => {
+      const shown = when(node.dataset.backupWhen);
+      if (!node.dataset.i18n) { node.textContent = shown; return; }
+      node.dataset.i18nValues = JSON.stringify({when: shown});
+      node.textContent = t(node.dataset.i18n, {when: shown});
+    });
+    const body = state.body;
+    if (!body || !state.dialog) return;
+    const active = body.contains(document.activeElement) ? document.activeElement : null;
+    const select = active?.dataset.backupSelect;
+    const remove = active?.dataset.backupRemove;
+    render();
+    const again = select !== undefined ? body.querySelector(`[data-backup-select="${CSS.escape(select)}"]`)
+      : remove !== undefined ? body.querySelector(`[data-backup-remove="${CSS.escape(remove)}"]`) : null;
+    again?.focus();
+  });
 
   announceRestored();
 

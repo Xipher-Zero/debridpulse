@@ -83,8 +83,8 @@ class SettingsFrontendContractTests(unittest.TestCase):
 
     def test_database_scope_is_sqlite_only(self):
         js = self.settings_js()
-        self.assertIn("Data & Maintenance", js)
-        self.assertIn("Database Reset Controls", js)
+        self.assertTrue(says(js, "Data & Maintenance"))
+        self.assertTrue(says(js, "Database Reset Controls"))
         for stale in (
             "postgres_host",
             "postgres_password",

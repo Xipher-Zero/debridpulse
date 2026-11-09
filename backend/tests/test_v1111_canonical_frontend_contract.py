@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
@@ -120,7 +122,8 @@ def test_settings_authentication_renders_final_cards_directly() -> None:
         "dp-settings-auth-credentials-row",
         "dp-settings-auth-status-card",
     ):
-        assert fragment in source
+        # 1.0.14: words may be said through the catalog key the source names.
+        assert says(source, fragment), fragment
     assert "renderSettingsWithAuthentication" not in source
     assert "removeLegacyAuthenticationControls" not in source
 
@@ -148,7 +151,7 @@ def test_oidc_origin_callback_and_verified_email_policy_are_owned_by_settings() 
         "function updateOidcCallbackPreview()",
         "function copyOidcCallback()",
         "fieldId('public_base_url')",
-        "input('oidc_callback_url', 'OIDC Callback URL'",
+        "input('oidc_callback_url', say('settings.oidc.callback')",
         "readonly",
         "Requires email_verified=true.",
         "oidc_allowed_emails",
@@ -158,7 +161,8 @@ def test_oidc_origin_callback_and_verified_email_policy_are_owned_by_settings() 
         "oidc_allow_all",
         "clear_oidc_client_secret",
     ):
-        assert fragment in source
+        assert says(source, fragment), fragment
+    assert english("settings.oidc.callback") == "OIDC Callback URL"
     assert "request('PUT', '/auth/config'" in source
 
 
@@ -175,7 +179,7 @@ def test_password_session_and_api_token_secret_semantics_survive_canonicalizatio
         "async function revokeToken(",
         "Copy this token now",
     ):
-        assert fragment in source
+        assert says(source, fragment), fragment
     assert "localStorage" not in source
     assert "sessionStorage" not in source
 

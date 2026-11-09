@@ -1,7 +1,7 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a, WS3b and
-WS3c complete; product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a, WS3b,
+WS3c and WS3d complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -28,10 +28,21 @@ These surfaces read the catalog:
   tuning; Usenet and its news-server cards; Network Sources); Downloads
   (behavior and limits, the transfer-method tuning cards, disk space and
   recovery, Download Engine Activity); Extraction and the archive-password
-  editor; and their dialogs, busy labels, refusals and results.
+  editor; and their dialogs, busy labels, refusals and results;
+- WS3d, Settings administration and integrations: Authentication (Status
+  figures and their shorter forms, Username & Password, sessions, OpenID
+  Connect and its verification window); Users & Access (Deployment Type and its
+  switch confirmations, User Accounts, roles and sign-in methods, Edit User,
+  Merge Accounts, the account-impact confirmations, Integration Accounts and
+  their tokens, Integration Delivery Profiles, Account Details and Activity);
+  Notifications (webhooks, avatar, events, statistics reports, a User's own
+  Notifications page); Data & Maintenance (Event Logging, Backups & Retention,
+  the Backups manager and restore, Database Reset); a refused field value's
+  words (`ui-settings-persistence.js`); and the shared Settings dialog's
+  default slot words, typed-phrase label and progress lines.
 
-Every other surface is still English literals: the rest of Settings (WS3d),
-the server's display messages (WS3e) and Help (WS4). The census below counts them. No language is
+Every other surface is still English literals: the server's display messages
+(WS3e) and Help (WS4). The census below counts them. No language is
 offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
@@ -249,7 +260,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS3c
+## 3. Census (WS0) — snapshot at WS3d
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -272,39 +283,56 @@ attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
 `data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
 entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 
-| Measure | At WS3a | At WS3b | At WS3c |
-|---|---|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) |
-| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 |
-| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 |
-| … long-form Help | 962 | 962 | 962 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 |
-| Server display messages (`detail`) | 669 | 669 | 669 |
-| Catalog keys (English) | 690 | 1,214 | 1,599 |
+| Measure | At WS3a | At WS3b | At WS3c | At WS3d |
+|---|---|---|---|---|
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) |
+| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 |
+| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 |
+| … long-form Help | 962 | 962 | 962 | 962 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 |
+| Server display messages (`detail`) | 669 | 669 | 669 | 669 |
+| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197 |
 
 The largest owners still outside the catalog:
 
 | Owner | Entries | Workstream |
 |---|---|---|
-| `ui-settings-page.js` (Authentication, Users & Access, Notifications, Data & Maintenance) | 683 | WS3d |
 | `ui-help-page.js` | 557 | WS4 |
 | `ui-settings-help.js` (all topics except My Account) | 405 | WS4 |
-| `ui-settings-backup-manager.js` | 44 | WS3d |
-| `ui-settings-persistence.js` | 11 | WS3d |
 | `ui-help-license-documents.js` | 11 | WS4 |
 
-No WS3a, WS3b or WS3c owner holds an entry outside the catalog or the
-exemption register, `index.html` holds none, and in `ui-settings-page.js`
-WS3c's Services, Downloads and Extraction code and the Settings shell hold
-none (`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly
-the 223 subtitle language names (above) and provider and protocol names.
+No WS3a–WS3d owner holds an entry outside the catalog or the exemption
+register, `index.html` holds none, and `ui-settings-page.js` is whole
+(`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly the 223
+subtitle language names (above) and provider and protocol names. WS3d's 742
+entries (683 in `ui-settings-page.js`, 44 in the Backups manager, 11 in
+persistence, 4 in the OIDC verification window) are 709 keyed and 33 exempt
+(21 new register entries; 27 occurrences remain in the source today):
+request field names, stored default values (the OIDC provider name, the
+Discord sender name), example placeholders, OIDC scope identifiers, *arr and
+download-client names, a legacy mode summary nothing displays, and two
+internal markers.
+
+**WS3d notes.** The OIDC verification window loads no catalog: it is said in
+the opener's language through the opener's runtime, and it names the key its
+outcome is said from. The OIDC test popup is another document written once, in
+the shown language. Backups manager dates follow the shown language
+(`DPI18n.intlLocale()`); an open manager redraws its inventory on a language
+change, keeping its selection and focus.
 
 **Help dependencies (WS4).** Settings Help repeats some of these words, and
 its contract tests tie them together: the live-tuning sentence
 (`ui-settings-help.js`, "Changes also apply to existing downloads…"), the
 Media Downloads control labels it names, and the Settings locations it
 points at. WS4 must say them from the same keys (or keep the tests' check
-that Help names what Settings shows).
+that Help names what Settings shows). WS3d adds (checked against
+`ui-settings-help.js`): Help names the role names (`settings.role.*`, e.g.
+"ReadOnly User") and these cards' titles and control labels -- Deployment
+Type, Integration Delivery Profiles, Merge, Backups & Retention, Backup Folder,
+Run Backup, Allow Database Reset, Activity Log Page Size, Primary Webhook, OIDC
+Callback URL, Default Role for New OIDC Users (`settings.deployment.*`, `settings.backups.*`,
+`settings.reset.*`, `settings.events.*`, `settings.webhook.*`,
+`settings.oidc.*`). WS4 says them from the same keys.
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 

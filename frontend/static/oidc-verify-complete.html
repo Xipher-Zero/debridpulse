@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OIDC verification · DebridPulse</title>
+<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -16,9 +16,9 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
 </head>
 <body>
 <main>
-  <h1>OIDC verification complete</h1>
-  <p class="status">Provider sign-in and authorization succeeded.</p>
-  <p>This window should close automatically.</p>
+  <h1 data-i18n="settings.oidc.complete_heading">OIDC verification complete</h1>
+  <p class="status" data-i18n="settings.oidc.complete_status">Provider sign-in and authorization succeeded.</p>
+  <p data-i18n="settings.oidc.complete_closing">This window should close automatically.</p>
 </main>
 <script>
 (() => {
@@ -26,8 +26,21 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
   const payload = {
     type: 'debridpulse-oidc-verification',
     ok: true,
-    message: 'OIDC verification successful — provider sign-in and authorization completed.'
+    message: 'OIDC verification successful — provider sign-in and authorization completed.',
+    // The opener says the outcome from its catalog, in the shown language.
+    message_key: 'settings.oidc.verify_ok'
   };
+
+  // This window loads no catalog of its own: it is said in the opener's
+  // language through the opener's runtime (same origin), as text, or stays
+  // in English when there is no opener.
+  try {
+    const i18n = window.opener && !window.opener.closed ? window.opener.DPI18n : null;
+    if (i18n) {
+      document.documentElement.lang = String(i18n.locale());
+      document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = i18n.t(node.dataset.i18n); });
+    }
+  } catch (_) {}
 
   try {
     if ('BroadcastChannel' in window) {

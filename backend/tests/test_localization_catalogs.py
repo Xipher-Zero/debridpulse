@@ -204,6 +204,13 @@ WS3C_PAGE_FUNCTIONS = ("render", "selectTabControl", "setDisclosureExpanded", "w
                        "clearArchivePasswords", "testConnection", "testUsenet", "setBusy")
 
 
+# WS3d: Settings administration and integrations -- Authentication, Users &
+# Access, Notifications and Data & Maintenance, the rest of ui-settings-page.js
+# (which is whole from WS3d on), and the owners they speak through.
+WS3D_OWNERS = ("ui-settings-page.js", "ui-settings-backup-manager.js", "ui-settings-persistence.js",
+               "oidc-verify-complete.html")
+
+
 def ws3c_page_lines():
     """The ui-settings-page.js lines WS3c owns: its Services/Downloads/Extraction region,
     the TABS table and the named shell and engine functions (each to its closing ``  }``)."""
@@ -218,13 +225,14 @@ def ws3c_page_lines():
     return owned
 
 
-def test_the_ws3a_ws3b_and_ws3c_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
+def test_the_ws3a_to_ws3d_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
     import inventory
 
     data = inventory.census()
     left = [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]
-            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS + WS3B_OWNERS + WS3C_OWNERS]
+            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS + WS3B_OWNERS + WS3C_OWNERS + WS3D_OWNERS]
     assert left == []
+    # WS3c's region on its own as well (still its owner's, with WS3d whole beside it).
     owned = ws3c_page_lines()
     assert [(entry["line"], entry["english"]) for entry in data["entries"]
             if entry["owner"].endswith("ui-settings-page.js") and entry["line"] in owned] == []

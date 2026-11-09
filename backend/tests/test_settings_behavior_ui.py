@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from i18n_node import english, says
+
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 SETTINGS = STATIC / "ui-settings-page.js"
@@ -75,7 +77,7 @@ def test_destructive_settings_actions_share_confirmation_primitive():
 
     # Opening DebridPulse is a property of the ACT, so it is asked in ONE place
     # for every act that can perform it.
-    assert js.count("Continue to Open Mode") == 1
+    assert js.count("'settings.auth.open_mode_accept'") == 1 and english("settings.auth.open_mode_accept") == "Continue to Open Mode"
     assert "window.DPSettingsModal.confirm({" in open_mode
     assert "if (!state.auth?.authentication_required || password || oidc) return AUTH_ALLOWED;" in open_mode
     # The gate answers with the PROOF the act must carry, never a bare
@@ -98,14 +100,14 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     assert secret.index("if (!confirmed) return;") < secret.index("clear_oidc_client_secret: true")
 
     assert "await window.DPSettingsModal.confirm" in token
-    assert "Revoke this token?" in token
-    assert "Revoke Token" in token
+    assert says(token, "Revoke this token?")
+    assert says(token, "Revoke Token")
     assert "if (!confirmed) return;" in token
     assert token.index("if (!confirmed) return;") < token.index("request('DELETE', `/accounts/")
 
     assert "await window.DPSettingsModal.confirm" in wipe
     assert "typedPhrase: 'WIPE'" in wipe
-    assert "Wipe Database" in wipe
+    assert says(wipe, "Wipe Database")
     assert "if (!confirmed) return;" in wipe
     assert wipe.index("if (!confirmed) return;") < wipe.index("request('POST', '/admin/database/wipe'")
 

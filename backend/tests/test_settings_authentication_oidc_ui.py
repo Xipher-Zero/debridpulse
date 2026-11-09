@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from i18n_node import english
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -96,8 +98,10 @@ def test_oidc_header_status_is_projected_from_canonical_configuration_and_eviden
     # The rail says nothing while OIDC is off; otherwise it reports the one
     # configuration projection (which the handheld Test's colour always says).
     assert "return a?.oidc_enabled ? oidcConfigurationStatus(a) : {text: '', tone: 'none'};" in status
-    assert "if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};" in configuration
-    assert "a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'}" in configuration
+    assert "if (!a?.oidc_configured) return {text: say('settings.status.unconfigured'), tone: 'error'};" in configuration
+    assert ("a?.oidc_verified ? {text: say('settings.status.verified'), tone: 'success'} : {text: say('settings.status.configured'), tone: 'warning'}"
+            in configuration)
+    assert [english(f"settings.status.{word}") for word in ("unconfigured", "verified", "configured")] == ["Unconfigured", "Verified", "Configured"]
     # No other source of truth is consulted.
     for forbidden in ("document.", "querySelector", "oidc_available", "toast", "classList"):
         assert forbidden not in status, forbidden
@@ -113,8 +117,10 @@ def test_oidc_default_role_is_provisioning_policy_inside_the_oidc_card():
     and offers only the two provisioning roles."""
     js = read(SETTINGS_JS)
     panel = js[js.index("function authenticationPanel(a)"):js.index("return authStatusCard(a) + credentials + oidc;")]
-    assert "selectField('auth_oidc_default_role', 'Default Role for New OIDC Users'" in panel
-    assert "[['user', 'User'], ['readonly', 'ReadOnly User']]" in panel
-    oidc = panel[panel.index("const oidc = card('OpenID Connect'"):]
+    assert "selectField('auth_oidc_default_role', say('settings.oidc.default_role')," in panel
+    assert english("settings.oidc.default_role") == "Default Role for New OIDC Users"
+    assert "[['user', say('settings.role.user')], ['readonly', say('settings.role.readonly')]]" in panel
+    assert [english("settings.role.user"), english("settings.role.readonly")] == ["User", "ReadOnly User"]
+    oidc = panel[panel.index("const oidc = card(say('settings.oidc.title')"):]
     assert "${defaultRoleField}" in oidc
     assert "auth_oidc_default_role: {scope: 'auth-config', option: 'auth_oidc_default_role'}" in js

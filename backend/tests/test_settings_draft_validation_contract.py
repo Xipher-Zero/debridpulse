@@ -82,9 +82,10 @@ def test_notification_tests_exercise_the_saved_configuration_and_carry_no_draft(
     assert "state.verified" not in runtime
     assert "verified = true" not in runtime
     status = section(runtime, "function notificationStatus(", "/* The three stored webhooks")
-    assert "{text: 'Unconfigured', tone: 'error'}" in status
-    assert "{text: 'Verified', tone: 'success'}" in status
-    assert "{text: 'Configured', tone: 'warning'}" in status
+    assert "{text: say('settings.status.unconfigured'), tone: 'error'}" in status
+    assert "{text: say('settings.status.verified'), tone: 'success'}" in status
+    assert "{text: say('settings.status.configured'), tone: 'warning'}" in status
+    assert [english(f"settings.status.{word}") for word in ("unconfigured", "verified", "configured")] == ["Unconfigured", "Verified", "Configured"]
 
 
 def test_the_single_field_write_is_the_only_whole_settings_commit_boundary() -> None:

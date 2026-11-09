@@ -13,6 +13,8 @@ Notifications surface RENDERS it rather than that it describes a lookalike.
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -28,6 +30,13 @@ def source(path: Path) -> str:
 
 def block(text: str, start: str, end: str) -> str:
     return text[text.index(start):text.index(end, text.index(start))]
+
+
+def labelled(text: str, call: str, words: str) -> bool:
+    """Whether ``call`` (a builder and its key, e.g. ``input('x', ``) takes its label
+    from the catalog key whose English is exactly ``words`` (1.0.14)."""
+    match = re.search(re.escape(call) + r"say\('([a-z0-9_.]+)'\)", text)
+    return bool(match) and english(match.group(1)) == words
 
 
 def media_blocks(text: str) -> list[str]:
@@ -96,9 +105,10 @@ def test_each_relocated_action_and_enable_control_has_exactly_one_owner():
 
 def test_the_status_vocabulary_is_the_shared_three_state_one():
     status = block(source(RUNTIME), "function notificationStatus(", "/* The three stored webhooks")
-    assert "{text: 'Unconfigured', tone: 'error'}" in status
-    assert "{text: 'Configured', tone: 'warning'}" in status
-    assert "{text: 'Verified', tone: 'success'}" in status
+    assert "{text: say('settings.status.unconfigured'), tone: 'error'}" in status
+    assert "{text: say('settings.status.configured'), tone: 'warning'}" in status
+    assert "{text: say('settings.status.verified'), tone: 'success'}" in status
+    assert [english(f"settings.status.{word}") for word in ("unconfigured", "configured", "verified")] == ["Unconfigured", "Configured", "Verified"]
     # Participation is a separate fact, so the report is never blanked by it.
     assert "enabled" not in status
     # It is a projection of canonical state; nothing else may feed it.
@@ -111,10 +121,10 @@ def test_the_status_vocabulary_is_the_shared_three_state_one():
 
 def test_display_name_and_avatar_url_use_the_standard_field_grammar():
     card = discord_card()
-    assert "input('discord_username', 'Display Name'" in card
-    assert "Name shown as the sender of Discord notifications." in card
-    assert "input('discord_avatar_url', 'Avatar URL'" in card
-    assert "Image shown with Discord notifications. Paste a direct image URL or upload one." in card
+    assert labelled(card, "input('discord_username', ", "Display Name")
+    assert says(card, "Name shown as the sender of Discord notifications.")
+    assert labelled(card, "input('discord_avatar_url', ", "Avatar URL")
+    assert says(card, "Image shown with Discord notifications. Paste a direct image URL or upload one.")
     # No bespoke identity layout: both are the one field composer.
     assert "<label class=\"form-label\"" not in card
 
@@ -128,8 +138,10 @@ def test_the_avatar_field_has_one_embedded_action_upload_or_clear():
     assert "embedAction: own ? '' : avatarAction(s.discord_avatar_url)," in card
     assert "AVATAR_CLEAR" not in runtime and "AVATAR_UPLOAD" not in runtime
     actions = block(runtime, "const AVATAR_ACTIONS = Object.freeze({", "});")
-    assert "upload: {action: 'upload-avatar', label: 'Upload', name: 'Upload Avatar', tone: 'btn-ghost'}" in actions
-    assert "clear: {action: 'clear-avatar', label: 'Clear', name: 'Clear Avatar', tone: 'btn-danger'}" in actions
+    assert "upload: {action: 'upload-avatar', label: say('settings.avatar.upload'), name: say('settings.avatar.upload_label'), tone: 'btn-ghost'}" in actions
+    assert "clear: {action: 'clear-avatar', label: say('settings.avatar.clear'), name: say('settings.avatar.clear_label'), tone: 'btn-danger'}" in actions
+    assert [english(f"settings.avatar.{key}") for key in ("upload", "upload_label", "clear", "clear_label")] == [
+        "Upload", "Upload Avatar", "Clear", "Clear Avatar"]
     # Keyboard reachable: a real button opening the hidden file input, not a
     # <label> wrapper that no tab stop can reach.
     markup = block(runtime, "const avatarAction = url => {", "  };")
@@ -173,18 +185,24 @@ def test_both_webhooks_use_the_standard_field_grammar_with_one_clear_each():
     # Clear is inside the field (the embedded action), as the stored password's is.
     assert "inline: true" in composer and "embedAction: WEBHOOK_CLEAR(key" in composer
 
-    controls = block(runtime, "const WEBHOOK_CONTROLS = Object.freeze({", "const webhookPlaceholder")
-    assert "'Primary Webhook'" in controls
-    assert "Primary destination for enabled notifications." in controls
-    assert "'Download Added Webhook'" in controls
-    assert "Optional destination for new-download notifications. Leave blank to use the primary webhook." in controls
-    assert "'Reporting Webhook'" in controls
-    assert "Optional destination for statistics reports. Leave blank to use the primary webhook." in controls
+    controls = block(runtime, "const WEBHOOK_CONTROLS = Object.freeze(", "const webhookPlaceholder")
+    # 1.0.14: one declaration per webhook, its words the catalog's settings.webhook.<key>.*.
+    assert "['discord_webhook_url', 'discord_webhook_added', 'stats_report_webhook_url'].map(key =>" in controls
+    for key, label, hint in (
+        ("discord_webhook_url", "Primary Webhook", "Primary destination for enabled notifications."),
+        ("discord_webhook_added", "Download Added Webhook",
+         "Optional destination for new-download notifications. Leave blank to use the primary webhook."),
+        ("stats_report_webhook_url", "Reporting Webhook",
+         "Optional destination for statistics reports. Leave blank to use the primary webhook."),
+    ):
+        assert english(f"settings.webhook.{key}.label") == label and english(f"settings.webhook.{key}.hint") == hint, key
+    assert "label: say(`settings.webhook.${key}.label`)" in controls and "hint: say(`settings.webhook.${key}.hint`)" in controls
     # One declaration, three rows, one clear action shape.
     assert runtime.count("const WEBHOOK_CLEAR") == 1
     clear = block(runtime, "const WEBHOOK_CLEAR", "function webhookField")
-    assert "}>Clear</button>" in clear and ">Clear Webhook<" not in runtime
-    assert 'aria-label="${html(WEBHOOK_CONTROLS[key].aria)}" data-tooltip="${html(WEBHOOK_CONTROLS[key].aria)}"' in clear
+    assert ">${html(t('settings.webhook.clear'))}</button>" in clear and english("settings.webhook.clear") == "Clear"
+    assert ">Clear Webhook<" not in runtime
+    assert "{'aria-label': WEBHOOK_CONTROLS[key].aria, 'data-tooltip': WEBHOOK_CONTROLS[key].aria}" in clear
     assert runtime.count("WEBHOOK_CLEAR(key") == 1
 
 
@@ -233,7 +251,8 @@ def test_blanking_a_redacted_webhook_field_is_never_a_clear():
 def test_the_disclosure_is_named_exactly_and_uses_the_one_disclosure_control():
     runtime = source(RUNTIME)
     card = discord_card()
-    assert "disclosureSection('Notification Events & Delivery Options', 'notifications-events'" in card
+    assert "disclosureSection(say('settings.notifications.events'), 'notifications-events'" in card
+    assert english("settings.notifications.events") == "Notification Events & Delivery Options"
     assert "Additional Options" not in runtime
 
     composer = block(runtime, "function disclosureSection(title, key, body, expanded = false, shortTitle = '')",
@@ -263,8 +282,8 @@ def test_every_current_event_toggle_moved_into_the_compact_cells():
     ]
     assert "tuningCells(" in cells
     for key, title, flavor in expected:
-        assert f"tuningToggle('{key}', '{title}'" in cells, key
-        assert flavor in cells, key
+        assert labelled(cells, f"tuningToggle('{key}', ", title), key
+        assert says(cells, flavor), key
     assert cells.count("tuningToggle(") == len(expected)
     # Six cells: the five events and the update interval, one collection.
     assert cells.count("tuningToggle(") + cells.count("input(") == 6
@@ -296,11 +315,11 @@ def test_the_event_settings_the_delivery_code_reads_are_exactly_those_five():
 def test_update_check_interval_moved_and_states_its_unit_inside_the_field():
     card = discord_card()
     cells = block(card, "disclosureSection(", "    `, {")
-    assert "input('update_check_interval_hours', 'Update Check Interval'" in cells
+    assert labelled(cells, "input('update_check_interval_hours', ", "Update Check Interval")
     assert "Update Check Interval (Hours Between Checks)" not in source(RUNTIME)
     assert "type: 'number', min: 0, max: 168, step: 1," in cells
-    assert "Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks." in cells
-    assert "embedAction: fieldUnit('hours')" in cells
+    assert says(cells, "Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.")
+    assert "embedAction: fieldUnit(say('settings.unit.hours'))" in cells
     # The delivery row no longer holds it.
     delivery = block(card, "dp-settings-notifications-delivery-row", "disclosureSection(")
     assert "update_check_interval_hours" not in delivery
@@ -310,16 +329,16 @@ def test_update_check_interval_moved_and_states_its_unit_inside_the_field():
 
 def test_statistics_reporting_is_three_standard_controls_and_no_disclosure():
     card = reports_card()
-    assert "Configure where reports are sent, how often they are delivered, and how much activity they summarize." in card
+    assert says(card, "Configure where reports are sent, how often they are delivered, and how much activity they summarize.")
     assert "webhookField('stats_report_webhook_url'" in card
-    assert "input('stats_report_interval_hours', 'Automatic Report Interval'" in card
+    assert labelled(card, "input('stats_report_interval_hours', ", "Automatic Report Interval")
     assert "Automatic Report Interval (Hours Between Reports)" not in source(RUNTIME)
-    assert "Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports." in card
-    assert "embedAction: fieldUnit('hours')" in card
-    assert "selectField('stats_report_window_hours', 'Report Window'" in card
-    assert "Choose how much recent activity each statistics report includes." in card
-    for window in ("[24, '24 hours']", "[168, '7 days']", "[720, '30 days']", "[8760, '1 year']"):
-        assert window in card, window
+    assert says(card, "Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.")
+    assert "embedAction: fieldUnit(say('settings.unit.hours'))" in card
+    assert labelled(card, "selectField('stats_report_window_hours', ", "Report Window")
+    assert says(card, "Choose how much recent activity each statistics report includes.")
+    for hours, step, words in ((24, "day", "24 hours"), (168, "week", "7 days"), (720, "month", "30 days"), (8760, "year", "1 year")):
+        assert f"[{hours}, say('settings.reports.window_{step}')]" in card and english(f"settings.reports.window_{step}") == words, words
     assert "disclosureSection(" not in card
 
     order = [card.index(k) for k in ("stats_report_webhook_url", "stats_report_interval_hours",

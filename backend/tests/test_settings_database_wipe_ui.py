@@ -12,7 +12,7 @@ primitive the page reuses, so a lookalike built beside one of them fails.
 import re
 from pathlib import Path
 
-from i18n_node import english
+from i18n_node import english, says
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,14 +38,17 @@ def test_both_backup_actions_live_in_the_card_header_rail_in_order():
     body = panel()
     # From 780px the rail; below 780px the same two actions in one Backups
     # menu (headerActionsMenu), which clones them.
-    rail = body[body.index("action: headerActionsMenu('Backups & Retention', 'Backups',"):body.index("</label>`),")]
+    rail = body[body.index("action: headerActionsMenu(say('settings.backups.title'), say('settings.backups.menu'),"):body.index("</label>`),")]
     assert rail.index('data-action="backups"') < rail.index('data-action="run-backup"')
     assert rail.index('data-action="run-backup"') < rail.index('data-setting="backup_enabled"')
     # Quiet/secondary for the manager, the existing positive treatment for the act.
     assert '<button class="btn btn-ghost btn-sm" type="button" data-action="backups"' in rail
-    assert 'data-menu-label="Backup Management" data-menu-closes>Backups</button>' in rail
+    # (1.0.14: the words are the catalog's, keyed where they are drawn.)
+    assert "${keyed(say('settings.backups.menu'), {'data-menu-label': say('settings.backups.management')})} data-menu-closes>" in rail
+    assert [english("settings.backups.menu"), english("settings.backups.management")] == ["Backups", "Backup Management"]
     assert "List Backups" not in source(RUNTIME)
-    assert 'class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup<' in rail
+    assert ('class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup"'
+            "${keyed(say('settings.backups.run'))}>") in rail and english("settings.backups.run") == "Run Backup"
 
 
 def test_run_backup_now_and_the_old_body_action_row_are_gone():
@@ -60,12 +63,13 @@ def test_run_backup_now_and_the_old_body_action_row_are_gone():
 
 def test_backups_retention_header_copy_and_enable_control_are_locked():
     js = source(RUNTIME)
-    assert "Backups & Retention" in js
+    assert says(js, "Backups & Retention")
     # The event journal has no retention: only backups and snapshots do.
-    assert "Configure automated backups and retention for backups and statistics snapshots." in js
+    assert says(js, "Configure automated backups and retention for backups and statistics snapshots.")
     header = js.split("dp-settings-backups-header-toggle", 1)[1].split("</label>", 1)[0]
     # A card-header toggle shows no "Enable" word; its name says what it enables.
-    assert 'data-setting="backup_enabled"' in header and 'aria-label="Enable Backups & Retention"' in header
+    assert 'data-setting="backup_enabled"' in header and "{'aria-label': say('settings.backups.enable')}" in header
+    assert english("settings.backups.enable") == "Enable Backups & Retention"
     assert ">Enable<" not in header
     assert "dpBackupsRetentionPolished" not in js
 
@@ -90,8 +94,8 @@ def test_the_backups_manager_is_one_state_owner_in_the_shared_dialog_shell():
     # the footer; the manager declares its actions and never builds a footer.
     assert "window.DPSettingsModal.open({" in manager
     assert "dismiss: true," in manager and "closeControl: true," in manager
-    for label in ("'Add Backup'", "'Save Backup'", "'Restore Backup'"):
-        assert label in manager, label
+    for label in ("Add Backup", "Save Backup", "Restore Backup"):
+        assert says(manager, label), label
     assert "dp-modal-footer" not in manager
     # One inventory reader: every refresh goes through load().
     assert manager.count("request('GET', INVENTORY") == 2  # open() + load()
@@ -127,8 +131,8 @@ def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
 def test_backup_folder_is_the_centred_bordered_island_with_browse_inside_the_field():
     body = panel()
     island = body[body.index('<div class="dp-settings-backup-folder-island dp-settings-help-slot">'):body.index("${omitted('backup-additional-settings') ? '' : disclosureSection(")]
-    assert "directoryField('backup_folder', 'Backup Folder'" in island
-    assert "Choose where DebridPulse stores database and configuration backups." in island
+    assert "directoryField('backup_folder', say('settings.backups.folder')" in island and english("settings.backups.folder") == "Backup Folder"
+    assert says(island, "Choose where DebridPulse stores database and configuration backups.")
     # Title-over-Hint left + control right, centred against it: the shared
     # inline-field grammar. Browse INSIDE the field: the shared embedded action.
     assert "inline: true, embedAction: true" in island
@@ -159,7 +163,8 @@ def test_the_backup_folder_field_reserves_room_so_the_path_cannot_run_under_brow
 
 def test_the_disclosure_is_the_canonical_one_with_the_exact_label():
     body = panel()
-    assert "disclosureSection('Additional Backup & Retention Settings', 'backup-retention'," in body
+    assert "disclosureSection(say('settings.backups.additional'), 'backup-retention'," in body
+    assert english("settings.backups.additional") == "Additional Backup & Retention Settings"
     js = source(RUNTIME)
     # The ONE disclosure component, exposing expanded/collapsed state.
     section = js.split("function disclosureSection(title, key, body, expanded = false, shortTitle = '')", 1)[1]
@@ -176,12 +181,14 @@ def test_all_five_remaining_settings_moved_inside_using_the_compact_cell_treatme
     assert "tuningCells(" in disclosure
     assert disclosure.count("tuningGroup(") == 2
     order = [
-        "input('backup_interval_hours', 'Backup Interval'",
-        "input('backup_keep_days', 'Backup Retention'",
-        "input('backup_max_retained', 'Maximum Retained Backups'",
-        "input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval'",
-        "input('stats_snapshot_keep_days', 'Statistics Snapshot Retention'",
+        "input('backup_interval_hours', say('settings.backups.interval')",
+        "input('backup_keep_days', say('settings.backups.keep_days')",
+        "input('backup_max_retained', say('settings.backups.max_retained')",
+        "input('stats_snapshot_interval_minutes', say('settings.backups.snapshot_interval')",
+        "input('stats_snapshot_keep_days', say('settings.backups.snapshot_keep_days')",
     ]
+    assert [english(f"settings.backups.{key}") for key in ("interval", "keep_days", "max_retained", "snapshot_interval", "snapshot_keep_days")] == [
+        "Backup Interval", "Backup Retention", "Maximum Retained Backups", "Statistics Snapshot Interval", "Statistics Snapshot Retention"]
     positions = [disclosure.index(call) for call in order]
     assert positions == sorted(positions)
     # The backup triple and the snapshot pair are grouped. The event journal
@@ -212,10 +219,10 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
         cell = disclosure.split(f"input('{key}'", 1)[1].split("}),", 1)[0]
         assert "type: 'number'" in cell, key
         assert bounds in cell, key
-        assert hint in cell, key
+        assert says(cell, hint), key
         # The unit is carried by the shared in-field unit primitive, which is
         # why the title no longer has to repeat it in parentheses.
-        assert f"embedAction: fieldUnit('{unit}')" in cell, key
+        assert f"embedAction: fieldUnit(say('settings.unit.{unit}'))" in cell and english(f"settings.unit.{unit}") == unit, key
     for verbose in ("(Hours Between Backups)", "(Days to Keep)", "(Minutes Between Snapshots)"):
         assert verbose not in source(RUNTIME), verbose
 
@@ -226,23 +233,29 @@ def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_
     body = panel()
     # Easy omits Event Logging and Database Reset Controls (Advanced keeps the order).
     assert "return (omitted('event-logging') ? '' : eventLogging) + backups + (omitted('database-reset') ? '' : reset);" in body
-    card = body[body.index("const eventLogging = card('Event Logging',"):body.index("const backupEnabledId")]
+    card = body[body.index("const eventLogging = card(say('settings.events.title'),"):body.index("const backupEnabledId")]
     # The standard Data & Maintenance chipblock, with the Lucide file-text glyph.
     assert "titlePrefix: familyIcon('maintenance', 'file-text')" in card
-    assert "headerCenter: 'Configure how many activity log entries are displayed per page.'" in card
+    assert "headerCenter: say('settings.events.copy')" in card
+    assert english("settings.events.copy") == "Configure how many activity log entries are displayed per page."
     # Nothing on the right: no Test, action, toggle or Enable.
     assert "headerAction" not in card and "action:" not in card and "toggle(" not in card
     # Exactly one centred island: the one page-size selector beside the one
     # Recorded Events reading, which is read-only and never persisted.
     # One bounded Settings island (fitIslands stacks it when its row wraps).
     assert card.count('class="dp-settings-event-logging-island dp-settings-island"') == 1 and card.count("selectField(") == 1
-    assert ("${input('event_journal_recorded', 'Recorded Events', recordedEventsText(), {\n"
+    assert ("${input('event_journal_recorded', say('settings.events.recorded'), recordedEventsText(), {\n"
             "          inline: true, commit: false, readonly: true,\n"
-            "          hint: 'Total events retained in the activity journal.',") in card
+            "          hint: say('settings.events.recorded_hint'),") in card
+    assert [english("settings.events.recorded"), english("settings.events.recorded_hint")] == [
+        "Recorded Events", "Total events retained in the activity journal."]
     assert "event_journal_recorded" not in source(RUNTIME).split("const COMMIT_FIELDS", 1)[1].split("});", 1)[0]
-    assert ("selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,\n"
-            "          [[50, '50 events'], [100, '100 events'], [250, '250 events']],\n"
-            "          'Number of events displayed per page in the Activity Log.',") in card
+    assert ("selectField('activity_log_page_size', say('settings.events.page_size'), s.activity_log_page_size ?? 100,\n"
+            "          [50, 100, 250].map(count => [count, say('settings.events.count', {count})]),\n"
+            "          say('settings.events.page_size_hint'),") in card
+    assert english("settings.events.page_size") == "Activity Log Page Size"
+    assert english("settings.events.page_size_hint") == "Number of events displayed per page in the Activity Log."
+    assert english("settings.events.count") == "{count, plural, one {{count} event} other {{count} events}}"
     row = re.search(r"^    activity_log_page_size: \{(.+)\},$", source(RUNTIME), re.M).group(1)
     assert "scope: 'settings-document'" in row and "commit:" not in row  # the changed-blur boundary
     glyph = source(STATIC / "icons" / "lucide" / "file-text.svg")
@@ -257,19 +270,19 @@ def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_
 def test_database_reset_card_copy_and_operator_order_are_locked():
     js = source(RUNTIME)
 
-    assert "Database Reset Controls" in js
-    assert "Configure database safeguards. Perform a destructive database reset when required." in js
-    assert "Database Reset is Destructive" in js
-    assert (
+    assert says(js, "Database Reset Controls")
+    assert says(js, "Configure database safeguards. Perform a destructive database reset when required.")
+    assert says(js, "Database Reset is Destructive")
+    assert says(js, (
         "Processing is paused automatically for the reset and returned to its previous state afterwards. "
         "A safety backup is always created first; the reset is aborted if it fails."
-    ) in js
+    ))
     # The safety backup is mandatory: there is no control that could skip it.
     assert "Backup Database Before Reset" not in js
     assert "db_backup_before_wipe" not in js
-    assert "Allow Database Reset" in js
-    assert "Unlock the database reset action." in js
-    assert '>Reset Database</button>' in js
+    assert says(js, "Allow Database Reset")
+    assert says(js, "Unlock the database reset action.")
+    assert '''data-action="wipe-database"${keyed(say('settings.reset.action'))}>''' in js and english("settings.reset.action") == "Reset Database"
     row = js.split('<div class="dp-settings-database-wipe-row dp-settings-island">', 1)[1]
     assert row.index("'db_wipe_enabled'") < row.index('data-action="wipe-database"')
     assert "Database Destructive Actions" not in js and "dpWipeControlsPolished" not in js
@@ -320,13 +333,13 @@ def test_reset_safety_is_unchanged_and_only_the_stale_apply_copy_moved():
     assert "typedPhrase: 'WIPE'," in wipe
     assert "tone: 'danger'," in wipe
     assert "Processing must be paused" not in wipe
-    assert "DebridPulse pauses processing for the wipe and returns it to its previous state afterwards" in wipe
-    assert "creates a safety backup first; if the backup fails, nothing is wiped." in wipe
+    assert says(wipe, "DebridPulse pauses processing for the wipe and returns it to its previous state afterwards")
+    assert says(wipe, "creates a safety backup first; if the backup fails, nothing is wiped.")
     assert "request('POST', '/admin/database/wipe', {confirm: true}, 60000)" in wipe
-    assert "notify('Database wiped. Pre-wipe backup created.', 'success');" in wipe
+    assert "notify(t('settings.reset.done'), 'success');" in wipe and english("settings.reset.done") == "Database wiped. Pre-wipe backup created."
     # The one stale sentence -- and only it -- was corrected.
     assert "Apply" not in wipe
-    assert "Turn on 'Allow Database Reset' before resetting the database" in wipe
+    assert says(wipe, "Turn on 'Allow Database Reset' before resetting the database")
 
 
 # ── Persistence and operational actions ────────────────────────────────────

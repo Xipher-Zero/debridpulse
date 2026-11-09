@@ -67,9 +67,11 @@ def test_each_locked_hint_is_verbatim_on_its_own_field(key):
 
 
 def test_the_session_lifetime_hint_is_verbatim_beside_its_control():
-    assert PAGE.count(SESSION_LIFETIME) == 1
-    lifetime = PAGE.split("inlineField(lifetimeId, 'Browser Session Lifetime',", 1)[1][:400]
-    assert SESSION_LIFETIME in lifetime
+    # 1.0.14: said from the catalog, by the one key beside its control.
+    assert english("settings.auth.session_lifetime_hint") == SESSION_LIFETIME
+    assert PAGE.count("'settings.auth.session_lifetime_hint'") == 1
+    lifetime = PAGE.split("inlineField(lifetimeId, say('settings.auth.session_lifetime'),", 1)[1][:400]
+    assert "say('settings.auth.session_lifetime_hint')" in lifetime
 
 
 def test_the_superseded_hints_are_gone_without_a_shadow_copy():
@@ -93,13 +95,15 @@ def test_the_superseded_hints_are_gone_without_a_shadow_copy():
 # ── Item 6: OIDC explanations, true to authorize_oidc_claims ────────────────
 
 def test_the_oidc_hints_keep_every_technical_term():
-    assert "The usual values are openid profile email, separated by spaces." in _hint_of("oidc_scopes")
-    assert "Usually groups." in _hint_of("oidc_group_claim")
-    assert "Requires email_verified=true." in _hint_of("oidc_allowed_emails")
+    assert says(_hint_of("oidc_scopes"), "The usual values are openid profile email, separated by spaces.")
+    assert says(_hint_of("oidc_group_claim"), "Usually groups.")
+    assert says(_hint_of("oidc_allowed_emails"), "Requires email_verified=true.")
     subjects = _hint_of("oidc_allowed_subjects")
-    assert "issuer|subject-id" in subjects and "not a username" in subjects
-    assert "one group name per line" in _hint_of("oidc_allowed_groups")
-    toggle = PAGE.split('class="dp-settings-oidc-section-copy">', 1)[1].split("</small>", 1)[0]
+    assert says(subjects, "issuer|subject-id") and says(subjects, "not a username")
+    assert says(_hint_of("oidc_allowed_groups"), "one group name per line")
+    # 1.0.14: the access copy is the catalog's settings.oidc.access_copy, keyed on its element.
+    assert '<small class="dp-settings-oidc-section-copy"${keyed(say(\'settings.oidc.access_copy\'))}>' in PAGE
+    toggle = english("settings.oidc.access_copy")
     assert toggle.startswith("When enabled, anyone who successfully signs in through your identity provider "
                              "can access DebridPulse.")
     assert "a user must match every list that is filled in" in toggle
@@ -274,9 +278,12 @@ def test_the_help_owner_is_read_only_and_uses_the_canonical_dialog():
 
 def test_role_selectors_describe_each_role_and_reuse_the_same_help():
     assert PAGE.count("...ROLE_FIELD_HELP}") == 2
-    assert "help: 'user-accounts', helpSubject: 'User Account Roles'" in PAGE
-    descriptions = PAGE.split("const ROLE_DESCRIPTIONS = Object.freeze({", 1)[1].split("});", 1)[0]
-    assert set(re.findall(r"^    (\w+):", descriptions, re.M)) == {"admin", "user", "readonly"}
+    assert "help: 'user-accounts', helpSubject: say('settings.users.roles_help')" in PAGE
+    assert english("settings.users.roles_help") == "User Account Roles"
+    # One description per selectable role, each the catalog's settings.role.<role>_description.
+    descriptions = PAGE.split("const ROLE_DESCRIPTIONS = Object.freeze(", 1)[1].split(";\n", 1)[0]
+    assert "['admin', 'user', 'readonly']" in descriptions and "say(`settings.role.${role}_description`)" in descriptions
+    assert all(english(f"settings.role.{role}_description") for role in ("admin", "user", "readonly"))
 
 
 # ── The role comparison agrees with the authorization policy ────────────────

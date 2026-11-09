@@ -43,6 +43,8 @@
  */
 (function () {
   'use strict';
+  // The catalog's words (ui-i18n.js), said when a refusal is spoken.
+  const t = (key, values) => window.DPI18n.t(key, values);
 
   // scope id -> {commit(key, draft, control) -> Promise<accepted value>}
   const scopes = new Map();
@@ -225,23 +227,24 @@
    * stands for one canonical value declares it (`data-commit-blank`); its
    * page commits that value. */
   function numberDraft(control, draft) {
-    const label = labelOf(control) || 'This value';
+    const label = labelOf(control) || t('settings.validation.this_value');
     const whole = wholeNumber(control);
-    const say = rule => ({message: `${label} ${rule}.`});
+    // The refusal in the shown language: the field's own name, then the rule it broke.
+    const say = (rule, values = {}) => ({message: t(`settings.validation.${rule}`, {label, ...values})});
     const text = String(draft ?? '');
-    if (control.validity && control.validity.badInput) return say(whole ? 'must be a whole number' : 'must be a number');
-    if (text === '') return control.hasAttribute('data-commit-blank') ? {value: null} : say('is required');
+    if (control.validity && control.validity.badInput) return say(whole ? 'whole' : 'number');
+    if (text === '') return control.hasAttribute('data-commit-blank') ? {value: null} : say('required');
     if (!(whole ? /^-?\d+$/ : /^-?(?:\d+(?:\.\d*)?|\.\d+)$/).test(text)) {
-      return say(whole ? 'must be a whole number' : 'must be a number');
+      return say(whole ? 'whole' : 'number');
     }
     const value = Number(text);
-    if (!Number.isFinite(value) || (whole && !Number.isSafeInteger(value))) return say('must be a smaller number');
+    if (!Number.isFinite(value) || (whole && !Number.isSafeInteger(value))) return say('smaller');
     const min = control.min === '' ? null : Number(control.min);
     const max = control.max === '' ? null : Number(control.max);
     // In exactly the server's words for the bound it broke, so a refusal reads
     // the same whichever side catches it.
-    if (min !== null && value < min) return say(`must be ${control.min} or more`);
-    if (max !== null && value > max) return {message: limitMessage(control, text) || `${label} must be ${control.max} or less.`};
+    if (min !== null && value < min) return say('min', {min: control.min});
+    if (max !== null && value > max) return {message: limitMessage(control, text) || say('max', {max: control.max}).message};
     return {value};
   }
 
@@ -249,7 +252,7 @@
    * without asking the server -- or '' when it may be sent. */
   function draftRefusal(control, draft) {
     if (control.validity && control.validity.patternMismatch) {
-      return control.dataset.invalidMessage || 'That value is not valid.';
+      return control.dataset.invalidMessage || t('settings.validation.invalid');
     }
     if (control.tagName === 'INPUT' && control.type === 'number') return numberDraft(control, draft).message || '';
     return '';
@@ -261,12 +264,14 @@
   function refusalMessage(error, control) {
     const detail = Array.isArray(error?.detail) ? error.detail[0] : error?.detail;
     const label = labelOf(control);
-    return detail && typeof detail === 'object' && detail.requirement && label ? `${label} ${detail.requirement}.` : '';
+    // The server's requirement as it sent it, beneath the field's name.
+    return detail && typeof detail === 'object' && detail.requirement && label
+      ? t('settings.validation.requirement', {label, requirement: String(detail.requirement)}) : '';
   }
 
   function report(error, control, draft) {
     const message = limitMessage(control, draft) || refusalMessage(error, control)
-      || String((error && error.message) || error || 'That setting could not be saved.');
+      || String((error && error.message) || error || t('settings.validation.not_saved'));
     // Failure is reported by the canonical toast owner; there is no second
     // notification system. Ordinary success is deliberately silent.
     if (typeof window.toast === 'function') window.toast(message, 'error');

@@ -1416,6 +1416,111 @@
    "owner": "frontend/static/ui-settings-page.js",
    "english": "Serbian (Cyrillic)",
    "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "OpenID Connect",
+   "reason": "Default OIDC provider name: a stored setting value (oidc_provider_name) the operator may change, used as data, not interface words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "DebridPulse",
+   "reason": "Product name used as the Discord webhook username placeholder: the value Discord shows when none is set, not interface words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "https://example.com/avatar.png",
+   "reason": "Example URL in a field placeholder: a format sample, not words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "No authentication",
+   "reason": "Legacy fallback mode summary (fallbackAuthFromSettings `mode`): no reader displays it; the Authentication Status mode is said from the catalog (settings.auth.kpi.mode.*), derived from the enabled flags."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Username & Password + OIDC",
+   "reason": "Legacy fallback mode summary (fallbackAuthFromSettings `mode`): not displayed (see 'No authentication')."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Username & Password",
+   "reason": "Legacy fallback mode summary (fallbackAuthFromSettings `mode`): not displayed (see 'No authentication')."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "operator",
+   "reason": "Example username in a field placeholder: a sample value, not words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "https://download.example.com",
+   "reason": "Example URL in a field placeholder: a format sample, not words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "https://id.example/application/o/debridpulse",
+   "reason": "Example issuer URL in a field placeholder: a format sample, not words."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "openid profile email",
+   "reason": "OIDC scope identifiers (protocol values) as the default and placeholder: typed as they are in every language."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "display_name",
+   "reason": "Request field name (the account API's own identifier), never shown: the field's words are its catalog label."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "username",
+   "reason": "Request field name (the account API's own identifier), never shown: the field's words are its catalog label."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "password",
+   "reason": "Request field name (the account API's own identifier), never shown: the field's words are its catalog label."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "role",
+   "reason": "Request field name (the account API's own identifier), never shown: the field's words are its catalog label."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "label",
+   "reason": "Request field name (the account API's own identifier), never shown: the field's words are its catalog label."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sonarr · qBittorrent",
+   "reason": "Product names (the *arr and download-client pairing whose default category a suggestion is): proper names, shown as they are."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Radarr · qBittorrent",
+   "reason": "Product names: proper names, shown as they are."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sonarr · Usenet",
+   "reason": "Product name and protocol name: proper names, shown as they are."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Radarr · Usenet",
+   "reason": "Product name and protocol name: proper names, shown as they are."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "BroadcastChannel",
+   "reason": "Browser API name (feature test), never shown."
+  },
+  {
+   "owner": "frontend/static/ui-settings-backup-manager.js",
+   "english": "save",
+   "reason": "Internal error marker thrown and caught inside saveBackup; never shown (the toast says backups.save_failed)."
   }
  ]
 }
