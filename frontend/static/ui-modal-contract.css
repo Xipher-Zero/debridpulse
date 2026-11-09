@@ -301,6 +301,23 @@ body.light .dp-modal-dialog {
   overflow-wrap: anywhere;
 }
 
+/* A title hint (`titleHint`): one short reading directly beneath the title. */
+.dp-modal-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dp-modal-title-hint {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
 /* A title action (`placement: 'title'`): the compact icon control right after
    the title, in the established pencil treatment (the Usenet server name's). */
 .dp-modal-title-action.btn {

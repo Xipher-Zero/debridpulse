@@ -17,6 +17,11 @@
     ['notifications', 'Notifications', 'bell-ring'],
     ['maintenance', 'Data & Maintenance', 'database'],
   ]);
+  /* What a Standalone installation presents differently (deployment_type,
+   * from the server's settings): no Authentication section, and its `users`
+   * section -- the same key, icon and colour -- reads Access & Integrations. */
+  const SERVER_ONLY_TABS = Object.freeze(['authentication']);
+  const STANDALONE_TAB_LABELS = Object.freeze({users: 'Access & Integrations'});
 
   const state = {
     settings: null,
@@ -4586,7 +4591,9 @@
     const live = users.accounts.filter(liveAccount);
     const humans = live.filter(account => !isIntegration(account));
     const integrations = live.filter(isIntegration);
-    const people = card('User Accounts', duplicateNotice(humans) + humanRows(humans), {
+    // Standalone has no User Accounts card: the built-in Administrator is its
+    // one person, and no other person's account is offered to manage.
+    const people = standaloneDeployment() ? '' : card('User Accounts', duplicateNotice(humans) + humanRows(humans), {
       className: 'dp-settings-users-card',
       help: 'user-accounts',
       titlePrefix: familyIcon('users', 'users'),
@@ -4628,11 +4635,14 @@
     return people + automation + delivery;
   }
 
+  /* Deployment Type first, then the account cards: paintUsers() replaces only
+   * the account cards, so the Deployment Type card and its fit are kept. */
   function usersPanel() {
-    return `<div class="dp-settings-users" data-users-mount>${usersBody()}</div>${deploymentCard()}`;
+    return `<div class="dp-settings-users">${deploymentCard()}<div class="dp-settings-users" data-users-mount>${
+      usersBody()}</div></div>`;
   }
 
-  /* Deployment Type, at the foot of Users & Access: the installation's type
+  /* Deployment Type, first in the users section: the installation's type
    * (``deployment_type``, from the server's settings) and the one action that
    * selects the other, through the destructive confirmation. Server: every
    * account signs in under its role. Standalone: the built-in Administrator
@@ -4672,7 +4682,7 @@
    * type itself, a state reading like Active Browser Sessions' count -- and,
    * on its own row beneath the whole reading, the action. */
   function deploymentCard() {
-    const current = state.settings?.deployment_type === 'standalone' ? 'standalone' : 'server';
+    const current = standaloneDeployment() ? 'standalone' : 'server';
     const type = DEPLOYMENT_TYPES[current];
     const other = DEPLOYMENT_TYPES[type.other];
     return card('Deployment Type', `
@@ -6754,8 +6764,11 @@
     document.getElementById('content')?.classList.remove('settings-active');
 
     view.classList.add('dp-settings-clean-view');
+    // A selection this installation does not present (Authentication, chosen
+    // before a change to Standalone) is Services from the first paint.
+    state.activeTab = tabName(state.activeTab);
 
-    const tabs = TABS.map(([id, label, icon]) => `
+    const tabs = eligibleTabs().map(([id, label, icon]) => `
       <button class="stab ${state.activeTab === id ? 'active' : ''}" type="button"
               data-tab="${html(id)}" role="tab"
               aria-selected="${state.activeTab === id ? 'true' : 'false'}"
@@ -6800,7 +6813,7 @@
               ${panel('downloads', downloadsPanel(state.settings))}
               ${panel('extraction', extractionPanel(state.settings))}
               ${panel('notifications', notificationsPanel(state.settings))}
-              ${panel('authentication', authenticationPanel(state.auth))}
+              ${offered('authentication') ? panel('authentication', authenticationPanel(state.auth)) : ''}
               ${panel('users', usersPanel())}
               ${panel('maintenance', maintenancePanel(state.settings))}
             </div>
@@ -6829,8 +6842,21 @@
     showTabPanel();
   }
 
-  // A tab name, or Services when it names no tab.
-  const tabName = name => (TABS.some(([id]) => id === name) ? name : 'sources');
+  const standaloneDeployment = () => state.settings?.deployment_type === 'standalone';
+
+  /* The ONE collection of the tabs this installation presents, in order, with
+   * the labels it presents them by: the strip, Previous / Next, the arrow
+   * keys, the panels and the selection all follow it. */
+  function eligibleTabs() {
+    if (!standaloneDeployment()) return TABS;
+    return TABS.filter(([id]) => !SERVER_ONLY_TABS.includes(id))
+      .map(([id, label, icon]) => [id, STANDALONE_TAB_LABELS[id] || label, icon]);
+  }
+
+  const offered = name => eligibleTabs().some(([id]) => id === name);
+
+  // A tab name, or Services when it names no tab this installation presents.
+  const tabName = name => (offered(name) ? name : 'sources');
 
   /* Select a tab at once; `motion` ({direction, distance}, the choice's own)
    * slides the compact navigator's window when the selection moves it. */

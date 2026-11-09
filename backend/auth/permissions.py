@@ -110,6 +110,7 @@ ACTIONS: dict[str, Capability] = {
     "api.auth_routes.logout": _S,
     "api.account_routes.change_own_password": _S,
     "api.account_routes.set_own_first_password": _S,
+    "api.account_routes.clear_own_standalone_password": _A,
     "api.account_routes.change_own_display_name": _S,
     "api.account_routes.own_account": _S,
     "api.account_routes.change_own_actual_name": _S,

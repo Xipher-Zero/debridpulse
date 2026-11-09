@@ -13,6 +13,7 @@ import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from application.dependencies import get_application
@@ -20,7 +21,8 @@ from application.service import ApplicationService
 from auth import accounts
 from auth.accounts import AccountRefused, Role
 from auth.permissions import Capability, demand_owner, permits
-from auth.policy import standalone_open
+from auth.models import AuthMechanism
+from auth.policy import interactive_auth_enabled, password_auth_enabled, standalone_deployment, standalone_open
 from auth.throttle import personal_notification_test_rate_limiter
 from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.logging_utils import sanitize_exception
@@ -75,6 +77,12 @@ class OwnFirstPassword(BaseModel):
     # Strict, and nothing else: the account is always the signed-in one.
     model_config = ConfigDict(strict=True, extra="forbid")
     new_password: str = Field(min_length=1, max_length=4096)
+
+
+class OwnPasswordClear(BaseModel):
+    # Strict, and nothing else: the account is always the signed-in one.
+    model_config = ConfigDict(strict=True, extra="forbid")
+    current_password: str = Field(max_length=4096)
 
 
 class AccountMerge(BaseModel):
@@ -231,17 +239,22 @@ async def own_account(request: Request):
     -- supplied by its identity provider (read-only here) or entered by the
     account itself (``email_self_entered``; the account may correct it) --
     with the verification the provider stated (a self-entered email is
-    unverified), never a credential, binding or claim set."""
+    unverified), never a credential, binding or claim set. With it, read
+    from the live settings, the installation's ``deployment_type`` and
+    ``sign_in_required``: whether signing in is required now (interactive
+    authentication enabled), not whether a password is stored."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
         raise HTTPException(status_code=403, detail="Forbidden")
     account = await accounts.get_account(principal.account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
+    settings = get_settings()
     return {"display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
             "email_verification": _verification(account), "email_self_entered": account.email_self_entered,
             "origin": account.origin, "role": account.role.value, "has_password": account.has_password,
-            "username": account.username}
+            "username": account.username, "deployment_type": settings.deployment_type,
+            "sign_in_required": interactive_auth_enabled(settings)}
 
 
 @router.put("/account/actual-name")
@@ -500,6 +513,85 @@ async def _standalone_first_password(new_password: str, *, peer: str) -> None:
             raise HTTPException(status_code=500, detail="The password could not be saved; nothing was changed") from None
         apply_settings(enabled)
     await journal_configuration_change(current, enabled)
+
+
+@router.post("/account/clear-password")
+async def clear_own_standalone_password(body: OwnPasswordClear, request: Request):
+    """A password-protected Standalone installation's default Admin, signed in
+    by its password, removes that password, proving it: Username & Password
+    is disabled with it, in the same change (``_clear_standalone_password``),
+    and every browser session ends. The installation is then open, as its
+    default Admin, until a first password is set again. Nothing else is
+    touched. No other account, principal or deployment type may do this."""
+    principal = request.state.principal
+    if not (principal.authenticated and principal.mechanism is AuthMechanism.PASSWORD_SESSION
+            and principal.account_id == accounts.DEFAULT_ADMIN_ID):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not standalone_deployment(get_settings()):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from auth.manager import PasswordAuthenticationBusy, peer_key
+    from auth.sessions import clear_session_cookie
+
+    try:
+        await _clear_standalone_password(body.current_password, peer=peer_key(request))
+    except PasswordAuthenticationBusy:
+        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
+                            "Try again shortly.", headers={"Retry-After": "2"}) from None
+    except AccountRefused as exc:
+        raise _refused(exc) from None
+    response = JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+    clear_session_cookie(response, request)
+    return response
+
+
+async def _clear_standalone_password(current_password: str, *, peer: str) -> None:
+    """The default Admin's password removed and Username & Password disabled:
+    one change, the credential and the settings committed together
+    (``accounts.commit_password_clear``), or neither. The proof (Argon2) runs
+    first, outside any lock. Then, in the established order -- the
+    authentication configuration lock, then the configuration write lock
+    every scoped Settings writer holds -- the installation must still be
+    password-protected Standalone and the stored password still the one
+    proven, and the settings written are the ones current under both, so no
+    concurrent Settings write is lost. Every browser session then ends."""
+    from auth.passwords import basic_verification_cache
+    from auth.sessions import session_store
+    from auth.throttle import password_failure_throttle
+    from auth.transitions import authentication_configuration_lock
+
+    proven, identity = await accounts.prove_own_password(accounts.DEFAULT_ADMIN_ID, current_password, peer=peer)
+    async with authentication_configuration_lock, config_write_lock():
+        current = get_settings()
+        if not (standalone_deployment(current) and password_auth_enabled(current)):
+            raise AccountRefused("Authentication changed meanwhile; nothing was changed")
+        cleared = current.model_copy(update={"auth_password_enabled": False}, deep=True)
+        attempted = []
+
+        def persist():
+            attempted.append(True)
+            save_settings(cleared)
+
+        try:
+            await accounts.commit_password_clear(accounts.DEFAULT_ADMIN_ID, proven, settings=cleared,
+                                                 persist=persist)
+        except AccountRefused:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a persistence failure is reported, never half-applied
+            if attempted:
+                try:
+                    save_settings(current)
+                except Exception as restore_exc:  # noqa: BLE001
+                    logger.critical("Previous authentication settings could not be restored: %s",
+                                    type(restore_exc).__name__)
+            logger.error("The password was not cleared: %s", type(exc).__name__)
+            raise HTTPException(status_code=500,
+                                detail="The password could not be cleared; nothing was changed") from None
+        apply_settings(cleared)
+    password_failure_throttle.record_success(peer, identity)
+    basic_verification_cache.clear()
+    session_store.clear()
+    await journal_configuration_change(current, cleared)
+    logger.warning("The Standalone password was cleared; password sign-in is disabled")
 
 
 @router.put("/account/display-name")

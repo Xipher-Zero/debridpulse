@@ -1201,14 +1201,33 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
     to this account's username) and the Argon2 verification off the event
     loop, outside the authentication lock and any write transaction. Under
     the lock the stored credential must still be the one just proven."""
-    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
-    from auth.passwords import verify_password_candidate_async
     from auth.throttle import password_failure_throttle
 
     if not new_password:
         raise AccountRefused("A password is required")
     if len(new_password) < MIN_NEW_PASSWORD_LENGTH:
         raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+    proven, identity = await prove_own_password(account_id, current_password, peer=peer)
+    verifier = await _new_verifier(new_password)
+    async with _locked_mutation([str(account_id)]) as db:
+        account = await _require(db, account_id)
+        await _require_proven(db, account.id, proven)
+        await _set_password_row(db, account.id, verifier)
+    password_failure_throttle.record_success(peer, identity)
+
+
+async def prove_own_password(account_id: str, current_password: str, *, peer: str = "unknown") -> tuple[str, str]:
+    """Prove the account's current password, as a sign-in attempt: the
+    transport peer's admission and failure throttle (failures attributed to
+    this account's username) and the Argon2 verification off the event loop,
+    outside the authentication lock and any write transaction. Returns the
+    stored verifier just proven -- the change re-checks under the lock that it
+    is still the stored one (``_require_proven``) -- and the throttle identity,
+    whose success the caller records once its change is made."""
+    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
+    from auth.passwords import verify_password_candidate_async
+    from auth.throttle import password_failure_throttle
+
     # Admission covers the proof only: the change itself is re-checked under
     # the lock, so waiting for the lock never holds a sign-in slot.
     if not password_attempt_admission.acquire(peer):
@@ -1228,16 +1247,17 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
     if not verified:
         password_failure_throttle.record_failure(peer, identity)
         raise AccountRefused("The current password is not correct")
-    verifier = await _new_verifier(new_password)
-    async with _locked_mutation([str(account_id)]) as db:
-        account = await _require(db, account_id)
-        row = await db.fetchone(
-            "SELECT password_hash FROM account_local_credentials WHERE account_id=?", (account.id,))
-        if row is None or not secrets.compare_digest(password_credential_version(row["password_hash"]),
-                                                     password_credential_version(proven)):
-            raise AccountRefused("The password was changed meanwhile; try again")
-        await _set_password_row(db, account.id, verifier)
-    password_failure_throttle.record_success(peer, identity)
+    return proven, identity
+
+
+async def _require_proven(db, account_id: str, proven: str) -> None:
+    """The account's stored password is still the one ``prove_own_password``
+    proved: one changed, reset or removed meanwhile is refused."""
+    row = await db.fetchone(
+        "SELECT password_hash FROM account_local_credentials WHERE account_id=?", (account_id,))
+    if row is None or not secrets.compare_digest(password_credential_version(row["password_hash"]),
+                                                 password_credential_version(proven)):
+        raise AccountRefused("The password was changed meanwhile; try again")
 
 
 def _first_password_refusal(account: Account | None) -> str:
@@ -1311,6 +1331,18 @@ async def commit_first_password(account_id: str, verifier: str, *, settings=None
         if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (account.id,)):
             raise AccountRefused("The account already has a password; use Change Password")
         await _set_password_row(db, account.id, verifier)
+
+
+async def commit_password_clear(account_id: str, proven: str, *, settings, persist) -> None:
+    """Remove the account's proven local password, committed together with the
+    authentication ``settings`` that ``persist`` writes (``_mutation``): the
+    stored password must still be the one proven. Nothing else of the account,
+    or of any other, is touched. The caller holds the authentication
+    configuration lock."""
+    async with _mutation([str(account_id)], settings, persist) as db:
+        account = await _require(db, account_id)
+        await _require_proven(db, account.id, proven)
+        await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
 
 
 async def change_deployment_credentials(*, settings, persist) -> None:

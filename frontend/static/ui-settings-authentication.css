@@ -1917,6 +1917,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1.45;
 }
 
+/* Clear Password's consequence, beneath its one field. */
+.dp-modal-dialog.dp-account-dialog .dp-account-clear-warning {
+  margin: 0;
+  color: var(--dp-state-error);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 /* My Account is ONE dialog of ONE size for both of its views (profile and
    password): sized for the taller of the two (the profile, with its DP
    Username and that line's explanation), its body takes whatever the
@@ -1929,6 +1937,12 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   height: min(498px, calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
+}
+/* Offering both Change Password and Clear Password (a password-protected
+   Standalone installation), it is as wide as its four footer controls on one
+   row, in every view; below the narrow breakpoint they stack as before. */
+.dp-modal-dialog.dp-account-dialog:has(.dp-modal-action-leading ~ .dp-modal-action-leading) {
+  width: min(560px, 100%);
 }
 .dp-modal-dialog.dp-account-dialog .dp-modal-body {
   flex: 1 1 auto;

@@ -819,3 +819,282 @@ async def test_m11_a_failed_enrollment_beside_a_scoped_write_stays_recoverable(e
     retried = await client.post("/api/account/first-password", json={"new_password": NEW_PW})
     assert retried.status_code == 200, retried.text
     assert _file()["auth_password_enabled"] is True and _file()["transfer_policy"]["execution_retry_count"] == retries
+
+
+# ── C01-C07: clearing the Standalone password from My Account ──────────────
+# A password-protected Standalone installation's default Admin, signed in by
+# its password, removes that password, proving it
+# (``POST /api/account/clear-password``): the credential removed and Username
+# & Password disabled as one change, every browser session ended, nothing else
+# touched. The installation is then open until a first password is set again.
+
+CLEAR = "/api/account/clear-password"
+
+
+@asynccontextmanager
+async def _protected_standalone(live):
+    """Server -> Standalone, the first password, then the default Admin's own
+    password session in a browser of its own, with its CSRF header."""
+    from auth.throttle import login_challenge_rate_limiter, password_failure_throttle
+
+    # This test's own sign-in page budget and failure throttle.
+    login_challenge_rate_limiter.clear()
+    password_failure_throttle.clear()
+    await _standalone_with_password(live)
+    async with _browser(live) as browser:
+        assert (await _sign_in(browser, NEW_PW)).status_code == 303
+        csrf = (await browser.get("/api/auth/session")).json()["csrf_token"]
+        yield browser, {"X-CSRF-Token": csrf}
+    password_failure_throttle.clear()
+
+
+async def _clear(browser, headers, password=NEW_PW):
+    return await browser.post(CLEAR, headers=headers, json={"current_password": password})
+
+
+async def _protected_state() -> tuple:
+    """What a refused or failed clear must leave: the settings on disk and in
+    force, the default Admin's stored password, every session."""
+    return (_file(), config.get_settings().model_dump(), await _hash(DEFAULT_ADMIN_ID),
+            sorted(session_store._entries))
+
+
+async def test_c01_clear_removes_the_password_disables_password_sign_in_and_ends_every_session(install, monkeypatch):
+    import api.account_routes as account_routes
+
+    live = install
+    journaled = []
+    journal = account_routes.journal_configuration_change
+
+    async def recording(previous, current):
+        journaled.append((previous.auth_password_enabled, current.auth_password_enabled))
+        await journal(previous, current)
+
+    async with _protected_standalone(live) as (browser, headers):
+        monkeypatch.setattr(account_routes, "journal_configuration_change", recording)
+        before_people, before_links = await _people_state(), await _demand_and_tokens()
+        before_file = _file()
+        profile = (await browser.get("/api/account")).json()
+        assert (profile["deployment_type"], profile["sign_in_required"], profile["has_password"]) == \
+            ("standalone", True, True)
+
+        cleared = await _clear(browser, headers)
+        assert cleared.status_code == 200 and cleared.json() == {"ok": True}
+        assert cleared.headers["cache-control"] == "no-store"
+        assert HTTP_SESSION_COOKIE in cleared.headers.get("set-cookie", "")
+        # The credential and Username & Password, together; nothing else of the settings.
+        assert await _hash(DEFAULT_ADMIN_ID) is None
+        after = _file()
+        assert (after["deployment_type"], after["auth_password_enabled"], after["auth_oidc_enabled"]) == \
+            ("standalone", False, False)
+        assert {k: v for k, v in after.items() if k != "auth_password_enabled"} == \
+            {k: v for k, v in before_file.items() if k != "auth_password_enabled"}
+        assert after["oidc_client_id"] == "dp-client" and after["oidc_issuer_url"] == ISSUER
+        assert config.get_settings().auth_password_enabled is False
+        assert journaled == [(True, False)]
+        # No other account, credential, binding, token or demand moved.
+        assert await _people_state() == before_people and await _demand_and_tokens() == before_links
+        assert (await live.client.get("/api/auth/session", headers=live.bearer)).json()["account_id"] == \
+            live.integration.id
+        # Every browser session ended; the browser is now the open default Admin.
+        assert session_store.size == 0
+        me = (await browser.get("/api/auth/session")).json()
+        assert (me["authenticated"], me["mechanism"], me["account_id"]) == (False, None, DEFAULT_ADMIN_ID)
+        reopened = (await browser.get("/api/account")).json()
+        assert (reopened["sign_in_required"], reopened["has_password"]) == (False, False)
+        page = await browser.get("/", headers={"Accept": "text/html"})
+        assert page.status_code == 200
+
+    # A first password can be set again, and then changed with its proof.
+    assert (await live.client.post("/api/account/first-password", json={"new_password": SECOND_PW})).status_code == 200
+    assert _file()["auth_password_enabled"] is True
+    async with _browser(live) as browser:
+        assert (await _sign_in(browser, SECOND_PW)).status_code == 303
+        csrf = (await browser.get("/api/auth/session")).json()["csrf_token"]
+        assert (await browser.get("/api/account")).json()["sign_in_required"] is True
+        changed = await browser.put("/api/account/password", headers={"X-CSRF-Token": csrf},
+                                    json={"current_password": SECOND_PW, "new_password": NEW_PW})
+        assert changed.status_code == 200, changed.text
+    assert await verify_password_candidate_async(await _hash(DEFAULT_ADMIN_ID), NEW_PW, use_configured_hash=True)
+
+
+async def test_c02_a_wrong_password_and_every_other_principal_change_nothing(install):
+    live = install
+    async with _protected_standalone(live) as (browser, headers):
+        before = await _protected_state()
+        wrong = await _clear(browser, headers, password="synthetic-wrong-password")
+        assert wrong.status_code == 409 and wrong.json()["detail"] == "The current password is not correct"
+        assert await _protected_state() == before
+        # No session; an Integration token; no CSRF header; a field naming another account.
+        assert (await live.client.post(CLEAR, json={"current_password": NEW_PW})).status_code == 401
+        assert (await live.client.post(CLEAR, headers=live.bearer, json={"current_password": NEW_PW})).status_code == 403
+        assert (await browser.post(CLEAR, json={"current_password": NEW_PW})).status_code == 403
+        extra = await browser.post(CLEAR, headers=headers,
+                                   json={"current_password": NEW_PW, "account_id": live.people["second"].id})
+        assert extra.status_code == 422
+        assert await _protected_state() == before
+
+
+async def test_c02_server_never_clears_through_my_account(install):
+    live = install
+    before = _file(), await _hash(DEFAULT_ADMIN_ID), await _hash(live.people["second"].id)
+    for name, password in (("admin", ADMIN_PW), ("second", SECOND_PW)):
+        token = live.session(name)
+        refused = await live.client.post(CLEAR, headers=live.headers(token), json={"current_password": password})
+        assert refused.status_code == 403, name
+        assert session_store.resolve(token) is not None
+    assert (_file(), await _hash(DEFAULT_ADMIN_ID), await _hash(live.people["second"].id)) == before
+
+
+async def test_c03_a_repeated_or_concurrent_clear_acts_once(install):
+    live = install
+    async with _protected_standalone(live) as (browser, headers):
+        results = await asyncio.gather(_clear(browser, headers), _clear(browser, headers))
+        statuses = sorted(result.status_code for result in results)
+        assert statuses[0] == 200 and statuses[1] in (401, 403, 409), [r.text for r in results]
+        assert await _hash(DEFAULT_ADMIN_ID) is None and _file()["auth_password_enabled"] is False
+        # Repeated from the now-open browser: refused, nothing changed.
+        settled = _file()
+        assert (await _clear(browser, headers)).status_code == 403
+        assert _file() == settled
+    # Nor does a later Server installation become open through it.
+    async with _browser(live) as browser:
+        assert (await _switch(live, "server")).status_code == 200
+        assert (await live.client.post(CLEAR, json={"current_password": NEW_PW})).status_code == 403
+
+
+async def test_c04_a_password_or_authentication_changed_after_the_proof_is_refused(install, monkeypatch):
+    live = install
+    prove = accounts.prove_own_password
+    async with _protected_standalone(live) as (browser, headers):
+        async def then_changed(*args, **kwargs):
+            proven = await prove(*args, **kwargs)
+            await accounts.set_own_local_credential(DEFAULT_ADMIN_ID, password=ADMIN_PW)
+            return proven
+
+        with monkeypatch.context() as patch:
+            patch.setattr(accounts, "prove_own_password", then_changed)
+            stale = await _clear(browser, headers)
+        assert stale.status_code == 409 and "changed meanwhile" in stale.json()["detail"]
+        assert await verify_password_candidate_async(await _hash(DEFAULT_ADMIN_ID), ADMIN_PW, use_configured_hash=True)
+        assert _file()["auth_password_enabled"] is True and config.get_settings().auth_password_enabled is True
+
+    async with _browser(live) as browser:
+        assert (await _sign_in(browser, ADMIN_PW)).status_code == 303
+        headers = {"X-CSRF-Token": (await browser.get("/api/auth/session")).json()["csrf_token"]}
+
+        async def then_opened(*args, **kwargs):
+            proven = await prove(*args, **kwargs)
+            opened = config.get_settings().model_copy(update={"auth_password_enabled": False})
+            config.save_settings(opened)
+            config.apply_settings(opened)
+            return proven
+
+        with monkeypatch.context() as patch:
+            patch.setattr(accounts, "prove_own_password", then_opened)
+            moved = await _clear(browser, headers, password=ADMIN_PW)
+        assert moved.status_code == 409 and "nothing was changed" in moved.json()["detail"]
+        assert await _hash(DEFAULT_ADMIN_ID) is not None
+
+
+async def test_c05_a_failed_clear_keeps_the_password_settings_and_sessions_and_can_be_retried(install, monkeypatch):
+    import api.account_routes as account_routes
+
+    live = install
+    async with _protected_standalone(live) as (browser, headers):
+        before = await _protected_state()
+
+        def refuse(_settings):
+            raise OSError("synthetic disk full")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(account_routes, "save_settings", refuse)
+            failed = await _clear(browser, headers)
+        assert failed.status_code == 500 and "nothing was changed" in failed.json()["detail"]
+        assert await _protected_state() == before
+
+        with monkeypatch.context() as patch:
+            _failing_commit(patch)
+            failed = await _clear(browser, headers)
+        assert failed.status_code == 500
+        # The settings written inside the transaction were restored when it failed to commit.
+        assert await _protected_state() == before
+        assert (await browser.get("/api/account")).json()["sign_in_required"] is True
+
+        retried = await _clear(browser, headers)
+        assert retried.status_code == 200 and _file()["auth_password_enabled"] is False
+        assert await _hash(DEFAULT_ADMIN_ID) is None
+
+
+async def test_c06_a_scoped_settings_write_waits_for_the_clear_and_both_are_kept(install, monkeypatch):
+    live = install
+    async with _protected_standalone(live) as (browser, headers):
+        inside, release = asyncio.Event(), asyncio.Event()
+        commit = accounts.commit_password_clear
+
+        async def held(*args, **kwargs):
+            inside.set()
+            await release.wait()
+            return await commit(*args, **kwargs)
+
+        async def scoped_writer():
+            async with config.config_write_lock():
+                current = config.load_settings()
+                current.log_level = "DEBUG"
+                config.save_settings(current)
+                config.apply_settings(current)
+
+        monkeypatch.setattr(accounts, "commit_password_clear", held)
+        clearing = asyncio.create_task(_clear(browser, headers))
+        await asyncio.wait_for(inside.wait(), 30)
+        writer = asyncio.create_task(scoped_writer())
+        await _waiting_on(config.config_write_lock())
+        assert not writer.done()
+        release.set()
+        cleared = await clearing
+        await writer
+        assert cleared.status_code == 200, cleared.text
+        for document in (_file(), config.get_settings().model_dump()):
+            assert document["auth_password_enabled"] is False and document["log_level"] == "DEBUG"
+        assert await _hash(DEFAULT_ADMIN_ID) is None
+
+
+async def test_c06_the_clear_waits_for_a_scoped_settings_write_and_both_are_kept(install):
+    live = install
+    async with _protected_standalone(live) as (browser, headers):
+        held, release = asyncio.Event(), asyncio.Event()
+
+        async def scoped_writer():
+            async with config.config_write_lock():
+                current = config.load_settings()
+                held.set()
+                await release.wait()
+                current.log_level = "DEBUG"
+                config.save_settings(current)
+                config.apply_settings(current)
+
+        writer = asyncio.create_task(scoped_writer())
+        await held.wait()
+        clearing = asyncio.create_task(_clear(browser, headers))
+        await _waiting_on(config.config_write_lock())      # past Argon2, waiting for the writer
+        assert await _hash(DEFAULT_ADMIN_ID) is not None and _file()["auth_password_enabled"] is True
+        release.set()
+        await writer
+        cleared = await clearing
+        assert cleared.status_code == 200, cleared.text
+        # The writer's document (password sign-in still on) did not survive the clear, and its change was kept.
+        for document in (_file(), config.get_settings().model_dump()):
+            assert document["auth_password_enabled"] is False and document["log_level"] == "DEBUG"
+
+
+async def test_c07_my_account_reads_the_effective_sign_in_requirement(install):
+    live = install
+    server = (await live.client.get("/api/account", headers=live.headers(live.session("admin")))).json()
+    assert (server["deployment_type"], server["sign_in_required"]) == ("server", True)
+    assert (await _switch(live, "standalone", headers=live.headers(live.session("admin")))).status_code == 200
+    opened = (await live.client.get("/api/account")).json()
+    assert (opened["deployment_type"], opened["sign_in_required"]) == ("standalone", False)
+    # A stored but not operational password does not make sign-in required.
+    await accounts.set_own_local_credential(DEFAULT_ADMIN_ID, password=ADMIN_PW)
+    stored = (await live.client.get("/api/account")).json()
+    assert (stored["has_password"], stored["sign_in_required"]) == (True, False)

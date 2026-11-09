@@ -358,7 +358,20 @@
    * its identity provider -- is offered Set Password, its first one (New and
    * Confirm only, under the username it already has, for a password manager).
    * Neither is offered when the profile could not be read; the server decides
-   * either way. A failed save keeps the dialog and says why. */
+   * either way. A failed save keeps the dialog and says why.
+   *
+   * On a Standalone installation (the deployment type the server states) the
+   * profile has no DP Username line, and beneath the title the header says
+   * whether signing in needs a password now -- the server's own reading
+   * (``sign_in_required``), and nothing while it is unread. A password-
+   * protected Standalone installation's signed-in Administrator is offered,
+   * beside Change Password, Clear Password: a third view, destructive, that
+   * proves the current password and, once confirmed, removes it and turns
+   * password sign-in off together (the server does both, or neither). */
+  // What clearing a Standalone installation's one password does.
+  const CLEAR_CONSEQUENCE = 'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse '
+    + 'can then access this installation without a password, until you set a new one in My Account.';
+
   async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
     if (!modal) return;
@@ -372,9 +385,17 @@
     // Set Password: the account's own read says it has no local password.
     const first = Boolean(own) && own.has_password === false;
     const passwordAction = profile.has_password ? 'Change Password' : first ? 'Set Password' : '';
+    const standalone = (own?.deployment_type || data.deployment_type) === 'standalone';
     // A Standalone installation's open default Admin: its first password also
     // turns on password sign-in (the server does both, or neither).
-    const standaloneFirst = first && data.deployment_type === 'standalone' && sessionKind(data) === 'standalone';
+    const standaloneFirst = first && standalone && sessionKind(data) === 'standalone';
+    const required = typeof own?.sign_in_required === 'boolean' ? own.sign_in_required : null;
+    const statusHint = !standalone || required === null ? ''
+      : required ? 'Password required to sign in' : 'No password required to sign in';
+    // Clear Password: the password-protected Standalone installation's own
+    // signed-in Administrator only.
+    const clearable = standalone && required === true && own?.has_password === true
+      && sessionKind(data) === 'authenticated';
     let emailSlot = null;
     // The Pencil turns the shown address into the field, holding it; Save
     // sends the change, Cancel discards it.
@@ -395,36 +416,44 @@
 
     const show = (next, handle) => {
       view = next;
-      views.profile.hidden = next !== 'profile';
-      views.password.hidden = next !== 'password';
-      handle.setActionHidden('password', next !== 'profile');
+      Object.entries(views).forEach(([name, node]) => { node.hidden = name !== next; });
+      ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
+      // Clear Password's view is destructive: the red treatment, and its own accept.
+      handle.setTone(next === 'clear' ? 'danger' : '');
+      handle.setAcceptLabel(next === 'clear' ? 'Clear Password' : 'Save');
       if (next === 'profile') {
         // Secrets never outlive their view.
-        ['current', 'next', 'confirm'].forEach(name => { if (fields[name]) fields[name].value = ''; });
+        ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
         fields.display_name.focus();
+      } else if (next === 'clear') {
+        fields.clear_current.focus();
       } else {
         (fields.current || fields.next).focus();
       }
     };
+    const actions = [];
+    if (passwordAction) actions.push({id: 'password', label: passwordAction, placement: 'leading'});
+    if (clearable) actions.push({id: 'clear', label: 'Clear Password', tone: 'danger', placement: 'leading'});
 
     modal.open({
       title: 'My Account',
+      titleHint: statusHint,
       acceptLabel: 'Save',
       cancelLabel: 'Cancel',
       className: 'dp-account-dialog',
-      actions: passwordAction ? [{id: 'password', label: passwordAction, placement: 'leading'}] : [],
+      actions,
       onAction(id) {
-        if (id === 'password') show('password', this.handle);
+        if (id === 'password' || id === 'clear') show(id, this.handle);
       },
       mount(body, handle) {
         this.handle = handle;
         body.innerHTML = `
-          <div class="dp-account-view" data-account-view="profile">
+          <div class="dp-account-view" data-account-view="profile">${standalone ? '' : `
             <div class="dp-modal-field dp-account-username">
               <span class="form-label">DP Username</span>
               <span class="dp-account-username-value" data-account-username></span>
               <p class="dp-account-username-note">Your DebridPulse account username. Used for local password sign-in when configured. Separate from your display name.</p>
-            </div>
+            </div>`}
             <label class="dp-modal-field"><span class="form-label">Display Name</span>
               <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
             <label class="dp-modal-field"><span class="form-label">Actual Name</span>
@@ -442,10 +471,16 @@
             <p class="dp-account-username-note">${standaloneFirst
               ? 'Saving it turns on password sign-in: DebridPulse then asks for this password.'
               : 'Local password sign-in works only if your administrator has enabled it.'}</p>` : ''}
-          </div>`;
+          </div>${clearable ? `
+          <div class="dp-account-view" data-account-view="clear" hidden>
+            <label class="dp-modal-field"><span class="form-label">Current Password</span>
+              <input class="input" data-field="clear_current" type="password" maxlength="4096" autocomplete="current-password"></label>
+            <p class="dp-account-clear-warning">${CLEAR_CONSEQUENCE}</p>
+          </div>` : ''}`;
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
-        body.querySelector('[data-account-username]').textContent = String(profile.username || '');
+        const username = body.querySelector('[data-account-username]');
+        if (username) username.textContent = String(profile.username || '');
         // The account the new password belongs to, for a password manager only:
         // never sent, never chosen here.
         const passwordUsername = body.querySelector('[data-account-password-username]');
@@ -457,11 +492,23 @@
         return null;
       },
       onCancel(handle) {
-        if (view !== 'password') return true;
+        if (view === 'profile') return true;
         show('profile', handle);
         return false;
       },
       async onAccept() {
+        if (view === 'clear') {
+          if (!fields.clear_current.value) { notice('Enter your current password.'); return false; }
+          const confirmed = await modal.confirm({tone: 'danger', title: 'Clear Password?',
+            confirmLabel: 'Clear Password', message: CLEAR_CONSEQUENCE});
+          if (!confirmed) return false;
+          const failure = await sendJson('POST', '/api/account/clear-password',
+            {current_password: fields.clear_current.value});
+          if (failure) { notice(failure.message); return false; }
+          // The server ended every session: the installation is open now.
+          window.location.assign('/');
+          return true;
+        }
         if (view === 'password' && first) {
           if (!fields.next.value) { notice('Enter a new password.'); return false; }
           if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
