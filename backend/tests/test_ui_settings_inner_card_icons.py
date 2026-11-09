@@ -18,6 +18,7 @@ EXPECTED = {
     'User Accounts': ('users', 'users'),
     'Integration Accounts': ('users', 'key-round'),
     'Integration Delivery Profiles': ('users', 'workflow-users'),
+    'Deployment Type': ('users', 'settings-users'),
     'Discord Notifications': ('notifications', 'message-square'),
     'Statistics Reporting': ('notifications', 'chart-line'),
     'Backups & Retention': ('maintenance', 'archive'),

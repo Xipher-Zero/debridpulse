@@ -552,6 +552,34 @@
         ]},
       ],
     },
+    'deployment-type': {
+      title: 'Deployment Type',
+      sections: [
+        {text: [
+          'The deployment type decides who can use DebridPulse as a person. Switch to the other type with the button below the current one.',
+        ]},
+        {heading: 'Server', list: [
+          'Every enabled Admin, User, and ReadOnly User account signs in with its own username and password, its identity provider (OpenID Connect), or both, as configured under Authentication, and works within its role.',
+        ]},
+        {heading: 'Standalone', list: [
+          'Only the built-in Administrator can sign in as a person. OpenID Connect is not available.',
+          'With a password set, the sign-in page asks for that password alone, with no username field.',
+          'Without a password, no sign-in is required, and DebridPulse is used as the built-in Administrator.',
+        ]},
+        {heading: 'What switching keeps', list: [
+          'No account is deleted. Other people’s accounts keep their usernames, passwords, identity-provider links, and saved Enabled or Disabled status. In Standalone they cannot sign in, whatever that status says.',
+          'Returning to Server lets each account sign in again according to its saved status: an account you disabled stays disabled.',
+          'The saved OpenID Connect configuration is kept.',
+          'Integration accounts and their API tokens keep working, and every download request and the account it belongs to stay as they are.',
+        ]},
+        {heading: 'What switching changes', list: [
+          'Each switch, in either direction, asks you to confirm first.',
+          'It clears the built-in Administrator’s password, turns off Username & Password and OpenID Connect sign-in, and ends every browser session.',
+          'Afterwards no sign-in is required: anyone who can reach DebridPulse at an address it accepts can use it as the built-in Administrator. This is not limited to this computer, and it does not expire.',
+          'It stays open until you set up sign-in again: in Standalone, set a password from My Account; in Server, turn on sign-in under Authentication.',
+        ]},
+      ],
+    },
 
     /* ── Notifications (global) ───────────────────────────────────────── */
     discord: {

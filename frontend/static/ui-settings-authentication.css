@@ -257,18 +257,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 /* A READING, not a control: it states a positive fact about the installation,
    so it takes the positive-state colour and a restrained border, and nothing
-   that would suggest it can be pressed. A square tile sized around its count
-   (wider counts widen it and it stays square), centred against the title/hint
-   stack beside it rather than stretched to that stack's height. */
-#view-settings .dp-settings-auth-session-count-value {
+   that would suggest it can be pressed -- Active Browser Sessions' count and
+   the Deployment Type (Users & Access, below) alike, centred against the
+   title/hint stack beside it rather than stretched to that stack's height. */
+#view-settings :is(.dp-settings-auth-session-count-value, .dp-settings-deployment-value) {
   align-self: center;
-  min-width: 46px;
-  aspect-ratio: 1;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
   border: 1px solid color-mix(in srgb, var(--dp-state-success) 42%, transparent);
   border-radius: 10px;
   background: var(--dp-surface-2);
@@ -276,9 +273,17 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
-  font-variant-numeric: tabular-nums;
   cursor: default;
   user-select: none;
+}
+
+/* The count is a square tile sized around its digits: wider counts widen it
+   and it stays square. */
+#view-settings .dp-settings-auth-session-count-value {
+  min-width: 46px;
+  aspect-ratio: 1;
+  padding: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The action needs room to read as separate from the count it sits beside. */
@@ -1023,6 +1028,55 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+
+/* Deployment Type: one assembly, centred in the card body -- the reading (the
+   title over its hint, beside the type) on one row, and the action on its own
+   row beneath the whole reading. The reading is as wide as its one row
+   (max-content): fitDeploymentType (ui-settings-page.js) replaces the hint
+   with a shorter wording while that row and a 16px gutter on each side are
+   wider than the card, then stacks
+   the title over the type with no hint (data-deployment-fit 3). A hint never
+   wraps. */
+#view-settings .dp-settings-deployment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-deployment-reading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: max-content;
+}
+
+#view-settings .dp-settings-deployment-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+#view-settings .dp-settings-deployment-copy > .form-hint {
+  margin-top: 0;
+}
+
+#view-settings .dp-settings-deployment-copy > .form-hint[hidden] {
+  display: none;
+}
+
+/* A text reading: as wide as its word, not a square. */
+#view-settings .dp-settings-deployment-value {
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+#view-settings .dp-settings-deployment[data-deployment-fit='3'] .dp-settings-deployment-reading {
+  flex-direction: column;
+  gap: 10px;
 }
 
 #view-settings .dp-settings-users-table-wrap {

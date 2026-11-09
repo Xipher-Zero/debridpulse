@@ -455,7 +455,7 @@ function problems(list, width) {
 
 const INVENTORY = {
   authentication: ['Authentication Status', 'Username & Password', 'OpenID Connect'],
-  users: ['User Accounts', 'Integration Accounts', 'Integration Delivery Profiles'],
+  users: ['User Accounts', 'Integration Accounts', 'Integration Delivery Profiles', 'Deployment Type'],
   notifications: ['Webhook Notifications', 'Statistics Reporting'],
   maintenance: ['Event Logging', 'Backups & Retention', 'Database Reset Controls'],
 };

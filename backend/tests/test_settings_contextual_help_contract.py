@@ -160,7 +160,7 @@ def _topics() -> set[str]:
 
 def test_every_settings_card_declares_exactly_one_help_topic():
     calls = [m.start() for m in re.finditer(r"\b(?:card|groupCard)\((?:'|groupLabel,)", PAGE)]
-    assert len(calls) == 17
+    assert len(calls) == 18
     for start in calls:
         title = PAGE[start:start + 80]
         # The options object follows the body; its help names the topic.
@@ -203,7 +203,7 @@ def test_every_referenced_topic_exists_and_none_is_orphaned():
     # 21, one topic for each of the five premium services that had none, and
     # one for each of the five Transfer Method cards.
     assert {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox"} <= referenced
-    assert len(referenced) == 31
+    assert len(referenced) == 32
 
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():

@@ -45,7 +45,7 @@ test('every top-level Settings card has exactly one help chip naming it, and of 
   })));
   expect(census.map(entry => entry.panel).sort()).toEqual([...PANELS].sort());
   const cards = census.flatMap(entry => entry.cards);
-  expect(cards).toHaveLength(18);
+  expect(cards).toHaveLength(19);
   for (const card of cards) {
     expect(card.labels, card.title).toEqual([`Help: ${card.title}`]);
     expect(card.text, card.title).toEqual(['']);
@@ -75,7 +75,7 @@ test('every header rail reads status, then help, then the card’s own controls 
   }));
   // 19, the five premium services that had no help of their own, and the
   // five transfer-method cards.
-  expect(rails).toHaveLength(29);
+  expect(rails).toHaveLength(30);
   for (const rail of rails) {
     const expected = rail.kinds[0] === 'status' ? 1 : 0;
     expect(rail.kinds.indexOf('help'), rail.label).toBe(expected);

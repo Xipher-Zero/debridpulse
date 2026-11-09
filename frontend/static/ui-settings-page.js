@@ -4639,11 +4639,13 @@
    * alone, by its password once one is set. Either way the change disables
    * Password and OIDC sign-in and ends every browser session; the server
    * makes it whole or not at all, and the page then starts again. */
+  /* Each type's hint, longest first: fitDeploymentType shows the longest
+   * that keeps the reading on one row, and none in the stacked last form. */
   const DEPLOYMENT_TYPES = Object.freeze({
     server: {label: 'Server', other: 'standalone',
-      hint: 'People sign in with their own accounts and roles.'},
+      hints: ['People sign in with their own accounts and roles.', 'Individual accounts and roles.', 'Multiple accounts.']},
     standalone: {label: 'Standalone', other: 'server',
-      hint: 'Only the built-in Administrator uses DebridPulse as a person. Other user accounts are kept, but cannot sign in.'},
+      hints: ['Only the built-in Administrator uses DebridPulse as a person.', 'Only the default Admin.', 'Admin only.']},
   });
   const DEPLOYMENT_CONFIRMATIONS = Object.freeze({
     standalone: {
@@ -4666,21 +4668,76 @@
     },
   });
 
+  /* One centred assembly: the reading -- the title over the hint, beside the
+   * type itself, a state reading like Active Browser Sessions' count -- and,
+   * on its own row beneath the whole reading, the action. */
   function deploymentCard() {
     const current = state.settings?.deployment_type === 'standalone' ? 'standalone' : 'server';
     const type = DEPLOYMENT_TYPES[current];
     const other = DEPLOYMENT_TYPES[type.other];
     return card('Deployment Type', `
-      <div class="dp-settings-deployment-row dp-settings-island" role="group" aria-label="Deployment type">
-        ${inlineField('', 'Current Deployment Type', html(type.hint),
-          `<span class="dp-settings-deployment-value" data-deployment-type="${current}">${type.label}</span>`,
-          {
-            className: 'dp-settings-deployment-field',
-            action: `<button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
-              type.other}">Switch to ${other.label}</button>`,
-          })}
+      <div class="dp-settings-deployment" data-deployment-type="${current}" data-deployment-fit="0">
+        <div class="dp-settings-deployment-reading">
+          <span class="dp-settings-deployment-copy">
+            <span class="form-label">Current Deployment Type</span>
+            <span class="form-hint" data-deployment-hint>${html(type.hints[0])}</span>
+          </span>
+          <span class="dp-settings-deployment-value">${type.label}</span>
+        </div>
+        <button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
+          type.other}">Switch to ${other.label}</button>
       </div>
-    `, {className: 'dp-settings-deployment-card', titlePrefix: familyIcon('users', 'settings')});
+    `, {
+      className: 'dp-settings-deployment-card',
+      help: 'deployment-type',
+      titlePrefix: familyIcon('users', 'settings-users'),
+      headerCenter: 'Whether people sign in with their own accounts, or only the built-in Administrator.',
+      headerCenterClass: 'dp-settings-auth-header-copy',
+      hinted: true,
+      headerFit: 'wrap',
+    });
+  }
+
+  /* The reading keeps its one row with the longest hint that fits the
+   * assembly with a clear gutter on each side (data-deployment-fit 0, 1, 2:
+   * full, shorter, shortest); when even the shortest does not, the last form
+   * (3) stacks the title over the type, with no hint. A hint is replaced,
+   * never wrapped: the reading is measured at its own one-row width, with the
+   * wording being tried shown. Only a change of the assembly's width -- its
+   * card's, which no wording changes -- fits it again. */
+  const DEPLOYMENT_FIT_STACKED = 3;
+  // The room a one-row reading keeps clear on each side of it.
+  const DEPLOYMENT_GUTTER = 16;
+  let deploymentObserver = null;
+
+  function fitDeploymentType() {
+    deploymentObserver?.disconnect();
+    deploymentObserver = null;
+    const assembly = root()?.querySelector('.dp-settings-deployment');
+    if (!assembly) return;
+    const reading = assembly.querySelector('.dp-settings-deployment-reading');
+    const hint = assembly.querySelector('[data-deployment-hint]');
+    const hints = DEPLOYMENT_TYPES[assembly.dataset.deploymentType].hints;
+    let width = null;
+    const fit = () => {
+      if (!assembly.getClientRects().length) return;
+      width = assembly.clientWidth;
+      hint.hidden = false;
+      for (let step = 0; step < DEPLOYMENT_FIT_STACKED; step += 1) {
+        assembly.dataset.deploymentFit = String(step);
+        hint.textContent = hints[step];
+        if (reading.getBoundingClientRect().width + 2 * DEPLOYMENT_GUTTER <= assembly.clientWidth) return;
+      }
+      assembly.dataset.deploymentFit = String(DEPLOYMENT_FIT_STACKED);
+      hint.hidden = true;
+    };
+    fit();
+    if (typeof ResizeObserver === 'function') {
+      deploymentObserver = new ResizeObserver(() => {
+        if (assembly.clientWidth !== width) fit();
+      });
+      deploymentObserver.observe(assembly);
+    }
   }
 
   async function changeDeploymentType(target, button) {
@@ -6756,6 +6813,7 @@
     fitServicesRows();
     fitHeaderHints();
     fitIslands();
+    fitDeploymentType();
     fitAuthKpis();
     fitHandheldBodies();
     bindEvents(view);
