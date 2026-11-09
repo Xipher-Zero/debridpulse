@@ -41,6 +41,7 @@ real application in ``frontend/browser/settings-providers-layout.spec.js``,
 (the one owner of the shared news-server collection); this module owns the
 source/metadata contracts and the absence audits.
 """
+from i18n_node import english, says
 import re
 from pathlib import Path
 
@@ -253,25 +254,27 @@ def test_the_status_renderer_still_names_no_integration_and_no_tier():
 
 def test_the_settings_tab_is_presented_as_services_and_keeps_its_key():
     tabs = block(SETTINGS_JS, "const TABS")
-    assert "['sources', 'Services'" in tabs
+    # 1.0.14: said from the catalog by key (the presentation; the key stays `sources`).
+    assert "['sources', say('settings.tab.sources')" in tabs and english("settings.tab.sources") == "Services"
     assert "Sources & Providers" not in tabs
 
 
 def test_the_premium_group_card_is_premium_services():
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "groupCard('Premium Services'" in panel
+    assert "groupCard(say('settings.services.premium')" in panel and english("settings.services.premium") == "Premium Services"
     assert "External Providers" not in panel
 
 
 def test_the_aggregate_group_label_falls_back_to_network_sources():
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "'Network Sources'" in panel
+    # 1.0.14: said by the group's identifier, as Provider Status says it.
+    assert "say('integration.group.direct_sources')" in panel and english("integration.group.direct_sources") == "Network Sources"
     assert "'General Sources'" not in panel
 
 
 def test_the_downloads_executor_tuning_family_matches_the_services_name():
     panel = block(SETTINGS_JS, "function downloadsPanel(")
-    assert "executorTuningCard('direct', 'Network Sources'" in panel
+    assert "executorTuningCard('direct', say('integration.group.direct_sources')" in panel
     assert "'General Sources'" not in panel
 
 
@@ -295,7 +298,7 @@ def test_the_services_page_renders_the_new_network_source_names():
     # The durable identities remain the only hard-coded reference, and only as
     # the copy table's keys.
     copy = block(SETTINGS_JS, "const SOURCE_BOX_COPY")
-    assert "general_http:" in copy and "general_ftp:" in copy
+    assert "'general_http'" in copy and "'general_ftp'" in copy
 
 
 def test_usenet_stays_first_in_settings_premium_services():
@@ -383,7 +386,7 @@ def test_inline_field_validation_survives_as_its_own_narrower_surface():
     # never reports the result of an operation.
     assert "data-usenet-validation" in USENET_JS
     assert "data-usenet-validation" in SETTINGS_JS
-    assert "A server host is required." in USENET_JS
+    assert says(USENET_JS, "A server host is required.")
     validation = block(USENET_JS, "function validation(")
     assert "toast" not in validation
 
@@ -479,7 +482,10 @@ def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
         # DP 1.0.14: it is Clear, inside the Password field's own border --
         # the shared compound field, the input and Clear its two members.
         button = rendered[rendered.index('data-usenet-action="clear-password"'):]
-        assert button[:button.index("</button>")].endswith(">Clear"), label
+        # 1.0.14: its word is the catalog's (settings.usenet.clear, "Clear").
+        assert button[:button.index("</button>")].endswith(("${html(t('settings.usenet.clear'))}",
+                                                            "${esc(t('settings.usenet.clear'))}")), label
+        assert english("settings.usenet.clear") == "Clear"
         assert " hidden" not in action, f"{label}: the clear action still disappears"
         field = rendered[rendered.index('data-usenet-field="password"'):]
         field = field[:field.index('data-usenet-action="clear-password"')]
@@ -503,7 +509,8 @@ def test_the_clear_action_writes_only_the_removal_and_is_confirmation_gated():
     # BEFORE anything is settled, written or converged.
     assert "window.DPSettingsModal.confirm(" in body
     assert "tone: 'danger'" in body
-    assert "confirmLabel: 'Clear Password'" in body
+    assert "confirmLabel: t('settings.usenet.clear_password_accept')" in body
+    assert english("settings.usenet.clear_password_accept") == "Clear Password"
     gate = body.index("if (!confirmed) return;")
     assert gate < body.index("writeServer("), "the write is not behind the confirmation"
     assert gate < body.index("settle("), "a commit is settled before the operator has agreed"
@@ -1053,7 +1060,8 @@ def test_the_usenet_scope_is_what_creates_the_record():
 def test_a_blank_or_invalid_host_creates_nothing_and_keeps_inline_validation():
     creation = block(USENET_JS, "async function createServer(")
     assert "if (!server.host)" in creation
-    assert "validation(card, 'A server host is required.')" in creation
+    assert "validation(card, 'settings.usenet.host_required')" in creation
+    assert english("settings.usenet.host_required") == "A server host is required."
     assert creation.index("if (!server.host)") < creation.index("'POST'")
 
 
@@ -1162,7 +1170,7 @@ def test_the_api_key_is_an_ordinary_changed_blur_replacement():
     # declared in exactly one place -- COMMIT_FIELDS -- and emitted by exactly
     # one place, commitAttributes(). A second markup path would be how those
     # silently drift apart.
-    assert "return input(key, 'API Key'" in key_field
+    assert "return input(key, say('settings.key.label')" in key_field and english("settings.key.label") == "API Key"
     assert "data-commit" not in key_field, "the row hand-writes its own commit attributes"
     declared = block(SETTINGS_JS, "const COMMIT_FIELDS")
     assert "alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'}" in declared
@@ -1197,11 +1205,14 @@ def test_the_explicit_clear_is_the_only_destructive_credential_writer():
     assert "clear_secrets: ['api_key']" in body
     assert "options: {}" in body, "Clear must never also save a replacement key"
     assert "/integrations/alldebrid/configuration" in body
-    # The ONE canonical confirmation gates it, with the required wording.
-    assert "window.DPSettingsModal.confirm(" in body
-    assert "tone: 'danger'" in body
-    assert "title: 'Clear AllDebrid API key?'" in body
-    assert "confirmLabel: 'Clear AllDebrid API Key'" in body
+    # The ONE canonical confirmation gates it, with the required wording -- the
+    # one key-removal confirmation every provider key shares (1.0.14).
+    assert "await confirmClearKey('AllDebrid')" in body
+    confirm = block(SETTINGS_JS, "function confirmClearKey(")
+    assert "window.DPSettingsModal.confirm(" in confirm
+    assert "tone: 'danger'" in confirm
+    assert english("settings.key.clear_title").replace("{provider}", "AllDebrid") == "Clear AllDebrid API key?"
+    assert english("settings.key.clear_accept").replace("{provider}", "AllDebrid") == "Clear AllDebrid API Key"
     # Declining performs no mutation: nothing is settled or written first.
     gate = body.index("if (!confirmed) return;")
     assert gate < body.index("settle("), "a commit is settled before the operator agrees"
@@ -1234,7 +1245,7 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     # there is anything stored to erase, so the row never reflows.
     assert "configured ? '' : ' disabled'" in action
     assert 'type="checkbox"' not in action
-    assert ">Remove</button>" in group
+    assert "${html(t('settings.key.remove'))}</button>" in group and english("settings.key.remove") == "Remove"
     assert "Remove API Key" not in SETTINGS_JS
     assert 'type="checkbox"' not in group
     assert "<label" not in group
@@ -1416,8 +1427,10 @@ def test_the_priority_hint_belongs_to_the_priority_field():
         field = markup[markup.index("dp-usenet-field--priority"):]
         field = field[:field.index("</div>")]
         assert 'data-usenet-field="priority"' in field, label
-        assert "Lower values have priority." in field, label
-        assert field.index('data-usenet-field="priority"') < field.index("Lower values have priority."), label
+        # 1.0.14: the hint is the catalog's (settings.usenet.priority_hint).
+        assert "settings.usenet.priority_hint" in field, label
+        assert field.index('data-usenet-field="priority"') < field.index("settings.usenet.priority_hint"), label
+    assert english("settings.usenet.priority_hint") == "Lower values have priority."
     hint = rule(USENET_CSS, ".dp-usenet-priority-hint {")
     assert "text-align: center" not in hint, "the hint is still a free-floating centred paragraph"
     # The tuning row keeps both inputs on one band even though one column is
@@ -1441,7 +1454,8 @@ def test_ssl_is_centred_against_the_host_and_port_input_boxes():
     for label, markup in SERVER_CARDS:
         element = control(markup, 'data-usenet-field="ssl"')
         assert 'type="checkbox"' in element, label
-        assert '<span class="form-label">SSL</span>' in markup, label
+        assert "'settings.usenet.ssl'" in markup, label
+    assert english("settings.usenet.ssl") == "SSL"
 
 
 def test_no_usenet_geometry_is_faked_at_runtime():

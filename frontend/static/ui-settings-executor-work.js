@@ -40,16 +40,17 @@
   // Ordering is by the NEUTRAL group, so what an operator is looking for --
   // work that is running, then work that is waiting -- is what they see first.
   const GROUP_WEIGHT = Object.freeze({active: 0, waiting: 1, paused: 2, stopped: 3});
-  const STATE_LABELS = Object.freeze({
-    queued: 'Queued', running: 'Running', paused: 'Paused', succeeded: 'Completed',
-    failed: 'Failed', cancelled: 'Cancelled', absent: 'Absent', unknown: 'Unknown',
-  });
+  // Every word is the catalog's (1.0.14 localization): a state by its identifier.
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const STATES = new Set(['queued', 'running', 'paused', 'succeeded', 'failed', 'cancelled', 'absent', 'unknown']);
   const STATE_BADGE = Object.freeze({
     queued: 'queued', running: 'downloading', paused: 'paused', succeeded: 'completed',
     failed: 'error', cancelled: 'error', absent: 'queued', unknown: 'queued',
   });
-  const ACTION_LABELS = Object.freeze({pause: 'Pause', resume: 'Resume', cancel: 'Terminate'});
-  const ACTION_PENDING = Object.freeze({pause: 'Pausing…', resume: 'Resuming…', cancel: 'Terminating…'});
+  const ACTIONS = new Set(['pause', 'resume', 'cancel']);
+  const actionLabel = action => (ACTIONS.has(action) ? t(`settings.engine_activity.action.${action}`) : action);
+  // The shared pending owner (app.js setButtonPending) re-says a pending key on a language change.
+  const actionPending = action => (ACTIONS.has(action) ? `settings.engine_activity.pending.${action}` : 'settings.engine_activity.pending.other');
   const REQUEST_TIMEOUT_MS = 20000;
   // Re-read admission. GET /executor-work observes every owned execution again
   // through its executor (one batch per executor): measured at 12 ms for 2
@@ -71,6 +72,8 @@
   let inflight = false, queued = null, timer = null;
   let lastStart = 0, lastAccepted = 0, spacing = REFRESH_SPACING_MS;
   let lastShown = '';                 // the accepted answer the rows show, as received
+  let lastData = null;                // that answer, said again on a language change
+  let lastError = null;               // or the failure shown instead ({message})
 
   const root = () => document.getElementById('view-settings');
   const downloadsPanel = () => root()?.querySelector('[data-panel="downloads"]') || null;
@@ -109,26 +112,26 @@
 
   function stateBadge(state) {
     const key = String(state || 'unknown');
-    return `<span class="badge badge-${esc(STATE_BADGE[key] || 'queued')}">${esc(STATE_LABELS[key] || key)}</span>`;
+    return `<span class="badge badge-${esc(STATE_BADGE[key] || 'queued')}">${esc(STATES.has(key) ? t(`settings.engine_activity.state.${key}`) : key)}</span>`;
   }
 
   function actionButton(row, action) {
     const danger = action === 'cancel';
     return `<button class="btn ${danger ? 'btn-danger' : 'btn-ghost'} btn-sm"
       data-executor-action="${esc(action)}" data-attempt="${esc(row.attempt_id)}"
-      data-subject="${esc(row.name || '')}">${esc(ACTION_LABELS[action] || action)}</button>`;
+      data-subject="${esc(row.name || '')}">${esc(actionLabel(action))}</button>`;
   }
 
   function rowMarkup(row) {
     const controls = Array.isArray(row.controls) ? row.controls : [];
     const error = row.error
-      ? `<div class="dp-executor-work-error">${esc(row.error.message || row.error.category || 'Execution error')}</div>`
+      ? `<div class="dp-executor-work-error">${esc(row.error.message || row.error.category || t('settings.engine_activity.error_fallback'))}</div>`
       : '';
     return `
       <div class="dp-executor-work-item" data-attempt="${esc(row.attempt_id)}" data-executor-group="${esc(row.filter_group || 'waiting')}">
         <div class="dp-executor-work-item-top">
           <div class="dp-executor-work-identity">
-            <div class="dp-executor-work-name" data-tooltip="${esc(row.name || '')}">${esc(row.name || 'Execution')}</div>
+            <div class="dp-executor-work-name" data-tooltip="${esc(row.name || '')}">${esc(row.name || t('settings.engine_activity.name_fallback'))}</div>
             <div class="dp-executor-work-owner">${esc(row.executor_name || row.executor_id || '')}</div>
           </div>
           <div class="dp-executor-work-actions">${controls.map(action => actionButton(row, action)).join('')}</div>
@@ -137,12 +140,12 @@
           ? progress(Number(row.progress) || 0, row.filter_group === 'stopped' ? 'completed' : 'downloading')
           : ''}</div>
         <div class="dp-executor-work-facts">
-          <div><div class="dp-executor-work-k">State</div><div class="dp-executor-work-v">${stateBadge(row.state)}</div></div>
-          <div><div class="dp-executor-work-k">Speed</div><div class="dp-executor-work-v">${
+          <div><div class="dp-executor-work-k">${esc(t('settings.engine_activity.fact.state'))}</div><div class="dp-executor-work-v">${stateBadge(row.state)}</div></div>
+          <div><div class="dp-executor-work-k">${esc(t('settings.engine_activity.fact.speed'))}</div><div class="dp-executor-work-v">${
             row.bytes_per_second === null || row.bytes_per_second === undefined ? unknown : esc(speed(row.bytes_per_second))}</div></div>
-          <div><div class="dp-executor-work-k">Done</div><div class="dp-executor-work-v">${
+          <div><div class="dp-executor-work-k">${esc(t('settings.engine_activity.fact.done'))}</div><div class="dp-executor-work-v">${
             esc(size(row.completed_bytes))}${row.total_bytes ? ` / ${esc(size(row.total_bytes))}` : ''}</div></div>
-          <div><div class="dp-executor-work-k">Remaining</div><div class="dp-executor-work-v">${
+          <div><div class="dp-executor-work-k">${esc(t('settings.engine_activity.fact.remaining_label'))}</div><div class="dp-executor-work-v">${
             row.remaining_bytes === null || row.remaining_bytes === undefined ? unknown : esc(size(row.remaining_bytes))}</div></div>
         </div>
         ${error}
@@ -159,7 +162,7 @@
     if (remainingNode) {
       // A remaining total exists only when EVERY execution knows its own size.
       const remaining = summary.remaining_bytes;
-      remainingNode.textContent = `${remaining === null || remaining === undefined ? unknown : size(remaining)} Remaining`;
+      remainingNode.textContent = t('settings.engine_activity.remaining', {value: remaining === null || remaining === undefined ? unknown : size(remaining)});
     }
   }
 
@@ -196,7 +199,7 @@
       empty.dataset.dpExecutorWorkFilterEmpty = '1';
       list.appendChild(empty);
     }
-    empty.textContent = `No ${activeFilter} download engine activity right now.`;
+    empty.textContent = t(`settings.engine_activity.empty_filtered.${activeFilter}`);
   }
 
   /* Brings ``current`` to what ``next`` is, touching only what differs: a
@@ -225,6 +228,8 @@
     const list = listNode();
     if (!list) return;
     updateMetrics(data);
+    lastData = data;
+    lastError = null;
     const received = JSON.stringify(data?.items || []);
     if (received === lastShown && list.querySelector('.dp-executor-work-item, .empty')) return;
     lastShown = received;
@@ -232,7 +237,7 @@
     if (!items.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No download engine activity right now.';
+      empty.textContent = t('settings.engine_activity.empty');
       list.replaceChildren(empty);
       applyFilter();
       return;
@@ -267,9 +272,11 @@
     if (!list) return;
     const node = document.createElement('div');
     node.className = 'dp-executor-work-error';
-    node.textContent = `Download engine activity unavailable: ${String(message || 'unknown error')}`;
+    node.textContent = t('settings.engine_activity.unavailable', {reason: String(message || t('settings.engine_activity.unknown_error'))});
     list.replaceChildren(node);
     lastShown = '';
+    lastData = null;
+    lastError = {message};
     updateMetrics(null);
   }
 
@@ -358,12 +365,14 @@
    * browser-native confirm here. */
   async function confirmTermination(subject) {
     if (!window.DPSettingsModal || typeof window.DPSettingsModal.confirm !== 'function') return false;
+    const message = subject ? 'settings.engine_activity.terminate_message_named' : 'settings.engine_activity.terminate_message';
+    const values = subject ? {subject} : undefined;
     return window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: 'Terminate this executor work?',
-      message: `${subject ? `"${subject}" ` : ''}will be stopped and its execution released. `
-        + 'DebridPulse keeps the transfer and may start it again under its normal recovery rules.',
-      confirmLabel: 'Terminate',
+      title: t('settings.engine_activity.terminate_title'),
+      message: t(message, values),
+      confirmLabel: t('settings.engine_activity.action.cancel'),
+      keys: {title: 'settings.engine_activity.terminate_title', message, messageValues: values, accept: 'settings.engine_activity.action.cancel'},
     });
   }
 
@@ -373,14 +382,14 @@
     if (!action || !attempt) return;
     if (action === 'cancel' && !await confirmTermination(button.dataset.subject)) return;
 
-    setButtonPending(button, true, ACTION_PENDING[action] || 'Working…');
+    setButtonPending(button, true, actionPending(action));
     try {
       await api('POST', `/executor-work/${encodeURIComponent(attempt)}/${encodeURIComponent(action)}`,
                 null, REQUEST_TIMEOUT_MS);
-      toast(`Executor work: ${ACTION_LABELS[action] || action} accepted`, 'success');
+      toast(t('settings.engine_activity.accepted', {action: actionLabel(action)}), 'success');
       admit(true);
     } catch (error) {
-      toast(`Executor work: ${error.message}`, 'error');
+      toast(t('settings.engine_activity.failed', {reason: error.message}), 'error');
       // Whatever the row showed is no longer trustworthy; re-read the truth.
       admit(true);
     } finally {
@@ -429,6 +438,15 @@
     });
   }
   document.addEventListener('debridpulse:settings-rendered', attach);
+  // A language change says the shown answer again from what it holds (no
+  // request): rows are patched in place, so a focused control keeps focus.
+  document.addEventListener('debridpulse:locale-changed', () => {
+    if (!listNode()) return;
+    if (lastError) { showError(lastError.message); return; }
+    if (!lastData) return;
+    lastShown = '';
+    render(lastData);
+  });
   document.addEventListener('debridpulse:navigation', () => queueMicrotask(sync));
   document.addEventListener('visibilitychange', sync);
   document.addEventListener('debridpulse:execution-activity-changed', invalidated);

@@ -425,9 +425,16 @@
 
   /* A plain menu is itself the listbox. A searchable one is its search field
      above a listbox of its own, which alone scrolls; the field (and what was
-     typed into it) is kept while the list is redrawn. */
+     typed into it) is kept while the list is redrawn. A redraw of an open
+     menu (its select changed: its options, or their words in another
+     language) keeps the reader's place -- the list's scroll and the focused
+     option -- and says the search field's name as the select now has it. */
   function renderProjectedOptions(select) {
     const layer = ensureDropdownLayer();
+    const shown = searchable(select) ? layer.querySelector('#dp-dropdown-list') : layer;
+    const scroll = shown ? shown.scrollTop : 0;
+    const active = document.activeElement;
+    const focused = active && layer.contains(active) && active.dataset ? active.dataset.dpOptionIndex : undefined;
     let list = layer;
     let query = '';
     if (searchable(select)) {
@@ -444,6 +451,9 @@
       }
       layer.classList.add('dp-dropdown-menu--search');
       layer.removeAttribute('role');
+      search.placeholder = select.dataset.dpDropdownSearch;
+      search.setAttribute('aria-label', select.dataset.dpDropdownSearch);
+      list.setAttribute('aria-label', selectAccessibleName(select));
       query = fold(search.value);
     } else {
       layer.classList.remove('dp-dropdown-menu--search');
@@ -486,6 +496,11 @@
       empty.className = 'dp-dropdown__empty';
       empty.textContent = window.DPI18n.t(query ? 'a11y.select_no_matches' : 'a11y.select_no_options');
       list.appendChild(empty);
+    }
+    list.scrollTop = scroll;
+    if (focused !== undefined) {
+      const again = list.querySelector('.dp-dropdown__option[data-dp-option-index="' + focused + '"]');
+      if (again) again.focus({preventScroll: true});
     }
   }
 
@@ -764,6 +779,9 @@
       const mode = document.getElementById('overlay')?.dataset.dpModalMode;
       if (!mode || mode === 'details') installModalCloseSemantics();
       document.querySelectorAll('select[data-dp-dropdown-enhanced="1"]').forEach(syncProjectedSelect);
+      // An open menu, drawn again once every owner has said its words (its
+      // options, its search name) in this dispatch.
+      queueMicrotask(function () { if (dpActiveDropdown) syncProjectedSelect(dpActiveDropdown.select); });
     });
     // A filter, a Help tab, or a period chosen from the handheld Statistics
     // menu (the period filters' own choice, ui-statistics.js).

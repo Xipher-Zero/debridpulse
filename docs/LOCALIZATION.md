@@ -1,7 +1,7 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a and WS3b
-complete; product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a, WS3b and
+WS3c complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -21,10 +21,17 @@ These surfaces read the catalog:
   selection; provider switching (`ui-root-provider.js`) and source switching
   (`ui-group-candidates.js`, its discard confirmation included); the
   authentication-required dialog; the server folder picker; transfer uploads;
-  and the submission prompts (local network, acquisition scope).
+  and the submission prompts (local network, acquisition scope);
+- WS3c, Settings services and engines: the Settings shell (tabs, navigator,
+  header identity and its shorter forms, disclosures, help chips' names);
+  Services (premium provider cards and their keys, account connections and
+  tuning; Usenet and its news-server cards; Network Sources); Downloads
+  (behavior and limits, the transfer-method tuning cards, disk space and
+  recovery, Download Engine Activity); Extraction and the archive-password
+  editor; and their dialogs, busy labels, refusals and results.
 
-Every other surface is still English literals: Settings (WS3c, WS3d), the
-server's display messages (WS3e) and Help (WS4). The census below counts them. No language is
+Every other surface is still English literals: the rest of Settings (WS3d),
+the server's display messages (WS3e) and Help (WS4). The census below counts them. No language is
 offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
@@ -168,9 +175,35 @@ submission claimant's scope label, a route failure's detail).
   window-capture `locale-changed` listener marks it before any page owner
   repaints).
 - **Pending controls and dialogs** take catalog keys: `setButtonPending(button,
-  true, 'key')` and `DPSettingsModal.open/confirm({keys: {title, message,
-  messageValues, accept, cancel}})`, so a pending label or an open dialog is
+  true, 'key')` and `DPSettingsModal.open/confirm/prompt({keys: {title,
+  titleValues, message, messageValues, accept, acceptValues, cancel,
+  cancelValues}})` (a prompt also takes `label`, `hint`, `placeholder`; its
+  default Save / Cancel are keyed too), so a pending label or an open dialog is
   re-said in place.
+- **Settings keys its markup once** (`ui-settings-page.js`). A field helper
+  (`input`, `selectField`, `toggle`, `tuningToggle`, `inlineField`, `card`,
+  `groupCard`, `fitLabel`, …) takes words as a `say(key, values)` value, which
+  prints as its words and emits `data-i18n` / `data-i18n-attr` /
+  `data-i18n-values`; `render()` then re-says them in place, so values, focus,
+  open disclosures and a Test in flight are untouched. An element an owner
+  writes again later moves its key with its words (`sayInto`, `sayAttr`).
+  Plain strings stay plain. A busy label given as a key (`setBusy`) is re-said
+  while it shows.
+- **Arguments.** `data-i18n-values` gives an element's attribute keys their
+  arguments too, and an argument may itself be a message, `{"$t": key, "$v":
+  arguments}` (a card title inside "Help: {subject}"), said in the shown
+  language.
+- **Names Intl writes.** The subtitle language list keeps its English names in
+  English; any other language names each code with `Intl.DisplayNames` and
+  sorts by that language. A language change re-names the select's options in
+  place (value and selection kept).
+- **An open dropdown follows its select.** A searchable select's search name
+  (`data-dp-dropdown-search`) is keyed like any attribute. The shared dropdown
+  (`ui-accessibility-runtime.js`), the one painter of the projected list,
+  redraws an open list whenever its select changes -- including once after a
+  language change, when every owner has said its words -- keeping the typed
+  query, the search field, the focused option, the list's scroll and the
+  selection, and re-reading the search field's name.
 - **Figures** come from `DPI18n.number(value, digits)`: fixed decimals, no
   grouping, and the shown language's digits. In English it writes exactly
   what `toFixed` writes. `DPI18n.intlLocale()` names the tag for other `Intl`
@@ -216,7 +249,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS3b
+## 3. Census (WS0) — snapshot at WS3c
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -239,29 +272,39 @@ attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
 `data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
 entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 
-| Measure | At WS3a | At WS3b |
-|---|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) |
-| … rich text / with placeholders | 444 / 234 | 408 / 176 |
-| … critical-warning (destructive, security, data loss) | 231 | 211 |
-| … long-form Help | 962 | 962 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 |
-| Server display messages (`detail`) | 669 | 669 |
-| Catalog keys (English) | 690 | 1,214 |
+| Measure | At WS3a | At WS3b | At WS3c |
+|---|---|---|---|
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) |
+| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 |
+| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 |
+| … long-form Help | 962 | 962 | 962 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 |
+| Server display messages (`detail`) | 669 | 669 | 669 |
+| Catalog keys (English) | 690 | 1,214 | 1,599 |
 
 The largest owners still outside the catalog:
 
 | Owner | Entries | Workstream |
 |---|---|---|
-| `ui-settings-page.js` | 1,335 | WS3c / WS3d |
+| `ui-settings-page.js` (Authentication, Users & Access, Notifications, Data & Maintenance) | 683 | WS3d |
 | `ui-help-page.js` | 557 | WS4 |
 | `ui-settings-help.js` (all topics except My Account) | 405 | WS4 |
-| `ui-settings-usenet-servers.js` | 63 | WS3c |
 | `ui-settings-backup-manager.js` | 44 | WS3d |
-| `ui-settings-executor-work.js` | 33 | WS3c |
+| `ui-settings-persistence.js` | 11 | WS3d |
+| `ui-help-license-documents.js` | 11 | WS4 |
 
-No WS3a or WS3b owner holds an entry outside the catalog or the exemption
-register, and `index.html` holds none (`test_localization_catalogs.py`).
+No WS3a, WS3b or WS3c owner holds an entry outside the catalog or the
+exemption register, `index.html` holds none, and in `ui-settings-page.js`
+WS3c's Services, Downloads and Extraction code and the Settings shell hold
+none (`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly
+the 223 subtitle language names (above) and provider and protocol names.
+
+**Help dependencies (WS4).** Settings Help repeats some of these words, and
+its contract tests tie them together: the live-tuning sentence
+(`ui-settings-help.js`, "Changes also apply to existing downloads…"), the
+Media Downloads control labels it names, and the Settings locations it
+points at. WS4 must say them from the same keys (or keep the tests' check
+that Help names what Settings shows).
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 

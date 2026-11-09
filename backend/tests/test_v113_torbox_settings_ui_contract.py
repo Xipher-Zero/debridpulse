@@ -8,6 +8,8 @@ from metadata alone.
 from __future__ import annotations
 
 import re
+
+from i18n_node import english, says
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,17 +51,20 @@ def test_the_card_is_the_real_debrid_structure_through_one_connection_owner():
 def test_the_connection_language_is_account_oriented_and_shared():
     owner = SETTINGS_JS[SETTINGS_JS.index("const DEVICE_ACCOUNTS"):SETTINGS_JS.index("function renderDeviceConnection")]
     assert "torbox: {" in owner and "name: 'TorBox'" in owner
-    for phrase in ("Account Connection", "Connect ${html(name)}", "Connected as ${html(who)}", "Disconnect"):
-        assert phrase in owner
+    # 1.0.14: the words are the catalog's; the owner names their keys.
+    for key, phrase in (("settings.account.heading", "Account Connection"), ("settings.account.connect", "Connect {provider}"),
+                        ("settings.account.connected_as", "Connected as {who}"), ("settings.account.disconnect", "Disconnect")):
+        assert f"'{key}'" in owner and english(key) == phrase, key
     for forbidden in ("API token", "api_token\"", "Bearer"):
         assert forbidden not in owner
 
 
 def test_use_torbox_before_usenet_is_one_precise_interactive_persisted_toggle():
     torbox = card("torbox")
-    assert "tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet'," in torbox
-    assert ("Try TorBox first when resolving NZB downloads. "
-            "Your configured Usenet service remains available as a fallback.") in torbox
+    assert "tuningToggle('torbox_use_before_usenet', say('settings.provider.before_usenet', {provider: 'TorBox'})," in torbox
+    assert "say('settings.provider.before_usenet_hint', {provider: 'TorBox'})" in torbox
+    assert english("settings.provider.before_usenet_hint").replace("{provider}", "TorBox") == (
+        "Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.")
     assert "torbox_use_before_usenet: {scope: 'integration:torbox', option: 'use_before_usenet', commit: 'immediate'}" \
         in SETTINGS_JS
     # F: never disabled for a plan; the canonical mutation refuses and the
@@ -70,9 +75,10 @@ def test_use_torbox_before_usenet_is_one_precise_interactive_persisted_toggle():
 
 def test_prepare_backup_torrents_is_one_precise_persisted_toggle_off_by_default():
     torbox = card("torbox")
-    assert "tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents'," in torbox
-    assert ("Also add torrents to TorBox as backup sources while another provider delivers them. "
-            "Uses TorBox create limits and active slots.") in torbox
+    assert "tuningToggle('torbox_prepare_backup_torrents', say('settings.provider.prepare_backup')," in torbox
+    assert english("settings.provider.prepare_backup") == "Prepare Backup Torrents"
+    assert says(torbox, "Also add torrents to TorBox as backup sources while another provider delivers them. "
+                        "Uses TorBox create limits and active slots.")
     assert "torBoxOf(s).prepare_backup_torrents === true" in torbox        # absent reads as off
     assert ("torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', "
             "commit: 'immediate'}") in SETTINGS_JS
@@ -86,9 +92,11 @@ def test_prepare_backup_torrents_is_one_precise_persisted_toggle_off_by_default(
 
 def test_maximum_active_torrents_is_empty_unless_the_operator_sets_a_ceiling():
     torbox = card("torbox")
-    assert "input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? ''," \
+    assert "input('torbox_max_active_torrents', say('settings.provider.max_active'), torBoxOf(s).max_active_torrents ?? ''," \
         in torbox
-    assert "placeholder: 'Max'" in torbox and "min: 1, max: 10" in torbox
+    assert english("settings.provider.max_active") == "Maximum Active Torrents"
+    assert "placeholder: say('settings.provider.max_placeholder')" in torbox and "min: 1, max: 10" in torbox
+    assert english("settings.provider.max_placeholder") == "Max"
     # Empty commits null -- following the plan -- so rendering never stores a value.
     assert ("torbox_max_active_torrents: {scope: 'integration:torbox', option: 'max_active_torrents', blank: null}"
             in SETTINGS_JS)

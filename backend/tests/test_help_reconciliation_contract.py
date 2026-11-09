@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 from auth.accounts import Role
 from auth.permissions import ACTIONS, Capability, ROLE_CAPABILITIES
 
@@ -190,7 +192,9 @@ def test_database_reset_scope_follows_the_maintenance_owner():
 
 def test_settings_locations_named_in_help_exist():
     page = _source("frontend/static/ui-settings-page.js")
-    tabs = re.findall(r"\['[a-z]+', '([^']+)', '[^']+'\]", page.split("const TABS", 1)[1].split("]);", 1)[0])
+    # 1.0.14: the tab labels are said from the catalog by key.
+    tabs = [english(key) for key in re.findall(r"\['[a-z]+', say\('([a-z0-9_.]+)'\), '[^']+'\]",
+                                               page.split("const TABS", 1)[1].split("]);", 1)[0])]
     assert tabs == ["Services", "Downloads", "Extraction", "Authentication", "Users & Access",
                     "Notifications", "Data & Maintenance"]
     for card in ("Download Behavior & Limits", "Transfer Method Settings", "Disk Space & Recovery",
@@ -198,12 +202,15 @@ def test_settings_locations_named_in_help_exist():
                  "Username & Password", "OpenID Connect", "User Accounts", "Integration Accounts",
                  "Integration Delivery Profiles", "Webhook Notifications", "Statistics Reporting",
                  "Event Logging", "Backups & Retention", "Database Reset Controls"):
-        assert f"'{card}'" in page or f"'{card}'," in page, card
+        # 1.0.14: a card title is a literal, or the catalog's words said by a key the page names.
+        assert f"'{card}'" in page or f"'{card}'," in page or says(page, card), card
         assert card.replace("&", "&amp;") in HELP, card
     locations = re.findall(r"<b>Settings → ([A-Za-z &;]+?)(?: →|</b>)", HELP)
     assert len(locations) >= 10
     # A Standalone installation names its `users` tab by its own label.
-    standalone = re.findall(r"'([^']+)'", page.split("const STANDALONE_TAB_LABELS", 1)[1].split(");", 1)[0])
+    labels = page.split("const STANDALONE_TAB_LABELS", 1)[1].split(");", 1)[0]
+    assert "users: say('settings.tab.users_standalone')" in labels   # 1.0.14: said from the catalog
+    standalone = [english("settings.tab.users_standalone")]
     assert standalone == ["Access & Integrations"]
     for location in locations:
         assert location.replace("&amp;", "&") in tabs + standalone, location

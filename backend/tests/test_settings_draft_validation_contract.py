@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from i18n_node import english, says
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -114,10 +116,11 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         # behind the canonical confirmation, so neither sentence mentions a Save
         # any more, and the removal names exactly what it erases (its
         # accessible name; its visible word is Remove, inside the field).
-        "Enter an API key to connect your AllDebrid account.",
-        "API key configured for your AllDebrid account.",
-        "aria-label=\"Remove the stored ${html(name)} API key\"",
-        ">Remove</button>",
+        # 1.0.14: said from the catalog; the provider is an argument.
+        "Enter an API key to connect your {provider} account.",
+        "API key configured for your {provider} account.",
+        "Remove the stored {provider} API key",
+        "Remove",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
     )
     # The polling, sync and resolution-retry settings apply beyond AllDebrid, so
@@ -130,7 +133,7 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         "How many times DebridPulse retries when a service fails to resolve a download into something it can fetch, for any service including Network Sources, before trying another service or giving up. Set to 0 to disable these retries.",
         "How long DebridPulse waits before trying to resolve a download again after such a failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.",
     ):
-        assert text in advanced
+        assert says(advanced, text), text
     for retired in ("checks AllDebrid for updates", "complete reconciliation with AllDebrid", "failed provider upload",
                     "resolving a failed upload"):
         assert retired not in runtime, retired
@@ -138,7 +141,7 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
     assert "Connect DebridPulse to AllDebrid" not in runtime
     assert "Add the news servers DebridPulse should download from." not in runtime
     for text in expected:
-        assert text in sources
+        assert says(sources, text), text
 
 
 def test_transient_validation_routes_never_persist_candidate_secrets() -> None:

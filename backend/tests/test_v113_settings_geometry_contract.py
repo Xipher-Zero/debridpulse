@@ -15,6 +15,7 @@ geometry itself is proved in the browser suite (`settings-field-geometry.spec.js
 """
 import re
 from pathlib import Path
+from i18n_node import english
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 FORM_LAYOUT = (STATIC / "ui-settings-form-layout.css").read_text(encoding="utf-8")
@@ -129,7 +130,7 @@ def test_the_clear_password_row_is_one_explicit_destructive_action():
     assert 'data-usenet-field="password"' in row
     assert 'data-usenet-action="clear-password"' in row
     assert "btn-danger" in row
-    assert row.endswith(">Clear")
+    assert row.endswith("${html(t('settings.usenet.clear'))}") and english("settings.usenet.clear") == "Clear"
     # No second confirmation representation survives anywhere on the card.
     assert "dp-settings-inline-check" not in row
     assert "<label" not in row

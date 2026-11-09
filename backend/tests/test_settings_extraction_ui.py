@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from i18n_node import says
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -26,8 +28,8 @@ def test_extraction_passwords_keep_backend_secret_boundary() -> None:
 def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
     archive = read("frontend/static/ui-settings-archive-passwords.js")
     css = read("frontend/static/ui-settings-archive-passwords.css")
-    assert "Show all passwords" in archive
-    assert "Hide all passwords" in archive
+    assert says(archive, "Show all passwords")
+    assert says(archive, "Hide all passwords")
     assert "Hold to reveal all archive passwords" not in archive
     assert "dp-settings-password-eye--ghost" in archive
     assert "window.DPArchivePasswords" in archive

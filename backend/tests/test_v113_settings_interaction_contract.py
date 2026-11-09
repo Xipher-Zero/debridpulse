@@ -11,6 +11,8 @@
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 import pytest
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
@@ -85,8 +87,8 @@ def test_the_prompt_dialog_adds_no_second_dialog_implementation():
 def test_server_rename_uses_the_canonical_dialog_and_keeps_its_persistence_boundary():
     block = USENET_JS[USENET_JS.index("function rename("):USENET_JS.index("function onClick(")]
     assert "DPSettingsModal.prompt" in block
-    assert "Edit Server Name" in block
-    assert "Display Name" in block
+    assert says(block, "Edit Server Name")
+    assert says(block, "Display Name")
     # Prefill is the explicit override only; the derived host never masquerades.
     assert "usenetNameOverride === '1'" in block
     # Card-local until the server card's own Save: no request is issued here.
@@ -169,8 +171,8 @@ ALLDEBRID_COPY = "Resolve supported links and torrents through your AllDebrid ac
 def test_every_provider_source_card_explains_what_enabling_it_allows():
     panel = SETTINGS_JS[SETTINGS_JS.index("function sourcesPanel("):
                         SETTINGS_JS.index("const EXECUTOR_WORK_FILTERS")]
-    assert USENET_COPY in panel
-    assert ALLDEBRID_COPY in panel
+    assert says(panel, USENET_COPY)
+    assert says(panel, ALLDEBRID_COPY.replace("AllDebrid", "{provider}")) and "{provider: 'AllDebrid'}" in panel
     # The five expandable Premium Services cards carry their copy in the
     # canonical card header. The Network Sources members are compact protocol
     # BOXES rather than cards with headers, so the same promise is kept as the
@@ -178,8 +180,11 @@ def test_every_provider_source_card_explains_what_enabling_it_allows():
     assert panel.count("headerCopy:") == 6
     copy = SETTINGS_JS[SETTINGS_JS.index("const SOURCE_BOX_COPY"):]
     copy = copy[:copy.index("});")]
-    assert "'Direct downloads from', 'HTTP and HTTPS URLs.'" in copy
-    assert "'Direct downloads from', 'FTP and SFTP URLs.'" in copy
+    # 1.0.14: the two lines are the catalog's, by the box's identity.
+    assert "say(`settings.source_box.${id}.lead`), say(`settings.source_box.${id}.rest`)" in copy
+    for ident, rest in (("general_http", "HTTP and HTTPS URLs."), ("general_ftp", "FTP and SFTP URLs.")):
+        assert (english(f"settings.source_box.{ident}.lead"), english(f"settings.source_box.{ident}.rest")) == \
+            ("Direct downloads from", rest)
 
 
 def test_no_implementation_name_reaches_operator_copy():

@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -140,16 +142,13 @@ def test_old_authentication_settings_augmentations_are_not_loaded():
 
 def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
     runtime = source(SETTINGS_PAGE_JS)
-    expected = [
-        "['sources', 'Services', 'zap']",
-        "['downloads', 'Downloads', 'download-downloads']",
-        "['extraction', 'Extraction', 'package-open']",
-        "['authentication', 'Authentication', 'shield-user']",
-        "['notifications', 'Notifications', 'bell-ring']",
-        "['maintenance', 'Data & Maintenance', 'database']",
-    ]
-    positions = [runtime.index(item) for item in expected]
+    # 1.0.14: each label is said from the catalog by its tab's key (the words unchanged).
+    expected = [("sources", "Services", "zap"), ("downloads", "Downloads", "download-downloads"),
+                ("extraction", "Extraction", "package-open"), ("authentication", "Authentication", "shield-user"),
+                ("notifications", "Notifications", "bell-ring"), ("maintenance", "Data & Maintenance", "database")]
+    positions = [runtime.index(f"['{tab}', say('settings.tab.{tab}'), '{glyph}']") for tab, _words, glyph in expected]
     assert positions == sorted(positions)
+    assert [english(f"settings.tab.{tab}") for tab, _words, _glyph in expected] == [words for _tab, words, _glyph in expected]
     assert "['advanced', 'Advanced', 'sliders-horizontal']" not in runtime
 
 
@@ -158,7 +157,7 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Premium Services'," in sources
+    assert "groupCard(say('settings.services.premium')," in sources
     # One Services order owner (premiumServiceOrder) composes every premium card.
     assert "premiumServiceOrder([" in sources
     for card in ("['usenet', usenetCard]", "['alldebrid', provider]", "['debridlink', debridLinkCard]",
@@ -173,7 +172,7 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     # (providerAdditional), which Easy omits.
     assert sources.count("${providerAdditional(tuningCells(") == 5
     helper = runtime[runtime.index("function providerAdditional(body) {"):runtime.index("function sourcesPanel(s) {")]
-    assert '<details class="dp-settings-additional">' in helper and "Additional Settings" in helper
+    assert '<details class="dp-settings-additional">' in helper and says(helper, "Additional Settings")
     assert "omitted('provider-additional-settings')" in helper
     # The global provider intervals and resolution retries sit under Downloads,
     # not on any one provider's card.

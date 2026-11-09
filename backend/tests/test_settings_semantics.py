@@ -3,6 +3,8 @@ import types
 import unittest
 from pathlib import Path
 
+from i18n_node import says
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import AppSettings
@@ -98,7 +100,7 @@ class SettingsFrontendContractTests(unittest.TestCase):
         sources = js.split("function sourcesPanel", 1)[1].split("function downloadsPanel", 1)[0]
         self.assertNotIn("stuck_download_timeout_hours", sources)
         self.assertIn("stuck_download_timeout_hours", downloads)
-        self.assertIn("Disk Space & Recovery", downloads)
+        self.assertTrue(says(downloads, "Disk Space & Recovery"))
 
 
 if __name__ == "__main__":

@@ -194,13 +194,40 @@ WS3B_OWNERS = ("app.js", "ui-downloads.js", "ui-detail-candidates.js", "ui-file-
                "ui-group-candidates.js", "ui-auth-required.js", "ui-settings-directory-picker.js", "ui-settings-modal.js")
 
 
-def test_the_ws3a_and_ws3b_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
+# WS3c: Settings services and engines -- the Services, Downloads and Extraction
+# sections and the shared Settings shell of ui-settings-page.js (WS3d keeps the
+# rest of that file), and three whole owners.
+WS3C_OWNERS = ("ui-settings-usenet-servers.js", "ui-settings-executor-work.js", "ui-settings-archive-passwords.js")
+WS3C_PAGE_REGION = ("  function input(", "  function notificationStatus(")
+WS3C_PAGE_FUNCTIONS = ("render", "selectTabControl", "setDisclosureExpanded", "writeSettingsDocument", "load",
+                       "headerEnableToggle", "confirmLiveTuning", "reportLiveTuning", "clearAllDebridKey",
+                       "clearArchivePasswords", "testConnection", "testUsenet", "setBusy")
+
+
+def ws3c_page_lines():
+    """The ui-settings-page.js lines WS3c owns: its Services/Downloads/Extraction region,
+    the TABS table and the named shell and engine functions (each to its closing ``  }``)."""
+    page = (ROOT / "frontend" / "static" / "ui-settings-page.js").read_text(encoding="utf-8").splitlines()
+    first = lambda marker: next(i for i, line in enumerate(page, 1) if line.startswith(marker))
+    owned = set(range(first(WS3C_PAGE_REGION[0]), first(WS3C_PAGE_REGION[1])))
+    owned |= set(range(first("  const TABS = "), first("  const state = {")))
+    for name in WS3C_PAGE_FUNCTIONS:
+        start = next(i for i, line in enumerate(page, 1) if re.match(rf"  (async )?function {name}\(", line))
+        end = next(i for i, line in enumerate(page, 1) if i > start and line == "  }")
+        owned |= set(range(start, end + 1))
+    return owned
+
+
+def test_the_ws3a_ws3b_and_ws3c_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
     import inventory
 
     data = inventory.census()
     left = [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]
-            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS + WS3B_OWNERS]
+            if entry["owner"].rsplit("/", 1)[-1] in WS3A_OWNERS + WS3B_OWNERS + WS3C_OWNERS]
     assert left == []
+    owned = ws3c_page_lines()
+    assert [(entry["line"], entry["english"]) for entry in data["entries"]
+            if entry["owner"].endswith("ui-settings-page.js") and entry["line"] in owned] == []
     # index.html is whole: its shell and pages (WS3a) and Downloads and the dialogs (WS3b).
     assert [(entry["line"], entry["english"]) for entry in data["entries"] if entry["owner"].endswith("index.html")] == []
     # Every exemption names its reason, and still matches something (no stale entry).

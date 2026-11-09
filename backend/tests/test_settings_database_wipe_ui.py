@@ -12,6 +12,8 @@ primitive the page reuses, so a lookalike built beside one of them fails.
 import re
 from pathlib import Path
 
+from i18n_node import english
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -360,10 +362,12 @@ def test_download_engine_activity_reuses_the_database_reset_caution():
     js = source(RUNTIME)
     work = js[js.index("  function executorWorkCard() {"):js.index("  // --- Downloads ---")]
     assert ('<div class="dp-settings-caution dp-executor-work-context">\n'
-            '            <b>This is an advanced recovery surface.</b>\n'
-            '            <span>Use Downloads for normal management. These controls are only for '
-            'troubleshooting or recovery.</span>\n'
+            "            <b${keyed(say('settings.engine_activity.caution_title'))}>${html(t('settings.engine_activity.caution_title'))}</b>\n"
+            "            <span${keyed(say('settings.engine_activity.caution'))}>${html(t('settings.engine_activity.caution'))}</span>\n"
             '          </div>') in work
+    assert english("settings.engine_activity.caution_title") == "This is an advanced recovery surface."
+    assert english("settings.engine_activity.caution") == \
+        "Use Downloads for normal management. These controls are only for troubleshooting or recovery."
     assert "Use Downloads for normal management, and these controls" not in js
     css = source(STATIC / "ui-settings-executor-work.css")
     context = css.split("#view-settings .dp-executor-work-context {", 1)[1].split("}", 1)[0]

@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from i18n_node import english, says
 from transfers.settings import TransferSettings
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
@@ -24,7 +25,8 @@ def _function(name: str) -> str:
 
 def test_card_is_renamed_and_hosts_the_advanced_subsection_below_its_primary_row():
     panel = _function("downloadsPanel")
-    assert "card('Download Behavior & Limits'" in panel and "Download Location & Limits" not in PAGE
+    assert "card(say('settings.downloads.behavior')" in panel and english("settings.downloads.behavior") == "Download Behavior & Limits"
+    assert not says(PAGE, "Download Location & Limits")
     row, advanced = panel.index("dp-settings-download-engine-row"), panel.index("downloadBehaviorAdvanced(policy, s)")
     assert row < advanced < panel.index("className: 'dp-settings-download-engine-card'")
 
@@ -32,7 +34,8 @@ def test_card_is_renamed_and_hosts_the_advanced_subsection_below_its_primary_row
 def test_advanced_settings_is_the_canonical_collapsed_disclosure_with_an_adjacent_chevron():
     advanced = _function("downloadBehaviorAdvanced")
     # The one subsection owner, collapsed by default (no expanded argument).
-    assert re.search(r"disclosureSection\('Advanced Settings', 'download-behavior-advanced', tuningCells\(", advanced)
+    assert re.search(r"disclosureSection\(say\('settings\.downloads\.advanced'\), 'download-behavior-advanced', tuningCells\(", advanced)
+    assert english("settings.downloads.advanced") == "Advanced Settings"
     assert not re.search(r"disclosureSection\([^)]*,\s*true\)", advanced)
     section = _function("disclosureSection")
     assert section.index("dp-settings-subsection-title") < section.index("settingsDisclosure(bodyId")
@@ -54,7 +57,7 @@ def test_four_separate_cells_in_the_one_tuning_grammar():
     assert "'material_checkpoint_interval_seconds'" in before and "'graceful_stop_timeout_seconds'" in before
     for label in ("Material Checkpoint Interval", "Graceful Stop Timeout", "Local Network Connections",
                   "Skip Local Connection Confirmation"):
-        assert label in advanced
+        assert says(advanced, label), label
     # No second grid, matrix or card style.
     assert "grid-template-columns" not in advanced and "style=" not in advanced
     assert "download-behavior-advanced" not in CSS
@@ -136,7 +139,10 @@ def test_the_global_provider_controls_live_here_with_their_keys_defaults_and_bou
     advanced = _function("downloadBehaviorAdvanced")
     for key, label, option, default, low, high in GLOBAL:
         assert len(re.findall(rf"input\('{key}'", PAGE)) == 1, key
-        cell = advanced[advanced.index(f"input('{key}', '{label}', "):]
+        # 1.0.14: its label is said from the catalog; the English is unchanged.
+        named = re.search(rf"input\('{key}', say\('([a-z0-9_.]+)'\), ", advanced)
+        assert named and english(named.group(1)) == label, key
+        cell = advanced[named.start():]
         cell = cell[:cell.index("}),")]
         assert f"?? {default}, {{" in cell and f"min: {low}, max: {high}," in cell, key
         scope = "settings-document" if key == "full_sync_interval_minutes" else "transfer-policy"
@@ -157,5 +163,7 @@ def test_the_global_provider_controls_live_here_with_their_keys_defaults_and_bou
 def test_the_relocated_hints_name_no_one_provider_and_no_upload():
     advanced = _function("downloadBehaviorAdvanced")
     tail = advanced[advanced.index("input('poll_interval_seconds'"):]
-    assert "AllDebrid" not in tail and "upload" not in tail.replace("upload_fail_retry", "").lower()
-    assert tail.count("Network Sources") == 1
+    # 1.0.14: what the tail says is its source and the English of the keys it names.
+    said = tail + " ".join(english(key) for key in re.findall(r"say\('([a-z0-9_.]+)'", tail))
+    assert "AllDebrid" not in said and "upload" not in said.replace("upload_fail_retry", "").lower()
+    assert said.count("Network Sources") == 1

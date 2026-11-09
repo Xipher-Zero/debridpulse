@@ -14,6 +14,7 @@ the answer.
 """
 import re
 from pathlib import Path
+from i18n_node import english
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -200,5 +201,7 @@ def test_the_one_settings_writer_warns_when_a_moved_download_folder_leaves_profi
     assert "result?.delivery_profiles_outside_download_folder" in writer
     assert writer.index("syncGlobalSettings(result);") < writer.index("delivery_profiles_outside_download_folder")
     warning = writer[writer.index("if (stranded.length) {"):]
-    assert "stranded.join(', ')" in warning and "DP Download Path" in warning
+    # 1.0.14: one plural message, said from the catalog with the server's names.
+    assert "stranded.join(', ')" in warning and "'settings.downloads.profiles_stranded'" in warning
+    assert "DP Download Path" in english("settings.downloads.profiles_stranded")
     assert "'warn');" in warning

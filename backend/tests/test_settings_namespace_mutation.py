@@ -29,6 +29,7 @@ from integrations.definition import IntegrationSettings
 from providers.alldebrid.definition import definition as alldebrid_definition
 from providers.general_http.definition import definition as general_http_definition
 from transfers.settings import TransferSettings
+from i18n_node import says
 
 
 DEFINITIONS = (alldebrid_definition, general_http_definition, aria2_definition)
@@ -645,5 +646,5 @@ def test_the_settings_text_states_that_contract():
     page = (static / "ui-settings-page.js").read_text(encoding="utf-8")
     help_text = (static / "ui-settings-help.js").read_text(encoding="utf-8")
     for text in (page, help_text):
-        assert "never more than 5 minutes" in text or "never waits more than 5 minutes" in text
+        assert says(text, "never more than 5 minutes") or says(text, "never waits more than 5 minutes")
     assert "max: 3600" in page and "max: 1440" in page

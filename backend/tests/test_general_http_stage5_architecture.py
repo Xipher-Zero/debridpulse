@@ -1,6 +1,8 @@
 """Roadmap Item 5 architecture and credential-discovery guardrails."""
 from pathlib import Path
 
+from i18n_node import english, says
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,10 +44,10 @@ def test_item10_exposes_general_http_provider_ui_without_transport_tuning():
     # metadata. HTTP(S) therefore reaches the page without this renderer naming
     # it, and the only thing keyed by the durable identity is the box copy.
     assert "sourceProtocolBox(" in sources_panel
-    assert "Network Sources" in sources_panel
+    assert says(sources_panel, "Network Sources")
     general_http = settings_ui.split("const SOURCE_BOX_COPY", 1)[1].split("});", 1)[0]
     assert "general_http" in general_http
-    assert "HTTP and HTTPS URLs." in general_http
+    assert english("settings.source_box.general_http.rest") == "HTTP and HTTPS URLs."
     # Still no transport tuning anywhere on the member's surface: the box offers
     # its toggle and nothing else.
     box = settings_ui.split("function sourceProtocolBox(", 1)[1].split("\n  function ", 1)[0]

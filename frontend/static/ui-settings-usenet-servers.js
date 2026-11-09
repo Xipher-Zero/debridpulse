@@ -46,6 +46,41 @@
 (function () {
   'use strict';
 
+  /* Words (1.0.14 localization): the catalog's, keyed so DPI18n.render() says
+   * them again in place on a language change -- the card's fields, focus and
+   * drafts untouched. The same keys as the page's own server card
+   * (ui-settings-page.js usenetServerCard). */
+  const t = (key, values) => window.DPI18n.t(key, values);
+  const NEW_SERVER = 'settings.usenet.new_server';
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[ch]);
+  // An argument that is itself a message ({$t, $v}), said first.
+  const plain = values => values && Object.fromEntries(Object.entries(values).map(([name, value]) =>
+    [name, value && typeof value === 'object' && value.$t ? t(value.$t, plain(value.$v || {})) : value]));
+  // The keying of one element: its text key, its attributes' keys, one argument object.
+  function keyed(textKey, attrs = {}, values = null) {
+    const parts = textKey ? [`data-i18n="${textKey}"`] : [];
+    const pairs = [];
+    for (const [name, key] of Object.entries(attrs)) {
+      parts.push(`${name}="${esc(t(key, plain(values) || undefined))}"`);
+      pairs.push(`${name}:${key}`);
+    }
+    if (pairs.length) parts.push(`data-i18n-attr="${pairs.join(';')}"`);
+    if (values) parts.push(`data-i18n-values="${esc(JSON.stringify(values))}"`);
+    return parts.join(' ');
+  }
+  const said = (tag, key, attrs = '') => `<${tag}${attrs ? ` ${attrs}` : ''} data-i18n="${key}">${esc(t(key))}</${tag}>`;
+  // One attribute of `node` said from `key` with `values`; its other keyed attributes stay.
+  function sayAttr(node, name, key, values) {
+    if (!node) return;
+    const pairs = String(node.dataset.i18nAttr || '').split(';').filter(pair => pair && !pair.startsWith(`${name}:`));
+    pairs.push(`${name}:${key}`);
+    node.dataset.i18nAttr = pairs.join(';');
+    node.dataset.i18nValues = JSON.stringify({...JSON.parse(node.dataset.i18nValues || '{}'), ...values});
+    node.setAttribute(name, t(key, plain(values)));
+  }
+
   const PANEL = '#view-settings [data-panel="sources"]';
   const collection = () => document.querySelector(`${PANEL} [data-usenet-collection]`);
 
@@ -176,7 +211,7 @@
       if (node && 'port' in sent && String(node.value) === String(sent.port)) {
         node.value = previousPort;
       }
-      toast(`Could not update ${serverName(card)}: ${failure(card, error)}`, 'error');
+      toast(t('settings.usenet.update_failed', {name: serverName(card), reason: failure(card, error)}), 'error');
     } finally {
       control.disabled = false;
     }
@@ -189,27 +224,44 @@
     if (card.dataset.usenetNameOverride === '1') return;
     const label = card.querySelector('[data-usenet-display-name]');
     if (!label) return;
-    showName(card, String(fieldValue(card, 'host') || '').trim() || 'New server');
+    showName(card, String(fieldValue(card, 'host') || '').trim());
   }
 
   /* The one writer of a card's shown name. A name too long for its room is
    * drawn with an ellipsis, so the whole name is also the label's tooltip and
    * part of the Edit and Enable controls' accessible names. */
+  // ``text`` empty: the card has no name yet, said as "New server" in the
+  // page's language (and keyed, so a language change says it again).
   function showName(card, text) {
     const label = card.querySelector('[data-usenet-display-name]');
     if (!label) return;
-    label.textContent = text;
-    label.dataset.tooltip = text;
-    card.querySelector('[data-usenet-action="rename"]')?.setAttribute('aria-label', `Edit display name for ${text}`);
-    card.querySelector('[data-usenet-field="enabled"]')?.setAttribute('aria-label', `Enable ${text}`);
+    const shown = text || t(NEW_SERVER);
+    if (text) {
+      delete label.dataset.i18n;
+      delete label.dataset.i18nAttr;
+    } else {
+      label.dataset.i18n = NEW_SERVER;
+      label.dataset.i18nAttr = `data-tooltip:${NEW_SERVER}`;
+    }
+    label.textContent = shown;
+    label.dataset.tooltip = shown;
+    const name = {name: text || {$t: NEW_SERVER}};
+    sayAttr(card.querySelector('[data-usenet-action="rename"]'), 'aria-label', 'settings.usenet.edit_name_for', name);
+    sayAttr(card.querySelector('[data-usenet-field="enabled"]'), 'aria-label', 'settings.enable_named', name);
   }
+  // The card's own name ('' while it is "New server").
+  const ownName = label => (label?.dataset.i18n === NEW_SERVER ? '' : String(label?.textContent || ''));
 
   /* Inline field validation. It never reports an operation result. */
-  function validation(card, message) {
+  // ``key``: the catalog key of the problem shown, kept on the node so a
+  // language change says it again while it stands.
+  function validation(card, key) {
     const node = card.querySelector('[data-usenet-validation]');
     if (!node) return;
-    node.textContent = message || '';
-    node.hidden = !message;
+    if (key) node.dataset.i18n = key;
+    else delete node.dataset.i18n;
+    node.textContent = key ? t(key) : '';
+    node.hidden = !key;
   }
 
   /* The operator-facing name of one card, for the action results below. */
@@ -226,7 +278,7 @@
   function serverName(card) {
     return String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
       || String(fieldValue(card, 'host') || '').trim()
-      || 'server';
+      || t('settings.usenet.server_fallback');
   }
 
   /* An action in flight simply cannot be started again. There is no progress
@@ -486,25 +538,28 @@
     const sequence = (blankCard.sequence = (blankCard.sequence || 0) + 1);
     const advancedId = `dp-usenet-advanced-new-${sequence}`;
     const passwordId = `dp-usenet-password-new-${sequence}`;
+    // The same card the page renders (ui-settings-page.js usenetServerCard), its words keyed.
+    const newName = {name: {$t: NEW_SERVER}};
+    const label = (key, attrs = '') => said('span', key, `class="form-label"${attrs ? ` ${attrs}` : ''}`);
     wrapper.innerHTML = `
       <div class="dp-usenet-server" data-usenet-server-id="" data-commit-instance=""
            data-usenet-password-configured="0"
            data-usenet-name-override="0">
         <div class="dp-usenet-server-head">
           <span class="dp-usenet-server-title">
-            <span class="dp-usenet-server-name" data-usenet-display-name data-tooltip="New server">New server</span>
+            <span class="dp-usenet-server-name" data-usenet-display-name ${keyed(NEW_SERVER, {'data-tooltip': NEW_SERVER})}>${esc(t(NEW_SERVER))}</span>
             <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                    data-tooltip="Edit display name" aria-label="Edit display name for New server">
+                    ${keyed('', {'data-tooltip': 'settings.usenet.edit_name', 'aria-label': 'settings.usenet.edit_name_for'}, newName)}>
               <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
             </button>
           </span>
           <div class="dp-usenet-server-controls">
             <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-usenet-action="test">
-              <span>Test</span>
+              ${said('span', 'settings.test')}
             </button>
             <label class="dp-usenet-enable toggle-row">
               <span class="toggle">
-                <input type="checkbox" data-usenet-field="enabled" aria-label="Enable New server"
+                <input type="checkbox" data-usenet-field="enabled" ${keyed('', {'aria-label': 'settings.enable_named'}, newName)}
                        data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" checked>
                 <span class="ttrack"></span>
               </span>
@@ -513,17 +568,17 @@
         </div>
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
-            <span class="form-label">Host</span>
+            ${label('settings.usenet.host')}
             <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="" autocomplete="off"
                    placeholder="news.example.com">
           </label>
           <div class="dp-usenet-port-ssl">
             <label class="dp-usenet-field dp-usenet-field--port">
-              <span class="form-label">Port</span>
+              ${label('settings.usenet.port')}
               <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port" value="563">
             </label>
             <label class="dp-usenet-field dp-usenet-field--ssl">
-              <span class="form-label">SSL</span>
+              ${label('settings.usenet.ssl')}
               <span class="toggle dp-usenet-ssl">
                 <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" checked>
                 <span class="ttrack"></span>
@@ -533,61 +588,60 @@
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
-            <span class="form-label">Username</span>
+            ${label('settings.usenet.username')}
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="" autocomplete="off">
           </label>
         </div>
         <div class="dp-usenet-row">
           <div class="dp-usenet-field dp-usenet-field--wide dp-usenet-field--password">
-            <label class="form-label" for="${passwordId}">Password</label>
+            ${said('label', 'settings.usenet.password', `class="form-label" for="${passwordId}"`)}
             <div class="dp-action-field">
               <input class="input" id="${passwordId}" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
-                     autocomplete="off" placeholder="Password">
+                     autocomplete="off" ${keyed('', {placeholder: 'settings.usenet.password'})}>
               <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                      aria-label="Clear the stored password for this server" data-tooltip="Clear the stored password for this server" disabled>Clear</button>
+                      ${keyed('settings.usenet.clear', {'aria-label': 'settings.usenet.clear_password', 'data-tooltip': 'settings.usenet.clear_password'})} disabled>${esc(t('settings.usenet.clear'))}</button>
             </div>
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
                   aria-controls="${advancedId}" aria-expanded="false"
-                  data-tooltip="Show advanced acquisition settings"
-                  aria-label="Show advanced acquisition settings">
-            <span class="dp-usenet-advanced-label">Advanced</span>
+                  ${keyed('', {'data-tooltip': 'settings.usenet.advanced_show', 'aria-label': 'settings.usenet.advanced_show'})}>
+            ${said('span', 'settings.usenet.advanced', 'class="dp-usenet-advanced-label"')}
             <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
           </button>
           <div class="dp-usenet-advanced-body" id="${advancedId}" hidden>
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
-                <span class="form-label">Connections</span>
+                ${label('settings.usenet.connections')}
                 <input class="input" type="number" min="1" max="500" data-usenet-field="connections" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="connections"
                        value="8">
               </label>
               <div class="dp-usenet-field dp-usenet-field--priority">
                 <label class="dp-usenet-field-control">
-                  <span class="form-label">Priority</span>
+                  ${label('settings.usenet.priority')}
                   <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
                          value="0">
                 </label>
-                <span class="form-hint dp-usenet-priority-hint">Lower values have priority.</span>
+                ${said('span', 'settings.usenet.priority_hint', 'class="form-hint dp-usenet-priority-hint"')}
               </div>
             </div>
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
-                <span class="form-label">Articles per Request</span>
+                ${label('settings.usenet.articles_per_request')}
                 <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="articles_per_request"
                        value="2">
               </label>
               <label class="dp-usenet-field">
-                <span class="form-label">Server Timeout (seconds)</span>
+                ${label('settings.usenet.timeout_seconds')}
                 <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="timeout_seconds"
                        value="60">
               </label>
             </div>
-            <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
+            ${said('p', 'settings.usenet.advanced_hint', 'class="dp-usenet-advanced-hint"')}
           </div>
           <div class="dp-usenet-actions">
-            <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+            ${said('button', 'settings.usenet.remove', 'type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove"')}
           </div>
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
@@ -615,11 +669,15 @@
   async function clearPassword(card, button) {
     if (!serverId(card)) return;
     const subject = confirmSubject(card);
+    const values = {name: subject || {$t: 'settings.usenet.this_server'}};
+    const title = subject ? 'settings.usenet.clear_password_title' : 'settings.usenet.clear_password_title_unnamed';
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: subject ? `Clear password for ${subject}?` : 'Clear password for this Usenet server?',
-      message: `The stored password for ${subject || 'this Usenet server'} will be removed.`,
-      confirmLabel: 'Clear Password',
+      title: t(title, plain(values)),
+      message: t('settings.usenet.clear_password_message', plain(values)),
+      confirmLabel: t('settings.usenet.clear_password_accept'),
+      keys: {title, titleValues: values, message: 'settings.usenet.clear_password_message', messageValues: values,
+        accept: 'settings.usenet.clear_password_accept'},
     });
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(card);
@@ -631,9 +689,9 @@
       // what the card must now show about the stored credential.
       converge(card, result, {});
       const native = nativeMessage(result);
-      toast(native || `${name} password cleared`, native ? 'warn' : 'success');
+      toast(native || t('settings.usenet.password_cleared', {name}), native ? 'warn' : 'success');
     } catch (error) {
-      toast(`Could not clear the password for ${name}: ${error?.message || error}`, 'error');
+      toast(t('settings.usenet.clear_password_failed', {name, reason: error?.message || error}), 'error');
     } finally {
       busy(button, false);
       refreshClearGate(card);
@@ -686,7 +744,7 @@
       if (node && 'port' in sent && String(node.value) === String(sent.port)) {
         node.value = String(accepted.port ?? '');
       }
-      toast(`Could not update ${serverName(card)}: ${failure(card, error)}`, 'error');
+      toast(t('settings.usenet.update_failed', {name: serverName(card), reason: failure(card, error)}), 'error');
     }
   }
 
@@ -701,7 +759,7 @@
       convergeName(card, await writeServer(card, {display_name: chosen}));
     } catch (error) {
       convergeName(card, {servers: [accepted]});
-      toast(`Could not rename ${serverName(card)}: ${failure(card, error)}`, 'error');
+      toast(t('settings.usenet.rename_failed', {name: serverName(card), reason: failure(card, error)}), 'error');
     }
   }
 
@@ -711,7 +769,7 @@
    * universal persistence model. */
   async function createServer(card) {
     const server = readCard(card);
-    if (!server.host) { validation(card, 'A server host is required.'); return; }
+    if (!server.host) { validation(card, 'settings.usenet.host_required'); return; }
     validation(card, '');
     const name = serverName(card);
     // Published BEFORE the request is awaited, so a removal raised in this
@@ -742,9 +800,9 @@
       if (card.dataset.usenetRemoving === '1') return;
       await resumeCreation(card, result, server.display_name);
       const native = nativeMessage(result);
-      toast(native || `${name} saved`, native ? 'warn' : 'success');
+      toast(native || t('settings.usenet.saved', {name}), native ? 'warn' : 'success');
     } catch (error) {
-      toast(`Could not save ${name}: ${failure(card, error)}`, 'error');
+      toast(t('settings.usenet.save_failed', {name, reason: failure(card, error)}), 'error');
     } finally {
       creations.delete(card);
       refreshClearGate(card);
@@ -754,7 +812,7 @@
   /* A save is only truthful if the service actually accepted the configuration. */
   function nativeMessage(result) {
     if (result?.native && result.native.applied === false) {
-      return `Saved, but the download service did not accept it: ${result.native.detail || 'unknown reason'}`;
+      return t('settings.usenet.native_refused', {reason: result.native.detail || t('settings.usenet.unknown_reason')});
     }
     return '';
   }
@@ -771,11 +829,15 @@
    * the DELETE below is reached only when an id actually exists. */
   async function removeCard(host, card, button) {
     const subject = confirmSubject(card);
+    const values = {name: subject || {$t: 'settings.usenet.this_server'}};
+    const title = subject ? 'settings.usenet.remove_title' : 'settings.usenet.remove_title_unnamed';
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: subject ? `Remove ${subject}?` : 'Remove this Usenet server?',
-      message: `The configuration for ${subject || 'this Usenet server'} will be removed from DebridPulse.`,
-      confirmLabel: 'Remove Server',
+      title: t(title, plain(values)),
+      message: t('settings.usenet.remove_message', plain(values)),
+      confirmLabel: t('settings.usenet.remove_accept'),
+      keys: {title, titleValues: values, message: 'settings.usenet.remove_message', messageValues: values,
+        accept: 'settings.usenet.remove_accept'},
     });
     if (!confirmed) return;
     const name = serverName(card);
@@ -788,11 +850,11 @@
       if (id) publishAccepted(await api('DELETE', `/usenet/servers/${encodeURIComponent(id)}`, null, 30000));
       card.remove();
       reindex(host);
-      toast(`${name} removed`, 'success');
+      toast(t('settings.usenet.removed', {name}), 'success');
     } catch (error) {
       delete card.dataset.usenetRemoving;
       busy(button, false);
-      toast(`Could not remove ${name}: ${error?.message || error}`, 'error');
+      toast(t('settings.usenet.remove_failed', {name, reason: error?.message || error}), 'error');
     }
   }
 
@@ -801,7 +863,7 @@
   async function test(host, card, button) {
     await window.DPSettingsPersistence.settle(card);
     const server = readCard(card);
-    if (!server.host) { validation(card, 'A server host is required.'); return; }
+    if (!server.host) { validation(card, 'settings.usenet.host_required'); return; }
     validation(card, '');
     busy(button, true);
     try {
@@ -816,11 +878,11 @@
       // provider's durable verification, in either direction; whatever the
       // backend accepted is published through the same one seam.
       publishAccepted(result);
-      toast(result?.message || (result?.ok ? 'Connection successful' : 'Test failed'),
+      toast(result?.message || t(result?.ok ? 'settings.usenet.test_ok' : 'settings.usenet.test_failed'),
             result?.ok ? 'success' : 'error');
     } catch (error) {
       forgetTestedDrafts(card);
-      toast(`Test failed: ${error?.message || error}`, 'error');
+      toast(t('settings.usenet.test_failed_reason', {reason: error?.message || error}), 'error');
     } finally {
       busy(button, false);
     }
@@ -840,18 +902,19 @@
     // masquerade as one the operator chose.
     const current = card.dataset.usenetNameOverride === '1' ? label.textContent.trim() : '';
     const next = await window.DPSettingsModal.prompt({
-      title: 'Edit Server Name',
-      label: 'Display Name',
+      title: t('settings.usenet.rename_title'),
+      label: t('settings.usenet.rename_label'),
       value: current,
-      hint: 'Leave blank to use the server host.',
-      acceptLabel: 'Save',
+      hint: t('settings.usenet.rename_hint'),
+      acceptLabel: t('common.save'),
       placeholder: derived,
+      keys: {title: 'settings.usenet.rename_title', label: 'settings.usenet.rename_label', hint: 'settings.usenet.rename_hint', accept: 'common.save'},
     });
     if (next === null) return;
     const trimmed = next.trim();
-    const previous = {override: card.dataset.usenetNameOverride, text: label.textContent};
+    const previous = {override: card.dataset.usenetNameOverride, text: ownName(label)};
     card.dataset.usenetNameOverride = trimmed ? '1' : '0';
-    showName(card, trimmed || derived || 'New server');
+    showName(card, trimmed || derived);
     if (!serverId(card)) return;
     await window.DPSettingsPersistence.settle(card);
     try {
@@ -862,7 +925,7 @@
     } catch (error) {
       card.dataset.usenetNameOverride = previous.override;
       showName(card, previous.text);
-      toast(`Could not rename ${serverName(card)}: ${failure(card, error)}`, 'error');
+      toast(t('settings.usenet.rename_failed', {name: serverName(card), reason: failure(card, error)}), 'error');
     }
   }
 
@@ -876,9 +939,9 @@
     if (body && window.DPMotion) window.DPMotion.disclose(body, !expanded, {animate: true, focusReturn: button});
     else if (body) body.hidden = expanded;
     button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-    const label = `${expanded ? 'Show' : 'Hide'} advanced acquisition settings`;
-    button.dataset.tooltip = label;
-    button.setAttribute('aria-label', label);
+    const label = expanded ? 'settings.usenet.advanced_show' : 'settings.usenet.advanced_hide';
+    sayAttr(button, 'data-tooltip', label, {});
+    sayAttr(button, 'aria-label', label, {});
   }
 
   function onClick(event) {

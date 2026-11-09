@@ -5,6 +5,8 @@ executor-work.spec.js, downloads-selection-overflow.spec.js); these pin the
 owners each fix lives in, so a later edit cannot quietly reopen one.
 """
 import re
+
+from i18n_node import english, says
 from pathlib import Path
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
@@ -65,7 +67,7 @@ def test_the_locked_tunable_orders():
     assert [key or alias for key, alias in _keys(_function("mediaTuning"))] == [
         "youtubePlayerClientsField", "media_target_resolution", "media_video_quality", "media_video_codec",
         "preferred_subtitle_language", "media_concurrent_fragment_downloads"]
-    recovery = _function("downloadsPanel").split("const recovery = card('Disk Space & Recovery'", 1)[1]
+    recovery = _function("downloadsPanel").split("const recovery = card(say('settings.downloads.recovery')", 1)[1]
     assert [key for key, _ in _keys(recovery)] == [
         "stuck_download_timeout_hours", "min_free_disk_gb", "disk_guard_resume_hysteresis_gb",
         "aria2_error_retry_count", "aria2_error_retry_delay_seconds"]
@@ -82,7 +84,9 @@ def test_retry_delay_keeps_every_fact_in_fewer_words():
            "more than 5 minutes. Set to 0 to retry immediately.")
     new = ("Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. "
            "Plain retries double the delay, up to 5 minutes. Set to 0 to retry immediately.")
-    assert f"hint: '{new}'" in PAGE and old not in PAGE
+    # 1.0.14: said from the catalog, on the field's own hint, once.
+    assert "hint: say('settings.downloads.retry_delay_seconds_hint')" in PAGE
+    assert english("settings.downloads.retry_delay_seconds_hint") == new and not says(PAGE, old)
     assert len(new) <= 0.72 * len(old)
 
 
@@ -90,7 +94,8 @@ def test_automatic_extraction_takes_the_hinted_header_grammar():
     # Item 8: the shared card() grammar and fitter, Help then Enable in its rail.
     extraction = _function("extractionPanel")
     assert "help: 'automatic-extraction',\n      hinted: true," in extraction
-    assert "headerCenter: '<span class=\"dp-settings-extraction-header-copy\">Automatically extract supported archives after a download completes.</span>'" in extraction
+    assert "headerCenter: copySpan('dp-settings-extraction-header-copy', say('settings.extraction.copy'))," in extraction
+    assert english("settings.extraction.copy") == "Automatically extract supported archives after a download completes."
     card = _function("card")
     # The rail: status, Help, then the card's controls -- its header action
     # (none here), then its participation control.

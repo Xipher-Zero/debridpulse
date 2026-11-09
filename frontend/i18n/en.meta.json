@@ -8238,6 +8238,2568 @@
    "args": {
     "host": "string: the source"
    }
+  },
+  "settings.account.authorize": {
+   "category": "hint",
+   "context": "Services › a provider account connection: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.cancelling": {
+   "category": "status-chip",
+   "context": "Services › a provider account connection: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.code_copied": {
+   "category": "toast",
+   "context": "Services › a provider account connection: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.code_copy_manually": {
+   "category": "toast",
+   "context": "Services › a provider account connection: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.code_expired": {
+   "category": "error",
+   "context": "Services › a provider account connection: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.code_label": {
+   "category": "tooltip/aria",
+   "context": "Services › a provider account connection: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.connect": {
+   "category": "action",
+   "context": "Services › a provider account connection: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.connect_helper": {
+   "category": "hint",
+   "context": "Services › a provider account connection: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.connected_as": {
+   "category": "hint",
+   "context": "Services › a provider account connection: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "who": "string: the connected account name"
+   }
+  },
+  "settings.account.connected_to": {
+   "category": "hint",
+   "context": "Services › a provider account connection: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.connected_toast": {
+   "category": "toast",
+   "context": "Services › a provider account connection: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.connected_toast_as": {
+   "category": "toast",
+   "context": "Services › a provider account connection: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)",
+    "who": "string: the connected account name"
+   }
+  },
+  "settings.account.connecting": {
+   "category": "status-chip",
+   "context": "Services › a provider account connection: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.copy": {
+   "category": "action",
+   "context": "Services › a provider account connection: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.copy_label": {
+   "category": "tooltip/aria",
+   "context": "Services › a provider account connection: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.disconnect": {
+   "category": "action",
+   "context": "Services › a provider account connection: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.disconnect_accept": {
+   "category": "action",
+   "context": "Services › a provider account connection: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.disconnect_message": {
+   "category": "critical-warning",
+   "context": "Services › a provider account connection: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.disconnect_title": {
+   "category": "critical-warning",
+   "context": "Services › a provider account connection: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.disconnected": {
+   "category": "toast",
+   "context": "Services › a provider account connection: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.disconnecting": {
+   "category": "status-chip",
+   "context": "Services › a provider account connection: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.free": {
+   "category": "status-chip",
+   "context": "Services › a provider account connection: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.heading": {
+   "category": "card-title",
+   "context": "Services › a provider account connection: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.open": {
+   "category": "action",
+   "context": "Services › a provider account connection: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.account.waiting": {
+   "category": "status-chip",
+   "context": "Services › a provider account connection: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.actions_label": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "title": "string: the card title"
+   }
+  },
+  "settings.browse": {
+   "category": "action",
+   "context": "Settings: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.depth.all": {
+   "category": "label",
+   "context": "Downloads › folder depth choice: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.depth.current": {
+   "category": "label",
+   "context": "Downloads › folder depth choice: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.depth.label": {
+   "category": "label",
+   "context": "Downloads › folder depth choice: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.depth.levels": {
+   "category": "label",
+   "context": "Downloads › folder depth choice: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.direct.allocation": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.allocation.falloc": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.allocation.none": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.allocation.prealloc": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.allocation.trunc": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.allocation_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.connections": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.connections_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.connections_limit": {
+   "category": "error",
+   "context": "Downloads › Network Sources transfer tuning (aria2): refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "max": "number"
+   }
+  },
+  "settings.direct.continue": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.continue_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.disk_cache": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.disk_cache_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.disk_cache_invalid": {
+   "category": "error",
+   "context": "Downloads › Network Sources transfer tuning (aria2): refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.lowest_speed": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.lowest_speed_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.lowest_speed_invalid": {
+   "category": "error",
+   "context": "Downloads › Network Sources transfer tuning (aria2): refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.min_split": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.min_split_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.min_split_invalid": {
+   "category": "error",
+   "context": "Downloads › Network Sources transfer tuning (aria2): refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.segments": {
+   "category": "label",
+   "context": "Downloads › Network Sources transfer tuning (aria2): field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.direct.segments_hint": {
+   "category": "hint",
+   "context": "Downloads › Network Sources transfer tuning (aria2): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.disclosure.collapse": {
+   "category": "tooltip/aria",
+   "context": "Settings disclosure control: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "subject": "string: what the control is about (a card or section title)"
+   }
+  },
+  "settings.disclosure.expand": {
+   "category": "tooltip/aria",
+   "context": "Settings disclosure control: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "subject": "string: what the control is about (a card or section title)"
+   }
+  },
+  "settings.disclosure.section": {
+   "category": "label",
+   "context": "Settings disclosure control: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.advanced": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.behavior": {
+   "category": "card-title",
+   "context": "Downloads tab: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.behavior_copy": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.checkpoint": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.checkpoint_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.error_retries": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.error_retries_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.folder": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.folder_browse": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.folder_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.full_sync": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.full_sync_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.graceful_stop": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.graceful_stop_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.lan": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.lan_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.lan_skip": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.lan_skip_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.location_label": {
+   "category": "tooltip/aria",
+   "context": "Downloads tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.max_concurrent": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.max_concurrent_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.methods": {
+   "category": "card-title",
+   "context": "Downloads tab: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.methods_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.min_free": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.min_free_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.poll": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.poll_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.profiles_stranded": {
+   "category": "toast",
+   "context": "Downloads tab: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count",
+    "profiles": "string: comma-separated profile names"
+   }
+  },
+  "settings.downloads.recovery": {
+   "category": "card-title",
+   "context": "Downloads tab: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.recovery_copy": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.resolution_retries": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.resolution_retries_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.resume_buffer": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.resume_buffer_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.retry_delay_minutes": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.retry_delay_minutes_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.retry_delay_seconds": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.retry_delay_seconds_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.stalled": {
+   "category": "label",
+   "context": "Downloads tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.downloads.stalled_hint": {
+   "category": "hint",
+   "context": "Downloads tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.enable": {
+   "category": "action",
+   "context": "Settings: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.enable_named": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.enable_route": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.engine_activity.accepted": {
+   "category": "toast",
+   "context": "Downloads › Download Engine Activity: result notification.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal",
+   "args": {
+    "action": "string: the action name"
+   }
+  },
+  "settings.engine_activity.action.cancel": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.action.pause": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.action.resume": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.caution": {
+   "category": "hint",
+   "context": "Downloads › Download Engine Activity: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.caution_title": {
+   "category": "modal-title",
+   "context": "Downloads › Download Engine Activity: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.copy": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.empty": {
+   "category": "hint",
+   "context": "Downloads › Download Engine Activity: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.empty_filtered.active": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.empty_filtered.paused": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.empty_filtered.stopped": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.empty_filtered.waiting": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.error_fallback": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.fact.done": {
+   "category": "table-header",
+   "context": "Downloads › Download Engine Activity: fact label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.fact.remaining_label": {
+   "category": "tooltip/aria",
+   "context": "Downloads › Download Engine Activity: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.fact.speed": {
+   "category": "table-header",
+   "context": "Downloads › Download Engine Activity: fact label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.fact.state": {
+   "category": "table-header",
+   "context": "Downloads › Download Engine Activity: fact label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.failed": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.engine_activity.filter.active": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.filter.all": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.filter.paused": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.filter.stopped": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.filter.waiting": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.filter_label": {
+   "category": "tooltip/aria",
+   "context": "Downloads › Download Engine Activity: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.loading": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.name_fallback": {
+   "category": "label",
+   "context": "Downloads › Download Engine Activity: field or option label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.pending.cancel": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.pending.other": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.pending.pause": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.pending.resume": {
+   "category": "action",
+   "context": "Downloads › Download Engine Activity: button label.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.remaining": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal",
+   "args": {
+    "value": "string: a figure, or — when unknown"
+   }
+  },
+  "settings.engine_activity.state.absent": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.cancelled": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.failed": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.paused": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.queued": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.running": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.succeeded": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.state.unknown": {
+   "category": "status-chip",
+   "context": "Downloads › Download Engine Activity: short status.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.terminate_message": {
+   "category": "critical-warning",
+   "context": "Downloads › Download Engine Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "critical-warning"
+  },
+  "settings.engine_activity.terminate_message_named": {
+   "category": "critical-warning",
+   "context": "Downloads › Download Engine Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "critical-warning",
+   "args": {
+    "subject": "string: what the control is about (a card or section title)"
+   }
+  },
+  "settings.engine_activity.terminate_title": {
+   "category": "critical-warning",
+   "context": "Downloads › Download Engine Activity: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "critical-warning"
+  },
+  "settings.engine_activity.title": {
+   "category": "card-title",
+   "context": "Downloads › Download Engine Activity: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.totals": {
+   "category": "tooltip/aria",
+   "context": "Downloads › Download Engine Activity: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.engine_activity.unavailable": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.engine_activity.unknown_error": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.add_password": {
+   "category": "placeholder",
+   "context": "Extraction tab: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.behavior_label": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.clear": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.clear_label": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.clear_message": {
+   "category": "critical-warning",
+   "context": "Extraction tab: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.extraction.clear_short": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.clear_title": {
+   "category": "critical-warning",
+   "context": "Extraction tab: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.extraction.cleared": {
+   "category": "toast",
+   "context": "Extraction tab: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.concurrent": {
+   "category": "label",
+   "context": "Extraction tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.concurrent_hint": {
+   "category": "hint",
+   "context": "Extraction tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.copy": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.delete": {
+   "category": "label",
+   "context": "Extraction tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.delete_hint": {
+   "category": "hint",
+   "context": "Extraction tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.enable": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.guidance": {
+   "category": "hint",
+   "context": "Extraction tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.guidance_short": {
+   "category": "hint",
+   "context": "Extraction tab: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.hide": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.hide_all": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.hide_all_passwords": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.password_line": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "settings.extraction.passwords": {
+   "category": "label",
+   "context": "Extraction tab: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.passwords_label": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.passwords_optional": {
+   "category": "placeholder",
+   "context": "Extraction tab: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.passwords_stored": {
+   "category": "placeholder",
+   "context": "Extraction tab: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.show": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.show_all": {
+   "category": "action",
+   "context": "Extraction tab: button label.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.show_all_passwords": {
+   "category": "tooltip/aria",
+   "context": "Extraction tab: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-archive-passwords.js",
+   "criticality": "normal"
+  },
+  "settings.extraction.title": {
+   "category": "card-title",
+   "context": "Extraction tab: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.group_sources": {
+   "category": "label",
+   "context": "Settings: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "group": "string: the group title"
+   }
+  },
+  "settings.header.hint": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.header.hint_short": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.header.hint_shortest": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.header.title": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.header.title_short": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.header.title_shortest": {
+   "category": "page-title",
+   "context": "Settings page header identity (shorter forms at narrow widths): page heading. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.help_chip": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "subject": "string: what the control is about (a card or section title)"
+   }
+  },
+  "settings.key.clear_accept": {
+   "category": "action",
+   "context": "Services › a provider API key: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.clear_message": {
+   "category": "critical-warning",
+   "context": "Services › a provider API key: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.clear_title": {
+   "category": "critical-warning",
+   "context": "Services › a provider API key: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.cleared": {
+   "category": "toast",
+   "context": "Services › a provider API key: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.clearing": {
+   "category": "status-chip",
+   "context": "Services › a provider API key: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.key.hint_configured": {
+   "category": "label",
+   "context": "Services › a provider API key: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.hint_missing": {
+   "category": "label",
+   "context": "Services › a provider API key: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.label": {
+   "category": "label",
+   "context": "Services › a provider API key: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.key.placeholder": {
+   "category": "placeholder",
+   "context": "Services › a provider API key: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.key.remove": {
+   "category": "action",
+   "context": "Services › a provider API key: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.key.remove_label": {
+   "category": "tooltip/aria",
+   "context": "Services › a provider API key: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.live_tuning.applied": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.confirm_accept": {
+   "category": "action",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.live_tuning.confirm_count": {
+   "category": "hint",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.confirm_title": {
+   "category": "modal-title",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.live_tuning.confirm_unknown": {
+   "category": "hint",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.live_tuning.daemon_unavailable": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.live_tuning.ended": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.interrupted": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.partial": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count",
+    "settled": "number"
+   }
+  },
+  "settings.live_tuning.refused": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.selection_unavailable": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.live_tuning.superseded": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.live_tuning.unknown": {
+   "category": "toast",
+   "context": "Downloads › saving Network Sources tuning that also updates running downloads: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "plural: count"
+   }
+  },
+  "settings.load_failed": {
+   "category": "error",
+   "context": "Settings: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.loading": {
+   "category": "status-chip",
+   "context": "Settings: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.best_available": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.codec": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.codec_auto": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.codec_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.fragments": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.fragments_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.language_code": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "code": "string: a language code"
+   }
+  },
+  "settings.media.notice": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "clients": "string: comma-separated player client names"
+   }
+  },
+  "settings.media.notice_title": {
+   "category": "modal-title",
+   "context": "Downloads › Media Downloads tuning: dialog title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.player": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.player_automatic": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.player_custom": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.player_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.player_retired": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.quality": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.quality.high": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.quality.low": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.quality.normal": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.quality_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.resolution": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.resolution_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.search_languages": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.subtitle": {
+   "category": "label",
+   "context": "Downloads › Media Downloads tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.subtitle_hint": {
+   "category": "hint",
+   "context": "Downloads › Media Downloads tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.media.use_automatic": {
+   "category": "action",
+   "context": "Downloads › Media Downloads tuning: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.nav.next": {
+   "category": "navigation",
+   "context": "Settings section navigator: navigation label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.nav.previous": {
+   "category": "navigation",
+   "context": "Settings section navigator: navigation label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.nav.sections": {
+   "category": "navigation",
+   "context": "Settings section navigator: navigation label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.page_label": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.premium_provider": {
+   "category": "tooltip/aria",
+   "context": "Settings: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.additional": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.alldebrid.max_active_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.alldebrid.prepare_backup_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.alldebrid.rate_limit_hint": {
+   "category": "error",
+   "context": "Services › a premium provider card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.before_usenet": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.before_usenet_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.debridlink.prepare_backup_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.header_copy": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.header_copy_nzb": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.host_refresh": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.host_refresh_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.max_active": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.max_placeholder": {
+   "category": "placeholder",
+   "context": "Services › a premium provider card: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.premiumize.prepare_backup_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.prepare_backup": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.rate_limit": {
+   "category": "error",
+   "context": "Services › a premium provider card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.rate_limit_hint_capped": {
+   "category": "error",
+   "context": "Services › a premium provider card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)",
+    "max": "number"
+   }
+  },
+  "settings.provider.rate_limit_refusal": {
+   "category": "error",
+   "context": "Services › a premium provider card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)",
+    "max": "number"
+   }
+  },
+  "settings.provider.realdebrid.max_active_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.realdebrid.prepare_backup_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.request_timeout": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.request_timeout_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.torbox.max_active_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.torbox.prepare_backup_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.torrent_upload_timeout": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.torrent_upload_timeout_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.upload_timeout": {
+   "category": "label",
+   "context": "Services › a premium provider card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider.upload_timeout_hint": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)"
+   }
+  },
+  "settings.provider.usenet.header_copy": {
+   "category": "hint",
+   "context": "Services › a premium provider card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider_configuration": {
+   "category": "label",
+   "context": "Settings: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.provider_error": {
+   "category": "error",
+   "context": "Settings: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: provider name (a proper name)",
+    "message": "string: the server's own message"
+   }
+  },
+  "settings.rsync.compression": {
+   "category": "label",
+   "context": "Downloads › rsync tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.compression_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.connection_timeout": {
+   "category": "label",
+   "context": "Downloads › rsync tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.connection_timeout_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.depth_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.mtime": {
+   "category": "label",
+   "context": "Downloads › rsync tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.mtime_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.partial": {
+   "category": "label",
+   "context": "Downloads › rsync tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.partial_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.transfer_timeout": {
+   "category": "label",
+   "context": "Downloads › rsync tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.rsync.transfer_timeout_hint": {
+   "category": "hint",
+   "context": "Downloads › rsync tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.services.network_hint": {
+   "category": "hint",
+   "context": "Services group header: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.services.premium": {
+   "category": "card-title",
+   "context": "Services group header: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.services.premium_hint": {
+   "category": "hint",
+   "context": "Services group header: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_ftp.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_ftp.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_http.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_http.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_rsync.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_rsync.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_scp.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_scp.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_webdav.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.general_webdav.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.media.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.media.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.multimeta.lead": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.source_box.multimeta.rest": {
+   "category": "hint",
+   "context": "Services › a Network Sources protocol box (two lines): explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.status.unconfigured": {
+   "category": "status-chip",
+   "context": "Settings card header status: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.status.unverified": {
+   "category": "status-chip",
+   "context": "Settings card header status: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.status.verified": {
+   "category": "status-chip",
+   "context": "Settings card header status: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.authentication": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.downloads": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.extraction": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.maintenance": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.notifications": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.sources": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.users": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tab.users_standalone": {
+   "category": "navigation",
+   "context": "Settings section tabs: navigation label. Keep it short: the header must stay one row from 320px.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.test": {
+   "category": "action",
+   "context": "Settings: button label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.testing": {
+   "category": "status-chip",
+   "context": "Settings: short status.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.direct_copy": {
+   "category": "hint",
+   "context": "Downloads › a transfer method tuning card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.media": {
+   "category": "label",
+   "context": "Downloads › a transfer method tuning card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.media_copy": {
+   "category": "hint",
+   "context": "Downloads › a transfer method tuning card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.rsync_copy": {
+   "category": "hint",
+   "context": "Downloads › a transfer method tuning card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.subject": {
+   "category": "label",
+   "context": "Downloads › a transfer method tuning card: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "method": "string: a download method name"
+   }
+  },
+  "settings.tuning.title": {
+   "category": "card-title",
+   "context": "Downloads › a transfer method tuning card: card or group title.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "method": "string: a download method name"
+   }
+  },
+  "settings.tuning.usenet_copy": {
+   "category": "hint",
+   "context": "Downloads › a transfer method tuning card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.tuning.webdav_copy": {
+   "category": "hint",
+   "context": "Downloads › a transfer method tuning card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.add": {
+   "category": "action",
+   "context": "Services › a Usenet news server card: button label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.advanced": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.advanced_hide": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.advanced_hint": {
+   "category": "hint",
+   "context": "Services › a Usenet news server card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.advanced_show": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.articles_per_request": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.clear": {
+   "category": "action",
+   "context": "Services › a Usenet news server card: button label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.clear_password": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.clear_password_accept": {
+   "category": "action",
+   "context": "Services › a Usenet news server card: button label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.clear_password_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)",
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.clear_password_message": {
+   "category": "hint",
+   "context": "Services › a Usenet news server card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.clear_password_title": {
+   "category": "modal-title",
+   "context": "Services › a Usenet news server card: dialog title.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.clear_password_title_unnamed": {
+   "category": "modal-title",
+   "context": "Services › a Usenet news server card: dialog title.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.connections": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.edit_name": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.edit_name_for": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.host": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.host_required": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.native_refused": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.new_server": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.password": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.password_cleared": {
+   "category": "toast",
+   "context": "Services › a Usenet news server card: result notification.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.password_configured": {
+   "category": "placeholder",
+   "context": "Services › a Usenet news server card: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.port": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.priority": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.priority_hint": {
+   "category": "hint",
+   "context": "Services › a Usenet news server card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.remove": {
+   "category": "action",
+   "context": "Services › a Usenet news server card: button label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.remove_accept": {
+   "category": "action",
+   "context": "Services › a Usenet news server card: button label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.remove_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)",
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.remove_message": {
+   "category": "critical-warning",
+   "context": "Services › a Usenet news server card: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.remove_title": {
+   "category": "critical-warning",
+   "context": "Services › a Usenet news server card: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "critical-warning",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.remove_title_unnamed": {
+   "category": "critical-warning",
+   "context": "Services › a Usenet news server card: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "critical-warning"
+  },
+  "settings.usenet.removed": {
+   "category": "toast",
+   "context": "Services › a Usenet news server card: result notification.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.rename_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)",
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.rename_hint": {
+   "category": "hint",
+   "context": "Services › a Usenet news server card: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.rename_label": {
+   "category": "tooltip/aria",
+   "context": "Services › a Usenet news server card: tooltip or accessible name.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.rename_title": {
+   "category": "modal-title",
+   "context": "Services › a Usenet news server card: dialog title.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.save_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)",
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.saved": {
+   "category": "toast",
+   "context": "Services › a Usenet news server card: result notification.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)"
+   }
+  },
+  "settings.usenet.server_fallback": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.ssl": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.test_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.test_failed_reason": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.test_ok": {
+   "category": "toast",
+   "context": "Services › a Usenet news server card: result notification.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.this_server": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.timeout_seconds": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.unknown_reason": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet.update_failed": {
+   "category": "error",
+   "context": "Services › a Usenet news server card: refusal or failure wording.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a name (a news server, a provider)",
+    "reason": "string: why (often the server's own words)"
+   }
+  },
+  "settings.usenet.username": {
+   "category": "label",
+   "context": "Services › a Usenet news server card: field or option label.",
+   "owner": "frontend/static/ui-settings-usenet-servers.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_test.failed": {
+   "category": "toast",
+   "context": "Services › Usenet Test result: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "tested": "plural: tested",
+    "failed": "number"
+   }
+  },
+  "settings.usenet_test.failed_named": {
+   "category": "toast",
+   "context": "Services › Usenet Test result: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "tested": "plural: tested",
+    "failed": "number",
+    "named": "string: comma-separated server names"
+   }
+  },
+  "settings.usenet_test.none": {
+   "category": "toast",
+   "context": "Services › Usenet Test result: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_test.verified": {
+   "category": "toast",
+   "context": "Services › Usenet Test result: result notification.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "tested": "plural: tested",
+    "passed": "number"
+   }
+  },
+  "settings.usenet_tuning.cache": {
+   "category": "label",
+   "context": "Downloads › Usenet tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.cache_hint": {
+   "category": "hint",
+   "context": "Downloads › Usenet tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.direct_write": {
+   "category": "label",
+   "context": "Downloads › Usenet tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.direct_write_hint": {
+   "category": "hint",
+   "context": "Downloads › Usenet tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.footer": {
+   "category": "hint",
+   "context": "Downloads › Usenet tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.retries": {
+   "category": "label",
+   "context": "Downloads › Usenet tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.retries_hint": {
+   "category": "hint",
+   "context": "Downloads › Usenet tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.usenet_tuning.timeout_hint": {
+   "category": "hint",
+   "context": "Downloads › Usenet tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.depth_hint": {
+   "category": "hint",
+   "context": "Downloads › WebDAV tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.footer": {
+   "category": "hint",
+   "context": "Downloads › WebDAV tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.max_files": {
+   "category": "label",
+   "context": "Downloads › WebDAV tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.max_files_hint": {
+   "category": "hint",
+   "context": "Downloads › WebDAV tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.no_limit": {
+   "category": "placeholder",
+   "context": "Downloads › WebDAV tuning: placeholder inside an empty field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.scan_timeout": {
+   "category": "label",
+   "context": "Downloads › WebDAV tuning: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.webdav.scan_timeout_hint": {
+   "category": "hint",
+   "context": "Downloads › WebDAV tuning: explanatory hint beside a control.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
   }
  }
 }

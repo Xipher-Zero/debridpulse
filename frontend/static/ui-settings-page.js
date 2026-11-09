@@ -7,21 +7,39 @@
 (function () {
   'use strict';
 
+  /* Words (1.0.14 localization). ``say(key, values)`` is a catalog message
+   * that stays re-sayable: it prints as its words in the page's language, and
+   * ``keyed()`` gives the markup that lets DPI18n.render() say it again in
+   * place on a language change -- so a field's value and focus, an open
+   * disclosure and a test in flight are untouched. Strings stay plain text.
+   * A ``rich`` message (b, strong, em, i, code, kbd) is drawn by render(). */
+  const t = (key, values) => window.DPI18n.t(key, values);
+  class Said {
+    constructor(key, values, rich = false) { this.key = key; this.values = values || null; this.rich = rich; }
+    // An argument that is itself a Said is said first (a card title in "Help: {subject}").
+    plain() { return this.values && Object.fromEntries(Object.entries(this.values).map(([k, v]) => [k, v instanceof Said ? String(v) : v])); }
+    toString() { return t(this.key, this.plain() || undefined); }
+    // As a markup argument: the runtime says {"$t", "$v"} in the shown language (ui-i18n.js).
+    toJSON() { return {$t: this.key, $v: this.values || {}}; }
+  }
+  const say = (key, values) => new Said(key, values);
+  const sayRich = (key, values) => new Said(key, values, true);
+
   const TABS = Object.freeze([
     // Presentation only: the internal tab key stays `sources`.
-    ['sources', 'Services', 'zap'],
-    ['downloads', 'Downloads', 'download-downloads'],
-    ['extraction', 'Extraction', 'package-open'],
-    ['authentication', 'Authentication', 'shield-user'],
-    ['users', 'Users & Access', 'users'],
-    ['notifications', 'Notifications', 'bell-ring'],
-    ['maintenance', 'Data & Maintenance', 'database'],
+    ['sources', say('settings.tab.sources'), 'zap'],
+    ['downloads', say('settings.tab.downloads'), 'download-downloads'],
+    ['extraction', say('settings.tab.extraction'), 'package-open'],
+    ['authentication', say('settings.tab.authentication'), 'shield-user'],
+    ['users', say('settings.tab.users'), 'users'],
+    ['notifications', say('settings.tab.notifications'), 'bell-ring'],
+    ['maintenance', say('settings.tab.maintenance'), 'database'],
   ]);
   /* What a Standalone installation presents differently (deployment_type,
    * from the server's settings): no Authentication section, and its `users`
    * section -- the same key, icon and colour -- reads Access & Integrations. */
   const SERVER_ONLY_TABS = Object.freeze(['authentication']);
-  const STANDALONE_TAB_LABELS = Object.freeze({users: 'Access & Integrations'});
+  const STANDALONE_TAB_LABELS = Object.freeze({users: say('settings.tab.users_standalone')});
 
   const state = {
     settings: null,
@@ -70,6 +88,59 @@
     "'": '&#39;',
   })[ch]);
   const checked = value => value ? 'checked' : '';
+
+  // The keying of one element's words (see Said above).
+  // The keying attributes of one element: its text (a Said) and its attributes
+  // ({name: Said | string}); an attribute given as a string is written as it is.
+  function keyed(textSaid, attrs = {}) {
+    const parts = [];
+    const pairs = [];
+    let values = null;
+    const take = said => { if (said.values) values = {...(values || {}), ...said.values}; };
+    if (textSaid instanceof Said) {
+      parts.push(`data-i18n="${html(textSaid.key)}"`);
+      if (textSaid.rich) parts.push('data-i18n-rich');
+      take(textSaid);
+    }
+    for (const [name, value] of Object.entries(attrs)) {
+      if (value == null || value === '') continue;
+      parts.push(`${name}="${html(value)}"`);
+      if (value instanceof Said) { pairs.push(`${name}:${value.key}`); take(value); }
+    }
+    if (pairs.length) parts.push(`data-i18n-attr="${html(pairs.join(';'))}"`);
+    if (values) parts.push(`data-i18n-values="${html(JSON.stringify(values))}"`);
+    return parts.length ? ` ${parts.join(' ')}` : '';
+  }
+  // A field's hint: a Said, keyed; a string is the caller's own markup, as before.
+  const hintMarkup = hint => (hint instanceof Said
+    ? `<span class="form-hint"${keyed(hint)}>${html(hint)}</span>` : `<span class="form-hint">${hint}</span>`);
+  // Words as markup: a Said in its own span (re-sayable), anything else escaped.
+  const words = value => (value instanceof Said ? `<span${keyed(value)}>${html(value)}</span>` : html(value));
+  // An element whose words an owner sets again later: its key moves with them,
+  // so a later render() says the words now shown, never the earlier ones.
+  function sayInto(node, value) {
+    if (!node) return;
+    if (value instanceof Said) {
+      node.dataset.i18n = value.key;
+      if (value.values) node.dataset.i18nValues = JSON.stringify(value.values);
+      else delete node.dataset.i18nValues;
+    } else {
+      delete node.dataset.i18n;
+      if (!node.dataset.i18nAttr) delete node.dataset.i18nValues;
+    }
+    node.textContent = String(value ?? '');
+  }
+  function sayAttr(node, name, value) {
+    if (!node) return;
+    const pairs = String(node.dataset.i18nAttr || '').split(';').filter(pair => pair && !pair.startsWith(`${name}:`));
+    if (value instanceof Said) {
+      pairs.push(`${name}:${value.key}`);
+      if (value.values) node.dataset.i18nValues = JSON.stringify({...JSON.parse(node.dataset.i18nValues || '{}'), ...value.values});
+    }
+    if (pairs.length) node.dataset.i18nAttr = pairs.join(';');
+    else delete node.dataset.i18nAttr;
+    node.setAttribute(name, String(value ?? ''));
+  }
   const selected = (value, expected) => String(value) === String(expected) ? 'selected' : '';
 
   // The Settings document is rendered from, and saved to, the canonical
@@ -396,18 +467,24 @@
     return api(method, path, body, timeout);
   }
 
+  /* A busy label given as a Said is said again on a language change while it
+   * shows (the Settings locale listener); the idle markup it restores is its
+   * keyed markup, said in the language shown now. */
   function setBusy(button, busy, label) {
     if (!button) return;
     if (busy) {
       if (!button.dataset.dpSettingsMarkup) button.dataset.dpSettingsMarkup = button.innerHTML;
       button.disabled = true;
-      if (label) button.textContent = label;
+      if (label instanceof Said) button.dataset.dpBusyKey = label.key;
+      if (label) button.textContent = String(label);
       return;
     }
     button.disabled = false;
+    delete button.dataset.dpBusyKey;
     if (button.dataset.dpSettingsMarkup) {
       button.innerHTML = button.dataset.dpSettingsMarkup;
       delete button.dataset.dpSettingsMarkup;
+      window.DPI18n.render(button);
     }
     settleHeaderTestMenu(button);
   }
@@ -913,7 +990,9 @@
   /* What an API rate field says when the server refuses a value above its
    * ceiling. The ceiling is never written here: the persistence owner fills
    * {max} from the control's own max, the same bound the server enforces. */
-  const apiLimitMessage = provider => `${provider} API limit must be {max} or fewer requests per minute.`;
+  // The refusal a draft above the provider's cap gets, with that cap (the
+  // persistence owner's {max} substitution then finds nothing left to fill).
+  const apiLimitMessage = (provider, max) => say('settings.provider.rate_limit_refusal', {provider, max});
 
   function input(key, label, value, options = {}) {
     const id = fieldId(key);
@@ -929,16 +1008,15 @@
       options.min != null ? `min="${html(options.min)}"` : '',
       options.max != null ? `max="${html(options.max)}"` : '',
       options.step != null ? `step="${html(options.step)}"` : '',
-      options.placeholder ? `placeholder="${html(options.placeholder)}"` : '',
       options.readonly ? 'readonly' : '',
       options.autocomplete ? `autocomplete="${html(options.autocomplete)}"` : '',
       options.maxlength != null ? `maxlength="${html(options.maxlength)}"` : '',
-      options.ariaLabel ? `aria-label="${html(options.ariaLabel)}"` : '',
-      options.limitMessage ? `data-limit-message="${html(options.limitMessage)}"` : '',
       // A format the field declares (``pattern``) and its own wording for a
       // draft that does not match it; the server still decides everything else.
       options.pattern ? `pattern="${html(options.pattern)}"` : '',
-      options.invalidMessage ? `data-invalid-message="${html(options.invalidMessage)}"` : '',
+      // Its words (placeholder, name, refusal wordings), re-sayable when given as a Said.
+      keyed(null, {placeholder: options.placeholder, 'aria-label': options.ariaLabel,
+        'data-limit-message': options.limitMessage, 'data-invalid-message': options.invalidMessage}).trim(),
       // A text control holding a short list of names is as wide as a selector
       // in a tuning cell, not a number field (ui-settings-page.css).
       options.selectorWidth ? 'data-control-width="selector"' : '',
@@ -963,9 +1041,9 @@
     }
     return `
       <div class="dp-settings-field">
-        <label class="form-label" for="${id}">${html(label)}</label>
+        <label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>
         ${control}
-        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}${options.after || ''}${options.secondLine || ''}
+        ${options.hint ? hintMarkup(options.hint) : ''}${options.after || ''}${options.secondLine || ''}
       </div>`;
   }
 
@@ -973,9 +1051,9 @@
     const id = fieldId(key);
     return `
       <div class="dp-settings-field">
-        <label class="form-label" for="${id}">${html(label)}</label>
-        <textarea class="input" id="${id}" data-setting="${html(key)}" rows="${options.rows || 3}" ${options.placeholder ? `placeholder="${html(options.placeholder)}"` : ''} ${commitAttributes(key)}>${html(value)}</textarea>
-        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}
+        <label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>
+        <textarea class="input" id="${id}" data-setting="${html(key)}" rows="${options.rows || 3}"${keyed(null, {placeholder: options.placeholder})} ${commitAttributes(key)}>${html(value)}</textarea>
+        ${options.hint ? hintMarkup(options.hint) : ''}
       </div>`;
   }
 
@@ -994,12 +1072,12 @@
    * decorative and belong to the gaps rather than to any column. */
   function archivePasswordField(configured) {
     const id = fieldId('extraction_password');
-    const placeholder = configured ? 'Stored password list configured — blank keeps it' : 'Optional archive passwords';
+    const placeholder = say(configured ? 'settings.extraction.passwords_stored' : 'settings.extraction.passwords_optional');
     return `
       <div class="dp-settings-field dp-settings-extraction-password-field">
-        <label class="form-label" for="${id}">Archive Passwords</label>
-        <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords" data-archive-stored="${configured ? '1' : '0'}"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true"><span class="dp-settings-password-wording--full">Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</span><span class="dp-settings-password-wording--short">Passwords are saved as you finish editing. Use Show to reveal them, and Clear to erase the stored list.</span></p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords"><span class="dp-settings-password-wording--full">Clear Passwords</span><span class="dp-settings-password-wording--short">Clear</span></button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
+        <label class="form-label" for="${id}"${keyed(say('settings.extraction.passwords'))}>${html(t('settings.extraction.passwords'))}</label>
+        <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4"${keyed(null, {placeholder})} aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
+        <div class="input dp-settings-extraction-password-editor" role="group"${keyed(null, {'aria-label': say('settings.extraction.passwords_label')})} data-archive-stored="${configured ? '1' : '0'}"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true"><span class="dp-settings-password-wording--full"${keyed(say('settings.extraction.guidance'))}>${html(t('settings.extraction.guidance'))}</span><span class="dp-settings-password-wording--short"${keyed(say('settings.extraction.guidance_short'))}>${html(t('settings.extraction.guidance_short'))}</span></p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords"${keyed(null, {'aria-label': say('settings.extraction.clear_label')})}><span class="dp-settings-password-wording--full"${keyed(say('settings.extraction.clear'))}>${html(t('settings.extraction.clear'))}</span><span class="dp-settings-password-wording--short"${keyed(say('settings.extraction.clear_short'))}>${html(t('settings.extraction.clear_short'))}</span></button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
       </div>`;
   }
 
@@ -1008,8 +1086,8 @@
     return `
       <label class="toggle-row dp-settings-toggle${extraClass ? ` ${extraClass}` : ''}" for="${id}">
         <span class="toggle-info">
-          <span class="tl">${html(label)}</span>
-          ${detail ? `<span class="td">${html(detail)}</span>` : ''}
+          <span class="tl"${keyed(label)}>${html(label)}</span>
+          ${detail ? `<span class="td"${keyed(detail)}>${html(detail)}</span>` : ''}
         </span>
         <span class="toggle">
           <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
@@ -1024,12 +1102,14 @@
     // name. A choice's optional third entry is its quieter second label
     // (``detail``) and further words it answers to (``terms``); the shared
     // dropdown shows and searches both.
-    const search = options.search ? ` data-dp-dropdown-search="${html(options.search)}"` : '';
-    const extra = ({detail, terms} = {}) => (detail ? ` data-dp-detail="${html(detail)}"` : '')
-      + (terms ? ` data-dp-search="${html(terms)}"` : '');
+    // Its words keyed like any other attribute (a Said), so the shared dropdown
+    // reads them in the page's language; a string stays as it is.
+    const search = options.search ? keyed(null, {'data-dp-dropdown-search': options.search}) : '';
+    // A choice's words given as a Said are keyed: the shared dropdown follows its <select>.
+    const extra = ({detail, terms} = {}) => keyed(null, {'data-dp-detail': detail || null, 'data-dp-search': terms || null});
     const control = `
         <select class="input" id="${id}" data-setting="${html(key)}"${search} ${commitAttributes(key)}>
-          ${choices.map(([v, labelText, more]) => `<option value="${html(v)}"${extra(more)} ${selected(value, v)}>${html(labelText)}</option>`).join('')}
+          ${choices.map(([v, labelText, more]) => `<option value="${html(v)}"${keyed(labelText)}${extra(more)} ${selected(value, v)}>${html(labelText)}</option>`).join('')}
         </select>`;
     // The SAME control, in whichever of the two Settings field grammars the
     // caller asked for -- exactly as input(), directoryField() and
@@ -1039,9 +1119,9 @@
     }
     return `
       <div class="dp-settings-field">
-        <label class="form-label" for="${id}">${html(label)}</label>
+        <label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>
         ${control}
-        ${hint ? `<span class="form-hint">${hint}</span>` : ''}${options.secondLine || ''}
+        ${hint ? hintMarkup(hint) : ''}${options.secondLine || ''}
       </div>`;
   }
 
@@ -1078,13 +1158,13 @@
     // A READING -- a derived count, a status value -- has no control to label,
     // so it takes the same grammar with a plain caption instead of a <label>.
     const title = id
-      ? `<label class="form-label" for="${id}">${html(label)}</label>`
-      : `<span class="form-label">${html(label)}</span>`;
+      ? `<label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>`
+      : `<span class="form-label"${keyed(label)}>${html(label)}</span>`;
     return `
       <div class="dp-settings-inline-field${secondLine ? ' dp-settings-inline-field--two-line' : ''}${className ? ` ${className}` : ''}">
         <div class="dp-settings-inline-field-info">
           ${title}
-          ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+          ${hint ? hintMarkup(hint) : ''}
         </div>
         <div class="dp-settings-inline-field-control">${control}</div>${
           action ? `<div class="dp-settings-inline-field-action">${action}</div>` : ''}${
@@ -1099,7 +1179,7 @@
    * where the unit begins, and no reserved constant has to be guessed for a
    * font-sized thing. */
   function fieldUnit(text) {
-    return `<span class="dp-settings-field-unit" aria-hidden="true">${html(text)}</span>`;
+    return `<span class="dp-settings-field-unit" aria-hidden="true"${keyed(text)}>${html(text)}</span>`;
   }
 
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
@@ -1112,10 +1192,12 @@
    * canonical dialog shell; the chip itself changes nothing. */
   function helpChip(topic, subject) {
     if (!topic) return '';
-    const label = `Help: ${subject}`;
+    const label = say('settings.help_chip', {subject});
     const glyph = window.DPIcons?.svg ? window.DPIcons.svg('help', 'dp-settings-help-glyph') : '';
+    // Its name is keyed; its tooltip is the name, or the header's hint while the
+    // header carries it there (fitHeaderHints), so it is set by the fitters.
     return `<button type="button" class="dp-settings-help-chip" data-settings-help="${html(topic)}"
-            aria-label="${html(label)}" data-tooltip="${html(label)}">${glyph}</button>`;
+           ${keyed(null, {'aria-label': label})} data-tooltip="${html(label)}">${glyph}</button>`;
   }
 
   /* A header action's words at each step of a wrapping header
@@ -1123,12 +1205,12 @@
    * draws from step 2 and from step 3 below 780px (ui-settings-page.css) --
    * from attributes, so the button's text and its name stay the full words,
    * and the action is one button whatever it reads. */
-  const fitLabel = (full, short, shortest = short) => `<span class="dp-settings-fit-label-full">${html(full)}</span>`
-    + `<span class="dp-settings-fit-label-short" aria-hidden="true" data-fit-2="${html(short)}" data-fit-3="${html(shortest)}"></span>`;
+  const fitLabel = (full, short, shortest = short) => `<span class="dp-settings-fit-label-full"${keyed(full)}>${html(full)}</span>`
+    + `<span class="dp-settings-fit-label-short" aria-hidden="true"${keyed(null, {'data-fit-2': short, 'data-fit-3': shortest})}></span>`;
 
   function card(title, body, options = {}) {
     let titleClass = 'card-title';
-    let titleMarkup = html(title);
+    let titleMarkup = words(title);
     if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
       // ``shortTitle``: the handheld header's last resort (fitHeaderSteps,
@@ -1136,10 +1218,10 @@
       // stylesheet, from its attribute -- so the title's text, and the card's
       // name to assistive technology, stay the full title alone. While it is
       // drawn the title says the full title as its tooltip (promoteShortTitle).
-      const words = options.shortTitle
-        ? `<span class="dp-settings-card-title-full">${html(title)}</span><span class="dp-settings-card-title-short" aria-hidden="true" data-short-title="${html(options.shortTitle)}"></span>`
-        : html(title);
-      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${words}</span>`;
+      const titleWords = options.shortTitle
+        ? `<span class="dp-settings-card-title-full"${keyed(title)}>${html(title)}</span><span class="dp-settings-card-title-short" aria-hidden="true"${keyed(null, {'data-short-title': options.shortTitle})}></span>`
+        : words(title);
+      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${titleWords}</span>`;
     }
     const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
     /* The SAME operational header rail a provider card renders: what the
@@ -1156,7 +1238,7 @@
           options.action || ''}`;
     const rail = (status || options.headerAction || help)
       ? `<div class="dp-settings-card-header-controls">${
-          status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${help}${
+          status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}${keyed(status.text)}>${html(status.text)}</div>` : ''}${help}${
           controls}</div>`
       : (options.action || '');
     /* ``hinted``: the card's header takes the Services header grammar (see
@@ -1166,8 +1248,9 @@
     const identity = `<span class="${titleClass}">${titleMarkup}</span>`;
     // The hinted grammar measures ONE hint element (fitHeaderHints); a hint
     // given as plain text is that element's text.
-    const center = options.hinted && options.headerCenter && !/^\s*</.test(options.headerCenter)
-      ? `<span>${options.headerCenter}</span>` : options.headerCenter;
+    const center = options.headerCenter instanceof Said ? words(options.headerCenter)
+      : options.hinted && options.headerCenter && !/^\s*</.test(options.headerCenter)
+        ? `<span>${options.headerCenter}</span>` : options.headerCenter;
     /* ``collapsible`` ({key, expanded}): the canonical disclosure chip beside
      * the title, its choice kept for the page by the one disclosure owner. A
      * card whose stylesheet keeps its body open at some widths (Disk Space &
@@ -1207,16 +1290,17 @@
    * group becomes collapsible without asking. */
   function groupCard(title, body, options = {}) {
     const titleMarkup = options.titlePrefix
-      ? `<span class="card-title dp-settings-card-title--with-icon">${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span></span>`
-      : `<span class="card-title">${html(title)}</span>`;
-    const safe = String(options.groupId || title).replace(/[^a-z0-9_-]/gi, '-');
+      ? `<span class="card-title dp-settings-card-title--with-icon">${options.titlePrefix}<span class="dp-settings-card-title-text"${keyed(title)}>${html(title)}</span></span>`
+      : `<span class="card-title"${keyed(title)}>${html(title)}</span>`;
+    // A title said from the catalog is identified by its key, never by the words shown.
+    const safe = String(options.groupId || (title instanceof Said ? title.key : title)).replace(/[^a-z0-9_-]/gi, '-');
     const bodyId = `dp-settings-group-body-${safe}`;
     // A group may declare what it should look like on FIRST render; after that
     // the operator's own choice is what it looks like.
     const persistKey = options.collapsible ? `group:${safe}` : '';
     const expanded = options.collapsible && disclosureOpen(persistKey, options.expanded);
     const disclosure = options.collapsible
-      ? settingsDisclosure(bodyId, expanded, `${title} sources`, persistKey) : '';
+      ? settingsDisclosure(bodyId, expanded, say('settings.group_sources', {group: title}), persistKey) : '';
     const help = helpChip(options.help, title);
     const header = options.action || disclosure || help;
     // ``hint``: the group's one-line purpose, centred on the header while it
@@ -1228,7 +1312,7 @@
         options.headerFit ? ' data-header-fit="0"' : ''}${options.headerFit === 'self' ? ' data-header-fit-self' : ''}>
         <div class="card-header${header ? ' dp-settings-card-header' : ''}${hinted ? ' dp-settings-card-header--hinted' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
-          ${header ? `<div class="dp-settings-card-header-center">${hinted ? `<p class="dp-settings-provider-header-copy">${html(options.hint)}</p>` : ''}</div>
+          ${header ? `<div class="dp-settings-card-header-center">${hinted ? `<p class="dp-settings-provider-header-copy"${keyed(options.hint)}>${html(options.hint)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls">${help}${options.action || ''}</div>` : ''}
         </div>
         <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
@@ -1247,7 +1331,7 @@
   function directoryField(key, label, value, {hint, browseAction, browseLabel, inline, className, embedAction}) {
     const id = fieldId(key);
     const path = `<input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}>`;
-    const browse = `<button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button>`;
+    const browse = `<button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}"${keyed(say('settings.browse'), {'aria-label': browseLabel})}>${html(t('settings.browse'))}</button>`;
     const control = embedAction
       ? embeddedActionField(path, browse, 'dp-settings-directory-field-control')
       : `<div class="dp-settings-directory-field-control">${path}${browse}</div>`;
@@ -1257,9 +1341,9 @@
     }
     return `
       <div class="dp-settings-field dp-settings-directory-field">
-        <label class="form-label" for="${id}">${html(label)}</label>
+        <label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>
         ${control}
-        <span class="form-hint">${hint}</span>
+        ${hintMarkup(hint)}
       </div>`;
   }
 
@@ -1280,11 +1364,10 @@
    * are declared once and used both to render the row and to converge it, so
    * the row has exactly one markup owner in either direction. */
   const ALLDEBRID_KEY_PLACEHOLDER = configured =>
-    configured ? CONFIGURED_SECRET_MASK : 'Your AllDebrid API key';
+    configured ? CONFIGURED_SECRET_MASK : say('settings.key.placeholder', {provider: 'AllDebrid'});
 
-  const ALLDEBRID_KEY_HINT = configured => configured
-    ? 'API key configured for your AllDebrid account.'
-    : 'Enter an API key to connect your AllDebrid account.';
+  const ALLDEBRID_KEY_HINT = configured => say(configured ? 'settings.key.hint_configured' : 'settings.key.hint_missing',
+    {provider: 'AllDebrid'});
 
   /* The destructive action is part of the field, always: Remove sits INSIDE
    * the key field's own border (embeddedActionField). Whether there is
@@ -1296,7 +1379,8 @@
   const KEY_REMOVE_TONE = configured => configured ? 'btn-danger' : 'btn-ghost';
 
   const keyRemoveAction = (action, name, configured) => `<button type="button" class="btn ${KEY_REMOVE_TONE(configured)} btn-sm" data-action="${action}"
-                    aria-label="Remove the stored ${html(name)} API key"${configured ? '' : ' disabled'}>Remove</button>`;
+                   ${keyed(say('settings.key.remove'), {'aria-label': say('settings.key.remove_label', {provider: name})})}${
+                    configured ? '' : ' disabled'}>${html(t('settings.key.remove'))}</button>`;
 
   // Converges the action on accepted state; the button is never replaced.
   function renderKeyRemove(button, configured) {
@@ -1311,7 +1395,7 @@
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
-    return input(key, 'API Key', '', {
+    return input(key, say('settings.key.label'), '', {
       type: 'password',
       autocomplete: 'off',
       placeholder: ALLDEBRID_KEY_PLACEHOLDER(configured),
@@ -1338,16 +1422,15 @@
   });
 
   const apiKeyPlaceholder = (id, configured) =>
-    configured ? CONFIGURED_SECRET_MASK : `Your ${API_KEY_ACCOUNTS[id].name} API key`;
+    configured ? CONFIGURED_SECRET_MASK : say('settings.key.placeholder', {provider: API_KEY_ACCOUNTS[id].name});
 
-  const apiKeyHint = (id, configured) => configured
-    ? `API key configured for your ${API_KEY_ACCOUNTS[id].name} account.`
-    : `Enter an API key to connect your ${API_KEY_ACCOUNTS[id].name} account.`;
+  const apiKeyHint = (id, configured) => say(configured ? 'settings.key.hint_configured' : 'settings.key.hint_missing',
+    {provider: API_KEY_ACCOUNTS[id].name});
 
   const apiKeyClear = (id, configured) => keyRemoveAction(`clear-${id}-key`, API_KEY_ACCOUNTS[id].name, configured);
 
   function apiKeyField(id, configured) {
-    return input(`${id}_api_key`, 'API Key', '', {
+    return input(`${id}_api_key`, say('settings.key.label'), '', {
       type: 'password',
       autocomplete: 'off',
       placeholder: apiKeyPlaceholder(id, configured),
@@ -1375,7 +1458,7 @@
   function apiKeyAccountLine(id) {
     const account = apiKeyAccounts[id];
     if (!account || !API_KEY_ACCOUNT_LINES[id](state.settings)) return '';
-    const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
+    const line = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
     // Nothing to state renders nothing: no blank row above the key island.
     return line ? providerStatusLine(html(line), 'dp-settings-account-expiry') : '';
   }
@@ -1414,14 +1497,26 @@
     const field = fieldFor(`${id}_api_key`);
     if (field) {
       if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
-      field.placeholder = apiKeyPlaceholder(id, configured);
+      sayAttr(field, 'placeholder', apiKeyPlaceholder(id, configured));
     }
     row.classList.toggle('is-configured', configured);
-    const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
-    if (hint) hint.textContent = apiKeyHint(id, configured);
+    sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), apiKeyHint(id, configured));
     renderKeyRemove(row.querySelector(`[data-action="clear-${id}-key"]`), configured);
     renderApiKeyAccount(id);
     renderIntegrationState(card, id);
+  }
+
+  // The one confirmation for erasing a stored provider key, re-worded while open.
+  function confirmClearKey(provider) {
+    const values = {provider};
+    return window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: t('settings.key.clear_title', values),
+      message: t('settings.key.clear_message', values),
+      confirmLabel: t('settings.key.clear_accept', values),
+      keys: {title: 'settings.key.clear_title', titleValues: values, message: 'settings.key.clear_message', messageValues: values,
+        accept: 'settings.key.clear_accept', acceptValues: values},
+    });
   }
 
   /* Erasing a stored API key: the same destructive act, confirmation and
@@ -1430,16 +1525,10 @@
     const {name} = API_KEY_ACCOUNTS[id];
     const card = root()?.querySelector(`.dp-settings-provider-card--${id}`);
     if (!card) return;
-    const confirmed = await window.DPSettingsModal.confirm({
-      tone: 'danger',
-      title: `Clear ${name} API key?`,
-      message: `The stored ${name} API key will be removed. ${name} cannot be used `
-        + 'again until a key is configured.',
-      confirmLabel: `Clear ${name} API Key`,
-    });
+    const confirmed = await confirmClearKey(name);
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
+    setBusy(button, true, say('settings.key.clearing'));
     try {
       const result = await request('PATCH', `/integrations/${id}/configuration`,
         {options: {}, clear_secrets: ['api_key']}, 15000);
@@ -1447,7 +1536,7 @@
       setBusy(button, false);
       forgetApiKeyAccount(id);
       renderApiKeyCredential(id, '');
-      notify(`${name} API key cleared`, 'success');
+      notify(t('settings.key.cleared', {provider: name}), 'success');
       try { window.DPProviderStatus?.forget(id); window.DPProviderStatus?.refresh(); } catch (_) {}
       return;
     } catch (error) {
@@ -1512,7 +1601,7 @@
       // is visually hidden -- so the track has to be label-associated or the
       // control is operable only through its title. The other inline controls
       // are their own hit target and need no such wrapper.
-      return inlineField(id, label, html(detail),
+      return inlineField(id, label, detail instanceof Said ? detail : html(detail),
         `<label class="dp-settings-inline-toggle" for="${id}">${boolean}</label>`,
         {className: options.className});
     }
@@ -1521,14 +1610,14 @@
     const dependent = 'disabled' in options ? ' dp-settings-dependent-field' : '';
     return `
       <div class="dp-settings-field dp-settings-engine-tuning-toggle-field${dependent}${options.disabled ? ' is-disabled' : ''}">
-        <label class="form-label" for="${id}">${html(label)}</label>
+        <label class="form-label" for="${id}"${keyed(label)}>${html(label)}</label>
         <label class="dp-settings-engine-tuning-toggle-control" for="${id}">
           <span class="toggle">
             <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}${disabled}>
             <span class="ttrack"></span>
           </span>
         </label>
-        <span class="form-hint">${html(detail)}</span>
+        <span class="form-hint"${keyed(detail)}>${html(detail)}</span>
       </div>`;
   }
 
@@ -1540,10 +1629,10 @@
     const id = `dp-settings-integration-${safeIdentity}-enabled`;
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable ${html(extraClass)}" for="${id}">
-        ${visibleLabel ? '<span class="toggle-info"><span class="tl">Enable</span></span>' : ''}
+        ${visibleLabel ? `<span class="toggle-info"><span class="tl"${keyed(say('settings.enable'))}>${html(t('settings.enable'))}</span></span>` : ''}
         <span class="toggle">
           <input id="${id}" data-integration-enabled="${html(identity)}" type="checkbox" ${checked(value)}
-                 aria-label="Enable ${html(displayName)} provider route">
+                ${keyed(null, {'aria-label': say('settings.enable_route', {provider: displayName})})}>
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -1589,15 +1678,9 @@
    * come from the integration's own published metadata, so this adds no second
    * display-name system and declares no protocol that does not exist. A member
    * with nothing to say here simply says nothing. */
-  const SOURCE_BOX_COPY = Object.freeze({
-    general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
-    general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
-    general_scp: ['Direct downloads from', 'files over SCP.'],
-    general_rsync: ['Direct downloads from', 'rsync sources.'],
-    general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],
-    multimeta: ['Downloads described by', 'Metalink (.meta4) files.'],
-    media: ['Downloads supported media from', 'compatible web pages and media sites.'],
-  });
+  const SOURCE_BOX_COPY = Object.freeze(Object.fromEntries(
+    ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta', 'media']
+      .map(id => [id, [say(`settings.source_box.${id}.lead`), say(`settings.source_box.${id}.rest`)]])));
 
   /* A box title that differs from the integration's presentation name. On
    * Services, Multimeta is named by the format it reads first, its own name
@@ -1615,7 +1698,7 @@
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable dp-settings-provider-header-enable" for="${id}">
         <span class="toggle">
           <input id="${id}" data-integration-group-enabled="${html(groupId)}" type="checkbox" ${checked(value)}
-                 aria-label="Enable ${html(label)}">
+                ${keyed(null, {'aria-label': say('settings.enable_named', {name: label})})}>
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -1630,12 +1713,23 @@
    * immediately after the card title, so the control reads as belonging to the
    * title while the operational controls stay independent on the right. The
    * card header itself is never clickable. */
+  // "Collapse …" / "Expand …": the subject (a card or group title) is kept as
+  // JSON -- words, or a message {$t, $v} -- so the name is said again on a toggle
+  // and on a language change.
+  const disclosureLabel = (expanded, subject) =>
+    say(expanded ? 'settings.disclosure.collapse' : 'settings.disclosure.expand', {subject});
+  const reviveSaid = value => (value && typeof value === 'object' && typeof value.$t === 'string'
+    ? say(value.$t, Object.fromEntries(Object.entries(value.$v || {}).map(([k, v]) => [k, reviveSaid(v)]))) : value);
+  function disclosureSubject(button) {
+    try { return reviveSaid(JSON.parse(button.dataset.disclosureSubject)) || say('settings.disclosure.section'); }
+    catch (_) { return button.dataset.disclosureSubject || say('settings.disclosure.section'); }
+  }
   function settingsDisclosure(bodyId, expanded, subject, persistKey = '') {
-    const label = `${expanded ? 'Collapse' : 'Expand'} ${subject}`;
-    return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(subject)}"${
+    const label = disclosureLabel(expanded, subject);
+    return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(JSON.stringify(subject))}"${
             persistKey ? ` data-disclosure-persist="${html(persistKey)}"` : ''}
-            aria-controls="${html(bodyId)}" aria-expanded="${expanded}" data-tooltip="${html(label)}"
-            aria-label="${html(label)}"><span aria-hidden="true">&rsaquo;</span></button>`;
+            aria-controls="${html(bodyId)}" aria-expanded="${expanded}"${keyed(null, {'data-tooltip': label, 'aria-label': label})}
+            ><span aria-hidden="true">&rsaquo;</span></button>`;
   }
 
   /* Disclosure state the operator has CHOSEN, for the sections that keep it.
@@ -1677,13 +1771,13 @@
     const bodyId = `dp-settings-section-body-${safe}`;
     const persistKey = `section:${safe}`;
     const open = disclosureOpen(persistKey, expanded);
-    const words = shortTitle
-      ? `<span class="dp-settings-subsection-title-full">${html(title)}</span><span class="dp-settings-subsection-title-short" aria-hidden="true" data-short-title="${html(shortTitle)}"></span>`
-      : html(title);
+    const titleWords = shortTitle
+      ? `<span class="dp-settings-subsection-title-full"${keyed(title)}>${html(title)}</span><span class="dp-settings-subsection-title-short" aria-hidden="true"${keyed(null, {'data-short-title': shortTitle})}></span>`
+      : words(title);
     return `
       <section class="dp-settings-subsection">
         <div class="dp-settings-subsection-header">
-          <span class="dp-settings-subsection-title">${words}</span>
+          <span class="dp-settings-subsection-title">${titleWords}</span>
           ${settingsDisclosure(bodyId, open, title, persistKey)}
         </div>
         <div class="dp-settings-subsection-body" id="${bodyId}"${open ? '' : ' hidden'}>${body}</div>
@@ -1713,9 +1807,9 @@
    *                 this function only reports it. */
   function providerStatus(enabled, configured, verified) {
     if (configured) {
-      return verified ? {text: 'Verified', tone: 'success'} : {text: 'Unverified', tone: 'warning'};
+      return verified ? {text: say('settings.status.verified'), tone: 'success'} : {text: say('settings.status.unverified'), tone: 'warning'};
     }
-    return enabled ? {text: 'Unconfigured', tone: 'error'} : {text: '', tone: 'none'};
+    return enabled ? {text: say('settings.status.unconfigured'), tone: 'error'} : {text: '', tone: 'none'};
   }
 
   /* The provider-level Test control.
@@ -1739,7 +1833,7 @@
             </span>` : '';
     return `
           <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" ${attribute}="${html(action)}">${chip}
-            <span>Test</span>
+            <span${keyed(say('settings.test'))}>${html(t('settings.test'))}</span>
           </button>`;
   }
 
@@ -1789,7 +1883,7 @@
         <span class="dp-settings-header-test-shell">
           <button class="btn btn-ghost btn-sm dp-settings-header-test-trigger" type="button" popovertarget="${menu}"
                   aria-controls="${menu}" aria-expanded="false">${short ? fitLabel(label, short) : html(label)}</button>
-          <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group" aria-label="${html(title)} actions"></div>
+          <div class="dp-dropdown-menu dp-settings-header-test-menu" id="${menu}" popover="auto" role="group"${keyed(null, {'aria-label': say('settings.actions_label', {title})})}></div>
         </span>${toggle}</div>`;
   }
 
@@ -1817,15 +1911,16 @@
     const premium = !!entry.presentation?.premium;
     const safe = String(identity).replace(/[^a-z0-9_-]/gi, '-');
     const enable = integrationHeaderToggle(identity, enabled, displayName, 'dp-settings-provider-header-enable');
-    const crown = premium ? '<span class="dp-provider-premium" role="img" data-tooltip="Premium provider" aria-label="Premium provider"></span>' : '';
+    const crownWords = say('settings.premium_provider');
+    const crown = premium ? `<span class="dp-provider-premium" role="img"${keyed(null, {'data-tooltip': crownWords, 'aria-label': crownWords})}></span>` : '';
     const titleMarkup = titlePrefix
-      ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
-      : `<span class="card-title">${html(title)}${crown}</span>`;
+      ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${words(title)}</span>${crown}</span>`
+      : `<span class="card-title">${words(title)}${crown}</span>`;
     const bodyId = `dp-settings-provider-body-${safe}`;
     // Every expandable card renders CLOSED. Arriving at Services is
     // not an opinion about what should be open, and enabled/configured/verified
     // state is canonical truth about the provider, never about the card.
-    const disclosure = settingsDisclosure(bodyId, false, 'provider configuration');
+    const disclosure = settingsDisclosure(bodyId, false, say('settings.provider_configuration'));
     const status = providerStatus(enabled, configured, verified);
     const report = providerStatus(true, configured, verified);
     const controls = headerAction ? headerTestControls(title, headerAction, enable, report) : enable;
@@ -1833,8 +1928,8 @@
       <section class="card dp-settings-card dp-large-panel-surface ${className} dp-settings-provider-card--collapsed" data-provider-configured="${configured}">
         <div class="card-header dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}">
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
-          <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
-          <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>${
+          <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy"${keyed(headerCopy)}>${html(headerCopy)}</p>` : ''}</div>
+          <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}${keyed(status.text)}>${html(status.text)}</div>${
             helpChip(help, title)}${controls}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
@@ -1872,7 +1967,7 @@
             .map(word => `<span class="dp-settings-source-box-title-line">${html(word)}</span>`).join(' ')}</span></span>
         </div>
         ${integrationHeaderToggle(identity, enabled, label, 'dp-settings-source-box-enable', {visibleLabel: true})}
-        <p class="dp-settings-source-box-copy">${lines.map(line => `<span>${html(line)}</span>`).join('')}</p>
+        <p class="dp-settings-source-box-copy">${lines.map(line => words(line)).join('')}</p>
       </section>`;
   }
 
@@ -1914,7 +2009,7 @@
     return `
           <label class="dp-usenet-enable toggle-row">
             <span class="toggle">
-              <input type="checkbox" data-usenet-field="enabled" aria-label="Enable ${html(name)}"
+              <input type="checkbox" data-usenet-field="enabled"${keyed(null, {'aria-label': say('settings.enable_named', {name})})}
                      data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" ${checked(value)}>
               <span class="ttrack"></span>
             </span>
@@ -1927,7 +2022,7 @@
     const passwordId = `dp-usenet-password-${safe}`;
     const derived = String(server.host || '').trim();
     const override = String(server.display_name || '').trim();
-    const name = override || derived || 'New server';
+    const name = override || derived || say('settings.usenet.new_server');
     const configured = !!server.password_configured;
     return `
       <div class="dp-usenet-server" data-usenet-server-id="${html(server.id || '')}"
@@ -1936,9 +2031,9 @@
            data-usenet-name-override="${override ? '1' : '0'}">
         <div class="dp-usenet-server-head">
           <span class="dp-usenet-server-title">
-            <span class="dp-usenet-server-name" data-usenet-display-name data-tooltip="${html(name)}">${html(name)}</span>
+            <span class="dp-usenet-server-name" data-usenet-display-name${keyed(name instanceof Said ? name : null, {'data-tooltip': name})}>${html(name)}</span>
             <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                    data-tooltip="Edit display name" aria-label="Edit display name for ${html(name)}">
+                   ${keyed(null, {'data-tooltip': say('settings.usenet.edit_name'), 'aria-label': say('settings.usenet.edit_name_for', {name})})}>
               <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
             </button>
           </span>
@@ -1948,18 +2043,18 @@
         </div>
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
-            <span class="form-label">Host</span>
+            <span class="form-label"${keyed(say('settings.usenet.host'))}>${html(t('settings.usenet.host'))}</span>
             <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="${html(server.host || '')}"
                    autocomplete="off" placeholder="news.example.com">
           </label>
           <div class="dp-usenet-port-ssl">
             <label class="dp-usenet-field dp-usenet-field--port">
-              <span class="form-label">Port</span>
+              <span class="form-label"${keyed(say('settings.usenet.port'))}>${html(t('settings.usenet.port'))}</span>
               <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port"
                      value="${html(String(server.port ?? 563))}">
             </label>
             <label class="dp-usenet-field dp-usenet-field--ssl">
-              <span class="form-label">SSL</span>
+              <span class="form-label"${keyed(say('settings.usenet.ssl'))}>${html(t('settings.usenet.ssl'))}</span>
               <span class="toggle dp-usenet-ssl">
                 <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" ${checked(server.ssl !== false)}>
                 <span class="ttrack"></span>
@@ -1969,59 +2064,59 @@
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
-            <span class="form-label">Username</span>
+            <span class="form-label"${keyed(say('settings.usenet.username'))}>${html(t('settings.usenet.username'))}</span>
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="${html(server.username || '')}" autocomplete="off">
           </label>
         </div>
         <div class="dp-usenet-row">
           <div class="dp-usenet-field dp-usenet-field--wide dp-usenet-field--password">
-            <label class="form-label" for="${passwordId}">Password</label>
+            <label class="form-label" for="${passwordId}"${keyed(say('settings.usenet.password'))}>${html(t('settings.usenet.password'))}</label>
             ${embeddedActionField(`<input class="input" id="${passwordId}" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
-                     autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">`,
+                     autocomplete="off"${keyed(null, {placeholder: say(configured ? 'settings.usenet.password_configured' : 'settings.usenet.password')})}>`,
               `<button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                      aria-label="Clear the stored password for this server" data-tooltip="Clear the stored password for this server"${configured ? '' : ' disabled'}>Clear</button>`)}
+                     ${keyed(say('settings.usenet.clear'), {'aria-label': say('settings.usenet.clear_password'), 'data-tooltip': say('settings.usenet.clear_password')})}${
+                      configured ? '' : ' disabled'}>${html(t('settings.usenet.clear'))}</button>`)}
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
                   aria-controls="${advancedId}" aria-expanded="false"
-                  data-tooltip="Show advanced acquisition settings"
-                  aria-label="Show advanced acquisition settings">
-            <span class="dp-usenet-advanced-label">Advanced</span>
+                 ${keyed(null, {'data-tooltip': say('settings.usenet.advanced_show'), 'aria-label': say('settings.usenet.advanced_show')})}>
+            <span class="dp-usenet-advanced-label"${keyed(say('settings.usenet.advanced'))}>${html(t('settings.usenet.advanced'))}</span>
             <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
           </button>
           <div class="dp-usenet-advanced-body" id="${advancedId}" hidden>
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
-                <span class="form-label">Connections</span>
+                <span class="form-label"${keyed(say('settings.usenet.connections'))}>${html(t('settings.usenet.connections'))}</span>
                 <input class="input" type="number" min="1" max="500" data-usenet-field="connections" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="connections"
                        value="${html(String(server.connections ?? 8))}">
               </label>
               <div class="dp-usenet-field dp-usenet-field--priority">
                 <label class="dp-usenet-field-control">
-                  <span class="form-label">Priority</span>
+                  <span class="form-label"${keyed(say('settings.usenet.priority'))}>${html(t('settings.usenet.priority'))}</span>
                   <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
                          value="${html(String(server.priority ?? 0))}">
                 </label>
-                <span class="form-hint dp-usenet-priority-hint">Lower values have priority.</span>
+                <span class="form-hint dp-usenet-priority-hint"${keyed(say('settings.usenet.priority_hint'))}>${html(t('settings.usenet.priority_hint'))}</span>
               </div>
             </div>
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
-                <span class="form-label">Articles per Request</span>
+                <span class="form-label"${keyed(say('settings.usenet.articles_per_request'))}>${html(t('settings.usenet.articles_per_request'))}</span>
                 <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="articles_per_request"
                        value="${html(String(server.articles_per_request ?? 2))}">
               </label>
               <label class="dp-usenet-field">
-                <span class="form-label">Server Timeout (seconds)</span>
+                <span class="form-label"${keyed(say('settings.usenet.timeout_seconds'))}>${html(t('settings.usenet.timeout_seconds'))}</span>
                 <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="timeout_seconds"
                        value="${html(String(server.timeout_seconds ?? 60))}">
               </label>
             </div>
-            <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
+            <p class="dp-usenet-advanced-hint"${keyed(say('settings.usenet.advanced_hint'))}>${html(t('settings.usenet.advanced_hint'))}</p>
           </div>
           <div class="dp-usenet-actions">
-            <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+            <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove"${keyed(say('settings.usenet.remove'))}>${html(t('settings.usenet.remove'))}</button>
           </div>
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
@@ -2030,10 +2125,10 @@
 
   function usenetAddTile() {
     return `
-      <button type="button" class="dp-usenet-add" data-usenet-action="add" aria-label="Add Server">
+      <button type="button" class="dp-usenet-add" data-usenet-action="add"${keyed(null, {'aria-label': say('settings.usenet.add')})}>
         <span class="dp-usenet-add-inner">
           <img class="dp-usenet-add-glyph" src="/icons/lucide/plus.svg" alt="" aria-hidden="true">
-          <span class="dp-usenet-add-label">Add Server</span>
+          <span class="dp-usenet-add-label"${keyed(say('settings.usenet.add'))}>${html(t('settings.usenet.add'))}</span>
         </span>
       </button>`;
   }
@@ -2111,8 +2206,8 @@
     return `
       <div class="dp-settings-account-island dp-settings-help-slot">
         <div class="dp-settings-account-island-copy">
-          <p class="dp-settings-account-heading">Account Connection</p>
-          <p class="dp-settings-copy">${helper}</p>${body}
+          <p class="dp-settings-account-heading"${keyed(say('settings.account.heading'))}>${html(t('settings.account.heading'))}</p>
+          <p class="dp-settings-copy"${keyed(helper)}>${html(helper)}</p>${body}
         </div>
         <div class="dp-settings-account-island-actions">${actions}</div>
       </div>`;
@@ -2127,25 +2222,25 @@
       // persistence, but selectable and reachable by keyboard.
       const code = embeddedActionField(
         `<input class="input dp-settings-account-code" type="text" readonly value="${html(pending.user_code)}" `
-          + `aria-label="${html(name)} authorization code" data-${id}-code autocomplete="off" spellcheck="false">`,
-        `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-${id}-code" `
-          + `aria-label="Copy the ${html(name)} authorization code">Copy</button>`);
-      return providerStatusLine('Waiting for authorization…', 'dp-settings-account-waiting')
-        + accountIsland(`Authorize DebridPulse with ${html(name)}.`, '', `${code}
-          <button type="button" class="btn btn-primary btn-sm" data-action="open-${id}">Open ${html(name)}</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-${id}">Cancel</button>`);
+          + `${keyed(null, {'aria-label': say('settings.account.code_label', {provider: name})}).trim()} data-${id}-code autocomplete="off" spellcheck="false">`,
+        `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-${id}-code"`
+          + `${keyed(say('settings.account.copy'), {'aria-label': say('settings.account.copy_label', {provider: name})})}>${html(t('settings.account.copy'))}</button>`);
+      return providerStatusLine(words(say('settings.account.waiting')), 'dp-settings-account-waiting')
+        + accountIsland(say('settings.account.authorize', {provider: name}), '', `${code}
+          <button type="button" class="btn btn-primary btn-sm" data-action="open-${id}"${keyed(say('settings.account.open', {provider: name}))}>${html(t('settings.account.open', {provider: name}))}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-${id}"${keyed(say('common.cancel'))}>${html(t('common.cancel'))}</button>`);
     }
     if (configured(state.settings)) {
       const account = connection.account || {};
       const who = identity(account);
-      const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
+      const line = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
       return providerStatusLine(html(line), 'dp-settings-account-expiry')
-        + accountIsland(who ? `Connected as ${html(who)}` : `Connected to ${html(name)}`, '',
-          `<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-${id}">Disconnect</button>`);
+        + accountIsland(who ? say('settings.account.connected_as', {who}) : say('settings.account.connected_to', {provider: name}), '',
+          `<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-${id}"${keyed(say('settings.account.disconnect'))}>${html(t('settings.account.disconnect'))}</button>`);
     }
     return providerStatusLine()
-      + accountIsland(`Connect your ${html(name)} account to continue.`, '',
-      `<button type="button" class="btn btn-primary btn-sm" data-action="connect-${id}">Connect ${html(name)}</button>`);
+      + accountIsland(say('settings.account.connect_helper', {provider: name}), '',
+      `<button type="button" class="btn btn-primary btn-sm" data-action="connect-${id}"${keyed(say('settings.account.connect', {provider: name}))}>${html(t('settings.account.connect', {provider: name}))}</button>`);
   }
 
   /* Rebuilt only when what it shows changed: Provider Status publishes the
@@ -2184,7 +2279,7 @@
   }
 
   async function connectDeviceAccount(id, button) {
-    setBusy(button, true, 'Connecting…');
+    setBusy(button, true, say('settings.account.connecting'));
     try {
       deviceConnections[id].authorization = await request('POST', `/integrations/${id}/authorization`, undefined, 20000);
       setBusy(button, false);
@@ -2192,7 +2287,7 @@
       scheduleDevicePoll(id);
       return;
     } catch (error) {
-      notify(`${DEVICE_ACCOUNTS[id].name}: ${error.message}`, 'error');
+      notify(t('settings.provider_error', {provider: DEVICE_ACCOUNTS[id].name, message: error.message}), 'error');
     }
     setBusy(button, false);
   }
@@ -2222,9 +2317,9 @@
       connection.account = result;
       publishAccepted(result);
       const who = identity(result);
-      notify(`${name} connected${who ? ` as ${who}` : ''}`, 'success');
+      notify(t(who ? 'settings.account.connected_toast_as' : 'settings.account.connected_toast', {provider: name, who}), 'success');
     } else if (result?.state === 'expired') {
-      notify(`The ${name} authorization code expired. Connect again to get a new one.`, 'warn');
+      notify(t('settings.account.code_expired', {provider: name}), 'warn');
     }
     renderDeviceConnection(id);
   }
@@ -2232,7 +2327,7 @@
   async function cancelDeviceAuthorization(id, button) {
     stopDevicePolling(id);
     deviceConnections[id].authorization = null;
-    setBusy(button, true, 'Cancelling…');
+    setBusy(button, true, say('settings.account.cancelling'));
     try {
       await request('DELETE', `/integrations/${id}/authorization`, undefined, 15000);
     } catch (_) {
@@ -2248,34 +2343,36 @@
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(code);
-      notify('Authorization code copied', 'success');
+      notify(t('settings.account.code_copied'), 'success');
       return;
     } catch (_) {
       // Fall through: the code stays selected for a manual copy.
     }
     field.focus();
     field.select();
-    notify('Select and copy the authorization code manually', 'info');
+    notify(t('settings.account.code_copy_manually'), 'info');
   }
 
   async function disconnectDeviceAccount(id, button) {
     const {name} = DEVICE_ACCOUNTS[id];
+    const values = {provider: name};
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: `Disconnect ${name}?`,
-      message: `DebridPulse will forget its ${name} authorization. ${name} cannot be used `
-        + 'again until you connect it again.',
-      confirmLabel: `Disconnect ${name}`,
+      title: t('settings.account.disconnect_title', values),
+      message: t('settings.account.disconnect_message', values),
+      confirmLabel: t('settings.account.disconnect_accept', values),
+      keys: {title: 'settings.account.disconnect_title', titleValues: values, message: 'settings.account.disconnect_message',
+        messageValues: values, accept: 'settings.account.disconnect_accept', acceptValues: values},
     });
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Disconnecting…');
+    setBusy(button, true, say('settings.account.disconnecting'));
     try {
       const result = await request('POST', `/integrations/${id}/disconnect`, undefined, 20000);
       deviceConnections[id].account = null;
       publishAccepted(result);
       renderDeviceConnection(id);
-      notify(`${name} disconnected`, 'success');
+      notify(t('settings.account.disconnected', {provider: name}), 'success');
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -2286,16 +2383,16 @@
   async function testDeviceAccount(id, button) {
     const {name, identity} = DEVICE_ACCOUNTS[id];
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Testing…');
+    setBusy(button, true, say('settings.testing'));
     try {
       const result = await request('POST', `/settings/validate-${id}`, undefined, 20000);
       deviceConnections[id].account = result;
       publishAccepted(result);
       if (!deviceConnections[id].authorization) renderDeviceConnection(id);
       const who = identity(result);
-      notify(`${name} connected${who ? ` as ${who}` : ''}`, 'success');
+      notify(t(who ? 'settings.account.connected_toast_as' : 'settings.account.connected_toast', {provider: name, who}), 'success');
     } catch (error) {
-      notify(`${name}: ${error.message}`, 'error');
+      notify(t('settings.provider_error', {provider: name, message: error.message}), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -2361,7 +2458,7 @@
   function providerAdditional(body) {
     return omitted('provider-additional-settings') ? '' : `
       <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
+        <summary><span${keyed(say('settings.provider.additional'))}>${html(t('settings.provider.additional'))}</span></summary>
         <div class="dp-settings-additional-body">
           ${body}
         </div>
@@ -2382,24 +2479,24 @@
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
       ${providerAdditional(tuningCells(
             tuningGroup(
-              tuningToggle('alldebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
-                'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
+              tuningToggle('alldebrid_prepare_backup_torrents', say('settings.provider.prepare_backup'),
+                say('settings.provider.alldebrid.prepare_backup_hint'),
                 allDebridOf(s).prepare_backup_torrents === true),
-              input('alldebrid_max_active_torrents', 'Maximum Active Torrents', allDebridOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, max: 30, placeholder: 'Max',
-                hint: 'Leave empty to follow AllDebrid (30 active magnets). A lower number keeps fewer torrents active on AllDebrid; it never goes above 30.'
+              input('alldebrid_max_active_torrents', say('settings.provider.max_active'), allDebridOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, max: 30, placeholder: say('settings.provider.max_placeholder'),
+                hint: say('settings.provider.alldebrid.max_active_hint')
               }),
             ),
-            input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
+            input('alldebrid_rate_limit_per_minute', say('settings.provider.rate_limit'), allDebridOf(s).rate_limit_per_minute ?? 60, {
               type: 'number', min: 0, max: 600,
-              hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
+              hint: say('settings.provider.alldebrid.rate_limit_hint')
             }),
           ))}
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
       displayName: 'AllDebrid',
-      headerCopy: 'Resolve supported links and torrents through your AllDebrid account.',
+      headerCopy: say('settings.provider.header_copy', {provider: 'AllDebrid'}),
       headerAction: providerTest,
       help: 'alldebrid',
     });
@@ -2411,29 +2508,29 @@
       <div class="dp-settings-account-connection" data-realdebrid-connection>${deviceConnectionMarkup('realdebrid')}</div>
       ${providerAdditional(tuningCells(
             tuningGroup(
-              tuningToggle('realdebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
-                'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
+              tuningToggle('realdebrid_prepare_backup_torrents', say('settings.provider.prepare_backup'),
+                say('settings.provider.realdebrid.prepare_backup_hint'),
                 realDebridOf(s).prepare_backup_torrents === true),
-              input('realdebrid_max_active_torrents', 'Maximum Active Torrents', realDebridOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, placeholder: 'Max',
-                hint: 'Leave empty to follow your Real-Debrid account limit. A lower number keeps fewer torrents active on Real-Debrid; it never goes above your account limit.'
+              input('realdebrid_max_active_torrents', say('settings.provider.max_active'), realDebridOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, placeholder: say('settings.provider.max_placeholder'),
+                hint: say('settings.provider.realdebrid.max_active_hint')
               }),
             ),
-            input('realdebrid_rate_limit_per_minute', 'API Calls per Minute', realDebridOf(s).rate_limit_per_minute ?? 240, {
-              type: 'number', min: 1, max: 250, limitMessage: apiLimitMessage('Real-Debrid'),
-              hint: 'Limits how many requests DebridPulse sends to Real-Debrid each minute. Real-Debrid allows at most 250.'
+            input('realdebrid_rate_limit_per_minute', say('settings.provider.rate_limit'), realDebridOf(s).rate_limit_per_minute ?? 240, {
+              type: 'number', min: 1, max: 250, limitMessage: apiLimitMessage('Real-Debrid', 250),
+              hint: say('settings.provider.rate_limit_hint_capped', {provider: 'Real-Debrid', max: 250})
             }),
-            input('realdebrid_request_timeout_seconds', 'Request Timeout (seconds)', realDebridOf(s).request_timeout_seconds ?? 30, {
+            input('realdebrid_request_timeout_seconds', say('settings.provider.request_timeout'), realDebridOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
+              hint: say('settings.provider.request_timeout_hint')
             }),
-            input('realdebrid_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', realDebridOf(s).torrent_upload_timeout_seconds ?? 120, {
+            input('realdebrid_torrent_upload_timeout_seconds', say('settings.provider.torrent_upload_timeout'), realDebridOf(s).torrent_upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
-              hint: 'How long DebridPulse waits while uploading a torrent file to Real-Debrid.'
+              hint: say('settings.provider.torrent_upload_timeout_hint', {provider: 'Real-Debrid'})
             }),
-            input('realdebrid_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', realDebridOf(s).host_refresh_interval_hours ?? 24, {
+            input('realdebrid_host_refresh_interval_hours', say('settings.provider.host_refresh'), realDebridOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
-              hint: 'How often DebridPulse refreshes the list of hosts Real-Debrid supports.'
+              hint: say('settings.provider.host_refresh_hint', {provider: 'Real-Debrid'})
             }),
           ))}
 `, realDebrid, {
@@ -2443,7 +2540,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--realdebrid" src="/icons/providers/real-debrid.svg" alt="">
       </span>`,
       displayName: 'Real-Debrid',
-      headerCopy: 'Resolve supported links and torrents through your Real-Debrid account.',
+      headerCopy: say('settings.provider.header_copy', {provider: 'Real-Debrid'}),
       headerAction: providerTestAction('test-realdebrid'),
       help: 'realdebrid',
     });
@@ -2455,32 +2552,32 @@
       <div class="dp-settings-account-connection" data-torbox-connection>${deviceConnectionMarkup('torbox')}</div>
       ${providerAdditional(tuningCells(
             tuningGroup(
-              tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
-                'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
+              tuningToggle('torbox_prepare_backup_torrents', say('settings.provider.prepare_backup'),
+                say('settings.provider.torbox.prepare_backup_hint'),
                 torBoxOf(s).prepare_backup_torrents === true),
-              input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, max: 10, placeholder: 'Max',
-                hint: 'Leave empty to follow your TorBox plan (Free 1, Essential 3, Standard 5, Pro 10). A lower number keeps fewer torrents active on TorBox; it never goes above your plan.'
+              input('torbox_max_active_torrents', say('settings.provider.max_active'), torBoxOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, max: 10, placeholder: say('settings.provider.max_placeholder'),
+                hint: say('settings.provider.torbox.max_active_hint')
               }),
             ),
-            tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet',
-              'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.',
+            tuningToggle('torbox_use_before_usenet', say('settings.provider.before_usenet', {provider: 'TorBox'}),
+              say('settings.provider.before_usenet_hint', {provider: 'TorBox'}),
               torBoxOf(s).use_before_usenet === true),
-            input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
-              type: 'number', min: 1, max: 300, limitMessage: apiLimitMessage('TorBox'),
-              hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'
+            input('torbox_rate_limit_per_minute', say('settings.provider.rate_limit'), torBoxOf(s).rate_limit_per_minute ?? 240, {
+              type: 'number', min: 1, max: 300, limitMessage: apiLimitMessage('TorBox', 300),
+              hint: say('settings.provider.rate_limit_hint_capped', {provider: 'TorBox', max: 300})
             }),
-            input('torbox_request_timeout_seconds', 'Request Timeout (seconds)', torBoxOf(s).request_timeout_seconds ?? 30, {
+            input('torbox_request_timeout_seconds', say('settings.provider.request_timeout'), torBoxOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
+              hint: say('settings.provider.request_timeout_hint')
             }),
-            input('torbox_upload_timeout_seconds', 'Upload Timeout (seconds)', torBoxOf(s).upload_timeout_seconds ?? 120, {
+            input('torbox_upload_timeout_seconds', say('settings.provider.upload_timeout'), torBoxOf(s).upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
-              hint: 'How long DebridPulse waits while uploading a torrent or NZB file to TorBox.'
+              hint: say('settings.provider.upload_timeout_hint', {provider: 'TorBox'})
             }),
-            input('torbox_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', torBoxOf(s).host_refresh_interval_hours ?? 24, {
+            input('torbox_host_refresh_interval_hours', say('settings.provider.host_refresh'), torBoxOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
-              hint: 'How often DebridPulse refreshes the list of hosts TorBox supports.'
+              hint: say('settings.provider.host_refresh_hint', {provider: 'TorBox'})
             }),
           ))}
 `, torBox, {
@@ -2490,7 +2587,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt="">
       </span>`,
       displayName: 'TorBox',
-      headerCopy: 'Resolve supported links and torrents through your TorBox account; NZBs where your plan allows.',
+      headerCopy: say('settings.provider.header_copy_nzb', {provider: 'TorBox'}),
       headerAction: providerTestAction('test-torbox'),
       help: 'torbox',
     });
@@ -2503,7 +2600,7 @@
       className: 'dp-settings-provider-card dp-settings-provider-card--usenet',
       titlePrefix: protocolIcon('usenet'),
       displayName: 'Usenet',
-      headerCopy: 'Download NZB content from configured Usenet news servers.',
+      headerCopy: say('settings.provider.usenet.header_copy'),
       headerAction: providerTestAction('test-usenet'),
       help: 'usenet',
     });
@@ -2515,20 +2612,20 @@
       <div data-debridlink-account>${apiKeyAccountLine('debridlink')}</div>
       ${apiKeyField('debridlink', API_KEY_ACCOUNTS.debridlink.configured(s))}
       ${providerAdditional(tuningCells(
-            tuningToggle('debridlink_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to your Debrid-Link seedbox as backup sources while another provider delivers them.',
+            tuningToggle('debridlink_prepare_backup_torrents', say('settings.provider.prepare_backup'),
+              say('settings.provider.debridlink.prepare_backup_hint'),
               debridLinkOf(s).prepare_backup_torrents === true),
-            input('debridlink_request_timeout_seconds', 'Request Timeout (seconds)', debridLinkOf(s).request_timeout_seconds ?? 30, {
+            input('debridlink_request_timeout_seconds', say('settings.provider.request_timeout'), debridLinkOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
+              hint: say('settings.provider.request_timeout_hint')
             }),
-            input('debridlink_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', debridLinkOf(s).torrent_upload_timeout_seconds ?? 120, {
+            input('debridlink_torrent_upload_timeout_seconds', say('settings.provider.torrent_upload_timeout'), debridLinkOf(s).torrent_upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
-              hint: 'How long DebridPulse waits while uploading a torrent file to Debrid-Link.'
+              hint: say('settings.provider.torrent_upload_timeout_hint', {provider: 'Debrid-Link'})
             }),
-            input('debridlink_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', debridLinkOf(s).host_refresh_interval_hours ?? 24, {
+            input('debridlink_host_refresh_interval_hours', say('settings.provider.host_refresh'), debridLinkOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
-              hint: 'How often DebridPulse refreshes the list of hosts Debrid-Link supports.'
+              hint: say('settings.provider.host_refresh_hint', {provider: 'Debrid-Link'})
             }),
           ))}
 `, debridLink, {
@@ -2538,7 +2635,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--debridlink" src="/icons/providers/debrid-link.svg" alt="">
       </span>`,
       displayName: 'Debrid-Link',
-      headerCopy: 'Resolve supported links and torrents through your Debrid-Link account.',
+      headerCopy: say('settings.provider.header_copy', {provider: 'Debrid-Link'}),
       headerAction: providerTestAction('test-debridlink'),
       help: 'debridlink',
     });
@@ -2550,23 +2647,23 @@
       <div data-premiumize-account>${apiKeyAccountLine('premiumize')}</div>
       ${apiKeyField('premiumize', API_KEY_ACCOUNTS.premiumize.configured(s))}
       ${providerAdditional(tuningCells(
-            tuningToggle('premiumize_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to your Premiumize cloud as backup sources while another provider delivers them. Uses your Premiumize account resources.',
+            tuningToggle('premiumize_prepare_backup_torrents', say('settings.provider.prepare_backup'),
+              say('settings.provider.premiumize.prepare_backup_hint'),
               premiumizeOf(s).prepare_backup_torrents === true),
-            tuningToggle('premiumize_use_before_usenet', 'Use Premiumize Before Usenet',
-              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.',
+            tuningToggle('premiumize_use_before_usenet', say('settings.provider.before_usenet', {provider: 'Premiumize'}),
+              say('settings.provider.before_usenet_hint', {provider: 'Premiumize'}),
               premiumizeOf(s).use_before_usenet === true),
-            input('premiumize_request_timeout_seconds', 'Request Timeout (seconds)', premiumizeOf(s).request_timeout_seconds ?? 30, {
+            input('premiumize_request_timeout_seconds', say('settings.provider.request_timeout'), premiumizeOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
+              hint: say('settings.provider.request_timeout_hint')
             }),
-            input('premiumize_upload_timeout_seconds', 'Upload Timeout (seconds)', premiumizeOf(s).upload_timeout_seconds ?? 120, {
+            input('premiumize_upload_timeout_seconds', say('settings.provider.upload_timeout'), premiumizeOf(s).upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
-              hint: 'How long DebridPulse waits while uploading a torrent or NZB file to Premiumize.'
+              hint: say('settings.provider.upload_timeout_hint', {provider: 'Premiumize'})
             }),
-            input('premiumize_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', premiumizeOf(s).host_refresh_interval_hours ?? 24, {
+            input('premiumize_host_refresh_interval_hours', say('settings.provider.host_refresh'), premiumizeOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
-              hint: 'How often DebridPulse refreshes the list of hosts Premiumize supports.'
+              hint: say('settings.provider.host_refresh_hint', {provider: 'Premiumize'})
             }),
           ))}
 `, premiumize, {
@@ -2576,7 +2673,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt="">
       </span>`,
       displayName: 'Premiumize',
-      headerCopy: 'Resolve supported links and torrents through your Premiumize account; NZBs where your plan allows.',
+      headerCopy: say('settings.provider.header_copy_nzb', {provider: 'Premiumize'}),
       headerAction: providerTestAction('test-premiumize'),
       help: 'premiumize',
     });
@@ -2585,20 +2682,22 @@
       ['usenet', usenetCard], ['alldebrid', provider], ['debridlink', debridLinkCard],
       ['premiumize', premiumizeCard], ['realdebrid', realDebridCard], ['torbox', torBoxCard],
     ].map(([id, markup]) => ({id, markup, presentation: integrations[id]?.presentation || {}})));
-    const premiumServices = groupCard('Premium Services',
+    const premiumServices = groupCard(say('settings.services.premium'),
       families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
         + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
       headerFit: true,
       help: 'premium-services',
-      hint: 'Connect your Usenet servers and the debrid services you have accounts with.',
+      hint: say('settings.services.premium_hint'),
       titlePrefix: familyIcon('sources', 'crown'),
     });
     // Group identity, label and gate all come from metadata the members
     // already publish -- there is no second list of who is in this family.
     const groupId = generalHttp.presentation?.status_group || '';
-    const groupLabel = (s.integration_groups?.[groupId]?.label)
-      || generalHttp.presentation?.status_group_label || 'Network Sources';
+    // Said by the group's identifier (integration.group.<id>, as Provider
+    // Status says it); the server's own label where the catalog has none.
+    const groupLabel = groupId && window.DPI18n.has(`integration.group.${groupId}`) ? say(`integration.group.${groupId}`)
+      : (s.integration_groups?.[groupId]?.label) || generalHttp.presentation?.status_group_label || say('integration.group.direct_sources');
     const groupEnabled = s.integration_groups?.[groupId]?.enabled !== false;
     // The members ARE whoever currently declares this group, in the one
     // ordering authority's order. Nothing here enumerates protocols, so a
@@ -2614,7 +2713,7 @@
       className: 'dp-settings-source-group dp-settings-general-sources',
       headerFit: 'self',
       help: 'network-sources',
-      hint: 'Download directly from network sources; no premium account needed.',
+      hint: say('settings.services.network_hint'),
       titlePrefix: protocolIcon(groupId, true),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
@@ -2628,7 +2727,8 @@
   }
 
   // Neutral state filters, mapped by the backend from ExecutionState alone.
-  const EXECUTOR_WORK_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
+  const EXECUTOR_WORK_FILTERS = Object.freeze(['all', 'active', 'waiting', 'paused', 'stopped']
+    .map(id => [id, say(`settings.engine_activity.filter.${id}`)]));
 
   /* Executor Work: markup owner only.
    *
@@ -2637,29 +2737,29 @@
    * every registered executor. Nothing about this card names an executor. */
   function executorWorkCard() {
     return `
-      <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Download Engine Activity">
+      <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1"${keyed(null, {'aria-label': say('settings.engine_activity.title')})}>
         <div class="card-header dp-settings-card-header dp-settings-card-header--hinted">
-          <span class="dp-settings-card-title-group"><span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text">Download Engine Activity</span></span></span>
-          <div class="dp-settings-card-header-center"><span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span></div>
-          <div class="dp-settings-card-header-controls">${helpChip('engine-activity', 'Download Engine Activity')}</div>
+          <span class="dp-settings-card-title-group"><span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text"${keyed(say('settings.engine_activity.title'))}>${html(t('settings.engine_activity.title'))}</span></span></span>
+          <div class="dp-settings-card-header-center">${copySpan('dp-executor-work-copy', say('settings.engine_activity.copy'))}</div>
+          <div class="dp-settings-card-header-controls">${helpChip('engine-activity', say('settings.engine_activity.title'))}</div>
         </div>
         <div class="card-body" data-dp-executor-work-body>
           <div class="dp-settings-caution dp-executor-work-context">
-            <b>This is an advanced recovery surface.</b>
-            <span>Use Downloads for normal management. These controls are only for troubleshooting or recovery.</span>
+            <b${keyed(say('settings.engine_activity.caution_title'))}>${html(t('settings.engine_activity.caution_title'))}</b>
+            <span${keyed(say('settings.engine_activity.caution'))}>${html(t('settings.engine_activity.caution'))}</span>
           </div>
           <div class="dp-executor-work-control-row">
-            <div class="dp-executor-work-metrics" aria-label="Executor work totals">
-              <span data-dp-executor-work-speed>0 KB/s</span>
-              <span data-dp-executor-work-remaining>— Remaining</span>
+            <div class="dp-executor-work-metrics"${keyed(null, {'aria-label': say('settings.engine_activity.totals')})}>
+              <span data-dp-executor-work-speed>${html(t('format.rate.zero'))}</span>
+              <span data-dp-executor-work-remaining>${html(t('settings.engine_activity.remaining', {value: '—'}))}</span>
             </div>
-            <div class="filter-tabs dp-executor-work-filters" role="tablist" aria-label="Filter executor work">
+            <div class="filter-tabs dp-executor-work-filters" role="tablist"${keyed(null, {'aria-label': say('settings.engine_activity.filter_label')})}>
               ${EXECUTOR_WORK_FILTERS.map(([id, label]) => `
-              <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-executor-filter="${id}">${label}</button>`).join('')}
+              <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-executor-filter="${id}"${keyed(label)}>${html(label)}</button>`).join('')}
             </div>
           </div>
           <div data-dp-executor-work-list="1" class="dp-executor-work-list" aria-live="polite">
-            <div class="empty">Loading download engine activity…</div>
+            <div class="empty"${keyed(say('settings.engine_activity.loading'))}>${html(t('settings.engine_activity.loading'))}</div>
           </div>
         </div>
       </section>`;
@@ -2677,11 +2777,11 @@
    * how a server is asked. Each source's provider owns its own setting and
    * default. */
   const DIRECTORY_DEPTHS = Object.freeze([
-    ['current', 'Current directory only'],
-    ['1', '1 subdirectory level'],
-    ['2', '2 subdirectory levels'],
-    ['3', '3 subdirectory levels'],
-    ['all', 'All subdirectories'],
+    ['current', say('settings.depth.current')],
+    ['1', say('settings.depth.levels', {count: 1})],
+    ['2', say('settings.depth.levels', {count: 2})],
+    ['3', say('settings.depth.levels', {count: 3})],
+    ['all', say('settings.depth.all')],
   ]);
 
   function rsyncTuning(s) {
@@ -2697,38 +2797,38 @@
       tuningGroup(
         tuningToggle(
           'rsync_partial_transfers',
-          'Partial Transfers',
-          'Continue an interrupted file from what was already downloaded instead of starting it again.',
+          say('settings.rsync.partial'),
+          say('settings.rsync.partial_hint'),
           options.partial_transfers !== false
         ),
         tuningToggle(
           'rsync_compression',
-          'Compression',
-          'Compress data in transit. Rarely helps with archives, video, or other already-compressed files.',
+          say('settings.rsync.compression'),
+          say('settings.rsync.compression_hint'),
           options.compression === true
         ),
         tuningToggle(
           'rsync_preserve_modification_time',
-          'Preserve Modification Time',
-          'Give each completed file the modification time it has on the source.',
+          say('settings.rsync.mtime'),
+          say('settings.rsync.mtime_hint'),
           options.preserve_modification_time !== false
         ),
       ),
       tuningGroup(
-        input('rsync_connection_timeout_seconds', 'Connection Timeout (seconds)',
+        input('rsync_connection_timeout_seconds', say('settings.rsync.connection_timeout'),
           options.connection_timeout_seconds ?? 30, {
           type: 'number', min: 5, max: 300,
-          hint: 'How long reaching the source and starting a transfer may take.'
+          hint: say('settings.rsync.connection_timeout_hint')
         }),
-        input('rsync_transfer_timeout_seconds', 'Transfer Timeout (seconds)',
+        input('rsync_transfer_timeout_seconds', say('settings.rsync.transfer_timeout'),
           options.transfer_timeout_seconds ?? 300, {
           type: 'number', min: 30, max: 3600,
-          hint: 'How long a running transfer may receive no data before it stops.'
+          hint: say('settings.rsync.transfer_timeout_hint')
         }),
       ),
     ) + tuningCells(
-      selectField('rsync_directory_depth', 'Directory Depth', source.directory_depth || 'all', DIRECTORY_DEPTHS,
-        'How many folder levels below an rsync folder that you add where DebridPulse will search for files. Files in deeper folders are not included.'),
+      selectField('rsync_directory_depth', say('settings.depth.label'), source.directory_depth || 'all', DIRECTORY_DEPTHS,
+        say('settings.rsync.depth_hint')),
     );
   }
 
@@ -2739,31 +2839,28 @@
     const options = webdavOf(s);
     return tuningCells(
       tuningGroup(
-        selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',
+        selectField('webdav_directory_depth', say('settings.depth.label'), options.directory_depth || 'current',
           DIRECTORY_DEPTHS,
-          'How many folder levels below a WebDAV folder that you add where DebridPulse will search for files. Files in deeper folders are not included.'),
-        input('webdav_max_files', 'Maximum Files', options.max_files ?? 10000, {
+          say('settings.webdav.depth_hint')),
+        input('webdav_max_files', say('settings.webdav.max_files'), options.max_files ?? 10000, {
           type: 'number', min: 1, max: 10000,
-          hint: 'The maximum number of files DebridPulse will accept from a WebDAV folder. If the folder contains more files than this limit, the entire folder is rejected rather than partially added.'
+          hint: say('settings.webdav.max_files_hint')
         }),
         // 0 is "no limit": shown as the empty field's own "No limit", never as
         // a number of seconds (COMMIT_FIELDS ``blank``).
-        input('webdav_collection_scan_timeout_seconds', 'Collection Scan Timeout (seconds)',
+        input('webdav_collection_scan_timeout_seconds', say('settings.webdav.scan_timeout'),
           options.collection_scan_timeout_seconds ? options.collection_scan_timeout_seconds : '', {
-          type: 'number', min: 0, max: 3600, placeholder: 'No limit',
-          hint: 'How long finding the files in a WebDAV folder and its subfolders may take in total before the folder is reported unavailable. Leave empty for no limit.'
+          type: 'number', min: 0, max: 3600, placeholder: say('settings.webdav.no_limit'),
+          hint: say('settings.webdav.scan_timeout_hint')
         }),
       ),
     ) + `
-      <p class="dp-settings-tuning-footer">
-        Every file collected from a WebDAV folder is offered in the usual file
-        selection and downloads as an ordinary file.
-      </p>`;
+      <p class="dp-settings-tuning-footer"${keyed(say('settings.webdav.footer'))}>${html(t('settings.webdav.footer'))}</p>`;
   }
 
   // Target Resolution: "Best Available" is no target at all.
   const TARGET_RESOLUTIONS = Object.freeze([
-    ['best', 'Best Available'],
+    ['best', say('settings.media.best_available')],
     ['2160', '2160p'],
     ['1440', '1440p'],
     ['1080', '1080p'],
@@ -2773,13 +2870,13 @@
   ]);
 
   const VIDEO_QUALITIES = Object.freeze([
-    ['high', 'High'],
-    ['normal', 'Normal'],
-    ['low', 'Low'],
+    ['high', say('settings.media.quality.high')],
+    ['normal', say('settings.media.quality.normal')],
+    ['low', say('settings.media.quality.low')],
   ]);
 
   const VIDEO_CODECS = Object.freeze([
-    ['auto', 'Auto'],
+    ['auto', say('settings.media.codec_auto')],
     ['av1', 'AV1'],
     ['hevc', 'HEVC (H.265)'],
     ['h264', 'H.264'],
@@ -2856,16 +2953,41 @@
     }
   }
 
-  let subtitleLanguageCatalog = null;
+  /* The languages named in the page's language: English keeps this list's
+   * names; any other language names each code through Intl.DisplayNames,
+   * falling back to the English name, and sorts by that language. */
+  const subtitleLanguageCatalogs = new Map();
+  function subtitleLanguageCatalog() {
+    const locale = window.DPI18n.intlLocale();
+    if (!subtitleLanguageCatalogs.has(locale)) {
+      const english = locale === 'en' || locale.startsWith('en-');
+      subtitleLanguageCatalogs.set(locale, SUBTITLE_LANGUAGES
+        .map(([code, name]) => [code.toLowerCase(), english ? name : (displayedLanguage(code, locale) || name),
+          {detail: code, terms: [displayedLanguage(code, code), english ? '' : name].filter(Boolean).join(' ')}])
+        .sort((a, b) => a[1].localeCompare(b[1], english ? 'en' : locale)));
+    }
+    return subtitleLanguageCatalogs.get(locale);
+  }
   function subtitleLanguageChoices(current) {
-    subtitleLanguageCatalog ||= SUBTITLE_LANGUAGES
-      .map(([code, name]) => [code.toLowerCase(), name, {detail: code, terms: displayedLanguage(code, code)}])
-      .sort((a, b) => a[1].localeCompare(b[1], 'en'));
+    const catalog = subtitleLanguageCatalog();
     // A saved code outside the list is offered as it is, never replaced.
     const value = String(current || '').toLowerCase();
-    if (!value || subtitleLanguageCatalog.some(([code]) => code === value)) return subtitleLanguageCatalog;
-    const name = displayedLanguage(value, 'en') || `Language code: ${value}`;
-    return [[value, name, {detail: value}], ...subtitleLanguageCatalog];
+    if (!value || catalog.some(([code]) => code === value)) return catalog;
+    const name = displayedLanguage(value, window.DPI18n.intlLocale()) || t('settings.media.language_code', {code: value});
+    return [[value, name, {detail: value}], ...catalog];
+  }
+  // A language change names the subtitle choices again in place: the same
+  // options and selection, their words (and search terms) in the new language.
+  function relabelSubtitleLanguages() {
+    const control = document.getElementById(fieldId('preferred_subtitle_language'));
+    if (!control) return;
+    const choices = new Map(subtitleLanguageChoices(control.value).map(([code, name, more]) => [code, [name, more]]));
+    for (const option of control.options) {
+      const choice = choices.get(option.value);
+      if (!choice) continue;
+      if (option.textContent !== choice[0]) option.textContent = choice[0];
+      if (choice[1]?.terms) option.dataset.dpSearch = choice[1].terms;
+    }
   }
 
   function mediaTuning(s) {
@@ -2878,23 +3000,23 @@
     const options = mediaOf(s);
     return tuningCells(
       youtubePlayerClientsField(options),
-      selectField('media_target_resolution', 'Target Resolution', options.target_resolution || 'best',
+      selectField('media_target_resolution', say('settings.media.resolution'), options.target_resolution || 'best',
         TARGET_RESOLUTIONS,
-        'The resolution DebridPulse looks for. When it is not offered, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available takes the highest resolution offered.'),
+        say('settings.media.resolution_hint')),
       tuningGroup(
-        selectField('media_video_quality', 'Video Quality', options.video_quality || 'high', VIDEO_QUALITIES,
-          'Within the chosen codec, picks among the bitrates a site offers at that resolution: High the highest, Low the lowest, Normal one in between.'),
-        selectField('media_video_codec', 'Preferred Video Codec', options.video_codec || 'auto', VIDEO_CODECS,
-          'Prefers this codec when the site offers it at that resolution; Auto keeps the site\u2019s usual choice. Both apply only where the source offers alternatives, and DebridPulse never re-encodes media.'),
+        selectField('media_video_quality', say('settings.media.quality'), options.video_quality || 'high', VIDEO_QUALITIES,
+          say('settings.media.quality_hint')),
+        selectField('media_video_codec', say('settings.media.codec'), options.video_codec || 'auto', VIDEO_CODECS,
+          say('settings.media.codec_hint')),
       ),
-      selectField('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en',
+      selectField('preferred_subtitle_language', say('settings.media.subtitle'), s.preferred_subtitle_language || 'en',
         subtitleLanguageChoices(s.preferred_subtitle_language || 'en'),
-        'The language of the subtitle embedded in the downloaded file, when the site offers one. A subtitle written for the media is preferred; one the site generated automatically in the same language is used otherwise.',
-        {search: 'Search languages'}),
-      input('media_concurrent_fragment_downloads', 'Concurrent Fragment Downloads',
+        say('settings.media.subtitle_hint'),
+        {search: say('settings.media.search_languages')}),
+      input('media_concurrent_fragment_downloads', say('settings.media.fragments'),
         options.concurrent_fragment_downloads ?? 1, {
           type: 'number', min: 1, max: 8,
-          hint: 'Number of media fragments downloaded simultaneously. Higher values may improve download speed for segmented media.',
+          hint: say('settings.media.fragments_hint'),
         }),
     );
   }
@@ -2913,13 +3035,13 @@
       ? options.youtube_player_client_support.supported.map(String) : [];
     // The control's value is the saved list as the field shows it (acceptedValue).
     const current = saved.join(', ');
-    const choices = [['', 'Automatic (yt-dlp default)'], ...supported.map(name => [name, name])];
-    if (saved.length > 1) choices.push([current, 'Custom (multiple clients)', {detail: current}]);
+    const choices = [['', say('settings.media.player_automatic')], ...supported.map(name => [name, name])];
+    if (saved.length > 1) choices.push([current, say('settings.media.player_custom'), {detail: current}]);
     else if (saved.length === 1 && !supported.includes(saved[0])) {
-      choices.push([current, saved[0], {detail: 'No longer offered'}]);
+      choices.push([current, saved[0], {detail: say('settings.media.player_retired')}]);
     }
-    return selectField('media_youtube_player_clients', 'YouTube Player Client', current, choices,
-      'Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.',
+    return selectField('media_youtube_player_clients', say('settings.media.player'), current, choices,
+      say('settings.media.player_hint'),
       {secondLine: `<div data-player-client-notice>${playerClientNotice(options)}</div>`});
   }
 
@@ -2928,10 +3050,10 @@
   function playerClientNotice(options) {
     const unsupported = options.youtube_player_client_support?.unsupported || [];
     if (!unsupported.length) return '';
-    return `<div class="dp-settings-caution" role="status"><b>Automatic in use</b>`
-      + `<span>The installed yt-dlp does not offer ${html(unsupported.join(', '))}. `
-      + 'Choose an available client, or use Automatic.</span>'
-      + '<button type="button" class="btn btn-ghost btn-sm" data-action="media-player-clients-automatic">Use Automatic</button></div>';
+    const clients = unsupported.join(', ');
+    return `<div class="dp-settings-caution" role="status"><b${keyed(say('settings.media.notice_title'))}>${html(t('settings.media.notice_title'))}</b>`
+      + `<span${keyed(say('settings.media.notice', {clients}))}>${html(t('settings.media.notice', {clients}))}</span>`
+      + `<button type="button" class="btn btn-ghost btn-sm" data-action="media-player-clients-automatic"${keyed(say('settings.media.use_automatic'))}>${html(t('settings.media.use_automatic'))}</button></div>`;
   }
 
   function projectPlayerClientNotice() {
@@ -2957,6 +3079,9 @@
   /* One Transfer Method card: its identity and disclosure, its one-line
    * purpose hint (fitHeaderHints) and, in its rail, its own Help -- the only
    * header operation a transfer method has. */
+  // A header's one-line copy in its own styled span, re-sayable.
+  const copySpan = (className, said) => `<span class="${className}"${keyed(said)}>${html(said)}</span>`;
+
   function executorTuningCard(id, label, copy, body, protocol = '', help = '') {
     const bodyId = `dp-executor-tuning-${id}`;
     const identity = protocolIcon(protocol);
@@ -2965,11 +3090,11 @@
         <div class="card-header dp-settings-card-header dp-settings-card-header--hinted">
           <span class="dp-settings-card-title-group">
             <span class="card-title${identity ? ' dp-settings-card-title--with-icon' : ''}">${identity}${
-              identity ? `<span class="dp-settings-card-title-text">${html(label)}</span>` : html(label)}</span>
-            ${settingsDisclosure(bodyId, false, `${label} tuning`)}
+              identity ? `<span class="dp-settings-card-title-text">${words(label)}</span>` : words(label)}</span>
+            ${settingsDisclosure(bodyId, false, say('settings.tuning.subject', {method: label}))}
           </span>
-          <div class="dp-settings-card-header-center"><span class="dp-settings-download-engine-header-copy">${html(copy)}</span></div>
-          <div class="dp-settings-card-header-controls">${helpChip(help, `${label} Tuning`)}</div>
+          <div class="dp-settings-card-header-center">${copySpan('dp-settings-download-engine-header-copy', copy)}</div>
+          <div class="dp-settings-card-header-controls">${helpChip(help, say('settings.tuning.title', {method: label}))}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -2982,46 +3107,46 @@
     // is prepared on disk.
     return tuningCells(
       tuningGroup(
-        input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
+        input('aria2_max_connection_per_server', say('settings.direct.connections'), aria2.max_connection_per_server ?? 16, {
           // aria2's own range: above 16 the download engine refuses to start.
-          type: 'number', min: 1, max: 16, limitMessage: 'Connections per Server can be at most {max}.',
-          hint: 'Maximum number of connections a single download can open to the same server.'
+          type: 'number', min: 1, max: 16, limitMessage: say('settings.direct.connections_limit', {max: 16}),
+          hint: say('settings.direct.connections_hint')
         }),
-        input('aria2_split', 'Segments per File', aria2.split ?? 16, {
+        input('aria2_split', say('settings.direct.segments'), aria2.split ?? 16, {
           type: 'number', min: 1, max: 64,
-          hint: 'Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.'
+          hint: say('settings.direct.segments_hint')
         }),
-        input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
+        input('aria2_min_split_size', say('settings.direct.min_split'), aria2.min_split_size || '10M', {
           pattern: '[0-9]+[KkMm]?',
-          invalidMessage: 'Minimum Split Size is a whole number with an optional K or M suffix, from 1M to 1024M.',
-          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments. From 1M to 1024M.'
+          invalidMessage: say('settings.direct.min_split_invalid'),
+          hint: say('settings.direct.min_split_hint')
         }),
       ),
       tuningGroup(
         tuningToggle(
           'aria2_continue_downloads',
-          'Continue Partial Downloads',
-          'Resume existing partial files when possible instead of restarting them from the beginning.',
+          say('settings.direct.continue'),
+          say('settings.direct.continue_hint'),
           aria2.continue_downloads !== false
         ),
-        input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
+        input('aria2_lowest_speed_limit', say('settings.direct.lowest_speed'), aria2.lowest_speed_limit || '0', {
           pattern: '[0-9]+[KkMm]?',
-          invalidMessage: 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K, or 2M.',
-          hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit. Bytes per second, with an optional K or M suffix.'
+          invalidMessage: say('settings.direct.lowest_speed_invalid'),
+          hint: say('settings.direct.lowest_speed_hint')
         }),
       ),
       tuningGroup(
-        input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
+        input('aria2_disk_cache', say('settings.direct.disk_cache'), aria2.disk_cache || '64M', {
           pattern: '[0-9]+[KkMm]?',
-          invalidMessage: 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K, or 64M.',
-          hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache. Takes effect the next time the download engine starts.'
+          invalidMessage: say('settings.direct.disk_cache_invalid'),
+          hint: say('settings.direct.disk_cache_hint')
         }),
-        selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
-          ['trunc', 'Truncate'],
-          ['falloc', 'Fallocate'],
-          ['prealloc', 'Preallocate'],
-          ['none', 'None'],
-        ], 'Controls how disk space is prepared for new files.'),
+        selectField('aria2_file_allocation', say('settings.direct.allocation'), aria2.file_allocation || 'falloc', [
+          ['trunc', say('settings.direct.allocation.trunc')],
+          ['falloc', say('settings.direct.allocation.falloc')],
+          ['prealloc', say('settings.direct.allocation.prealloc')],
+          ['none', say('settings.direct.allocation.none')],
+        ], say('settings.direct.allocation_hint')),
       ),
     );
   }
@@ -3039,51 +3164,48 @@
     return tuningCells(
       tuningToggle(
         'usenet_direct_write',
-        'Direct Write',
-        'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
+        say('settings.usenet_tuning.direct_write'),
+        say('settings.usenet_tuning.direct_write_hint'),
         options.direct_write !== false
       ),
-      input('usenet_article_cache_megabytes', 'Article Cache Limit (MB)',
+      input('usenet_article_cache_megabytes', say('settings.usenet_tuning.cache'),
         options.article_cache_megabytes ?? 1024, {
         type: 'number', min: 0, max: 4096,
-        hint: 'Memory DebridPulse may use to hold downloaded article data before it is written to disk. Set to 0 to disable the cache.'
+        hint: say('settings.usenet_tuning.cache_hint')
       }),
       tuningGroup(
-        input('usenet_max_acquisition_retries', 'Maximum Retries',
+        input('usenet_max_acquisition_retries', say('settings.usenet_tuning.retries'),
           options.max_acquisition_retries ?? 3, {
           type: 'number', min: 2, max: 25,
-          hint: 'How many times DebridPulse retries a single article on a news server before giving up on that server. This is Usenet acquisition retry only; it is not the DebridPulse download retry count under Disk Space &amp; Recovery.'
+          hint: say('settings.usenet_tuning.retries_hint')
         }),
-        input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
+        input('usenet_operation_timeout_seconds', say('settings.provider.request_timeout'),
           options.operation_timeout_seconds ?? 30, {
           type: 'number', min: 5, max: 300,
-          hint: 'How long DebridPulse waits for the Usenet download service to answer a request.'
+          hint: say('settings.usenet_tuning.timeout_hint')
         }),
       ),
     ) + `
-      <p class="dp-settings-tuning-footer">
-        Per-server acquisition tuning belongs to each news server under
-        Services.
-      </p>`;
+      <p class="dp-settings-tuning-footer"${keyed(say('settings.usenet_tuning.footer'))}>${html(t('settings.usenet_tuning.footer'))}</p>`;
   }
 
   function downloadsPanel(s) {
     const policy = policyOf(s);
-    const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
-    const delivery = card('Download Behavior & Limits', `
-      <div class="dp-settings-download-engine-row dp-settings-island" role="group" aria-label="Download location and limits">
+    const globalCopy = say('settings.downloads.behavior_copy');
+    const delivery = card(say('settings.downloads.behavior'), `
+      <div class="dp-settings-download-engine-row dp-settings-island" role="group"${keyed(null, {'aria-label': say('settings.downloads.location_label')})}>
         <div class="dp-settings-download-path-stack">
-          ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
-            hint: 'Where DebridPulse saves downloads.',
+          ${directoryField('download_folder', say('settings.downloads.folder'), s.download_folder || '/download', {
+            hint: say('settings.downloads.folder_hint'),
             browseAction: 'browse-download-folder',
-            browseLabel: 'Browse server directories for Download Folder',
+            browseLabel: say('settings.downloads.folder_browse'),
             inline: true, embedAction: true, className: 'dp-settings-download-folder-field',
           })}
         </div>
         <div class="dp-settings-download-limit">
-          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', policy.max_concurrent_executions ?? 3, {
+          ${input('aria2_max_active_downloads', say('settings.downloads.max_concurrent'), policy.max_concurrent_executions ?? 3, {
             type: 'number', min: 1, max: 20,
-            hint: 'Maximum downloads DebridPulse runs at once.',
+            hint: say('settings.downloads.max_concurrent_hint'),
             inline: true, className: 'dp-settings-download-limit-field',
           })}
         </div>
@@ -3094,57 +3216,57 @@
       help: 'download-behavior',
       hinted: true,
       titlePrefix: familyIcon('downloads', 'gauge'),
-      headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
+      headerCenter: copySpan('dp-settings-download-engine-header-copy', globalCopy),
     });
 
-    const tuning = groupCard('Transfer Method Settings',
+    const tuning = groupCard(say('settings.downloads.methods'),
       // The operator-facing family name matches Services exactly; the executor
       // id stays 'direct', because nothing about the executor changed and
       // renaming it would only churn durable identities.
-      executorTuningCard('direct', 'Network Sources',
-        'How DebridPulse handles downloads from direct network sources.',
+      executorTuningCard('direct', say('integration.group.direct_sources'),
+        say('settings.tuning.direct_copy'),
         directTransfersTuning(s), 'direct_sources', 'tuning-direct') +
       executorTuningCard('rsync', 'rsync',
-        'How DebridPulse transfers files using rsync.', rsyncTuning(s), 'general_rsync', 'tuning-rsync') +
+        say('settings.tuning.rsync_copy'), rsyncTuning(s), 'general_rsync', 'tuning-rsync') +
       executorTuningCard('webdav', 'WebDAV',
-        'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav', 'tuning-webdav') +
+        say('settings.tuning.webdav_copy'), webdavTuning(s), 'general_webdav', 'tuning-webdav') +
       executorTuningCard('usenet', 'Usenet',
-        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet', 'tuning-usenet') +
-      executorTuningCard('media', 'Media Downloads',
-        'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),
+        say('settings.tuning.usenet_copy'), usenetTuning(s), 'usenet', 'tuning-usenet') +
+      executorTuningCard('media', say('settings.tuning.media'),
+        say('settings.tuning.media_copy'), mediaTuning(s),
         'media', 'tuning-media'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
       help: 'transfer-methods',
-      hint: 'Tune how each supported download method transfers files.',
+      hint: say('settings.downloads.methods_hint'),
       titlePrefix: familyIcon('downloads', 'arrow-left-right'),
     });
 
     // One standalone control, leading, then two relationships -- the
     // disk-space guard's threshold and its buffer, and the error-retry count
     // and its delay.
-    const recovery = card('Disk Space & Recovery', tuningCells(
-      input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
+    const recovery = card(say('settings.downloads.recovery'), tuningCells(
+      input('stuck_download_timeout_hours', say('settings.downloads.stalled'), policy.stalled_timeout_hours ?? 6, {
         type: 'number', min: 0, max: 168,
-        hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
+        hint: say('settings.downloads.stalled_hint')
       }),
       tuningGroup(
-        input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
+        input('min_free_disk_gb', say('settings.downloads.min_free'), s.min_free_disk_gb ?? 0, {
           type: 'number', min: 0, step: 0.5,
-          hint: 'Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.'
+          hint: say('settings.downloads.min_free_hint')
         }),
-        input('disk_guard_resume_hysteresis_gb', 'Resume Free Space Buffer (GB)', s.disk_guard_resume_hysteresis_gb ?? 0.5, {
+        input('disk_guard_resume_hysteresis_gb', say('settings.downloads.resume_buffer'), s.disk_guard_resume_hysteresis_gb ?? 0.5, {
           type: 'number', min: 0, step: 0.1,
-          hint: 'Extra free space required above the minimum before DebridPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.'
+          hint: say('settings.downloads.resume_buffer_hint')
         }),
       ),
       tuningGroup(
-        input('aria2_error_retry_count', 'Download Error Retries', policy.execution_retry_count ?? 3, {
+        input('aria2_error_retry_count', say('settings.downloads.error_retries'), policy.execution_retry_count ?? 3, {
           type: 'number', min: 0, max: 20,
-          hint: 'How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.'
+          hint: say('settings.downloads.error_retries_hint')
         }),
-        input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
+        input('aria2_error_retry_delay_seconds', say('settings.downloads.retry_delay_seconds'), policy.execution_retry_delay_seconds ?? 60, {
           type: 'number', min: 0, max: 3600,
-          hint: 'Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. Plain retries double the delay, up to 5 minutes. Set to 0 to retry immediately.'
+          hint: say('settings.downloads.retry_delay_seconds_hint')
         }),
       ),
     ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert'),
@@ -3152,7 +3274,7 @@
       // Closed when first drawn below 780px; the stylesheet keeps it open,
       // without the chip, from 780px.
       collapsible: {key: 'disk-recovery', expanded: false},
-      headerCenter: '<span class="dp-settings-download-engine-header-copy">Protect free disk space and recover failed or stalled downloads.</span>'});
+      headerCenter: copySpan('dp-settings-download-engine-header-copy', say('settings.downloads.recovery_copy'))});
 
     // Easy keeps Download Behavior & Limits' two ordinary fields alone.
     return delivery + (omitted('transfer-method-settings') ? '' : tuning)
@@ -3166,49 +3288,49 @@
    * provider intervals and the resolution retries apply to every service, so
    * they live here rather than on any one provider's card. */
   function downloadBehaviorAdvanced(policy, s) {
-    return disclosureSection('Advanced Settings', 'download-behavior-advanced', tuningCells(
-      input('material_checkpoint_interval_seconds', 'Material Checkpoint Interval (seconds)',
+    return disclosureSection(say('settings.downloads.advanced'), 'download-behavior-advanced', tuningCells(
+      input('material_checkpoint_interval_seconds', say('settings.downloads.checkpoint'),
         policy.material_checkpoint_interval_seconds ?? 5, {
           type: 'number', min: 1, max: 60,
-          hint: 'How often DebridPulse records reusable download progress. Lower values reduce work that may need to be repeated after an unexpected interruption, at the cost of more storage activity.',
+          hint: say('settings.downloads.checkpoint_hint'),
         }),
-      input('graceful_stop_timeout_seconds', 'Graceful Stop Timeout (seconds)',
+      input('graceful_stop_timeout_seconds', say('settings.downloads.graceful_stop'),
         policy.graceful_stop_timeout_seconds ?? 10, {
           type: 'number', min: 1, max: 60,
-          hint: 'How long DebridPulse waits for an active download engine to stop gracefully, preserving its current progress, before forcing it to stop.',
+          hint: say('settings.downloads.graceful_stop_hint'),
         }),
       // The two local-network cells are one relationship (the second depends
       // on the first): the shared tuning relation, drawn while the group is
       // whole on a row.
       tuningGroup(
-        tuningToggle('private_lan_connections', 'Local Network Connections',
-          'Allow explicitly entered downloads to connect to private LAN addresses.',
+        tuningToggle('private_lan_connections', say('settings.downloads.lan'),
+          say('settings.downloads.lan_hint'),
           !!policy.private_lan_connections),
-        tuningToggle('skip_private_lan_confirmation', 'Skip Local Connection Confirmation',
-          'Allow new private-LAN transfers without asking for confirmation each time.',
+        tuningToggle('skip_private_lan_confirmation', say('settings.downloads.lan_skip'),
+          say('settings.downloads.lan_skip_hint'),
           !!policy.skip_private_lan_confirmation, {disabled: !policy.private_lan_connections}),
       ),
       // How often services are checked: the progress of the work a service is
       // preparing, and the scheduled reconciliation with every connected account.
       tuningGroup(
-        input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policy.provider_poll_interval_seconds ?? 30, {
+        input('poll_interval_seconds', say('settings.downloads.poll'), policy.provider_poll_interval_seconds ?? 30, {
           type: 'number', min: 5, max: 3600,
-          hint: 'How often DebridPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Shorter intervals update status sooner but send more requests.'
+          hint: say('settings.downloads.poll_hint')
         }),
-        input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
+        input('full_sync_interval_minutes', say('settings.downloads.full_sync'), s.full_sync_interval_minutes ?? 5, {
           type: 'number', min: 0, max: 1440,
-          hint: 'How often DebridPulse reconciles its downloads with every enabled premium service account that can list its transfers. Set to 0 to disable scheduled full syncs.'
+          hint: say('settings.downloads.full_sync_hint')
         }),
       ),
       // Resolution failures: the retry count and its delay, one relationship.
       tuningGroup(
-        input('upload_fail_retry_count', 'Resolution Failure Retries', policy.resolution_retry_count ?? 3, {
+        input('upload_fail_retry_count', say('settings.downloads.resolution_retries'), policy.resolution_retry_count ?? 3, {
           type: 'number', min: 0, max: 20,
-          hint: 'How many times DebridPulse retries when a service fails to resolve a download into something it can fetch, for any service including Network Sources, before trying another service or giving up. Set to 0 to disable these retries.'
+          hint: say('settings.downloads.resolution_retries_hint')
         }),
-        input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policy.resolution_retry_delay_minutes ?? 5, {
+        input('upload_fail_retry_delay_minutes', say('settings.downloads.retry_delay_minutes'), policy.resolution_retry_delay_minutes ?? 5, {
           type: 'number', min: 0, max: 1440,
-          hint: 'How long DebridPulse waits before trying to resolve a download again after such a failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.'
+          hint: say('settings.downloads.retry_delay_minutes_hint')
         }),
       ),
     ));
@@ -3250,15 +3372,15 @@
    * (ui-settings-downloads-completion.css). */
   function extractionPanel(s) {
     const enableId = fieldId('extract_enabled');
-    return card('Automatic Extraction', `
-      <div class="dp-settings-extraction-behavior dp-settings-island" role="group" aria-label="Extraction behavior">
-        ${tuningToggle('extract_delete_archive', 'Delete Archives After Extraction',
-          'Remove original archive files only after extraction completes successfully.',
+    return card(say('settings.extraction.title'), `
+      <div class="dp-settings-extraction-behavior dp-settings-island" role="group"${keyed(null, {'aria-label': say('settings.extraction.behavior_label')})}>
+        ${tuningToggle('extract_delete_archive', say('settings.extraction.delete'),
+          say('settings.extraction.delete_hint'),
           s.extract_delete_archive !== false,
           {inline: true, className: 'dp-settings-extraction-delete-field'})}
-        ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
+        ${input('extract_max_concurrent', say('settings.extraction.concurrent'), s.extract_max_concurrent ?? 1, {
           type: 'number', min: 1, max: 8,
-          hint: 'Maximum extraction jobs DebridPulse runs at once.',
+          hint: say('settings.extraction.concurrent_hint'),
           inline: true, className: 'dp-settings-extraction-concurrency-field',
         })}
       </div>
@@ -3268,10 +3390,10 @@
       help: 'automatic-extraction',
       hinted: true,
       titlePrefix: familyIcon('extraction', 'archive-restore'),
-      headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
+      headerCenter: copySpan('dp-settings-extraction-header-copy', say('settings.extraction.copy')),
       action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="toggle">
           <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${commitAttributes('extract_enabled')} ${checked(s.extract_enabled)}
-                 aria-label="Enable Automatic Extraction">
+                ${keyed(null, {'aria-label': say('settings.extraction.enable')})}>
           <span class="ttrack"></span>
         </span></label>`,
     });
@@ -3613,13 +3735,13 @@
    * Settings, so it is the same control everywhere: one declaration, one
    * appearance, one commit class, and the same treatment an integration's own
    * header Enable already renders. */
-  function headerEnableToggle(key, value, extraClass = '', name = 'Enable') {
+  function headerEnableToggle(key, value, extraClass = '', name = say('settings.enable')) {
     const id = fieldId(key);
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable ${html(extraClass)}" for="${id}">
         <span class="toggle">
           <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)} ${commitAttributes(key)}
-                 aria-label="${html(name)}">
+                ${keyed(null, {'aria-label': name})}>
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -3927,7 +4049,7 @@
   function paintStatusNodes(card, status, report) {
     const node = card.querySelector('.dp-settings-card-header-controls > .dp-settings-provider-config-status');
     if (node) {
-      node.textContent = status.text;
+      sayInto(node, status.text);
       node.dataset.tone = status.tone;
       node.hidden = !status.text;
     }
@@ -6769,32 +6891,32 @@
         <span class="dp-settings-tab-chip" aria-hidden="true">
           <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
         </span>
-        <span class="dp-settings-tab-label">${html(label)}</span>
+        <span class="dp-settings-tab-label"${keyed(label)}>${html(label)}</span>
       </button>
     `).join('');
     // The compact navigator's two travel actions: actions, not tabs, each one
     // section from the selected one.
     const travel = (step, glyph, label) => `
       <button class="dp-settings-nav-end dp-section-nav-end" type="button" data-settings-end="${step}"
-              aria-label="${label}">
+             ${keyed(null, {'aria-label': label})}>
         ${window.DPIcons?.svg?.(glyph) || ''}
       </button>`;
 
     view.innerHTML = `
-      <section class="card dp-settings-master-card" aria-label="Settings">
+      <section class="card dp-settings-master-card"${keyed(null, {'aria-label': say('settings.page_label')})}>
         <div class="card-header dp-settings-master-header">
           <div class="dp-settings-header-copy">
             <div class="dp-settings-header-icon" aria-hidden="true"></div>
             <div>
-              <div class="dp-settings-header-title">Tuning Deck</div>
-              <div class="dp-settings-header-subtitle">Your rules, your defaults.</div>
+              <div class="dp-settings-header-title">${html(t('settings.header.title'))}</div>
+              <div class="dp-settings-header-subtitle">${html(t('settings.header.hint'))}</div>
             </div>
           </div>
           <div class="dp-settings-nav dp-section-nav">
             <div class="dp-settings-nav-control dp-section-nav-control">
-              ${travel('previous', 'chevronLeft', 'Previous section')}
-              <div class="stabs dp-settings-tabs dp-section-nav-strip" role="tablist" aria-label="Settings sections">${tabs}</div>
-              ${travel('next', 'chevronRight', 'Next section')}
+              ${travel('previous', 'chevronLeft', say('settings.nav.previous'))}
+              <div class="stabs dp-settings-tabs dp-section-nav-strip" role="tablist"${keyed(null, {'aria-label': say('settings.nav.sections')})}>${tabs}</div>
+              ${travel('next', 'chevronRight', say('settings.nav.next'))}
             </div>
           </div>
         </div>
@@ -6815,13 +6937,7 @@
       </section>`;
 
     activateTab(state.activeTab);
-    navigation.fit({measure: true});
-    fitServicesRows();
-    fitHeaderHints();
-    fitIslands();
-    fitDeploymentType();
-    fitAuthKpis();
-    fitHandheldBodies();
+    fitPage();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -6829,6 +6945,18 @@
     window.DPSettingsPersistence.adopt(view);
     restoreDrafts(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
+  }
+
+  // Every fitter that measures the page's words: after a render, and after a
+  // language change says them again (the Settings locale listener).
+  function fitPage() {
+    navigation.fit({measure: true});
+    fitServicesRows();
+    fitHeaderHints();
+    fitIslands();
+    fitDeploymentType();
+    fitAuthKpis();
+    fitHandheldBodies();
   }
 
   function activateTab(name) {
@@ -6947,10 +7075,12 @@
     nav: () => root()?.querySelector('.dp-settings-nav'),
     copy: '.dp-settings-header-copy',
     identity: {title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', levels: [
-      {title: 'Tuning Deck', hint: 'Your rules, your defaults.'},
-      {title: 'Tuning Deck', hint: 'Your rules.'},
-      {title: 'Tuning', hint: 'Your rules.'},
-      {title: 'Tune', hint: 'Rules!'},
+      // The navigator writes a level's words as it places it (String(Said));
+      // a language change fits it again (the Settings locale listener).
+      {title: say('settings.header.title'), hint: say('settings.header.hint')},
+      {title: say('settings.header.title'), hint: say('settings.header.hint_short')},
+      {title: say('settings.header.title_short'), hint: say('settings.header.hint_short')},
+      {title: say('settings.header.title_shortest'), hint: say('settings.header.hint_shortest')},
     ]},
   });
 
@@ -7023,9 +7153,9 @@
     if (body && window.DPMotion) window.DPMotion.disclose(body, !!expanded, {animate, focusReturn: button});
     else if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    const label = `${expanded ? 'Collapse' : 'Expand'} ${button.dataset.disclosureSubject || 'section'}`;
-    button.dataset.tooltip = label;
-    button.setAttribute('aria-label', label);
+    const label = disclosureLabel(expanded, disclosureSubject(button));
+    sayAttr(button, 'data-tooltip', label);
+    sayAttr(button, 'aria-label', label);
     button.closest('.dp-settings-provider-card')
       ?.classList.toggle('dp-settings-provider-card--collapsed', !expanded);
   }
@@ -7547,11 +7677,6 @@
     });
   }
 
-  /* What a saved Network Sources tuning change does to downloads that already
-   * exist, said before it is saved and again in Help. */
-  const LIVE_TUNING_NOTICE = 'Changes also apply to existing downloads. '
-    + 'Active downloads may briefly reconnect; their progress is preserved.';
-
   /* Before a tuning change is saved: running downloads will reconnect, so the
    * operator confirms it first. The count is DebridPulse's own downloads that
    * aria2 reports running right now (``/aria2/downloads`` lists only owned
@@ -7567,13 +7692,14 @@
       running = null;
     }
     if (running === 0) return true;
-    const which = running === null
-      ? 'Downloads that are running now will briefly reconnect.'
-      : `${running} running download${running === 1 ? '' : 's'} will briefly reconnect.`;
+    // One whole message per case (the notice, then who reconnects), re-worded while open.
+    const message = running === null ? 'settings.live_tuning.confirm_unknown' : 'settings.live_tuning.confirm_count';
+    const values = running === null ? undefined : {count: running};
     return window.DPSettingsModal.confirm({
-      title: 'Apply to existing downloads?',
-      message: `${LIVE_TUNING_NOTICE} ${which}`,
-      confirmLabel: 'Save and Apply',
+      title: t('settings.live_tuning.confirm_title'),
+      message: t(message, values),
+      confirmLabel: t('settings.live_tuning.confirm_accept'),
+      keys: {title: 'settings.live_tuning.confirm_title', message, messageValues: values, accept: 'settings.live_tuning.confirm_accept'},
     });
   }
 
@@ -7591,36 +7717,35 @@
   function reportLiveTuning(outcome) {
     if (!outcome) return;
     if (outcome.daemon === 'unavailable') {
-      notify('Saved. aria2 is not running, so existing downloads were not updated.', 'warning');
+      notify(t('settings.live_tuning.daemon_unavailable'), 'warning');
       return;
     }
     // Which downloads exist could not be read in time: unknown, never zero.
     if (outcome.selection === 'unavailable') {
-      notify('Saved. Existing downloads could not be checked in time, so they may still use the earlier values.',
-        'warning');
+      notify(t('settings.live_tuning.selection_unavailable'), 'warning');
       return;
     }
     const selected = Number(outcome.selected) || 0;
     const applied = Number(outcome.applied) || 0;
     const settled = applied + (Number(outcome.unchanged) || 0);
-    const plural = count => `${count} existing download${count === 1 ? '' : 's'}`;
     if (selected === 0) return;
     if (settled === selected) {
-      if (applied) notify(`Applied to ${plural(selected)}.`, 'success');
+      if (applied) notify(t('settings.live_tuning.applied', {count: selected}), 'success');
       return;
     }
-    const parts = [`Saved. Applied to ${settled} of ${plural(selected)}.`];
+    // Each part is a whole sentence of its own.
+    const parts = [t('settings.live_tuning.partial', {settled, count: selected})];
     const refused = Number(outcome.refused) || 0;
     const interrupted = Number(outcome.interrupted) || 0;
     const ended = Number(outcome.gone) || 0;
     const unknown = (Number(outcome.uncertain) || 0) + (Number(outcome.unavailable) || 0)
       + (Number(outcome.not_reached) || 0);
-    if (refused) parts.push(`aria2 refused the change for ${refused}; ${refused === 1 ? 'it keeps its' : 'they keep their'} earlier values.`);
-    if (unknown) parts.push(`${unknown} could not be confirmed and may still use the earlier values.`);
-    if (interrupted) parts.push(`${interrupted} stopped after reconnecting; DebridPulse is recovering ${interrupted === 1 ? 'it' : 'them'}.`);
-    if (ended) parts.push(`${ended} ended before ${ended === 1 ? 'it' : 'they'} could be updated.`);
+    if (refused) parts.push(t('settings.live_tuning.refused', {count: refused}));
+    if (unknown) parts.push(t('settings.live_tuning.unknown', {count: unknown}));
+    if (interrupted) parts.push(t('settings.live_tuning.interrupted', {count: interrupted}));
+    if (ended) parts.push(t('settings.live_tuning.ended', {count: ended}));
     const later = Number(outcome.superseded) || 0;
-    if (later) parts.push(`${later} ${later === 1 ? 'was' : 'were'} left to a newer change of these settings.`);
+    if (later) parts.push(t('settings.live_tuning.superseded', {count: later}));
     notify(parts.join(' '), 'warning');
   }
 
@@ -7721,10 +7846,7 @@
     const stranded = Array.isArray(result?.delivery_profiles_outside_download_folder)
       ? result.delivery_profiles_outside_download_folder.map(text).filter(Boolean) : [];
     if (stranded.length) {
-      const one = stranded.length === 1;
-      notify(`Download Folder saved. Delivery profile${one ? '' : 's'} ${stranded.join(', ')} `
-        + `${one ? 'has its' : 'have their'} DP Download Path outside it and will receive no deliveries `
-        + `until ${one ? 'that path is' : 'those paths are'} moved inside the Download Folder.`, 'warn');
+      notify(t('settings.downloads.profiles_stranded', {count: stranded.length, profiles: stranded.join(', ')}), 'warn');
     }
     return result;
   }
@@ -7796,15 +7918,14 @@
     const field = fieldFor('alldebrid_api_key');
     if (field) {
       if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
-      field.placeholder = ALLDEBRID_KEY_PLACEHOLDER(configured);
+      sayAttr(field, 'placeholder', ALLDEBRID_KEY_PLACEHOLDER(configured));
     }
     row.classList.toggle('is-configured', configured);
     // Only the parts that DEPEND on whether a key is stored: the hint and the
     // destructive action's state. The input element itself
     // is still never replaced -- destroying a control the operator may be
     // editing would remove focus from it, which IS its commit boundary.
-    const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
-    if (hint) hint.textContent = ALLDEBRID_KEY_HINT(configured);
+    sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), ALLDEBRID_KEY_HINT(configured));
 
     // The action never appears or disappears; only its state converges.
     renderKeyRemove(row.querySelector('[data-action="clear-alldebrid-key"]'), configured);
@@ -7828,16 +7949,10 @@
   async function clearAllDebridKey(button) {
     const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
     if (!card) return;
-    const confirmed = await window.DPSettingsModal.confirm({
-      tone: 'danger',
-      title: 'Clear AllDebrid API key?',
-      message: 'The stored AllDebrid API key will be removed. AllDebrid cannot be used '
-        + 'again until a key is configured.',
-      confirmLabel: 'Clear AllDebrid API Key',
-    });
+    const confirmed = await confirmClearKey('AllDebrid');
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
+    setBusy(button, true, say('settings.key.clearing'));
     try {
       const result = await request('PATCH', '/integrations/alldebrid/configuration',
         {options: {}, clear_secrets: ['api_key']}, 15000);
@@ -7848,7 +7963,7 @@
       setBusy(button, false);
       forgetApiKeyAccount('alldebrid');
       renderAllDebridCredential('');
-      notify('AllDebrid API key cleared', 'success');
+      notify(t('settings.key.cleared', {provider: 'AllDebrid'}), 'success');
       try { window.DPProviderStatus?.forget('alldebrid'); window.DPProviderStatus?.refresh(); } catch (_) {}
       return;
     } catch (error) {
@@ -7870,14 +7985,14 @@
   async function clearArchivePasswords(button) {
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: 'Clear stored archive passwords?',
-      message: 'Every stored archive password will be removed. Password-protected archives '
-        + 'will not be extracted until passwords are entered again.',
-      confirmLabel: 'Clear Passwords',
+      title: t('settings.extraction.clear_title'),
+      message: t('settings.extraction.clear_message'),
+      confirmLabel: t('settings.extraction.clear'),
+      keys: {title: 'settings.extraction.clear_title', message: 'settings.extraction.clear_message', accept: 'settings.extraction.clear'},
     });
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
+    setBusy(button, true, say('settings.key.clearing'));
     let removed = false;
     try {
       await writeSettingsDocument({}, ['extraction_password']);
@@ -7892,7 +8007,7 @@
     // owner must be the one to decide whether it stays enabled.
     if (!removed) return;
     window.DPArchivePasswords?.clear();
-    notify('Archive passwords cleared', 'success');
+    notify(t('settings.extraction.cleared'), 'success');
   }
 
   /* One authentication write, carrying ONLY what it is about.
@@ -7933,7 +8048,7 @@
       premiumize: '/settings/validate-premiumize',
     };
     const labels = {alldebrid: 'AllDebrid', debridlink: 'Debrid-Link', premiumize: 'Premiumize'};
-    setBusy(button, true, 'Testing…');
+    setBusy(button, true, say('settings.testing'));
     try {
       const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
       rememberTestedDraft(kind, result.verification);
@@ -7942,10 +8057,10 @@
       // configuration this action just proved. Published through the one
       // acceptance seam, like every other accepted canonical change.
       publishAccepted(result);
-      notify(`${labels[kind]} connected${result.username ? ` as ${result.username}` : ''}`, 'success');
+      notify(t(result.username ? 'settings.account.connected_toast_as' : 'settings.account.connected_toast', {provider: labels[kind], who: result.username}), 'success');
     } catch (error) {
       forgetTestedDrafts(kind);
-      notify(`${labels[kind]}: ${error.message}`, 'error');
+      notify(t('settings.provider_error', {provider: labels[kind], message: error.message}), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -8011,21 +8126,21 @@
    * per-server evidence the individual Test records. */
   async function testUsenet(button) {
     await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Testing…');
+    setBusy(button, true, say('settings.testing'));
     try {
       const result = await request('POST', '/usenet/test', undefined, 60000);
       publishAccepted(result);
       if (!result.tested) {
-        notify('Usenet: no enabled news server is configured', 'warn');
+        notify(t('settings.usenet_test.none'), 'warn');
       } else if (result.ok) {
-        notify(`Usenet: ${result.passed} of ${result.tested} news server(s) verified`, 'success');
+        notify(t('settings.usenet_test.verified', {passed: result.passed, tested: result.tested}), 'success');
       } else {
         const failed = (result.servers || []).filter(item => !item.ok);
         const named = failed.map(item => item.name).filter(Boolean).join(', ');
-        notify(`Usenet: ${result.failed} of ${result.tested} news server(s) failed${named ? ` (${named})` : ''}`, 'error');
+        notify(t(named ? 'settings.usenet_test.failed_named' : 'settings.usenet_test.failed', {failed: result.failed, tested: result.tested, named}), 'error');
       }
     } catch (error) {
-      notify(`Usenet: ${error.message}`, 'error');
+      notify(t('settings.provider_error', {provider: 'Usenet', message: error.message}), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -8548,7 +8663,7 @@
       const view = root();
       if (!view) return;
       view.classList.add('dp-settings-clean-view');
-      view.innerHTML = '<div class="dp-settings-loading">Loading Settings…</div>';
+      view.innerHTML = `<div class="dp-settings-loading">${html(t('settings.loading'))}</div>`;
 
       const settingsPromise = request('GET', '/settings', undefined, 10000);
       const authPromise = request('GET', '/auth/config', undefined, 7000);
@@ -8561,7 +8676,7 @@
         settings = await settingsPromise;
       } catch (error) {
         if (generation !== loadGeneration || !settingsActive()) return;
-        view.innerHTML = `<div class="dp-settings-load-error"><b>Settings could not be loaded.</b><span>${html(error.message)}</span></div>`;
+        view.innerHTML = `<div class="dp-settings-load-error"><b>${html(t('settings.load_failed'))}</b><span>${html(error.message)}</span></div>`;
         notify(error.message, 'error');
         return;
       }
@@ -8714,5 +8829,30 @@
   });
 
   registerCommitScopes();
+  /* A language change while Settings is shown. DPI18n.render() has already
+   * said every keyed word in place (labels, hints, names, open dialogs) --
+   * values, focus, open disclosures and tests in flight untouched. Here, what
+   * it cannot: the busy labels, the account lines worded by the premium
+   * account owner, the subtitle languages Intl names, and the fitters, which
+   * measure words. Nothing is read from the server and nothing is written. */
+  document.addEventListener('debridpulse:locale-changed', () => {
+    const view = root();
+    if (!view || !view.querySelector('.dp-settings-master-card')) return;
+    view.querySelectorAll('[data-dp-busy-key]').forEach(button => { button.textContent = t(button.dataset.dpBusyKey); });
+    for (const id of Object.keys(API_KEY_ACCOUNT_LINES)) {
+      const line = view.querySelector(`[data-${id}-account] .dp-settings-account-expiry`);
+      const account = apiKeyAccounts[id];
+      if (line && account) line.textContent = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
+    }
+    for (const id of Object.keys(DEVICE_ACCOUNTS)) {
+      const line = view.querySelector(`[data-${id}-connection] .dp-settings-account-expiry`);
+      const account = deviceConnections[id].account || {};
+      if (line) line.textContent = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
+    }
+    relabelSubtitleLanguages();
+    view.querySelectorAll('.dp-settings-help-chip').forEach(chip => { chip.dataset.tooltip = chip.getAttribute('aria-label') || ''; });
+    fitPage();
+  });
+
   window.DPSettingsPage = Object.freeze({load});
 })();

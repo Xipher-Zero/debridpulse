@@ -206,6 +206,1216 @@
    "owner": "frontend/static/index.html",
    "english": "<span>Details</span>",
    "reason": "Placeholder text of #modal-title: every opening of the shared dialog sets its title (Details sets the transfer name, or details.title_fallback) before it is shown."
+  },
+  {
+   "owner": "frontend/static/ui-settings-executor-work.js",
+   "english": "Application API client is unavailable",
+   "reason": "Internal Error for a missing script dependency; never shown to the operator."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Application API client is unavailable",
+   "reason": "Internal Error for a missing script dependency; never shown to the operator."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "AllDebrid",
+   "reason": "Provider name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "dp-settings-alldebrid-key-row dp-settings-help-slot {0}",
+   "reason": "CSS class list."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Debrid-Link",
+   "reason": "Provider name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Premiumize",
+   "reason": "Provider name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "dp-settings-{0}-key-row dp-settings-help-slot {1}",
+   "reason": "CSS class list."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Metalink (Multimeta)",
+   "reason": "Format and integration names (proper names): the Multimeta box title on Services."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Real-Debrid",
+   "reason": "Provider name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "TorBox",
+   "reason": "Provider name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "{0} data-{1}-code autocomplete=\"off\" spellcheck=\"false\">",
+   "reason": "HTML attribute fragment in a renderer; its words are catalog keys."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Clipboard API unavailable",
+   "reason": "Internal Error thrown and caught by the copy path; the operator sees the keyed fallback toast."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Usenet",
+   "reason": "Protocol name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "HEVC (H.265)",
+   "reason": "Video codec name (technical, untranslated)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "WebDAV",
+   "reason": "Protocol name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "{0} > .card-body",
+   "reason": "CSS selector."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "sources",
+   "reason": "The Services tab's internal identifier (never shown)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Not saved",
+   "reason": "Internal Error of a declined commit: the persistence owner reports nothing for it (error.cancelled)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Unsupported connection test: {0}",
+   "reason": "Developer Error for an unknown test kind; never reached from the page."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Afar",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Abkhazian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Avestan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Afrikaans",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Akan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Amharic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Aragonese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Arabic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Assamese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Avaric",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Aymara",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Azerbaijani",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bashkir",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Belarusian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bulgarian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bislama",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bambara",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bengali",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tibetan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Breton",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Bosnian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Catalan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chechen",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chamorro",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Corsican",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Cree",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Czech",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Church Slavic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chuvash",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Welsh",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Danish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "German",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Divehi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Dzongkha",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ewe",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Greek",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Esperanto",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Spanish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Estonian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Basque",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Persian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Fula",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Finnish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Fijian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Faroese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "French",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Western Frisian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Irish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Scottish Gaelic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Galician",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Guarani",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Gujarati",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Manx",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hausa",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hebrew",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hindi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hiri Motu",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Croatian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Haitian Creole",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hungarian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Armenian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Herero",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Interlingua",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Indonesian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Interlingue",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Igbo",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sichuan Yi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Inupiaq",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ido",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Icelandic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Italian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Inuktitut",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Japanese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Javanese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Georgian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kongo",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kikuyu",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kuanyama",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kazakh",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kalaallisut",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Khmer",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kannada",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Korean",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kanuri",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kashmiri",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kurdish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Komi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Cornish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kyrgyz",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Latin",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Luxembourgish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ganda",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Limburgish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Lingala",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Lao",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Lithuanian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Latvian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Malagasy",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Marshallese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Macedonian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Malayalam",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Mongolian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Marathi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Malay",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Maltese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Burmese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Nauru",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Norwegian Bokmål",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "North Ndebele",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Nepali",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ndonga",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Dutch",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Norwegian Nynorsk",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Norwegian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "South Ndebele",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Navajo",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chichewa",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Occitan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ojibwa",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Oromo",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Odia",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ossetic",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Punjabi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Pali",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Polish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Pashto",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Portuguese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Quechua",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Romansh",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Rundi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Romanian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Russian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Kinyarwanda",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sanskrit",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sardinian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sindhi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Northern Sami",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sango",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sinhala",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Slovak",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Slovenian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Samoan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Shona",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Somali",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Albanian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Serbian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Swati",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Southern Sotho",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Sundanese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Swedish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Swahili",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tamil",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Telugu",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tajik",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Thai",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tigrinya",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Turkmen",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tagalog",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tswana",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tongan",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Turkish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tsonga",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tatar",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Twi",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Tahitian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Uyghur",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Ukrainian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Urdu",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Uzbek",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Venda",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Vietnamese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Walloon",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Wolof",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Xhosa",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Yiddish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Yoruba",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Zhuang",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Zulu",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Asturian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Cebuano",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Cherokee",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Central Kurdish",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Filipino",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hawaiian",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Hmong",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Konkani",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Maithili",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Manipuri",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Santali",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Cantonese",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (United States)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (United Kingdom)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (Australia)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (Canada)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (Ireland)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (India)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (New Zealand)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "English (South Africa)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Spanish (Spain)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Spanish (Latin America)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Spanish (Mexico)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Spanish (United States)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "French (France)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "French (Canada)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "French (Belgium)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "French (Switzerland)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Portuguese (Brazil)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Portuguese (Portugal)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "German (Germany)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "German (Austria)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "German (Switzerland)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Dutch (Netherlands)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Dutch (Belgium)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (Simplified)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (Traditional)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (China)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (Taiwan)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (Hong Kong)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Chinese (Singapore)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Serbian (Latin)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "Serbian (Cyrillic)",
+   "reason": "Language name in English (ISO 639 / BCP 47 subtitle choice): shown as is in English; in any other language the code is named by Intl.DisplayNames, falling back to this name (subtitleLanguageCatalog)."
   }
  ]
 }

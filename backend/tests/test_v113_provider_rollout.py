@@ -41,6 +41,7 @@ from transfers.contracts import speculative_preparation
 from transfers.errors import TransferError
 from transfers.models import ActiveCapacity, Ownership, TransferRequest
 from transfers.registry import IntegrationRegistry
+from i18n_node import english, says
 
 pytestmark = pytest.mark.asyncio
 
@@ -418,12 +419,14 @@ def test_each_provider_card_offers_backup_torrents_and_a_ceiling_only_where_a_ma
     for identity in ROLLED_OUT:
         assert (f"{identity}_prepare_backup_torrents: {{scope: 'integration:{identity}', "
                 f"option: 'prepare_backup_torrents', commit: 'immediate'}}") in settings
-        assert f"tuningToggle('{identity}_prepare_backup_torrents', 'Prepare Backup Torrents'," in settings
+        assert f"tuningToggle('{identity}_prepare_backup_torrents', say('settings.provider.prepare_backup')," in settings
     for identity in ("alldebrid", "realdebrid"):
         assert (f"{identity}_max_active_torrents: {{scope: 'integration:{identity}', "
                 f"option: 'max_active_torrents', blank: null}}") in settings
-        assert f"input('{identity}_max_active_torrents', 'Maximum Active Torrents'," in settings
+        assert f"input('{identity}_max_active_torrents', say('settings.provider.max_active')," in settings
     assert "debridlink_max_active_torrents" not in settings          # no maximum to state, no field
-    assert "min: 1, max: 30, placeholder: 'Max'" in settings
+    assert "min: 1, max: 30, placeholder: say('settings.provider.max_placeholder')" in settings
+    assert (english("settings.provider.prepare_backup"), english("settings.provider.max_active"),
+            english("settings.provider.max_placeholder")) == ("Prepare Backup Torrents", "Maximum Active Torrents", "Max")
     for jargon in ("standby", "speculative", "reclaim"):
         assert jargon not in settings.casefold()

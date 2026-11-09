@@ -12,6 +12,8 @@ import asyncio
 import json
 import math
 import re
+
+from i18n_node import english, says
 import socket
 
 import pytest
@@ -910,14 +912,18 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
                      chips)
     tokens = (STATIC / "design-tokens.css").read_text(encoding="utf-8")
     assert "--dp-identity-media: #FF56AE;" in tokens and "--dp-identity-multimeta: #E879F9;" in tokens
-    assert "    media: ['Downloads supported media from', 'compatible web pages and media sites.']," in page
+    assert "'general_webdav', 'multimeta', 'media']" in page
+    assert (english("settings.source_box.media.lead"), english("settings.source_box.media.rest")) == \
+        ("Downloads supported media from", "compatible web pages and media sites.")
     panel = _function(page, "downloadsPanel")
-    cards = re.findall(r"executorTuningCard\('(\w+)', '([^']+)'", panel)
+    # 1.0.14: a method card's name is a proper name, or said from the catalog.
+    cards = [(ident, english(name[5:-2]) if name.startswith("say('") else name.strip("'"))
+             for ident, name in re.findall(r"executorTuningCard\('(\w+)', ('[^']+'|say\('[a-z0-9_.]+'\))", panel)]
     assert cards == [("direct", "Network Sources"), ("rsync", "rsync"), ("webdav", "WebDAV"), ("usenet", "Usenet"),
                      ("media", "Media Downloads")]
     # (each method card then names its own Help topic.)
-    assert "'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),\n" \
-           "        'media', 'tuning-media')" in panel
+    assert "say('settings.tuning.media_copy'), mediaTuning(s),\n        'media', 'tuning-media')" in panel
+    assert english("settings.tuning.media_copy") == "Downloads supported web-hosted media in its native form, without transcoding."
 
     # The acquisition preferences: Target Resolution and the video preferences
     # in the integration's own namespace, and the ONE global Preferred
@@ -931,12 +937,12 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
         ("input", "media_concurrent_fragment_downloads")]
     assert len(re.findall(r"(?:selectField|input)\('preferred_subtitle_language'", page)) == 1
     assert "subtitleLanguageChoices(s.preferred_subtitle_language || 'en')" in tuning
-    assert "{search: 'Search languages'}" in tuning
+    assert "{search: say('settings.media.search_languages')}" in tuning and english("settings.media.search_languages") == "Search languages"
     # The two video preferences are ONE related group (the shared tuningGroup outline).
     group = tuning[tuning.index("tuningGroup("):]
     group = group[:group.index("      selectField('preferred_subtitle_language'")]
     assert "'media_video_quality'" in group and "'media_video_codec'" in group
-    assert "never re-encodes media" in group
+    assert says(group, "never re-encodes media")
     assert "yt-dlp" not in tuning
     # The one YouTube preference leads the one set of six (so two cells a row
     # make 2 x 3): a single choice -- Automatic or one client the packaged
@@ -947,10 +953,11 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "tuningCells(youtubePlayerClientsField" not in tuning and tuning.count("tuningCells(") == 1
     clients = _function(page, "youtubePlayerClientsField")
     assert re.findall(r"(selectField|input)\('(\w+)'", clients) == [("selectField", "media_youtube_player_clients")]
-    assert "['', 'Automatic (yt-dlp default)']" in clients
-    assert "'Custom (multiple clients)'" in clients
-    assert ("'Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.'"
-            in clients)
+    # 1.0.14: the words are the catalog's, by key.
+    assert "['', say('settings.media.player_automatic')]" in clients
+    assert english("settings.media.player_automatic") == "Automatic (yt-dlp default)"
+    assert says(clients, "Custom (multiple clients)")
+    assert says(clients, "Automatic is recommended. Select another player client only when troubleshooting YouTube downloads.")
     for gone in ("Available:", "PO-token", "DRM", "separated by commas"):
         assert gone not in clients, gone
     for raw in ("--", "extractor-args", "extractor_args", "player_client=", "youtube:"):
@@ -959,21 +966,24 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
             "list: true}," in page)
     for absent in ("embed", "Embed", "sidecar", "Off'", "Subtitle Acquisition", "Download Behavior"):
         assert absent not in tuning.replace("embedded in the downloaded file", "")
-    qualities = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_QUALITIES = Object.freeze([", 1)[1]
-                           .split("]);", 1)[0])
+    def choices_of(table):
+        # A choice's label is a proper name, or a catalog key said in English (1.0.14).
+        block = page.split(f"const {table} = Object.freeze([", 1)[1].split("]);", 1)[0]
+        return [(value, english(key) if key else label) for value, label, key in
+                re.findall(r"\['(\w+)', (?:'([^']+)'|say\('([a-z0-9_.]+)'\))\]", block)]
+
+    qualities = choices_of("VIDEO_QUALITIES")
     from integrations.media.definition import VideoQuality
     assert qualities == [("high", "High"), ("normal", "Normal"), ("low", "Low")]
     assert [value for value, _label in qualities] == list(typing.get_args(VideoQuality)) == list(
         planning.VIDEO_QUALITIES)
     assert "media_video_quality: {scope: 'integration:media', option: 'video_quality'}," in page
     assert "media_video_codec: {scope: 'integration:media', option: 'video_codec'}," in page
-    codecs = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_CODECS = Object.freeze([", 1)[1]
-                        .split("]);", 1)[0])
+    codecs = choices_of("VIDEO_CODECS")
     from integrations.media.definition import VideoCodec
     assert codecs == [("auto", "Auto"), ("av1", "AV1"), ("hevc", "HEVC (H.265)"), ("h264", "H.264")]
     assert [value for value, _label in codecs] == list(typing.get_args(VideoCodec)) == list(planning.VIDEO_CODECS)
-    choices = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const TARGET_RESOLUTIONS = Object.freeze([", 1)[1]
-                         .split("]);", 1)[0])
+    choices = choices_of("TARGET_RESOLUTIONS")
     from integrations.media.definition import TargetResolution
     assert [value for value, _label in choices] == list(typing.get_args(TargetResolution)) == list(
         planning.TARGET_RESOLUTIONS)

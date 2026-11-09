@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from auth.accounts import Role
+from i18n_node import english, says
 from auth.oidc import OidcAuthorizationError, OidcConfiguration, authorize_oidc_claims
 from auth.permissions import Capability, ROLE_CAPABILITIES
 
@@ -53,8 +54,16 @@ SESSION_LIFETIME = ("How long a browser login remains valid before the session e
 
 @pytest.mark.parametrize("key", sorted(LOCKED))
 def test_each_locked_hint_is_verbatim_on_its_own_field(key):
-    assert PAGE.count(LOCKED[key]) == 1
-    assert LOCKED[key] in _hint_of(key), key
+    hint = _hint_of(key)
+    if LOCKED[key] in PAGE:
+        assert PAGE.count(LOCKED[key]) == 1
+        assert LOCKED[key] in hint, key
+        return
+    # 1.0.14: said from the catalog -- the field's own hint names the one key
+    # whose English is exactly the locked words, and no other field names it.
+    said = [k for k in re.findall(r"say\('([a-z0-9_.]+)'", hint) if english(k) == LOCKED[key]]
+    assert said, key
+    assert PAGE.count(f"'{said[0]}'") == 1, key
 
 
 def test_the_session_lifetime_hint_is_verbatim_beside_its_control():
@@ -138,16 +147,16 @@ def test_serial_commas_in_settings_copy():
         "such as 0, 512K, or 64M.",
         "API tokens, downloads, and files are not deleted.",
     ):
-        assert corrected in PAGE, corrected
+        assert says(PAGE, corrected), corrected
     for retired in ("video or other already-compressed", "512K or 2M", "512K or 64M", "downloads and files are"):
-        assert retired not in PAGE, retired
+        assert not says(PAGE, retired), retired
     backend = ROOT / "backend"
     assert "without a scheme, path, or spaces" in (backend / "core" / "settings_constraints.py").read_text()
     assert "without a scheme, path, or spaces" in (backend / "api" / "routes.py").read_text()
     assert "(PNG, JPG, GIF, or WEBP)" in (backend / "services" / "account_notifications.py").read_text()
     # The literal syntax is unchanged: the size grammar still names K or M,
     # and the scope example is still space-separated tokens.
-    assert "with an optional K or M suffix" in PAGE
+    assert says(PAGE, "with an optional K or M suffix")
     assert "placeholder: 'openid profile email'" in PAGE
 
 
@@ -159,20 +168,21 @@ def _topics() -> set[str]:
 
 
 def test_every_settings_card_declares_exactly_one_help_topic():
-    calls = [m.start() for m in re.finditer(r"\b(?:card|groupCard)\((?:'|groupLabel,)", PAGE)]
+    calls = [m.start() for m in re.finditer(r"\b(?:card|groupCard)\((?:'|groupLabel,|say\()", PAGE)]
     assert len(calls) == 18
     for start in calls:
         title = PAGE[start:start + 80]
         # The options object follows the body; its help names the topic.
         options = PAGE[start:start + 6000].split("help: ", 1)[1].split("\n", 1)[0]
         assert re.match(r"(own \? '[a-z-]+' : '[a-z-]+'|'[a-z-]+')", options), title
-    assert "${helpChip('engine-activity', 'Download Engine Activity')}" in PAGE
+    assert "${helpChip('engine-activity', say('settings.engine_activity.title'))}" in PAGE
     # A protocol tile carries none.
     body = PAGE.split("function sourceProtocolBox(", 1)[1].split("\n  }\n", 1)[0]
     assert "helpChip" not in body and "help:" not in body
     # Every Transfer Method card names its OWN topic, once, in its own rail.
     tuning = PAGE.split("function executorTuningCard(", 1)[1].split("\n  }\n", 1)[0]
-    assert '<div class="dp-settings-card-header-controls">${helpChip(help, `${label} Tuning`)}</div>' in tuning
+    assert ('<div class="dp-settings-card-header-controls">${helpChip(help, say(\'settings.tuning.title\', {method: label}))}</div>'
+            in tuning) and english("settings.tuning.title") == "{method} Tuning"
     assert _tuning_topics() == ["tuning-direct", "tuning-rsync", "tuning-webdav", "tuning-usenet", "tuning-media"]
     assert set(_tuning_topics()) <= _topics()
     # Every premium provider card names its OWN topic -- six distinct ones,
@@ -211,8 +221,8 @@ def test_every_referenced_topic_exists_and_none_is_orphaned():
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():
     chip = PAGE.split("function helpChip(topic, subject) {", 1)[1].split("\n  }\n", 1)[0]
-    assert "const label = `Help: ${subject}`;" in chip
-    assert 'aria-label="${html(label)}"' in chip
+    assert "const label = say('settings.help_chip', {subject});" in chip and english("settings.help_chip") == "Help: {subject}"
+    assert "keyed(null, {'aria-label': label})" in chip
     assert "window.DPIcons.svg('help', 'dp-settings-help-glyph')" in chip
     assert 'class="dp-settings-help-chip"' in chip
 
@@ -245,7 +255,8 @@ def test_every_header_rail_reads_status_then_help_then_its_own_controls():
     # Download Engine Activity updates by itself: its rail is its Help alone.
     work = PAGE.split("function executorWorkCard() {", 1)[1].split("\n  }\n", 1)[0]
     assert ('<div class="dp-settings-card-header-controls">${helpChip(\'engine-activity\', '
-            "'Download Engine Activity')}</div>") in work
+            "say('settings.engine_activity.title'))}</div>") in work
+    assert english("settings.engine_activity.title") == "Download Engine Activity"
     assert "data-dp-executor-work-refresh" not in work
 
 
@@ -376,7 +387,10 @@ def test_the_usenet_help_states_what_the_integration_does():
     assert (NZB_AFTER_USENET, NZB_BEFORE_USENET) == (-1, 1)
     assert "By default an NZB goes to Usenet first" in text
     for label in ("Use TorBox Before Usenet", "Use Premiumize Before Usenet"):
-        assert f"tuningToggle('{label.split()[1].lower()}_use_before_usenet', '{label}'" in PAGE
+        provider = label.split()[1]
+        assert (f"tuningToggle('{provider.lower()}_use_before_usenet', say('settings.provider.before_usenet', "
+                f"{{provider: '{provider}'}})") in PAGE
+        assert english("settings.provider.before_usenet").replace("{provider}", provider) == label
         assert label in text
     # The per-article retry is not the download retry count.
     assert "(not the download retry count)" in text
@@ -463,11 +477,20 @@ def test_the_eight_services_headers_carry_one_line_hints_and_the_tiles_none():
         "Real-Debrid": "Resolve supported links and torrents through your Real-Debrid account.",
         "TorBox": "Resolve supported links and torrents through your TorBox account; NZBs where your plan allows.",
     }
-    for text in hints.values():
-        assert PAGE.count(f"headerCopy: '{text}'") == 1, text
-    assert "links, torrents, and NZBs through your" not in PAGE
-    assert "hint: 'Connect your Usenet servers and the debrid services you have accounts with.'," in PAGE
-    assert "hint: 'Download directly from network sources; no premium account needed.'," in PAGE
+    # 1.0.14: each said from the catalog, once, by its provider (the words unchanged).
+    for provider, text in hints.items():
+        if provider == "Usenet":
+            assert PAGE.count("headerCopy: say('settings.provider.usenet.header_copy')") == 1
+            assert english("settings.provider.usenet.header_copy") == text
+            continue
+        key = "settings.provider.header_copy_nzb" if "NZBs" in text else "settings.provider.header_copy"
+        assert PAGE.count(f"headerCopy: say('{key}', {{provider: '{provider}'}})") == 1, text
+        assert english(key).replace("{provider}", provider) == text
+    assert not says(PAGE, "links, torrents, and NZBs through your")
+    assert "hint: say('settings.services.premium_hint')," in PAGE
+    assert english("settings.services.premium_hint") == "Connect your Usenet servers and the debrid services you have accounts with."
+    assert "hint: say('settings.services.network_hint')," in PAGE
+    assert english("settings.services.network_hint") == "Download directly from network sources; no premium account needed."
     # Every provider header and both group headers are the hinted grammar; a
     # protocol tile is not a card header and gets none of it.
     card = PAGE.split("function providerCard(", 1)[1].split("\n  }\n", 1)[0]
@@ -505,15 +528,16 @@ def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
     # Download Behavior & Limits and Disk Space & Recovery, the two card() headers.
     assert panel.count("hinted: true,") == 2 and panel.count("help: 'disk-recovery', hinted: true,") == 1
     # The two hints this pass adds; the four that were there are unchanged.
-    assert "hint: 'Tune how each supported download method transfers files.'," in panel
-    assert "Protect free disk space and recover failed or stalled downloads." in panel
+    assert "hint: say('settings.downloads.methods_hint')," in panel
+    assert english("settings.downloads.methods_hint") == "Tune how each supported download method transfers files."
+    assert says(panel, "Protect free disk space and recover failed or stalled downloads.")
     for kept in ("Where DebridPulse saves downloads and how many it runs at once.",
                  "View current download engine jobs and intervene when something is stuck.",
-                 "'How DebridPulse handles downloads from direct network sources.'",
-                 "'How DebridPulse transfers files using rsync.'", "'Which files DebridPulse collects from WebDAV folders.'",
-                 "'Global download behavior shared by all Usenet servers.'",
-                 "'Downloads supported web-hosted media in its native form, without transcoding.'"):
-        assert kept in PAGE, kept
+                 "How DebridPulse handles downloads from direct network sources.",
+                 "How DebridPulse transfers files using rsync.", "Which files DebridPulse collects from WebDAV folders.",
+                 "Global download behavior shared by all Usenet servers.",
+                 "Downloads supported web-hosted media in its native form, without transcoding."):
+        assert says(PAGE, kept), kept
     tuning = _block(PAGE, "function executorTuningCard(")
     assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in tuning
     # Download Engine Activity: the canonical header, its rail its Help alone
@@ -521,7 +545,7 @@ def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
     work = _block(PAGE, "function executorWorkCard() {")
     assert '<div class="card-header dp-settings-card-header dp-settings-card-header--hinted">' in work
     rail = work.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>", 1)[0]
-    assert rail == "${helpChip('engine-activity', 'Download Engine Activity')}"
+    assert rail == "${helpChip('engine-activity', say('settings.engine_activity.title'))}"
     # No private header grid survives beside the canonical one.
     for retired in (".dp-settings-download-engine-card > .card-header", "minmax(420px, 900px)"):
         assert retired not in css, retired
@@ -561,9 +585,13 @@ MEDIA_CONTROLS = {
 
 def test_the_media_downloads_help_names_only_the_rendered_controls_and_no_conversion():
     renderer = _block(PAGE, "function mediaTuning(s) {") + _block(PAGE, "function youtubePlayerClientsField(options) {")
-    rendered = dict((label, key) for key, label in re.findall(r"(?:selectField|input)\('([a-z_]+)', '([^']+)'", renderer))
+    # 1.0.14: each label is said from the catalog; its English is what Help names.
+    rendered = dict((english(label), key) for key, label in
+                    re.findall(r"(?:selectField|input)\('([a-z_]+)', say\('([a-z0-9_.]+)'\)", renderer))
     assert rendered == MEDIA_CONTROLS
-    assert "const VIDEO_CODECS = Object.freeze([\n    ['auto', 'Auto'],\n    ['av1', 'AV1'],\n    ['hevc', 'HEVC (H.265)'],\n    ['h264', 'H.264'],\n  ]);" in PAGE
+    assert ("const VIDEO_CODECS = Object.freeze([\n    ['auto', say('settings.media.codec_auto')],\n    ['av1', 'AV1'],"
+            "\n    ['hevc', 'HEVC (H.265)'],\n    ['h264', 'H.264'],\n  ]);") in PAGE
+    assert english("settings.media.codec_auto") == "Auto"
     topic = _topic("'tuning-media'")
     for label in MEDIA_CONTROLS:
         assert f"'{label} " in topic or f"'{label}," in topic, label

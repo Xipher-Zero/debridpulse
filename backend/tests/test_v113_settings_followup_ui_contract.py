@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from i18n_node import english, says
+
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 
 
@@ -223,7 +225,7 @@ def test_every_provider_level_test_uses_one_declared_control_grammar():
     slot. No Usenet-specific button styling exists."""
     grammar = body(SETTINGS, "providerTestAction")
     assert "dp-settings-action-chip" in grammar and "flask-conical.svg" in grammar
-    assert "<span>Test</span>" in grammar
+    assert "<span${keyed(say('settings.test'))}>${html(t('settings.test'))}</span>" in grammar and english("settings.test") == "Test"
     panel = body(SETTINGS, "sourcesPanel")
     assert "providerTestAction('test-alldebrid')" in panel
     assert "providerTestAction('test-usenet')" in panel
@@ -338,8 +340,9 @@ def _without_comments(source: str) -> str:
 def test_no_operator_facing_direct_transfers_or_direct_sources_title_remains():
     code = _without_comments(SETTINGS)
     for alias in ("Direct Transfers", "Direct Sources", "Global Sources"):
-        assert alias not in code, f"visible alias {alias!r} survives"
-    assert "executorTuningCard('direct', 'Network Sources'" in code
+        assert not says(code, alias), f"visible alias {alias!r} survives"
+    assert "executorTuningCard('direct', say('integration.group.direct_sources')" in code
+    assert english("integration.group.direct_sources") == "Network Sources"
 
 
 def test_downloads_tuning_cards_carry_the_same_protocol_identity():
@@ -348,7 +351,7 @@ def test_downloads_tuning_cards_carry_the_same_protocol_identity():
     That the two renderings are pixel-identical is proven in the browser;
     what is proven here is that there is no second Downloads-only identity.
     """
-    assert "executorTuningCard('direct', 'Network Sources'," in SETTINGS
+    assert "executorTuningCard('direct', say('integration.group.direct_sources')," in SETTINGS
     # (each card then names its own Help topic.)
     assert "directTransfersTuning(s), 'direct_sources', 'tuning-direct')" in SETTINGS
     assert "usenetTuning(s), 'usenet', 'tuning-usenet')" in SETTINGS
@@ -445,7 +448,9 @@ def test_network_sources_opens_closed_and_settings_keeps_one_workspace_from_780p
 
 def test_the_provider_header_reports_exactly_the_three_configuration_states():
     status = body(SETTINGS, "providerStatus")
-    assert "'Unconfigured'" in status and "'Unverified'" in status and "'Verified'" in status
+    # 1.0.14: by their catalog keys; the words unchanged.
+    for state, words in (("unconfigured", "Unconfigured"), ("unverified", "Unverified"), ("verified", "Verified")):
+        assert f"say('settings.status.{state}')" in status and english(f"settings.status.{state}") == words
     # Saved is not proven: the middle state says which of the two it is.
     assert "'Configured'" not in status
     for redundant in ("'Enabled'", "'Disabled'", "Provider configured", "Configuration required"):

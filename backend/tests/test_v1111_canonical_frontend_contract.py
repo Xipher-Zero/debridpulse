@@ -94,14 +94,10 @@ def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() 
     assert "window.confirm =" not in source
     assert "window.toast =" not in source
 
-    expected = [
-        "['sources', 'Services', 'zap']",
-        "['downloads', 'Downloads', 'download-downloads']",
-        "['extraction', 'Extraction', 'package-open']",
-        "['authentication', 'Authentication', 'shield-user']",
-        "['notifications', 'Notifications', 'bell-ring']",
-        "['maintenance', 'Data & Maintenance', 'database']",
-    ]
+    # 1.0.14: each tab is said from the catalog by its key.
+    expected = [f"['{tab}', say('settings.tab.{tab}'), '{glyph}']" for tab, glyph in (
+        ("sources", "zap"), ("downloads", "download-downloads"), ("extraction", "package-open"),
+        ("authentication", "shield-user"), ("notifications", "bell-ring"), ("maintenance", "database"))]
     positions = [source.index(item) for item in expected]
     assert positions == sorted(positions)
 

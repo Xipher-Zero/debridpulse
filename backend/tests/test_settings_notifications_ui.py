@@ -366,7 +366,8 @@ def test_the_shared_inline_primitive_puts_the_title_over_its_hint():
     runtime = source(RUNTIME)
     primitive = block(runtime, "function inlineField(id, label, hint, control", "const CONFIGURED_SECRET_MASK")
     info = primitive[primitive.index("dp-settings-inline-field-info"):]
-    assert info.index("${title}") < info.index("form-hint")
+    assert info.index("${title}") < info.index("hintMarkup(hint)")
+    assert '<span class="form-hint"' in block(runtime, "const hintMarkup = hint =>", ";\n")
     layout = block(source(SHARED), "#view-settings .dp-settings-inline-field {", "}")
     assert "display: flex" in layout and "align-items: center" in layout
     stack = block(source(SHARED), "#view-settings .dp-settings-inline-field-info {", "}")

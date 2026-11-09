@@ -1,6 +1,8 @@
 """Contract coverage for the final v1.0.11 Downloads Settings completion pass."""
 
 from pathlib import Path
+
+from i18n_node import english, says
 import re
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +23,8 @@ def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leaka
     # The AllDebrid row reaches it through its one placeholder declaration,
     # which both the render and the convergence path use.
     assert "ALLDEBRID_KEY_PLACEHOLDER = configured =>" in runtime
-    assert runtime.count("CONFIGURED_SECRET_MASK : 'Your AllDebrid API key'") == 1
+    assert runtime.count("CONFIGURED_SECRET_MASK : say('settings.key.placeholder', {provider: 'AllDebrid'})") == 1
+    assert english("settings.key.placeholder") == "Your {provider} API key"
     assert "•••••" not in runtime
 
 
@@ -102,7 +105,7 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
         "Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. Plain retries double the delay, up to 5 minutes. Set to 0 to retry immediately.",
     )
     for text in expected:
-        assert text in runtime
+        assert says(runtime, text), text
 
 
 def test_safety_recovery_no_longer_hard_codes_a_three_over_two_matrix():
@@ -116,7 +119,7 @@ def test_safety_recovery_no_longer_hard_codes_a_three_over_two_matrix():
     assert "repeat(6, minmax(0, 1fr))" not in css
     assert "nth-child(4)" not in css and "nth-child(5)" not in css
 
-    recovery = page[page.index("card('Disk Space & Recovery'"):
+    recovery = page[page.index("card(say('settings.downloads.recovery')"):
                     page.index("className: 'dp-settings-download-recovery-card'")]
     assert "tuningCells(" in recovery
     # Two relationships and one standalone control.

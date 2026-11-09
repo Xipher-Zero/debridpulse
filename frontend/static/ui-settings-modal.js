@@ -296,7 +296,8 @@
       accept.textContent = String(spec.acceptLabel || window.DPI18n.t('dialog.confirm'));
       accept.disabled = spec.acceptDisabled === true;
     }
-    // ``spec.keys`` ({title, titleValues, accept, cancel, message, messageValues}):
+    // ``spec.keys`` ({title, titleValues, accept, acceptValues, cancel, cancelValues,
+    // message, messageValues}):
     // the catalog keys these words were said from, so an open dialog is re-worded
     // in place on a language change (ui-i18n.js render). Optional; words alone stay.
     const keys = spec.keys || {};
@@ -306,8 +307,8 @@
       if (values) node.dataset.i18nValues = JSON.stringify(values);
     };
     name(overlay.querySelector(`#${dialogId}-title`), keys.title, keys.titleValues);
-    name(cancel, keys.cancel);
-    name(accept, keys.accept);
+    name(cancel, keys.cancel, keys.cancelValues);
+    name(accept, keys.accept, keys.acceptValues);
 
     let settled = false;
     let resolveClosed;
@@ -476,8 +477,15 @@
     acceptLabel = '',
     cancelLabel = '',
     placeholder = '',
+    // ``keys`` ({title, label, hint, placeholder, accept, cancel}): the catalog
+    // keys of those words, so an open prompt is re-worded in place (its value
+    // and focus untouched). Optional; words alone stay.
+    keys = {},
   } = {}) {
     let field = null;
+    // The default words are keyed like given ones, so they re-word in place too.
+    keys = {...keys, accept: keys.accept || (acceptLabel ? undefined : 'common.save'),
+      cancel: keys.cancel || (cancelLabel ? undefined : 'common.cancel')};
     acceptLabel = acceptLabel || window.DPI18n.t('common.save');
     cancelLabel = cancelLabel || window.DPI18n.t('common.cancel');
     const dialog = open({
@@ -486,19 +494,23 @@
       acceptLabel,
       cancelLabel,
       className: 'dp-modal-prompt',
+      keys: {title: keys.title, accept: keys.accept, cancel: keys.cancel},
       mount(body) {
         const wrapper = document.createElement('label');
         wrapper.className = 'dp-modal-field';
         wrapper.innerHTML = '<span class="form-label"></span><input class="input" type="text" autocomplete="off" spellcheck="false">';
         wrapper.querySelector('.form-label').textContent = String(label || '');
+        if (keys.label) wrapper.querySelector('.form-label').dataset.i18n = keys.label;
         field = wrapper.querySelector('input');
         field.value = String(value ?? '');
         if (placeholder) field.placeholder = String(placeholder);
+        if (keys.placeholder) field.dataset.i18nAttr = `placeholder:${keys.placeholder}`;
         body.appendChild(wrapper);
         if (!hint) return null;
         const help = document.createElement('p');
         help.className = 'dp-modal-message';
         help.textContent = String(hint);
+        if (keys.hint) help.dataset.i18n = keys.hint;
         body.appendChild(help);
         return help;
       },

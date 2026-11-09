@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from i18n_node import english, says
+
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 SETTINGS = (STATIC / "ui-settings-page.js").read_text(encoding="utf-8")
 SERVERS = (STATIC / "ui-settings-usenet-servers.js").read_text(encoding="utf-8")
@@ -33,15 +35,16 @@ def downloads_panel() -> str:
 
 def test_master_groups_are_renamed():
     panel = sources_panel()
-    assert "groupCard('Premium Services'" in panel
+    # 1.0.14: said from the catalog by key (the words unchanged).
+    assert "groupCard(say('settings.services.premium')" in panel and english("settings.services.premium") == "Premium Services"
     assert "'Debrid Services'" not in panel
-    assert "Network Sources" in SETTINGS
+    assert says(SETTINGS, "Network Sources")
     assert "groupCard('Direct Sources'" not in panel
 
 
 def test_usenet_is_the_first_card_under_premium_services():
     panel = sources_panel()
-    assert "groupCard('Premium Services'," in panel
+    assert "groupCard(say('settings.services.premium')," in panel
     # The one Services order owner puts the service family (Usenet) first;
     # test_v113_debridlink_presentation runs it on the real catalogue.
     assert "premiumServiceOrder([" in panel and "['usenet', usenetCard]" in panel
@@ -75,7 +78,8 @@ def test_usenet_renders_collapsed_and_only_an_accepted_enable_can_open_it():
 def test_enabled_but_unconfigured_usenet_reports_unconfigured():
     status = SETTINGS[SETTINGS.index("function providerStatus("):
                       SETTINGS.index("function providerCard(")]
-    assert "{text: 'Unconfigured', tone: 'error'}" in status
+    assert "{text: say('settings.status.unconfigured'), tone: 'error'}" in status
+    assert english("settings.status.unconfigured") == "Unconfigured"
     assert "Configuration required" not in status
 
 
@@ -104,7 +108,7 @@ def test_no_daemon_name_in_operator_facing_settings_markup():
 def test_usenet_card_renders_an_add_server_tile_and_server_collection():
     assert "function usenetAddTile()" in SETTINGS
     assert 'data-usenet-action="add"' in SETTINGS
-    assert "Add Server" in SETTINGS
+    assert says(SETTINGS, "Add Server")
     assert "data-usenet-collection" in SETTINGS
 
 
@@ -169,7 +173,7 @@ def test_clearing_a_stored_password_is_explicit():
 
 
 def test_a_failed_native_application_is_surfaced_on_the_card():
-    assert "native" in SERVERS and "did not accept it" in SERVERS
+    assert "native" in SERVERS and says(SERVERS, "did not accept it")
 
 
 def test_connections_and_priority_share_one_aligned_row():
@@ -196,7 +200,7 @@ def test_no_api_key_field_is_exposed_on_a_news_server():
 
 
 def test_priority_helper_text_matches_characterized_semantics():
-    assert "Lower values have priority." in SETTINGS
+    assert says(SETTINGS, "Lower values have priority.")
 
 
 def test_server_actions_are_test_remove_and_a_confirmed_clear():
@@ -215,13 +219,14 @@ def test_server_test_and_remove_use_the_canonical_settings_actions():
     canonical destructive action; Test is the one canonical Test control,
     text-only on a server card (1.0.14: no chip, no flask glyph). The blank card
     the behaviour owner creates says the same."""
-    remove = '<button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">'
-    assert remove in SETTINGS and remove in SERVERS
+    # Its word is the catalog's (1.0.14), keyed after these attributes in both renderings.
+    remove = 'type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove"'
+    assert remove in SETTINGS and remove in SERVERS and english("settings.usenet.remove") == "Remove"
     assert "btn-ghost btn-sm dp-usenet-remove" not in SETTINGS + SERVERS
     blank_test = SERVERS[SERVERS.index('data-usenet-action="test"') - 80:SERVERS.index('data-usenet-action="test"') + 400]
     assert 'class="btn btn-ghost btn-sm dp-settings-provider-test"' in blank_test
     blank_test = blank_test[:blank_test.index("</button>")]
-    assert "<span>Test</span>" in blank_test
+    assert "said('span', 'settings.test')" in blank_test and english("settings.test") == "Test"
     for part in ("dp-settings-action-chip", "flask-conical.svg"):
         assert part not in blank_test, part
     # No second Test style: the Usenet stylesheet states nothing about either.
@@ -278,9 +283,11 @@ def test_server_collection_has_exactly_one_writer():
 
 def test_downloads_has_the_three_master_cards_in_order():
     panel = downloads_panel()
-    first = panel.index("'Download Behavior & Limits'")
-    second = panel.index("groupCard('Transfer Method Settings'")
-    third = panel.index("'Disk Space & Recovery'")
+    first = panel.index("say('settings.downloads.behavior')")
+    second = panel.index("groupCard(say('settings.downloads.methods')")
+    third = panel.index("say('settings.downloads.recovery')")
+    assert [english(key) for key in ("settings.downloads.behavior", "settings.downloads.methods", "settings.downloads.recovery")] == \
+        ["Download Behavior & Limits", "Transfer Method Settings", "Disk Space & Recovery"]
     assert first < second < third
 
 
@@ -297,7 +304,8 @@ def test_executor_tuning_has_general_sources_and_usenet_children():
     Providers. The executor id stays 'direct' -- nothing about the executor
     changed, and renaming a durable identity for copy would be churn."""
     panel = downloads_panel()
-    assert "executorTuningCard('direct', 'Network Sources'" in panel
+    assert "executorTuningCard('direct', say('integration.group.direct_sources')" in panel
+    assert english("integration.group.direct_sources") == "Network Sources"
     assert "executorTuningCard('usenet', 'Usenet'" in panel
 
 
@@ -320,8 +328,8 @@ def test_tuning_headers_have_centred_neutral_explanatory_text():
     # DP 1.0.13 consolidation: operator-facing flavour text, in the SAME
     # de-emphasised titlebar treatment the Download Behavior & Limits header
     # uses -- one declaration, two users, never a second heading style.
-    assert "How DebridPulse handles downloads from direct network sources." in panel
-    assert "Global download behavior shared by all Usenet servers." in panel
+    assert says(panel, "How DebridPulse handles downloads from direct network sources.")
+    assert says(panel, "Global download behavior shared by all Usenet servers.")
     assert "dp-settings-download-engine-header-copy" in SETTINGS[
         SETTINGS.index("function executorTuningCard("):SETTINGS.index("function directTransfersTuning(")]
     # DP 1.0.13 work item E: the copy is centred against the FULL header by the

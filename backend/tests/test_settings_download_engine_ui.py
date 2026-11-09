@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -30,7 +32,8 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     css = source(SETTINGS_PAGE_CSS)
     chrome = source(SETTINGS_CHROME_CSS)
 
-    assert "card('Download Behavior & Limits'" in downloads
+    # 1.0.14: its words are the catalog's, by key (unchanged English).
+    assert "card(say('settings.downloads.behavior')" in downloads and english("settings.downloads.behavior") == "Download Behavior & Limits"
     assert "aria2 Delivery" not in downloads
     # Operator-facing tuning labels name capabilities, never daemons.
     assert "card('Download Engine'" not in downloads
@@ -40,7 +43,7 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     assert "'Download Behavior & Limits':" not in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
-    assert "Where DebridPulse saves downloads and how many it runs at once." in downloads
+    assert says(downloads, "Where DebridPulse saves downloads and how many it runs at once.")
     assert "dp-settings-download-engine-copy" not in downloads
     # One engine: the header carries no selector action.
     assert "action:" not in downloads
@@ -69,15 +72,16 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     runtime = source(SETTINGS_PAGE_JS)
     downloads = downloads_runtime()
 
-    assert "directoryField('download_folder', 'Download Folder'" in downloads
-    assert "Browse server directories for Download Folder" in downloads
-    assert "Where DebridPulse saves downloads." in downloads
-    assert "Maximum downloads DebridPulse runs at once." in downloads
+    assert "directoryField('download_folder', say('settings.downloads.folder')" in downloads
+    assert english("settings.downloads.folder") == "Download Folder"
+    for words in ("Browse server directories for Download Folder", "Where DebridPulse saves downloads.",
+                  "Maximum downloads DebridPulse runs at once."):
+        assert says(downloads, words), words
     # No topology control exists, visible or hidden, in the global card.
     # (Collapsed Transfer Method Settings child cards legitimately use `hidden`,
     # so the check is scoped to the Download Behavior & Limits card it is about.)
-    global_card = downloads[downloads.index("card('Download Behavior & Limits'"):
-                            downloads.index("const tuning = groupCard('Transfer Method Settings'")]
+    global_card = downloads[downloads.index("card(say('settings.downloads.behavior')"):
+                            downloads.index("const tuning = groupCard(say('settings.downloads.methods')")]
     assert " hidden" not in global_card and "'hidden'" not in global_card
     for absent in ("aria2_mode", "aria2_url", "aria2_secret", "aria2_download_path",
                    "data-download-path-mode", "data-builtin-only-tuning", "External aria2", "External RPC",
@@ -179,7 +183,7 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     # Advanced direct-transfer tuning lives in the collapsed "Network Sources"
     # child card of the Executor Tuning master card (DP 1.0.13 Item 8 renamed
     # the operator-facing family; the executor id is unchanged).
-    assert "executorTuningCard('direct', 'Network Sources'" in downloads
+    assert "executorTuningCard('direct', say('integration.group.direct_sources')" in downloads
     assert "function directTransfersTuning(s)" in downloads
     # DP 1.0.13: one reusable tuning-cell collection, shared with Usenet,
     # Safety & Recovery and the AllDebrid tuning region. The competing
@@ -199,7 +203,7 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
         "Controls how disk space is prepared for new files.",
     )
     for text in required_copy:
-        assert text in downloads
+        assert says(downloads, text), text
 
     # DP 1.0.13 adjacency: connections/segments/split size, then the two
     # in-progress controls, then the two disk controls.
@@ -217,10 +221,9 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
                        downloads.index("function usenetTuning(")]
     assert tuning.count("tuningGroup(") == 3
 
-    assert "['trunc', 'Truncate']" in downloads
-    assert "['falloc', 'Fallocate']" in downloads
-    assert "['prealloc', 'Preallocate']" in downloads
-    assert "['none', 'None']" in downloads
+    for value, words in (("trunc", "Truncate"), ("falloc", "Fallocate"), ("prealloc", "Preallocate"), ("none", "None")):
+        assert f"['{value}', say('settings.direct.allocation.{value}')]" in downloads
+        assert english(f"settings.direct.allocation.{value}") == words
 
     grid = css.split(".dp-settings-tuning-grid {", 1)[1].split("}", 1)[0]
     # DP 1.0.13 consolidation: equal-width invisible lanes, one per cell of the

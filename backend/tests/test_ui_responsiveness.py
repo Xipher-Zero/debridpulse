@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from i18n_node import english
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -114,7 +115,8 @@ def test_settings_remote_tests_hold_pending_state_through_remote_test():
     test = settings.split("async function testConnection(kind, button)", 1)[1].split(
         "async function uploadAvatar", 1
     )[0]
-    assert test.index("setBusy(button, true, 'Testing…')") < test.index(
+    assert english("settings.testing") == "Testing…"   # 1.0.14: the busy words are the catalog's
+    assert test.index("setBusy(button, true, say('settings.testing'))") < test.index(
         "await request('POST', endpoints[kind]"
     )
     assert test.index("await request('POST', endpoints[kind]") < test.index("finally")
@@ -135,7 +137,9 @@ def test_settings_executor_work_refresh_is_coalesced_and_actions_acknowledge():
     assert "async function perform(button)" in live
     # One re-read in flight; whatever is asked for meanwhile is one trailing re-read.
     assert "if (inflight) {\n      queued = {explicit: !!(queued?.explicit || explicit)};\n      return;" in live
-    assert "cancel: 'Terminating…'" in live
+    # 1.0.14: the pending words are a catalog key the shared pending owner says.
+    assert "`settings.engine_activity.pending.${action}`" in live and "setButtonPending(button, true, actionPending(action));" in live
+    assert english("settings.engine_activity.pending.cancel") == "Terminating…"
     # The superseded Settings handlers that used to live beside the queue
     # (refresh button, database wipe, stats report) are retired; the clean
     # Settings runtime owns them.

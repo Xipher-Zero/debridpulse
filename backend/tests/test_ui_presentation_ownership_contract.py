@@ -1,4 +1,5 @@
 from pathlib import Path
+from i18n_node import says
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -79,7 +80,7 @@ def test_bounded_runtime_owners_are_present() -> None:
     assert "window.DPActivityLog" in activity and "activity_log_page_size" in activity and "next_before" in activity
     archive = read("ui-settings-archive-passwords.js")
     assert "window.DPArchivePasswords" in archive
-    assert all(token in archive for token in ("Show all passwords", "Hide all passwords", "Escape", "Enter", "clipboardData"))
+    assert all(says(archive, token) for token in ("Show all passwords", "Hide all passwords", "Escape", "Enter", "clipboardData"))
     # Correction 7 (DP 1.0.12 UI Finishing): empty Backspace no longer has
     # any special-cased keydown handling at all -- it is a true no-op.
     assert "Backspace" not in archive

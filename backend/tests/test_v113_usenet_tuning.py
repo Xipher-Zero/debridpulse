@@ -19,6 +19,8 @@ None of them requires a restart.
 import re
 from pathlib import Path
 
+from i18n_node import english, says
+
 import pytest
 from pydantic import ValidationError
 
@@ -246,8 +248,9 @@ def test_no_excluded_native_setting_appears_in_the_tuning_surface():
 
 def test_maximum_retries_is_labelled_as_acquisition_retry_not_transfer_retry():
     block = _usenet_tuning_block()
-    assert "Maximum Retries" in block
-    lowered = block.lower()
+    assert says(block, "Maximum Retries")
+    # 1.0.14: what the block says is its source and the English of the keys it names.
+    lowered = (block + " ".join(english(key) for key in re.findall(r"say\('([a-z0-9_.]+)'", block))).lower()
     assert "news server" in lowered
     assert "not the debridpulse download retry" in lowered
 

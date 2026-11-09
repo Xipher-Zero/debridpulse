@@ -207,9 +207,20 @@
     return fragment;
   }
 
+  /* An argument may itself be a message, {"$t": key, "$v": its arguments}
+   * (a card's title inside "Help: {subject}"): said in the shown language. */
+  function said(values) {
+    const out = {};
+    for (const [name, value] of Object.entries(values)) {
+      out[name] = value && typeof value === 'object' && typeof value.$t === 'string'
+        ? t(value.$t, value.$v && typeof value.$v === 'object' ? said(value.$v) : {}) : value;
+    }
+    return out;
+  }
+
   /* Render markup that names its keys: data-i18n (its text; with
-   * data-i18n-rich, its rich text; with data-i18n-values, a JSON object of
-   * its arguments) and data-i18n-attr ("attr:key;…"). */
+   * data-i18n-rich, its rich text) and data-i18n-attr ("attr:key;…");
+   * data-i18n-values, a JSON object, gives both their arguments. */
   function render(root = document) {
     if (!Formatter || !root) return;
     const nodes = [];
@@ -217,20 +228,21 @@
     if (root.querySelectorAll) nodes.push(...root.querySelectorAll('[data-i18n],[data-i18n-attr]'));
     nodes.forEach(node => {
       const key = node.getAttribute('data-i18n');
+      // One argument object for the element: its text's and its attributes'.
+      let values = {};
+      if (node.hasAttribute('data-i18n-values')) {
+        try { values = said(JSON.parse(node.getAttribute('data-i18n-values')) || {}); } catch (_) { note('invalid values', key || node.getAttribute('data-i18n-attr')); }
+      }
       // A control showing its pending state (data-pending, app.js
       // setButtonPending) keeps its words: its owner says that state in the
       // new language. Its attributes (its idle label, its tooltip) follow here.
       if (key && !node.closest('[data-pending="1"]')) {
-        let values = {};
-        if (node.hasAttribute('data-i18n-values')) {
-          try { values = JSON.parse(node.getAttribute('data-i18n-values')) || {}; } catch (_) { note('invalid values', key); }
-        }
         if (node.hasAttribute('data-i18n-rich')) node.replaceChildren(rich(key, values));
         else node.textContent = t(key, values);
       }
       for (const pair of String(node.getAttribute('data-i18n-attr') || '').split(';')) {
         const [attribute, attributeKey] = pair.split(':').map(part => part && part.trim());
-        if (attribute && attributeKey) node.setAttribute(attribute, t(attributeKey));
+        if (attribute && attributeKey) node.setAttribute(attribute, t(attributeKey, values));
       }
     });
   }

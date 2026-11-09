@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -67,3 +68,20 @@ def program(body: str) -> str:
 def english(key: str) -> str:
     """A key's English message in the catalog (what the page says in English)."""
     return json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))["messages"][key]
+
+
+def says(source: str, words: str) -> bool:
+    """Whether an owner's source says ``words`` in English: written as they are, or
+    through a catalog key it names (quoted, or as the stem of a key it builds) whose
+    English message holds them. A source-reading oracle keeps its meaning -- the owner
+    still says these words -- whether the words are a literal or the catalog's."""
+    if words in source:
+        return True
+    messages = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))["messages"]
+    for key, text in messages.items():
+        if words not in text:
+            continue
+        stem = key.rsplit(".", 1)[0] + "."
+        if re.search(rf"""['"`]{re.escape(key)}['"`]""", source) or re.search(rf"""['"`]{re.escape(stem)}\$\{{""", source):
+            return True
+    return False

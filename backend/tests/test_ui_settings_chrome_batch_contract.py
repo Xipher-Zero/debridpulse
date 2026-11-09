@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from i18n_node import english, says
 import re
 import xml.etree.ElementTree as ET
 
@@ -125,9 +127,13 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
         assert moved not in runtime, moved
     assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-settings-nav'),\n    copy: '.dp-settings-header-copy',\n    identity: {title: '.dp-settings-header-title', hint: '.dp-settings-header-subtitle', levels: [" in runtime
     # The approved handheld identity levels, longest first (the last, none, is the owner's).
-    for level in ("{title: 'Tuning Deck', hint: 'Your rules, your defaults.'}", "{title: 'Tuning Deck', hint: 'Your rules.'}",
-                  "{title: 'Tuning', hint: 'Your rules.'}", "{title: 'Tune', hint: 'Rules!'}"):
-        assert level in runtime, level
+    # 1.0.14: each level is said from the catalog; the approved words are unchanged.
+    for title, hint, words in (("title", "hint", ("Tuning Deck", "Your rules, your defaults.")),
+                               ("title", "hint_short", ("Tuning Deck", "Your rules.")),
+                               ("title_short", "hint_short", ("Tuning", "Your rules.")),
+                               ("title_shortest", "hint_shortest", ("Tune", "Rules!"))):
+        assert f"{{title: say('settings.header.{title}'), hint: say('settings.header.{hint}')}}" in runtime, words
+        assert (english(f"settings.header.{title}"), english(f"settings.header.{hint}")) == words
     # No title-only or iconless level: after Tune / Rules! the whole identity goes (the owner's none).
     assert "{title: 'Tune', hint: ''}" not in runtime and "artwork: false" not in runtime
     fit = mechanics[mechanics.index("function fitNavigation("):mechanics.index("function navWindow(")]
@@ -139,10 +145,12 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "const NAV_TRIM = 5;" in mechanics and "navFit.trim = navTrim(navFit.window);" in fit
     assert "nav.style.removeProperty('--dp-section-nav-trim');" in fit
     assert "window.matchMedia('(min-width: 780px)')" in mechanics
-    assert "${travel('previous', 'chevronLeft', 'Previous section')}" in runtime
-    assert "${travel('next', 'chevronRight', 'Next section')}" in runtime
+    assert "${travel('previous', 'chevronLeft', say('settings.nav.previous'))}" in runtime
+    assert "${travel('next', 'chevronRight', say('settings.nav.next'))}" in runtime
+    assert (english("settings.nav.previous"), english("settings.nav.next")) == ("Previous section", "Next section")
     assert "chevronFirst" not in runtime and "chevronLast" not in runtime
-    assert runtime.count('role="tablist" aria-label="Settings sections"') == 1
+    assert runtime.count('role="tablist"${keyed(null, {\'aria-label\': say(\'settings.nav.sections\')})}') == 1
+    assert english("settings.nav.sections") == "Settings sections"
     assert "dp-settings-tab-face" not in runtime
     travel = runtime[runtime.index("const travel = event.target.closest('.dp-settings-nav-end');"):]
     travel = travel[:travel.index("return;\n      }")]
@@ -278,7 +286,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Premium Services'," in sources
+    assert "groupCard(say('settings.services.premium')," in sources
     # One Services order owner (premiumServiceOrder) composes every premium card.
     assert "premiumServiceOrder([" in sources
     for card in ("['usenet', usenetCard]", "['alldebrid', provider]", "['debridlink', debridLinkCard]",
@@ -295,7 +303,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     # hand-written markup, so there is one control owner and one commit
     # declaration instead of two.
     assert "className: `dp-settings-alldebrid-key-row dp-settings-help-slot ${configured ? 'is-configured' : ''}`" in key_helper
-    assert "return input(key, 'API Key', ''," in key_helper
+    assert "return input(key, say('settings.key.label'), ''," in key_helper
     # The configured/unconfigured parts of the row are declared once and used
     # both to render it and to converge it.
     assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_helper
@@ -313,21 +321,24 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "Clear stored API Key" not in runtime
     assert 'data-action="clear-alldebrid-key"' in runtime
     assert "Remove API Key" not in runtime
-    assert ">Remove</button>" in runtime
+    assert "${html(t('settings.key.remove'))}</button>" in runtime and english("settings.key.remove") == "Remove"
     assert "Clear Stored API Key" not in runtime
     assert "Confirm removal of the stored API key" not in runtime
     assert "data-alldebrid-clear-confirm" not in runtime
     # The generic secretField() helper still uses that phrasing for the other
     # secrets; the AllDebrid row has always stated its own.
     assert "configured — blank keeps current value" not in key_helper
-    assert "Enter an API key to connect your AllDebrid account." in runtime
-    assert "API key configured for your AllDebrid account." in runtime
+    assert english("settings.key.hint_missing").replace("{provider}", "AllDebrid") == "Enter an API key to connect your AllDebrid account."
+    assert "'settings.key.hint_missing'" in runtime
+    assert english("settings.key.hint_configured").replace("{provider}", "AllDebrid") == "API key configured for your AllDebrid account."
+    assert "'settings.key.hint_configured'" in runtime
     assert "Leave this field blank to keep the current key." not in runtime
     assert "api_key: valueOf('alldebrid_api_key')" in runtime
 
     assert '<details class="dp-settings-additional">' in sources
     assert '<details class="dp-settings-additional" open' not in sources
-    assert '<summary><span>Additional Settings</span></summary>' in sources
+    assert "<summary><span${keyed(say('settings.provider.additional'))}>${html(t('settings.provider.additional'))}</span></summary>" in runtime
+    assert english("settings.provider.additional") == "Additional Settings"
     # Tuning-only, as compact cells in the reusable neutral tuning grid.
     additional = sources[sources.index('class="dp-settings-additional-body"'):]
     assert "tuningCells(" in additional

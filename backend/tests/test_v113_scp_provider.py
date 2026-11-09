@@ -32,6 +32,7 @@ from transfers.errors import Category, TransferError
 from transfers.models import ExecutionSubject, InputMethod, ResourceState, SourceIdentity, TransferRequest
 from transfers.registry import IntegrationRegistry
 from transfers.requests import normalize_direct_links
+from i18n_node import english
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -462,8 +463,10 @@ def test_settings_protocol_chip_declares_scp_glyph_and_colour_once() -> None:
     assert "general_scp: 'file-down'" in table
     copy = settings[settings.index("const SOURCE_BOX_COPY"):]
     copy = copy[:copy.index("});")]
-    assert "general_scp:" in copy
-    assert "SFTP" not in copy[copy.index("general_scp:"):], "the SCP box must not describe itself as SFTP"
+    # 1.0.14: the box's two lines are the catalog's, by its identity.
+    assert "'general_scp'" in copy
+    said = english("settings.source_box.general_scp.lead") + " " + english("settings.source_box.general_scp.rest")
+    assert "SFTP" not in said, "the SCP box must not describe itself as SFTP"
     icons = (STATIC / "ui-settings-card-icons.css").read_text(encoding="utf-8")
     block = icons[icons.index("[data-protocol='general_scp']"):]
     assert block[:block.index("}")].split("{", 1)[1].strip() == "--dp-protocol-color: var(--dp-identity-general_scp);"

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 import typing
+
+from i18n_node import english
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,19 +43,23 @@ def test_the_identity_is_declared_once_in_the_central_owners():
 
 def test_the_network_sources_box_is_metadata_plus_copy_only():
     page = _read("ui-settings-page.js")
-    assert "general_webdav: ['Direct downloads from', 'WebDAV files and folders.']," in page
+    # 1.0.14: the copy is the catalog's, by the box's identity (settings.source_box.<id>.*).
+    assert "['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta', 'media']" in page
+    assert [english(f"settings.source_box.general_webdav.{part}") for part in ("lead", "rest")] == \
+        ["Direct downloads from", "WebDAV files and folders."]
     # No WebDAV-specific aggregate, status or group calculation anywhere.
     for name in ("ui-provider-status.js", "app.js", "ui-settings-page.js"):
         text = _read(name)
         occurrences = [line.strip() for line in text.splitlines()
                        if "general_webdav" in line and not line.strip().startswith(("*", "//", "/*"))]
-        allowed = {"general_webdav: 'cloud-sync',", "general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],",
+        allowed = {"general_webdav: 'cloud-sync',",
+                   "['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta', 'media']",
                    "const webdavOf = s => s?.integrations?.general_webdav?.options || {};",
                    "'general_webdav']);",
                    "webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'},",
                    "webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'},",
                    "webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',",
-                   "'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav', 'tuning-webdav') +"}
+                   "say('settings.tuning.webdav_copy'), webdavTuning(s), 'general_webdav', 'tuning-webdav') +"}
         assert set(occurrences) <= allowed, (name, set(occurrences) - allowed)
 
 
@@ -65,12 +71,15 @@ def test_directory_depth_maps_exactly_onto_the_backend_value_model():
     assert page.count("const DIRECTORY_DEPTHS = Object.freeze([") == 1
     assert "WEBDAV_DIRECTORY_DEPTHS" not in page
     block = page.split("const DIRECTORY_DEPTHS = Object.freeze([", 1)[1].split("]);", 1)[0]
-    values = re.findall(r"\['([^']+)', '([^']+)'\]", block)
+    # 1.0.14: each label is said from the catalog (a level count is one plural message).
+    values = re.findall(r"\['([^']+)', say\('([a-z0-9_.]+)'(?:, \{count: (\d)\})?\)\]", block)
     literal = typing.get_args(GeneralWebdavOptions.model_fields["directory_depth"].annotation)
-    assert [value for value, _label in values] == list(literal) == list(DIRECTORY_DEPTHS)
-    assert [label for _value, label in values] == ["Current directory only", "1 subdirectory level",
-                                                  "2 subdirectory levels", "3 subdirectory levels",
-                                                  "All subdirectories"]
+    assert [value for value, _key, _count in values] == list(literal) == list(DIRECTORY_DEPTHS)
+    words = {"settings.depth.levels": lambda n: f"{n} subdirectory level" + ("" if n == "1" else "s")}
+    assert [words[key](count) if count else english(key) for _value, key, count in values] == \
+        ["Current directory only", "1 subdirectory level", "2 subdirectory levels", "3 subdirectory levels", "All subdirectories"]
+    assert english("settings.depth.levels") == \
+        "{count, plural, one {{count} subdirectory level} other {{count} subdirectory levels}}"
     assert GeneralWebdavOptions().directory_depth == "current"
     for jargon in ("PROPFIND", "Depth:", "infinity", "multistatus"):
         assert jargon not in block
@@ -84,16 +93,19 @@ def test_the_three_webdav_tunables_are_one_relationship_group_of_the_shared_gram
     assert tuning.count("tuningCells(") == 1 and tuning.count("tuningGroup(") == 1
     assert 'class="dp-settings-tuning-footer"' in tuning
     order = [tuning.index(needle) for needle in (
-        "selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',",
-        "input('webdav_max_files', 'Maximum Files', options.max_files ?? 10000, {",
-        "input('webdav_collection_scan_timeout_seconds', 'Collection Scan Timeout (seconds)',")]
+        "selectField('webdav_directory_depth', say('settings.depth.label'), options.directory_depth || 'current',",
+        "input('webdav_max_files', say('settings.webdav.max_files'), options.max_files ?? 10000, {",
+        "input('webdav_collection_scan_timeout_seconds', say('settings.webdav.scan_timeout'),")]
+    assert [english(key) for key in ("settings.depth.label", "settings.webdav.max_files", "settings.webdav.scan_timeout")] == \
+        ["Directory Depth", "Maximum Files", "Collection Scan Timeout (seconds)"]
     assert order == sorted(order)
     assert "type: 'number', min: 1, max: 10000," in tuning
     # No limit is the canonical 0, shown as the empty field's own "No limit" --
     # never as a number of seconds.
     assert ("options.collection_scan_timeout_seconds ? options.collection_scan_timeout_seconds : '', {"
             in tuning)
-    assert "type: 'number', min: 0, max: 3600, placeholder: 'No limit'," in tuning
+    assert "type: 'number', min: 0, max: 3600, placeholder: say('settings.webdav.no_limit')," in tuning
+    assert english("settings.webdav.no_limit") == "No limit"
     assert "blank: 0}," in page.split("webdav_collection_scan_timeout_seconds: {", 1)[1].split("\n", 2)[1]
     for owner in ("function committedValue(key, raw) {", "function acceptedValue(key, accepted, draft) {"):
         assert "COMMIT_FIELDS[key]?.blank" in page.split(owner, 1)[1].split("\n  }\n", 1)[0], owner
@@ -104,8 +116,9 @@ def test_the_three_webdav_tunables_are_one_relationship_group_of_the_shared_gram
 
 def test_the_card_and_the_commit_scope_are_the_canonical_ones():
     page = _read("ui-settings-page.js")
-    assert ("executorTuningCard('webdav', 'WebDAV',\n        'Which files DebridPulse collects from WebDAV folders.', "
+    assert ("executorTuningCard('webdav', 'WebDAV',\n        say('settings.tuning.webdav_copy'), "
             "webdavTuning(s), 'general_webdav', 'tuning-webdav')") in page
+    assert english("settings.tuning.webdav_copy") == "Which files DebridPulse collects from WebDAV folders."
     assert "webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'}," in page
     assert "webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'}," in page
     assert ("webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',\n"
