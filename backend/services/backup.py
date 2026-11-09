@@ -135,7 +135,12 @@ _COPY_CHUNK = 1024 * 1024
 #   presentation (574bef2d), which it extends with the one nullable
 #   ``account_appearance.presentation_mode`` column -- NULL, Advanced, for
 #   every account it holds; every theme stays as recorded -- likewise both as
-#   a fresh installation and as one holding those four retained tables.
+#   a fresh installation and as one holding those four retained tables;
+# * the 1.0.14 schema immediately before an account's interface language
+#   (cf0ed370), which it extends with the one nullable
+#   ``account_appearance.locale`` column -- NULL, English, for every account
+#   it holds; every theme and presentation stays as recorded -- likewise both
+#   as a fresh installation and as one holding those four retained tables.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
@@ -154,6 +159,8 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:d97c20d09d9dcaa49386cbe1c3376985624491905477c0cb3a2628bb99e9d40d",
     "sha256:50025f774b496b03d43448bc7f971a7827c0de461624c0ca171ae283cbc6ffdc",
     "sha256:db806f7160ec8c47623d14f0dcb39696a7b7fe7047ff059e8bbe0787b59c0b1b",
+    "sha256:d902d0864a8096448f0a750c40c1582c6d45c121c674456c597497bb88ce31a8",
+    "sha256:9eed55b2232d8cb01aece7a22d99d06d26088daed5db74deffffa5e4a0736382",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

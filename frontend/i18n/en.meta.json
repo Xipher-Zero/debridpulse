@@ -1,0 +1,1063 @@
+{
+ "schema": "debridpulse-catalog-meta/1",
+ "locale": "en",
+ "meta": {
+  "shell.nav.group.queue": {
+   "category": "navigation",
+   "context": "Sidebar group heading above its pages; one or two short words.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; hidden in the compact rail."
+  },
+  "shell.nav.group.review": {
+   "category": "navigation",
+   "context": "Sidebar group heading above its pages; one or two short words.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; hidden in the compact rail."
+  },
+  "shell.nav.group.system": {
+   "category": "navigation",
+   "context": "Sidebar group heading above its pages; one or two short words.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; hidden in the compact rail."
+  },
+  "shell.nav.dashboard": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Dashboard'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.downloads": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Downloads'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.activity_log": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Activity Log'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.activity_log.short": {
+   "category": "navigation",
+   "context": "Short name of 'Activity Log' in the phone dock and the phone header; a separate translation, not a truncation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "The phone dock's label: about 8 characters at 320px."
+  },
+  "shell.nav.statistics": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Statistics'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.statistics.short": {
+   "category": "navigation",
+   "context": "Short name of 'Statistics' in the phone dock and the phone header; a separate translation, not a truncation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "The phone dock's label: about 8 characters at 320px."
+  },
+  "shell.nav.settings": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Settings'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.notifications": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Notifications'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.notifications.short": {
+   "category": "navigation",
+   "context": "Short name of 'Notifications' in the phone dock and the phone header; a separate translation, not a truncation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "The phone dock's label: about 8 characters at 320px."
+  },
+  "shell.nav.help": {
+   "category": "navigation",
+   "context": "Sidebar entry and its tooltip: the page 'Help & License'.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "One line in the expanded sidebar; the same text is the compact rail's tooltip."
+  },
+  "shell.nav.help.short": {
+   "category": "navigation",
+   "context": "Short name of 'Help & License' in the phone dock and the phone header; a separate translation, not a truncation.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal",
+   "geometry": "The phone dock's label: about 8 characters at 320px."
+  },
+  "shell.nav.notifications.subtitle": {
+   "category": "page-title",
+   "context": "Header subtitle of a User's own Notifications page.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "shell.page.dashboard.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Dashboard'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.dashboard.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Dashboard' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.page.downloads.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Downloads'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.downloads.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Downloads' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.page.activity_log.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Activity Log'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.activity_log.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Activity Log' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.page.statistics.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Statistics'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.statistics.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Statistics' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.page.settings.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Settings'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.settings.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Settings' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.page.help.title": {
+   "category": "page-title",
+   "context": "The page header title of 'Help & License'.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "One line in the header from 780px; the phone header shows the nav's short name where one exists."
+  },
+  "shell.page.help.subtitle": {
+   "category": "page-title",
+   "context": "The one-line description under the 'Help & License' header.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "shell.dock.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the phone dock (the bottom page bar).",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "shell.dock.more": {
+   "category": "navigation",
+   "context": "Dock button and sheet title holding the pages that do not fit the dock.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "geometry": "The phone dock's label: about 8 characters at 320px."
+  },
+  "shell.dock.more_current": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the dock's More button while the current page is one it holds.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "page": "string: the current page's name"
+   }
+  },
+  "shell.sidebar.expand": {
+   "category": "tooltip/aria",
+   "context": "Sidebar handle (tooltip and accessible name) that widens the compact rail.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
+  "shell.sidebar.collapse": {
+   "category": "tooltip/aria",
+   "context": "Sidebar handle (tooltip and accessible name) that narrows it again.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
+  "role.admin": {
+   "category": "status-chip",
+   "context": "The account role 'Admin', shown under the account's name. A fixed role name; translate it consistently everywhere.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "role.user": {
+   "category": "status-chip",
+   "context": "The account role 'User', shown under the account's name. A fixed role name; translate it consistently everywhere.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "role.readonly": {
+   "category": "status-chip",
+   "context": "The account role 'ReadOnly User', shown under the account's name. A fixed role name; translate it consistently everywhere.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "role.integration": {
+   "category": "status-chip",
+   "context": "The account role 'Integration', shown under the account's name. A fixed role name; translate it consistently everywhere.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "session.my_account": {
+   "category": "navigation",
+   "context": "Opens the signed-in person's own profile dialog.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "session.my_account.named": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the header account button.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: display name",
+    "role": "string: role name"
+   }
+  },
+  "session.my_account.role": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the header account button when the account has no display name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "role": "string: role name"
+   }
+  },
+  "session.my_account.tooltip": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the sidebar's account entry: its full display name (shown here when too long for the row), its role, then what it opens.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: display name",
+    "role": "string: role name"
+   }
+  },
+  "session.my_account.tooltip_role": {
+   "category": "tooltip/aria",
+   "context": "Tooltip of the sidebar's account entry before the display name is read.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "role": "string: role name"
+   }
+  },
+  "session.log_out": {
+   "category": "action",
+   "context": "Ends this browser's session.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "session.log_out.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of Log Out.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "session.log_out.failed": {
+   "category": "toast",
+   "context": "Shown when signing out failed.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "common.save": {
+   "category": "action",
+   "context": "Saves a dialog's changes.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "common.cancel": {
+   "category": "action",
+   "context": "Leaves a dialog without saving.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "common.not_saved": {
+   "category": "toast",
+   "context": "A save failed and the server gave no reason.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "dialog.close": {
+   "category": "action",
+   "context": "Closes a dialog that only informs (help, details); also the upper-right close control's name.",
+   "owner": "frontend/static/ui-settings-modal.js",
+   "criticality": "normal"
+  },
+  "dialog.confirm": {
+   "category": "action",
+   "context": "Default accept of a confirmation dialog whose owner names no action.",
+   "owner": "frontend/static/ui-settings-modal.js",
+   "criticality": "normal"
+  },
+  "dialog.confirm_action": {
+   "category": "modal-title",
+   "context": "Default title of a confirmation dialog whose owner names none.",
+   "owner": "frontend/static/ui-settings-modal.js",
+   "criticality": "normal"
+  },
+  "dialog.type_to_confirm": {
+   "category": "label",
+   "context": "Above the field of a destructive confirmation; {phrase} is a fixed word the person must type exactly (for example WIPE) and is never translated.",
+   "owner": "frontend/static/ui-settings-modal.js",
+   "criticality": "critical-warning",
+   "args": {
+    "phrase": "string: the literal word to type, untranslated"
+   }
+  },
+  "dialog.edit_value": {
+   "category": "modal-title",
+   "context": "Default title of a one-field edit dialog whose owner names none.",
+   "owner": "frontend/static/ui-settings-modal.js",
+   "criticality": "normal"
+  },
+  "account.title": {
+   "category": "modal-title",
+   "context": "Title of the signed-in person's own profile dialog.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Wraps between words at 320px (two lines at most) beside the Help chip and the Easy | Advanced control."
+  },
+  "account.signin.required": {
+   "category": "modal-title",
+   "context": "Line under My Account's title on a Standalone installation: sign-in is on now.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Centred on its own row at 320px."
+  },
+  "account.signin.not_required": {
+   "category": "modal-title",
+   "context": "Line under My Account's title on a Standalone installation: sign-in is off now, so anyone who can reach it uses it.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning",
+   "geometry": "Centred on its own row at 320px."
+  },
+  "account.help": {
+   "category": "tooltip/aria",
+   "context": "Help chip in My Account's header: opens My Account's help.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.username": {
+   "category": "label",
+   "context": "Read-only DebridPulse sign-in name (Server only). 'DP' is DebridPulse's abbreviation; keep it.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.username.note": {
+   "category": "hint",
+   "context": "Explains the DP Username line.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.display_name": {
+   "category": "label",
+   "context": "The name DebridPulse shows for this person.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.actual_name": {
+   "category": "label",
+   "context": "The person's real name, optional profile information.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.email": {
+   "category": "label",
+   "context": "The account's email address.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.email.placeholder": {
+   "category": "placeholder",
+   "context": "Example address; may be localized to a typical example address.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.email.edit": {
+   "category": "tooltip/aria",
+   "context": "Pencil that turns the shown email into an editable field.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.current_password": {
+   "category": "label",
+   "context": "The password the account has now.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.new_password": {
+   "category": "label",
+   "context": "The password to set.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.field.confirm_password": {
+   "category": "label",
+   "context": "The new password again, to catch typing errors.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.action.change_password": {
+   "category": "action",
+   "context": "Opens the view that changes an existing password.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.action.set_password": {
+   "category": "action",
+   "context": "Opens the view that sets a first password for an account that has none.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.action.clear_password": {
+   "category": "action",
+   "context": "Destructive: removes the Standalone Administrator's password and turns password sign-in off.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.first_password.note.standalone": {
+   "category": "hint",
+   "context": "Under Set Password on an open Standalone installation.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.first_password.note.server": {
+   "category": "hint",
+   "context": "Under Set Password for an account that signs in through an identity provider.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.clear.consequence": {
+   "category": "critical-warning",
+   "context": "The consequence of Clear Password, in the view and in its confirmation. Keep every part: password sign-in turns off; anyone who can reach DebridPulse gets in; until a new password is set.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.clear.confirm_title": {
+   "category": "modal-title",
+   "context": "Title of the confirmation before clearing the password.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.validation.current_password": {
+   "category": "toast",
+   "context": "Clear Password was pressed without the current password.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.validation.new_password": {
+   "category": "toast",
+   "context": "Set Password was pressed without a password.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.validation.passwords_differ": {
+   "category": "toast",
+   "context": "New and Confirm New Password differ.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.validation.current_and_new": {
+   "category": "toast",
+   "context": "Change Password was pressed with a field empty.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.validation.display_name": {
+   "category": "toast",
+   "context": "Save was pressed with an empty display name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "presentation.label": {
+   "category": "tooltip/aria",
+   "context": "Accessible name of the Easy | Advanced control.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "presentation.easy": {
+   "category": "action",
+   "context": "The simpler presentation choice. One short word: it shares a compact two-part control with Advanced.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Both labels in full at 320px, inside one two-part control."
+  },
+  "presentation.advanced": {
+   "category": "action",
+   "context": "The full presentation choice (everything role and deployment allow).",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Both labels in full at 320px, inside one two-part control."
+  },
+  "presentation.status.not_saved": {
+   "category": "tooltip/aria",
+   "context": "Announced when a presentation choice could not be saved; the choice returns to the saved one.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "mode": "select: easy | advanced"
+   }
+  },
+  "presentation.status.saving": {
+   "category": "tooltip/aria",
+   "context": "Announced while a presentation choice is being saved.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "mode": "select: easy | advanced"
+   }
+  },
+  "presentation.status.saved": {
+   "category": "tooltip/aria",
+   "context": "Announced once a presentation choice is saved.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "mode": "select: easy | advanced"
+   }
+  },
+  "presentation.status.unavailable": {
+   "category": "tooltip/aria",
+   "context": "Announced when the saved presentation could not be read.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "presentation.failed": {
+   "category": "toast",
+   "context": "A presentation save failed with no reason given.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "presentation.failed.detail": {
+   "category": "toast",
+   "context": "A presentation save failed; the reason follows.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "reason": "string: the localized reason"
+   }
+  },
+  "error.account.password_too_short": {
+   "category": "error",
+   "context": "Server refusal 'account.password_too_short' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal",
+   "args": {
+    "minimum": "number: the minimum length"
+   }
+  },
+  "error.account.password_required": {
+   "category": "error",
+   "context": "Server refusal 'account.password_required' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.display_name_required": {
+   "category": "error",
+   "context": "Server refusal 'account.display_name_required' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.email_invalid": {
+   "category": "error",
+   "context": "Server refusal 'account.email_invalid' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.email_provider_owned": {
+   "category": "error",
+   "context": "Server refusal 'account.email_provider_owned' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.email_already_set": {
+   "category": "error",
+   "context": "Server refusal 'account.email_already_set' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.email_changed": {
+   "category": "error",
+   "context": "Server refusal 'account.email_changed' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.current_password_incorrect": {
+   "category": "error",
+   "context": "Server refusal 'account.current_password_incorrect' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.password_changed": {
+   "category": "error",
+   "context": "Server refusal 'account.password_changed' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.password_exists": {
+   "category": "error",
+   "context": "Server refusal 'account.password_exists' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.auth_changed": {
+   "category": "error",
+   "context": "Server refusal 'account.auth_changed' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.account.password_checks_busy": {
+   "category": "error",
+   "context": "Server refusal 'account.password_checks_busy' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.account.password_not_saved": {
+   "category": "error",
+   "context": "Server refusal 'account.password_not_saved' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.password_not_cleared": {
+   "category": "error",
+   "context": "Server refusal 'account.password_not_cleared' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "critical-warning"
+  },
+  "help.my_account.title": {
+   "category": "modal-title",
+   "context": "Title of My Account's help dialog.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.intro": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.intro.open": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile": {
+   "category": "modal-title",
+   "context": "A heading in My Account's help.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.username": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.display_name": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.actual_name": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.email.own": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.email.provider": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.profile.save": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password": {
+   "category": "modal-title",
+   "context": "A heading in My Account's help.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.change": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.change.sessions": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.first": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.first.enabled": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.standalone_first": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.password.standalone_first.signin": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.my_account.signin": {
+   "category": "modal-title",
+   "context": "A heading in My Account's help.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.signin.required": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.signin.not_required": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.my_account.signin.reading": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.clear": {
+   "category": "modal-title",
+   "context": "A heading in My Account's help.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.my_account.clear.steps": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.my_account.presentation": {
+   "category": "modal-title",
+   "context": "A heading in My Account's help.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.choice": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.admin_example": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.user_example": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.unchanged": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.saved": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.presentation.open": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "login.title": {
+   "category": "page-title",
+   "context": "The sign-in page's browser tab title. 'DebridPulse' is the product name. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.unavailable.title": {
+   "category": "page-title",
+   "context": "Tab title when sign-in cannot be offered right now. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.subtitle": {
+   "category": "page-title",
+   "context": "Line under the DebridPulse name on the sign-in page. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.unavailable": {
+   "category": "page-title",
+   "context": "Line under the DebridPulse name when sign-in cannot be offered. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.secure_access": {
+   "category": "tooltip/aria",
+   "context": "Screen-reader text of the sign-in mark. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.username": {
+   "category": "label",
+   "context": "Field label. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.username.placeholder": {
+   "category": "placeholder",
+   "context": "Field placeholder. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.password": {
+   "category": "label",
+   "context": "Field label. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.password.placeholder": {
+   "category": "placeholder",
+   "context": "Field placeholder. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.password.show": {
+   "category": "tooltip/aria",
+   "context": "Eye button's accessible name while the password is hidden. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.password.hide": {
+   "category": "tooltip/aria",
+   "context": "Eye button's accessible name while it is held and the password shown. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.sign_in": {
+   "category": "action",
+   "context": "Submits the sign-in form. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.sign_in_with": {
+   "category": "action",
+   "context": "Signs in through the named identity provider. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: the identity provider's name"
+   }
+  },
+  "login.or_password": {
+   "category": "label",
+   "context": "Divider between identity-provider sign-in and the password form. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.oidc_incomplete": {
+   "category": "error",
+   "context": "Shown instead of the identity-provider button. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.not_required": {
+   "category": "hint",
+   "context": "Shown when no sign-in method is enabled. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.foot.http": {
+   "category": "hint",
+   "context": "Footnote about plain HTTP on a local network. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.foot.https": {
+   "category": "hint",
+   "context": "Footnote; {https} is the protocol name HTTPS, drawn emphasised. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal",
+   "args": {
+    "https": "markup: the protocol name HTTPS"
+   }
+  },
+  "login.return": {
+   "category": "action",
+   "context": "Link back to the sign-in page. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.challenges": {
+   "category": "error",
+   "context": "Rate limit before a sign-in form is issued. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.oidc_challenges": {
+   "category": "error",
+   "context": "Rate limit on identity-provider sign-ins. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.password_disabled": {
+   "category": "error",
+   "context": "A password sign-in arrived while password sign-in is off. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.invalid_request": {
+   "category": "error",
+   "context": "The sign-in request was malformed. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.expired": {
+   "category": "error",
+   "context": "The form's anti-forgery token expired. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.busy": {
+   "category": "error",
+   "context": "Too many password checks at once. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.invalid_password": {
+   "category": "error",
+   "context": "Standalone sign-in: the password is wrong. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.invalid_credentials": {
+   "category": "error",
+   "context": "Server sign-in: the username or password is wrong (never says which). Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.config_changed": {
+   "category": "error",
+   "context": "Sign-in raced a configuration change. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.config_changed_restart": {
+   "category": "error",
+   "context": "Identity-provider sign-in raced a configuration change. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.oidc_disabled": {
+   "category": "error",
+   "context": "An identity-provider sign-in arrived while it is off. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.oidc_unavailable": {
+   "category": "error",
+   "context": "The identity provider could not be used. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.oidc_incomplete": {
+   "category": "error",
+   "context": "The identity-provider sign-in did not finish. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.not_operational": {
+   "category": "error",
+   "context": "The sign-in was genuine but the account is disabled or removed. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "login.error.oidc_refused": {
+   "category": "error",
+   "context": "The identity provider's answer was refused. Server-rendered before sign-in: plain {name} arguments only.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  }
+ }
+}

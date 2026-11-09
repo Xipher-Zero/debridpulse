@@ -244,7 +244,7 @@ def test_handheld_shell_replaces_the_drawer_with_one_dock_presentation() -> None
     # second list: every entry declares its dock place, and app.js reads them.
     # It holds no entry of its own: only its share of the signal artwork
     # (test_ui_shell_signal_field_contract.py), kept by app.js as it rebuilds.
-    assert index.count('<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages">'
+    assert index.count('<nav id="shell-dock" class="dp-shell-dock" aria-label="Pages" data-i18n-attr="aria-label:shell.dock.label">'
                        '<dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field></nav>') == 1
     assert index.count(' data-dock="') == index.count('class="nav-item') == 7
     assert "[...document.querySelectorAll('#sidebar .nav-item[data-dock]')]" in app

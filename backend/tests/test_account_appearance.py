@@ -89,6 +89,9 @@ def _projection(script: str) -> dict:
     field, _, script = script.partition("\n")
     assert re.fullmatch(r'window\.debridPulseSignalField=".*";', field), field[:80]
     head, _, rest = script.partition("\n")
+    # Then the account's interface language (its proof: test_account_locale.py).
+    language, _, rest = rest.partition("\n")
+    assert language.startswith("window.debridPulseLocale=Object.freeze("), language[:80]
     match = re.fullmatch(r"window\.debridPulseAppearance=Object\.freeze\((.*)\);", head)
     assert match, head
     assert rest == BOOTSTRAP.read_text(encoding="utf-8")         # the owner itself, unchanged

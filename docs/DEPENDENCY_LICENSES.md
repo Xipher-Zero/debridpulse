@@ -367,6 +367,7 @@ A dependency update is incomplete until all of the following agree:
 | Resource | Version/source | License |
 |---|---|---|
 | Chart.js | 4.5.1, vendored at `frontend/static/vendor/chart.umd.min.js` | MIT ([bundled notice](../licenses/Chart.js-MIT.txt)) |
+| FormatJS `intl-messageformat` | 12.1.4, vendored byte-for-byte (the package's self-contained `intl-messageformat.iife.js` ES-module build; npm `sha512-JUkmv3cAEyijN3oiRiV3ctel7yVMuUCgfh7Pu8pj1/z6L1DSEPRyhuMaLjVw3pGmGJ5RDH54WVFxfMHZWTwyHw==`) at `frontend/static/vendor/intl-messageformat.esm.js`; it inlines `@formatjs/fast-memoize` 3.1.7, `@formatjs/icu-messageformat-parser` 3.5.22 and `@formatjs/icu-skeleton-parser` 2.1.12 | BSD-3-Clause (intl-messageformat); MIT (the three inlined FormatJS parts) ([bundled notices](../licenses/FormatJS-intl-messageformat-BSD-3-Clause-MIT.txt)) |
 | Lucide Icons UI subset | Source geometry pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`; only the shell/navigation glyphs required by DebridPulse are embedded locally in `frontend/static/operator-title.js` | ISC; Feather-derived icons retain MIT terms ([bundled notice](../licenses/Lucide-ISC-MIT.txt)) |
 
 The Lucide subset is intentionally local: DebridPulse does not load Lucide from

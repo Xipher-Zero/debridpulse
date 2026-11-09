@@ -252,7 +252,7 @@ async def test_auth_pages_use_reviewed_debridpulse_login_palettes(monkeypatch):
     assert "body::before" in _AUTH_PAGE_STYLE
     assert "body::after" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
-    response = await _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
+    response = await _state_free_auth_page(message="login.error.busy", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
     assert "style-src 'unsafe-inline'" in response.headers["Content-Security-Policy"]
 

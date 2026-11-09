@@ -29,6 +29,15 @@ account, and its presentation is that account's (``presentation_owner``), the
 same in every browser. Writing it changes that one column; writing the theme
 never changes it.
 
+The account's interface language (``locale``; ``load_locale`` and
+``set_locale``) is the same kind of choice, kept the same way: one BCP 47 tag
+of the locales the interface knows (``core.localization.locale_tags``),
+English for an account that never chose, and a stored tag the interface no
+longer knows reads as English without being rewritten. It belongs to the
+same owner as the presentation (``presentation_owner``), the default Admin's
+while sign-in is off, and writing it changes that one column. It decides the
+language the interface is shown in, nothing else.
+
 The sign-in page has one appearance of its own, the installation's
 (``auth.accounts`` table ``login_appearance``, one row): a mode and that
 mode's palette, nothing else. A personal choice never changes it: only an
@@ -279,6 +288,50 @@ async def set_presentation(account_id: str, mode: str) -> str:
             (str(account_id), DEFAULT["mode"], DEFAULT["dark_palette"], DEFAULT["light_palette"], mode,
              datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
     return mode
+
+
+class LocaleUpdate(BaseModel):
+    """An account's language: exactly one known locale tag, nothing else."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    locale: str
+
+    @model_validator(mode="after")
+    def _known(self):
+        from core.localization import locale_tags
+
+        if self.locale not in locale_tags():
+            raise ValueError("Unknown locale")
+        return self
+
+
+async def load_locale(account_id: str) -> str:
+    from core.localization import DEFAULT_LOCALE, locale_tags
+    from db.database import get_db
+
+    async with get_db() as db:
+        row = await db.fetchone("SELECT locale FROM account_appearance WHERE account_id=?", (str(account_id),))
+    tag = row["locale"] if row is not None else None
+    return tag if tag in locale_tags() else DEFAULT_LOCALE
+
+
+async def set_locale(account_id: str, tag: str) -> str:
+    """Record one account's language, atomically and alone: an account without
+    a record gets the native theme with it, and an existing record keeps its
+    theme and presentation exactly as stored."""
+    from core.localization import locale_tags
+
+    if tag not in locale_tags():
+        raise ValueError("Unknown locale")
+    async with _transaction() as db:
+        await db.execute(
+            "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,locale,updated_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET "
+            "locale=excluded.locale, updated_at=excluded.updated_at",
+            (str(account_id), DEFAULT["mode"], DEFAULT["dark_palette"], DEFAULT["light_palette"], tag,
+             datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
+    return tag
 
 
 def public(row) -> dict:

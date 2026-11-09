@@ -1,0 +1,12 @@
+/* The page's language (ui-i18n.js): a page shown in another language than
+   English stays veiled until its messages are in place, so English never
+   shows first. The veil lifts by itself after 4 s should no script ever run
+   (the runtime gives up waiting for a catalog after 3 s and shows English). */
+html[data-dp-locale-pending] body {
+  visibility: hidden;
+  animation: dp-locale-veil-failsafe 0s linear 4s forwards;
+}
+
+@keyframes dp-locale-veil-failsafe {
+  to { visibility: visible; }
+}

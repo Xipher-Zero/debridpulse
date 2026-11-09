@@ -134,30 +134,7 @@ function navigateTo(el) {
     content.scrollTop = 0;
   }
 
-  const titles = {
-    dashboard:'Dashboard', torrents:'Downloads', events:'Activity Log',
-    stats:'Statistics', settings:'Settings', help:'Help & License',
-  };
-  const subtitles = {
-    dashboard:'Download activity and system status.',
-    torrents:'Manage active and queued transfers.',
-    events:'Transfer events, decisions, and alerts.',
-    stats:'Transfer history and metrics.',
-    settings:'Manage downloads and services.',
-    help:'Guides, project information, and licensing.',
-  };
-  // A sidebar entry may name the page it opens (a User's Settings slot opens
-  // their own Notifications).
-  const title = el.dataset.title || titles[v] || v;
-  const heading = document.getElementById('page-title');
-  heading.textContent = title;
-  // The entry's short name, drawn in its place by the handheld header only
-  // (ui-shell-mobile.css); the heading's own text stays the whole name.
-  if (el.dataset.shortLabel) heading.dataset.short = el.dataset.shortLabel;
-  else delete heading.dataset.short;
-  fitShellHeader();
-  const subtitle = document.getElementById('page-subtitle');
-  if (subtitle) subtitle.textContent = el.dataset.subtitle || subtitles[v] || '';
+  const title = showPageHeading(el);
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
   syncDashboardSparkPulses();
   if (v === 'dashboard') { loadStats(); loadRecent(); }
@@ -170,6 +147,27 @@ function navigateTo(el) {
   if (v === 'help')      loadHelp();
   syncShellDock();
   setSidebarOverlay(false);
+}
+
+/* The page header's title and subtitle for a sidebar entry, in the page's
+ * language (ui-i18n.js). A sidebar entry may name the page it opens (a
+ * User's Settings slot opens their own Notifications). Returns the title. */
+const PAGE_KEYS = Object.freeze({dashboard: 'dashboard', torrents: 'downloads', events: 'activity_log',
+  stats: 'statistics', settings: 'settings', help: 'help'});
+function showPageHeading(el) {
+  const v = el.dataset.view;
+  const page = PAGE_KEYS[v];
+  const title = el.dataset.title || (page ? DPI18n.t(`shell.page.${page}.title`) : v);
+  const heading = document.getElementById('page-title');
+  heading.textContent = title;
+  // The entry's short name, drawn in its place by the handheld header only
+  // (ui-shell-mobile.css); the heading's own text stays the whole name.
+  if (el.dataset.shortLabel) heading.dataset.short = el.dataset.shortLabel;
+  else delete heading.dataset.short;
+  fitShellHeader();
+  const subtitle = document.getElementById('page-subtitle');
+  if (subtitle) subtitle.textContent = el.dataset.subtitle || (page ? DPI18n.t(`shell.page.${page}.subtitle`) : '');
+  return title;
 }
 
 /* The handheld shell's dock (below 780px; ui-shell-mobile.css): another
@@ -242,7 +240,8 @@ function renderShellDock() {
     more.setAttribute('aria-controls', 'shell-more');
     more.setAttribute('aria-expanded', 'false');
     more.addEventListener('click', () => DPShellSheet.toggle(document.getElementById('shell-more'), {opener: more}));
-    more.innerHTML = '<span class="icon" aria-hidden="true"><svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="dp-shell-label">More</span>';
+    more.innerHTML = '<span class="icon" aria-hidden="true"><svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="dp-shell-label"></span>';
+    more.querySelector('.dp-shell-label').textContent = DPI18n.t('shell.dock.more');
     dock.append(more);
   } else {
     // Fewer than five pages: the free position stays empty and inert, so
@@ -271,7 +270,9 @@ function syncShellDock() {
   if (more) {
     const held = _shellMoreEntries.includes(active);
     more.classList.toggle('active', held);
-    more.setAttribute('aria-label', held ? `More, current page: ${active.querySelector('.nav-label')?.textContent || ''}` : 'More');
+    more.setAttribute('aria-label', held
+      ? DPI18n.t('shell.dock.more_current', {page: active.querySelector('.nav-label')?.textContent || ''})
+      : DPI18n.t('shell.dock.more'));
   }
 }
 
@@ -506,6 +507,21 @@ document.addEventListener('debridpulse:presentation-changed', event => {
   closeShellMore();
   if (current) navigateTo(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
   renderShellDock();
+});
+/* The page's language changed (ui-i18n.js has rendered the markup that names
+ * its keys): the shell's own messages follow -- the active page's heading,
+ * the dock built from the sidebar's labels, and the sidebar handle -- with no
+ * navigation, so no page reloads its data. */
+document.addEventListener('debridpulse:locale-changed', () => {
+  const active = document.querySelector('#sidebar .nav-item.active');
+  if (active) showPageHeading(active);
+  renderShellDock();
+  const handle = document.getElementById('sidebar-handle');
+  if (handle) {
+    const label = DPI18n.t(handle.getAttribute('aria-expanded') === 'true' ? 'shell.sidebar.collapse' : 'shell.sidebar.expand');
+    handle.setAttribute('aria-label', label);
+    handle.dataset.tooltip = label;
+  }
 });
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -3373,7 +3389,7 @@ function setSidebarOverlay(open, {focusHandle = false} = {}) {
     markSidebarReflow(sidebar, 'overlay');
     sidebar.classList.toggle('sidebar-overlay-open', next);
   }
-  const label = next ? 'Collapse sidebar' : 'Expand sidebar';
+  const label = DPI18n.t(next ? 'shell.sidebar.collapse' : 'shell.sidebar.expand');
   handle.setAttribute('aria-expanded', String(next));
   handle.setAttribute('aria-label', label);
   handle.dataset.tooltip = label;

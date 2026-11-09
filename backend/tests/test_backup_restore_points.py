@@ -2336,7 +2336,7 @@ async def test_a_fresh_installation_holds_the_presentation_column_and_starts_adv
 
     with closing(sqlite3.connect(database.DB_PATH)) as conn:
         assert [row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")] == [
-            "account_id", "mode", "dark_palette", "light_palette", "updated_at", "presentation_mode"]
+            "account_id", "mode", "dark_palette", "light_palette", "updated_at", "presentation_mode", "locale"]
     assert await account_appearance.load_presentation(DEFAULT_ADMIN_ID) == "advanced"
     live = backup.schema_version(database.DB_PATH)
     await database.init_db()                                  # every later start: idempotent
@@ -2426,3 +2426,110 @@ async def test_a_new_backup_brings_back_each_presentation_and_a_wipe_keeps_them(
     assert backup.schema_version(database.DB_PATH) == live
     assert _presentation_rows(database.DB_PATH) == rows
     assert await account_appearance.load_presentation(ann) == "easy"
+
+
+# ── an account's interface language: one more nullable column ───────────────
+
+# Written by the 1.0.14 build immediately before an account's interface
+# language (cf0ed370) with its own backup service: the default Admin with a
+# password (operator / pre-locale-secret), an Admin (ann) with Light /
+# Catppuccin Latte and the Easy presentation, and a User (una) with Dracula
+# and her own Discord notifications (a syntactically valid, made-up webhook).
+PRE_LOCALE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-cf0ed370.zip"
+PRE_LOCALE_RETAINED_BACKUP = (Path(__file__).parent / "fixtures"
+                              / "backup-1.0.14-cf0ed370-retained-legacy-tables.zip")
+
+
+def _locale_rows(path) -> list[tuple]:
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute("SELECT account_id, locale, presentation_mode FROM account_appearance "
+                            "ORDER BY account_id").fetchall()
+
+
+async def test_a_fresh_installation_holds_the_locale_column_and_starts_english(installation):
+    from auth.accounts import DEFAULT_ADMIN_ID
+    from services import account_appearance
+
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        assert [row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")] == [
+            "account_id", "mode", "dark_palette", "light_palette", "updated_at", "presentation_mode", "locale"]
+    assert await account_appearance.load_locale(DEFAULT_ADMIN_ID) == "en"
+    live = backup.schema_version(database.DB_PATH)
+    await database.init_db()
+    assert backup.schema_version(database.DB_PATH) == live
+    assert live not in backup._UPGRADABLE_SCHEMAS
+
+
+@pytest.mark.parametrize("fixture", [PRE_LOCALE_BACKUP, PRE_LOCALE_RETAINED_BACKUP], ids=["fresh", "retained_legacy_tables"])
+async def test_a_backup_from_before_the_locale_restores_english_with_every_account_kept(served, fixture):
+    """Upgraded on the private staged copy only: the column arrives NULL --
+    English -- and every theme, presentation, notification document and
+    password comes back as recorded."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from services import account_appearance, account_notifications
+
+    _app, client, _composed, _calls = served
+    if fixture is PRE_LOCALE_RETAINED_BACKUP:
+        with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
+            scratch.deserialize(package.read("debridpulse.db"))
+            kept = [row[0] for row in scratch.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
+                RETAINED_LEGACY_TABLES)]
+        assert len(kept) == 4
+        with closing(sqlite3.connect(database.DB_PATH)) as conn:
+            for ddl in kept:
+                conn.execute(ddl)
+            conn.commit()
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=fixture.read_bytes(), headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "locale" not in {row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before
+    assert backup.schema_version(database.DB_PATH) == live
+    people = {row["username"]: row["id"] for row in await accounts.list_accounts() if row["username"]}
+    assert {account_id: (tag, mode) for account_id, tag, mode in _locale_rows(database.DB_PATH)} == {
+        people["ann"]: (None, "easy"), people["una"]: (None, None)}
+    for account_id in (people["ann"], people["una"], accounts.DEFAULT_ADMIN_ID):
+        assert await account_appearance.load_locale(account_id) == "en"
+    assert await account_appearance.load_presentation(people["ann"]) == "easy"
+    assert (await account_appearance.load(people["ann"]))["light_palette"] == "catppuccin-latte"
+    assert (await account_notifications.load(people["una"])).discord_webhook_url.endswith("/900002/fixture-pre-locale")
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-locale-secret")
+
+
+async def test_a_new_backup_brings_back_each_language_and_a_wipe_keeps_them(served):
+    from auth import accounts
+    from services import account_appearance, db_maintenance
+
+    _app, client, _composed, _calls = served
+    ann = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
+    await account_appearance.set_locale(ann, "de")
+    await account_appearance.set_presentation(ann, "easy")
+    await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "ja")
+    point = await backup.create_restore_point()
+    await account_appearance.set_locale(ann, "fr")
+    await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "en")
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert await account_appearance.load_locale(ann) == "de"
+    assert await account_appearance.load_locale(accounts.DEFAULT_ADMIN_ID) == "ja"
+    assert await account_appearance.load_presentation(ann) == "easy"
+    live = backup.schema_version(database.DB_PATH)
+    rows = _locale_rows(database.DB_PATH)
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _locale_rows(database.DB_PATH) == rows

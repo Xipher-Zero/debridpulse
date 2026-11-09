@@ -35,7 +35,7 @@ def test_login_draws_the_canonical_logo_inline_without_public_static_dependency(
     assert 'class="brand-lockup"' in source
     assert '_logo_svg("dp-login-logo", class_name="brand-mark")' in source
     assert "Debrid<span>Pulse</span>" in source
-    assert "Secure access" in source
+    assert '_text("login.secure_access", locale)' in source        # catalog-owned (1.0.14 localization)
     assert '_static_asset("logo.svg")' in source
     assert "default-src 'none'" in source
     assert "img-src data:" in source

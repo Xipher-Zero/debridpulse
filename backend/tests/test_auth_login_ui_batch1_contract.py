@@ -13,6 +13,15 @@ AUTH_ROUTES = ROOT / "backend" / "api" / "auth_routes.py"
 SHIELD_USER = ROOT / "frontend" / "static" / "icons" / "lucide" / "shield-user.svg"
 
 
+def worded(source: str, key: str, english: str) -> bool:
+    """The page draws ``key`` from the English catalog, which words it so
+    (1.0.14 localization: the sign-in page's text is catalog-owned)."""
+    import json
+
+    catalog = json.loads((ROOT / "frontend" / "static" / "i18n" / "en.json").read_text(encoding="utf-8"))["messages"]
+    return f'_text("{key}", locale' in source and catalog[key] == english
+
+
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -31,14 +40,17 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'class="brand-pulse"' in source
     assert 'class="version"' in source
     assert "read_version()" in source
-    assert 'placeholder="Enter your username"' in source
-    assert 'placeholder="Enter your password"' in source
+    assert 'placeholder="{_text("login.username.placeholder", locale)}"' in source
+    assert worded(source, "login.username.placeholder", "Enter your username")
+    assert worded(source, "login.password.placeholder", "Enter your password")
     assert 'data-password-reveal' in source
-    assert 'or continue with user name and password' in source
-    assert 'Sign in with {provider_name}' in source
+    assert worded(source, "login.or_password", "or continue with user name and password")
+    assert worded(source, "login.sign_in_with", "Sign in with {provider}")
+    assert '_text("login.sign_in_with", locale, provider=provider_name)' in source
     assert '_lucide_inline_html("shield-user", "oidc-mark")' in source
-    assert 'Password-only LAN deployments may operate over HTTP.' in source
-    assert 'OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.' in source
+    assert worded(source, "login.foot.http", "Password-only LAN deployments may operate over HTTP.")
+    assert worded(source, "login.foot.https", "OpenID Connect requires a canonical {https} external URL.")
+    assert "https='<span class=\"https\">HTTPS</span>'" in source
 
     # The auth surface keeps application geometry while intentionally using a
     # more translucent glass material and stronger purple/blue depth in both
@@ -108,7 +120,7 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     # Local credentials are appended only after the explanatory separator.
     oidc_append = source.index('controls.append(oidc_control)')
     divider_append = source.index(
-        'controls.append(\'<div class="divider"><span>or continue with user name and password</span></div>\')'
+        'controls.append(f\'<div class="divider"><span>{_text("login.or_password", locale)}</span></div>\')'
     )
     password_append = source.index('controls.append(password_control)')
     assert oidc_append < divider_append < password_append
@@ -147,7 +159,8 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
     assert 'class="eye-off" viewBox' in source
     assert '.password-reveal .eye { display:none; }.password-reveal .eye-off { display:block; }' in source
     assert '.password-reveal[aria-pressed="true"] .eye { display:block; }.password-reveal[aria-pressed="true"] .eye-off { display:none; }' in source
-    assert 'aria-label="Hold to show password"' in source
+    assert 'aria-label="{_text("login.password.show", locale)}"' in source
+    assert worded(source, "login.password.show", "Hold to show password")
 
     # It reads no stored state -- the page's theme is the server-rendered login
     # appearance -- and must never become an authentication/network helper

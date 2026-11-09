@@ -245,7 +245,7 @@
           ${titleHint ? `<div class="dp-modal-heading">${titleSlot}<p class="dp-modal-title-hint"></p></div>` : titleSlot}
           ${titled.map(() => '<button class="btn btn-ghost btn-sm dp-modal-title-action" type="button" data-modal-action><img alt="" aria-hidden="true"></button>').join('')}
           ${spec.headerEnd instanceof HTMLElement ? '<div class="dp-modal-header-end"></div>' : ''}
-          ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" data-tooltip="Close"></button>' : ''}
+          ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close data-i18n-attr="aria-label:dialog.close;data-tooltip:dialog.close"></button>' : ''}
         </header>
         <div class="dp-modal-body"></div>
         <footer class="dp-modal-footer">
@@ -290,9 +290,10 @@
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
     // the only outcome there is, so it needs no second name and no second
     // settlement path.
-    if (cancel) cancel.textContent = String(spec.cancelLabel || (dismissOnly ? 'Close' : 'Cancel'));
+    if (cancel) cancel.textContent = String(spec.cancelLabel || window.DPI18n.t(dismissOnly ? 'dialog.close' : 'common.cancel'));
+    if (close) window.DPI18n.render(close);
     if (accept) {
-      accept.textContent = String(spec.acceptLabel || 'Confirm');
+      accept.textContent = String(spec.acceptLabel || window.DPI18n.t('dialog.confirm'));
       accept.disabled = spec.acceptDisabled === true;
     }
 
@@ -404,8 +405,8 @@
   function confirm({
     title,
     message,
-    confirmLabel = 'Confirm',
-    cancelLabel = 'Cancel',
+    confirmLabel = '',
+    cancelLabel = '',
     tone = 'warning',
     typedPhrase = '',
     withExit = false,
@@ -413,9 +414,9 @@
     const dialog = open({
       role: 'alertdialog',
       tone,
-      title: title || 'Confirm action',
-      acceptLabel: confirmLabel || 'Confirm',
-      cancelLabel: cancelLabel || 'Cancel',
+      title: title || window.DPI18n.t('dialog.confirm_action'),
+      acceptLabel: confirmLabel || window.DPI18n.t('dialog.confirm'),
+      cancelLabel: cancelLabel || window.DPI18n.t('common.cancel'),
       acceptDisabled: !!typedPhrase,
       mount(body, handle) {
         const messageEl = document.createElement('p');
@@ -426,7 +427,8 @@
           const typed = document.createElement('label');
           typed.className = 'dp-modal-typed';
           typed.innerHTML = '<span class="form-label"></span><input class="input" type="text" autocomplete="off" spellcheck="false">';
-          typed.querySelector('.form-label').textContent = `Type ${typedPhrase} to confirm.`;
+          // The phrase itself is typed as it is, in every language.
+          typed.querySelector('.form-label').textContent = window.DPI18n.t('dialog.type_to_confirm', {phrase: typedPhrase});
           const typedInput = typed.querySelector('input');
           typedInput.placeholder = typedPhrase;
           typedInput.addEventListener('input', () => handle.setAcceptEnabled(typedInput.value === typedPhrase));
@@ -453,14 +455,16 @@
     label,
     value = '',
     hint = '',
-    acceptLabel = 'Save',
-    cancelLabel = 'Cancel',
+    acceptLabel = '',
+    cancelLabel = '',
     placeholder = '',
   } = {}) {
     let field = null;
+    acceptLabel = acceptLabel || window.DPI18n.t('common.save');
+    cancelLabel = cancelLabel || window.DPI18n.t('common.cancel');
     const dialog = open({
       role: 'dialog',
-      title: title || 'Edit value',
+      title: title || window.DPI18n.t('dialog.edit_value'),
       acceptLabel,
       cancelLabel,
       className: 'dp-modal-prompt',

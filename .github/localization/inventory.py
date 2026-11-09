@@ -1,0 +1,327 @@
+"""DebridPulse localization census (WS0).
+
+Reproducibly lists every human-visible, first-party authored string the
+interface can show, from source, so coverage is reconciled against the real
+renderers rather than a hand-kept list:
+
+* ``frontend/static/*.js``: every string and template literal, read by
+  ``jslex``. Markup-bearing literals are split into messages at block
+  boundaries (paragraphs, list items, headings, cells, buttons…), keeping
+  inline markup (``<b>``, ``<code>``, links…) inside the message as rich text,
+  and their human attributes (``aria-label``, ``title``, ``placeholder``,
+  ``data-tooltip``, ``alt``) as their own entries. A literal whose surrounding
+  code shows it is machine data (a selector, a class, an event or route name,
+  a ``console`` diagnostic, a comparison value) is not a message.
+* ``frontend/static/*.html``: text and the same human attributes.
+* ``backend`` (not tests): messages the server returns to the browser for
+  display -- ``HTTPException(detail=…)`` and the refusal exceptions whose text
+  becomes a ``detail`` -- listed separately, because they are a contract
+  (``detail`` stays English for API clients; the interface localizes by code).
+
+Every entry has an inventory ID (stable while its owner, context and English
+text are unchanged), the English text, owner and line, a category, the
+placeholders it carries, and a criticality. Conditionally rendered variants
+are all present because the census reads source, not one rendered context.
+
+Usage: ``python .github/localization/inventory.py [--json OUT] [--summary]``
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import html
+import json
+import re
+import sys
+from collections import Counter
+from html.parser import HTMLParser
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jslex import literals  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+STATIC = ROOT / "frontend" / "static"
+BACKEND = ROOT / "backend"
+
+HUMAN_ATTRIBUTES = ("aria-label", "title", "placeholder", "data-tooltip", "alt", "aria-description",
+                    "data-menu-label", "data-default-label", "data-short-label", "data-title", "data-subtitle",
+                    "data-label-1", "data-label-2", "data-limit-message", "data-fit-2", "data-fit-3")
+TEXT_ARIA = ("aria-label", "aria-description", "aria-roledescription", "aria-valuetext", "aria-placeholder")
+BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "summary", "td", "th", "button", "label", "option",
+              "div", "section", "article", "header", "footer", "dt", "dd", "caption", "legend", "figcaption",
+              "small", "title", "nav", "ul", "ol", "table", "tr", "details", "select", "textarea", "form"}
+INLINE_TAGS = {"b", "strong", "i", "em", "code", "kbd", "a", "span", "br", "sup", "sub", "u", "mark", "abbr", "q"}
+
+# Code that shows the literal right after it is machine data, not a message.
+MACHINE_CONTEXT = re.compile(
+    r"(console\.\w+\(|querySelector(All)?\(|getElementById\(|closest\(|matches\(|classList\.\w+\(|"
+    r"addEventListener\(|removeEventListener\(|dispatchEvent\(|new CustomEvent\(|CustomEvent\(|"
+    r"getAttribute\(|removeAttribute\(|hasAttribute\(|toggleAttribute\(|getPropertyValue\(|setProperty\(|"
+    r"removeProperty\(|createElement\(|createElementNS\(|request\(\s*$|fetch\(|localStorage\.\w+\(|"
+    r"sessionStorage\.\w+\(|matchMedia\(|import\(|require\(|DPIcons\??\.svg\(|familyIcon\(|protocolIcon\(|"
+    r"===\s*$|!==\s*$|==\s*$|!=\s*$|case\s*$|\.includes\(|\.startsWith\(|\.endsWith\(|\.indexOf\(|split\(|"
+    r"\.replace(All)?\(|\.join\(|new RegExp\(|\.test\(|\.match\(|typeof\s+\w+\s*$|dataset\.\w+\s*=\s*$|"
+    r"\.dataset\[\s*$|\.style\.\w+\s*=\s*$|\.className\s*=\s*$|\.type\s*=\s*$|\.rel\s*=\s*$|\.href\s*=\s*$|"
+    r"\.src\s*=\s*$|\.id\s*=\s*$|\.name\s*=\s*$|\.role\s*=\s*$|\.target\s*=\s*$|\.mode\s*=\s*$|"
+    r"setAttribute\(\s*$|\.key\s*===?\s*$|toLocale\w*\(|Intl\.\w+\(|\bmethod\s*:\s*$|headers\s*:\s*\{[^}]*$)\s*$")
+SETATTR_NAME = re.compile(r"setAttribute\(\s*$")
+SETATTR_VALUE = re.compile(r"setAttribute\(\s*'([\w-]+)'\s*,\s*$")
+# Code that names what the literal is for.
+ROLE_CONTEXT = [
+    ("toast", re.compile(r"(toast|notify|notice|\.toast)\??\.?\(\s*(\w+\s*,\s*)?$")),
+    ("confirm", re.compile(r"(confirm|alert)\??\.?\(\s*$")),
+    ("error", re.compile(r"(new Error|Refused|Exception)\(\s*$")),
+    ("title", re.compile(r"\b(title|heading|caption|subject|helpSubject|shortTitle|displayName)\s*:\s*$")),
+    ("label", re.compile(r"\b(label|labelShort|acceptLabel|cancelLabel|confirmLabel|menuLabel|text|word|name|"
+                         r"placeholder|unit|summary)\s*:\s*$")),
+    ("hint", re.compile(r"\b(hint|message|detail|description|headerCopy|headerCenter|copy|note|tooltip|intro|"
+                        r"limitMessage|describe|reason|problem|empty)\s*:\s*$")),
+    ("text-assignment", re.compile(r"\.(textContent|innerText|title|placeholder|ariaLabel|value)\s*=\s*$")),
+    ("aria", re.compile(r"setAttribute\(\s*'(aria-(label|description|roledescription|valuetext|placeholder)|title|placeholder|alt)'\s*,\s*$")),
+]
+CRITICAL = re.compile(r"\b(wipe|erase|erases|reset database|cannot be undone|irreversib|destructive|permanent|"
+                      r"delete[sd]?|remov(e|es|ed|ing)|clear(s|ed|ing)?\b|discard|revok|overwrit|restore|"
+                      r"anyone who can reach|open to anyone|without a password|turns off password|"
+                      r"private (network|lan)|local network|terminate|unsafe)", re.I)
+NONHUMAN_TEXT = re.compile(
+    r"^(\s*|[\w.\-]+:[\w.\-/]+|https?://\S+|/[\w./\-?=&%{}#:]*|[\w-]+\.(js|css|svg|png|json|html|ico)(\?\S*)?|"
+    r"#[\w-]+|\.[\w-]+([.: #\[>][\w\-\[\]=\"'.:#()>* ]*)?|[a-z0-9_\-]+(\.[a-z0-9_\-]+)*|[A-Z0-9_]+|"
+    r"[\w-]+/[\w.+-]+|\{\d+\}|[\d.,%:\- ]+(px|em|rem|ms|s|%|vh|vw|fr|deg)?|[-+*/=<>!&|^~?:;,.()\[\]{}\s\d]+|"
+    r"(GET|PUT|POST|PATCH|DELETE|HEAD|OPTIONS)|[a-z]+(-[a-z]+)+|[a-z]+([A-Z][a-z]+)+|"
+    r"(rgba?|hsla?|var|calc|url|linear-gradient|color-mix)\(.*|\S*\$\{.*)$")
+CSS_LIKE = re.compile(r"^[\s\w\-.#:\[\]=\"'(),>*+~@%/]*\{|[\w-]+\s*:\s*[^;]+;|^@media|^[.#][\w-]")
+SELECTOR_LIKE = re.compile(r"^[\w\-.#:\[\]=\"'(),>*+~ ]+$")
+WORDS = re.compile(r"[A-Za-z]{2,}")
+
+
+def stable_id(owner: str, context: str, text: str, ordinal: int) -> str:
+    digest = hashlib.sha256(f"{owner}\0{context}\0{text}\0{ordinal}".encode()).hexdigest()[:12]
+    return f"{Path(owner).stem}.{digest}"
+
+
+def placeholders(text: str) -> list[str]:
+    return sorted(set(re.findall(r"\{(\d+)\}", text)), key=int)
+
+
+def looks_human(text: str, role: str | None) -> bool:
+    t = text.strip()
+    if not t or not WORDS.search(t):
+        return False
+    if t.startswith(("<svg", "<path", "<circle", "<rect", "M ", "m ")) or "viewBox" in t:
+        return False
+    if t in ("use strict", "true", "false", "error", "warn", "info", "success", "warning"):
+        return False
+    bare = re.sub(r"\{\d+\}", "", t)
+    if CSS_LIKE.search(bare) and not re.search(r"[a-z]{3,} [a-z]{3,}", bare.split("{")[0]):
+        return False
+    if role is None and NONHUMAN_TEXT.match(t):
+        return False
+    if role is None and " " not in t and not re.match(r"^[A-Z][a-z]+([A-Z]?[a-z]*)?[.!?…]?$|^[A-Z][a-z]+[A-Z][a-zA-Z]*$", t):
+        # A lone lower-case or code-like token outside a labelling context.
+        return False
+    if role is None and SELECTOR_LIKE.match(t) and re.search(r"[.#\[]|:\w", t):
+        return False
+    return True
+
+
+class _Markup(HTMLParser):
+    """Messages from markup: block text with inline markup kept, and human
+    attributes. Text runs carry their {n} placeholders as they are."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.messages: list[tuple[str, str, bool]] = []   # (kind, text, rich)
+        self._buffer: list[str] = []
+        self._rich = False
+
+    def _flush(self):
+        text = re.sub(r"\s+", " ", "".join(self._buffer)).strip()
+        if text and WORDS.search(re.sub(r"<[^>]+>", "", text)):
+            self.messages.append(("markup-text", text, self._rich))
+        self._buffer, self._rich = [], False
+
+    def handle_starttag(self, tag, attrs):
+        for name, value in attrs:
+            if name in HUMAN_ATTRIBUTES and value and WORDS.search(value) and not NONHUMAN_TEXT.match(value.strip()):
+                self.messages.append((f"attribute:{name}", value.strip(), False))
+        if tag in INLINE_TAGS:
+            self._rich = self._rich or tag != "br"
+            keep = [f'{n}="{v}"' for n, v in attrs if n in ("href", "target", "rel")]
+            self._buffer.append(f"<{tag}{' ' + ' '.join(keep) if keep else ''}>")
+        elif tag in BLOCK_TAGS or tag not in INLINE_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag):
+        if tag in INLINE_TAGS and tag != "br":
+            self._buffer.append(f"</{tag}>")
+        else:
+            self._flush()
+
+    def handle_data(self, data):
+        self._buffer.append(data)
+
+    def close(self):
+        super().close()
+        self._flush()
+
+
+def markup_messages(text: str) -> list[tuple[str, str, bool]]:
+    parser = _Markup()
+    parser.feed(text)
+    parser.close()
+    return parser.messages
+
+
+def role_of(before: str) -> str | None:
+    for name, pattern in ROLE_CONTEXT:
+        if pattern.search(before):
+            return name
+    return None
+
+
+def frontend_entries(path: Path) -> list[dict]:
+    return frontend_entries_from(path.read_text(encoding="utf-8"), path.relative_to(ROOT).as_posix())
+
+
+def frontend_entries_from(source: str, owner: str) -> list[dict]:
+    """The census of one script's source (or part of one)."""
+    entries, ordinals = [], Counter()
+    for lit in literals(source):
+        before = source[max(0, lit.start - 160):lit.start]
+        before_line = before.rsplit("\n", 1)[-1]
+        if MACHINE_CONTEXT.search(before_line) or MACHINE_CONTEXT.search(before):
+            if not SETATTR_VALUE.search(before_line):
+                continue
+        if SETATTR_VALUE.search(before_line):
+            attribute = SETATTR_VALUE.search(before_line).group(1)
+            # Only the attributes that carry text: an ARIA state or reference
+            # (aria-haspopup, aria-controls, aria-current…) is a token.
+            if attribute not in HUMAN_ATTRIBUTES + TEXT_ARIA:
+                continue
+        role = role_of(before_line)
+        text = lit.text
+        found = []
+        if re.match(r"^\(?(min|max)-(width|height)|^(Arrow\w+|Escape|Enter|Tab|Home|End|PageUp|PageDown|Backspace)$|^-{3,}", text.strip()):
+            continue
+        if re.search(r"(^|[\s,(])[\w*]*\[[\w-]+(=|\])|:not\(", text) and "<" not in text:
+            continue                                   # a CSS selector
+        if re.match(r'^\s*[\w-]+="', text) and "<" not in text.split('="', 1)[0]:
+            text = "<x " + text + ("" if ">" in text else ">")   # attributes of an element built in parts
+        if re.search(r"<[a-zA-Z][\w-]*[\s>/]|</[a-zA-Z]|=\"|^\s*\"?>", text):
+            # Markup, or a fragment of markup joined to its neighbours.
+            text = re.sub(r'^\s*"?\s*>', "", text)
+            text = re.sub(r'(^|\s)[\w-]+="[^"]*$|^[^<>"]*"(?=\s|>|$)', " ", text)
+            for kind, message, rich in markup_messages(text):
+                if looks_human(re.sub(r"<[^>]+>", "", message), role or "markup"):
+                    found.append((kind, message, rich))
+        elif looks_human(text, role):
+            found.append((role or "literal", re.sub(r"\s+", " ", text).strip(), False))
+        for kind, message, rich in found:
+            context = kind
+            key = (owner, context, message)
+            ordinals[key] += 1
+            entries.append({
+                "id": stable_id(owner, context, message, ordinals[key]),
+                "english": message,
+                "owner": owner,
+                "line": lit.line,
+                "context": context,
+                "literal": lit.kind,
+                "rich": rich,
+                "placeholders": placeholders(message),
+                "substitutions": lit.substitutions if placeholders(message) else [],
+                "criticality": "critical-warning" if CRITICAL.search(message) and len(message) > 12 else "normal",
+            })
+    return entries
+
+
+def html_entries(path: Path) -> list[dict]:
+    owner = path.relative_to(ROOT).as_posix()
+    source = path.read_text(encoding="utf-8")
+    body = re.sub(r"<script\b.*?</script>|<style\b.*?</style>|<svg\b.*?</svg>|<!--.*?-->", "", source, flags=re.S)
+    entries, ordinals = [], Counter()
+    for kind, message, rich in markup_messages(body):
+        if not looks_human(re.sub(r"<[^>]+>", "", message), "markup"):
+            continue
+        ordinals[(kind, message)] += 1
+        line = source.find(html.escape(message, quote=False)[:30])
+        entries.append({
+            "id": stable_id(owner, kind, message, ordinals[(kind, message)]), "english": message, "owner": owner,
+            "line": source.count("\n", 0, line) + 1 if line >= 0 else None, "context": kind, "literal": "html",
+            "rich": rich, "placeholders": [], "substitutions": [],
+            "criticality": "critical-warning" if CRITICAL.search(message) and len(message) > 12 else "normal",
+        })
+    return entries
+
+
+SERVER_DETAIL = re.compile(
+    r"(?:HTTPException\([^)]*?detail\s*=\s*|raise\s+\w*(?:Refused|Rejected|Invalid\w*|Error|Busy|Stale)\w*\(\s*(?:[\w.]+,\s*)?)"
+    r"(f?)(\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*')", re.S)
+
+
+def backend_entries() -> list[dict]:
+    entries = []
+    for path in sorted(BACKEND.rglob("*.py")):
+        if "tests" in path.parts or "__pycache__" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        owner = path.relative_to(ROOT).as_posix()
+        ordinals = Counter()
+        for match in SERVER_DETAIL.finditer(source):
+            text = match.group(2)[1:-1]
+            if not WORDS.search(text) or not re.search(r"[A-Za-z]{3,} ", text):
+                continue
+            message = re.sub(r"\{[^}]*\}", lambda m, c=iter(range(99)): "{%d}" % next(c), text) if match.group(1) else text
+            ordinals[message] += 1
+            entries.append({
+                "id": stable_id(owner, "server-detail", message, ordinals[message]), "english": message,
+                "owner": owner, "line": source.count("\n", 0, match.start()) + 1, "context": "server-detail",
+                "literal": "python", "rich": False, "placeholders": placeholders(message), "substitutions": [],
+                "criticality": "critical-warning" if CRITICAL.search(message) and len(message) > 12 else "normal",
+            })
+    return entries
+
+
+def census() -> dict:
+    entries = []
+    for path in sorted(STATIC.glob("*.js")):
+        entries.extend(frontend_entries(path))
+    for path in sorted(STATIC.glob("*.html")):
+        entries.extend(html_entries(path))
+    server = backend_entries()
+    return {"schema": "debridpulse-localization-inventory/1", "entries": entries, "server": server}
+
+
+def summarize(data: dict) -> dict:
+    entries, server = data["entries"], data["server"]
+    by_owner = Counter(e["owner"] for e in entries)
+    by_context = Counter(e["context"].split(":")[0] for e in entries)
+    return {
+        "frontend_entries": len(entries),
+        "frontend_unique_english": len({e["english"] for e in entries}),
+        "rich_text": sum(e["rich"] for e in entries),
+        "with_placeholders": sum(bool(e["placeholders"]) for e in entries),
+        "critical_warning": sum(e["criticality"] == "critical-warning" for e in entries),
+        "help_long_form": by_owner["frontend/static/ui-help-page.js"] + by_owner["frontend/static/ui-settings-help.js"],
+        "server_detail_entries": len(server),
+        "by_owner": dict(by_owner.most_common()),
+        "by_context": dict(by_context.most_common()),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--json")
+    parser.add_argument("--summary", action="store_true")
+    args = parser.parse_args()
+    data = census()
+    if args.json:
+        Path(args.json).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    if args.summary or not args.json:
+        print(json.dumps(summarize(data), indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

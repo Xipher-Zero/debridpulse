@@ -113,7 +113,7 @@ async def _row():
 def _shown(page: str) -> dict:
     """What a rendered sign-in page shows: its root mode, colour scheme and
     body palette -- the only appearance facts it carries."""
-    root = re.search(r'<html lang="en" data-theme="(dark|light)">', page)
+    root = re.search(r'<html lang="en" dir="ltr" data-theme="(dark|light)">', page)
     scheme = re.search(r'<meta name="color-scheme" content="([a-z ]+)">', page)
     body = re.search(r"<body([^>]*)>", page).group(1)
     palette = re.search(r'data-dp-palette="([a-z0-9-]+)"', body)
@@ -358,7 +358,7 @@ async def test_the_sign_in_pages_read_the_one_row_and_no_account(live, monkeypat
     chosen = {"mode": "dark", "palette": "kanagawa-wave"}
     # The anonymous pages: sign-in, the state-free unavailable page and OIDC start's error page.
     anonymous = [(await live.client.get("/login")).text,
-                 (await auth_routes._state_free_auth_page(message="Try again shortly.", status_code=429)).body.decode(),
+                 (await auth_routes._state_free_auth_page(message="login.error.busy", status_code=429)).body.decode(),
                  (await live.client.get("/auth/oidc/start")).text]
     assert [_shown(text) for text in anonymous] == [chosen] * 3
     assert statements and all("account" not in sql or sql == _SINGLE_READ for sql in statements)
@@ -431,7 +431,7 @@ async def test_every_catalog_palette_is_drawn_from_the_applications_own_values(l
     palettes = (STATIC / "ui-theme-palettes.css").read_text(encoding="utf-8")
     for mode, ids in account_appearance.PALETTES.items():
         for palette in ids:
-            page = auth_routes._login_shell("<main></main>", {"mode": mode, "palette": palette})
+            page = auth_routes._login_shell("<main></main>", {"mode": mode, "palette": palette}, title="Sign in")
             assert _shown(page) == {"mode": mode, "palette": palette}
             if palette == ids[0]:
                 assert 'data-dp-palette="' not in page and palettes not in page    # native: the page's own values
@@ -487,7 +487,7 @@ async def test_the_wave_field_is_continuous_and_the_version_follows_the_card(liv
     token = re.search(r'name="csrf_token" value="([^"]+)"', signed.text).group(1)
     pages = [signed.text,
              (await live.client.post("/login", data={"username": "nobody", "password": "wrong", "csrf_token": token})).text,
-             (await auth_routes._state_free_auth_page(message="Try again shortly.", status_code=429)).body.decode()]
+             (await auth_routes._state_free_auth_page(message="login.error.busy", status_code=429)).body.decode()]
     for page in pages:
         assert page.count('class="version"') == 1
         before, card, after = re.split(r'<main class="card">|</main>', page)

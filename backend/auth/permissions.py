@@ -106,6 +106,7 @@ ACTIONS: dict[str, Capability] = {
     "api.auth_config_routes.pending_aware_oidc_callback": _P,
     "api.auth_routes.application_javascript_bundle": _I,
     "api.auth_routes.theme_bootstrap_script": _I,
+    "api.auth_routes.locale_catalog_script": _I,
     "api.auth_routes.auth_session_status": _S,
     "api.auth_routes.logout": _S,
     "api.account_routes.change_own_password": _S,
@@ -122,6 +123,9 @@ ACTIONS: dict[str, Capability] = {
     # Admin's, which every request acts as then.
     "api.account_routes.own_presentation": _I,
     "api.account_routes.choose_own_presentation": _I,
+    # Its own interface language, owned as its presentation is.
+    "api.account_routes.own_locale": _I,
+    "api.account_routes.choose_own_locale": _I,
     # The installation's login appearance: read and published by an Admin.
     "api.account_routes.login_appearance": _A,
     "api.account_routes.publish_login_appearance": _A,

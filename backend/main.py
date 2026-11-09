@@ -39,6 +39,7 @@ from transfers.staged_input import MAX_STAGED_INPUT_BYTES
 from external.arr import UPLOAD_CEILINGS, adapter_of
 from external.arr import available as adapter_available
 from core.version import read_version
+from core.localization import DisplayError, display_error_body
 from db.database import DatabaseMaintenanceActive, DatabaseSealed
 from application.dependencies import get_application
 from application.lifetime import (
@@ -327,6 +328,14 @@ async def demand_changed_handler(_request: Request, _exc: DemandChanged):
         status_code=409,
         content={"detail": "Another account now needs this transfer; nothing was changed"},
     )
+
+
+@app.exception_handler(DisplayError)
+async def display_error_handler(_request: Request, exc: DisplayError):
+    """An error the interface shows: the status, headers and English ``detail``
+    API clients always received, plus its stable ``code`` and ``params``
+    (``core.localization``) so the interface can show it in its language."""
+    return JSONResponse(status_code=exc.status_code, content=display_error_body(exc), headers=exc.headers)
 
 
 @app.exception_handler(PermissionError)

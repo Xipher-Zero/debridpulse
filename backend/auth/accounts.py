@@ -135,8 +135,9 @@ SCHEMA = (
         updated_at TEXT NOT NULL
     )""",
     # A human account's own appearance (``services.account_appearance``): its
-    # interface mode and the palette it chose for each mode, and its Easy or
-    # Advanced presentation (``presentation_mode``, added by ``ensure_schema``),
+    # interface mode and the palette it chose for each mode, its Easy or
+    # Advanced presentation (``presentation_mode``) and its interface language
+    # (``locale``), both added by ``ensure_schema``,
     # keyed by the durable account ID. It belongs to exactly that account:
     # Remove and Merge retire it with the account, and nothing inherits it.
     """CREATE TABLE IF NOT EXISTS account_appearance (
@@ -163,7 +164,16 @@ _TOKEN_RANDOM_BYTES = 32
 
 
 class AccountRefused(Exception):
-    """A requested account change would break an account invariant."""
+    """A requested account change would break an account invariant.
+
+    ``code`` and ``params``, where given, name the refusal the interface shows
+    (``core.localization.DisplayError``; the catalog key ``error.<code>``);
+    the English message stays the refusal's text for every API client."""
+
+    def __init__(self, message: str = "", *, code: str | None = None, params: dict | None = None):
+        super().__init__(message)
+        self.code = code
+        self.params = dict(params or {})
 
 
 class InvalidEmail(AccountRefused):
@@ -251,6 +261,9 @@ async def ensure_schema(db) -> None:
     # NULL: the account never chose Easy or Advanced, which is Advanced
     # (``services.account_appearance.load_presentation``).
     await _ensure_column(db, "account_appearance", "presentation_mode", "TEXT")
+    # NULL: the account never chose a language, which is English
+    # (``services.account_appearance.load_locale``).
+    await _ensure_column(db, "account_appearance", "locale", "TEXT")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "
@@ -592,7 +605,8 @@ MIN_NEW_PASSWORD_LENGTH = 8
 def _new_password_rule(password: str) -> None:
     """The one new-password rule: a password set now is long enough."""
     if len(password) < MIN_NEW_PASSWORD_LENGTH:
-        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters",
+                             code="account.password_too_short", params={"minimum": MIN_NEW_PASSWORD_LENGTH})
 
 
 async def _new_verifier(password: str | None) -> str | None:
@@ -1038,7 +1052,7 @@ async def reset_password(actor_id: str, account_id: str, password: str, *, usern
     if known is not None and known.role is Role.INTEGRATION:
         raise AccountRefused("Integration accounts have no password")
     if not password:
-        raise AccountRefused("A password is required")
+        raise AccountRefused("A password is required", code="account.password_required")
     verifier = await _new_verifier(password)
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
@@ -1071,7 +1085,7 @@ async def set_display_name(account_id: str, display_name: str) -> None:
     """An account's display name, set by itself or by an Admin."""
     name = str(display_name or "").strip()[:256]
     if not name:
-        raise AccountRefused("A display name is required")
+        raise AccountRefused("A display name is required", code="account.display_name_required")
     async with _locked_mutation([]) as db:
         account = await _require(db, account_id)
         await db.execute("UPDATE accounts SET display_name=?, updated_at=? WHERE id=?", (name, _now(), account.id))
@@ -1103,7 +1117,7 @@ def entered_email(value: str) -> str:
     labels = domain.split(".")
     if (len(email) > _EMAIL_LIMIT or not _EMAIL_LOCAL.fullmatch(local) or len(labels) < 2
             or not all(_EMAIL_LABEL.fullmatch(label) for label in labels)):
-        raise InvalidEmail("Enter a valid email address")
+        raise InvalidEmail("Enter a valid email address", code="account.email_invalid")
     return f"{local}@{domain}"
 
 
@@ -1129,10 +1143,11 @@ async def set_own_email(account_id: str, email: str, expected: str = "") -> str:
         if cursor.rowcount != 1:
             current = await _require(db, account_id)
             if current.email and not current.email_self_entered:
-                raise AccountRefused("This email comes from your identity provider and cannot be changed here")
+                raise AccountRefused("This email comes from your identity provider and cannot be changed here",
+                                     code="account.email_provider_owned")
             if not expected:
-                raise AccountRefused("This account already has an email address")
-            raise AccountRefused("This email was changed since this form was opened")
+                raise AccountRefused("This account already has an email address", code="account.email_already_set")
+            raise AccountRefused("This email was changed since this form was opened", code="account.email_changed")
     return address
 
 
@@ -1208,9 +1223,10 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
     from auth.throttle import password_failure_throttle
 
     if not new_password:
-        raise AccountRefused("A password is required")
+        raise AccountRefused("A password is required", code="account.password_required")
     if len(new_password) < MIN_NEW_PASSWORD_LENGTH:
-        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters")
+        raise AccountRefused(f"A password must be at least {MIN_NEW_PASSWORD_LENGTH} characters",
+                             code="account.password_too_short", params={"minimum": MIN_NEW_PASSWORD_LENGTH})
     proven, identity = await prove_own_password(account_id, current_password, peer=peer)
     verifier = await _new_verifier(new_password)
     async with _locked_mutation([str(account_id)]) as db:
@@ -1250,7 +1266,7 @@ async def prove_own_password(account_id: str, current_password: str, *, peer: st
         password_attempt_admission.release(peer)
     if not verified:
         password_failure_throttle.record_failure(peer, identity)
-        raise AccountRefused("The current password is not correct")
+        raise AccountRefused("The current password is not correct", code="account.current_password_incorrect")
     return proven, identity
 
 
@@ -1261,7 +1277,7 @@ async def _require_proven(db, account_id: str, proven: str) -> None:
         "SELECT password_hash FROM account_local_credentials WHERE account_id=?", (account_id,))
     if row is None or not secrets.compare_digest(password_credential_version(row["password_hash"]),
                                                  password_credential_version(proven)):
-        raise AccountRefused("The password was changed meanwhile; try again")
+        raise AccountRefused("The password was changed meanwhile; try again", code="account.password_changed")
 
 
 def _first_password_refusal(account: Account | None) -> str:
@@ -1313,7 +1329,7 @@ async def first_password_verifier(account_id: str, new_password: str, *, peer: s
     from auth.passwords import hash_password_async
 
     if not new_password:
-        raise AccountRefused("A password is required")
+        raise AccountRefused("A password is required", code="account.password_required")
     _new_password_rule(new_password)
     refusal = _first_password_refusal(await get_account(account_id))
     if refusal:
@@ -1333,7 +1349,7 @@ async def commit_first_password(account_id: str, verifier: str, *, settings=None
         if refusal:
             raise AccountRefused(refusal)
         if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (account.id,)):
-            raise AccountRefused("The account already has a password; use Change Password")
+            raise AccountRefused("The account already has a password; use Change Password", code="account.password_exists")
         await _set_password_row(db, account.id, verifier)
 
 

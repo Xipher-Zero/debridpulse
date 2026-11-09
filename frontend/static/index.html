@@ -13,6 +13,7 @@
 </head>
 <body>
 <script src="/ui-theme-bootstrap.js?v=21"></script>
+<script src="/ui-i18n.js?v=1"></script>
 
 <aside id="sidebar">
   <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
@@ -23,39 +24,39 @@
     </div>
   </div>
   <nav>
-    <div class="nav-group">Queue</div>
-    <div class="nav-item active" data-view="dashboard" data-dock="3" data-tooltip="Dashboard" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="dashboard" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg></span><span class="nav-label">Dashboard</span>
+    <div class="nav-group" data-i18n="shell.nav.group.queue">Queue</div>
+    <div class="nav-item active" data-view="dashboard" data-dock="3" data-tooltip="Dashboard" data-i18n-attr="data-tooltip:shell.nav.dashboard" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="dashboard" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg></span><span class="nav-label" data-i18n="shell.nav.dashboard">Dashboard</span>
     </div>
-    <div class="nav-item" data-view="torrents" data-dock="1" data-tooltip="Downloads" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="download" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg></span><span class="nav-label">Downloads</span>
+    <div class="nav-item" data-view="torrents" data-dock="1" data-tooltip="Downloads" data-i18n-attr="data-tooltip:shell.nav.downloads" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="download" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg></span><span class="nav-label" data-i18n="shell.nav.downloads">Downloads</span>
       <span class="nav-badge" id="nb-active" style="display:none">0</span>
     </div>
-    <div class="nav-group">Review</div>
+    <div class="nav-group" data-i18n="shell.nav.group.review">Review</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="events" data-dock="5" data-presentation="activity-log" data-short-label="Activity" data-tooltip="Activity Log" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label">Activity Log</span>
+    <div class="nav-item" data-view="events" data-dock="5" data-presentation="activity-log" data-short-label="Activity" data-tooltip="Activity Log" data-i18n-attr="data-tooltip:shell.nav.activity_log;data-short-label:shell.nav.activity_log.short" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label" data-i18n="shell.nav.activity_log">Activity Log</span>
     </div>
     </template>
-    <div class="nav-item" data-view="stats" data-dock="2" data-short-label="Stats" data-tooltip="Statistics" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="statistics" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21v-6"/><path d="M12 21V9"/><path d="M19 21V3"/></svg></span><span class="nav-label">Statistics</span>
+    <div class="nav-item" data-view="stats" data-dock="2" data-short-label="Stats" data-tooltip="Statistics" data-i18n-attr="data-tooltip:shell.nav.statistics;data-short-label:shell.nav.statistics.short" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="statistics" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21v-6"/><path d="M12 21V9"/><path d="M19 21V3"/></svg></span><span class="nav-label" data-i18n="shell.nav.statistics">Statistics</span>
     </div>
-    <div class="nav-group">System</div>
+    <div class="nav-group" data-i18n="shell.nav.group.system">System</div>
     <template data-requires="administer">
-    <div class="nav-item" data-view="settings" data-dock="4" data-tooltip="Settings" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="settings" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span>
+    <div class="nav-item" data-view="settings" data-dock="4" data-tooltip="Settings" data-i18n-attr="data-tooltip:shell.nav.settings" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="settings" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label" data-i18n="shell.nav.settings">Settings</span>
     </div>
     </template>
     <template data-requires="notifications.self">
-    <div class="nav-item" data-view="settings" data-dock="4" data-short-label="Notifs" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="bell-ring" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg></span><span class="nav-label">Notifications</span>
+    <div class="nav-item" data-view="settings" data-dock="4" data-short-label="Notifs" data-title="Notifications" data-subtitle="Configure notifications for your downloads." data-tooltip="Notifications" data-i18n-attr="data-tooltip:shell.nav.notifications;data-short-label:shell.nav.notifications.short;data-title:shell.nav.notifications;data-subtitle:shell.nav.notifications.subtitle" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="bell-ring" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg></span><span class="nav-label" data-i18n="shell.nav.notifications">Notifications</span>
     </div>
     </template>
-    <div class="nav-item" data-view="help" data-dock="6" data-short-label="Help" data-tooltip="Help &amp; License" data-tooltip-label=".nav-label" onclick="nav(this, event)">
-      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label">Help &amp; License</span>
+    <div class="nav-item" data-view="help" data-dock="6" data-short-label="Help" data-tooltip="Help &amp; License" data-i18n-attr="data-tooltip:shell.nav.help;data-short-label:shell.nav.help.short" data-tooltip-label=".nav-label" onclick="nav(this, event)">
+      <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label" data-i18n="shell.nav.help">Help &amp; License</span>
     </div>
   </nav>
-  <button type="button" id="sidebar-handle" class="sidebar-handle" aria-controls="sidebar" aria-expanded="false" aria-label="Expand sidebar" data-tooltip="Expand sidebar" onclick="toggleSidebarOverlay()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg></button>
+  <button type="button" id="sidebar-handle" class="sidebar-handle" aria-controls="sidebar" aria-expanded="false" aria-label="Expand sidebar" data-tooltip="Expand sidebar" data-i18n-attr="aria-label:shell.sidebar.expand;data-tooltip:shell.sidebar.expand" onclick="toggleSidebarOverlay()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg></button>
   <div id="sidebar-bottom-stack" class="sidebar-bottom-stack">
     <template data-requires="administer">
     <div class="sidebar-footer">
@@ -542,10 +543,10 @@
   </div>
   <!-- The handheld dock (below 780px): app.js renders it from the authorized
        sidebar entries above, in their data-dock order; More holds the rest. -->
-  <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages"><dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field></nav>
+  <nav id="shell-dock" class="dp-shell-dock" aria-label="Pages" data-i18n-attr="aria-label:shell.dock.label"><dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field></nav>
   <div id="shell-more" class="dp-shell-sheet dp-shell-sheet--up" popover="manual" role="dialog" aria-labelledby="shell-more-title">
     <div class="dp-shell-sheet-panel">
-      <div class="dp-shell-sheet-title" id="shell-more-title">More</div>
+      <div class="dp-shell-sheet-title" id="shell-more-title" data-i18n="shell.dock.more">More</div>
       <div class="dp-shell-sheet-list" id="shell-more-list"></div>
     </div>
   </div>
@@ -571,6 +572,10 @@
 <template data-requires="transfers.submit"><input id="torrent-file-input" type="file" hidden onchange="uploadTransferFile(this)"></template>
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
+<!-- Localization: the formatter (a module, in document order with the deferred scripts) and the
+     canonical English catalog, both in place before /app.js. -->
+<script type="module" src="/ui-i18n-formatter.js?v=1"></script>
+<script src="/i18n/en.js?v=57dc5558de2fcfdf" defer></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=27" defer></script>
 <script src="/app.js?v=27" defer></script>

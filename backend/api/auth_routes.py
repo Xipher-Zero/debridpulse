@@ -71,7 +71,7 @@ logger = logging.getLogger("debridpulse.auth")
 # reveal. It reads no stored state and performs no network, cookie,
 # authentication-state, or token operations. The page's theme is the
 # installation's login appearance, rendered by the server (``_login_shell``).
-_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-reveal]\"),p=document.getElementById(\"password\");if(!b||!p)return;const s=()=>{p.type=\"text\";b.setAttribute(\"aria-pressed\",\"true\");b.setAttribute(\"aria-label\",\"Release to hide password\")},h=()=>{p.type=\"password\";b.setAttribute(\"aria-pressed\",\"false\");b.setAttribute(\"aria-label\",\"Hold to show password\")};b.addEventListener(\"pointerdown\",a=>{if(a.pointerType===\"mouse\"&&a.button!==0)return;a.preventDefault();try{b.setPointerCapture(a.pointerId)}catch(_){}s()});b.addEventListener(\"pointerup\",a=>{h();try{b.releasePointerCapture(a.pointerId)}catch(_){}});b.addEventListener(\"pointercancel\",h);b.addEventListener(\"pointerleave\",()=>{if(b.getAttribute(\"aria-pressed\")==\"true\")h()});document.addEventListener(\"pointerup\",h,true);b.addEventListener(\"keydown\",a=>{if((a.key===\" \"||a.key===\"Enter\")&&!a.repeat){a.preventDefault();s()}});b.addEventListener(\"keyup\",a=>{if(a.key===\" \"||a.key===\"Enter\"){a.preventDefault();h()}});b.addEventListener(\"blur\",h);window.addEventListener(\"blur\",h);document.addEventListener(\"visibilitychange\",()=>{if(document.hidden)h()})})})();"""
+_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-reveal]\"),p=document.getElementById(\"password\");if(!b||!p)return;const s=()=>{p.type=\"text\";b.setAttribute(\"aria-pressed\",\"true\");b.setAttribute(\"aria-label\",b.dataset.hideLabel)},h=()=>{p.type=\"password\";b.setAttribute(\"aria-pressed\",\"false\");b.setAttribute(\"aria-label\",b.dataset.showLabel)};b.addEventListener(\"pointerdown\",a=>{if(a.pointerType===\"mouse\"&&a.button!==0)return;a.preventDefault();try{b.setPointerCapture(a.pointerId)}catch(_){}s()});b.addEventListener(\"pointerup\",a=>{h();try{b.releasePointerCapture(a.pointerId)}catch(_){}});b.addEventListener(\"pointercancel\",h);b.addEventListener(\"pointerleave\",()=>{if(b.getAttribute(\"aria-pressed\")==\"true\")h()});document.addEventListener(\"pointerup\",h,true);b.addEventListener(\"keydown\",a=>{if((a.key===\" \"||a.key===\"Enter\")&&!a.repeat){a.preventDefault();s()}});b.addEventListener(\"keyup\",a=>{if(a.key===\" \"||a.key===\"Enter\"){a.preventDefault();h()}});b.addEventListener(\"blur\",h);window.addEventListener(\"blur\",h);document.addEventListener(\"visibilitychange\",()=>{if(document.hidden)h()})})})();"""
 _AUTH_PAGE_SCRIPT_HASH = base64.b64encode(
     hashlib.sha256(_AUTH_PAGE_SCRIPT.encode("utf-8")).digest()
 ).decode("ascii")
@@ -308,7 +308,7 @@ _BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidd
 
 # The sign-in was genuine but its account may not sign in: it is disabled or
 # deleted.
-_NOT_OPERATIONAL = "This account cannot sign in to DebridPulse."
+_NOT_OPERATIONAL = "login.error.not_operational"   # "This account cannot sign in to DebridPulse."
 
 
 def _session_lifetime_seconds(cfg) -> int:
@@ -436,7 +436,7 @@ async def _login_appearance() -> dict:
         return account_appearance.public(None)
 
 
-def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · DebridPulse") -> str:
+def _login_shell(inner: str, appearance: dict, *, title: str, locale: str = "en") -> str:
     """The sign-in card (``inner``: its content), followed by the version, in
     the installation's login appearance, decided here
     for the first paint: its mode on the root and the body (``body.light``),
@@ -451,7 +451,7 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
         body += f' data-dp-palette="{html.escape(palette, quote=True)}"'
     style = _AUTH_PAGE_STYLE + _AUTH_LOGO_STYLE + ("" if native else _AUTH_PALETTE_STYLE)
     return f"""<!doctype html>
-<html lang="en" data-theme="{mode}">
+<html lang="{html.escape(locale, quote=True)}" dir="{_locale_dir(locale)}" data-theme="{mode}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -472,8 +472,28 @@ def _login_shell(inner: str, appearance: dict, *, title: str = "Sign in · Debri
 </html>"""
 
 
-_USERNAME_FIELD = f"""<label for="username">Username</label>
-              <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="Enter your username" required></div>"""
+def _username_field(locale: str) -> str:
+    return f"""<label for="username">{_text("login.username", locale)}</label>
+              <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="{_text("login.username.placeholder", locale)}" required></div>"""
+
+
+def _text(key: str, locale: str, **markup) -> str:
+    """A pre-sign-in message (``core.localization.message``), HTML-escaped.
+    Each ``markup`` value is markup the caller has built safely (its own text
+    already escaped) and is placed where the message names it."""
+    from core.localization import message
+
+    marks = {name: f"\x00{index}\x00" for index, name in enumerate(markup)}
+    text = html.escape(message(key, locale, **marks))
+    for name, mark in marks.items():
+        text = text.replace(mark, markup[name])
+    return text
+
+
+def _locale_dir(locale: str) -> str:
+    from core.localization import locale_info
+
+    return "rtl" if locale_info(locale)["dir"] == "rtl" else "ltr"
 
 
 async def _login_page(
@@ -483,7 +503,11 @@ async def _login_page(
     return_to: str,
     error: str = "",
     status_code: int = 200,
+    locale: str = "en",
 ) -> HTMLResponse:
+    """The sign-in page in ``locale`` (a pre-sign-in locale: English unless a
+    caller states one, ``core.localization.preauth_locale``). ``error`` is the
+    catalog key of the message to show, if any."""
     cfg = get_settings()
     # A Standalone installation signs in its one person, the default Admin,
     # with its password alone: no username and no OpenID Connect are offered,
@@ -498,7 +522,7 @@ async def _login_page(
         or "OpenID Connect"
     )
     error_html = (
-        f'<div class="error" role="alert">{html.escape(error)}</div>' if error else ""
+        f'<div class="error" role="alert">{_text(error, locale)}</div>' if error else ""
     )
 
     password_control = ""
@@ -507,10 +531,10 @@ async def _login_page(
             <form method="post" action="/login" autocomplete="on">
               <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
               <input type="hidden" name="next" value="{html.escape(return_to, quote=True)}">
-              {'' if standalone else _USERNAME_FIELD}
-              <label for="password">Password</label>
-              <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="Enter your password" required><button class="password-reveal" type="button" data-password-reveal aria-label="Hold to show password" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
-              <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
+              {'' if standalone else _username_field(locale)}
+              <label for="password">{_text("login.password", locale)}</label>
+              <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="{_text("login.password.placeholder", locale)}" required><button class="password-reveal" type="button" data-password-reveal aria-label="{_text("login.password.show", locale)}" data-show-label="{_text("login.password.show", locale)}" data-hide-label="{_text("login.password.hide", locale)}" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
+              <button class="auth-action primary" type="submit"><span>{_text("login.sign_in", locale)}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
             </form>
             """
 
@@ -520,30 +544,28 @@ async def _login_page(
         separator = '<span class="oidc-separator" aria-hidden="true"></span>' if password_enabled else ""
         oidc_control = (
             f'<a class="auth-action oidc {oidc_class}" href="/auth/oidc/start?next={quote(return_to, safe="")}">'
-            f'{_AUTH_OIDC_MARK_HTML}{separator}<span>Sign in with {provider_name}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
+            f'{_AUTH_OIDC_MARK_HTML}{separator}<span>{_text("login.sign_in_with", locale, provider=provider_name)}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
         )
     elif oidc_enabled:
-        oidc_control = (
-            '<div class="error" role="alert">OpenID Connect is enabled but its local '
-            "configuration is incomplete or invalid.</div>"
-        )
+        oidc_control = f'<div class="error" role="alert">{_text("login.oidc_incomplete", locale)}</div>'
 
     controls: list[str] = []
     if oidc_control:
         controls.append(oidc_control)
     if password_control:
         if oidc_ready and password_enabled:
-            controls.append('<div class="divider"><span>or continue with user name and password</span></div>')
+            controls.append(f'<div class="divider"><span>{_text("login.or_password", locale)}</span></div>')
         controls.append(password_control)
     if not password_enabled and not oidc_enabled:
-        controls.append('<p class="muted auth-only-message">Authentication is not currently required.</p>')
+        controls.append(f'<p class="muted auth-only-message">{_text("login.not_required", locale)}</p>')
 
     interactive_controls = "\n".join(controls)
-    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in to continue</div><span class="sr-only">Secure access</span></div>
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">{_text("login.subtitle", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
   {error_html}
   {interactive_controls}
-  <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>Password-only LAN deployments may operate over HTTP.<br>OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.</div></div>"""
-    response = HTMLResponse(content=_login_shell(card, await _login_appearance()), status_code=status_code)
+  <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>{_text("login.foot.http", locale)}<br>{_text("login.foot.https", locale, https='<span class="https">HTTPS</span>')}</div></div>"""
+    response = HTMLResponse(content=_login_shell(card, await _login_appearance(), title=_text("login.title", locale),
+                                                 locale=locale), status_code=status_code)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = _auth_csp(allow_form=True)
     return response
@@ -554,13 +576,16 @@ async def _state_free_auth_page(
     message: str,
     status_code: int,
     retry_after: int | None = None,
+    locale: str = "en",
 ) -> HTMLResponse:
-    """Render an authentication error without allocating browser challenge state."""
-    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in unavailable</div><span class="sr-only">Secure access</span></div>
-  <div class="error" role="alert">{html.escape(message)}</div>
-  <a class="auth-action secondary" href="/login"><span>Return to sign in</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>"""
+    """Render an authentication error without allocating browser challenge
+    state. ``message`` is the catalog key of the error to show."""
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">{_text("login.unavailable", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
+  <div class="error" role="alert">{_text(message, locale)}</div>
+  <a class="auth-action secondary" href="/login"><span>{_text("login.return", locale)}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>"""
     response = HTMLResponse(
-        content=_login_shell(card, await _login_appearance(), title="Sign in unavailable · DebridPulse"),
+        content=_login_shell(card, await _login_appearance(), title=_text("login.unavailable.title", locale),
+                             locale=locale),
         status_code=status_code,
     )
     response.headers["Cache-Control"] = "no-store"
@@ -576,12 +601,20 @@ async def _issue_login_page(
     return_to: str,
     error: str = "",
     status_code: int = 200,
+    locale: str | None = None,
 ) -> HTMLResponse:
+    """The sign-in page with a fresh form challenge. ``error`` is a catalog
+    key; ``locale`` the hook for an explicitly stated pre-sign-in language
+    (``core.localization.preauth_locale``), English otherwise."""
+    from core.localization import preauth_locale
+
+    locale = preauth_locale(locale)
     if not login_challenge_rate_limiter.allow(peer_key(request)):
         return await _state_free_auth_page(
-            message="Too many sign-in challenges have been requested. Try again shortly.",
+            message="login.error.challenges",
             status_code=429,
             retry_after=60,
+            locale=locale,
         )
     browser_nonce, form_token = login_csrf_store.issue()
     response = await _login_page(
@@ -590,6 +623,7 @@ async def _issue_login_page(
         return_to=safe_return_path(return_to),
         error=error,
         status_code=status_code,
+        locale=locale,
     )
     set_login_csrf_cookie(response, request, browser_nonce)
     return response
@@ -703,6 +737,53 @@ async def _appearance(principal: Principal) -> dict:
             "catalog": account_appearance.catalog()}
 
 
+async def _locale(principal: Principal) -> dict:
+    """The language this page is composed in, decided before its first paint
+    (``core.localization``; the choice is ``account_appearance.load_locale``),
+    for ``ui-i18n.js``: the account's own choice -- the default Admin's while
+    sign-in is off -- read within the same bounded time as the appearance.
+    ``locale`` is null when it could not be read in time: the page is then
+    English and says nothing about the saved choice. ``catalog`` is the
+    locale's catalog asset, versioned by its content, where it has one."""
+    from core.localization import DEFAULT_LOCALE, catalog_version, locale_info
+
+    owner = account_appearance.presentation_owner(principal, get_settings())
+    tag, read = DEFAULT_LOCALE, True
+    if owner is not None:
+        try:
+            tag = await asyncio.wait_for(account_appearance.load_locale(owner), _APPEARANCE_READ_SECONDS)
+        except Exception as exc:
+            read = False
+            logger.warning("Account locale unavailable at first paint: %s", type(exc).__name__)
+    info = locale_info(tag)
+    version = catalog_version(tag)
+    return {"owned": owner is not None, "locale": tag if read else None, "dir": info["dir"] if read else "ltr",
+            "status": info["status"] if read else "canonical",
+            "catalog": f"/i18n/{tag}.js?v={version}" if read and version and tag != DEFAULT_LOCALE else None}
+
+
+@router.get("/i18n/{tag}.js", include_in_schema=False)
+async def locale_catalog_script(tag: str, request: Request):
+    """One locale's catalog as a script (``window.DPI18nCatalog(tag, messages)``),
+    so the interface can hold English before any page script runs and load
+    another locale's on demand. A target delivers its current translations
+    only (``core.localization.delivered``: a stale one is not sent, and is
+    named so the interface counts it as debt). The same bytes for everyone:
+    no account is read, and the URL is versioned by what is delivered
+    (``ETag``)."""
+    from core.localization import catalog_script, catalog_version, manifest
+
+    if tag not in manifest()["locales"]:
+        return Response(status_code=404)
+    body, version = catalog_script(tag), catalog_version(tag)
+    if body is None or version is None:
+        return Response(status_code=404)
+    etag = f'"{version}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    return Response(content=body, media_type="application/javascript", headers={"ETag": etag})
+
+
 @router.get("/ui-theme-bootstrap.js", include_in_schema=False)
 async def theme_bootstrap_script(request: Request):
     """Serve the first-paint theme owner with this page's appearance.
@@ -713,15 +794,20 @@ async def theme_bootstrap_script(request: Request):
     account's or browser's choice. It is per-request and never stored. The
     product logo's one source comes with it (``window.debridPulseLogo``), so
     the sidebar draws it inline, in the theme in force, at first paint; so
-    does the sidebar's signal field (``window.debridPulseSignalField``)."""
+    does the sidebar's signal field (``window.debridPulseSignalField``). The
+    page's language comes with it too (``window.debridPulseLocale``,
+    ``_locale``): the next script, ``ui-i18n.js``, reads it before the body is
+    parsed, so a page in another language never shows English first."""
     principal = getattr(request.state, "principal", Principal.anonymous())
     appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
+    locale = json.dumps(await _locale(principal), separators=(",", ":"))
     script = _static_asset("ui-theme-bootstrap.js").read_text(encoding="utf-8")
     logo = json.dumps(_APP_LOGO_SVG).replace("<", "\\u003c")
     field = json.dumps(_SIGNAL_FIELD_SVG).replace("<", "\\u003c")
     response = Response(
         content=(f"window.debridPulseLogo={logo};\nwindow.debridPulseSignalField={field};\n"
-                 f"window.debridPulseAppearance=Object.freeze({appearance});\n{script}"),
+                 f"window.debridPulseAppearance=Object.freeze({appearance});\n"
+                 f"window.debridPulseLocale=Object.freeze({locale});\n{script}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"
@@ -755,7 +841,7 @@ async def password_login(request: Request):
         return await _issue_login_page(
             request,
             return_to="/",
-            error="Username & Password authentication is disabled.",
+            error="login.error.password_disabled",
             status_code=403,
         )
     form = await request.form()
@@ -771,7 +857,7 @@ async def password_login(request: Request):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="Invalid sign-in request.",
+            error="login.error.invalid_request",
             status_code=400,
         )
 
@@ -780,7 +866,7 @@ async def password_login(request: Request):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="The sign-in form expired. Try again.",
+            error="login.error.expired",
             status_code=403,
         )
 
@@ -795,7 +881,7 @@ async def password_login(request: Request):
         response = await _issue_login_page(
             request,
             return_to=return_to,
-            error="Too many sign-in attempts are already being processed. Try again shortly.",
+            error="login.error.busy",
             status_code=429,
         )
         response.headers["Retry-After"] = "2"
@@ -804,7 +890,7 @@ async def password_login(request: Request):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="Invalid password." if standalone else "Invalid username or password.",
+            error="login.error.invalid_password" if standalone else "login.error.invalid_credentials",
             status_code=401,
         )
 
@@ -815,7 +901,7 @@ async def password_login(request: Request):
             return await _issue_login_page(
                 request,
                 return_to=return_to,
-                error="Authentication configuration changed while sign-in was in progress. Try again.",
+                error="login.error.config_changed",
                 status_code=409,
             )
         if not admitted(account, current):
@@ -852,12 +938,12 @@ async def oidc_start(request: Request, next: str = "/"):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="OpenID Connect authentication is disabled.",
+            error="login.error.oidc_disabled",
             status_code=404,
         )
     if not oidc_start_rate_limiter.allow(peer_key(request)):
         return await _state_free_auth_page(
-            message="Too many OpenID Connect sign-in attempts have been started. Try again shortly.",
+            message="login.error.oidc_challenges",
             status_code=429,
             retry_after=60,
         )
@@ -867,7 +953,7 @@ async def oidc_start(request: Request, next: str = "/"):
         return await _issue_login_page(
             request,
             return_to=return_to,
-            error="OpenID Connect is currently unavailable or misconfigured.",
+            error="login.error.oidc_unavailable",
             status_code=503,
         )
     response = RedirectResponse(url=authorization_url, status_code=303)
@@ -889,7 +975,7 @@ async def oidc_callback(
         response = await _issue_login_page(
             request,
             return_to="/",
-            error="OpenID Connect sign-in was not completed.",
+            error="login.error.oidc_incomplete",
             status_code=401,
         )
         _clear_oidc_correlation_cookie(response)
@@ -905,7 +991,7 @@ async def oidc_callback(
         response = await _issue_login_page(
             request,
             return_to="/",
-            error="OpenID Connect sign-in could not be validated or authorized.",
+            error="login.error.oidc_refused",
             status_code=401,
         )
         _clear_oidc_correlation_cookie(response)
@@ -922,7 +1008,7 @@ async def oidc_callback(
             response = await _issue_login_page(
                 request,
                 return_to="/",
-                error="Authentication configuration changed while sign-in was in progress. Start a new sign-in.",
+                error="login.error.config_changed_restart",
                 status_code=409,
             )
             _clear_oidc_correlation_cookie(response)

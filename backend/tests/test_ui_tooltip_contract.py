@@ -116,8 +116,14 @@ def test_the_profile_button_is_named_from_its_first_render() -> None:
     auth = read("auth.js")
     # Its name is its own from the markup that creates it -- never the tooltip, never hydration --
     # and the session then names it fully (``showAccount``), exactly as before.
-    assert '<button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">' in auth
-    assert "profile.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`" in auth
+    # 1.0.14 localization: the words are catalog messages, and the name is
+    # showAccount's alone -- no data-i18n-attr, which a later render would
+    # reset to the bare "My Account".
+    signed_in = auth[auth.index("function syncSidebarSessionUi("):auth.index("function standaloneSidebarRow(")]
+    assert '<button type="button" class="dp-sidebar-profile">' in signed_in
+    assert "profile.setAttribute('aria-label', display ? DPI18n.t('session.my_account.named', {name: display, role: roleLabel(data.role)})" in signed_in
+    assert "profile.dataset.tooltip = display ? DPI18n.t('session.my_account.tooltip', {name: display, role: roleLabel(data.role)})" in signed_in
+    assert signed_in.index("showAccount('');") < signed_in.index("mount.appendChild(row);")
 
 
 def test_one_observer_at_most_and_a_reachable_scrollable_tooltip() -> None:

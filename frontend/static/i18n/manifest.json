@@ -1,0 +1,33 @@
+{
+ "schema": "debridpulse-locale-manifest/1",
+ "default": "en",
+ "statuses": {
+  "canonical": "The source language and the fallback for every key.",
+  "planned": "A target language with no reviewed catalog yet: not supported, never offered and never admitted as an account's language; a value stored for it reads as English.",
+  "supported": "A target language with a reviewed catalog and zero translation debt at release (validate.mjs --release); admitted as an account's language while its catalog is readable.",
+  "pseudo": "A developer test locale generated from English; never offered, and accepted only where DEBRIDPULSE_I18N_TEST_LOCALES=1."
+ },
+ "locales": {
+  "en": {"name": "English", "native": "English", "dir": "ltr", "status": "canonical"},
+  "es": {"name": "Spanish", "native": "Español", "dir": "ltr", "status": "planned", "batch": "A"},
+  "fr": {"name": "French", "native": "Français", "dir": "ltr", "status": "planned", "batch": "A"},
+  "de": {"name": "German", "native": "Deutsch", "dir": "ltr", "status": "planned", "batch": "A"},
+  "it": {"name": "Italian", "native": "Italiano", "dir": "ltr", "status": "planned", "batch": "A"},
+  "pt-BR": {"name": "Portuguese (Brazil)", "native": "Português (Brasil)", "dir": "ltr", "status": "planned", "batch": "A"},
+  "nl": {"name": "Dutch", "native": "Nederlands", "dir": "ltr", "status": "planned", "batch": "A"},
+  "pt-PT": {"name": "Portuguese (Portugal)", "native": "Português (Portugal)", "dir": "ltr", "status": "planned", "batch": "B"},
+  "pl": {"name": "Polish", "native": "Polski", "dir": "ltr", "status": "planned", "batch": "B"},
+  "tr": {"name": "Turkish", "native": "Türkçe", "dir": "ltr", "status": "planned", "batch": "B"},
+  "ru": {"name": "Russian", "native": "Русский", "dir": "ltr", "status": "planned", "batch": "B"},
+  "uk": {"name": "Ukrainian", "native": "Українська", "dir": "ltr", "status": "planned", "batch": "B"},
+  "id": {"name": "Indonesian", "native": "Bahasa Indonesia", "dir": "ltr", "status": "planned", "batch": "B"},
+  "hi": {"name": "Hindi", "native": "हिन्दी", "dir": "ltr", "status": "planned", "batch": "C"},
+  "ja": {"name": "Japanese", "native": "日本語", "dir": "ltr", "status": "planned", "batch": "C"},
+  "ko": {"name": "Korean", "native": "한국어", "dir": "ltr", "status": "planned", "batch": "C"},
+  "zh-Hans": {"name": "Chinese (Simplified)", "native": "简体中文", "dir": "ltr", "status": "planned", "batch": "C"},
+  "zh-Hant": {"name": "Chinese (Traditional)", "native": "繁體中文", "dir": "ltr", "status": "planned", "batch": "C"},
+  "ar": {"name": "Arabic", "native": "العربية", "dir": "rtl", "status": "planned", "batch": "D"},
+  "en-XA": {"name": "Pseudo (expanded, accented)", "native": "Pseudo (expanded, accented)", "dir": "ltr", "status": "pseudo", "base": "en"},
+  "ar-XB": {"name": "Pseudo (right-to-left)", "native": "Pseudo (right-to-left)", "dir": "rtl", "status": "pseudo", "base": "en"}
+ }
+}

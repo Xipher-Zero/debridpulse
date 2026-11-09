@@ -60,7 +60,7 @@
   }
 
   function roleLabel(role) {
-    return {admin: 'Admin', user: 'User', readonly: 'ReadOnly User', integration: 'Integration'}[role] || '';
+    return ['admin', 'user', 'readonly', 'integration'].includes(role) ? DPI18n.t(`role.${role}`) : '';
   }
 
   /* Whose account the shell offers, from the server's own session answer:
@@ -133,7 +133,7 @@
     row.dataset.session = 'authenticated';
     row.style.flexShrink = '0';
     row.innerHTML = `
-      <button type="button" class="dp-sidebar-logout" aria-label="Log out of DebridPulse" data-tooltip="Log Out">
+      <button type="button" class="dp-sidebar-logout" data-i18n-attr="aria-label:session.log_out.label;data-tooltip:session.log_out">
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
@@ -141,10 +141,10 @@
             <path d="M18 12H9"></path>
           </svg>
         </span>
-        <span class="nav-label">Log Out</span>
+        <span class="nav-label" data-i18n="session.log_out"></span>
       </button>
       <span class="dp-sidebar-session-space" aria-hidden="true"></span>
-      <button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">
+      <button type="button" class="dp-sidebar-profile">
         <span class="nav-label"><span class="dp-sidebar-account-copy"><span class="dp-sidebar-account-name"></span><span class="dp-sidebar-account-role"></span></span></span>
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -157,26 +157,31 @@
     // measure beside the account.
     bindLogout(row.querySelector('.dp-sidebar-logout'));
 
+    // Its name and tooltip are showAccount's alone (no data-i18n-attr, which a
+    // later render would put back to the bare "My Account"): named from the
+    // markup that creates it, before the row is placed.
     const profile = row.querySelector('.dp-sidebar-profile');
     const showAccount = name => {
       const display = String(name || '');
       profile.querySelector('.dp-sidebar-account-name').textContent = display;
       profile.querySelector('.dp-sidebar-account-role').textContent = roleLabel(data.role);
-      profile.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`
-        : `My account, ${roleLabel(data.role)}`);
+      profile.setAttribute('aria-label', display ? DPI18n.t('session.my_account.named', {name: display, role: roleLabel(data.role)})
+        : DPI18n.t('session.my_account.role', {role: roleLabel(data.role)}));
       // A name too long for the row is shown in full here.
-      profile.dataset.tooltip = `${display ? `${display} ` : ''}(${roleLabel(data.role)}): My Account`;
+      profile.dataset.tooltip = display ? DPI18n.t('session.my_account.tooltip', {name: display, role: roleLabel(data.role)})
+        : DPI18n.t('session.my_account.tooltip_role', {role: roleLabel(data.role)});
     };
     showAccount('');
     // The account's own Display Name. The session's name is its sign-in (an
     // OIDC ``name`` claim, a username) and is never shown first; it stands in
     // only when the account's profile cannot be read.
     readProfile().then(own => {
-      const name = own?.display_name || data.display_name || 'My Account';
+      const name = own?.display_name || data.display_name || DPI18n.t('session.my_account');
       showAccount(name);
       showHeaderAccount(data, name);
     });
     profile.addEventListener('click', () => { void openAccountDialog(data); });
+    DPI18n.render(row);
     mount.appendChild(row);
   }
 
@@ -190,15 +195,16 @@
     row.dataset.session = 'standalone';
     row.style.flexShrink = '0';
     row.innerHTML = `
-      <button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">
+      <button type="button" class="dp-sidebar-profile" data-i18n-attr="aria-label:session.my_account;data-tooltip:session.my_account">
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
           </svg>
         </span>
-        <span class="nav-label">My Account</span>
+        <span class="nav-label" data-i18n="session.my_account"></span>
       </button>`;
     row.querySelector('.dp-sidebar-profile').addEventListener('click', () => { void openAccountDialog(data); });
+    DPI18n.render(row);
     return row;
   }
 
@@ -213,7 +219,7 @@
         if (!ok) throw new Error('Logout failed');
       } catch (_) {
         button.setAttribute('aria-disabled', 'false');
-        try { window.toast('Log Out failed. Try again.', 'error'); } catch (_) {}
+        try { window.toast(DPI18n.t('session.log_out.failed'), 'error'); } catch (_) {}
       }
     });
   }
@@ -240,16 +246,17 @@
     if (mount.querySelector(`#topbar-account-button[data-session="${kind}"]`)) return;
     if (kind === 'standalone') {
       mount.innerHTML = `
-      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="standalone" aria-label="My Account">
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="standalone" data-i18n-attr="aria-label:session.my_account">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
           <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
         </svg>
       </button>`;
       mount.querySelector('#topbar-account-button').addEventListener('click', () => { void openAccountDialog(data); });
+      DPI18n.render(mount);
       return;
     }
     mount.innerHTML = `
-      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="authenticated" aria-haspopup="dialog" aria-controls="topbar-account-sheet" aria-expanded="false" aria-label="My account">
+      <button type="button" id="topbar-account-button" class="dp-topbar-account-button" data-session="authenticated" aria-haspopup="dialog" aria-controls="topbar-account-sheet" aria-expanded="false">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
           <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
         </svg>
@@ -263,11 +270,11 @@
           <div class="dp-shell-sheet-list">
             <button type="button" class="dp-shell-sheet-item" data-account-action="profile">
               <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></span>
-              <span class="dp-shell-label">My Account</span>
+              <span class="dp-shell-label" data-i18n="session.my_account"></span>
             </button>
             <button type="button" class="dp-shell-sheet-item" data-account-action="logout">
               <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path><path d="M14 8l4 4-4 4"></path><path d="M18 12H9"></path></svg></span>
-              <span class="dp-shell-label">Log Out</span>
+              <span class="dp-shell-label" data-i18n="session.log_out"></span>
             </button>
           </div>
         </div>
@@ -294,6 +301,7 @@
       void openAccountDialog(data);
     });
     bindLogout(sheet.querySelector('[data-account-action="logout"]'));
+    DPI18n.render(mount);
     showHeaderAccount(data, '');
   }
 
@@ -302,10 +310,10 @@
     const button = mount?.querySelector('#topbar-account-button');
     if (!button) return;
     const display = String(name || '');
-    mount.querySelector('.dp-topbar-account-name').textContent = display || 'My Account';
+    mount.querySelector('.dp-topbar-account-name').textContent = display || DPI18n.t('session.my_account');
     mount.querySelector('.dp-topbar-account-role').textContent = roleLabel(data.role);
-    button.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`
-      : `My account, ${roleLabel(data.role)}`);
+    button.setAttribute('aria-label', display ? DPI18n.t('session.my_account.named', {name: display, role: roleLabel(data.role)})
+      : DPI18n.t('session.my_account.role', {role: roleLabel(data.role)}));
   }
 
   async function readProfile() {
@@ -322,9 +330,17 @@
       method, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: JSON.stringify(body),
     });
     if (response.ok) return null;
-    const payload = await response.json().catch(() => ({}));
-    const detail = Array.isArray(payload.detail) ? payload.detail[0]?.msg : payload.detail;
-    return {status: response.status, message: String(detail || 'The change was not saved.')};
+    return {status: response.status, message: errorMessage(await response.json().catch(() => ({})))};
+  }
+
+  /* What a refused request says, in the page's language: an error the server
+   * names by its stable code (core.localization.DisplayError) is the
+   * catalog's message for that code; any other keeps the server's text. */
+  function errorMessage(payload, fallback = 'common.not_saved') {
+    const code = typeof payload?.code === 'string' ? `error.${payload.code}` : '';
+    if (code && DPI18n.has(code)) return DPI18n.t(code, payload.params && typeof payload.params === 'object' ? payload.params : {});
+    const detail = Array.isArray(payload?.detail) ? payload.detail[0]?.msg : payload?.detail;
+    return String(detail || DPI18n.t(fallback));
   }
 
   // The account's own profile, read from the account API when the dialog
@@ -335,15 +351,15 @@
   // server decides every save.
   function emailMarkup(profile, editing) {
     if (!profile.email || editing) {
-      return '<label class="form-label" for="dp-account-email-input">Email</label>'
+      return '<label class="form-label" for="dp-account-email-input" data-i18n="account.field.email"></label>'
         + '<input class="input" id="dp-account-email-input" data-field="email" type="email" maxlength="254" '
-        + 'autocomplete="email" spellcheck="false" placeholder="you@example.com">';
+        + 'autocomplete="email" spellcheck="false" data-i18n-attr="placeholder:account.field.email.placeholder">';
     }
     const pencil = profile.email_self_entered
       ? '<button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit dp-account-email-edit" '
-        + 'data-tooltip="Edit email" aria-label="Edit email"><img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true"></button>'
+        + 'data-i18n-attr="data-tooltip:account.field.email.edit;aria-label:account.field.email.edit"><img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true"></button>'
       : '';
-    return '<span class="form-label">Email</span>'
+    return '<span class="form-label" data-i18n="account.field.email"></span>'
       + `<span class="dp-account-email-value"><span class="dp-account-email-address"></span>${pencil}</span>`;
   }
 
@@ -372,9 +388,8 @@
    * At the header's far end, for every account that owns a presentation, is
    * Easy | Advanced (presentationSelector): a choice that applies at once and
    * is saved on its own, never by Save, and whose Cancel undoes nothing. */
-  // What clearing a Standalone installation's one password does.
-  const CLEAR_CONSEQUENCE = 'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse '
-    + 'can then access this installation without a password, until you set a new one in My Account.';
+  // What clearing a Standalone installation's one password does: the catalog's
+  // account.clear.consequence, a critical warning kept whole in every language.
 
   async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
@@ -388,14 +403,15 @@
     const notice = text => window.toast(text, 'error');
     // Set Password: the account's own read says it has no local password.
     const first = Boolean(own) && own.has_password === false;
-    const passwordAction = profile.has_password ? 'Change Password' : first ? 'Set Password' : '';
+    // Change (an account with a local password) or Set (its first one), or none.
+    const passwordAction = profile.has_password ? 'change' : first ? 'set' : '';
     const standalone = (own?.deployment_type || data.deployment_type) === 'standalone';
     // A Standalone installation's open default Admin: its first password also
     // turns on password sign-in (the server does both, or neither).
     const standaloneFirst = first && standalone && sessionKind(data) === 'standalone';
     const required = typeof own?.sign_in_required === 'boolean' ? own.sign_in_required : null;
     const statusHint = !standalone || required === null ? ''
-      : required ? 'Password required to sign in' : 'No password required to sign in';
+      : DPI18n.t(required ? 'account.signin.required' : 'account.signin.not_required');
     // Clear Password: the password-protected Standalone installation's own
     // signed-in Administrator only.
     const clearable = standalone && required === true && own?.has_password === true
@@ -407,6 +423,7 @@
     const paintEmail = () => {
       if (!emailSlot) return;
       emailSlot.innerHTML = emailMarkup(profile, editingEmail);
+      DPI18n.render(emailSlot);
       fields.email = emailSlot.querySelector('[data-field="email"]');
       if (fields.email && editingEmail) fields.email.value = String(profile.email || '');
       const address = emailSlot.querySelector('.dp-account-email-address');
@@ -424,7 +441,7 @@
       ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
       // Clear Password's view is destructive: the red treatment, and its own accept.
       handle.setTone(next === 'clear' ? 'danger' : '');
-      handle.setAcceptLabel(next === 'clear' ? 'Clear Password' : 'Save');
+      handle.setAcceptLabel(DPI18n.t(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
       if (next === 'profile') {
         // Secrets never outlive their view.
         ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
@@ -436,8 +453,9 @@
       }
     };
     const actions = [];
-    if (passwordAction) actions.push({id: 'password', label: passwordAction, placement: 'leading'});
-    if (clearable) actions.push({id: 'clear', label: 'Clear Password', tone: 'danger', placement: 'leading'});
+    if (passwordAction) actions.push({id: 'password', placement: 'leading',
+      label: DPI18n.t(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
+    if (clearable) actions.push({id: 'clear', label: DPI18n.t('account.action.clear_password'), tone: 'danger', placement: 'leading'});
 
     // The header's far end: My Account's Help, then Easy | Advanced for every
     // account that owns a presentation. Help explains what this dialog offers
@@ -445,8 +463,9 @@
     const selector = presentation.owned ? presentationSelector() : null;
     const headerEnd = document.createElement('div');
     headerEnd.className = 'dp-account-header-end';
-    headerEnd.innerHTML = '<button type="button" class="dp-settings-help-chip" aria-label="Help: My Account" '
-      + `data-tooltip="Help: My Account">${window.DPIcons?.svg ? window.DPIcons.svg('help', 'dp-settings-help-glyph') : '?'}</button>`;
+    headerEnd.innerHTML = '<button type="button" class="dp-settings-help-chip" data-i18n-attr="aria-label:account.help;data-tooltip:account.help">'
+      + `${window.DPIcons?.svg ? window.DPIcons.svg('help', 'dp-settings-help-glyph') : '?'}</button>`;
+    DPI18n.render(headerEnd);
     headerEnd.querySelector('button').addEventListener('click', () => window.DPSettingsHelp?.open('my-account', {account: {
       standalone, open: sessionKind(data) === 'standalone', signInRequired: required, hasPassword: own?.has_password === true,
       passwordAction, first, standaloneFirst, clearable, showsUsername: !standalone,
@@ -455,11 +474,11 @@
     }}));
     if (selector) headerEnd.append(selector.element);
     const dialog = modal.open({
-      title: 'My Account',
+      title: DPI18n.t('account.title'),
       titleHint: statusHint,
       headerEnd,
-      acceptLabel: 'Save',
-      cancelLabel: 'Cancel',
+      acceptLabel: DPI18n.t('common.save'),
+      cancelLabel: DPI18n.t('common.cancel'),
       className: 'dp-account-dialog',
       actions,
       onAction(id) {
@@ -470,33 +489,33 @@
         body.innerHTML = `
           <div class="dp-account-view" data-account-view="profile">${standalone ? '' : `
             <div class="dp-modal-field dp-account-username">
-              <span class="form-label">DP Username</span>
+              <span class="form-label" data-i18n="account.field.username"></span>
               <span class="dp-account-username-value" data-account-username></span>
-              <p class="dp-account-username-note">Your DebridPulse account username. Used for local password sign-in when configured. Separate from your display name.</p>
+              <p class="dp-account-username-note" data-i18n="account.field.username.note"></p>
             </div>`}
-            <label class="dp-modal-field"><span class="form-label">Display Name</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.display_name"></span>
               <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
-            <label class="dp-modal-field"><span class="form-label">Actual Name</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.actual_name"></span>
               <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
             <div class="dp-modal-field dp-account-email" data-account-email></div>
           </div>
           <div class="dp-account-view" data-account-view="password" hidden>${first ? `
             <input type="text" data-account-password-username autocomplete="username" readonly hidden>` : `
-            <label class="dp-modal-field"><span class="form-label">Current Password</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.current_password"></span>
               <input class="input" data-field="current" type="password" maxlength="4096" autocomplete="current-password"></label>`}
-            <label class="dp-modal-field"><span class="form-label">New Password</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.new_password"></span>
               <input class="input" data-field="next" type="password" maxlength="4096" autocomplete="new-password"></label>
-            <label class="dp-modal-field"><span class="form-label">Confirm New Password</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.confirm_password"></span>
               <input class="input" data-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>${first ? `
-            <p class="dp-account-username-note">${standaloneFirst
-              ? 'Saving it turns on password sign-in: DebridPulse then asks for this password.'
-              : 'Local password sign-in works only if your administrator has enabled it.'}</p>` : ''}
+            <p class="dp-account-username-note" data-i18n="${standaloneFirst
+              ? 'account.first_password.note.standalone' : 'account.first_password.note.server'}"></p>` : ''}
           </div>${clearable ? `
           <div class="dp-account-view" data-account-view="clear" hidden>
-            <label class="dp-modal-field"><span class="form-label">Current Password</span>
+            <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.current_password"></span>
               <input class="input" data-field="clear_current" type="password" maxlength="4096" autocomplete="current-password"></label>
-            <p class="dp-account-clear-warning">${CLEAR_CONSEQUENCE}</p>
+            <p class="dp-account-clear-warning" data-i18n="account.clear.consequence"></p>
           </div>` : ''}`;
+        DPI18n.render(body);
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
         const username = body.querySelector('[data-account-username]');
@@ -518,9 +537,10 @@
       },
       async onAccept() {
         if (view === 'clear') {
-          if (!fields.clear_current.value) { notice('Enter your current password.'); return false; }
-          const confirmed = await modal.confirm({tone: 'danger', title: 'Clear Password?',
-            confirmLabel: 'Clear Password', message: CLEAR_CONSEQUENCE});
+          if (!fields.clear_current.value) { notice(DPI18n.t('account.validation.current_password')); return false; }
+          const confirmed = await modal.confirm({tone: 'danger', title: DPI18n.t('account.clear.confirm_title'),
+            confirmLabel: DPI18n.t('account.action.clear_password'), cancelLabel: DPI18n.t('common.cancel'),
+            message: DPI18n.t('account.clear.consequence')});
           if (!confirmed) return false;
           const failure = await sendJson('POST', '/api/account/clear-password',
             {current_password: fields.clear_current.value});
@@ -530,8 +550,8 @@
           return true;
         }
         if (view === 'password' && first) {
-          if (!fields.next.value) { notice('Enter a new password.'); return false; }
-          if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
+          if (!fields.next.value) { notice(DPI18n.t('account.validation.new_password')); return false; }
+          if (fields.next.value !== fields.confirm.value) { notice(DPI18n.t('account.validation.passwords_differ')); return false; }
           const failure = await sendJson('POST', '/api/account/first-password', {new_password: fields.next.value});
           if (failure) { notice(failure.message); return false; }
           // The server ended every session of this account: sign in again.
@@ -539,8 +559,8 @@
           return true;
         }
         if (view === 'password') {
-          if (!fields.current.value || !fields.next.value) { notice('Enter your current and new password.'); return false; }
-          if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
+          if (!fields.current.value || !fields.next.value) { notice(DPI18n.t('account.validation.current_and_new')); return false; }
+          if (fields.next.value !== fields.confirm.value) { notice(DPI18n.t('account.validation.passwords_differ')); return false; }
           const failure = await sendJson('PUT', '/api/account/password',
             {current_password: fields.current.value, new_password: fields.next.value});
           if (failure) { notice(failure.message); return false; }
@@ -549,7 +569,7 @@
           return true;
         }
         const name = fields.display_name.value.trim();
-        if (!name) { notice('A display name is required.'); return false; }
+        if (!name) { notice(DPI18n.t('account.validation.display_name')); return false; }
         // Each saved part is the profile's at once, so a retry after a later
         // part's failure sends only what is still unsaved.
         if (name !== String(profile.display_name || '')) {
@@ -721,7 +741,7 @@
     presentedParts.forEach(({node, anchor}) => {
       const omitted = omits(node.dataset.presentation);
       if (omitted && node.isConnected) { node.remove(); withdrawn.push(node); }
-      else if (!omitted && !node.isConnected && anchor.isConnected) anchor.after(node);
+      else if (!omitted && !node.isConnected && anchor.isConnected) { anchor.after(node); DPI18n.render(node); }
     });
     return withdrawn;
   }
@@ -749,7 +769,7 @@
       const mode = presentation.wanted;
       presentation.wanted = null;
       let accepted = null;
-      let message = 'Your presentation could not be saved.';
+      let message = DPI18n.t('presentation.failed');
       try {
         const response = await debridPulseFetch('/api/account/presentation', {
           method: 'PUT', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
@@ -757,7 +777,9 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && PRESENTATION_MODES.includes(payload?.presentation_mode)) accepted = payload.presentation_mode;
-        else if (typeof payload?.detail === 'string' && payload.detail) message = `Not saved: ${payload.detail}`;
+        else if (payload?.code || (typeof payload?.detail === 'string' && payload.detail)) {
+          message = DPI18n.t('presentation.failed.detail', {reason: errorMessage(payload, 'presentation.failed')});
+        }
       } catch (_) {}
       if (accepted) presentation.saved = accepted;
       // A newer choice is on its way: its answer, not this one, decides.
@@ -805,10 +827,11 @@
     const group = document.createElement('div');
     group.className = 'dp-presentation-switch';
     group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', 'Presentation');
+    group.setAttribute('aria-label', DPI18n.t('presentation.label'));
     group.innerHTML = PRESENTATION_MODES.map(mode => `<button type="button" class="dp-presentation-option" role="radio" `
-      + `data-presentation-mode="${mode}">${mode === 'easy' ? 'Easy' : 'Advanced'}</button>`).join('')
+      + `data-presentation-mode="${mode}" data-i18n="presentation.${mode}"></button>`).join('')
       + '<span class="dp-presentation-status" role="status"></span>';
+    DPI18n.render(group);
     const options = [...group.querySelectorAll('[data-presentation-mode]')];
     const status = group.querySelector('.dp-presentation-status');
     const paint = (detail = {}) => {
@@ -821,11 +844,10 @@
         option.setAttribute('aria-checked', String(checked));
         option.tabIndex = checked || (!chosen && option === options[0]) ? 0 : -1;
       });
-      const name = mode => (mode === 'easy' ? 'Easy' : 'Advanced');
-      if (detail.failed) status.textContent = `${name(detail.failed)} was not saved.`;
-      else if (state === 'saving') status.textContent = `Saving ${name(presentation.mode)}…`;
-      else if (detail.saved) status.textContent = `${name(detail.saved)} saved.`;
-      else if (state === 'unavailable') status.textContent = 'Presentation unavailable.';
+      if (detail.failed) status.textContent = DPI18n.t('presentation.status.not_saved', {mode: detail.failed});
+      else if (state === 'saving') status.textContent = DPI18n.t('presentation.status.saving', {mode: presentation.mode});
+      else if (detail.saved) status.textContent = DPI18n.t('presentation.status.saved', {mode: detail.saved});
+      else if (state === 'unavailable') status.textContent = DPI18n.t('presentation.status.unavailable');
     };
     const choose = option => {
       void choosePresentation(option.dataset.presentationMode);
@@ -881,6 +903,7 @@
   });
 
   composeAuthorized();
+  DPI18n.render(document);
   document.querySelectorAll('[data-presentation]').forEach(node => {
     const anchor = document.createComment(` ${node.dataset.presentation} `);
     node.before(anchor);
@@ -896,6 +919,14 @@
     save: changes => sendJson('PATCH', '/api/account/appearance', changes).then(failure => !failure),
     read: () => debridPulseFetch('/api/account/appearance', {headers: {'Accept': 'application/json'}})
       .then(response => (response.ok ? response.json() : null)),
+  });
+
+  // The page's language changed (ui-i18n.js): the session's own controls are
+  // built again, from the same session answer, in that language.
+  document.addEventListener('debridpulse:locale-changed', () => {
+    document.getElementById('sidebar-auth-mount')?.replaceChildren();
+    document.getElementById('topbar-account-mount')?.replaceChildren();
+    syncSidebarSessionUi(sessionState);
   });
 
   refreshSession().catch(() => {});

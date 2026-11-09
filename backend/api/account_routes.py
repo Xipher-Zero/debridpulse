@@ -26,6 +26,7 @@ from auth.policy import interactive_auth_enabled, password_auth_enabled, standal
 from auth.throttle import personal_notification_test_rate_limiter
 from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.logging_utils import sanitize_exception
+from core.localization import DisplayError
 from services import account_appearance
 from services import account_notifications
 from services import notification_service
@@ -34,8 +35,10 @@ router = APIRouter()
 logger = logging.getLogger("debridpulse.auth")
 
 
-def _refused(exc: AccountRefused) -> HTTPException:
-    status = 404 if "does not exist" in str(exc) else 409
+def _refused(exc: AccountRefused, status: int | None = None) -> HTTPException:
+    status = status or (404 if "does not exist" in str(exc) else 409)
+    if exc.code:
+        return DisplayError(status, str(exc), code=exc.code, params=exc.params)
     return HTTPException(status_code=status, detail=str(exc))
 
 
@@ -285,7 +288,7 @@ async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320
     try:
         await accounts.set_own_email(principal.account_id, email, expected)
     except accounts.InvalidEmail as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+        raise _refused(exc, 422) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
@@ -342,6 +345,24 @@ async def own_presentation(request: Request):
 async def choose_own_presentation(body: account_appearance.PresentationUpdate, request: Request):
     account_id = _presentation_owner(request)
     return {"presentation_mode": await account_appearance.set_presentation(account_id, body.presentation_mode)}
+
+
+# ── the account's own interface language ────────────────────────────────────
+# Classified ``interface`` and owned exactly as the presentation is
+# (``account_appearance.presentation_owner``): the request's own human
+# account, or the default Admin while sign-in is off. There is no language
+# selector yet: this is the contract a later one uses.
+
+@router.get("/account/locale")
+async def own_locale(request: Request):
+    account_id = _presentation_owner(request)
+    return {"locale": await account_appearance.load_locale(account_id)}
+
+
+@router.put("/account/locale")
+async def choose_own_locale(body: account_appearance.LocaleUpdate, request: Request):
+    account_id = _presentation_owner(request)
+    return {"locale": await account_appearance.set_locale(account_id, body.locale)}
 
 
 # ── the installation's login appearance ─────────────────────────────────────
@@ -462,8 +483,8 @@ async def change_own_password(body: OwnPassword, request: Request):
         await accounts.change_own_password(principal.account_id, body.current_password, body.new_password,
                                            peer=peer_key(request))
     except PasswordAuthenticationBusy:
-        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
-                            "Try again shortly.", headers={"Retry-After": "2"}) from None
+        raise DisplayError(429, "Too many password checks are already being processed. Try again shortly.",
+                           code="account.password_checks_busy", headers={"Retry-After": "2"}) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
@@ -494,8 +515,8 @@ async def set_own_first_password(body: OwnFirstPassword, request: Request):
         else:
             await accounts.set_own_first_password(principal.account_id, body.new_password, peer=peer_key(request))
     except PasswordAuthenticationBusy:
-        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
-                            "Try again shortly.", headers={"Retry-After": "2"}) from None
+        raise DisplayError(429, "Too many password checks are already being processed. Try again shortly.",
+                           code="account.password_checks_busy", headers={"Retry-After": "2"}) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
@@ -516,7 +537,7 @@ async def _standalone_first_password(new_password: str, *, peer: str) -> None:
     async with authentication_configuration_lock, config_write_lock():
         current = get_settings()
         if not standalone_open(current):
-            raise AccountRefused("Authentication changed meanwhile; nothing was changed")
+            raise AccountRefused("Authentication changed meanwhile; nothing was changed", code="account.auth_changed")
         enabled = current.model_copy(update={"auth_password_enabled": True}, deep=True)
         attempted = []
 
@@ -537,7 +558,8 @@ async def _standalone_first_password(new_password: str, *, peer: str) -> None:
                     logger.critical("Previous authentication settings could not be restored: %s",
                                     type(restore_exc).__name__)
             logger.error("The first password was not set: %s", type(exc).__name__)
-            raise HTTPException(status_code=500, detail="The password could not be saved; nothing was changed") from None
+            raise DisplayError(500, "The password could not be saved; nothing was changed",
+                               code="account.password_not_saved") from None
         apply_settings(enabled)
     await journal_configuration_change(current, enabled)
 
@@ -562,8 +584,8 @@ async def clear_own_standalone_password(body: OwnPasswordClear, request: Request
     try:
         await _clear_standalone_password(body.current_password, peer=peer_key(request))
     except PasswordAuthenticationBusy:
-        raise HTTPException(status_code=429, detail="Too many password checks are already being processed. "
-                            "Try again shortly.", headers={"Retry-After": "2"}) from None
+        raise DisplayError(429, "Too many password checks are already being processed. Try again shortly.",
+                           code="account.password_checks_busy", headers={"Retry-After": "2"}) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     response = JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
@@ -590,7 +612,7 @@ async def _clear_standalone_password(current_password: str, *, peer: str) -> Non
     async with authentication_configuration_lock, config_write_lock():
         current = get_settings()
         if not (standalone_deployment(current) and password_auth_enabled(current)):
-            raise AccountRefused("Authentication changed meanwhile; nothing was changed")
+            raise AccountRefused("Authentication changed meanwhile; nothing was changed", code="account.auth_changed")
         cleared = current.model_copy(update={"auth_password_enabled": False}, deep=True)
         attempted = []
 
@@ -611,8 +633,8 @@ async def _clear_standalone_password(current_password: str, *, peer: str) -> Non
                     logger.critical("Previous authentication settings could not be restored: %s",
                                     type(restore_exc).__name__)
             logger.error("The password was not cleared: %s", type(exc).__name__)
-            raise HTTPException(status_code=500,
-                                detail="The password could not be cleared; nothing was changed") from None
+            raise DisplayError(500, "The password could not be cleared; nothing was changed",
+                               code="account.password_not_cleared") from None
         apply_settings(cleared)
     password_failure_throttle.record_success(peer, identity)
     basic_verification_cache.clear()

@@ -765,56 +765,51 @@
      * deployment type it states; never a credential), so only what it offers
      * this account is explained. */
     'my-account': {
-      title: 'My Account',
+      titleKey: 'help.my_account.title',
       sections: [
         {text: [
-          'My Account is your own profile. What you change here applies to your account only.',
-          {text: 'Sign-in is off, so DebridPulse is used as its built-in Administrator, and this is that account.',
-            when: c => c.account?.open === true},
+          {key: 'help.my_account.intro'},
+          {key: 'help.my_account.intro.open', when: c => c.account?.open === true},
         ]},
-        {heading: 'Profile', list: [
-          {text: 'DP Username is the name your account signs in with when it uses a local password. It is separate from your display name, and only an Admin can change it.',
-            when: c => c.account?.showsUsername === true},
-          'Display Name is the name DebridPulse shows for you.',
-          'Actual Name is your full name, if you want to record it. It is profile information only: it never signs you in or decides what you may do.',
-          {text: 'Email: while none is recorded you may enter one; it is stored as unverified. An email you entered yourself can be corrected with the pencil beside it. An email never signs you in, links accounts, or grants anything.',
+        {headingKey: 'help.my_account.profile', list: [
+          {key: 'help.my_account.profile.username', when: c => c.account?.showsUsername === true},
+          {key: 'help.my_account.profile.display_name'},
+          {key: 'help.my_account.profile.actual_name'},
+          {key: 'help.my_account.profile.email.own',
             when: c => c.account?.standalone === true || !c.account?.email || c.account?.emailSelfEntered === true},
-          {text: 'Email: your identity provider supplied it, so it is shown read-only here. An email never signs you in, links accounts, or grants anything.',
+          {key: 'help.my_account.profile.email.provider',
             when: c => c.account?.standalone !== true && c.account?.email === true && c.account?.emailSelfEntered !== true},
-          'Save saves your changes to the names and the email; Cancel leaves them as they were.',
+          {key: 'help.my_account.profile.save'},
         ]},
-        {heading: 'Password', when: c => c.account?.passwordAction === 'Change Password', list: [
-          'Change Password asks for your current password and a new one, entered twice. They are never shown or kept after the dialog closes.',
-          'Saving the new password ends your browser sessions; where sign-in is required, sign in again with it.',
+        {headingKey: 'help.my_account.password', when: c => c.account?.passwordAction === 'change', list: [
+          {key: 'help.my_account.password.change'},
+          {key: 'help.my_account.password.change.sessions'},
         ]},
-        {heading: 'Password', when: c => c.account?.passwordAction === 'Set Password' && c.account?.standaloneFirst !== true, list: [
-          'Your account has no local password: it signs in through your identity provider. Set Password gives it one, under your DP Username.',
-          'That password works for sign-in only while an Admin has Username & Password sign-in enabled.',
+        {headingKey: 'help.my_account.password', when: c => c.account?.passwordAction === 'set' && c.account?.standaloneFirst !== true, list: [
+          {key: 'help.my_account.password.first'},
+          {key: 'help.my_account.password.first.enabled'},
         ]},
-        {heading: 'Password', when: c => c.account?.standaloneFirst === true, list: [
-          'Set Password gives the built-in Administrator its password.',
-          'Saving it also turns on password sign-in: from then on DebridPulse asks for this password, and only this password, before anyone can use it.',
+        {headingKey: 'help.my_account.password', when: c => c.account?.standaloneFirst === true, list: [
+          {key: 'help.my_account.password.standalone_first'},
+          {key: 'help.my_account.password.standalone_first.signin'},
         ]},
-        {heading: 'Sign-in', when: c => c.account?.standalone === true && typeof c.account?.signInRequired === 'boolean', list: [
-          {text: 'Password required to sign in: password sign-in is on now, so DebridPulse asks for your password before anyone can use it.',
-            when: c => c.account.signInRequired === true},
-          {text: 'No password required to sign in: sign-in is off now, so anyone who can reach DebridPulse can use it as the built-in Administrator.',
-            when: c => c.account.signInRequired === false},
-          'This line says whether sign-in is required now. It is not a reading of whether a password is stored.',
+        {headingKey: 'help.my_account.signin', when: c => c.account?.standalone === true && typeof c.account?.signInRequired === 'boolean', list: [
+          {key: 'help.my_account.signin.required', when: c => c.account.signInRequired === true},
+          {key: 'help.my_account.signin.not_required', when: c => c.account.signInRequired === false},
+          {key: 'help.my_account.signin.reading'},
         ]},
-        {heading: 'Clear Password', when: c => c.account?.clearable === true, list: [
-          'Clear Password asks for your current password and then a confirmation. It removes your password and turns password sign-in off, together.',
-          'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse can then access this installation without a password, until you set a new one in My Account.',
+        {headingKey: 'help.my_account.clear', when: c => c.account?.clearable === true, list: [
+          {key: 'help.my_account.clear.steps'},
+          // The same consequence the dialog states, word for word.
+          {key: 'account.clear.consequence'},
         ]},
-        {heading: 'Easy and Advanced', when: c => c.account?.presentation !== false, list: [
-          'Easy | Advanced chooses how much of the interface you see. Advanced, the default, shows the full interface your role and this installation’s deployment type allow; Easy hides further advanced pages, cards, and tuning.',
-          {text: 'In Easy, for example, the Activity Log and Settings cards such as Transfer Method Settings, Event Logging, and Database Reset Controls are hidden.',
-            when: c => c.admin},
-          {text: 'In Easy, for example, the Statistics Reporting card of your Notifications is hidden.', when: c => c.personal},
-          'It changes only what is shown. Your role and permissions, your saved settings, and everything DebridPulse does in the background stay the same, and settings you no longer see keep working with their saved values. Choosing Advanced never adds anything your role or the deployment type does not allow.',
-          'Your choice applies at once, without Save, and is saved to your account, so it follows you to every browser.',
-          {text: 'While sign-in is off it belongs to the built-in Administrator, so every browser of this installation shows the same choice.',
-            when: c => c.account?.open === true},
+        {headingKey: 'help.my_account.presentation', when: c => c.account?.presentation !== false, list: [
+          {key: 'help.my_account.presentation.choice'},
+          {key: 'help.my_account.presentation.admin_example', when: c => c.admin},
+          {key: 'help.my_account.presentation.user_example', when: c => c.personal},
+          {key: 'help.my_account.presentation.unchanged'},
+          {key: 'help.my_account.presentation.saved'},
+          {key: 'help.my_account.presentation.open', when: c => c.account?.open === true},
         ]},
       ],
     },
@@ -910,7 +905,10 @@
 
   // A part applies unless its own condition says otherwise.
   const applies = (part, c) => typeof part?.when !== 'function' || part.when(c) === true;
-  const words = (part, c) => (applies(part, c) ? [typeof part === 'string' ? part : part.text] : []);
+  // A part's text: authored here, or a catalog key (``key``) the page's
+  // language renders (ui-i18n.js).
+  const words = (part, c) => (applies(part, c)
+    ? [typeof part === 'string' ? part : part.key ? window.DPI18n.t(part.key) : part.text] : []);
 
   function render(body, topic, c) {
     const content = document.createElement('div');
@@ -918,10 +916,10 @@
     topic.sections.filter(section => applies(section, c)).forEach(section => {
       const block = document.createElement('section');
       block.className = 'dp-settings-help-section';
-      if (section.heading) {
+      if (section.heading || section.headingKey) {
         const heading = document.createElement('h3');
         heading.className = 'dp-settings-help-heading';
-        heading.textContent = section.heading;
+        heading.textContent = section.headingKey ? window.DPI18n.t(section.headingKey) : section.heading;
         block.appendChild(heading);
       }
       (section.text || []).flatMap(text => words(text, c))
@@ -951,7 +949,7 @@
     if (!topic || !window.DPSettingsModal) return null;
     const c = context(facts);
     return window.DPSettingsModal.open({
-      title: topic.title,
+      title: topic.titleKey ? window.DPI18n.t(topic.titleKey) : topic.title,
       dismiss: true,
       closeControl: true,
       className: 'dp-settings-help-dialog',
