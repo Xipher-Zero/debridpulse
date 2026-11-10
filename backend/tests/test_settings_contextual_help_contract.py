@@ -14,14 +14,15 @@ from pathlib import Path
 import pytest
 
 from auth.accounts import Role
-from i18n_node import english, says
+from i18n_node import english, says, spoken
 from auth.oidc import OidcAuthorizationError, OidcConfiguration, authorize_oidc_claims
 from auth.permissions import Capability, ROLE_CAPABILITIES
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 PAGE = (STATIC / "ui-settings-page.js").read_text(encoding="utf-8")
-HELP = (STATIC / "ui-settings-help.js").read_text(encoding="utf-8")
+# 1.0.14: the help as a reader hears it in English (its words are the catalog's).
+HELP = spoken((STATIC / "ui-settings-help.js").read_text(encoding="utf-8"))
 INDEX = (STATIC / "index.html").read_text(encoding="utf-8")
 
 

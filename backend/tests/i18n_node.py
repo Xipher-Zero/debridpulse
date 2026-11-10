@@ -91,7 +91,9 @@ def says(source: str, words: str) -> bool:
     return False
 
 
-_NAMED = re.compile(r"""(['"`])([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)\1(\s*,\s*\{([^{}]*)\})?""")
+# A key, and its literal argument object when the two are a call's arguments
+# (``keyed('k', {...})``, ``say('k', {...})``): never a list's next item.
+_NAMED = re.compile(r"""(['"`])([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)\1(\s*,\s*\{([^{}]*)\}(?=\s*\)))?""")
 _VALUE = re.compile(r"""(\w+):\s*'((?:[^'\\]|\\.)*)'""")
 
 

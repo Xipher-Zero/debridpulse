@@ -267,6 +267,26 @@ def test_the_ws4a_help_owners_hold_no_literal_outside_the_catalog_or_the_reviewe
     assert {entry["owner"].rsplit("/", 1)[-1] for entry in data["entries"]} <= {"ui-settings-help.js"}
 
 
+# WS4b: Settings Help (ui-settings-help.js) -- every topic and the role table.
+# With it, the census holds no first-party interface literal outside the
+# catalog or the reviewed exemptions.
+def test_the_census_holds_no_first_party_literal_outside_the_catalog_from_ws4b_on():
+    import inventory
+
+    data = inventory.census()
+    assert [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]] == []
+    # Every key Settings Help names is English's, and the role table's plain
+    # answers are facts (data-answer), never read from their words.
+    source = (ROOT / "frontend" / "static" / "ui-settings-help.js").read_text(encoding="utf-8")
+    messages = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
+    named = set(re.findall(r"'((?:help|settings|integration|account)\.[a-z0-9_.]+)'", source))
+    assert len(named) > 300 and named <= set(messages), sorted(named - set(messages))
+    assert "const YES = Object.freeze({key: 'help.roles.yes', answer: 'yes'});" in source
+    assert "const NO = Object.freeze({key: 'help.roles.no', answer: 'no'});" in source
+    assert source.count("dataset.answer = value.answer") == 1 and source.count("dataset.answer = values[index].answer") == 1
+    assert "toLowerCase" not in source
+
+
 def test_the_census_counts_keyed_markup_as_keyed_and_a_sentence_as_a_sentence():
     import inventory
 

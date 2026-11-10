@@ -1,7 +1,7 @@
 # Localization
 
 DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a–WS3e and
-WS4a complete; product localization incomplete.** The runtime, the catalogs, the validators,
+WS4 (WS4a, WS4b) complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -53,9 +53,14 @@ These surfaces read the catalog:
   stay as bundled), and the shared section navigator's tooltip
   (`ui-section-nav.js`).
 
-Every other surface is still English literals: Settings Help (WS4b,
-`ui-settings-help.js`). The census below counts them. No language is
-offered: there is no picker, and no target catalog ships.
+- WS4b, Settings Help (`ui-settings-help.js`): every topic a Settings card,
+  the Role selectors or My Account opens -- titles, headings, paragraphs and
+  list items, for every reader -- and the role comparison table, its caption,
+  headings and answers.
+
+The census finds no first-party interface literal outside the catalog or the
+reviewed exemptions. No language is offered: there is no picker, and no target
+catalog ships (WS5).
 
 ## 1. Pieces and owners
 
@@ -353,7 +358,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS4a
+## 3. Census (WS0) — snapshot at WS4b
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -383,21 +388,20 @@ attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
 `data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
 entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 
-| Measure | At WS3a | At WS3b | At WS3c | At WS3d | At WS4a |
-|---|---|---|---|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) | 405 (361 unique English) |
-| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 | 0 / 0 |
-| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 | 34 |
-| … long-form Help | 962 | 962 | 962 | 962 | 405 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 | 353 |
-| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding | 768: 278 coded, 490 exempt, 0 outstanding |
-| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,592 (+308 refusal codes, +82 transfer categories, +2 OIDC window) | 3,129 (+537) |
+| Measure | At WS3a | At WS3b | At WS3c | At WS3d | At WS4a | At WS4b |
+|---|---|---|---|---|---|---|
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) | 405 (361 unique English) | 0 |
+| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 | 0 / 0 | 0 / 0 |
+| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 | 34 | 0 |
+| … long-form Help | 962 | 962 | 962 | 962 | 405 | 0 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 | 353 | 353 |
+| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding | 768: 278 coded, 490 exempt, 0 outstanding | unchanged |
+| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,592 (+308 refusal codes, +82 transfer categories, +2 OIDC window) | 3,129 (+537) | 3,467 (+338) |
 
-The owner still outside the catalog:
-
-| Owner | Entries | Workstream |
-|---|---|---|
-| `ui-settings-help.js` (all topics except My Account) | 405 | WS4b |
+**WS4 in all.** The 973 Help entries at WS3d (98 critical-warning) are WS4a's
+568 (64 critical) and WS4b's 405 (34 critical): 972 keyed and 1 exempt (an
+internal section id), each listed with its key in the two candidates'
+census reconciliations.
 
 **WS4a notes.** The Field Manual's 568 entries (557 in `ui-help-page.js`, 11
 in the License viewer) are 567 keyed and 1 exempt (the internal section id
@@ -426,7 +430,37 @@ License viewer's words (`help.legal.*`) and the navigator's tooltip
 - The License viewer's own words are keyed; the document's text and its own
   title are the bundled English, shown exactly.
 
-No WS3a–WS3d or WS4a owner holds an entry outside the catalog or the exemption
+**WS4b notes.** Settings Help's 405 entries (34 critical-warning) are all
+keyed: 375 in 336 new keys (`help.topic.<topic>.<section>.<part>`; headings
+used by several topics are `help.topic.heading.*`, and words several topics
+share are `help.topic.shared.*`), 30 by Settings' own keys with the same words
+and meaning -- each topic's title is its card's title (`settings.*.title`,
+`settings.tuning.title` with the card's own method label), and the role
+names are `settings.role.*` -- and the role table's own words
+(`help.roles.*`, with its two answers `help.roles.yes` / `help.roles.no`).
+Rules:
+
+- A topic part is a catalog key, or said words with their arguments
+  (`say(key, values)`); a part under a condition (`when`) is a whole message
+  per wording, named for the condition where two compete
+  (`….provider_additional_settings_shown` / `_hidden`, `….server` /
+  `….standalone`).
+- Technical text is an argument, shown exactly: `{variable}`
+  (`PUBLIC_BASE_URL`), `{format}` (`issuer|subject-id`), `{claim}`
+  (`email_verified=true`), `{scope}` (`openid`), `{file_type}` (`.torrent`),
+  and the size values a tuning field accepts (`{lowest}`, `{highest}`,
+  `{default}`).
+- The role table's answers are facts: `data-answer` is `yes` or `no` from the
+  answer itself, whatever its words.
+- Every node keeps its key, so an open topic -- its title through the dialog
+  shell's said words -- is re-said in place on a language change.
+- Help sentences that extend a Settings or server message keep their own
+  keys rather than joining the message to more words: the live-tuning
+  paragraph (beyond `settings.live_tuning.confirm_unknown`), and the API
+  token sentences (beyond `error.account.tokens_integration_only`). The
+  contract tests still check that Help names what Settings and the server say.
+
+No WS3a–WS3d or WS4 owner holds an entry outside the catalog or the exemption
 register, `index.html` holds none, and `ui-settings-page.js` is whole
 (`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly the 223
 subtitle language names (above) and provider and protocol names. WS3d's 742
@@ -461,6 +495,12 @@ Callback URL, Default Role for New OIDC Users (`settings.deployment.*`, `setting
 refusals' words -- "Only Integration accounts hold API tokens"
 (`error.account.tokens_integration_only`) and "… is not a supported link"
 (`error.submit.link_unsupported`) -- which WS4 says from the same keys.
+
+*As done in WS4:* topic titles and the role names are said from these same
+keys. A label or a message named inside a Help sentence stays part of that
+sentence (a passage is translated whole); the contract tests keep checking
+that Help names what Settings and the server say, and WS5 checks the
+translations' terms against the interface's.
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 

@@ -20531,6 +20531,2073 @@
     "position": "number: its position, from 1",
     "count": "number: how many sections there are"
    }
+  },
+  "help.roles.caption": {
+   "category": "label",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): its caption and accessible name.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.capability": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.sign_browser_interface": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.view_dashboard_downloads_transfer": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.view_statistics": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.summary_counts_through_api": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.add_downloads": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.through_api_only": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.pause_resume_retry_reorder": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.asks_pause_resume_own": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.delete_cancel_redirect_transfers": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.roles.only_when_no_other": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.withdraw_download_requests": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.any_account": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.own": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.own_jobs": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.webhook_notifications_statistics_reports": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.global_ones_settings": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.own_under_notifications": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.settings_accounts_maintenance_activity": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.hold_api_tokens": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.roles.yes_issued_admin": {
+   "category": "table-header",
+   "context": "Settings Help: the role comparison table (User Accounts help, and the Role selectors): a capability, a column heading or one role's answer for it; kept short.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.intro.premium_services": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.intro.every_premium_service": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.each_card": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Premium Services).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.enable_decides_whether": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.help_each_card": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.credentials": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.test_checks_saved": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.additional_settings_hold": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.each_card.each_service_own": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.usenet": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.usenet.usenet_uses_configured": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.related": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.related.direct_sources_need": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.intro.usenet_downloads_nzb": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.news_servers": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Usenet).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.news_servers.each_server_has": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.news_servers.connections": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.news_servers.priority_orders_servers": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.news_servers.articles_per_request": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.status_test": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Usenet).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.status_test.usenet": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.status_test.server_own_test": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.downloads_recovery": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Usenet).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.downloads_recovery.usenet_download": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.downloads_recovery.behavior_shared_every": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.nzbs_premium_services": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Usenet).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.nzbs_premium_services.torbox_premiumize_can.provider_additional_settings_shown": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.nzbs_premium_services.torbox_premiumize_can.provider_additional_settings_hidden": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.usenet.nzbs_premium_services.if_first_service": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.title": {
+   "category": "modal-title",
+   "context": "Settings Help: the title of the help dialog for a Settings card (AllDebrid).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.intro.alldebrid": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.heading.connecting": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.connecting.paste_api_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.alldebrid.connecting.test_checks_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.what_account_can": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.what_account_can.per_alldebrid_documentation": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.alldebrid.what_account_can.hoster_links_work": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.additional_settings": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.additional_settings.prepare_backup_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.additional_settings.maximum_active_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.alldebrid.additional_settings.api_calls_per": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (AllDebrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.shared_settings": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.shared.behavior_shared_every": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog, shared by several topics (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.shared.maximum_concurrent_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog, shared by several topics (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.title": {
+   "category": "modal-title",
+   "context": "Settings Help: the title of the help dialog for a Settings card (Debrid-Link).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.intro.debrid_link": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.debridlink.connecting.paste_api_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.debridlink.connecting.test_checks_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.what_account_can.premium_debrid_link": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.debridlink.what_account_can.free_account_can": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.what_account_can.limits_debrid_link": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.additional_settings.prepare_backup_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.debridlink.additional_settings.request_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Debrid-Link), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.title": {
+   "category": "modal-title",
+   "context": "Settings Help: the title of the help dialog for a Settings card (Premiumize).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.intro.premiumize": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.premiumize.connecting.paste_api_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.premiumize.connecting.test_checks_key": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.what_account_can.while_premiumize_premium": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.premiumize.what_account_can.what_free_expired": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.what_account_can.premiumize_refuses_work": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.additional_settings.use_premiumize_before": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.additional_settings.prepare_backup_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premiumize.additional_settings.request_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premiumize), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.title": {
+   "category": "modal-title",
+   "context": "Settings Help: the title of the help dialog for a Settings card (Real-Debrid).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.intro.real_debrid": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {file_type} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "file_type": "string: literal technical text shown exactly, here '.torrent'"
+   }
+  },
+  "help.topic.realdebrid.connecting.connect_real_debrid": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.connecting.test_checks_stored": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.connecting.disconnect_forgets_stored": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.what_account_can.per_real_debrid": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.what_account_can.free_account_may": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.additional_settings.prepare_backup_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.additional_settings.maximum_active_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.additional_settings.api_calls_per": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.realdebrid.additional_settings.request_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Real-Debrid), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.title": {
+   "category": "modal-title",
+   "context": "Settings Help: the title of the help dialog for a Settings card (TorBox).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.intro.torbox": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.connecting.connect_torbox_shows": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.connecting.test_checks_stored": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.connecting.disconnect_forgets_stored": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.what_plan_can": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (TorBox).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.what_plan_can.debridpulse_follows_torbox": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.what_plan_can.nzbs_only_where": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.what_plan_can.debridpulse": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.what_plan_can.torbox": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.additional_settings.prepare_backup_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.additional_settings.maximum_active_torrents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.additional_settings.use_torbox_before": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.torbox.additional_settings.api_calls_per": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.network_sources.intro.network_sources": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Network Sources).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.network_sources.enable.enable_switch_card": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.network_sources.enable.turning_group_off": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.network_sources.related.how_each_protocol": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.intro.these_controls_apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.principal_controls": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.principal_controls.download_folder": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.principal_controls.maximum_concurrent_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.everything_else": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Download Behavior & Limits).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.everything_else.retries_disk_space": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.advanced_settings": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Download Behavior & Limits).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.advanced_settings.material_checkpoint_interval": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.advanced_settings.graceful_stop_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.advanced_settings.local_network_connections": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.download_behavior.advanced_settings.provider_poll_interval": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.download_behavior.advanced_settings.resolution_failure_retries": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Behavior & Limits), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.intro.each_card_group": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.methods": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Transfer Method Settings).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.methods.network_sources": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.methods.rsync_compression_modification": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.methods.webdav": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.methods.usenet": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.methods.media_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.transfer_methods.related.whether_method": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Transfer Method Settings), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.disk_space_guard": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Disk Space & Recovery).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.disk_recovery.disk_space_guard.when_free_space": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Disk Space & Recovery), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.disk_recovery.disk_space_guard.new_downloads_start": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Disk Space & Recovery), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.recovery": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Disk Space & Recovery).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.disk_recovery.recovery.download_error_retries": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Disk Space & Recovery), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.disk_recovery.recovery.stalled_download_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Disk Space & Recovery), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.engine_activity.intro.live_list_jobs": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Engine Activity), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.controls": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Download Engine Activity).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.engine_activity.controls.filters_show_active": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Engine Activity), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.engine_activity.controls.pause_resume_act": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Engine Activity), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.engine_activity.controls.terminate": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Download Engine Activity), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.tuning_direct.intro.these_settings_tune": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.connections_segments": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Network Sources Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.connections_segments.connections_per_server": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.connections_segments.segments_per_file": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.connections_segments.minimum_split_size": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {lowest}, {highest}, {default} stand for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "lowest": "string: literal technical text shown exactly, here '1M'",
+    "highest": "string: literal technical text shown exactly, here '1024M'",
+    "default": "string: literal technical text shown exactly, here '10M'"
+   }
+  },
+  "help.topic.tuning_direct.connections_segments.changes_also_apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.interrupted_slow_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Network Sources Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.interrupted_slow_downloads.continue_partial_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.interrupted_slow_downloads.lowest_speed_limit": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.disk": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Network Sources Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.disk.disk_cache": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {default} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "default": "string: literal technical text shown exactly, here '64M'"
+   }
+  },
+  "help.topic.tuning_direct.disk.file_allocation": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_direct.related.which_network_protocols": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Network Sources Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.intro.these_settings_apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.transfers": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (rsync Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.transfers.partial_transfers": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.transfers.compression": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.transfers.preserve_modification_time": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.timeouts": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (rsync Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.timeouts.connection_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.timeouts.transfer_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.directory_depth": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (rsync Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.directory_depth.how_many_folder": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_rsync.related.whether_rsync_sources": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (rsync Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_webdav.intro.these_settings_decide": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (WebDAV Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.collecting_folder": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (WebDAV Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_webdav.collecting_folder.directory_depth": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (WebDAV Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_webdav.collecting_folder.maximum_files": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (WebDAV Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_webdav.collecting_folder.collection_scan_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (WebDAV Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_webdav.related.whether_webdav_sources": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (WebDAV Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_usenet.intro.these_settings_apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.settings": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Usenet Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_usenet.settings.article_cache_limit": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_usenet.settings.maximum_retries": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_usenet.settings.request_timeout": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_usenet.settings.direct_write": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.intro.these_settings_apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.choosing_what_downloaded": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Media Downloads Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.choosing_what_downloaded.target_resolution": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.choosing_what_downloaded.video_quality_chooses": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.choosing_what_downloaded.preferred_video_codec": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.choosing_what_downloaded.preferred_subtitle_language": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.downloading": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Media Downloads Tuning).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.downloading.concurrent_fragment_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.downloading.youtube_player_client": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.tuning_media.related.whether_media_downloads": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Media Downloads Tuning), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.automatic_extraction.intro.when_enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Automatic Extraction), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.automatic_extraction.principal_controls.delete_archives_after": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Automatic Extraction), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.automatic_extraction.principal_controls.concurrent_extractions_limits": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Automatic Extraction), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.automatic_extraction.principal_controls.archive_passwords": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Automatic Extraction), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.safety": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Automatic Extraction).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.automatic_extraction.safety.archives": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Automatic Extraction), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.intro.summary_how_people": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.browser_sessions": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Authentication Status).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.browser_sessions.browser_session_lifetime": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.browser_sessions.active_browser_sessions": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.browser_sessions.log_out_current": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.browser_sessions.sessions_concern_browser": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.changing_how_people": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Authentication Status).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.changing_how_people.turning_username_password": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.auth_status.related.integration_accounts_never": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Authentication Status), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.intro.local_sign_username": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.principal_controls.enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.principal_controls.username_password": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.principal_controls.stored_password": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.principal_controls.applying_new_credential": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.principal_controls.clear_inside_password": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.username_password.principal_controls.status_beside_help": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.username_password.related.other_people_local": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Username & Password), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.intro.lets_people_sign": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.connection": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (OpenID Connect).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.connection.public_debridpulse_base": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {variable} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "variable": "string: literal technical text shown exactly, here 'PUBLIC_BASE_URL'"
+   }
+  },
+  "help.topic.oidc.connection.issuer_url_client": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.connection.scopes": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {scope} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "scope": "string: literal technical text shown exactly, here 'openid'"
+   }
+  },
+  "help.topic.oidc.connection.test_signs_through": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.access_control": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (OpenID Connect).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.access_control.allow_any_authenticated": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.access_control.off_user_must": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {format}, {claim} stand for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "format": "string: literal technical text shown exactly, here 'issuer|subject-id'",
+    "claim": "string: literal technical text shown exactly, here 'email_verified=true'"
+   }
+  },
+  "help.topic.oidc.access_control.email_addresses_match": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.accounts": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (OpenID Connect).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.accounts.someone_admitted_first": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.oidc.accounts.identity": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.intro.people_who_sign": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.roles": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (User Accounts).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.roles.admin": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.roles.user": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.roles.readonly_user": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.user_accounts.roles.integration": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.account_actions": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (User Accounts).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.account_actions.add_local_account": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.account_actions.every_person_has": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.account_actions.disabling_account_ends": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.user_accounts.account_actions.merge_combines_accounts": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.user_accounts.account_actions.debridpulse_always_keeps": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.intro.integration_account_represents": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.tokens": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Integration Accounts).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.tokens.issue_token_creates": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.tokens.each_token": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.tokens.revoke": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.integration_accounts.tokens.only_integration_accounts.server": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.tokens.only_integration_accounts.standalone": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.what_integration_can": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Integration Accounts).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.what_integration_can.submit_jobs_into": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.what_integration_can.ask_pause_resume": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.what_integration_can.cannot_pause_delete": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.disable_delete": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Integration Accounts).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.integration_accounts.disable_delete.disabling_account": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.integration_accounts.disable_delete.deleting_also_revokes": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.delivery_profiles.intro.delivery_profile_tells": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.what_profile_sets": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Integration Delivery Profiles).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.what_profile_sets.categories": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.what_profile_sets.authorized_api_tokens": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.what_profile_sets.source_types": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.what_profile_sets.dp_download_path": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.what_profile_sets.retention": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.jobs_files": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Integration Delivery Profiles).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.delivery_profiles.jobs_files.submitting_job_makes": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.delivery_profiles.jobs_files.completed_files": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.delivery_profiles.jobs_files.download_client_interfaces": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Integration Delivery Profiles), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.intro.deployment_type_decides": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.server": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.server.every_enabled_admin": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.standalone": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.standalone.only_built_administrator": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.standalone.password_set_sign": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.standalone.without_password_no": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.what_switching_keeps": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.what_switching_keeps.no_account": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.deployment_type.what_switching_keeps.returning_server": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.what_switching_keeps.saved_openid_connect": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.what_switching_keeps.integration_accounts_their": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.what_switching_changes": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.what_switching_changes.each_switch_either": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.what_switching_changes.clears_built_administrator": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.deployment_type.what_switching_changes.afterwards_no_sign": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.deployment_type.what_switching_changes.stays_open_until": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.intro.instance_wide_webhook": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.intro.discord_webhook_receives": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.principal_controls.enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.principal_controls.primary_webhook_receives": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.principal_controls.display_name_avatar": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.principal_controls.notification_events_choose": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.principal_controls.test": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.related.each_user_can": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.related.statistics_reporting": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord.related.statistics_reports_which": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.intro.outbound_summary_debridpulse": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.who_receives": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.who_receives.only_configured_destination": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.who_receives.it": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.who_receives.users_who_set": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.what_when": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (used in several topics).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.what_when.report_window": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.shared.automatic_report_interval": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog, shared by several topics (Statistics Reporting, Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.what_when.test": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting.what_when.no_destination_nothing": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.intro.own_webhook_alerts": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.intro.webhooks_must_discord": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.principal_controls.enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.principal_controls.primary_webhook_receives": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.principal_controls.choose_which_events": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.principal_controls.alert": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.statistics_reports": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Webhook Notifications).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.discord_own.statistics_reports.statistics_reports_previously": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Webhook Notifications), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting_own.intro.own_statistics_report": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting_own.who_receives.only_destination": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting_own.what_when.report_window": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.statistics_reporting_own.what_when.test": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.event_logging.intro.debridpulse_records_event": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Event Logging), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.event_logging.principal_controls.activity_log_page": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Event Logging), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.event_logging.principal_controls.recorded_events": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Event Logging), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.backups": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Backups & Retention).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.backups.backups.backup_holds_database": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.backups.backups.while_enable": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.backups.backups.backup": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.backups.backups.older_backups": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.backups.backups.restoring_resetting_database": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.backups.backups.restoring_makes_safety": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.statistics_snapshots": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Backups & Retention).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.backups.statistics_snapshots.separately_debridpulse_saves": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.backups.statistics_snapshots.snapshots": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.backups.statistics_snapshots.debridpulse_keeps_saving": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.database_reset.intro.erases_debridpulse_download": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.what_removed_kept": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Database Reset Controls).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.database_reset.what_removed_kept.removed": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.database_reset.what_removed_kept.kept": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.heading.safeguards": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Database Reset Controls).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.database_reset.safeguards.reset_database_works": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.topic.database_reset.safeguards.processing_pauses_reset": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning"
+  },
+  "help.roles.yes": {
+   "category": "table-header",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "context": "Settings Help: the role comparison table, one role's plain answer to whether it can do a capability (a cell, and in the narrow list the answer beside the role's name); one word."
+  },
+  "help.roles.no": {
+   "category": "table-header",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "context": "Settings Help: the role comparison table, one role's plain answer to whether it can do a capability (a cell, and in the narrow list the answer beside the role's name); one word."
   }
  }
 }

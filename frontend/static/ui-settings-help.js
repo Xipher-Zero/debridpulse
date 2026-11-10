@@ -13,6 +13,15 @@
  * implements today. Text is assigned through textContent; no topic carries
  * markup.
  *
+ * Words (1.0.14 localization): every title, heading, paragraph, list item
+ * and table cell is a catalog key (a string), or said words with their
+ * arguments (`say(key, values)`: a setting value, variable or file type,
+ * shown exactly). The context decides which parts exist; the catalog says
+ * them. Each node keeps its key, so a language change re-says an open topic
+ * in place (ui-i18n.js render) -- the topic, its scroll and focus stay, and
+ * nothing is read. A part that differs by reader is a whole message per
+ * wording, never a sentence joined from parts.
+ *
  * A topic explains the interface its reader actually has. The one context
  * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
  * the role's capabilities, the deployment type, Easy or Advanced and the
@@ -26,29 +35,40 @@
 (function () {
   'use strict';
 
-  const YES = 'Yes';
-  const NO = 'No';
+  const t = (key, values) => window.DPI18n.t(key, values);
+  // A message's arguments: one that is itself a message ({$t, $v}) is said first.
+  const plain = values => values && Object.fromEntries(Object.entries(values).map(([name, value]) =>
+    [name, value && typeof value === 'object' && typeof value.$t === 'string' ? t(value.$t, plain(value.$v) || undefined) : value]));
+  // Said words: a key and its arguments; they print as their words in the page's language.
+  const say = (key, values = null) => Object.freeze({key, values, toString: () => t(key, plain(values) || undefined)});
+  // A message as another message's argument (a card's own label inside its title).
+  const said = (key, values = {}) => ({$t: key, $v: values});
+
+  // The role table's two plain answers: what each says is the catalog's;
+  // which it is (data-answer) is the fact itself, never its words.
+  const YES = Object.freeze({key: 'help.roles.yes', answer: 'yes'});
+  const NO = Object.freeze({key: 'help.roles.no', answer: 'no'});
 
   /* Shared by User Accounts (the card) and the Role selectors of Add Local
    * Account and Edit User. Derived from backend/auth/permissions.py
    * (ROLE_CAPABILITIES, ACTIONS, destruction_precondition). */
   const ROLE_TABLE = Object.freeze({
-    caption: 'What each role can do',
-    head: ['Capability', 'Admin', 'User', 'ReadOnly User', 'Integration'],
+    caption: 'help.roles.caption',
+    head: ['help.roles.capability', 'settings.role.admin', 'settings.role.user', 'settings.role.readonly', 'settings.role.integration'],
     rows: [
-      ['Sign in to this browser interface', YES, YES, YES, NO],
-      ['View the Dashboard, Downloads, and transfer details', YES, YES, YES, NO],
-      ['View Statistics', YES, YES, YES, 'Summary counts through the API only'],
-      ['Add downloads', YES, YES, NO, 'Through the API only'],
-      ['Pause, resume, retry, and reorder transfers', YES, YES, NO,
-        'Asks to pause or resume its own jobs; DebridPulse may decline'],
-      ['Delete, cancel, or redirect transfers', YES,
-        'Only when no other account still needs the transfer', NO, NO],
-      ['Withdraw download requests', 'Any account’s', 'Its own', NO, 'Its own jobs'],
-      ['Webhook notifications and statistics reports', 'The global ones, in Settings',
-        'Its own, under Notifications', NO, NO],
-      ['Settings, accounts, maintenance, the Activity Log, and global pause', YES, NO, NO, NO],
-      ['Hold API tokens', NO, NO, NO, 'Yes, issued by an Admin'],
+      ['help.roles.sign_browser_interface', YES, YES, YES, NO],
+      ['help.roles.view_dashboard_downloads_transfer', YES, YES, YES, NO],
+      ['help.roles.view_statistics', YES, YES, YES, 'help.roles.summary_counts_through_api'],
+      ['help.roles.add_downloads', YES, YES, NO, 'help.roles.through_api_only'],
+      ['help.roles.pause_resume_retry_reorder', YES, YES, NO,
+        'help.roles.asks_pause_resume_own'],
+      ['help.roles.delete_cancel_redirect_transfers', YES,
+        'help.roles.only_when_no_other', NO, NO],
+      ['help.roles.withdraw_download_requests', 'help.roles.any_account', 'help.roles.own', NO, 'help.roles.own_jobs'],
+      ['help.roles.webhook_notifications_statistics_reports', 'help.roles.global_ones_settings',
+        'help.roles.own_under_notifications', NO, NO],
+      ['help.roles.settings_accounts_maintenance_activity', YES, NO, NO, NO],
+      ['help.roles.hold_api_tokens', NO, NO, NO, 'help.roles.yes_issued_admin'],
     ],
   });
 
@@ -62,283 +82,283 @@
   const TOPICS = Object.freeze({
     /* ── Services ─────────────────────────────────────────────────────── */
     'premium-services': {
-      title: 'Premium Services',
+      title: 'settings.services.premium',
       sections: [
         {text: [
-          'Premium Services are the accounts DebridPulse can use to obtain downloads on your behalf: debrid services such as AllDebrid, Real-Debrid, TorBox, Debrid-Link, and Premiumize, and your own Usenet news servers. Each service has its own card here.',
-          'Every premium service is switched off in a new installation, and none is required: Network Sources work without one. A choice you have saved, on or off, is always kept.',
+          'help.topic.premium_services.intro.premium_services',
+          'help.topic.premium_services.intro.every_premium_service',
         ]},
-        {heading: 'On each card', list: [
-          'Enable decides whether the service takes part in new downloads. Turning it off keeps its saved credentials and settings.',
-          'Help on each card explains that service: how it connects, what your account with it can do, and its own settings.',
-          'The credentials are stored on the server and are never shown again after saving; leave a secret field blank to keep the stored value.',
-          'Test checks the saved configuration against the service. The status beside it reports Unconfigured (enabled but nothing usable is saved), Unverified (saved but not yet proven by a test), or Verified (the current saved configuration passed a test).',
-          {text: 'Additional Settings hold that service’s own limits and options; they apply to that service only. Provider Poll Interval, Full Sync Interval, Resolution Failure Retries, and Retry Delay are configured under Downloads → Download Behavior & Limits → Advanced Settings. Full Sync applies to eligible premium services; resolution retries also cover Network Sources.',
+        {heading: 'help.topic.heading.each_card', list: [
+          'help.topic.premium_services.each_card.enable_decides_whether',
+          'help.topic.premium_services.each_card.help_each_card',
+          'help.topic.premium_services.each_card.credentials',
+          'help.topic.premium_services.each_card.test_checks_saved',
+          {text: 'help.topic.premium_services.each_card.additional_settings_hold',
             when: shown('provider-additional-settings')},
-          {text: 'Each service’s own limits and options keep working with their saved values; their controls are part of the Advanced presentation.',
+          {text: 'help.topic.premium_services.each_card.each_service_own',
             when: omitted('provider-additional-settings')},
         ]},
-        {heading: 'Usenet', text: [
-          'Usenet uses your configured news servers rather than a debrid account. Open the Usenet card’s help for server configuration and download behavior.',
+        {heading: 'help.topic.heading.usenet', text: [
+          'help.topic.premium_services.usenet.usenet_uses_configured',
         ]},
-        {heading: 'Related', text: [
-          'Direct sources that need no account, such as HTTP, FTP, or rsync links, are configured under Network Sources instead.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.premium_services.related.direct_sources_need',
         ]},
       ],
     },
     usenet: {
-      title: 'Usenet',
+      title: 'help.topic.heading.usenet',
       sections: [
         {text: [
-          'Usenet downloads NZB content directly from news servers you have an account with. Unlike a debrid service, there is no provider account doing the work: DebridPulse runs its own Usenet download service inside the container, connects to your servers, and assembles the files itself. It is off until you enable it.',
+          'help.topic.usenet.intro.usenet_downloads_nzb',
         ]},
-        {heading: 'News servers', list: [
-          'Each server has a host, a port, and an SSL setting (switching SSL moves an unchanged default port between 563 and 119), plus the username and password for that server. The stored password is never shown; leave the field blank to keep it.',
-          'Connections is how many simultaneous connections DebridPulse may open to that server, from 1 upward; set it no higher than your account allows.',
-          'Priority orders the servers: a lower value is preferred, and 0 is the highest.',
-          'Articles per Request and Server Timeout tune how DebridPulse talks to that server. Each server also has its own Enable; a disabled server is never contacted.',
+        {heading: 'help.topic.heading.news_servers', list: [
+          'help.topic.usenet.news_servers.each_server_has',
+          'help.topic.usenet.news_servers.connections',
+          'help.topic.usenet.news_servers.priority_orders_servers',
+          'help.topic.usenet.news_servers.articles_per_request',
         ]},
-        {heading: 'Status and Test', list: [
-          'Usenet is Configured once at least one enabled server has a host and at least one connection, and Verified only when every enabled server has passed a test of its current connection settings.',
-          'A server’s own Test makes a real connection with what its card currently shows, including an unsaved password, and saves nothing. Test in this card’s header tests every saved, enabled server.',
+        {heading: 'help.topic.heading.status_test', list: [
+          'help.topic.usenet.status_test.usenet',
+          'help.topic.usenet.status_test.server_own_test',
         ]},
-        {heading: 'Downloads and recovery', list: [
-          'A Usenet download is an ordinary DebridPulse transfer: it counts toward Maximum Concurrent Downloads, can be paused and resumed, and follows the Stalled Download Timeout and download error retries. After a restart DebridPulse finds its Usenet jobs again rather than submitting them twice.',
-          'DebridPulse verifies and repairs the downloaded files, but never unpacks them in the Usenet service; Automatic Extraction handles archives afterwards, as for any download.',
-          {text: 'Behavior shared by every server is under Downloads, Transfer Method Settings, Usenet: the article cache, Direct Write, how many times one article is retried on a server before that server is given up for it (not the download retry count), and how long DebridPulse waits for its Usenet service to answer.',
+        {heading: 'help.topic.heading.downloads_recovery', list: [
+          'help.topic.usenet.downloads_recovery.usenet_download',
+          'help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs',
+          {text: 'help.topic.usenet.downloads_recovery.behavior_shared_every',
             when: shown('transfer-method-settings')},
         ]},
-        {heading: 'NZBs and premium services', list: [
-          {text: 'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
+        {heading: 'help.topic.heading.nzbs_premium_services', list: [
+          {text: 'help.topic.usenet.nzbs_premium_services.torbox_premiumize_can.provider_additional_settings_shown',
             when: shown('provider-additional-settings')},
-          {text: 'TorBox and Premiumize can also take NZBs where your plan with them includes it, per each provider’s documentation. By default an NZB goes to Usenet first, unless that service was set to go before Usenet.',
+          {text: 'help.topic.usenet.nzbs_premium_services.torbox_premiumize_can.provider_additional_settings_hidden',
             when: omitted('provider-additional-settings')},
-          'If the first service in that order cannot resolve the NZB, the next one is tried.',
+          'help.topic.usenet.nzbs_premium_services.if_first_service',
         ]},
       ],
     },
     alldebrid: {
-      title: 'AllDebrid',
+      title: 'help.topic.alldebrid.title',
       sections: [
         {text: [
-          'AllDebrid is a debrid service: it fetches hoster links, magnets, and .torrent files on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse uses your own AllDebrid account through its API key. AllDebrid is off until you enable it.',
+          say('help.topic.alldebrid.intro.alldebrid', {file_type: '.torrent'}),
         ]},
-        {heading: 'Connecting', list: [
-          'Paste the API key from your AllDebrid account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
-          'Test checks the key in the field, or the saved key when the field is empty, against AllDebrid. It saves nothing and changes nothing on AllDebrid; the status reads Verified only once the saved key has passed.',
+        {heading: 'help.topic.heading.connecting', list: [
+          'help.topic.alldebrid.connecting.paste_api_key',
+          'help.topic.alldebrid.connecting.test_checks_key',
         ]},
-        {heading: 'What your account can do', list: [
-          'Per AllDebrid’s documentation, magnets and .torrent files need a premium account. When AllDebrid reports that your account is not premium, or its premium time has ended, DebridPulse stops sending it torrents.',
-          'Hoster links work for the hosts AllDebrid lists for your account; per its documentation, a free account can use only the hosts it marks as free.',
+        {heading: 'help.topic.heading.what_account_can', list: [
+          say('help.topic.alldebrid.what_account_can.per_alldebrid_documentation', {file_type: '.torrent'}),
+          'help.topic.alldebrid.what_account_can.hoster_links_work',
         ]},
-        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
-          'Prepare Backup Torrents (on by default): AllDebrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of AllDebrid’s active magnet slots, and new work takes a slot back when it needs one.',
-          'Maximum Active Torrents: left empty, DebridPulse follows AllDebrid’s documented maximum of 30 active magnets. A lower number keeps fewer active; it never goes above 30.',
-          'API Calls per Minute (60 by default): how many requests DebridPulse sends to AllDebrid each minute. 0 means no local limit.',
+        {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
+          'help.topic.alldebrid.additional_settings.prepare_backup_torrents',
+          'help.topic.alldebrid.additional_settings.maximum_active_torrents',
+          'help.topic.alldebrid.additional_settings.api_calls_per',
         ]},
-        {heading: 'Shared settings', text: [
-          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        {heading: 'help.topic.heading.shared_settings', text: [
+          {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
-          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+          {text: 'help.topic.shared.maximum_concurrent_downloads',
             when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
     debridlink: {
-      title: 'Debrid-Link',
+      title: 'help.topic.debridlink.title',
       sections: [
         {text: [
-          'Debrid-Link is a debrid service: it fetches hoster links, and magnets and .torrent files through your Debrid-Link seedbox, and DebridPulse then downloads the result to your storage. DebridPulse uses your own Debrid-Link account through its API key. Debrid-Link is off until you enable it.',
+          say('help.topic.debridlink.intro.debrid_link', {file_type: '.torrent'}),
         ]},
-        {heading: 'Connecting', list: [
-          'Paste the API key from your Debrid-Link account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
-          'Test checks the key in the field, or the saved key when the field is empty, against Debrid-Link. It saves nothing and changes nothing on Debrid-Link; the status reads Verified only once the saved key has passed.',
+        {heading: 'help.topic.heading.connecting', list: [
+          'help.topic.debridlink.connecting.paste_api_key',
+          'help.topic.debridlink.connecting.test_checks_key',
         ]},
-        {heading: 'What your account can do', list: [
-          'With a premium Debrid-Link account, DebridPulse sends it hoster links, magnets, and .torrent files.',
-          'A free account can use hoster links only for the hosts Debrid-Link marks as usable without premium. Debrid-Link does not document seedbox use for free accounts, so DebridPulse sends them no torrents. Other paid account types are given hoster links; what else they include is not documented.',
-          'Limits Debrid-Link applies to your account, such as its link, data, or torrent allowances, are respected as Debrid-Link reports them; DebridPulse retries later or uses another service.',
+        {heading: 'help.topic.heading.what_account_can', list: [
+          say('help.topic.debridlink.what_account_can.premium_debrid_link', {file_type: '.torrent'}),
+          'help.topic.debridlink.what_account_can.free_account_can',
+          'help.topic.debridlink.what_account_can.limits_debrid_link',
         ]},
-        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
-          'Prepare Backup Torrents (on by default): Debrid-Link may also add a torrent to your seedbox as a backup source while another service delivers it.',
-          'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Debrid-Link. Debrid-Link documents no request-rate limit, so there is no API Calls per Minute setting.',
+        {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
+          'help.topic.debridlink.additional_settings.prepare_backup_torrents',
+          'help.topic.debridlink.additional_settings.request_timeout',
         ]},
-        {heading: 'Shared settings', text: [
-          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        {heading: 'help.topic.heading.shared_settings', text: [
+          {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
-          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+          {text: 'help.topic.shared.maximum_concurrent_downloads',
             when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
     premiumize: {
-      title: 'Premiumize',
+      title: 'help.topic.premiumize.title',
       sections: [
         {text: [
-          'Premiumize is a debrid service: it fetches hoster links, magnets, .torrent files, and NZBs into your Premiumize cloud, and DebridPulse then downloads the result to your storage. DebridPulse uses your own Premiumize account through its API key. Premiumize is off until you enable it.',
+          say('help.topic.premiumize.intro.premiumize', {file_type: '.torrent'}),
         ]},
-        {heading: 'Connecting', list: [
-          'Paste the API key from your Premiumize account into API Key. It is saved when you leave the field, is stored on the server, and is never shown again. Remove API Key deletes the stored key.',
-          'Test checks the key in the field, or the saved key when the field is empty, against Premiumize. It saves nothing and changes nothing on Premiumize; the status reads Verified only once the saved key has passed.',
+        {heading: 'help.topic.heading.connecting', list: [
+          'help.topic.premiumize.connecting.paste_api_key',
+          'help.topic.premiumize.connecting.test_checks_key',
         ]},
-        {heading: 'What your account can do', list: [
-          'While your Premiumize premium time is current, DebridPulse may send it hoster links, magnets, .torrent files, and NZBs, as Premiumize documents them for premium accounts.',
-          'What a free or expired account can do through Premiumize’s API is not documented, so DebridPulse sends it no new work; the account stays connected.',
-          'Premiumize refuses work it cannot take now (its fair-use limit, booster points, or active jobs). DebridPulse treats that as temporary: it retries later or uses another service.',
+        {heading: 'help.topic.heading.what_account_can', list: [
+          say('help.topic.premiumize.what_account_can.while_premiumize_premium', {file_type: '.torrent'}),
+          'help.topic.premiumize.what_account_can.what_free_expired',
+          'help.topic.premiumize.what_account_can.premiumize_refuses_work',
         ]},
-        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
-          'Use Premiumize Before Usenet (off by default): tries Premiumize before your Usenet service for NZBs. It needs an active Premiumize premium account; your Usenet service stays available either way.',
-          'Prepare Backup Torrents (on by default): Premiumize may also add a torrent to your cloud as a backup source while another service delivers it. A backup uses your account’s resources.',
-          'Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Premiumize. Premiumize documents no request-rate limit, so there is no API Calls per Minute setting.',
+        {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
+          'help.topic.premiumize.additional_settings.use_premiumize_before',
+          'help.topic.premiumize.additional_settings.prepare_backup_torrents',
+          'help.topic.premiumize.additional_settings.request_timeout',
         ]},
-        {heading: 'Shared settings', text: [
-          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        {heading: 'help.topic.heading.shared_settings', text: [
+          {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
-          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+          {text: 'help.topic.shared.maximum_concurrent_downloads',
             when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
     realdebrid: {
-      title: 'Real-Debrid',
+      title: 'help.topic.realdebrid.title',
       sections: [
         {text: [
-          'Real-Debrid is a debrid service: it fetches hoster links, magnets, and .torrent files on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse connects to your own Real-Debrid account through Real-Debrid’s device authorization; there is no key to type. Real-Debrid is off until you enable it.',
+          say('help.topic.realdebrid.intro.real_debrid', {file_type: '.torrent'}),
         ]},
-        {heading: 'Connecting', list: [
-          'Connect Real-Debrid shows a code. Enter it on Real-Debrid’s own page in your browser; DebridPulse finishes the connection by itself once you approve it. The authorization is stored on the server.',
-          'Test checks the stored authorization against Real-Debrid and saves nothing.',
-          'Disconnect forgets the stored authorization at once and asks Real-Debrid to retire it.',
+        {heading: 'help.topic.heading.connecting', list: [
+          'help.topic.realdebrid.connecting.connect_real_debrid',
+          'help.topic.realdebrid.connecting.test_checks_stored',
+          'help.topic.realdebrid.connecting.disconnect_forgets_stored',
         ]},
-        {heading: 'What your account can do', list: [
-          'Per Real-Debrid’s documentation, torrents need a premium account. When Real-Debrid reports that your account is free, or its premium time has ended, DebridPulse stops sending it torrents.',
-          'A free account may still be able to use some hosters; Real-Debrid decides that per hoster.',
+        {heading: 'help.topic.heading.what_account_can', list: [
+          'help.topic.realdebrid.what_account_can.per_real_debrid',
+          'help.topic.realdebrid.what_account_can.free_account_may',
         ]},
-        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
-          'Prepare Backup Torrents (on by default): Real-Debrid may also add a torrent as a backup source while another service delivers it. Each backup uses one of your account’s active torrent slots, and new work takes a slot back when it needs one.',
-          'Maximum Active Torrents: left empty, DebridPulse follows your account’s current Real-Debrid limit. A lower number keeps fewer active; it never goes above your limit.',
-          'API Calls per Minute (240 by default): how many requests DebridPulse sends to Real-Debrid each minute; Real-Debrid documents a maximum of 250.',
-          'Request Timeout (30 seconds by default), Torrent Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to Real-Debrid.',
+        {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
+          'help.topic.realdebrid.additional_settings.prepare_backup_torrents',
+          'help.topic.realdebrid.additional_settings.maximum_active_torrents',
+          'help.topic.realdebrid.additional_settings.api_calls_per',
+          'help.topic.realdebrid.additional_settings.request_timeout',
         ]},
-        {heading: 'Shared settings', text: [
-          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        {heading: 'help.topic.heading.shared_settings', text: [
+          {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
-          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+          {text: 'help.topic.shared.maximum_concurrent_downloads',
             when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
     torbox: {
-      title: 'TorBox',
+      title: 'help.topic.torbox.title',
       sections: [
         {text: [
-          'TorBox is a debrid service: it fetches torrents and web downloads on its own servers, and DebridPulse then downloads the result to your storage. DebridPulse connects to your own TorBox account through TorBox’s device authorization; there is no key to type. TorBox is off until you enable it.',
+          'help.topic.torbox.intro.torbox',
         ]},
-        {heading: 'Connecting', list: [
-          'Connect TorBox shows a code. Enter it on TorBox’s own page in your browser; DebridPulse finishes the connection by itself once you approve it. The token is stored on the server.',
-          'Test checks the stored token against TorBox and saves nothing.',
-          'Disconnect forgets the stored token at once. TorBox offers no way for DebridPulse to revoke it; you can reset it on TorBox’s own site.',
+        {heading: 'help.topic.heading.connecting', list: [
+          'help.topic.torbox.connecting.connect_torbox_shows',
+          'help.topic.torbox.connecting.test_checks_stored',
+          'help.topic.torbox.connecting.disconnect_forgets_stored',
         ]},
-        {heading: 'What your plan can do', list: [
-          'DebridPulse follows your TorBox plan as TorBox documents it: Essential and Standard plans for torrents and web downloads.',
-          'NZBs only where your plan includes Usenet; per TorBox’s documentation that is the Pro plan. Whether a particular NZB succeeds is TorBox’s decision for your account.',
-          'DebridPulse sends no new work to a Free account: TorBox refused the torrent request DebridPulse makes on one. If TorBox refuses a feature as not part of your plan, DebridPulse stops offering that feature to it.',
-          'TorBox is separate from your Usenet service: turning TorBox on or off never changes your news servers.',
+        {heading: 'help.topic.heading.what_plan_can', list: [
+          'help.topic.torbox.what_plan_can.debridpulse_follows_torbox',
+          'help.topic.torbox.what_plan_can.nzbs_only_where',
+          'help.topic.torbox.what_plan_can.debridpulse',
+          'help.topic.torbox.what_plan_can.torbox',
         ]},
-        {heading: 'Additional Settings', when: shown('provider-additional-settings'), list: [
-          'Prepare Backup Torrents (off by default, unlike the other debrid services, because TorBox’s create limits and active slots are tighter): when on, TorBox may also add a torrent as a backup source while another service delivers it, and new work takes a slot back when it needs one.',
-          'Maximum Active Torrents: left empty, DebridPulse follows your plan’s active-slot count as TorBox documents it. A lower number keeps fewer active.',
-          'Use TorBox Before Usenet (off by default): tries TorBox before your Usenet service for NZBs. It needs a plan that includes Usenet; your Usenet service stays available either way.',
-          'API Calls per Minute (240 by default): TorBox documents a maximum of 300. Request Timeout (30 seconds by default), Upload Timeout (120 seconds), and Supported Host Refresh Interval (24 hours) tune how DebridPulse talks to TorBox.',
+        {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
+          'help.topic.torbox.additional_settings.prepare_backup_torrents',
+          'help.topic.torbox.additional_settings.maximum_active_torrents',
+          'help.topic.torbox.additional_settings.use_torbox_before',
+          'help.topic.torbox.additional_settings.api_calls_per',
         ]},
-        {heading: 'Shared settings', text: [
-          {text: 'Behavior shared by every premium service, such as Provider Poll Interval, Full Sync Interval, and resolution retries, is under Downloads → Download Behavior & Limits → Advanced Settings; download limits such as Maximum Concurrent Downloads are under Downloads too and are not set per service.',
+        {heading: 'help.topic.heading.shared_settings', text: [
+          {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
-          {text: 'Maximum Concurrent Downloads, under Downloads, is one limit for every service together; it is not set per service.',
+          {text: 'help.topic.shared.maximum_concurrent_downloads',
             when: omitted('download-behavior-advanced')},
         ]},
       ],
     },
     'network-sources': {
-      title: 'Network Sources',
+      title: 'integration.group.direct_sources',
       sections: [
         {text: [
-          'Network Sources are the protocols DebridPulse can download from directly, without a premium account: for example HTTP and HTTPS, FTP and SFTP, SCP, rsync, WebDAV, Metalink (Multimeta), and supported media pages.',
+          'help.topic.network_sources.intro.network_sources',
         ]},
-        {heading: 'Enable', list: [
-          'The Enable switch in this card’s header turns the whole group on or off. A source takes part only while both the group and the source itself are enabled.',
-          'Turning the group off does not change any source’s own setting, so turning it back on restores each source exactly as it was.',
+        {heading: 'help.topic.heading.enable', list: [
+          'help.topic.network_sources.enable.enable_switch_card',
+          'help.topic.network_sources.enable.turning_group_off',
         ]},
-        {heading: 'Related', when: shown('transfer-method-settings'), text: [
-          'How each protocol transfers files, such as timeouts, folder depth, and file limits, is set under Downloads, Transfer Method Settings.',
+        {heading: 'help.topic.heading.related', when: shown('transfer-method-settings'), text: [
+          'help.topic.network_sources.related.how_each_protocol',
         ]},
       ],
     },
 
     /* ── Downloads ────────────────────────────────────────────────────── */
     'download-behavior': {
-      title: 'Download Behavior & Limits',
+      title: 'settings.downloads.behavior',
       sections: [
         {text: [
-          'These controls apply to every download, whichever service or protocol it comes from.',
+          'help.topic.download_behavior.intro.these_controls_apply',
         ]},
-        {heading: 'Principal controls', list: [
-          'Download Folder is where completed downloads are saved on the server.',
-          'Maximum Concurrent Downloads is one limit for all download engines together, not a limit per engine. Further downloads wait their turn.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.download_behavior.principal_controls.download_folder',
+          'help.topic.download_behavior.principal_controls.maximum_concurrent_downloads',
         ]},
-        {heading: 'Everything else', when: omitted('download-behavior-advanced'), text: [
-          'Retries, the disk-space guard, and how each kind of download transfers keep working with their saved values. Their controls are part of the Advanced presentation.',
+        {heading: 'help.topic.heading.everything_else', when: omitted('download-behavior-advanced'), text: [
+          'help.topic.download_behavior.everything_else.retries_disk_space',
         ]},
-        {heading: 'Advanced Settings', when: shown('download-behavior-advanced'), list: [
-          'Material Checkpoint Interval sets how often reusable download progress is recorded, so less work is repeated after an unexpected interruption.',
-          'Graceful Stop Timeout is how long DebridPulse waits for a download engine to stop cleanly before forcing it.',
-          'Local Network Connections allows downloads you enter explicitly to reach private LAN addresses. Skip Local Connection Confirmation can be used only while that is on; it stops DebridPulse asking each time.',
-          'Provider Poll Interval is how often DebridPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Full Sync Interval is how often it reconciles its downloads with every enabled premium service account that can list its transfers.',
-          'Resolution Failure Retries and Retry Delay set how often, and how soon, DebridPulse tries again when a service fails to resolve a download, for any service including Network Sources, before trying another service or giving up.',
+        {heading: 'help.topic.heading.advanced_settings', when: shown('download-behavior-advanced'), list: [
+          'help.topic.download_behavior.advanced_settings.material_checkpoint_interval',
+          'help.topic.download_behavior.advanced_settings.graceful_stop_timeout',
+          'help.topic.download_behavior.advanced_settings.local_network_connections',
+          'help.topic.download_behavior.advanced_settings.provider_poll_interval',
+          'help.topic.download_behavior.advanced_settings.resolution_failure_retries',
         ]},
       ],
     },
     'transfer-methods': {
-      title: 'Transfer Method Settings',
+      title: 'settings.downloads.methods',
       sections: [
         {text: [
-          'Each card in this group tunes one way DebridPulse transfers files. A setting here affects only downloads that use that method.',
+          'help.topic.transfer_methods.intro.each_card_group',
         ]},
-        {heading: 'Methods', list: [
-          'Network Sources: the direct download engine’s connections per server, segments per file, slow-connection limit, disk cache, and file allocation.',
-          'rsync: compression, modification times, timeouts, and how many folder levels below an added folder are searched.',
-          'WebDAV: folder depth, the maximum number of files accepted from one folder (a folder with more is rejected whole, never added in part), and the total time allowed to scan a folder.',
-          'Usenet: article cache, retries, and request timeout shared by every news server. Each server’s own settings are on its card under Services.',
-          'Media Downloads: target resolution, quality, codec, subtitle language, parallel fragment downloads, and YouTube player clients for supported media pages.',
+        {heading: 'help.topic.heading.methods', list: [
+          'help.topic.transfer_methods.methods.network_sources',
+          'help.topic.transfer_methods.methods.rsync_compression_modification',
+          'help.topic.transfer_methods.methods.webdav',
+          'help.topic.transfer_methods.methods.usenet',
+          'help.topic.transfer_methods.methods.media_downloads',
         ]},
-        {heading: 'Related', text: [
-          'Whether a method is used at all is decided under Services; how many downloads run at once is set in Download Behavior & Limits.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.transfer_methods.related.whether_method',
         ]},
       ],
     },
     'disk-recovery': {
-      title: 'Disk Space & Recovery',
+      title: 'settings.downloads.recovery',
       sections: [
-        {heading: 'Disk space guard', list: [
-          'When free space falls to Minimum Free Disk Space or below, new downloads are held back; downloads already running are allowed to finish. Set it to 0 to turn the guard off.',
-          'New downloads start again only once free space is back above the minimum plus the Resume Free Space Buffer, so they do not stop and start repeatedly near the limit.',
+        {heading: 'help.topic.heading.disk_space_guard', list: [
+          'help.topic.disk_recovery.disk_space_guard.when_free_space',
+          'help.topic.disk_recovery.disk_space_guard.new_downloads_start',
         ]},
-        {heading: 'Recovery', list: [
-          'Download Error Retries and Retry Delay set how often, and how soon, a download is retried after an error. A plain retry waits Retry Delay, doubling after each failure but never more than 5 minutes; checking or re-resolving a download, and trying a provider again after a temporary failure, wait the full Retry Delay. A provider that asks for a longer wait is always given it. 0 retries turns automatic retries off.',
-          'Stalled Download Timeout is how long a download may make no progress before DebridPulse stops it and treats it as failed, so its normal retry rules apply. 0 turns this off.',
+        {heading: 'help.topic.heading.recovery', list: [
+          'help.topic.disk_recovery.recovery.download_error_retries',
+          'help.topic.disk_recovery.recovery.stalled_download_timeout',
         ]},
       ],
     },
     'engine-activity': {
-      title: 'Download Engine Activity',
+      title: 'settings.engine_activity.title',
       sections: [
         {text: [
-          'A live list of the jobs the download engines are running or holding. While it is on screen it updates by itself as those jobs start, progress, pause or end. It is a troubleshooting surface; Downloads is where downloads are normally managed.',
+          'help.topic.engine_activity.intro.live_list_jobs',
         ]},
-        {heading: 'Controls', list: [
-          'Filters show active, waiting, paused, or stopped jobs.',
-          'Pause and Resume act on one engine job only when the engine offers them for it.',
-          'Terminate stops a job and releases its execution after you confirm. DebridPulse keeps the transfer and may start it again under its normal recovery rules.',
+        {heading: 'help.topic.heading.controls', list: [
+          'help.topic.engine_activity.controls.filters_show_active',
+          'help.topic.engine_activity.controls.pause_resume_act',
+          'help.topic.engine_activity.controls.terminate',
         ]},
       ],
     },
@@ -350,411 +370,411 @@
      * integrations/usenet/definition.py UsenetOptions,
      * integrations/media/definition.py MediaOptions, core/config.py). */
     'tuning-direct': {
-      title: 'Network Sources Tuning',
+      title: say('settings.tuning.title', {method: said('integration.group.direct_sources')}),
       sections: [
         {text: [
-          'These settings tune the direct download engine. It downloads HTTP, HTTPS, FTP and SFTP links: direct links you add, and the download links a premium service resolves for you. rsync, Usenet and Media Downloads use their own engines, so these settings do not affect them.',
+          'help.topic.tuning_direct.intro.these_settings_tune',
         ]},
-        {heading: 'Connections and segments', list: [
-          'Connections per Server is how many connections one download may open to the same server, from 1 to 16 (default 16).',
-          'Segments per File is how many parts of one file may download in parallel, from 1 to 64 (default 16). The server, Connections per Server and Minimum Split Size can allow fewer.',
-          'Minimum Split Size is the smallest part a file is split into, from 1M to 1024M (default 10M); a larger value gives fewer parallel parts.',
-          'Changes also apply to existing downloads. Active downloads may briefly reconnect; their progress is preserved. When downloads are running, Settings asks before saving, and then says how many existing downloads took the new values.',
+        {heading: 'help.topic.heading.connections_segments', list: [
+          'help.topic.tuning_direct.connections_segments.connections_per_server',
+          'help.topic.tuning_direct.connections_segments.segments_per_file',
+          say('help.topic.tuning_direct.connections_segments.minimum_split_size', {lowest: '1M', highest: '1024M', default: '10M'}),
+          'help.topic.tuning_direct.connections_segments.changes_also_apply',
         ]},
-        {heading: 'Interrupted and slow downloads', list: [
-          'Continue Partial Downloads (on by default) resumes a partly downloaded file where possible instead of starting it again.',
-          'Lowest Speed Limit stops a connection whose speed falls to this value or below, in bytes per second with an optional K or M suffix. 0 (the default) turns the limit off.',
+        {heading: 'help.topic.heading.interrupted_slow_downloads', list: [
+          'help.topic.tuning_direct.interrupted_slow_downloads.continue_partial_downloads',
+          'help.topic.tuning_direct.interrupted_slow_downloads.lowest_speed_limit',
         ]},
-        {heading: 'Disk', list: [
-          'Disk Cache is memory the engine may use as a shared cache to reduce disk writes (default 64M; 0 turns it off). A change takes effect the next time the download engine starts.',
-          'File Allocation is how disk space is prepared for a new file: Truncate, Fallocate (the default), Preallocate or None.',
+        {heading: 'help.topic.heading.disk', list: [
+          say('help.topic.tuning_direct.disk.disk_cache', {default: '64M'}),
+          'help.topic.tuning_direct.disk.file_allocation',
         ]},
-        {heading: 'Related', text: [
-          'Which network protocols DebridPulse may use at all is chosen under Services, Network Sources; these settings tune the engine those downloads share. How many downloads run at once is Maximum Concurrent Downloads in Download Behavior & Limits.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.tuning_direct.related.which_network_protocols',
         ]},
       ],
     },
     'tuning-rsync': {
-      title: 'rsync Tuning',
+      title: say('settings.tuning.title', {method: 'rsync'}),
       sections: [
         {text: [
-          'These settings apply only to downloads from rsync sources, whether reached through an rsync server or over SSH.',
+          'help.topic.tuning_rsync.intro.these_settings_apply',
         ]},
-        {heading: 'Transfers', list: [
-          'Partial Transfers (on by default) continues an interrupted file from what was already downloaded. Off, an interrupted file starts again from the beginning.',
-          'Compression (off by default) compresses data in transit. It rarely helps with archives, video or other already-compressed files.',
-          'Preserve Modification Time (on by default) gives each completed file the modification time it has on the source.',
+        {heading: 'help.topic.heading.transfers', list: [
+          'help.topic.tuning_rsync.transfers.partial_transfers',
+          'help.topic.tuning_rsync.transfers.compression',
+          'help.topic.tuning_rsync.transfers.preserve_modification_time',
         ]},
-        {heading: 'Timeouts', list: [
-          'Connection Timeout is how long reaching the source and starting a transfer may take, including an SSH connection and sign-in: 5 to 300 seconds (default 30).',
-          'Transfer Timeout is how long a running transfer may receive no data before it stops: 30 to 3600 seconds (default 300). It is separate from the Stalled Download Timeout under Disk Space & Recovery.',
+        {heading: 'help.topic.heading.timeouts', list: [
+          'help.topic.tuning_rsync.timeouts.connection_timeout',
+          'help.topic.tuning_rsync.timeouts.transfer_timeout',
         ]},
-        {heading: 'Directory Depth', list: [
-          'How many folder levels below an rsync folder you add are searched for files: the current folder only, 1, 2 or 3 levels, or all subfolders (the default). Files in deeper folders are not included.',
+        {heading: 'help.topic.heading.directory_depth', list: [
+          'help.topic.tuning_rsync.directory_depth.how_many_folder',
         ]},
-        {heading: 'Related', text: [
-          'Whether rsync sources are used at all is chosen under Services, Network Sources.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.tuning_rsync.related.whether_rsync_sources',
         ]},
       ],
     },
     'tuning-webdav': {
-      title: 'WebDAV Tuning',
+      title: say('settings.tuning.title', {method: 'WebDAV'}),
       sections: [
         {text: [
-          'These settings decide which files DebridPulse collects when you add a WebDAV folder. Every file collected is offered in the usual file selection and downloads as an ordinary file.',
+          'help.topic.tuning_webdav.intro.these_settings_decide',
         ]},
-        {heading: 'Collecting a folder', list: [
-          'Directory Depth is how many folder levels below the folder you add are searched: the current folder only (the default), 1, 2 or 3 levels, or all subfolders. Files in deeper folders are not included.',
-          'Maximum Files is the most files one folder may contain, from 1 to 10000 (default 10000). A folder with more files is rejected whole; it is never added in part.',
-          'Collection Scan Timeout is how long listing the folder and its subfolders may take in total before the folder is reported unavailable: empty for no limit (the default), or 10 to 3600 seconds. Each listing request keeps its own time limit either way. It applies to collecting the folder only, not to downloading its files.',
+        {heading: 'help.topic.heading.collecting_folder', list: [
+          'help.topic.tuning_webdav.collecting_folder.directory_depth',
+          'help.topic.tuning_webdav.collecting_folder.maximum_files',
+          'help.topic.tuning_webdav.collecting_folder.collection_scan_timeout',
         ]},
-        {heading: 'Related', text: [
-          'Whether WebDAV sources are used at all is chosen under Services, Network Sources.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.tuning_webdav.related.whether_webdav_sources',
         ]},
       ],
     },
     'tuning-usenet': {
-      title: 'Usenet Tuning',
+      title: say('settings.tuning.title', {method: 'Usenet'}),
       sections: [
         {text: [
-          'These settings apply to every Usenet download, whichever news server provides it. Each server’s host, credentials, connections, priority, Server Timeout and Test are on its own card under Services, Usenet.',
+          'help.topic.tuning_usenet.intro.these_settings_apply',
         ]},
-        {heading: 'Settings', list: [
-          'Article Cache Limit is memory DebridPulse may use to hold downloaded article data before writing it to disk, from 0 to 4096 MB (default 1024). 0 turns the cache off.',
-          'Maximum Retries is how many times one article is retried on a news server before that server is given up for it, from 2 to 25 (default 3). It is not the download retry count under Disk Space & Recovery.',
-          'Request Timeout is how long DebridPulse waits for its own Usenet download service to answer a request, from 5 to 300 seconds (default 30). It is not a news-server timeout.',
-          'Direct Write (on by default) writes article data straight to the destination file instead of holding it in memory first, which reduces disk work when articles arrive in order.',
+        {heading: 'help.topic.heading.settings', list: [
+          'help.topic.tuning_usenet.settings.article_cache_limit',
+          'help.topic.tuning_usenet.settings.maximum_retries',
+          'help.topic.tuning_usenet.settings.request_timeout',
+          'help.topic.tuning_usenet.settings.direct_write',
         ]},
       ],
     },
     'tuning-media': {
-      title: 'Media Downloads Tuning',
+      title: say('settings.tuning.title', {method: said('settings.tuning.media')}),
       sections: [
         {text: [
-          'These settings apply to Media Downloads: media from supported web pages, downloaded in a form the site itself offers. DebridPulse never re-encodes or transcodes media. The downloaded streams and the chosen subtitle are combined, unchanged, into one file: in the site’s own container when it can hold them all, otherwise in Matroska (MKV). There is no setting for the output container.',
+          'help.topic.tuning_media.intro.these_settings_apply',
         ]},
-        {heading: 'Choosing what is downloaded', list: [
-          'Target Resolution is the resolution DebridPulse looks for. When the site does not offer it, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available (the default) takes the highest resolution offered.',
-          'Video Quality chooses, within the preferred codec, among the bitrates the site offers for the video at that resolution: High (the default) the highest, Low the lowest, Normal one in between. It cannot make a video better than the site offers, and where there is nothing to choose between, the site’s usual choice is kept.',
-          'Preferred Video Codec (Auto, AV1, HEVC or H.264) prefers that codec when the site offers it at that resolution; Auto (the default) keeps the site’s usual choice. It is a preference among what the site offers, never a conversion.',
-          'Preferred Subtitle Language is the language of the one subtitle embedded in the file, when the site offers one (default English). A subtitle written for the media is preferred; one the site generated automatically in that language is used otherwise. A subtitle that cannot be embedded without converting it makes the download fail rather than being dropped or converted.',
+        {heading: 'help.topic.heading.choosing_what_downloaded', list: [
+          'help.topic.tuning_media.choosing_what_downloaded.target_resolution',
+          'help.topic.tuning_media.choosing_what_downloaded.video_quality_chooses',
+          'help.topic.tuning_media.choosing_what_downloaded.preferred_video_codec',
+          'help.topic.tuning_media.choosing_what_downloaded.preferred_subtitle_language',
         ]},
-        {heading: 'Downloading', list: [
-          'Concurrent Fragment Downloads is how many fragments of one segmented stream download at once, from 1 to 8 (default 1). A download that is a single file is unaffected, and it is not the number of downloads that run at once.',
-          'YouTube Player Client is Automatic (recommended): the installed yt-dlp’s own default. Choose one of the clients that yt-dlp offers only when troubleshooting YouTube downloads; no choice guarantees that a particular video can be downloaded. A saved client the installed yt-dlp no longer offers is kept, and Automatic is used until you choose again.',
+        {heading: 'help.topic.heading.downloading', list: [
+          'help.topic.tuning_media.downloading.concurrent_fragment_downloads',
+          'help.topic.tuning_media.downloading.youtube_player_client',
         ]},
-        {heading: 'Related', text: [
-          'Whether Media Downloads are used at all is chosen under Services, Network Sources.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.tuning_media.related.whether_media_downloads',
         ]},
       ],
     },
 
     /* ── Extraction ───────────────────────────────────────────────────── */
     'automatic-extraction': {
-      title: 'Automatic Extraction',
+      title: 'settings.extraction.title',
       sections: [
         {text: [
-          'When Enable is on, DebridPulse unpacks supported archives once their download completes: ZIP, TAR (including gzip, bzip2, xz, Zstandard, and LZMA variants), GZ, BZ2, XZ, 7z, and RAR, including multi-part RAR sets. Other files are left as they are.',
+          'help.topic.automatic_extraction.intro.when_enable',
         ]},
-        {heading: 'Principal controls', list: [
-          'Delete Archives After Extraction removes an archive’s files only after it was extracted successfully; a failed extraction keeps them.',
-          'Concurrent Extractions limits how many archives are unpacked at the same time.',
-          'Archive Passwords: each 7z or RAR archive is tried first without a password, then with each stored password in order. ZIP archives are extracted without a password only; a password-protected ZIP is not unlocked with these passwords. Passwords are stored on the server and hidden unless you choose to show them.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.automatic_extraction.principal_controls.delete_archives_after',
+          'help.topic.automatic_extraction.principal_controls.concurrent_extractions_limits',
+          'help.topic.automatic_extraction.principal_controls.archive_passwords',
         ]},
-        {heading: 'Safety', text: [
-          'Archives are checked before anything is written: entries with absolute paths or paths that climb out of the extraction folder, links, and archives that would expand beyond safe size or file-count limits are refused.',
+        {heading: 'help.topic.heading.safety', text: [
+          'help.topic.automatic_extraction.safety.archives',
         ]},
       ],
     },
 
     /* ── Authentication ───────────────────────────────────────────────── */
     'auth-status': {
-      title: 'Authentication Status',
+      title: 'settings.auth.status_title',
       sections: [
         {text: [
-          'A summary of how people sign in: which sign-in methods are enabled, whether each is ready, and how many browser sessions are currently valid.',
+          'help.topic.auth_status.intro.summary_how_people',
         ]},
-        {heading: 'Browser sessions', list: [
-          'Browser Session Lifetime: each sign-in, by password or OpenID Connect, starts a new browser session that lasts this many hours. Using DebridPulse does not extend it; when it ends, you sign in again.',
-          'Active Browser Sessions counts the browser sign-ins that are currently valid.',
-          'Log Out Current Session ends only this browser’s session.',
-          'Sessions concern the browser interface only. Downloads continue whether or not anyone is signed in.',
+        {heading: 'help.topic.heading.browser_sessions', list: [
+          'help.topic.auth_status.browser_sessions.browser_session_lifetime',
+          'help.topic.auth_status.browser_sessions.active_browser_sessions',
+          'help.topic.auth_status.browser_sessions.log_out_current',
+          'help.topic.auth_status.browser_sessions.sessions_concern_browser',
         ]},
-        {heading: 'Changing how people sign in', when: omitted('username-password'), text: [
-          'Turning Username & Password or OpenID Connect on or off, and changing their settings, are done in their own cards, which are part of the Advanced presentation: choose Advanced in My Account to show them. Sign-in itself keeps working exactly as configured.',
+        {heading: 'help.topic.heading.changing_how_people', when: omitted('username-password'), text: [
+          'help.topic.auth_status.changing_how_people.turning_username_password',
         ]},
-        {heading: 'Related', text: [
-          'Integration accounts never use browser sessions; they authenticate with API tokens under Users & Access.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.auth_status.related.integration_accounts_never',
         ]},
       ],
     },
     'username-password': {
-      title: 'Username & Password',
+      title: 'settings.auth.credentials_title',
       sections: [
         {text: [
-          'Local sign-in with a username and password, for the browser and for HTTP Basic API access.',
+          'help.topic.username_password.intro.local_sign_username',
         ]},
-        {heading: 'Principal controls', list: [
-          'Enable turns local password sign-in on or off for the whole instance. It can be turned on only when an active Admin has a username and password.',
-          'Username and Password are your own account’s credential. Typing in them changes nothing until you choose Apply, which saves both together or, if anything is refused, changes nothing.',
-          'The stored password is never shown. Leave Password blank to keep it; enter a new one to replace it. Changing the username needs a new password with it.',
-          'Applying a new credential ends your account’s browser sessions, including this one; sign in again with the new username and password.',
-          'Clear, inside the Password field, removes your stored password after you confirm. It never applies what you have typed.',
-          'The status beside Help says Configured when a username and password are stored, and Unconfigured otherwise. It does not test the password.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.username_password.principal_controls.enable',
+          'help.topic.username_password.principal_controls.username_password',
+          'help.topic.username_password.principal_controls.stored_password',
+          'help.topic.username_password.principal_controls.applying_new_credential',
+          'help.topic.username_password.principal_controls.clear_inside_password',
+          'help.topic.username_password.principal_controls.status_beside_help',
         ]},
-        {heading: 'Related', text: [
-          'Other people’s local accounts and passwords are managed under Users & Access, User Accounts.',
+        {heading: 'help.topic.heading.related', text: [
+          'help.topic.username_password.related.other_people_local',
         ]},
       ],
     },
     oidc: {
-      title: 'OpenID Connect',
+      title: 'settings.oidc.title',
       sections: [
         {text: [
-          'Lets people sign in to the browser interface through your own identity provider. The provider proves who someone is; the Access Control rules here decide whether that person may use DebridPulse.',
+          'help.topic.oidc.intro.lets_people_sign',
         ]},
-        {heading: 'Connection', list: [
-          'Public DebridPulse Base URL must be the HTTPS address people use to reach DebridPulse; the OIDC Callback URL is derived from it. Copy that callback into your identity provider exactly. When the PUBLIC_BASE_URL environment variable is set, it is used instead and cannot be changed here.',
-          'Issuer URL, Client ID, and Client Secret come from your identity provider. The stored secret is never shown again.',
-          'Scopes are requested at every sign-in; openid is always included.',
-          'Test signs in through your identity provider in a separate window to prove the saved configuration works.',
+        {heading: 'help.topic.heading.connection', list: [
+          say('help.topic.oidc.connection.public_debridpulse_base', {variable: 'PUBLIC_BASE_URL'}),
+          'help.topic.oidc.connection.issuer_url_client',
+          say('help.topic.oidc.connection.scopes', {scope: 'openid'}),
+          'help.topic.oidc.connection.test_signs_through',
         ]},
-        {heading: 'Access Control', list: [
-          'With Allow Any Authenticated OIDC Identity on, anyone your identity provider signs in may use DebridPulse, and the lists are ignored.',
-          'With it off, a user must match every list that is filled in: a listed subject (written as issuer|subject-id), a listed email address that the provider reports as verified (email_verified=true), and membership of a listed group. Empty lists are skipped. If every list is empty, no one can sign in through OpenID Connect.',
-          'Email addresses match regardless of letter case. Subjects and group names must match exactly. Groups are read from the Group Claim; a user without that claim does not match a group list.',
+        {heading: 'help.topic.heading.access_control', list: [
+          'help.topic.oidc.access_control.allow_any_authenticated',
+          say('help.topic.oidc.access_control.off_user_must', {format: 'issuer|subject-id', claim: 'email_verified=true'}),
+          'help.topic.oidc.access_control.email_addresses_match',
         ]},
-        {heading: 'Accounts', list: [
-          'Someone admitted for the first time gets a new account with the Default Role for New OIDC Users: User or ReadOnly User. OpenID Connect never creates an Admin; change roles under Users & Access.',
-          'An identity is matched by its issuer and subject, never by email, so it is never linked to an existing account automatically.',
+        {heading: 'help.topic.heading.accounts', list: [
+          'help.topic.oidc.accounts.someone_admitted_first',
+          'help.topic.oidc.accounts.identity',
         ]},
       ],
     },
 
     /* ── Users & Access ───────────────────────────────────────────────── */
     'user-accounts': {
-      title: 'User Accounts',
+      title: 'settings.users.title',
       sections: [
         {text: [
-          'The people who sign in to DebridPulse. Each account has one role, and signs in with a local username and password, through OpenID Connect, or both.',
+          'help.topic.user_accounts.intro.people_who_sign',
         ]},
-        {heading: 'Roles', list: [
-          'Admin: full control of DebridPulse, including Settings, accounts, maintenance, the Activity Log, and every transfer.',
-          'User: adds and operates downloads. Deleting, cancelling, or redirecting a transfer is allowed only when no other account still needs it, including transfers combined with a duplicate request from someone else; otherwise the User can withdraw only their own request.',
-          'ReadOnly User: views downloads and Statistics, but cannot add, change, or remove anything.',
-          'Integration: an external application, not a person. It cannot sign in to this interface and uses API tokens instead (see Integration Accounts).',
+        {heading: 'help.topic.heading.roles', list: [
+          'help.topic.user_accounts.roles.admin',
+          'help.topic.user_accounts.roles.user',
+          'help.topic.user_accounts.roles.readonly_user',
+          'help.topic.user_accounts.roles.integration',
         ]},
         {table: ROLE_TABLE},
-        {heading: 'Account actions', list: [
-          'Add Local Account creates a person with a username and password. A role changed in Edit User takes effect on the account’s next request; its open browsers reload with the new role.',
-          'Every person has a DebridPulse username, separate from the display name they choose: an OpenID Connect account takes it from its first sign-in, and it is the name a local password signs in with. Edit User changes it from the pencil beside it in the dialog’s title; a stored password is kept.',
-          'Disabling an account ends its sessions and withdraws its outstanding download requests. Removing it does the same and deletes its own notification settings.',
-          'Merge combines accounts that belong to the same person into one. Accounts that share an email address are only suggested; nothing is merged automatically.',
-          'DebridPulse always keeps at least one usable Admin, and you cannot change your own role or disable your own account here.',
+        {heading: 'help.topic.heading.account_actions', list: [
+          'help.topic.user_accounts.account_actions.add_local_account',
+          'help.topic.user_accounts.account_actions.every_person_has',
+          'help.topic.user_accounts.account_actions.disabling_account_ends',
+          'help.topic.user_accounts.account_actions.merge_combines_accounts',
+          'help.topic.user_accounts.account_actions.debridpulse_always_keeps',
         ]},
       ],
     },
     'integration-accounts': {
-      title: 'Integration Accounts',
+      title: 'settings.integrations.title',
       sections: [
         {text: [
-          'An Integration account represents an external application, such as Sonarr or Radarr, not a person. It cannot sign in to this interface; it authenticates with API tokens. It can add downloads through the API, and through the external client API and the download-client interfaces that applications such as Sonarr and Radarr connect to, it submits and follows its own jobs.',
+          'help.topic.integration_accounts.intro.integration_account_represents',
         ]},
-        {heading: 'Tokens', list: [
-          'Issue Token creates a new token. Its secret is shown once, when it is issued; copy it into the application then. Only a fingerprint is stored, so it cannot be shown again.',
-          'Each token is its own client: it sees only the jobs submitted with it.',
-          'Revoke stops a token from authenticating at once. It does not withdraw any job.',
-          {text: 'Only Integration accounts hold API tokens; Admin and User accounts do not.', when: onServer},
-          {text: 'Only Integration accounts hold API tokens; the built-in Administrator does not.', when: onStandalone},
+        {heading: 'help.topic.heading.tokens', list: [
+          'help.topic.integration_accounts.tokens.issue_token_creates',
+          'help.topic.integration_accounts.tokens.each_token',
+          'help.topic.integration_accounts.tokens.revoke',
+          {text: 'help.topic.integration_accounts.tokens.only_integration_accounts.server', when: onServer},
+          {text: 'help.topic.integration_accounts.tokens.only_integration_accounts.standalone', when: onStandalone},
         ]},
-        {heading: 'What an integration can do', list: [
-          'Submit jobs into a Delivery Profile category it is allowed to use, follow them, and withdraw them.',
-          'Ask to pause or resume its own jobs. DebridPulse may decline, for example when another account also needs the transfer or processing is paused globally.',
-          'It cannot pause, delete, or redirect transfers directly, change Settings, or see other clients’ jobs.',
+        {heading: 'help.topic.heading.what_integration_can', list: [
+          'help.topic.integration_accounts.what_integration_can.submit_jobs_into',
+          'help.topic.integration_accounts.what_integration_can.ask_pause_resume',
+          'help.topic.integration_accounts.what_integration_can.cannot_pause_delete',
         ]},
-        {heading: 'Disable and Delete', list: [
-          'Disabling the account stops all of its tokens from working and withdraws its outstanding requests.',
-          'Deleting it also revokes its tokens permanently.',
+        {heading: 'help.topic.heading.disable_delete', list: [
+          'help.topic.integration_accounts.disable_delete.disabling_account',
+          'help.topic.integration_accounts.disable_delete.deleting_also_revokes',
         ]},
       ],
     },
     'delivery-profiles': {
-      title: 'Integration Delivery Profiles',
+      title: 'settings.profiles.title',
       sections: [
         {text: [
-          'A Delivery Profile tells an external application, such as Sonarr or Radarr, which categories it may submit to and where it will find the completed files. It never changes where DebridPulse downloads, which service is used, or queue order.',
+          'help.topic.delivery_profiles.intro.delivery_profile_tells',
         ]},
-        {heading: 'What a profile sets', list: [
-          'Categories: the names an application chooses when it submits a job. Each category belongs to one profile only.',
-          'Authorized API Tokens: the Integration tokens allowed to use the profile. A profile with no authorized token admits no one.',
-          'Source Types: which kinds of submission are accepted, such as links, magnets, torrents, or NZBs.',
-          'DP Download Path is the folder in DebridPulse, inside the download folder; External Import Path is the same folder as the application sees it, if its path differs.',
-          'Retention is how long a completed delivery is offered to the application.',
+        {heading: 'help.topic.heading.what_profile_sets', list: [
+          'help.topic.delivery_profiles.what_profile_sets.categories',
+          'help.topic.delivery_profiles.what_profile_sets.authorized_api_tokens',
+          'help.topic.delivery_profiles.what_profile_sets.source_types',
+          'help.topic.delivery_profiles.what_profile_sets.dp_download_path',
+          'help.topic.delivery_profiles.what_profile_sets.retention',
         ]},
-        {heading: 'Jobs and files', list: [
-          'Submitting a job makes a download request that belongs to that application. Removing the job in the application withdraws that request, or acknowledges the delivery once it is complete; the transfer itself stops only if no one else needs it.',
-          'Completed files are shared in place: nothing is copied, linked, or moved for the application, and acknowledging or expiring a delivery deletes no file.',
-          'The download-client interfaces that these applications connect to stay unavailable until a profile has a category, accepts a Source Type that interface uses, and authorizes an API token that is active.',
+        {heading: 'help.topic.heading.jobs_files', list: [
+          'help.topic.delivery_profiles.jobs_files.submitting_job_makes',
+          'help.topic.delivery_profiles.jobs_files.completed_files',
+          'help.topic.delivery_profiles.jobs_files.download_client_interfaces',
         ]},
       ],
     },
     'deployment-type': {
-      title: 'Deployment Type',
+      title: 'settings.deployment.title',
       sections: [
         {text: [
-          'The deployment type decides who can use DebridPulse as a person. Switch to the other type with the button below the current one.',
+          'help.topic.deployment_type.intro.deployment_type_decides',
         ]},
-        {heading: 'Server', list: [
-          'Every enabled Admin, User, and ReadOnly User account signs in with its own username and password, its identity provider (OpenID Connect), or both, as configured under Authentication, and works within its role.',
+        {heading: 'help.topic.heading.server', list: [
+          'help.topic.deployment_type.server.every_enabled_admin',
         ]},
-        {heading: 'Standalone', list: [
-          'Only the built-in Administrator can sign in as a person. OpenID Connect is not available.',
-          'With a password set, the sign-in page asks for that password alone, with no username field.',
-          'Without a password, no sign-in is required, and DebridPulse is used as the built-in Administrator.',
+        {heading: 'help.topic.heading.standalone', list: [
+          'help.topic.deployment_type.standalone.only_built_administrator',
+          'help.topic.deployment_type.standalone.password_set_sign',
+          'help.topic.deployment_type.standalone.without_password_no',
         ]},
-        {heading: 'What switching keeps', list: [
-          'No account is deleted. Other people’s accounts keep their usernames, passwords, identity-provider links, and saved Enabled or Disabled status. In Standalone they cannot sign in, whatever that status says.',
-          'Returning to Server lets each account sign in again according to its saved status: an account you disabled stays disabled.',
-          'The saved OpenID Connect configuration is kept.',
-          'Integration accounts and their API tokens keep working, and every download request and the account it belongs to stay as they are.',
+        {heading: 'help.topic.heading.what_switching_keeps', list: [
+          'help.topic.deployment_type.what_switching_keeps.no_account',
+          'help.topic.deployment_type.what_switching_keeps.returning_server',
+          'help.topic.deployment_type.what_switching_keeps.saved_openid_connect',
+          'help.topic.deployment_type.what_switching_keeps.integration_accounts_their',
         ]},
-        {heading: 'What switching changes', list: [
-          'Each switch, in either direction, asks you to confirm first.',
-          'It clears the built-in Administrator’s password, turns off Username & Password and OpenID Connect sign-in, and ends every browser session.',
-          'Afterwards no sign-in is required: anyone who can reach DebridPulse at an address it accepts can use it as the built-in Administrator. This is not limited to this computer, and it does not expire.',
-          'It stays open until you set up sign-in again: in Standalone, set a password from My Account; in Server, turn on sign-in under Authentication.',
+        {heading: 'help.topic.heading.what_switching_changes', list: [
+          'help.topic.deployment_type.what_switching_changes.each_switch_either',
+          'help.topic.deployment_type.what_switching_changes.clears_built_administrator',
+          'help.topic.deployment_type.what_switching_changes.afterwards_no_sign',
+          'help.topic.deployment_type.what_switching_changes.stays_open_until',
         ]},
       ],
     },
 
     /* ── Notifications (global) ───────────────────────────────────────── */
     discord: {
-      title: 'Webhook Notifications',
+      title: 'settings.notifications.webhook_title',
       sections: [
         {text: [
-          'Instance-wide webhook alerts about download events. They describe every download, whoever added it, and go only to the webhooks configured here.',
-          'A Discord webhook receives each alert as a Discord message; any other webhook receives it as a JSON summary of the event.',
+          'help.topic.discord.intro.instance_wide_webhook',
+          'help.topic.discord.intro.discord_webhook_receives',
         ]},
-        {heading: 'Principal controls', list: [
-          'Enable turns these alerts on or off; it does not affect statistics reports.',
-          'The Primary Webhook receives every alert. The optional Download Added Webhook receives only Download Added alerts; without it, those go to the Primary Webhook too.',
-          'Display Name and Avatar URL set how the sender appears in Discord.',
-          'Notification Events choose which alerts are sent, including Update Available and how often DebridPulse checks for a new release.',
-          'Test sends a test message to the saved webhooks.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.discord.principal_controls.enable',
+          'help.topic.discord.principal_controls.primary_webhook_receives',
+          'help.topic.discord.principal_controls.display_name_avatar',
+          'help.topic.discord.principal_controls.notification_events_choose',
+          'help.topic.discord.principal_controls.test',
         ]},
-        {heading: 'Related', text: [
-          {text: 'Each User can also set up their own notifications about their own downloads; those are separate and never receive these alerts.',
+        {heading: 'help.topic.heading.related', text: [
+          {text: 'help.topic.discord.related.each_user_can',
             when: onServer},
-          {text: 'Statistics Reporting sends periodic summaries rather than event alerts.', when: shown('statistics-reporting')},
-          {text: 'Statistics reports, which are periodic summaries rather than event alerts, keep being sent as they were set up; their card is part of the Advanced presentation.',
+          {text: 'help.topic.discord.related.statistics_reporting', when: shown('statistics-reporting')},
+          {text: 'help.topic.discord.related.statistics_reports_which',
             when: omitted('statistics-reporting')},
         ]},
       ],
     },
     'statistics-reporting': {
-      title: 'Statistics Reporting',
+      title: 'settings.reports.title',
       sections: [
         {text: [
-          'An outbound summary of this DebridPulse instance’s activity, sent to a webhook. It is not a Statistics Snapshot; snapshots are kept internally under Data & Maintenance and are never sent.',
+          'help.topic.statistics_reporting.intro.outbound_summary_debridpulse',
         ]},
-        {heading: 'Who receives it', list: [
-          'Only the configured destination: the Reporting Webhook, or the Primary Webhook from Webhook Notifications when no Reporting Webhook is set.',
-          'It is not sent to DebridPulse users.',
-          {text: 'Users who set up their own reports receive only reports about their own activity, at their own destination.', when: onServer},
+        {heading: 'help.topic.heading.who_receives', list: [
+          'help.topic.statistics_reporting.who_receives.only_configured_destination',
+          'help.topic.statistics_reporting.who_receives.it',
+          {text: 'help.topic.statistics_reporting.who_receives.users_who_set', when: onServer},
         ]},
-        {heading: 'What and when', list: [
-          'Report Window chooses how much recent activity each report summarizes: 24 hours, 7 days, 30 days, or 1 year.',
-          'Automatic Report Interval sends a report that often while Enable is on and a destination exists. 0 sends no automatic reports.',
-          'Test sends one report now, even while automatic reports are off; it fails if no destination is configured.',
-          'With no destination, nothing is sent and no error is shown for automatic reports.',
+        {heading: 'help.topic.heading.what_when', list: [
+          'help.topic.statistics_reporting.what_when.report_window',
+          'help.topic.shared.automatic_report_interval',
+          'help.topic.statistics_reporting.what_when.test',
+          'help.topic.statistics_reporting.what_when.no_destination_nothing',
         ]},
       ],
     },
 
     /* ── Notifications (a User's own) ─────────────────────────────────── */
     'discord-own': {
-      title: 'Webhook Notifications',
+      title: 'settings.notifications.webhook_title',
       sections: [
         {text: [
-          'Your own webhook alerts, about downloads you requested. They go only to the webhooks you configure here, and nothing here changes the instance-wide notifications an Admin manages.',
-          'Your webhooks must be Discord webhooks.',
+          'help.topic.discord_own.intro.own_webhook_alerts',
+          'help.topic.discord_own.intro.webhooks_must_discord',
         ]},
-        {heading: 'Principal controls', list: [
-          'Enable turns your alerts on or off.',
-          'Your Primary Webhook receives your alerts; an optional Download Added Webhook receives only Download Added alerts. Nothing falls back to an Admin’s webhook.',
-          'Choose which events you are told about: Download Added, Download Completed, Download Error, and Extraction Result.',
-          'An alert is sent only while your own request is part of that download; withdrawn requests send nothing.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.discord_own.principal_controls.enable',
+          'help.topic.discord_own.principal_controls.primary_webhook_receives',
+          'help.topic.discord_own.principal_controls.choose_which_events',
+          'help.topic.discord_own.principal_controls.alert',
         ]},
-        {heading: 'Your statistics reports', when: omitted('statistics-reporting'), text: [
-          'Statistics reports you previously configured continue on their saved schedule. To change their settings, select Advanced in My Account, then open Notifications → Statistics Reporting.',
+        {heading: 'help.topic.heading.statistics_reports', when: omitted('statistics-reporting'), text: [
+          'help.topic.discord_own.statistics_reports.statistics_reports_previously',
         ]},
       ],
     },
     'statistics-reporting-own': {
-      title: 'Statistics Reporting',
+      title: 'settings.reports.title',
       sections: [
         {text: [
-          'Your own statistics report: a summary of the download activity attributed to you, sent to a Discord webhook you choose. It never includes other accounts’ activity.',
+          'help.topic.statistics_reporting_own.intro.own_statistics_report',
         ]},
-        {heading: 'Who receives it', list: [
-          'Only your destination: your Reporting Webhook, or your own Primary Webhook when no Reporting Webhook is set. An Admin’s destinations are never used.',
+        {heading: 'help.topic.heading.who_receives', list: [
+          'help.topic.statistics_reporting_own.who_receives.only_destination',
         ]},
-        {heading: 'What and when', list: [
-          'Report Window chooses how much recent activity each report covers.',
-          'Automatic Report Interval sends a report that often while Enable is on and a destination exists. 0 sends no automatic reports.',
-          'Test sends one report now.',
+        {heading: 'help.topic.heading.what_when', list: [
+          'help.topic.statistics_reporting_own.what_when.report_window',
+          'help.topic.shared.automatic_report_interval',
+          'help.topic.statistics_reporting_own.what_when.test',
         ]},
       ],
     },
 
     /* ── Data & Maintenance ───────────────────────────────────────────── */
     'event-logging': {
-      title: 'Event Logging',
+      title: 'settings.events.title',
       sections: [
         {text: [
-          'DebridPulse records an event for what happens to downloads and to its configuration, shown in the Activity Log.',
+          'help.topic.event_logging.intro.debridpulse_records_event',
         ]},
-        {heading: 'Principal controls', list: [
-          'Activity Log Page Size sets how many events one Activity Log page shows. It changes nothing that is recorded.',
-          'Recorded Events is the number of events currently kept. Events are kept indefinitely; only a Database Reset clears them.',
+        {heading: 'help.topic.heading.principal_controls', list: [
+          'help.topic.event_logging.principal_controls.activity_log_page',
+          'help.topic.event_logging.principal_controls.recorded_events',
         ]},
       ],
     },
     backups: {
-      title: 'Backups & Retention',
+      title: 'settings.backups.title',
       sections: [
-        {heading: 'Backups', list: [
-          'A backup holds the database, the configuration, and an uploaded avatar, stored in the Backup Folder.',
-          'While Enable is on, a backup is made every Backup Interval, and Run Backup makes one now. Backups lists the stored backups, and lets you add, save, restore, or remove one.',
-          {text: 'A backup is deleted once it is older than Backup Retention or is no longer among the newest Maximum Retained Backups, whichever comes first.',
+        {heading: 'help.topic.heading.backups', list: [
+          'help.topic.backups.backups.backup_holds_database',
+          'help.topic.backups.backups.while_enable',
+          {text: 'help.topic.backups.backups.backup',
             when: shown('backup-additional-settings')},
-          {text: 'Older backups are deleted by the saved retention rules, which keep working; their settings are part of the Advanced presentation.',
+          {text: 'help.topic.backups.backups.older_backups',
             when: omitted('backup-additional-settings')},
-          {text: 'Restoring and resetting the database each make a safety backup first.', when: shown('database-reset')},
-          {text: 'Restoring makes a safety backup first.', when: omitted('database-reset')},
+          {text: 'help.topic.backups.backups.restoring_resetting_database', when: shown('database-reset')},
+          {text: 'help.topic.backups.backups.restoring_makes_safety', when: omitted('database-reset')},
         ]},
-        {heading: 'Statistics Snapshots', when: shown('backup-additional-settings'), list: [
-          'Separately, DebridPulse saves a record of the previous 24 hours of activity every Statistics Snapshot Interval, inside its own database, and deletes snapshots older than Statistics Snapshot Retention. 0 stops new snapshots.',
-          'Snapshots are internal: they are not reports, are not sent anywhere, and are not currently viewable in the interface.',
+        {heading: 'help.topic.heading.statistics_snapshots', when: shown('backup-additional-settings'), list: [
+          'help.topic.backups.statistics_snapshots.separately_debridpulse_saves',
+          'help.topic.backups.statistics_snapshots.snapshots',
         ]},
-        {heading: 'Statistics Snapshots', when: omitted('backup-additional-settings'), list: [
-          'DebridPulse keeps saving its internal statistics snapshots as configured. They are not reports, are not sent anywhere, and are not currently viewable in the interface.',
+        {heading: 'help.topic.heading.statistics_snapshots', when: omitted('backup-additional-settings'), list: [
+          'help.topic.backups.statistics_snapshots.debridpulse_keeps_saving',
         ]},
       ],
     },
     'database-reset': {
-      title: 'Database Reset Controls',
+      title: 'settings.reset.title',
       sections: [
         {text: [
-          'Erases DebridPulse’s download history so it starts empty. Use it only when you mean to start over.',
+          'help.topic.database_reset.intro.erases_debridpulse_download',
         ]},
-        {heading: 'What is removed and kept', list: [
-          'Removed: transfers and their files’ records, download requests, external jobs, events and the Activity Log, and statistics snapshots.',
-          'Kept: accounts, passwords, OpenID Connect links, API tokens, personal notification settings, and every setting. Downloaded files on disk are not deleted.',
+        {heading: 'help.topic.heading.what_removed_kept', list: [
+          'help.topic.database_reset.what_removed_kept.removed',
+          'help.topic.database_reset.what_removed_kept.kept',
         ]},
-        {heading: 'Safeguards', list: [
-          'Reset Database works only while Allow Database Reset is on, and asks you to confirm.',
-          'Processing pauses for the reset and returns to its previous state afterwards. A safety backup is made first; if it fails, nothing is erased.',
+        {heading: 'help.topic.heading.safeguards', list: [
+          'help.topic.database_reset.safeguards.reset_database_works',
+          'help.topic.database_reset.safeguards.processing_pauses_reset',
         ]},
       ],
     },
@@ -815,11 +835,20 @@
     },
   });
 
-  function paragraph(text, className) {
+  // Said words into a node, keyed so that DPI18n.render() re-says them in place.
+  function sayInto(element, words) {
+    element.dataset.i18n = words.key;
+    if (words.values) element.dataset.i18nValues = JSON.stringify(words.values);
+    element.textContent = t(words.key, plain(words.values) || undefined);
+    return element;
+  }
+  // A cell, a heading or a part: a key, said words, or a plain answer.
+  const wordsOf = value => (typeof value === 'string' ? {key: value, values: null} : value);
+
+  function paragraph(words, className) {
     const element = document.createElement('p');
     element.className = className;
-    element.textContent = text;
-    return element;
+    return sayInto(element, words);
   }
 
   function table(spec) {
@@ -827,29 +856,25 @@
     wrapper.className = 'dp-settings-help-table-scroll';
     wrapper.tabIndex = 0;
     wrapper.setAttribute('role', 'region');
-    wrapper.setAttribute('aria-label', spec.caption);
+    named(wrapper, spec.caption);
     const grid = document.createElement('table');
     grid.className = 'dp-settings-help-table';
-    const caption = grid.createCaption();
-    caption.textContent = spec.caption;
+    sayInto(grid.createCaption(), wordsOf(spec.caption));
     const headRow = grid.createTHead().insertRow();
     spec.head.forEach(label => {
       const cell = document.createElement('th');
       cell.scope = 'col';
-      cell.textContent = label;
-      headRow.appendChild(cell);
+      headRow.appendChild(sayInto(cell, wordsOf(label)));
     });
     const body = grid.createTBody();
     spec.rows.forEach(([label, ...values]) => {
       const row = body.insertRow();
       const header = document.createElement('th');
       header.scope = 'row';
-      header.textContent = label;
-      row.appendChild(header);
+      row.appendChild(sayInto(header, wordsOf(label)));
       values.forEach(value => {
-        const cell = row.insertCell();
-        cell.textContent = value;
-        if (value === YES || value === NO) cell.dataset.answer = value.toLowerCase();
+        const cell = sayInto(row.insertCell(), wordsOf(value));
+        if (value === YES || value === NO) cell.dataset.answer = value.answer;
       });
     });
     wrapper.appendChild(grid);
@@ -862,29 +887,33 @@
   /* The same matrix capability by capability, each answer named by its role:
    * where the dialog is too narrow for the table's columns, this is shown in
    * its place (ui-settings-page.css), and only one of the two is ever shown. */
+  // A region's accessible name, keyed like its words.
+  function named(element, key) {
+    element.dataset.i18nAttr = `aria-label:${key}`;
+    element.setAttribute('aria-label', t(key));
+  }
+
   function answers(spec) {
     const [, ...roles] = spec.head;
     const list = document.createElement('div');
     list.className = 'dp-settings-help-roles';
     list.setAttribute('role', 'region');
-    list.setAttribute('aria-label', spec.caption);
-    list.appendChild(paragraph(spec.caption, 'dp-settings-help-roles-caption'));
+    named(list, spec.caption);
+    list.appendChild(paragraph(wordsOf(spec.caption), 'dp-settings-help-roles-caption'));
     spec.rows.forEach(([label, ...values]) => {
       const item = document.createElement('div');
       item.className = 'dp-settings-help-role-item';
       const heading = document.createElement('h4');
       heading.className = 'dp-settings-help-role-capability';
-      heading.textContent = label;
+      sayInto(heading, wordsOf(label));
       const pairs = document.createElement('dl');
       pairs.className = 'dp-settings-help-role-answers';
       roles.forEach((role, index) => {
         const pair = document.createElement('div');
         pair.className = 'dp-settings-help-role-answer';
-        const term = document.createElement('dt');
-        term.textContent = role;
-        const value = document.createElement('dd');
-        value.textContent = values[index];
-        if (values[index] === YES || values[index] === NO) value.dataset.answer = values[index].toLowerCase();
+        const term = sayInto(document.createElement('dt'), wordsOf(role));
+        const value = sayInto(document.createElement('dd'), wordsOf(values[index]));
+        if (values[index] === YES || values[index] === NO) value.dataset.answer = values[index].answer;
         pair.append(term, value);
         pairs.appendChild(pair);
       });
@@ -905,10 +934,10 @@
 
   // A part applies unless its own condition says otherwise.
   const applies = (part, c) => typeof part?.when !== 'function' || part.when(c) === true;
-  // A part's text: authored here, or a catalog key (``key``) the page's
-  // language renders (ui-i18n.js).
+  // A part's words: a catalog key, said words, either as ``text`` under a
+  // condition, or (My Account) ``{key}``.
   const words = (part, c) => (applies(part, c)
-    ? [typeof part === 'string' ? part : part.key ? window.DPI18n.t(part.key) : part.text] : []);
+    ? [typeof part === 'string' ? wordsOf(part) : part.key ? {key: part.key, values: part.values || null} : wordsOf(part.text)] : []);
 
   function render(body, topic, c) {
     const content = document.createElement('div');
@@ -919,8 +948,7 @@
       if (section.heading || section.headingKey) {
         const heading = document.createElement('h3');
         heading.className = 'dp-settings-help-heading';
-        heading.textContent = section.headingKey ? window.DPI18n.t(section.headingKey) : section.heading;
-        block.appendChild(heading);
+        block.appendChild(sayInto(heading, wordsOf(section.headingKey || section.heading)));
       }
       (section.text || []).flatMap(text => words(text, c))
         .forEach(text => block.appendChild(paragraph(text, 'dp-settings-help-text')));
@@ -928,11 +956,7 @@
       if (items.length) {
         const list = document.createElement('ul');
         list.className = 'dp-settings-help-list';
-        items.forEach(text => {
-          const item = document.createElement('li');
-          item.textContent = text;
-          list.appendChild(item);
-        });
+        items.forEach(text => list.appendChild(sayInto(document.createElement('li'), text)));
         block.appendChild(list);
       }
       if (section.table) block.appendChild(table(section.table));
@@ -948,8 +972,10 @@
     const topic = Object.prototype.hasOwnProperty.call(TOPICS, name) ? TOPICS[name] : null;
     if (!topic || !window.DPSettingsModal) return null;
     const c = context(facts);
+    // The title as said words: an open topic's title is re-said with its body.
+    const titled = topic.titleKey || topic.title;
     return window.DPSettingsModal.open({
-      title: topic.titleKey ? window.DPI18n.t(topic.titleKey) : topic.title,
+      title: typeof titled === 'string' ? say(titled) : titled,
       dismiss: true,
       closeControl: true,
       className: 'dp-settings-help-dialog',
