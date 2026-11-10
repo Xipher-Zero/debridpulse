@@ -33,6 +33,7 @@ import re
 from xml.etree import ElementTree
 
 from transfers.filesystem import safe_name
+from core.localization import Coded
 
 # Structural ceilings. A manifest may legitimately be very large, so size alone
 # is a poor guard; these bound the shapes an abusive document can take without
@@ -57,7 +58,7 @@ class NzbManifest:
     segment_count: int
 
 
-class InvalidNzb(ValueError):
+class InvalidNzb(Coded, ValueError):
     """The payload is not a usable NZB manifest."""
 
 
@@ -75,11 +76,11 @@ def _segment_bytes(element) -> int:
     try:
         size = int(str(element.get("bytes") or "0").strip())
     except ValueError as exc:
-        raise InvalidNzb("NZB segment declares a non-numeric size") from exc
+        raise InvalidNzb("NZB segment declares a non-numeric size", code="nzb.segment_size_not_numeric") from exc
     if size < 0:
-        raise InvalidNzb("NZB segment declares a negative size")
+        raise InvalidNzb("NZB segment declares a negative size", code="nzb.segment_size_negative")
     if not (element.text or "").strip():
-        raise InvalidNzb("NZB segment declares no message identifier")
+        raise InvalidNzb("NZB segment declares no message identifier", code="nzb.segment_no_id")
     return size
 
 
@@ -116,7 +117,7 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
                 if not root_seen:
                     root_seen = True
                     if name != "nzb":
-                        raise InvalidNzb("Document root is not an NZB manifest")
+                        raise InvalidNzb("Document root is not an NZB manifest", code="nzb.not_manifest")
                 elif name == "file":
                     in_file = True
                     file_segments = 0
@@ -128,16 +129,16 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
                 segments += 1
                 file_segments += 1
                 if segments > MAX_NZB_SEGMENTS:
-                    raise InvalidNzb("NZB manifest declares too many segments")
+                    raise InvalidNzb("NZB manifest declares too many segments", code="nzb.too_many_segments")
                 element.clear()
                 if parent is not None:
                     parent.remove(element)
             elif name == "file":
                 if not file_segments:
-                    raise InvalidNzb("NZB manifest declares a file with no segments")
+                    raise InvalidNzb("NZB manifest declares a file with no segments", code="nzb.file_no_segments")
                 files += 1
                 if files > MAX_NZB_FILES:
-                    raise InvalidNzb("NZB manifest declares too many files")
+                    raise InvalidNzb("NZB manifest declares too many files", code="nzb.too_many_files")
                 if not first_name:
                     first_name = _posted_name(element.get("subject") or "")
                 in_file = False
@@ -147,20 +148,20 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
             elif name == "nzb":
                 element.clear()
     except ElementTree.ParseError as exc:
-        raise InvalidNzb("NZB payload is not well-formed XML") from exc
+        raise InvalidNzb("NZB payload is not well-formed XML", code="nzb.not_xml") from exc
 
     if not root_seen:
-        raise InvalidNzb("NZB payload is not well-formed XML")
+        raise InvalidNzb("NZB payload is not well-formed XML", code="nzb.not_xml")
     if in_file:
-        raise InvalidNzb("NZB payload is not well-formed XML")
+        raise InvalidNzb("NZB payload is not well-formed XML", code="nzb.not_xml")
     if not files:
-        raise InvalidNzb("NZB manifest declares no files")
+        raise InvalidNzb("NZB manifest declares no files", code="nzb.no_files")
 
     name = first_name or str(fallback_name or "").strip()
     if name.lower().endswith(".nzb"):
         name = name[: -len(".nzb")]
     if not name:
-        raise InvalidNzb("NZB manifest asserts no usable name")
+        raise InvalidNzb("NZB manifest asserts no usable name", code="nzb.no_name")
     return NzbManifest(name=name, declared_bytes=declared, file_count=files,
                        segment_count=segments)
 
@@ -168,7 +169,7 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
 def parse(payload: bytes, *, fallback_name: str = "") -> NzbManifest:
     """Validate an in-memory NZB. One implementation: it reads the same way."""
     if not isinstance(payload, (bytes, bytearray)) or not payload:
-        raise InvalidNzb("NZB payload is empty")
+        raise InvalidNzb("NZB payload is empty", code="nzb.empty")
     return read(io.BytesIO(bytes(payload)), fallback_name=fallback_name)
 
 

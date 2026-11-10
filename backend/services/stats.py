@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from core.branding import APP_SHORT_NAME
+from core.localization import CodedValueError, CodedRuntimeError
 
 logger = logging.getLogger("debridpulse.stats")
 
@@ -341,11 +342,11 @@ async def send_stats_report(
         # duplicates the fallback.
         url = (webhook_url or "").strip() or reporting_destination(cfg)
         if not url:
-            raise ValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url")
+            raise CodedValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url", code="stats.report_webhook_missing")
         sender = NotificationService(url)
     elif not sender.webhook_url:
         # An account's report goes to that account's own destination or nowhere.
-        raise ValueError("No reporting or primary Discord webhook configured")
+        raise CodedValueError("No reporting or primary Discord webhook configured", code="notifications.report_missing")
 
     report = await generate_report(hours=hours, owner_ids=owner_ids)
     summary = report["report"]["summary"]
@@ -360,7 +361,7 @@ async def send_stats_report(
         bypass_dedup=True,
     )
     if not sent:
-        raise RuntimeError("Reporting webhook did not accept the statistics report")
+        raise CodedRuntimeError("Reporting webhook did not accept the statistics report", code="stats.report_not_accepted")
 
     logger.info("Statistics report sent via webhook (%sh, %s)", hours, triggered_by)
     return {"ok": True, "hours": hours, "triggered_by": triggered_by}

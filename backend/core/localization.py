@@ -31,6 +31,17 @@ FormatJS formatter). The server reads the same files for three things only:
   interface can show it in the reader's language while API clients keep the
   English text and status they always had.
 
+Error codes (WS3e). A refusal is named where its condition is known: at the
+raise, by ``DisplayError(status, detail, code=…)`` or by a ``Coded``
+exception (``CodedValueError`` and the domain refusals that mix ``Coded`` in),
+whose type is unchanged for every ``except`` that catches it. A boundary that
+turns an exception into a response (``refusal``) keeps the English ``detail``
+exactly and carries the exception's own code; an exception that names none is
+marked ``unclassified`` -- the explicit fallback, claiming nothing more -- and
+the interface shows its English ``detail``. A code is never derived from the
+English text. ``params`` are the values the English already shows, never a
+secret (``_safe_params`` refuses secret-named or non-scalar values).
+
 Pseudo locales (``en-XA``, ``ar-XB``) are developer test locales, never
 offered: an account may hold one only where the installation runs with
 ``DEBRIDPULSE_I18N_TEST_LOCALES=1`` (the isolated test instances). That
@@ -48,6 +59,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
+
+from core.logging_utils import sanitize_log_value
 
 DEFAULT_LOCALE = "en"
 TEST_LOCALES_ENV = "DEBRIDPULSE_I18N_TEST_LOCALES"
@@ -225,9 +238,158 @@ class DisplayError(HTTPException):
     def __init__(self, status_code: int, detail: str, *, code: str, params: dict | None = None,
                  headers: dict | None = None):
         super().__init__(status_code=status_code, detail=detail, headers=headers)
-        self.code = code
-        self.params = dict(params or {})
+        # The params it sends never disclose more than ``detail`` (``disclosed``).
+        self.code, self.params = disclosed(detail, _checked_code(code), params)
+        # A boundary that wraps this refusal keeps its code (``code_of``).
+        self.display_code, self.display_params = self.code, self.params
 
 
 def display_error_body(error: DisplayError) -> dict:
     return {"detail": error.detail, "code": error.code, "params": error.params}
+
+
+# ── error codes (WS3e) ─────────────────────────────────────────────────────
+
+# The explicit fallback: a refusal no condition names. The interface shows its
+# English ``detail``; it is never a claim about what went wrong.
+UNCLASSIFIED = "unclassified"
+_CODE = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
+# Parameter names that could carry a credential are refused outright.
+_SECRET_NAME = re.compile(r"(?:password|passwd|secret|token|api_?key|credential|authorization|cookie|session)", re.I)
+_PARAM_MAX = 500
+
+
+def _checked_code(code: str) -> str:
+    if code != UNCLASSIFIED and not _CODE.fullmatch(str(code or "")):
+        raise ValueError(f"not an error code: {code!r}")
+    return str(code)
+
+
+class Fact(str):
+    """Text a refusal may interpolate: a value the server itself establishes --
+    a figure it computed, an identifier from a closed set it recognises
+    (``known``), a schema's own field or bound -- never caller- or
+    service-controlled text. Only a producer that knows the value's origin
+    makes one (``fact``); every other text parameter is not admitted
+    (``disclosed``), whatever it contains."""
+
+
+def fact(value) -> Fact:
+    """A server-established value (a figure, a schema name or bound, an
+    identifier the producer itself validated) as admissible text."""
+    return Fact(str(value))
+
+
+def known(value, allowed) -> Fact | None:
+    """``value`` as admissible text only when it is one of the closed set
+    ``allowed`` the producer recognises; ``None`` (not admitted) otherwise."""
+    text = str(value)
+    return Fact(text) if text in {str(getattr(item, "value", item)) for item in allowed} else None
+
+
+def _safe_params(params: dict | None) -> dict:
+    """The values an English refusal already shows, as plain scalars: never a
+    secret-named value, never a nested structure, strings bounded."""
+    safe = {}
+    for name, value in dict(params or {}).items():
+        if _SECRET_NAME.search(str(name)):
+            raise ValueError(f"error parameter {name!r} could carry a secret")
+        if isinstance(value, dict):
+            # A coded cause inside a wrapping refusal (``said``): the interface
+            # says it from its own code; never any other structure.
+            if set(value) != {"$t", "$v"} or not str(value["$t"]).startswith("error."):
+                raise ValueError(f"error parameter {name!r} is not a scalar")
+            _checked_code(str(value["$t"])[len("error."):])
+            safe[str(name)] = {"$t": str(value["$t"]), "$v": _safe_params(value["$v"])}
+            continue
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise ValueError(f"error parameter {name!r} is not a scalar")
+        # Text passes the canonical sanitizer every API detail uses; a fact the
+        # sanitizer would change is no clean fact and loses its authority.
+        # Numbers and booleans keep their types for ICU formatting.
+        if isinstance(value, str):
+            clean = sanitize_log_value(value, max_length=_PARAM_MAX)
+            safe[str(name)] = Fact(clean) if isinstance(value, Fact) and clean == value else clean
+        else:
+            safe[str(name)] = value
+    return safe
+
+
+def _texts(params: dict):
+    """Every text value in ``params``, a coded cause's own included."""
+    for value in params.values():
+        if isinstance(value, dict):
+            yield from _texts(value["$v"])
+        elif isinstance(value, str):
+            yield value
+
+
+def disclosed(detail, code: str | None, params: dict | None) -> tuple[str, dict]:
+    """The code and params a refusal may send beside ``detail``.
+
+    Safe interpolation is established by authority, never by content: a text
+    parameter (a coded cause's included) is sent only when its producer made it
+    a ``Fact`` -- a server-established value -- that the canonical sanitizer
+    leaves unchanged and the detail as sent shows. Caller- or service-
+    controlled text is never admitted, however it is spelled or encoded:
+    the refusal is ``unclassified`` with no params -- it fails closed -- and the
+    interface shows the English detail, which is never altered here. Numbers
+    and booleans carry no text and keep their types."""
+    if not code or code == UNCLASSIFIED:
+        return UNCLASSIFIED, {}
+    safe = _safe_params(params)
+    shown = str(detail if isinstance(detail, str) else "").casefold()
+    for text in _texts(safe):
+        if not isinstance(text, Fact) or text.casefold() not in shown:
+            return UNCLASSIFIED, {}
+    return _checked_code(code), safe
+
+
+def said(exc: BaseException, english: str | None = None):
+    """A cause as a parameter of the refusal that wraps it: its own code
+    (``{"$t", "$v"}``, said by the interface) where it names one, else its
+    English text (``english``, or the exception's own words)."""
+    code, params = code_of(exc)
+    return {"$t": f"error.{code}", "$v": params} if code else (str(exc) if english is None else english)
+
+
+class Coded:
+    """An exception that names its refusal for the interface: ``code`` (a key
+    under ``error.`` in the catalog) and ``params``, beside its unchanged
+    English message. Mixed into an existing exception type, so every
+    ``except`` that caught it still does."""
+
+    display_code: str | None = None
+    display_params: dict = {}
+
+    def __init__(self, *args, code: str | None = None, params: dict | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.display_code = _checked_code(code) if code else None
+        self.display_params = _safe_params(params)
+
+
+class CodedValueError(Coded, ValueError):
+    """A ``ValueError`` that names its refusal."""
+
+
+class CodedRuntimeError(Coded, RuntimeError):
+    """A ``RuntimeError`` that names its refusal."""
+
+
+def code_of(exc: BaseException | None) -> tuple[str | None, dict]:
+    """The code and params an exception names, if it names one."""
+    code = getattr(exc, "display_code", None) if exc is not None else None
+    return (code, dict(getattr(exc, "display_params", {}) or {})) if code else (None, {})
+
+
+def refusal(status_code: int, detail: str, cause: BaseException | None = None, *, code: str | None = None,
+            params: dict | None = None, headers: dict | None = None) -> DisplayError:
+    """The response a boundary raises: ``detail`` exactly the English it always
+    sent; named by the cause's own code where it has one, else by ``code``,
+    else ``unclassified`` (the interface then shows the English ``detail``)."""
+    named, named_params = code_of(cause)
+    if named:
+        return DisplayError(status_code, detail, code=named, params=named_params, headers=headers)
+    if code:
+        return DisplayError(status_code, detail, code=_checked_code(code), params=_safe_params(params), headers=headers)
+    return DisplayError(status_code, detail, code=UNCLASSIFIED, headers=headers)

@@ -1,7 +1,7 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a, WS3b,
-WS3c and WS3d complete; product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a–WS3e
+complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -41,8 +41,12 @@ These surfaces read the catalog:
   words (`ui-settings-persistence.js`); and the shared Settings dialog's
   default slot words, typed-phrase label and progress lines.
 
-Every other surface is still English literals: the server's display messages
-(WS3e) and Help (WS4). The census below counts them. No language is
+- WS3e, the server's refusals: every message the server returns for display
+  is named by a stable code (or is exempt, with the reason its words never
+  become interface text); the interface says a coded refusal in the reader's
+  language and keeps the English `detail` for anything else (§1, Errors).
+
+Every other surface is still English literals: Help (WS4). The census below counts them. No language is
 offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
@@ -132,9 +136,90 @@ started with `DEBRIDPULSE_I18N_TEST_LOCALES=1`, which admits nothing else.
 `pre_sign_in_locale(explicit)` is the hook a future explicit pre-sign-in choice
 would use.
 
-**Errors.** A `DisplayError` keeps its English `detail` exactly as API clients
-already receive it, and adds `code` and `params`. The interface shows
-`error.<code>` from the catalog and falls back to `detail`.
+**Errors (WS3e).** The contract API clients keep is unchanged:
+
+- the HTTP status;
+- the English `detail`;
+- the established fields (a structured refusal's `code`, `reason`,
+  `confirmation`, figures);
+- the headers.
+
+Everything below is additive.
+
+- **Named at the raise.** A refusal is named where its condition is known,
+  never from its English:
+  - `DisplayError(status, detail, code=…, params=…)`;
+  - a `Coded` exception: `CodedValueError` / `CodedRuntimeError`, or a domain
+    refusal that mixes `Coded` in (`AccountRefused`, `NotificationRefused`,
+    `InvalidSearch`, `InvalidNzb`, `StagedInputError`, `BackupRejected`,
+    `RestoreFailed`, `ConfigurationRefused`…). Its type, and every `except`
+    that catches it, are unchanged.
+- **Kept at the boundary.** `refusal(status, detail, cause)` is the one
+  boundary that turns an exception into a response. It keeps `detail` exactly
+  and carries the cause's code. A cause that names none is marked
+  `unclassified`: the explicit fallback, which claims nothing.
+- **A wrapped cause.** A refusal that wraps a coded cause names it as a
+  parameter `{"$t": "error.<code>", "$v": {…}}` (`said`), and the interface
+  says that from its own code.
+- **The body.** A JSON refusal is `{"detail", "code", "params"}`.
+- **Structured refusals.** A structured refusal keeps its machine `code`
+  (`invalid_query`, `stale_revision`…) and names its words by `message_code` +
+  `params`.
+- **Field refusals.** A refused field (400/422) names its rule: `code:
+  "validation.<rule>"`, `params` = the rule's bounds, never the refused value.
+  The interface says `error.validation.<rule>`, or the bare
+  `error.requirement.<rule>` after the field's name (`ui-settings-persistence.js`).
+- **Transfer refusals.** A transfer refusal (`TransferError`) keeps its
+  structured `error`. The interface says `error.category.<category>`, whose
+  English is exactly the server's `detail`.
+- **Parameters.** A parameter never discloses more than the sanitized detail
+  the response sends.
+  - It is a scalar. Text passes the same canonical sanitizer as every API
+    detail (`core.logging_utils.sanitize_log_value`), a coded cause's included,
+    while numbers and booleans keep their types.
+  - Secret-named parameters are refused.
+  - Text is admitted by **authority**, never by content. A text value is sent
+    only when its producer made it a `Fact`: a server-established value, such
+    as a figure, a schema field or bound, an identifier from a closed set it
+    recognises (`known`, e.g. `AcquisitionScope`), or an identifier it
+    validated itself.
+  - Such a value must also be unchanged by the canonical sanitizer and appear
+    in the detail as sent (`disclosed`, applied by `DisplayError` and every
+    structured-refusal builder).
+  - Caller- or service-controlled text -- a rejected scope, link, mode,
+    category or content type, an upstream's own words -- is never a
+    parameter, however spelled or encoded. Such a refusal fails closed:
+    `unclassified` with no params, and the interface shows the English detail,
+    which this rule never alters.
+- **The presenter.** `api()` (app.js) is the one presentation owner. It says
+  `error.<code>` (a coded cause too), else `error.category.<category>`.
+  - An absent, unknown or `unclassified` code, or a coded cause the catalog
+    cannot say, keeps the server's English `detail`.
+  - The `Error` keeps `detail`, `status`, `code`, `params`, `english` and
+    `localized`, and no request is repeated.
+  - The search box and Delivery Profiles prefer the localized words
+    (`error.localized`).
+- **Field names.** A validator sentence that names its field does so by a
+  stable identifier, as a coded parameter (`error.aria2.field.<option>`),
+  never by its English label.
+- **Proof.** `backend/tests/test_error_codes.py` and
+  `frontend/browser/localization-error-codes.spec.js`.
+
+**Limits (WS3e), recorded for direction:**
+
+- **Persisted English.** An archive-extraction refusal is stored as the
+  transfer's `extraction_error` text (shown in Details, the extraction toast
+  and Discord). A code needs an additive stored field: a schema, backup and
+  restore change.
+- **Activity Log journal text.** It is stored English, keyed by event type.
+- **Plain-text bodies.** The `Forbidden` (unhandled `PermissionError`),
+  maintenance, sealed-storage and restore-unresolved handlers answer
+  `text/plain`. Turning them into JSON would change their shape, so the
+  interface shows their English.
+- **Unclassified text.** A provider's or service's own words, and a connection
+  test's failure text, are `unclassified`.
+
+The interface says all of these exactly as the server sends them.
 
 **Words the server names by a stable identifier.** Some English the interface
 shows comes from the server as data beside an identifier. The interface says
@@ -277,6 +362,13 @@ It is a checked key census:
   lists, the localization runtime's own diagnostic kinds, and developer
   errors that are never shown.
 
+**Correction made in WS3e.** The WS0 server census counted only
+keyword `detail=` and `raise X("…")`. It missed positional
+`HTTPException(400, "…")` details and the words of structured refusals under
+`api/` and `main.py`, which it now counts (each with its exception type and
+whether its raise names a code). Corrected, the server baseline is **768**
+entries, not 669.
+
 **Correction made in WS3a.** The WS0 census read any plain sentence containing
 a full stop as a CSS selector and dropped it. It also missed the compact-wording
 attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
@@ -290,8 +382,8 @@ entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 | … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 |
 | … long-form Help | 962 | 962 | 962 | 962 |
 | Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 |
-| Server display messages (`detail`) | 669 | 669 | 669 | 669 |
-| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197 |
+| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding |
+| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,589 (+308 refusal codes, +82 transfer categories, +2 OIDC window) |
 
 The largest owners still outside the catalog:
 
@@ -332,7 +424,10 @@ Type, Integration Delivery Profiles, Merge, Backups & Retention, Backup Folder,
 Run Backup, Allow Database Reset, Activity Log Page Size, Primary Webhook, OIDC
 Callback URL, Default Role for New OIDC Users (`settings.deployment.*`, `settings.backups.*`,
 `settings.reset.*`, `settings.events.*`, `settings.webhook.*`,
-`settings.oidc.*`). WS4 says them from the same keys.
+`settings.oidc.*`). WS4 says them from the same keys. WS3e adds (checked against the Help sources): Help repeats two
+refusals' words -- "Only Integration accounts hold API tokens"
+(`error.account.tokens_integration_only`) and "… is not a supported link"
+(`error.submit.link_unsupported`) -- which WS4 says from the same keys.
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 

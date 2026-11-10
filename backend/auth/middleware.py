@@ -93,7 +93,8 @@ def _unauthorized(*, basic_challenge: bool = False, bearer_challenge: bool = Fal
         headers = {"WWW-Authenticate": "Bearer"}
     elif basic_challenge:
         headers = {"WWW-Authenticate": f'Basic realm="{APP_SHORT_NAME}"'}
-    return JSONResponse(content={"detail": "Unauthorized"}, status_code=401, headers=headers)
+    return JSONResponse(content={"detail": "Unauthorized", "code": "auth.unauthorized", "params": {}}, status_code=401,
+                        headers=headers)
 
 
 def _authentication_busy() -> Response:
@@ -168,7 +169,7 @@ async def _admit_authenticated(
         # The interface and the API documentation are not routed actions, so
         # the one policy is applied to them here; routed actions are
         # authorized by the application dependency (``authorize_request``).
-        return JSONResponse(content={"detail": "Forbidden"}, status_code=403)
+        return JSONResponse(content={"detail": "Forbidden", "code": "auth.forbidden", "params": {}}, status_code=403)
     rejection = await settings_transition_rejection(request, principal, cfg)
     if rejection is not None:
         return rejection

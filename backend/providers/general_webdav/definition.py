@@ -5,6 +5,7 @@ from integrations.definition import (
     DIRECTORY_DEPTHS, DirectoryDepthSetting, IntegrationDefinition, IntegrationPresentation,
 )
 from transfers.models import DiscoveryLimits
+from core.localization import CodedValueError
 
 
 class GeneralWebdavOptions(BaseModel):
@@ -27,7 +28,7 @@ class GeneralWebdavOptions(BaseModel):
     @classmethod
     def _no_limit_or_bounded(cls, value: int) -> int:
         if 0 < value < 10:
-            raise ValueError("A collection scan timeout is 0 (no limit) or 10 to 3600 seconds")
+            raise CodedValueError("A collection scan timeout is 0 (no limit) or 10 to 3600 seconds", code="webdav.scan_timeout_invalid")
         return value
 
 

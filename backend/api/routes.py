@@ -118,12 +118,27 @@ def _validation_refusal(error: dict) -> dict:
     kind = str(error.get("type") or "")
     if kind in ("value_error", "assertion_error"):
         authored = str(error.get("msg") or "").removeprefix("Value error, ").removeprefix("Assertion failed, ")
-        return {"message": authored[:200] or "Value is not valid.", "field": field}
+        # The validator's own refusal names its code where it has one (WS3e);
+        # otherwise it is the explicit ``unclassified`` fallback.
+        message = authored[:200] or "Value is not valid."
+        named, named_params = code_of((error.get("ctx") or {}).get("error"))
+        # Never more than the message itself shows (``disclosed``).
+        code, params = disclosed(message, named, named_params)
+        return {"message": message, "field": field, "code": code, "params": params}
     try:
         requirement = _VALIDATION_REQUIREMENTS.get(kind, "is not valid").format(**(error.get("ctx") or {}))
+        rule = kind if kind in _VALIDATION_REQUIREMENTS else "invalid"
     except (KeyError, IndexError, ValueError):
-        requirement = "is not valid"
-    return {"message": f"Value {requirement}.", "requirement": requirement, "field": field}
+        requirement, rule = "is not valid", "invalid"
+    # ``code`` names the rule (``error.validation.<rule>``, and its bare
+    # requirement ``error.requirement.<rule>``); ``params`` are the rule's own
+    # bounds -- never the refused value.
+    # A rule's bounds are the schema's own (``ctx``), never the refused value: facts.
+    bounds = {name: fact(value) if isinstance(value, str) else value for name, value in (error.get("ctx") or {}).items()
+              if rule != "invalid" and isinstance(value, (str, int, float, bool))}
+    code, params = disclosed(f"Value {requirement}.", f"validation.{rule}", bounds)
+    return {"message": f"Value {requirement}.", "requirement": requirement, "field": field,
+            "code": code, "params": params}
 
 
 def _refused(exc: ValidationError) -> HTTPException:
@@ -164,6 +179,7 @@ from api.serializers import (
     public_torrent,
 )
 from executors.aria2.presentation import public_aria2_download
+from core.localization import CodedValueError, DisplayError, code_of, disclosed, refusal, fact
 
 logger = logging.getLogger("debridpulse.routes")
 router = APIRouter()
@@ -620,14 +636,14 @@ def _refuse_invalid_document_changes(merged: dict, previous: AppSettings) -> Non
             and not _valid_public_base_url(merged.get("public_base_url"))):
         raise HTTPException(400, {"message": "Value must be an HTTPS origin.",
                                   "requirement": "must be an HTTPS origin in the form https://host[:port]",
-                                  "field": "public_base_url"})
+                                  "field": "public_base_url", "code": "validation.https_origin", "params": {}})
 
 
 def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
     requested_clears = {str(field) for field in getattr(new, "clear_secrets", [])}
     unknown = requested_clears - _SECRET_SETTINGS
     if unknown:
-        raise HTTPException(400, f"Unsupported secret field(s): {', '.join(sorted(unknown))}")
+        raise DisplayError(400, f"Unsupported secret field(s): {', '.join(sorted(unknown))}", code="settings.secret_field_unsupported", params={"fields": str(', '.join(sorted(unknown)))})
     merged = new.model_dump(exclude={"clear_secrets"})
     explicitly_set = set(new.model_fields_set)
     for field in _AUTH_COMPAT_SETTINGS_FIELDS:
@@ -667,7 +683,7 @@ async def _apply_aria2_settings(application: ApplicationService, *, strict: bool
 
     status = await aria2_runtime.ensure_started()
     if strict and not status.get("process_running") and aria2_runtime.last_exit_code == OPTION_REFUSED_EXIT_CODE:
-        raise NativeConfigurationRefused(f"aria2 refused this configuration: {status.get('last_error') or 'exit 28'}")
+        raise NativeConfigurationRefused(f"aria2 refused this configuration: {status.get('last_error') or 'exit 28'}", code="aria2.configuration_refused", params={"reason": str(status.get('last_error') or 'exit 28')})
     applied = False
     if status.get("process_running"):
         try:
@@ -675,7 +691,7 @@ async def _apply_aria2_settings(application: ApplicationService, *, strict: bool
             applied = True
         except Aria2ResponseError as exc:
             if strict:
-                raise NativeConfigurationRefused(f"aria2 refused this configuration: {sanitize_exception(exc)}") from None
+                raise NativeConfigurationRefused(f"aria2 refused this configuration: {sanitize_exception(exc)}", code="aria2.configuration_refused", params={"reason": str(sanitize_exception(exc))}) from None
             logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
         except Exception as exc:
             logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
@@ -725,7 +741,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
-                raise HTTPException(409, str(exc)) from None
+                raise refusal(409, str(exc), exc) from None
             save_settings(clean)
             apply_settings(clean)
         _revoke_stale_authentication_state(previous, clean)
@@ -761,12 +777,12 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
 
     ct = (file.content_type or "").lower().split(";")[0].strip()
     if ct not in ALLOWED:
-        raise HTTPException(400, f"Unsupported type '{ct}'. Allowed: PNG, JPG, GIF, WebP")
+        raise DisplayError(400, f"Unsupported type '{ct}'. Allowed: PNG, JPG, GIF, WebP", code="avatar.type_unsupported", params={"type": ct})
 
     data = await file.read(MAX_BYTES + 1)
     await file.close()
     if len(data) > MAX_BYTES:
-        raise HTTPException(413, f"File too large ({len(data)//1024} KB). Limit: 4 MB")
+        raise DisplayError(413, f"File too large ({len(data)//1024} KB). Limit: 4 MB", code="avatar.too_large", params={"kilobytes": fact(len(data)//1024)})
 
     ext = ALLOWED[ct]
     config_dir = Path(os.getenv("CONFIG_PATH", "/app/config/config.json")).parent
@@ -802,7 +818,7 @@ async def serve_avatar():
         if p.exists():
             return FileResponse(str(p), media_type=media_type,
                                 headers={"Cache-Control": "public, max-age=3600"})
-    raise HTTPException(404, "No avatar uploaded")
+    raise DisplayError(404, "No avatar uploaded", code="avatar.missing")
 
 
 # ── Connection tests ───────────────────────────────────────────────────────────
@@ -812,11 +828,11 @@ async def test_alldebrid():
     from providers.alldebrid.admin import account_status
     cfg = get_settings()
     if not alldebrid_canonical_options(cfg).api_key:
-        raise HTTPException(400, "No API key configured")
+        raise DisplayError(400, "No API key configured", code="settings.api_key_missing")
     try:
         return await account_status(cfg)
     except Exception as exc:
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
 
 
 @router.post("/settings/test-aria2")
@@ -825,7 +841,7 @@ async def test_aria2( application: ApplicationService = Depends(get_application)
         result = await application.integration_admin("aria2").test()
         return {"ok": True, **result}
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
 
 
 @router.post("/settings/aria2-housekeeping")
@@ -833,7 +849,7 @@ async def run_aria2_housekeeping_ep( application: ApplicationService = Depends(g
     try:
         return await application.integration_admin("aria2").housekeeping()
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
 
 
 @router.get("/aria2/runtime")
@@ -884,7 +900,7 @@ async def aria2_runtime_apply( application: ApplicationService = Depends(get_app
         result = await application.integration_admin("aria2").housekeeping()
         return {"ok": True, **result}
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
 
 
 @router.get("/aria2/downloads")
@@ -897,7 +913,7 @@ async def aria2_downloads( application: ApplicationService = Depends(get_applica
         )
         downloads = await application.integration_admin("aria2").filter_owned(downloads)
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
     items = [public_aria2_download(download) for download in downloads]
     groups = {
         "active": [item for item in items if item["status"] == "active"],
@@ -921,14 +937,14 @@ async def aria2_downloads( application: ApplicationService = Depends(get_applica
 @router.post("/aria2/downloads/{gid}/{action}")
 async def aria2_download_action(gid: str, action: str, application: ApplicationService = Depends(get_application)):
     if action not in {"pause", "resume", "remove"}:
-        raise HTTPException(400, "Unsupported aria2 action")
+        raise DisplayError(400, "Unsupported aria2 action", code="aria2.action_unsupported")
     try:
         result = await application.integration_admin("aria2").control(gid, action)
         return {"ok": True, "gid": gid, "action": action, **result}
     except PermissionError as e:
-        raise HTTPException(403, _sanitize_error(e))
+        raise refusal(403, _sanitize_error(e), e)
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
 
 
 # ── Torrents ───────────────────────────────────────────────────────────────────
@@ -973,7 +989,7 @@ def _submitted(request: Request, result: dict, demands) -> dict:
 async def add_magnet(body: dict, request: Request, application: ApplicationService = Depends(get_application)):
     magnet = (body.get("magnet") or "").strip()
     if not magnet:
-        raise HTTPException(400, "magnet is required")
+        raise DisplayError(400, "magnet is required", code="submit.magnet_required")
     # Optional neutral submission intent. Omitted -> ALL (correction section 6):
     # a historical/headless caller sending the unchanged body shape never enters
     # the interactive file-selection lifecycle.
@@ -984,10 +1000,10 @@ async def add_magnet(body: dict, request: Request, application: ApplicationServi
         )
         return _submitted(request, row, [demand])
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc))
+        raise refusal(400, _sanitize_error(exc), exc)
     except Exception as exc:
         logger.exception("add_magnet failed: %s", _sanitize_error(exc))
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
 
 
 # How much of a streamed upload is read at a time. Bounded, so a large upload
@@ -1015,7 +1031,7 @@ async def add_torrent_file(
     filename = Path(file.filename or "upload.torrent").name
 
     if not filename.lower().endswith(".torrent"):
-        raise HTTPException(400, "A .torrent file is required")
+        raise DisplayError(400, "A .torrent file is required", code="submit.torrent_required")
 
     try:
         data = await file.read(max_bytes + 1)
@@ -1023,9 +1039,9 @@ async def add_torrent_file(
         await file.close()
 
     if not data:
-        raise HTTPException(400, "Torrent file is empty")
+        raise DisplayError(400, "Torrent file is empty", code="submit.torrent_empty")
     if len(data) > max_bytes:
-        raise HTTPException(413, "Torrent file exceeds the 16 MB upload limit")
+        raise DisplayError(413, "Torrent file exceeds the 16 MB upload limit", code="submit.torrent_too_large")
 
     try:
         demand = _demand(request)
@@ -1038,9 +1054,9 @@ async def add_torrent_file(
         )
         return _submitted(request, result, [demand])
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc))
+        raise refusal(400, _sanitize_error(exc), exc)
     except Exception as exc:
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
 
 
 @router.post("/usenet/add-file")
@@ -1065,7 +1081,7 @@ async def add_usenet_file(
     """
     filename = Path(file.filename or "upload.nzb").name
     if not filename.lower().endswith(".nzb"):
-        raise HTTPException(400, "An .nzb file is required")
+        raise DisplayError(400, "An .nzb file is required", code="submit.nzb_required")
 
     async def chunks():
         while True:
@@ -1079,10 +1095,10 @@ async def add_usenet_file(
         return _submitted(request, await application.submit_nzb(chunks(), filename, source="manual_file",
                                                                 demand=demand), [demand])
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc)) from None
+        raise refusal(400, _sanitize_error(exc), exc) from None
     except Exception as exc:
         logger.exception("add_usenet_file failed: %s", _sanitize_error(exc))
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
     finally:
         await file.close()
 
@@ -1100,7 +1116,7 @@ async def add_usenet_link(body: dict, request: Request, application: Application
     private-LAN confirmation only, exactly as for ``/links/add``."""
     url = body.get("url")
     if not isinstance(url, str) or not url.strip():
-        raise HTTPException(400, "An NZB link is required")
+        raise DisplayError(400, "An NZB link is required", code="submit.nzb_link_required")
     try:
         demand = _demand(request)
         return _submitted(request, await application.submit_nzb_link(
@@ -1126,7 +1142,7 @@ async def add_multimeta_file(
     omitted -> ALL."""
     filename = Path(file.filename or "upload.meta4").name
     if not filename.lower().endswith(".meta4"):
-        raise HTTPException(400, "A .meta4 file is required")
+        raise DisplayError(400, "A .meta4 file is required", code="submit.meta4_required")
 
     async def chunks():
         read = 0
@@ -1137,7 +1153,7 @@ async def add_multimeta_file(
             read += len(chunk)
             # The Multimeta reader's own hard bound: nothing larger is staged.
             if read > MAX_DESCRIPTOR_BYTES:
-                raise ValueError("Metalink file exceeds the 16 MB upload limit")
+                raise CodedValueError("Metalink file exceeds the 16 MB upload limit", code="submit.meta4_too_large")
             yield chunk
 
     try:
@@ -1145,10 +1161,10 @@ async def add_multimeta_file(
         return _submitted(request, await application.submit_meta4(
             chunks(), filename, source="manual_file", selection_mode=selection_mode, demand=demand), [demand])
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc)) from None
+        raise refusal(400, _sanitize_error(exc), exc) from None
     except Exception as exc:
         logger.exception("add_multimeta_file failed: %s", _sanitize_error(exc))
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
     finally:
         await file.close()
 
@@ -1162,7 +1178,7 @@ async def add_debrid_links(body: dict, request: Request, application: Applicatio
     elif isinstance(raw_links, list):
         links = [str(value).strip() for value in raw_links if str(value).strip()]
     else:
-        raise HTTPException(400, "links must be a list or newline-separated string")
+        raise DisplayError(400, "links must be a list or newline-separated string", code="submit.links_invalid")
     try:
         # A row of TAB-separated links is ONE item with explicit alternate
         # sources (this text surface's grammar only -- a link file is read by
@@ -1179,7 +1195,7 @@ async def add_debrid_links(body: dict, request: Request, application: Applicatio
         scopes = body.get("acquisition_scopes")
         if scopes is not None and not (isinstance(scopes, dict)
                                        and all(isinstance(value, str) for value in scopes.values())):
-            raise HTTPException(400, "acquisition_scopes must map each link to a scope")
+            raise DisplayError(400, "acquisition_scopes must map each link to a scope", code="submit.scopes_invalid")
         demand = _demand(request)
         return _submitted(request, await application.submit_links(
             links, selection_mode=body.get("selection_mode"), demand=demand,
@@ -1191,10 +1207,10 @@ async def add_debrid_links(body: dict, request: Request, application: Applicatio
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc))
+        raise refusal(400, _sanitize_error(exc), exc)
     except Exception as exc:
         logger.exception("add_debrid_links failed: %s", _sanitize_error(exc))
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
 
 
 def _acquisition_scope_required(exc: AcquisitionScopeRequired) -> HTTPException:
@@ -1204,6 +1220,7 @@ def _acquisition_scope_required(exc: AcquisitionScopeRequired) -> HTTPException:
     return HTTPException(409, {
         "confirmation": "acquisition_scope", "links": [dict(link) for link in exc.links],
         "message": "Choose whether to download the linked item or its collection.",
+        "code": "submit.acquisition_scope_required",
     })
 
 
@@ -1211,6 +1228,7 @@ def _local_network_confirmation(exc: LocalNetworkConfirmationRequired) -> HTTPEx
     return HTTPException(409, {
         "confirmation": "local_network", "hosts": list(exc.hosts),
         "message": "This transfer connects to an address on your private network.",
+        "code": "submit.local_network_confirmation",
     })
 
 
@@ -1250,7 +1268,7 @@ async def add_link_file(
                     normalize_direct_links([value])
                     direct.append(value)
             except ValueError:
-                raise ValueError(f"{location} is not a supported link") from None
+                raise CodedValueError(f"{location} is not a supported link", code="submit.link_unsupported", params={"link": location}) from None
         items, demands = [], []
         if direct:
             demands.append(_demand(request))
@@ -1269,10 +1287,10 @@ async def add_link_file(
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
     except ValueError as exc:
-        raise HTTPException(400, _sanitize_error(exc))
+        raise refusal(400, _sanitize_error(exc), exc)
     except Exception as exc:
         logger.exception("add_link_file failed: %s", _sanitize_error(exc))
-        raise HTTPException(502, _sanitize_error(exc))
+        raise refusal(502, _sanitize_error(exc), exc)
 
 
 @router.post("/torrents/check-duplicate")
@@ -1282,7 +1300,7 @@ async def check_torrent_duplicate(body: dict):
 
     candidate = _duplicate_candidate_from_payload(body, source=str(body.get("source") or "preview"))
     if not (candidate.infohash or candidate.magnet or candidate.title or candidate.resource_id):
-        raise HTTPException(400, "title, magnet, hash, infohash, or resource_id is required")
+        raise DisplayError(400, "title, magnet, hash, infohash, or resource_id is required", code="duplicates.query_required")
     decision = await check_before_add(candidate)
     return {"ok": True, "duplicate": decision.as_dict()}
 
@@ -1324,7 +1342,7 @@ async def torrent_files_preview(torrent_id: int, application: ApplicationService
     try:
         return await application.preview(torrent_id)
     except KeyError:
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
 
 
 @router.post("/torrents/{torrent_id}/files/{file_id}/block")
@@ -1334,9 +1352,9 @@ async def block_file(torrent_id: int, file_id: int, request: Request, blocked: b
     try:
         return await application.select_artifact(torrent_id, file_id, selected=not blocked, expected_demand=expected)
     except KeyError:
-        raise HTTPException(404, "File not found")
+        raise DisplayError(404, "File not found", code="transfer.file_not_found")
     except ValueError as exc:
-        raise HTTPException(409, _sanitize_error(exc))
+        raise refusal(409, _sanitize_error(exc), exc)
 
 
 @router.get("/torrents/{torrent_id}")
@@ -1348,7 +1366,7 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
         capacity_only_blocked_ids=dispatch_admission.capacity_only_blocked_ids(engine),
     )
     if item is None:
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
     transfer = await application.repository.get(torrent_id)
     result = _public_transfer_presentation(
         item, application.definitions,
@@ -1465,7 +1483,7 @@ async def export_transfer_trace(torrent_id: int, application: ApplicationService
     ``services.transfer_trace`` (its one owner)."""
     exported = await transfer_trace.export(torrent_id, application)
     if exported is None:
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
     filename, body = exported
     return Response(body, media_type="application/json", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
@@ -1481,38 +1499,38 @@ async def delete_torrent(torrent_id: int, request: Request, from_alldebrid: bool
     try:
         return await application.delete(torrent_id, remote=from_alldebrid, expected_demand=expected)
     except KeyError:
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
 
 
 @router.post("/torrents/{torrent_id}/input")
 async def submit_transfer_input(torrent_id: int, request: Request, application: ApplicationService = Depends(get_application)):
     raw = await request.body()
     if len(raw) > 512 * 1024:
-        raise HTTPException(413, "Authentication input is too large")
+        raise DisplayError(413, "Authentication input is too large", code="auth_input.too_large")
     try:
         body = _json.loads(raw)
     except (TypeError, ValueError):
-        raise HTTPException(400, "Authentication input must be a JSON object") from None
+        raise DisplayError(400, "Authentication input must be a JSON object", code="auth_input.not_object") from None
     finally:
         raw = b""
     if not isinstance(body, dict):
-        raise HTTPException(400, "Authentication input must be a JSON object")
+        raise DisplayError(400, "Authentication input must be a JSON object", code="auth_input.not_object")
     allowed_fields = {"challenge_id", "method", "username", "password", "private_key", "passphrase"}
     if set(body) - allowed_fields:
         body.clear()
-        raise HTTPException(400, "Authentication input contains unsupported fields")
+        raise DisplayError(400, "Authentication input contains unsupported fields", code="auth_input.unsupported_fields")
     challenge_id = body.get("challenge_id")
     method = body.get("method")
     if not isinstance(challenge_id, str) or not challenge_id or not isinstance(method, str) or not method:
         body.clear()
-        raise HTTPException(400, "challenge_id and method are required")
+        raise DisplayError(400, "challenge_id and method are required", code="auth_input.fields_required")
     values = {name: body[name] for name in ("username", "password", "private_key", "passphrase") if name in body}
     try:
         return await application.submit_input(torrent_id, challenge_id=challenge_id, method=method, values=values)
     except KeyError:
-        raise HTTPException(404, "Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     except ValueError:
-        raise HTTPException(409, "Authentication input was not accepted") from None
+        raise DisplayError(409, "Authentication input was not accepted", code="auth_input.not_accepted") from None
     finally:
         values.clear()
         body.clear()
@@ -1524,7 +1542,7 @@ async def cancel_torrent(torrent_id: int, request: Request, application: Applica
     try:
         return await application.cancel(torrent_id, expected_demand=expected)
     except KeyError:
-        raise HTTPException(404, "Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
 
 
 @router.post("/torrents/{torrent_id}/retry")
@@ -1532,7 +1550,7 @@ async def retry_torrent(torrent_id: int, application: ApplicationService = Depen
     try:
         return await application.retry(torrent_id)
     except KeyError:
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
 
 
 @router.post("/torrents/{torrent_id}/pause")
@@ -1541,7 +1559,7 @@ async def pause_torrent(torrent_id: int, application: ApplicationService = Depen
         await application.pause(torrent_id)
         return {"ok": True}
     except Exception as e:
-        raise HTTPException(400, _sanitize_error(e))
+        raise refusal(400, _sanitize_error(e), e)
 
 
 @router.post("/torrents/{torrent_id}/resume")
@@ -1550,7 +1568,7 @@ async def resume_torrent(torrent_id: int, application: ApplicationService = Depe
         await application.resume(torrent_id)
         return {"ok": True, "paused": await application.repository.globally_paused()}
     except Exception as e:
-        raise HTTPException(400, _sanitize_error(e))
+        raise refusal(400, _sanitize_error(e), e)
 
 class LabelUpdate(BaseModel):
     label: str = ""
@@ -1579,7 +1597,7 @@ async def bulk_action(body: BulkAction, request: Request, application: Applicati
     delete commits. A denied target is reported and left untouched; it never
     stops the others."""
     if not body.ids:
-        raise HTTPException(400, "No IDs provided")
+        raise DisplayError(400, "No IDs provided", code="bulk.no_ids")
     principal = request.state.principal
     ok = failed = denied = 0
     results = []
@@ -1986,7 +2004,7 @@ async def trigger_backup():
     try:
         return await backup_store.run_backup()
     except backup_store.BackupRejected as exc:
-        raise HTTPException(500, exc.message) from None
+        raise refusal(500, exc.message, exc) from None
 
 
 # ── Backups: one restore point per DebridPulse backup ──────────────────────────
@@ -1996,7 +2014,7 @@ async def trigger_backup():
 def _backup_refusal(exc: backup_store.BackupRejected) -> HTTPException:
     status = {"not_found": 404, "duplicate": 409, "space": 507}.get(
         exc.reason, 500 if exc.action in {"save", "remove"} else 400)
-    return HTTPException(status, exc.message)
+    return refusal(status, exc.message, exc)
 
 
 @router.get("/admin/backups")
@@ -2041,7 +2059,7 @@ async def restore_backup(body: dict, request: Request):
     try:
         return await restore_application_backup(request.app.state, str((body or {}).get("id") or ""))
     except RestoreFailed as exc:
-        raise HTTPException(exc.status_code, exc.message) from None
+        raise refusal(exc.status_code, exc.message, exc) from None
 
 
 @router.post("/admin/drop-page-cache")
@@ -2069,7 +2087,7 @@ async def drop_page_cache_ep():
             "message": f"Page cache released for {dropped}/{len(paths)} files",
         }
     except Exception as e:
-        raise HTTPException(500, _sanitize_error(e))
+        raise refusal(500, _sanitize_error(e), e)
 
 
 @router.get("/admin/memory-info")
@@ -2122,7 +2140,7 @@ async def memory_info_ep():
                        if k in ("MemTotal","MemFree","MemAvailable","Cached","Buffers","SwapTotal","SwapFree")},
         }
     except Exception as e:
-        raise HTTPException(500, _sanitize_error(e))
+        raise refusal(500, _sanitize_error(e), e)
 
 
 
@@ -2139,12 +2157,12 @@ async def wipe_database_admin(body: dict | None = None, application: Application
     is what the safety backup captures, and is reinstated exactly afterwards."""
     cfg = get_settings()
     if not getattr(cfg, "db_wipe_enabled", False):
-        raise HTTPException(400, "Database wipe is disabled in settings")
+        raise DisplayError(400, "Database wipe is disabled in settings", code="maintenance.wipe_disabled")
     if not (body or {}).get("confirm"):
-        raise HTTPException(400, "Wipe confirmation required")
+        raise DisplayError(400, "Wipe confirmation required", code="maintenance.wipe_confirmation_required")
 
     if _database_wipe_lock.locked():
-        raise HTTPException(409, "Database wipe is already in progress")
+        raise DisplayError(409, "Database wipe is already in progress", code="maintenance.wipe_in_progress")
 
     async with _database_wipe_lock:
         scheduler_was_running = scheduler_runtime.scheduler_running()
@@ -2158,7 +2176,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                 # pause intent, only after that drain.
                 cfg = get_settings()
                 if not getattr(cfg, "db_wipe_enabled", False):
-                    raise HTTPException(400, "Database wipe is disabled in settings")
+                    raise DisplayError(400, "Database wipe is disabled in settings", code="maintenance.wipe_disabled")
                 intent = await application.pause_intent()
 
                 if scheduler_was_running:
@@ -2169,7 +2187,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                 try:
                     drain = await application.drain_executions()
                 except Exception as exc:
-                    raise HTTPException(409, _sanitize_error(exc))
+                    raise refusal(409, _sanitize_error(exc), exc)
 
                 # Application execution admission, scheduler activity, provider
                 # work, materialization work and every native execution are all
@@ -2178,7 +2196,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                 # wipe has ended, however it ends.
                 async with backup_store.holding() as hold, database_maintenance():
                     if await application.repository.live_executions():
-                        raise HTTPException(409, "Could not prove every native execution stopped")
+                        raise DisplayError(409, "Could not prove every native execution stopped", code="maintenance.executions_not_stopped")
                     # The drain's pause is the wipe's own; the backup keeps the
                     # operator's intent instead.
                     await application.record_pause_intent(intent)
@@ -2188,7 +2206,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                     try:
                         safety = await backup_store.create_restore_point()
                     except backup_store.BackupRejected:
-                        raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted") from None
+                        raise DisplayError(500, "Pre-wipe database backup failed; wipe aborted", code="maintenance.wipe_backup_failed") from None
                     hold(safety.id)
                     backup_result = safety.public()
 
@@ -2227,7 +2245,7 @@ async def aria2_get_global_options( application: ApplicationService = Depends(ge
             "raw": {k: v for k, v in opts.items() if "limit" in k or "speed" in k or "concurrent" in k},
         }
     except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        raise refusal(502, _sanitize_error(e), e)
 
 
 @router.post("/aria2/global-options")
@@ -2251,7 +2269,7 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
     async with application.application_operation():
         requested = set(body)
         if not requested & {"max_download_speed", "max_concurrent_downloads"}:
-            raise HTTPException(400, "No valid options provided")
+            raise DisplayError(400, "No valid options provided", code="aria2.options_invalid")
 
         applied: dict = {}
         last_apply_error = None
@@ -2269,7 +2287,7 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
                 except ValidationError as exc:
                     raise _refused(exc) from None
                 except Exception as exc:
-                    raise HTTPException(400, _sanitize_error(exc)) from None
+                    raise refusal(400, _sanitize_error(exc), exc) from None
                 result = await patch_transfer_policy(update, application=application)
                 # Gate 9 revision-6 rejection finding 3: propagate the
                 # canonical route's own native-apply truth through this
@@ -2287,7 +2305,7 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(502, _sanitize_error(e))
+            raise refusal(502, _sanitize_error(e), e)
 
 
 @router.get("/execution/runtime-limits")
@@ -2333,7 +2351,7 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
     command already uses -- never application-wide maintenance merely because
     the value is persisted (specification section 2.6, 13.3)."""
     if "max_download_bytes_per_second" not in body:
-        raise HTTPException(400, "A speed limit is required.")
+        raise DisplayError(400, "A speed limit is required.", code="speed.limit_required")
     # The namespace's own rule, strictly: a whole number of bytes per second
     # from 0 (no limit) up -- never a truncated fraction, a boolean, a string,
     # a negative silently read as "no limit", or a non-finite value.
@@ -2409,7 +2427,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
     writable authority (specification sections 4.1, 9.7, 9.8)."""
     updates = body.model_dump(exclude_none=True)
     if not updates:
-        raise HTTPException(400, "No valid transfer-policy fields provided")
+        raise DisplayError(400, "No valid transfer-policy fields provided", code="policy.fields_invalid")
     async with application.application_operation():
         # The narrow config-write lock (specification sections 9.5, 13.8)
         # serializes this load-modify-save critical section against every
@@ -2425,7 +2443,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
             except ValidationError as exc:
                 raise _refused(exc) from None
             except Exception as exc:
-                raise HTTPException(400, _sanitize_error(exc)) from None
+                raise refusal(400, _sanitize_error(exc), exc) from None
             current.transfer_policy = policy
             from integrations.configuration import normalize_settings
             current = normalize_settings(current, application.definitions)
@@ -2486,7 +2504,7 @@ class IntegrationConfigurationUpdate(BaseModel):
 def _integration_definition(application: ApplicationService, integration_id: str):
     definition = next((d for d in application.definitions if d.id == integration_id), None)
     if definition is None:
-        raise HTTPException(404, "Unknown integration")
+        raise DisplayError(404, "Unknown integration", code="integration.unknown")
     return definition
 
 
@@ -2533,9 +2551,9 @@ async def patch_integration_configuration(
     except InvalidIntegrationOptions as exc:
         if isinstance(exc.__cause__, ValidationError):
             raise _refused(exc.__cause__) from None
-        raise HTTPException(400, _sanitize_error(exc.__cause__ or exc)) from None
+        raise refusal(400, _sanitize_error(exc.__cause__ or exc), exc) from None
     except ConfigurationRefused as exc:
-        raise HTTPException(409, str(exc)) from None
+        raise refusal(409, str(exc), exc) from None
     clean, applied, runtime = result.settings, result.applied, result.native
     from integrations.configuration import public_integrations
     public = _with_option_availability(public_integrations(clean, application.definitions),
@@ -2618,7 +2636,7 @@ async def patch_integration_group_configuration(
         known_groups, normalize_settings, public_integration_groups, set_group_enabled,
     )
     if group_id not in known_groups(application.definitions):
-        raise HTTPException(404, "Unknown integration group")
+        raise DisplayError(404, "Unknown integration group", code="integration.group_unknown")
     async with application.application_operation():
         async with config_write_lock():
             previous = get_settings()
@@ -2628,7 +2646,7 @@ async def patch_integration_group_configuration(
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
-                raise HTTPException(409, str(exc)) from None
+                raise refusal(409, str(exc), exc) from None
             save_settings(clean)
             apply_settings(clean)
             application.configure()
@@ -2955,10 +2973,7 @@ async def prometheus_metrics():
             REGISTRY,
         )
     except ImportError:
-        raise HTTPException(
-            503,
-            "prometheus-client is not installed. Add it to requirements.txt and rebuild.",
-        )
+        raise DisplayError(503, "prometheus-client is not installed. Add it to requirements.txt and rebuild.", code="metrics.client_missing",)
 
     async with get_db() as db:
         # Torrent counts by status
@@ -3051,11 +3066,14 @@ def _queue_move_error(exc: Exception) -> HTTPException:
             "message": ("The transfers this reorder interrupts changed; nothing was moved." if exc.changed
                         else f"Reordering the queue interrupts {count} active transfer{'s' if count != 1 else ''} "
                              "that cannot resume."),
+            "code": "queue.restart_changed" if exc.changed else "queue.restart_required",
+            "params": {} if exc.changed else {"count": count},
         })
     if exc.reason == "not_queued":
-        return HTTPException(409, {"reason": "not_queued",
+        return HTTPException(409, {"reason": "not_queued", "code": "queue.not_queued",
                                    "message": "Only unfinished transfers have a place in the queue."})
-    return HTTPException(409, {"reason": "queue_changed", "message": "The queue changed; nothing was moved."})
+    return HTTPException(409, {"reason": "queue_changed", "code": "queue.changed",
+                               "message": "The queue changed; nothing was moved."})
 
 
 @router.patch("/torrents/{torrent_id}/priority")
@@ -3064,12 +3082,12 @@ async def set_torrent_priority(torrent_id: int, body: dict, application: Applica
     try:
         position = QueuePosition.model_validate(body or {})
     except ValidationError as exc:
-        raise HTTPException(422, "Invalid queue position") from exc
+        raise DisplayError(422, "Invalid queue position", code="queue.position_invalid") from exc
     moving = position.before_id is not None or position.after_id is not None
     if sum((moving, position.reaffirm, position.priority is not None)) != 1:
-        raise HTTPException(422, "Give the transfer's new neighbours, a reaffirmation or a priority")
+        raise DisplayError(422, "Give the transfer's new neighbours, a reaffirmation or a priority", code="queue.move_unspecified")
     if not await application.repository.get(torrent_id):
-        raise HTTPException(404, "Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
     if position.priority is not None:
         await application.repository.update_metadata(torrent_id, priority=position.priority)
         await _sse_broadcast("torrent_updated", {"torrent_id": torrent_id, "priority": position.priority})
@@ -3078,7 +3096,7 @@ async def set_torrent_priority(torrent_id: int, body: dict, application: Applica
         moved = await application.move_in_queue(torrent_id, before_id=position.before_id, after_id=position.after_id,
                                                 reaffirm=position.reaffirm, confirm_restart=position.confirm_restart)
     except KeyError:
-        raise HTTPException(404, "Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     except (QueueMoveRefused, RestartConfirmationRequired) as exc:
         raise _queue_move_error(exc) from None
     return {"ok": True, "torrent_id": torrent_id, "priority": moved.priority, "moved": moved.moved,
@@ -3205,11 +3223,11 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
                 for server in updated.servers:
                     validate_changes(UsenetServer, server.model_dump(), previous_servers.get(server.id))
             except ServerMutationError as exc:
-                raise HTTPException(404, "Unknown Usenet server") from None
+                raise DisplayError(404, "Unknown Usenet server", code="usenet.server_unknown") from None
             except ValidationError as exc:
                 raise _refused(exc) from None
             except ValueError as exc:
-                raise HTTPException(400, _sanitize_error(exc)) from None
+                raise refusal(400, _sanitize_error(exc), exc) from None
             current.integrations = {**current.integrations, USENET_NAMESPACE: IntegrationSettings(
                 enabled=(entry.enabled if isinstance(entry, IntegrationSettings) else False),
                 priority=(entry.priority if isinstance(entry, IntegrationSettings) else 0),
@@ -3224,7 +3242,7 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
-                raise HTTPException(409, str(exc)) from None
+                raise refusal(409, str(exc), exc) from None
             save_settings(clean)
             apply_settings(clean)
             application.configure()

@@ -6036,7 +6036,7 @@
       return {code: 'stale_revision', message: say('settings.profiles.stale')};
     }
     if (error?.status === 409 && detail.code === 'profile_in_use') {
-      return {code: 'profile_in_use', message: text(detail.message || error.message),
+      return {code: 'profile_in_use', message: text((error.localized && error.message) || detail.message || error.message),
         affected: Number(detail.affected_jobs || 0),
         profiles: (Array.isArray(detail.profiles) ? detail.profiles : []).map(item => text(item?.id)).filter(Boolean)};
     }

@@ -38,6 +38,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from core.localization import Coded, fact
 
 # The finite infrastructure ceiling for one staged request input.
 #
@@ -59,7 +60,7 @@ _IDENTITY = re.compile(r"^[0-9a-f]{32}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
-class StagedInputError(Exception):
+class StagedInputError(Coded, Exception):
     """Staged input could not be created, located or proven intact."""
 
 
@@ -191,7 +192,7 @@ class StagedInputStore:
                     length += len(chunk)
                     digest.update(chunk)
         except OSError as exc:
-            raise StagedInputError("staged input is no longer available") from exc
+            raise StagedInputError("staged input is no longer available", code="submit.staged_gone") from exc
         if length != int(reference.byte_length):
             raise StagedInputError("staged input length does not match its reference")
         if digest.hexdigest() != reference.sha256:
@@ -279,7 +280,7 @@ class _StagedWriter:
         self._length += len(chunk)
         if self._length > self._max_bytes:
             raise StagedInputError(
-                f"staged input exceeds the {self._max_bytes} byte ceiling")
+                f"staged input exceeds the {self._max_bytes} byte ceiling", code="submit.staged_too_large", params={"bytes": fact(self._max_bytes)})
         self._digest.update(chunk)
         self._handle.write(chunk)
 
@@ -288,7 +289,7 @@ class _StagedWriter:
         os.fsync(self._handle.fileno())
         self._handle.close()
         if not self._length:
-            raise StagedInputError("staged input is empty")
+            raise StagedInputError("staged input is empty", code="submit.staged_empty")
         os.replace(self._temporary, self._final)
         os.chmod(self._final, 0o600)
         return StagedPayload(self._identity, self._digest.hexdigest(), self._length)

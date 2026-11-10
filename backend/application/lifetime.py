@@ -20,6 +20,7 @@ import asyncio
 import logging
 
 from core import scheduler
+from core.localization import Coded
 from core.logging_utils import sanitize_exception
 
 logger = logging.getLogger("debridpulse.lifetime")
@@ -28,13 +29,23 @@ _RESTORE_LOCK = asyncio.Lock()
 _UNCHANGED = "The current DebridPulse state was left unchanged."
 
 
-class RestoreFailed(Exception):
-    """A restore that did not replace the current state."""
+class RestoreFailed(Coded, Exception):
+    """A restore that did not replace the current state.
 
-    def __init__(self, status_code: int, reason: str = ""):
+    Named by its facts (WS3e): ``restore.failed``, or ``restore.failed_reason``
+    whose ``reason`` is the reason's own code (``reason_said``, given where it
+    is raised); a reason with no code is the explicit ``unclassified``."""
+
+    def __init__(self, status_code: int, reason: str = "", *, reason_said: dict | None = None):
         self.status_code = status_code
         self.message = " ".join(part for part in ("Backup could not be restored.", reason, _UNCHANGED) if part)
-        super().__init__(self.message)
+        if not reason:
+            code, params = "restore.failed", {}
+        elif reason_said:
+            code, params = "restore.failed_reason", {"reason": reason_said}
+        else:
+            code, params = None, {}
+        super().__init__(self.message, code=code, params=params)
 
 
 class RestoreUnresolved(RestoreFailed):
@@ -46,6 +57,7 @@ class RestoreUnresolved(RestoreFailed):
         self.message = ("Backup could not be restored, and the previous state could not be put back yet. "
                         "DebridPulse has stopped using its stored state; restart it to put the previous state back.")
         Exception.__init__(self, self.message)
+        self.display_code, self.display_params = "restore.unresolved", {}
 
 
 async def prepare_settings_and_migrate():
@@ -208,7 +220,8 @@ async def restore_backup(state, point_id: str) -> dict:
     from services import backup
 
     if _RESTORE_LOCK.locked():
-        raise RestoreFailed(409, "A restore is already in progress.")
+        raise RestoreFailed(409, "A restore is already in progress.",
+                            reason_said={"$t": "error.restore.reason.in_progress", "$v": {}})
     from db.database import database_maintenance_gate
 
     if database_maintenance_gate.sealed:
@@ -223,7 +236,7 @@ async def restore_backup(state, point_id: str) -> dict:
         try:
             await backup.validate_restore_point(point_id)
         except backup.BackupRejected as exc:
-            raise RestoreFailed(404 if exc.reason == "not_found" else 400, exc.detail) from None
+            raise RestoreFailed(404 if exc.reason == "not_found" else 400, exc.detail, reason_said=exc.detail_said) from None
         stopped_integrations = ()
         refused = None
         async with current.state_replacement_admission():
@@ -237,7 +250,8 @@ async def restore_backup(state, point_id: str) -> dict:
                 drain = await current.drain_executions()
             except Exception as exc:
                 logger.warning("Restore refused: executions could not be drained: %s", sanitize_exception(exc))
-                refused = RestoreFailed(409, "Active transfers could not be stopped safely.")
+                refused = RestoreFailed(409, "Active transfers could not be stopped safely.",
+                                        reason_said={"$t": "error.restore.reason.transfers_not_stopped", "$v": {}})
             if refused is None:
                 try:
                     stopped_integrations = await current.stop_integrations()
@@ -245,7 +259,8 @@ async def restore_backup(state, point_id: str) -> dict:
                     stopped_integrations = exc.stopped
                     logger.warning("Restore refused: an integration could not be stopped: %s",
                                    sanitize_exception(exc.__cause__ or exc))
-                    refused = RestoreFailed(409, "Active transfers could not be stopped safely.")
+                    refused = RestoreFailed(409, "Active transfers could not be stopped safely.",
+                                        reason_said={"$t": "error.restore.reason.transfers_not_stopped", "$v": {}})
             if refused is None:
                 staged = None
                 try:
@@ -281,7 +296,8 @@ async def restore_backup(state, point_id: str) -> dict:
                     if staged is not None:
                         staged.discard()
                     logger.warning("Restore refused before activation: %s", sanitize_exception(exc))
-                    refused = RestoreFailed(400, exc.detail if isinstance(exc, backup.BackupRejected) else "")
+                    refused = RestoreFailed(400, exc.detail if isinstance(exc, backup.BackupRejected) else "",
+                                            reason_said=exc.detail_said if isinstance(exc, backup.BackupRejected) else None)
             if refused is None:
                 # Swapped. The pre-restore application stays closed while the
                 # restored state starts, and is never reopened.

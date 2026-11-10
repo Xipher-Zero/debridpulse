@@ -14576,6 +14576,2557 @@
     "count": "plural: count",
     "stopped": "number"
    }
+  },
+  "error.account.changed": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.default_admin_not_disableable": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.default_not_deletable": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.default_role_fixed": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.disabled": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.integration_no_email": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.integration_no_password": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.integration_no_username": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.last_admin": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.local_human_role": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.merge_credentials_conflict": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.merge_default": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.merge_kinds_mixed": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.merge_none": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.merge_self": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "critical-warning"
+  },
+  "error.account.missing": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.missing_signed_in": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.account.no_username": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.roles_not_interchangeable": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.self_change": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.token_label_required": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.token_successor_missing": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.tokens_integration_only": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.username_required": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.username_taken": {
+   "category": "error",
+   "context": "My Account and Users & Access: an account refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.activity.last_page_indexing": {
+   "category": "error",
+   "context": "Activity Log: a paging or search refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/db/event_journal.py",
+   "criticality": "normal"
+  },
+  "error.activity.last_page_search_unavailable": {
+   "category": "error",
+   "context": "Activity Log: a paging or search refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/db/event_journal.py",
+   "criticality": "normal"
+  },
+  "error.activity.last_page_too_large": {
+   "category": "error",
+   "context": "Activity Log: a paging or search refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/db/event_journal.py",
+   "criticality": "normal"
+  },
+  "error.activity.one_anchor_only": {
+   "category": "error",
+   "context": "Activity Log: a paging or search refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "normal"
+  },
+  "error.activity.window_start_relative_only": {
+   "category": "error",
+   "context": "Activity Log: a paging or search refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "normal"
+  },
+  "error.appearance.choice_null": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_appearance.py",
+   "criticality": "normal"
+  },
+  "error.appearance.choice_required": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_appearance.py",
+   "criticality": "normal"
+  },
+  "error.appearance.locale_unknown": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_appearance.py",
+   "criticality": "normal"
+  },
+  "error.appearance.login_theme_stale": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.appearance.palette_unknown": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_appearance.py",
+   "criticality": "normal"
+  },
+  "error.appearance.presentation_unknown": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_appearance.py",
+   "criticality": "normal"
+  },
+  "error.appearance.sign_in_off": {
+   "category": "error",
+   "context": "My Account › appearance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.aria2.action_unsupported": {
+   "category": "error",
+   "context": "Settings › aria2 (Network Sources engine): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.aria2.configuration_refused": {
+   "category": "error",
+   "context": "Settings › aria2 (Network Sources engine): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "reason": "string"
+   }
+  },
+  "error.aria2.options_invalid": {
+   "category": "error",
+   "context": "Settings › aria2 (Network Sources engine): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.aria2.size_range": {
+   "category": "error",
+   "context": "Settings › aria2 (Network Sources engine): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/executors/aria2/definition.py",
+   "criticality": "normal",
+   "args": {
+    "field": "string: the field name (a catalog key, said in the reader’s language)",
+    "lowest": "string",
+    "highest": "number"
+   }
+  },
+  "error.aria2.size_range_capped": {
+   "category": "error",
+   "context": "Settings › aria2 (Network Sources engine): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/executors/aria2/definition.py",
+   "criticality": "normal",
+   "args": {
+    "field": "string: the field name (a catalog key, said in the reader’s language)",
+    "lowest": "string",
+    "highest": "number"
+   }
+  },
+  "error.auth.bootstrap_public_base_url_only": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.config_not_saved": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.credentials_owner_only": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.forbidden": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/permissions.py",
+   "criticality": "normal"
+  },
+  "error.auth.no_session": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.password_enable_incomplete": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.public_base_url_invalid": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.public_base_url_mismatch": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.rename_needs_password": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.required": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.auth.unauthorized": {
+   "category": "error",
+   "context": "Authentication: a sign-in or authentication-setting refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/permissions.py",
+   "criticality": "normal"
+  },
+  "error.auth_input.fields_required": {
+   "category": "error",
+   "context": "Downloads › a transfer asking for authentication input: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.auth_input.not_accepted": {
+   "category": "error",
+   "context": "Downloads › a transfer asking for authentication input: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.auth_input.not_object": {
+   "category": "error",
+   "context": "Downloads › a transfer asking for authentication input: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.auth_input.too_large": {
+   "category": "error",
+   "context": "Downloads › a transfer asking for authentication input: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.auth_input.unsupported_fields": {
+   "category": "error",
+   "context": "Downloads › a transfer asking for authentication input: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.avatar.missing": {
+   "category": "error",
+   "context": "Notifications › Discord avatar upload: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.avatar.too_large": {
+   "category": "error",
+   "context": "Notifications › Discord avatar upload: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "kilobytes": "number"
+   }
+  },
+  "error.avatar.type_unsupported": {
+   "category": "error",
+   "context": "Notifications › Discord avatar upload: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "type": "string"
+   }
+  },
+  "error.backup.add": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.add_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.backup.create": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.create_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.backup.detail.duplicate": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.invalid": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.invalid_file": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.missing": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.no_usable_admin": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.space": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.unresolved": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.detail.unsupported": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.failed": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.failed_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.backup.remove": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "critical-warning"
+  },
+  "error.backup.remove_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "critical-warning",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.backup.restore": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "critical-warning"
+  },
+  "error.backup.restore_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "critical-warning",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.backup.save": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal"
+  },
+  "error.backup.save_detail": {
+   "category": "error",
+   "context": "Data & Maintenance › Backups: a refusal (headline, optionally followed by its detail). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/backup.py",
+   "criticality": "normal",
+   "args": {
+    "detail": "string"
+   }
+  },
+  "error.bulk.no_ids": {
+   "category": "error",
+   "context": "Downloads › bulk actions: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.deployment.confirmation_required": {
+   "category": "error",
+   "context": "Users & Access › Deployment Type: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.deployment.not_saved": {
+   "category": "error",
+   "context": "Users & Access › Deployment Type: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.deployment.unchanged": {
+   "category": "error",
+   "context": "Users & Access › Deployment Type: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal",
+   "args": {
+    "type": "select"
+   }
+  },
+  "error.duplicates.query_required": {
+   "category": "error",
+   "context": "Duplicate check: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.execution.action_unavailable": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: an action refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/executor_work.py",
+   "criticality": "normal"
+  },
+  "error.execution.action_unsupported": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: an action refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/executor_work.py",
+   "criticality": "normal"
+  },
+  "error.execution.integration_unavailable": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: an action refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/executor_work.py",
+   "criticality": "normal"
+  },
+  "error.execution.not_owned": {
+   "category": "error",
+   "context": "Downloads › Download Engine Activity: an action refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/executor_work.py",
+   "criticality": "normal"
+  },
+  "error.integration.administration_unavailable": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.integration.configuration_kept": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/configuration_mutation.py",
+   "criticality": "normal",
+   "args": {
+    "reason": "string"
+   }
+  },
+  "error.integration.group_unknown": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.integration.resources_block_connection": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal",
+   "args": {
+    "integration": "string"
+   }
+  },
+  "error.integration.secret_clear_unknown": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/configuration_mutation.py",
+   "criticality": "critical-warning"
+  },
+  "error.integration.unknown": {
+   "category": "error",
+   "context": "Settings › an integration (provider or engine) configuration refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.legal.document_unknown": {
+   "category": "error",
+   "context": "Help & License › bundled documents: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.legal.document_unreadable": {
+   "category": "error",
+   "context": "Help & License › bundled documents: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.link.host_invalid": {
+   "category": "error",
+   "context": "Adding downloads › a link: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/applicability.py",
+   "criticality": "normal"
+  },
+  "error.link.host_missing": {
+   "category": "error",
+   "context": "Adding downloads › a link: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/applicability.py",
+   "criticality": "normal"
+  },
+  "error.link.host_too_long": {
+   "category": "error",
+   "context": "Adding downloads › a link: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/applicability.py",
+   "criticality": "normal"
+  },
+  "error.link.idn_invalid": {
+   "category": "error",
+   "context": "Adding downloads › a link: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/applicability.py",
+   "criticality": "normal"
+  },
+  "error.link.scheme_invalid": {
+   "category": "error",
+   "context": "Adding downloads › a link: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/applicability.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.empty": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.entry_links_many": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.entry_not_record": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_header_mismatch": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_links_many": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_lists_many": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_not_link": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_not_row": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.line_too_long": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.linkfile.link_fields_many": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.location_no_link": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "kind": "select",
+    "number": "number"
+   }
+  },
+  "error.linkfile.location_too_long": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "kind": "select",
+    "number": "number"
+   }
+  },
+  "error.linkfile.mixed": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.no_link_field": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.no_links": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_json": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_link_list": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_list": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_text": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_xml": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.not_yaml": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.records_mixed": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.linkfile.too_large": {
+   "category": "error",
+   "context": "Adding downloads › a link file: why it was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.maintenance.busy": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/main.py",
+   "criticality": "normal"
+  },
+  "error.maintenance.executions_not_stopped": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.maintenance.wipe_backup_failed": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "critical-warning"
+  },
+  "error.maintenance.wipe_confirmation_required": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "critical-warning"
+  },
+  "error.maintenance.wipe_disabled": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "critical-warning"
+  },
+  "error.maintenance.wipe_in_progress": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "critical-warning"
+  },
+  "error.maintenance.wipe_not_quiesced": {
+   "category": "error",
+   "context": "Data & Maintenance › database reset and maintenance: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/db_maintenance.py",
+   "criticality": "critical-warning"
+  },
+  "error.metrics.client_missing": {
+   "category": "error",
+   "context": "Metrics endpoint (operators and scrapers): a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.notifications.avatar_invalid": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_notifications.py",
+   "criticality": "normal"
+  },
+  "error.notifications.clear_unstored": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_notifications.py",
+   "criticality": "critical-warning"
+  },
+  "error.notifications.discord_missing": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.notifications.discord_test_failed": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.notifications.not_discord_webhook": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/notifications.py",
+   "criticality": "normal"
+  },
+  "error.notifications.report_missing": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.notifications.test_rate_limited": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.notifications.webhook_invalid": {
+   "category": "error",
+   "context": "Notifications: a webhook or test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/account_notifications.py",
+   "criticality": "normal"
+  },
+  "error.nzb.empty": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.file_no_segments": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.no_files": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.no_name": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.not_manifest": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.not_xml": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.segment_no_id": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.segment_size_negative": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.segment_size_not_numeric": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.too_many_files": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.nzb.too_many_segments": {
+   "category": "error",
+   "context": "Adding downloads › an NZB file: why it was refused (technical NZB terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/integrations/usenet/nzb.py",
+   "criticality": "normal"
+  },
+  "error.oidc.enable_incomplete": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.oidc.standalone": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.oidc.standalone_validator": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/config.py",
+   "criticality": "normal"
+  },
+  "error.oidc.verification_rate_limited": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.oidc.verification_start_failed": {
+   "category": "error",
+   "context": "Authentication › OpenID Connect: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.policy.fields_invalid": {
+   "category": "error",
+   "context": "Settings › transfer policy: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.profiles.category_invalid": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal"
+  },
+  "error.profiles.category_shared": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal",
+   "args": {
+    "category": "string"
+   }
+  },
+  "error.profiles.category_twice": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal"
+  },
+  "error.profiles.client_invalid": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal"
+  },
+  "error.profiles.id_invalid": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal"
+  },
+  "error.profiles.id_shared": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal"
+  },
+  "error.profiles.in_use": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/external_routes.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.profiles.path_not_absolute": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal",
+   "args": {
+    "field": "string"
+   }
+  },
+  "error.profiles.path_not_normalized": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/external/profiles.py",
+   "criticality": "normal",
+   "args": {
+    "field": "string"
+   }
+  },
+  "error.profiles.root_outside_downloads": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/external_routes.py",
+   "criticality": "normal",
+   "args": {
+    "profile": "string"
+   }
+  },
+  "error.profiles.stale_revision": {
+   "category": "error",
+   "context": "Users & Access › Integration Delivery Profiles: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/external_routes.py",
+   "criticality": "normal"
+  },
+  "error.provider.api_key_missing": {
+   "category": "error",
+   "context": "Settings › a provider connection test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.provider.realdebrid_not_connected": {
+   "category": "error",
+   "context": "Settings › a provider connection test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.provider.torbox_not_connected": {
+   "category": "error",
+   "context": "Settings › a provider connection test refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.changed": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.move_unspecified": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.not_queued": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.position_invalid": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.restart_changed": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.queue.restart_required": {
+   "category": "error",
+   "context": "Downloads › queue order: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.request.not_found": {
+   "category": "error",
+   "context": "Account Details › requests: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.bool_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.bool_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.extra_forbidden": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.finite_number": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.float_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.float_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.greater_than": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "gt": "number"
+   }
+  },
+  "error.requirement.greater_than_equal": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "ge": "number"
+   }
+  },
+  "error.requirement.https_origin": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.int_from_float": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.int_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.int_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.invalid": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.less_than": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "lt": "number"
+   }
+  },
+  "error.requirement.less_than_equal": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "le": "number"
+   }
+  },
+  "error.requirement.literal_error": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.missing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.setting_avatar": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.setting_choice": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "expected": "string"
+   }
+  },
+  "error.requirement.setting_host": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.setting_path": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.setting_player_clients": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "supported": "string"
+   }
+  },
+  "error.requirement.setting_player_clients_unknown": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.setting_url": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.requirement.string_too_long": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "max_length": "number"
+   }
+  },
+  "error.requirement.string_too_short": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "min_length": "number"
+   }
+  },
+  "error.requirement.string_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the rule alone, said after the field name (\"<label> <requirement>.\"). Shown in the reader's language; API clients receive the English `detail`. Lower-case, no full stop: it follows the field name.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.restore.failed": {
+   "category": "error",
+   "context": "Data & Maintenance › restoring a backup: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/lifetime.py",
+   "criticality": "critical-warning"
+  },
+  "error.restore.failed_reason": {
+   "category": "error",
+   "context": "Data & Maintenance › restoring a backup: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/lifetime.py",
+   "criticality": "critical-warning",
+   "args": {
+    "reason": "string"
+   }
+  },
+  "error.restore.reason.in_progress": {
+   "category": "error",
+   "context": "Data & Maintenance › restoring a backup: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/lifetime.py",
+   "criticality": "critical-warning"
+  },
+  "error.restore.reason.transfers_not_stopped": {
+   "category": "error",
+   "context": "Data & Maintenance › restoring a backup: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/lifetime.py",
+   "criticality": "critical-warning"
+  },
+  "error.restore.unresolved": {
+   "category": "error",
+   "context": "Data & Maintenance › restoring a backup: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/lifetime.py",
+   "criticality": "critical-warning"
+  },
+  "error.search.control_characters": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal"
+  },
+  "error.search.id_malformed": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal"
+  },
+  "error.search.id_too_long": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.search.id_zero": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal"
+  },
+  "error.search.index_rebuilding": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "normal"
+  },
+  "error.search.too_long": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.search.too_short": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/core/search_contract.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.search.unavailable_runtime": {
+   "category": "error",
+   "context": "Search box (Downloads, Activity Log): why the search was refused. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/db/event_journal.py",
+   "criticality": "normal"
+  },
+  "error.selection.invalid": {
+   "category": "error",
+   "context": "File selection: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/file_selection_routes.py",
+   "criticality": "normal"
+  },
+  "error.selection.not_mutable": {
+   "category": "error",
+   "context": "File selection: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/file_selection_routes.py",
+   "criticality": "normal"
+  },
+  "error.settings.api_key_missing": {
+   "category": "error",
+   "context": "Settings: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.settings.resources_block_download_folder": {
+   "category": "error",
+   "context": "Settings: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.settings.secret_field_unsupported": {
+   "category": "error",
+   "context": "Settings: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "fields": "string"
+   }
+  },
+  "error.speed.limit_required": {
+   "category": "error",
+   "context": "Speed limit: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.stats.report_not_accepted": {
+   "category": "error",
+   "context": "Notifications › Statistics reports: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/stats.py",
+   "criticality": "normal"
+  },
+  "error.stats.report_webhook_missing": {
+   "category": "error",
+   "context": "Notifications › Statistics reports: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/services/stats.py",
+   "criticality": "normal"
+  },
+  "error.storage.database_failed": {
+   "category": "error",
+   "context": "Server storage: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/main.py",
+   "criticality": "normal"
+  },
+  "error.submit.acquisition_scope_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.alternate_not_collection": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.submit.link_listed_twice": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.link_no_scope": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number"
+   }
+  },
+  "error.submit.link_scope_missing": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal",
+   "args": {
+    "number": "number",
+    "scope": "string"
+   }
+  },
+  "error.submit.link_unsupported": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "link": "string"
+   }
+  },
+  "error.submit.links_invalid": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.links_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.submit.links_too_many": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number"
+   }
+  },
+  "error.submit.local_network_confirmation": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.magnet_invalid": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.magnet_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.meta4_empty": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.meta4_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.meta4_too_large": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.nzb_empty": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.nzb_link_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.nzb_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.scope_given_twice": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.scope_link_unknown": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.scopes_invalid": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.selection_mode_unsupported": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/file_selection.py",
+   "criticality": "normal",
+   "args": {
+    "mode": "string"
+   }
+  },
+  "error.submit.staged_empty": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/staged_input.py",
+   "criticality": "normal"
+  },
+  "error.submit.staged_gone": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/staged_input.py",
+   "criticality": "normal"
+  },
+  "error.submit.staged_too_large": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/staged_input.py",
+   "criticality": "normal",
+   "args": {
+    "bytes": "number"
+   }
+  },
+  "error.submit.staging_unavailable": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/application/service.py",
+   "criticality": "normal"
+  },
+  "error.submit.torrent_empty": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.torrent_required": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.submit.torrent_too_large": {
+   "category": "error",
+   "context": "Adding downloads: a refusal of what was submitted. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.switch.discard_changed": {
+   "category": "error",
+   "context": "Downloads › provider/source switch: a confirmation or refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "critical-warning"
+  },
+  "error.switch.discard_confirmation": {
+   "category": "error",
+   "context": "Downloads › provider/source switch: a confirmation or refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "critical-warning"
+  },
+  "error.token.not_found": {
+   "category": "error",
+   "context": "Users & Access › API tokens: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/account_routes.py",
+   "criticality": "normal"
+  },
+  "error.torrent.bencode_end_marker": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.torrent.bencode_string_truncated": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.torrent.bencode_token_invalid": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.torrent.bencode_truncated": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.torrent.metainfo_no_info": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.torrent.metainfo_not_dictionary": {
+   "category": "error",
+   "context": "Adding downloads › a .torrent file: why it was refused (technical bencode/metainfo terms). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/requests.py",
+   "criticality": "normal"
+  },
+  "error.transfer.demand_changed": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/main.py",
+   "criticality": "normal"
+  },
+  "error.transfer.file_not_found": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.transfer.needed_by_other": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/permissions.py",
+   "criticality": "normal"
+  },
+  "error.transfer.no_provider_choice": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "normal"
+  },
+  "error.transfer.no_switchable_route": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/operational_downloads.py",
+   "criticality": "normal"
+  },
+  "error.transfer.not_found": {
+   "category": "error",
+   "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/file_selection_routes.py",
+   "criticality": "normal"
+  },
+  "error.tuning.content_limit_invalid": {
+   "category": "error",
+   "context": "Settings › a transfer-method tuning field refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/models.py",
+   "criticality": "normal"
+  },
+  "error.tuning.discovery_depth_invalid": {
+   "category": "error",
+   "context": "Settings › a transfer-method tuning field refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/models.py",
+   "criticality": "normal"
+  },
+  "error.tuning.discovery_timeout_invalid": {
+   "category": "error",
+   "context": "Settings › a transfer-method tuning field refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/models.py",
+   "criticality": "normal"
+  },
+  "error.tuning.file_limit_invalid": {
+   "category": "error",
+   "context": "Settings › a transfer-method tuning field refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/transfers/models.py",
+   "criticality": "normal"
+  },
+  "error.usenet.host_required": {
+   "category": "error",
+   "context": "Settings › Usenet: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.usenet.server_unknown": {
+   "category": "error",
+   "context": "Settings › Usenet: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.usenet.unavailable": {
+   "category": "error",
+   "context": "Settings › Usenet: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/settings_validation_routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.bool_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.bool_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.extra_forbidden": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.finite_number": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.float_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.float_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.greater_than": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "gt": "number"
+   }
+  },
+  "error.validation.greater_than_equal": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "ge": "number"
+   }
+  },
+  "error.validation.https_origin": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.int_from_float": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.int_parsing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.int_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.invalid": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.less_than": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "lt": "number"
+   }
+  },
+  "error.validation.less_than_equal": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "le": "number"
+   }
+  },
+  "error.validation.literal_error": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.missing": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.setting_avatar": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.setting_choice": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "expected": "string"
+   }
+  },
+  "error.validation.setting_host": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.setting_path": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.setting_player_clients": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "supported": "string"
+   }
+  },
+  "error.validation.setting_player_clients_unknown": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.setting_url": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.validation.string_too_long": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "max_length": "number"
+   }
+  },
+  "error.validation.string_too_short": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "min_length": "number"
+   }
+  },
+  "error.validation.string_type": {
+   "category": "error",
+   "context": "Settings › a field refusal: the whole sentence. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.webdav.scan_timeout_invalid": {
+   "category": "error",
+   "context": "Settings › WebDAV tuning: a field refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/providers/general_webdav/definition.py",
+   "criticality": "normal"
+  },
+  "settings.oidc.failed_heading": {
+   "category": "hint",
+   "context": "OIDC verification window (closes itself), when verification failed.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "settings.oidc.failed_status": {
+   "category": "hint",
+   "context": "OIDC verification window (closes itself), when verification failed.",
+   "owner": "backend/api/auth_config_routes.py",
+   "criticality": "normal"
+  },
+  "error.aria2.field.min_split_size": {
+   "category": "label",
+   "context": "Settings › aria2 (Network Sources engine): the name of the field a size refusal is about, inside that refusal (\"<field> must be …\"). Sentence case.",
+   "owner": "backend/executors/aria2/definition.py",
+   "criticality": "normal"
+  },
+  "error.aria2.field.disk_cache": {
+   "category": "label",
+   "context": "Settings › aria2 (Network Sources engine): the name of the field a size refusal is about, inside that refusal (\"<field> must be …\"). Sentence case.",
+   "owner": "backend/executors/aria2/definition.py",
+   "criticality": "normal"
+  },
+  "error.aria2.field.lowest_speed_limit": {
+   "category": "label",
+   "context": "Settings › aria2 (Network Sources engine): the name of the field a size refusal is about, inside that refusal (\"<field> must be …\"). Sentence case.",
+   "owner": "backend/executors/aria2/definition.py",
+   "criticality": "normal"
+  },
+  "error.category.invalid_request": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.unsupported_request": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.unsupported_capability": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.invalid_configuration": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.authentication_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.authorization_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.credential_missing": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.credential_expired": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.credential_invalid": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.source_not_found": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.source_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.source_temporarily_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.source_expired": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.provider_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.provider_degraded": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.provider_maintenance": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resource_not_found": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resource_expired": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.rate_limited": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.quota_exceeded": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.concurrency_limited": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.account_limited": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resource_exhausted": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resolution_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resolution_temporarily_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.no_transfer_candidate": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.candidate_expired": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.candidate_rejected": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.dns_failure": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.connection_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.connection_refused": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.connection_timeout": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.read_timeout": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.remote_reset": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.protocol_error": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.tls_failure": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.host_key_failure": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.destination_blocked": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.egress_policy_violation": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.unsafe_redirect": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.tls_identity_failure": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.path_policy_violation": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.security_policy_rejected": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.executor_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.executor_rejected": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.transfer_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.transfer_stalled": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.transfer_interrupted": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.remote_read_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.remote_write_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.size_mismatch": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.checksum_mismatch": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.content_invalid": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.materialization_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.local_path_conflict": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.disk_full": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.permission_denied": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.local_io_failure": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.path_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.local_resource_exhausted": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.application_storage_full": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.application_storage_read_only": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.application_storage_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.download_storage_full": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.download_storage_read_only": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.download_storage_unavailable": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.ownership_conflict": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.resource_state_conflict": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.reconciliation_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.orphaned_resource": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.recovery_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.state_inconsistent": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.remote_cleanup_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.local_cleanup_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.post_processing_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.extraction_failed": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.provider_protocol_violation": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.executor_protocol_violation": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.invalid_adapter_response": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.unmapped_provider_error": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.unmapped_executor_error": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
+  },
+  "error.category.internal_error": {
+   "category": "error",
+   "context": "A transfer refusal (Downloads, Details, toasts), named by its failure category. API clients receive this English as `detail`.",
+   "owner": "backend/transfers/errors.py",
+   "criticality": "normal"
   }
  }
 }

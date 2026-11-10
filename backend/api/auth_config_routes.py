@@ -57,6 +57,7 @@ from auth.throttle import oidc_verify_rate_limiter
 from auth.transitions import authentication_configuration_lock, oidc_critical_change
 from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.config_validator import validate_and_sanitise
+from core.localization import code_of, disclosed, fact
 
 
 router = APIRouter()
@@ -345,7 +346,7 @@ def _oidc_verification_failure_page(*, status_code: int) -> HTMLResponse:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OIDC verification · DebridPulse</title>
+<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -358,9 +359,9 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
 </head>
 <body>
 <main>
-  <h1>OIDC verification failed</h1>
-  <p class="status">Provider sign-in or authorization did not complete successfully.</p>
-  <p>This window should close automatically.</p>
+  <h1 data-i18n="settings.oidc.failed_heading">OIDC verification failed</h1>
+  <p class="status" data-i18n="settings.oidc.failed_status">Provider sign-in or authorization did not complete successfully.</p>
+  <p data-i18n="settings.oidc.complete_closing">This window should close automatically.</p>
 </main>
 <script>
 (() => {
@@ -368,8 +369,19 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
   const payload = {
     type: 'debridpulse-oidc-verification',
     ok: false,
-    message: 'OIDC verification failed — provider sign-in or authorization did not complete successfully.'
+    message: 'OIDC verification failed — provider sign-in or authorization did not complete successfully.',
+    // The opener says the outcome from its catalog, in the shown language.
+    message_key: 'settings.oidc.verify_failed'
   };
+  // No catalog of its own: said in the opener's language through the opener's
+  // runtime (same origin), as text; English without an opener.
+  try {
+    const i18n = window.opener && !window.opener.closed ? window.opener.DPI18n : null;
+    if (i18n) {
+      document.documentElement.lang = String(i18n.locale());
+      document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = i18n.t(node.dataset.i18n); });
+    }
+  } catch (_) {}
   try {
     if ('BroadcastChannel' in window) {
       const channel = new BroadcastChannel('debridpulse-oidc-verification');
@@ -443,24 +455,24 @@ def _bootstrap_rejection(request: Request, update: AuthenticationConfigUpdate):
     for flag in ("clear_password", "clear_oidc_client_secret", "confirm_open_mode"):
         if carried.pop(flag, False):
             return JSONResponse(
-                {"detail": "Only the Public Base URL may be established before a trusted origin exists"},
+                {"detail": "Only the Public Base URL may be established before a trusted origin exists", "code": "auth.bootstrap_public_base_url_only", "params": {}},
                 status_code=403,
             )
     if set(carried) != {"public_base_url"}:
         return JSONResponse(
-            {"detail": "Only the Public Base URL may be established before a trusted origin exists"},
+            {"detail": "Only the Public Base URL may be established before a trusted origin exists", "code": "auth.bootstrap_public_base_url_only", "params": {}},
             status_code=403,
         )
 
     proposed = normalized_origin(str(update.public_base_url or "").strip())
     if proposed is None or not _valid_public_base_url(update.public_base_url):
         return JSONResponse(
-            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]"},
+            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]", "code": "auth.public_base_url_invalid", "params": {}},
             status_code=400,
         )
     if proposed != origin_identity:
         return JSONResponse(
-            {"detail": "The Public Base URL must match the address this page was opened from"},
+            {"detail": "The Public Base URL must match the address this page was opened from", "code": "auth.public_base_url_mismatch", "params": {}},
             status_code=403,
         )
     return None
@@ -476,7 +488,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
 
     if update.public_base_url is not None and not _valid_public_base_url(update.public_base_url):
         return JSONResponse(
-            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]"},
+            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]", "code": "auth.public_base_url_invalid", "params": {}},
             status_code=400,
         )
 
@@ -484,7 +496,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
     own_username, _own_password = await local_credential_status(principal.account_id)
     if _credential_change(update, own_username) and not principal.account_id:
         return JSONResponse(
-            {"detail": "Sign-in credentials can only be changed by the account they belong to"},
+            {"detail": "Sign-in credentials can only be changed by the account they belong to", "code": "auth.credentials_owner_only", "params": {}},
             status_code=409,
         )
 
@@ -495,7 +507,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
     if (_requested_username(update, own_username) and not str(update.auth_password or "")
             and not update.clear_password):
         return JSONResponse(
-            {"detail": "Enter a new password to change the username"},
+            {"detail": "Enter a new password to change the username", "code": "auth.rename_needs_password", "params": {}},
             status_code=400,
         )
 
@@ -503,7 +515,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
         candidate, update, principal, own_username,
     ):
         return JSONResponse(
-            {"detail": "Username & Password cannot be enabled until a username and stored or new password are configured"},
+            {"detail": "Username & Password cannot be enabled until a username and stored or new password are configured", "code": "auth.password_enable_incomplete", "params": {}},
             status_code=400,
         )
 
@@ -512,7 +524,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
             oidc_configuration(candidate)
         except OidcConfigurationError:
             return JSONResponse(
-                {"detail": "OpenID Connect cannot be enabled until its local configuration is complete"},
+                {"detail": "OpenID Connect cannot be enabled until its local configuration is complete", "code": "oidc.enable_incomplete", "params": {}},
                 status_code=400,
             )
 
@@ -550,7 +562,8 @@ async def update_authentication_config(request: Request, update: AuthenticationC
         else:
             persist()
     except AccountRefused as exc:
-        return JSONResponse({"detail": str(exc)}, status_code=409)
+        named, params = disclosed(str(exc), *code_of(exc))
+        return JSONResponse({"detail": str(exc), "code": named, "params": params}, status_code=409)
     except Exception as exc:  # noqa: BLE001 - a persistence failure is reported, never half-applied
         if attempted:
             # The settings may have been written while the credential did not
@@ -563,7 +576,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
                                 type(restore_exc).__name__)
         logger.error("Authentication configuration was not changed: %s", type(exc).__name__)
         return JSONResponse(
-            {"detail": "Authentication configuration could not be saved; nothing was changed"},
+            {"detail": "Authentication configuration could not be saved; nothing was changed", "code": "auth.config_not_saved", "params": {}},
             status_code=500,
             headers={"Cache-Control": "no-store"},
         )
@@ -613,13 +626,13 @@ async def change_deployment_type(request: Request, change: DeploymentTypeChange)
     the type already in force changes nothing and says so."""
     if not change.confirm:
         return JSONResponse(
-            {"detail": "Explicit confirmation is required to change the deployment type"}, status_code=409)
+            {"detail": "Explicit confirmation is required to change the deployment type", "code": "deployment.confirmation_required", "params": {}}, status_code=409)
     target = change.deployment_type
     async with config_write_lock():
         current = get_settings()
         if current.deployment_type == target:
             return JSONResponse(
-                {"detail": f"DebridPulse is already {_DEPLOYMENT_LABELS[target]}; nothing was changed"},
+                {"detail": f"DebridPulse is already {_DEPLOYMENT_LABELS[target]}; nothing was changed", "code": "deployment.unchanged", "params": {"type": fact(target)}},
                 status_code=409)
         clean = validate_and_sanitise(current.model_copy(
             update={"deployment_type": target, "auth_password_enabled": False, "auth_oidc_enabled": False},
@@ -641,7 +654,7 @@ async def change_deployment_type(request: Request, change: DeploymentTypeChange)
                                     type(restore_exc).__name__)
             logger.error("Deployment type was not changed: %s", type(exc).__name__)
             return JSONResponse(
-                {"detail": "The deployment type could not be saved; nothing was changed"},
+                {"detail": "The deployment type could not be saved; nothing was changed", "code": "deployment.not_saved", "params": {}},
                 status_code=500, headers={"Cache-Control": "no-store"})
         apply_settings(clean)
     basic_verification_cache.clear()
@@ -663,20 +676,20 @@ async def verify_pending_oidc_configuration(
     """Stage proposed OIDC settings and require a complete provider login."""
     principal = getattr(request.state, "principal", None)
     if principal is None or not getattr(principal, "authenticated", False):
-        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+        return JSONResponse({"detail": "Authentication required", "code": "auth.required", "params": {}}, status_code=401)
     if standalone_deployment(get_settings()):
-        return JSONResponse({"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone"},
+        return JSONResponse({"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone", "code": "oidc.standalone", "params": {}},
                             status_code=409)
     if not oidc_verify_rate_limiter.allow(peer_key(request)):
         return JSONResponse(
-            {"detail": "Too many OpenID Connect configuration verifications have been started"},
+            {"detail": "Too many OpenID Connect configuration verifications have been started", "code": "oidc.verification_rate_limited", "params": {}},
             status_code=429,
             headers={"Retry-After": "60", "Cache-Control": "no-store"},
         )
 
     if proposed.public_base_url is not None and not _valid_public_base_url(proposed.public_base_url):
         return JSONResponse(
-            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]"},
+            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]", "code": "auth.public_base_url_invalid", "params": {}},
             status_code=400,
         )
 
@@ -698,7 +711,7 @@ async def verify_pending_oidc_configuration(
             raise ValueError("OIDC authorization state is missing")
     except (OidcError, ValueError):
         return JSONResponse(
-            {"detail": "Proposed OpenID Connect configuration could not start a verification login"},
+            {"detail": "Proposed OpenID Connect configuration could not start a verification login", "code": "oidc.verification_start_failed", "params": {}},
             status_code=400,
         )
 

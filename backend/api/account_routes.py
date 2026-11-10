@@ -26,7 +26,7 @@ from auth.policy import interactive_auth_enabled, password_auth_enabled, standal
 from auth.throttle import personal_notification_test_rate_limiter
 from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, save_settings
 from core.logging_utils import sanitize_exception
-from core.localization import DisplayError
+from core.localization import DisplayError, CodedRuntimeError, refusal
 from services import account_appearance
 from services import account_notifications
 from services import notification_service
@@ -37,9 +37,7 @@ logger = logging.getLogger("debridpulse.auth")
 
 def _refused(exc: AccountRefused, status: int | None = None) -> HTTPException:
     status = status or (404 if "does not exist" in str(exc) else 409)
-    if exc.code:
-        return DisplayError(status, str(exc), code=exc.code, params=exc.params)
-    return HTTPException(status_code=status, detail=str(exc))
+    return refusal(status, str(exc), exc)
 
 
 def _actor(request: Request) -> str:
@@ -221,7 +219,7 @@ async def create_account_token(account_id: str, label: Annotated[str, Body(embed
 async def revoke_account_token(account_id: str, token_id: str):
     """Revocation stops authentication at once; it withdraws nothing."""
     if not await accounts.revoke_token(account_id, token_id):
-        raise HTTPException(status_code=404, detail="Token not found")
+        raise DisplayError(404, "Token not found", code="token.not_found")
     return {"ok": True}
 
 
@@ -248,10 +246,10 @@ async def own_account(request: Request):
     authentication enabled), not whether a password is stored."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     account = await accounts.get_account(principal.account_id)
     if account is None:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise DisplayError(404, "Account not found", code="account.missing_signed_in")
     settings = get_settings()
     return {"display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
             "email_verification": _verification(account), "email_self_entered": account.email_self_entered,
@@ -264,7 +262,7 @@ async def own_account(request: Request):
 async def change_own_actual_name(actual_name: Annotated[str, Body(embed=True, max_length=256)], request: Request):
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     try:
         await accounts.set_actual_name(principal.account_id, actual_name)
     except AccountRefused as exc:
@@ -284,7 +282,7 @@ async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320
     there is no clearing."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     try:
         await accounts.set_own_email(principal.account_id, email, expected)
     except accounts.InvalidEmail as exc:
@@ -304,7 +302,7 @@ async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320
 def _appearance_owner(request: Request) -> str:
     principal = request.state.principal
     if not principal.authenticated or not principal.account_id:
-        raise HTTPException(status_code=409, detail="Appearance is kept in this browser while sign-in is off")
+        raise DisplayError(409, "Appearance is kept in this browser while sign-in is off", code="appearance.sign_in_off")
     return str(principal.account_id)
 
 
@@ -331,7 +329,7 @@ async def update_own_appearance(body: account_appearance.AppearanceUpdate, reque
 def _presentation_owner(request: Request) -> str:
     account_id = account_appearance.presentation_owner(request.state.principal, get_settings())
     if account_id is None:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     return account_id
 
 
@@ -383,9 +381,9 @@ async def publish_login_appearance(body: account_appearance.LoginAppearance, req
     try:
         return await account_appearance.publish(account_id, body)
     except account_appearance.LoginAppearanceRefused:
-        raise HTTPException(status_code=403, detail="Forbidden") from None
+        raise DisplayError(403, "Forbidden", code="auth.forbidden") from None
     except account_appearance.LoginAppearanceStale:
-        raise HTTPException(status_code=409, detail="Your theme is not saved as shown; the login theme is unchanged") from None
+        raise DisplayError(409, "Your theme is not saved as shown; the login theme is unchanged", code="appearance.login_theme_stale") from None
 
 
 # ── the signed-in User's own notifications ──────────────────────────────────
@@ -397,13 +395,13 @@ async def _notifying_account(request: Request) -> str:
     principal = request.state.principal
     account_id = str(principal.account_id or "")
     if not account_id or not await account_notifications.eligible(account_id):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     return account_id
 
 
 def _own_test_admitted(account_id: str) -> None:
     if not personal_notification_test_rate_limiter.allow(account_id):
-        raise HTTPException(status_code=429, detail="Too many tests; wait a minute and try again")
+        raise DisplayError(429, "Too many tests; wait a minute and try again", code="notifications.test_rate_limited")
 
 
 @router.get("/account/notifications")
@@ -418,7 +416,7 @@ async def update_own_notifications(body: account_notifications.AccountNotificati
     try:
         saved = await account_notifications.update(account_id, body)
     except account_notifications.NotificationRefused as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+        raise refusal(422, str(exc), exc) from None
     return account_notifications.public(saved)
 
 
@@ -430,16 +428,16 @@ async def test_own_discord(request: Request):
     settings = await account_notifications.load(account_id)
     destination = notification_service.discord_destination(settings)
     if not destination:
-        raise HTTPException(status_code=400, detail="No Discord webhook configured")
+        raise DisplayError(400, "No Discord webhook configured", code="notifications.discord_missing")
     _own_test_admitted(account_id)
     fingerprint = notification_service.verification_fingerprints(settings)[notification_service.DISCORD_SUBJECT]
     try:
         if not await account_notifications.sender(settings, destination).test(strict=True):
-            raise RuntimeError("Discord test did not send a notification")
+            raise CodedRuntimeError("Discord test did not send a notification", code="notifications.discord_test_failed")
     except Exception as exc:
         await account_notifications.record_verification(
             account_id, notification_service.DISCORD_SUBJECT, fingerprint, False)
-        raise HTTPException(status_code=502, detail=sanitize_exception(exc, max_length=200)) from None
+        raise refusal(502, sanitize_exception(exc, max_length=200), exc) from None
     saved = await account_notifications.record_verification(
         account_id, notification_service.DISCORD_SUBJECT, fingerprint, True)
     return {"ok": True, "notifications": notification_service.notification_state(saved)}
@@ -453,7 +451,7 @@ async def send_own_report(request: Request):
     settings = await account_notifications.load(account_id)
     destination = notification_service.reporting_destination(settings)
     if not destination:
-        raise HTTPException(status_code=400, detail="No reporting or primary Discord webhook configured")
+        raise DisplayError(400, "No reporting or primary Discord webhook configured", code="notifications.report_missing")
     _own_test_admitted(account_id)
     fingerprint = notification_service.verification_fingerprints(settings)[notification_service.REPORTING_SUBJECT]
     hours = notification_service.report_window_hours(settings)
@@ -466,7 +464,7 @@ async def send_own_report(request: Request):
     except Exception as exc:
         await account_notifications.record_verification(
             account_id, notification_service.REPORTING_SUBJECT, fingerprint, False)
-        raise HTTPException(status_code=502, detail=sanitize_exception(exc, max_length=200)) from None
+        raise refusal(502, sanitize_exception(exc, max_length=200), exc) from None
     saved = await account_notifications.record_verification(
         account_id, notification_service.REPORTING_SUBJECT, fingerprint, True)
     return {**result, "notifications": notification_service.notification_state(saved)}
@@ -476,7 +474,7 @@ async def send_own_report(request: Request):
 async def change_own_password(body: OwnPassword, request: Request):
     principal = request.state.principal
     if not principal.authenticated or principal.role == Role.INTEGRATION.value:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     from auth.manager import PasswordAuthenticationBusy, peer_key
 
     try:
@@ -504,9 +502,9 @@ async def set_own_first_password(body: OwnFirstPassword, request: Request):
     open_admin = (not principal.authenticated and principal.mechanism is None
                   and principal.account_id == accounts.DEFAULT_ADMIN_ID)
     if principal.role == Role.INTEGRATION.value or not (principal.authenticated or open_admin):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     if open_admin and not standalone_open(get_settings()):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     from auth.manager import PasswordAuthenticationBusy, peer_key
 
     try:
@@ -575,9 +573,9 @@ async def clear_own_standalone_password(body: OwnPasswordClear, request: Request
     principal = request.state.principal
     if not (principal.authenticated and principal.mechanism is AuthMechanism.PASSWORD_SESSION
             and principal.account_id == accounts.DEFAULT_ADMIN_ID):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     if not standalone_deployment(get_settings()):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     from auth.manager import PasswordAuthenticationBusy, peer_key
     from auth.sessions import clear_session_cookie
 
@@ -648,7 +646,7 @@ async def change_own_display_name(display_name: Annotated[str, Body(embed=True, 
                                   request: Request):
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     try:
         await accounts.set_display_name(principal.account_id, display_name)
     except AccountRefused as exc:
@@ -688,6 +686,6 @@ async def withdraw_request(demand_id: str, request: Request,
     if row is None or not (permits(principal, Capability.DEMAND_ANY)
                            or await demand_owner(principal, row.get("account_id"))):
         # Somebody else's request is indistinguishable from a missing one.
-        raise HTTPException(status_code=404, detail="Request not found")
+        raise DisplayError(404, "Request not found", code="request.not_found")
     result = await application.withdraw_demand((row["id"],), by=f"account:{principal.account_id}")
     return {**result, "id": row["id"], "already_withdrawn": row["withdrawn_at"] is not None}

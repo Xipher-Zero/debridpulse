@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from integrations.definition import IntegrationDefinition
+from core.localization import CodedValueError, fact
 
 logger = logging.getLogger("debridpulse.config")
 
@@ -35,7 +36,9 @@ def aria2_size_bytes(value: str) -> int:
     return int(match.group(1)) * _UNITS[match.group(2).lower()]
 
 
-def _sized(value: str, label: str, low: int, high: int = _ARIA2_SIZE_MAX) -> str:
+def _sized(value: str, field: str, label: str, low: int, high: int = _ARIA2_SIZE_MAX) -> str:
+    """``field`` is the option's own name: the refusal names it by that stable
+    identifier (``error.aria2.field.<field>``), never by its English ``label``."""
     try:
         size = aria2_size_bytes(value)
     except ValueError:
@@ -44,7 +47,10 @@ def _sized(value: str, label: str, low: int, high: int = _ARIA2_SIZE_MAX) -> str
         lowest = "0" if low == 0 else f"{low // _MIB}M"
         span = (f"from {lowest} to {high // _MIB}M" if high != _ARIA2_SIZE_MAX
                 else f"from {lowest} up to aria2's limit of {high // _MIB}M")
-        raise ValueError(f"{label} must be a whole number with an optional K or M suffix (for example 64M), {span}")
+        raise CodedValueError(f"{label} must be a whole number with an optional K or M suffix (for example 64M), {span}",
+                              code="aria2.size_range" if high != _ARIA2_SIZE_MAX else "aria2.size_range_capped",
+                              params={"field": {"$t": f"error.aria2.field.{field}", "$v": {}},
+                                      "lowest": fact(lowest), "highest": fact(high // _MIB)})
     return value
 
 
@@ -94,17 +100,17 @@ class Aria2Options(BaseModel):
     @field_validator("min_split_size")
     @classmethod
     def _min_split_size(cls, value: str) -> str:
-        return _sized(value, "Minimum split size", _MIB, 1024 * _MIB)
+        return _sized(value, "min_split_size", "Minimum split size", _MIB, 1024 * _MIB)
 
     @field_validator("disk_cache")
     @classmethod
     def _disk_cache(cls, value: str) -> str:
-        return _sized(value, "Disk cache", 0)
+        return _sized(value, "disk_cache", "Disk cache", 0)
 
     @field_validator("lowest_speed_limit")
     @classmethod
     def _lowest_speed_limit(cls, value: str) -> str:
-        return _sized(value, "Lowest speed limit", 0)
+        return _sized(value, "lowest_speed_limit", "Lowest speed limit", 0)
 
     @field_validator("log_file", "session_file")
     @classmethod

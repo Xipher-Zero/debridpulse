@@ -14,9 +14,15 @@ renderers rather than a hand-kept list:
   a ``console`` diagnostic, a comparison value) is not a message.
 * ``frontend/static/*.html``: text and the same human attributes.
 * ``backend`` (not tests): messages the server returns to the browser for
-  display -- ``HTTPException(detail=…)`` and the refusal exceptions whose text
-  becomes a ``detail`` -- listed separately, because they are a contract
-  (``detail`` stays English for API clients; the interface localizes by code).
+  display -- ``HTTPException(detail=…)`` (keyword or positional), the refusal
+  exceptions whose text becomes a ``detail``, and the ``"message"`` /
+  ``"detail"`` of a structured refusal under ``api/`` and ``main.py`` --
+  listed separately, because they are a contract (``detail`` stays English
+  for API clients; the interface localizes by code). Each records the
+  exception type it is raised as and whether its raise names a code
+  (``code=…``, or a structured detail's ``"code"``); one that names none is
+  reconciled by a reasoned exemption (``nonlocalizable.json``, by owner and
+  English, as for the interface).
 
 Every entry has an inventory ID (stable while its owner, context and English
 text are unchanged), the English text, owner and line, a category, the
@@ -302,8 +308,28 @@ def html_entries(path: Path) -> list[dict]:
 
 
 SERVER_DETAIL = re.compile(
-    r"(?:HTTPException\([^)]*?detail\s*=\s*|raise\s+\w*(?:Refused|Rejected|Invalid\w*|Error|Busy|Stale)\w*\(\s*(?:[\w.]+,\s*)?)"
+    r"(?:HTTPException\([^)]*?detail\s*=\s*|HTTPException\(\s*(?:status_code\s*=\s*)?[\w.]+\s*,\s*"
+    r"|raise\s+(\w*(?:Refused|Rejected|Invalid\w*|Error|Busy|Stale)\w*)\(\s*(?:[\w.]+,\s*)?)"
     r"(f?)(\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*')", re.S)
+# A structured refusal's own words, in the routes and the application's handlers.
+STRUCTURED_DETAIL = re.compile(r"[\"'](?:message|detail)[\"']\s*:\s*(f?)(\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*')")
+
+
+def _call_span(source: str, start: int) -> str:
+    """The text of the call an entry's string sits in, to its closing parenthesis."""
+    depth, i = 1, start
+    while i < len(source) and depth:
+        ch = source[i]
+        if ch in "\"'":
+            quote, i = ch, i + 1
+            while i < len(source) and source[i] != quote and source[i] != "\n":
+                i += 2 if source[i] == "\\" else 1
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        i += 1
+    return source[start:i]
 
 
 def backend_entries() -> list[dict]:
@@ -314,17 +340,29 @@ def backend_entries() -> list[dict]:
         source = path.read_text(encoding="utf-8")
         owner = path.relative_to(ROOT).as_posix()
         ordinals = Counter()
-        for match in SERVER_DETAIL.finditer(source):
-            text = match.group(2)[1:-1]
+        found = [(match, match.group(1) or "HTTPException", match.group(2), match.group(3))
+                 for match in SERVER_DETAIL.finditer(source)]
+        if owner.startswith("backend/api/") or owner == "backend/main.py":
+            found += [(match, "structured", match.group(1), match.group(2)) for match in STRUCTURED_DETAIL.finditer(source)]
+        for match, kind, formatted, quoted in sorted(found, key=lambda item: item[0].start()):
+            text = quoted[1:-1]
             if not WORDS.search(text) or not re.search(r"[A-Za-z]{3,} ", text):
                 continue
-            message = re.sub(r"\{[^}]*\}", lambda m, c=iter(range(99)): "{%d}" % next(c), text) if match.group(1) else text
+            message = re.sub(r"\{[^}]*\}", lambda m, c=iter(range(99)): "{%d}" % next(c), text) if formatted else text
             ordinals[message] += 1
+            span = _call_span(source, match.end())
+            if kind == "structured":
+                # The dict the words sit in names its own code.
+                opening = source.rfind("{", 0, match.start())
+                coded = bool(re.search(r"[\"']code[\"']\s*:", source[opening:match.start()] + span))
+            else:
+                coded = bool(re.search(r"\bcode\s*=(?!=)", span))
             entries.append({
                 "id": stable_id(owner, "server-detail", message, ordinals[message]), "english": message,
                 "owner": owner, "line": source.count("\n", 0, match.start()) + 1, "context": "server-detail",
                 "literal": "python", "rich": False, "placeholders": placeholders(message), "substitutions": [],
                 "criticality": "critical-warning" if CRITICAL.search(message) and len(message) > 12 else "normal",
+                "exception": kind, "coded": coded,
             })
     return entries
 
@@ -341,6 +379,9 @@ def census() -> dict:
     exempt = [{**entry, "reason": reasons[(entry["owner"], entry["english"])]}
               for entry in entries if (entry["owner"], entry["english"]) in reasons]
     entries = [entry for entry in entries if (entry["owner"], entry["english"]) not in reasons]
+    # A server message is coded at its raise, exempt with a reason, or outstanding.
+    for entry in server:
+        entry["reason"] = reasons.get((entry["owner"], entry["english"]), "") if not entry["coded"] else ""
     return {"schema": "debridpulse-localization-inventory/1", "entries": entries, "exempt": exempt, "server": server}
 
 
@@ -357,6 +398,9 @@ def summarize(data: dict) -> dict:
         "critical_warning": sum(e["criticality"] == "critical-warning" for e in entries),
         "help_long_form": by_owner["frontend/static/ui-help-page.js"] + by_owner["frontend/static/ui-settings-help.js"],
         "server_detail_entries": len(server),
+        "server_coded": sum(e["coded"] for e in server),
+        "server_exempt": sum(bool(e.get("reason")) for e in server),
+        "server_outstanding": sum(not e["coded"] and not e.get("reason") for e in server),
         "by_owner": dict(by_owner.most_common()),
         "by_context": dict(by_context.most_common()),
     }

@@ -15,10 +15,11 @@ from typing import Awaitable, Callable
 from pydantic import ValidationError
 
 
+from core.localization import Coded, code_of, said
 from integrations.definition import IntegrationSettings
 
 
-class InvalidIntegrationOptions(ValueError):
+class InvalidIntegrationOptions(Coded, ValueError):
     """The merged options are not valid for the integration's options model.
 
     Its message never carries a submitted value -- an option may be a
@@ -36,12 +37,12 @@ class InvalidIntegrationOptions(ValueError):
         return cls(f"Integration option refused ({where})")
 
 
-class ConfigurationRefused(ValueError):
+class ConfigurationRefused(Coded, ValueError):
     """``validate_configuration`` refused the change (a lifecycle invariant,
     an option the connected account is not entitled to)."""
 
 
-class NativeConfigurationRefused(ValueError):
+class NativeConfigurationRefused(Coded, ValueError):
     """An integration's native apply (``apply_native``) found the saved
     configuration unusable by the service it configures -- the managed daemon
     refused it. Raised by that apply; the mutation then restores the previous
@@ -128,7 +129,7 @@ async def mutate_integration_configuration(
             # one of this integration's own secrets.
             from core.settings_constraints import validate_changes
             if set(clear_secrets) - definition.secret_fields:
-                raise InvalidIntegrationOptions("Unknown integration secret clear request")
+                raise InvalidIntegrationOptions("Unknown integration secret clear request", code="integration.secret_clear_unknown")
             # Only a schema refusal is a refused option: anything else is a
             # failure of this code, not of the operator's input, and is not
             # turned into a 400.
@@ -165,7 +166,9 @@ async def mutate_integration_configuration(
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
-                raise ConfigurationRefused(str(exc)) from None
+                # The refusal keeps the cause's words and, where it names one, its code.
+                code, params = code_of(exc)
+                raise ConfigurationRefused(str(exc), code=code, params=params) from None
             store.save(clean)
             store.apply(clean)
             # Reconfigure and the native lifecycle apply happen INSIDE the
@@ -193,7 +196,8 @@ async def mutate_integration_configuration(
                     except NativeConfigurationRefused:
                         pass
                     raise ConfigurationRefused(
-                        f"{refusal}. The previous configuration was kept.") from None
+                        f"{refusal}. The previous configuration was kept.",
+                        code="integration.configuration_kept", params={"reason": said(refusal)}) from None
             # An integration that owns external configuration applies it here,
             # inside the same lock, through the generic seam. No integration is
             # named: composition discovered which namespaces have appliers.

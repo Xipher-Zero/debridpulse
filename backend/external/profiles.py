@@ -18,6 +18,7 @@ import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from core.localization import CodedValueError, fact
 
 # Every source kind the native submit operation accepts (``external.intake``).
 SOURCE_KINDS = ("links", "magnet", "nzb_link", "nzb", "torrent")
@@ -30,10 +31,10 @@ _IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
 def _absolute(value: str, field: str) -> str:
     text = str(value or "").strip()
     if not text.startswith("/") or "\x00" in text or len(text) > 1024:
-        raise ValueError(f"{field} must be an absolute path")
+        raise CodedValueError(f"{field} must be an absolute path", code="profiles.path_not_absolute", params={"field": fact(field)})
     normalized = posixpath.normpath(text)
     if normalized != text.rstrip("/") and not (text == "/" and normalized == "/"):
-        raise ValueError(f"{field} must be a normalized absolute path")
+        raise CodedValueError(f"{field} must be a normalized absolute path", code="profiles.path_not_normalized", params={"field": fact(field)})
     return normalized
 
 
@@ -66,7 +67,7 @@ class DeliveryProfile(BaseModel):
     @classmethod
     def _id(cls, value: str) -> str:
         if not _IDENTIFIER.fullmatch(value):
-            raise ValueError("profile id must be lowercase letters, digits, '.', '_' or '-'")
+            raise CodedValueError("profile id must be lowercase letters, digits, '.', '_' or '-'", code="profiles.id_invalid")
         return value
 
     @field_validator("categories")
@@ -76,10 +77,10 @@ class DeliveryProfile(BaseModel):
         for value in values:
             text = str(value or "").strip()
             if not text or len(text) > 64 or any(ord(char) < 32 for char in text):
-                raise ValueError("a category is 1-64 printable characters")
+                raise CodedValueError("a category is 1-64 printable characters", code="profiles.category_invalid")
             cleaned.append(text)
         if len({category_key(item) for item in cleaned}) != len(cleaned):
-            raise ValueError("a profile lists a category twice")
+            raise CodedValueError("a profile lists a category twice", code="profiles.category_twice")
         return cleaned
 
     @field_validator("clients")
@@ -87,7 +88,7 @@ class DeliveryProfile(BaseModel):
     def _clients(cls, values: list[str]) -> list[str]:
         cleaned = [str(value or "").strip() for value in values]
         if any(not value or len(value) > 64 for value in cleaned):
-            raise ValueError("a client is a client ID")
+            raise CodedValueError("a client is a client ID", code="profiles.client_invalid")
         return sorted(set(cleaned))
 
     @field_validator("source_kinds")
@@ -126,13 +127,13 @@ class ExternalDeliverySettings(BaseModel):
     def _unique(self) -> "ExternalDeliverySettings":
         ids = [profile.id for profile in self.profiles]
         if len(set(ids)) != len(ids):
-            raise ValueError("two profiles share an id")
+            raise CodedValueError("two profiles share an id", code="profiles.id_shared")
         seen: set[str] = set()
         for profile in self.profiles:
             for category in profile.categories:
                 key = category_key(category)
                 if key in seen:
-                    raise ValueError(f"category {category!r} selects more than one profile")
+                    raise CodedValueError(f"category {category!r} selects more than one profile", code="profiles.category_shared", params={"category": repr(category)})
                 seen.add(key)
         return self
 

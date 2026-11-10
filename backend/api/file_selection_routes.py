@@ -18,13 +18,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from application.dependencies import get_application
 from application.service import ApplicationService
 from auth.permissions import require_destruction
 from transfers import file_selection as fs
+from core.localization import DisplayError, refusal
 
 router = APIRouter()
 
@@ -75,11 +76,11 @@ class DismissRequest(BaseModel):
 def _raise_for(result: "fs.SelectionCommandResult") -> None:
     """Map a neutral command outcome to the specification's transport codes."""
     if result.outcome == fs.SelectionOutcome.NOT_FOUND:
-        raise HTTPException(status_code=404, detail="Transfer not found")
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
     if result.outcome == fs.SelectionOutcome.CONFLICT:
-        raise HTTPException(status_code=409, detail=result.detail or "Selection is no longer mutable")
+        raise refusal(409, result.detail or "Selection is no longer mutable", code=None if result.detail else "selection.not_mutable")
     if result.outcome == fs.SelectionOutcome.INVALID:
-        raise HTTPException(status_code=422, detail=result.detail or "Invalid file selection")
+        raise refusal(422, result.detail or "Invalid file selection", code=None if result.detail else "selection.invalid")
 
 
 @router.get("/file-selections/offers")
@@ -135,7 +136,7 @@ async def confirm_file_selection(
             transfer_id, body.manifest_id, body.entry_ids, expected_demand=expected,
         )
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     _raise_for(result)
     return {
         "ok": True,
@@ -154,7 +155,7 @@ async def dismiss_file_selection(
     try:
         result = await application.dismiss_file_selection(transfer_id, body.manifest_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     _raise_for(result)
     return {
         "ok": True,

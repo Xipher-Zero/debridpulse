@@ -36,6 +36,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
+from core.localization import Coded
 
 MIN_TEXT = 3
 MAX_TEXT = 200
@@ -55,7 +56,7 @@ FINAL_BOUNDED = "bounded"
 FINAL_UNPROVEN = "unproven"
 
 
-class InvalidSearch(ValueError):
+class InvalidSearch(Coded, ValueError):
     """What the operator typed is not a search this language can answer;
     ``str()`` is safe to show."""
 
@@ -93,10 +94,10 @@ def describe(plan: SearchPlan | None, status: str = COMPLETE, finality: str = FI
 
 def _reference(digits: str) -> int:
     if len(digits) > MAX_ID_DIGITS:
-        raise InvalidSearch(f"A transfer ID has at most {MAX_ID_DIGITS} digits.")
+        raise InvalidSearch(f"A transfer ID has at most {MAX_ID_DIGITS} digits.", code="search.id_too_long", params={"count": MAX_ID_DIGITS})
     value = int(digits)
     if value < 1:
-        raise InvalidSearch("Transfer IDs start at #1.")
+        raise InvalidSearch("Transfer IDs start at #1.", code="search.id_zero")
     return value
 
 
@@ -107,13 +108,13 @@ def plan(raw: str | None) -> SearchPlan | None:
     if not query:
         return None
     if len(query) > MAX_TEXT:
-        raise InvalidSearch(f"Search is limited to {MAX_TEXT} characters.")
+        raise InvalidSearch(f"Search is limited to {MAX_TEXT} characters.", code="search.too_long", params={"count": MAX_TEXT})
     if any(unicodedata.category(ch).startswith("C") for ch in query):
-        raise InvalidSearch("Search can't contain control or invisible formatting characters.")
+        raise InvalidSearch("Search can't contain control or invisible formatting characters.", code="search.control_characters")
     if query.startswith("#"):
         digits = query[1:]
         if not _DIGITS.fullmatch(digits):
-            raise InvalidSearch("Use # followed only by a transfer number, like #580.")
+            raise InvalidSearch("Use # followed only by a transfer number, like #580.", code="search.id_malformed")
         return SearchPlan(query, None, _reference(digits))
     transfer_id = None
     if _DIGITS.fullmatch(query) and len(query) <= MAX_ID_DIGITS and int(query) > 0:
@@ -123,7 +124,7 @@ def plan(raw: str | None) -> SearchPlan | None:
     if transfer_id is not None:
         return SearchPlan(query, None, transfer_id,
                           f"Showing transfer #{transfer_id} only: text search needs at least {MIN_TEXT} characters.")
-    raise InvalidSearch(f"Search needs at least {MIN_TEXT} characters, or a transfer ID like #580.")
+    raise InvalidSearch(f"Search needs at least {MIN_TEXT} characters, or a transfer ID like #580.", code="search.too_short", params={"count": MIN_TEXT})
 
 
 @lru_cache(maxsize=1)

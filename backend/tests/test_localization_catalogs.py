@@ -242,7 +242,11 @@ def test_the_ws3a_to_ws3d_owners_hold_no_literal_outside_the_catalog_or_the_revi
     reviewed = json.loads((ROOT / ".github" / "localization" / "nonlocalizable.json").read_text(encoding="utf-8"))["exempt"]
     assert all(item["reason"].strip() for item in reviewed)
     matched = {(entry["owner"], entry["english"]) for entry in data["exempt"]}
+    matched |= {(entry["owner"], entry["english"]) for entry in data["server"] if entry.get("reason")}
     assert [item for item in reviewed if (item["owner"], item["english"]) not in matched] == []
+    # WS3e: every server message is coded at its raise or exempt with a reason.
+    assert [(entry["owner"], entry["line"], entry["english"]) for entry in data["server"]
+            if not entry["coded"] and not entry.get("reason")] == []
 
 
 def test_the_census_counts_keyed_markup_as_keyed_and_a_sentence_as_a_sentence():

@@ -431,7 +431,8 @@ def test_enabled_auth_rejects_unauthenticated_directory_enumeration(monkeypatch)
 
     response = TestClient(app).get("/api/settings/directories", params={"path": "/"})
     assert response.status_code == 401
-    assert response.json() == {"detail": "Unauthorized"}
+    # WS3e: the English detail is unchanged; the refusal's code is additive.
+    assert response.json() == {"detail": "Unauthorized", "code": "auth.unauthorized", "params": {}}
 
 
 def test_directory_response_contract_exposes_no_file_or_low_level_metadata():

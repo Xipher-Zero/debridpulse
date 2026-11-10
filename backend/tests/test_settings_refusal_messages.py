@@ -36,6 +36,20 @@ def _clean(text: str) -> None:
         assert raw not in text, raw
 
 
+def _said(refusal):
+    """WS3e: the refusal's additive code and params, and the catalog English they name
+    (filled with the params), which is exactly the message the server sends."""
+    code, params = refusal.pop("code"), refusal.pop("params")
+    english = _MESSAGES[f"error.{code}"]
+    for name, value in params.items():
+        english = english.replace("{" + name + "}", str(value))
+    return code, params, english
+
+
+_MESSAGES = json.loads((__import__("pathlib").Path(__file__).resolve().parents[2] / "frontend" / "static" / "i18n" / "en.json")
+                       .read_text(encoding="utf-8"))["messages"]
+
+
 @pytest.mark.parametrize("model, values, field, requirement", [
     (TorBoxOptions, {"rate_limit_per_minute": 500}, "rate_limit_per_minute", "must be 300 or less"),
     (TorBoxOptions, {"request_timeout_seconds": 1}, "request_timeout_seconds", "must be 5 or more"),
@@ -45,12 +59,18 @@ def _clean(text: str) -> None:
 ])
 def test_a_broken_bound_names_its_rule_from_the_schema(model, values, field, requirement):
     refusal = _validation_refusal(_first(model, **values))
+    code, params, english = _said(dict(refusal))
+    assert code.startswith("validation.") and english == f"Value {requirement}."
+    refusal.pop("code"), refusal.pop("params")
     assert refusal == {"message": f"Value {requirement}.", "requirement": requirement, "field": field}
     _clean(json.dumps(refusal))
 
 
 def test_a_validators_own_sentence_is_the_message():
     refusal = _validation_refusal(_first(GeneralWebdavOptions, collection_scan_timeout_seconds=5))
+    # The validator names its own refusal's code (WS3e).
+    assert _said(dict(refusal))[:2] == ("webdav.scan_timeout_invalid", {})
+    refusal.pop("code"), refusal.pop("params")
     assert refusal == {"message": "A collection scan timeout is 0 (no limit) or 10 to 3600 seconds",
                        "field": "collection_scan_timeout_seconds"}
 
@@ -58,6 +78,8 @@ def test_a_validators_own_sentence_is_the_message():
 def test_a_rule_without_wording_is_not_valid_never_pydantic_prose():
     refusal = _validation_refusal({"type": "url_parsing", "loc": ("endpoint",), "msg": "Input should be a valid URL",
                                    "ctx": {"error": "relative URL"}})
+    assert _said(dict(refusal)) == ("validation.invalid", {}, "Value is not valid.")
+    refusal.pop("code"), refusal.pop("params")
     assert refusal == {"message": "Value is not valid.", "requirement": "is not valid", "field": "endpoint"}
 
 
@@ -86,9 +108,9 @@ def test_a_request_body_refusal_words_every_value_without_echoing_it():
     detail = json.loads(response.body)["detail"]
     assert detail == [
         {"type": "int_parsing", "loc": ["password"], "msg": "Value must be a whole number.",
-         "requirement": "must be a whole number"},
+         "requirement": "must be a whole number", "code": "validation.int_parsing", "params": {}},
         {"type": "int_from_float", "loc": ["retries"], "msg": "Value must be a whole number.",
-         "requirement": "must be a whole number"},
+         "requirement": "must be a whole number", "code": "validation.int_from_float", "params": {}},
     ]
     _clean(response.body.decode())
 
@@ -113,4 +135,5 @@ async def test_the_integration_option_route_refuses_in_words(monkeypatch, tmp_pa
             "torbox", routes.IntegrationConfigurationUpdate(options={"rate_limit_per_minute": 500}), application=None)
     assert caught.value.status_code == 400
     assert caught.value.detail == {"message": "Value must be 300 or less.", "requirement": "must be 300 or less",
-                                   "field": "rate_limit_per_minute"}
+                                   "field": "rate_limit_per_minute", "code": "validation.less_than_equal",
+                                   "params": {"le": 300}}

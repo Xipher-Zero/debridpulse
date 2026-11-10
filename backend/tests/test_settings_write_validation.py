@@ -506,6 +506,6 @@ async def test_an_integration_option_resubmitted_as_a_float_is_refused_through_t
     refused, after = await _patch_integration("alldebrid", {"options": {"rate_limit_per_minute": 100.0}}, current)
     assert isinstance(refused, HTTPException) and refused.status_code == 400
     assert refused.detail == {"message": "Value must be a whole number.", "requirement": "must be a whole number",
-                              "field": "rate_limit_per_minute"}
+                              "field": "rate_limit_per_minute", "code": "validation.int_type", "params": {}}
     accepted, after = await _patch_integration("alldebrid", {"options": {"rate_limit_per_minute": 100}}, current)
     assert accepted is None and after.integrations["alldebrid"].options["rate_limit_per_minute"] == 100

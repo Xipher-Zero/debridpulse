@@ -1,6 +1,6 @@
 {
  "schema": "debridpulse-localization-nonlocalizable/1",
- "about": "Strings the census finds that must not be translated, each with the reason (reviewed with the candidate that listed it). Matched by owner and exact English.",
+ "about": "Strings the census finds that must not be translated, each with the reason (reviewed with the candidate that listed it). Matched by owner and exact English. A server message (backend) is listed the same way when its raise names no code; the reason says where its words go instead.",
  "exempt": [
   {
    "owner": "frontend/static/index.html",
@@ -1521,6 +1521,2286 @@
    "owner": "frontend/static/ui-settings-backup-manager.js",
    "english": "save",
    "reason": "Internal error marker thrown and caught inside saveBackup; never shown (the toast says backups.save_failed)."
+  },
+  {
+   "owner": "backend/auth/accounts.py",
+   "english": "The configuration file's password has no username to sign in with",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English. (config.json's one-shot credential input at start.)"
+  },
+  {
+   "owner": "backend/auth/accounts.py",
+   "english": "The configuration file's username belongs to another account",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English. (config.json's one-shot credential input at start.)"
+  },
+  {
+   "owner": "backend/api/auth_config_routes.py",
+   "english": "OIDC configuration is not usable",
+   "reason": "Caught where it is raised and replaced by the coded refusal `oidc.verification_start_failed`; its own words are never a response."
+  },
+  {
+   "owner": "backend/api/auth_config_routes.py",
+   "english": "OIDC authorization state is missing",
+   "reason": "Caught where it is raised and replaced by the coded refusal `oidc.verification_start_failed`; its own words are never a response."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "{0} must be an HTTPS origin",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "{0} must not contain user information",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "{0} must be scheme://host[:port] only",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery returned an invalid {0}",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery returned a non-HTTPS {0}",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC issuer URL is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC issuer URL must use HTTPS",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC issuer URL must not contain user information",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC issuer URL must not contain a query or fragment",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OpenID Connect is disabled",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC Client ID is required",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC group claim must not be empty",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery is missing required {0} metadata",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery returned invalid {0} metadata",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery issuer does not match the configured issuer",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC provider does not advertise Authorization Code flow support",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC provider does not advertise PKCE S256 support",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC provider advertises no usable ID-token signing algorithm",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery did not return a JSON object",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC discovery is unavailable",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC provider requires client authentication",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC provider does not support a compatible client-secret method",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC state generation was inconsistent",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC key set is unavailable",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC key set did not return a JSON object",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC UserInfo is required but unavailable",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC UserInfo is unavailable",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC UserInfo did not return a JSON object",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC UserInfo subject does not match the ID token",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token contains an invalid audience",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token audience is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token is missing the authorized party",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token authorized party is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "missing JOSE header",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token header is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token signing algorithm is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC token response did not include an ID token",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token uses an unadvertised signing algorithm",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC MAC-signed ID token requires a client secret",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token validation failed",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC ID token nonce is invalid",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC MAC-signed ID token requires a single audience",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC identity is not authorized",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC login transaction is invalid or expired",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC callback did not include an authorization code",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc.py",
+   "english": "OIDC authorization-code exchange failed",
+   "reason": "OpenID Connect protocol or configuration refusal: every catch replaces it with a coded outcome -- the sign-in page's `login.error.oidc_*`, a configured/available boolean, the verification failure page (`settings.oidc.verify_failed`) or `oidc.verification_start_failed`; its own words are only logged."
+  },
+  {
+   "owner": "backend/auth/oidc_verification.py",
+   "english": "OIDC verification requires a valid configuration fingerprint",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/auth/passwords.py",
+   "english": "password must not be empty",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Every caller refuses an empty password first, with `account.password_required`.)"
+  },
+  {
+   "owner": "backend/api/auth_routes.py",
+   "english": "Frontend asset not found: {0}",
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/api/auth_routes.py",
+   "english": "{0} holds content that cannot be drawn inline",
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/api/auth_routes.py",
+   "english": "{0} cannot be inlined in a style element",
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/application/service.py",
+   "english": "unknown advisory control {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input identity is not well formed",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input digest is not well formed",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input length is negative",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input reference is not an object",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input reference is incomplete",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input length does not match its reference",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/staged_input.py",
+   "english": "staged input digest does not match its reference",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/core/config.py",
+   "english": "configuration root must be a JSON object",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/core/config.py",
+   "english": "Existing configuration could not be read safely",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/core/config.py",
+   "english": "Password migration could not be persisted safely",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/core/config.py",
+   "english": "configuration holds out-of-range or invalid values",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/core/localization.py",
+   "english": "The localization catalogs are missing",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/core/localization.py",
+   "english": "messages and sources must be objects",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/core/localization.py",
+   "english": "not an error code: {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/core/localization.py",
+   "english": "error parameter {0} could carry a secret",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/core/localization.py",
+   "english": "error parameter {0} is not a scalar",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/core/scheduler.py",
+   "english": "GitHub API returned {0}",
+   "reason": "Update-check diagnostic, logged by the scheduler; no interface shows it. Programmatic API contract (no first-party interface reads it): English for API clients, kept apart from interface text."
+  },
+  {
+   "owner": "backend/main.py",
+   "english": "CORS_ORIGINS=* is refused: DebridPulse's CORS allows credentials, so a wildcard would let ",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/main.py",
+   "english": "Frontend index.html not found. Tried: [{0}]. ",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/executors/aria2/definition.py",
+   "english": "not an aria2 size",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Its caller replaces it with the field's own range refusal.)"
+  },
+  {
+   "owner": "backend/executors/aria2/definition.py",
+   "english": "aria2 log and session files are normalized absolute paths",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/api/routes.py",
+   "english": "GitHub API ",
+   "reason": "Update-check diagnostic: it ends in the update check's `error` field, which no first-party interface shows (the update badge is retired). Programmatic API contract (no first-party interface reads it): English for API clients, kept apart from interface text."
+  },
+  {
+   "owner": "backend/api/routes.py",
+   "english": "Page cache released for {0}/{1} files",
+   "reason": "A success message in the page-cache API response; no first-party interface reads it. Programmatic API contract (no first-party interface reads it): English for API clients, kept apart from interface text."
+  },
+  {
+   "owner": "backend/api/routes.py",
+   "english": "Snapshot taken",
+   "reason": "A success message in the statistics-snapshot API response; no first-party interface reads it. Programmatic API contract (no first-party interface reads it): English for API clients, kept apart from interface text."
+  },
+  {
+   "owner": "backend/application/lifetime.py",
+   "english": "Configuration validation failed before ownership-sensitive migration",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/application/lifetime.py",
+   "english": "a pre-restore execution is still live",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "Required schema migration failed for {0}.{1}",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "source_fingerprint backfill failed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "provider_resources binding backfill failed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "legacy cleanup-claim normalization failed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "execution identity migration failed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "recovery-state migration from application_events failed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "{0} schema is unavailable; database bootstrap must run first",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "{0} schema failed SQLite integrity verification",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "{0} schema is incomplete: {1}",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "{0} schema could not be verified read-only",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/database.py",
+   "english": "Required SQLite schema is incomplete: {0}",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/event_journal.py",
+   "english": "unknown event category {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/event_journal.py",
+   "english": "event type {0} is not in category {1}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/event_journal.py",
+   "english": "unknown event severity {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/event_journal.py",
+   "english": "invalid event outcome {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/event_journal.py",
+   "english": "invalid event subject kind {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Database inspection failed integrity verification",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Unsupported database schema; migration refused before mutation",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Unversioned canonical schema has no verified predecessor backup; migration refused",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Database inspection failed before migration",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Existing pre-migration backup failed verification",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Pre-migration backup is not a supported predecessor schema",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Pre-migration backup already contains v1.0.12 canonical schema",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Pre-migration backup is already marked current",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Pre-migration backup failed verification",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Current schema refused: database contains foreign-key violations",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/db/migrations/v112.py",
+   "english": "Migration refused: database contains foreign-key violations",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/executors/aria2/admin.py",
+   "english": "Execution is not owned by this application",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/executors/aria2/admin.py",
+   "english": "Unsupported execution action",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "aria2 system.multicall returned an invalid response",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "aria2 multicall {0} failed: ",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "aria2 multicall {0} returned an invalid result wrapper",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "Connection to aria2 lost: {0}",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "Transient connection error to aria2: {0}",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/aria2/client.py",
+   "english": "Network error communicating with aria2: {0}",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "transient secret exceeds one pipe",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "transient secret exceeds the pipe the system granted",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/admin.py",
+   "english": "a configured server has no canonical identity",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB answered HTTP {0}",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB returned a non-JSON response",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB returned an unexpected response shape",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB reported an API error",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB rejected the request",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB response is missing its {0} section",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB {0} response has no usable slot list",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB is unreachable",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB did not return a native job identity",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "An exact history lookup needs a native id",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB did not apply the history id filter",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB's filtered history did not prove its scope",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/client.py",
+   "english": "SAB did not report a usable effective speed limit",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/executor.py",
+   "english": "SAB queue listing was not authoritative",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/executor.py",
+   "english": "SAB absence not yet confirmed",
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+  },
+  {
+   "owner": "backend/executors/sabnzbd/runtime.py",
+   "english": "the service did not become reachable before the startup timeout",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
+  },
+  {
+   "owner": "backend/integrations/account_entitlement.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/account_entitlement.py",
+   "english": "account state is too large",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/account_entitlement.py",
+   "english": "account state envelope is malformed",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/account_entitlement.py",
+   "english": "account state contraction is malformed",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/catalog.py",
+   "english": "Unsupported integration definition kind",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/configuration.py",
+   "english": "Unknown integration group",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/configuration.py",
+   "english": "Unknown integration secret clear request",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "now must be a finite UTC epoch timestamp",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "{0} must be non-empty",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "runtime-state payload must be bytes-like",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "{0} must be a finite UTC epoch timestamp",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "blank required metadata",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "payload is not a SQLite BLOB",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "generation must be positive",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not initialize integration runtime-state persistence",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not read integration runtime state",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not list integration runtime state",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "expected_generation must be non-negative",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not replace integration runtime state",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Runtime-state replacement did not produce a durable record",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not delete integration runtime state",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "Could not purge integration runtime state",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "integration_id must be non-empty",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/integrations/runtime_state.py",
+   "english": "runtime-state scope must be non-empty",
+   "reason": "Integration runtime-state persistence failure in background maintenance (host lists, account state): logged and retried. Never a response detail."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "Unsafe ZIP member path: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "ZIP member escapes extraction directory: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "ZIP member traverses a symlink: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "ZIP directory replaces a symlink: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "ZIP file replaces a symlink: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "Cannot read RAR header for {0}: {1}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "RAR signature mismatch for {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "Unsupported 7-Zip input format: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "{0} could not safely inspect {1}: {2}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "{0} failed to extract {1}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "No 7z binary found (install 7zip in the container)",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "Safe RAR extraction requires a 7z-compatible binary",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/extractor.py",
+   "english": "Unsupported archive format: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/secure.py",
+   "english": "Safe .tar.zst extraction requires the zstd decoder",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/secure.py",
+   "english": "zstd did not expose a decompression stream",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/secure.py",
+   "english": "zstd could not decompress {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/postprocessors/archive/secure.py",
+   "english": "Unsupported composite archive format: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/providers/alldebrid/account.py",
+   "english": "account answer is not an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/alldebrid/account.py",
+   "english": "account premium state is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/alldebrid/account.py",
+   "english": "account expiry is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "{0} must be a non-empty string",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "{0} must be an integer",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "{0} must not be negative",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "domain must contain only a hostname",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "domain is not valid IDNA",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "domain is too long",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "domain is not a valid DNS hostname",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host regexp is malformed or uses unsupported unsafe features",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host regexps are missing",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host regexps must be a string or list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host has too many regexps",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host regexp is too long",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host record must be an object",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host type is unsupported",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host domains must be a non-empty list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host has too many domains",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host status must be boolean when present",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "quota type is unsupported",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory is not valid JSON data",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory data must be an object",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory exceeds snapshot size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory must contain hosts",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory has too many services",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory has too many domains",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory has too many regexps",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory regexp data is too large",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host inventory is empty",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "cannot persist an empty host snapshot",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "encoded host snapshot exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot payload must be bytes",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot payload exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot payload is corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot source is incompatible",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot hosts are missing",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "host snapshot has too many services",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "persisted host record must be an object",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "persisted host service id is duplicated",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/alldebrid/host_runtime.py",
+   "english": "clock must return a finite UTC epoch timestamp",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/account.py",
+   "english": "account answer is not an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/account.py",
+   "english": "account expiry is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/account.py",
+   "english": "premium account without premium time",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/account.py",
+   "english": "account type is not a documented Debrid-Link type",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/account.py",
+   "english": "account expiry does not match the account type",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "Debrid-Link returned an unexpected {0}",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "member address needs a native torrent id and file id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "Debrid-Link returned an unexpected link answer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "a link read names between one and 100 ids",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "Debrid-Link answered one torrent read with several torrents",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/client.py",
+   "english": "Debrid-Link returned a torrent page without pagination",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "hoster list must be a non-empty list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "hoster list has too many entries",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "host inventory is too large",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "hoster list has no usable hoster",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "encoded host snapshot exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "host snapshot payload is unusable",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "host snapshot payload is corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "host snapshot source is incompatible",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "host snapshot hosters are corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/host_runtime.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/debridlink/provider.py",
+   "english": "Debrid-Link returned a torrent creation without an id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "file size must be a non-negative integer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "files must be a list",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "file record must be an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "file id is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "file name must be a non-empty string",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "link record must be an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "link id is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "link name must be a non-empty string",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/debridlink/translation.py",
+   "english": "native counter must be a number",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/account.py",
+   "english": "account answer has no premium_until",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/account.py",
+   "english": "account expiry is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "Premiumize returned {0} without {1}",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "a cloud member is addressed by a Premiumize file id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "a cloud member's source host is a bare public hostname",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "an immediate member is its source, exact path and exact size",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "Premiumize returned a cache answer that does not match its items",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/client.py",
+   "english": "Premiumize returned a creation answer without a transfer id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "service list has too many domains",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "service list must be an object",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "service list has too many services",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "service list names no usable service",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "encoded host snapshot exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "host snapshot payload is unusable",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "host snapshot payload is corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "host snapshot source is incompatible",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "host snapshot domains are corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/host_runtime.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "file size must be a non-negative integer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "file path must be a non-empty string",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "an immediate result has members",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "member must be an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "file id is not a Premiumize id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "a Premiumize file id names more than one file",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/premiumize/translation.py",
+   "english": "a cloud transfer has files",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/account.py",
+   "english": "account answer is not an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/account.py",
+   "english": "account type is not a documented Real-Debrid type",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/account.py",
+   "english": "account type is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/account.py",
+   "english": "account expiry is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned an oversized response",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned a response that is not UTF-8",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned invalid JSON",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned an unexpected {0}",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned an incomplete device authorization",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned a device credential without a client credential",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned a token response without an access token",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned a token response without a refresh token",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned a token response without a lifetime",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned an unexpected torrent page",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/client.py",
+   "english": "Real-Debrid returned an invalid torrent total",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "domain must be a non-empty string",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "domain must contain only a hostname",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "domain is not valid IDNA",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "domain is not a valid DNS hostname",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex is not a delimited expression",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex uses unsupported flags",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex is malformed or uses unsupported unsafe features",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host domains must be a non-empty list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regexes must be a non-empty list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host inventory has too many domains",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host inventory has too many regexes",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex must be a non-empty string",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex is too long",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host regex data is too large",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "encoded host snapshot exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host snapshot payload is unusable",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host snapshot payload is corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "host snapshot source is incompatible",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/host_runtime.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/realdebrid/translation.py",
+   "english": "files must be a list",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/translation.py",
+   "english": "file record must be an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/translation.py",
+   "english": "file size must be a non-negative integer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/translation.py",
+   "english": "native counter must be a number",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/realdebrid/translation.py",
+   "english": "a selected member is not exactly one native file",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/account.py",
+   "english": "account answer is not an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/account.py",
+   "english": "account plan is not a documented TorBox plan",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/account.py",
+   "english": "account expiry is malformed",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an unexpected {0}",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "source_host is a web download's safe hostname",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an incomplete device authorization",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned a device token answer without a token",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox accepted the torrent into its queue without a current torrent_id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned a creation answer without an object id",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an unexpected cache answer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an unexpected cache entry",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an unexpected {0} page",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned an unexpected queued page",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/client.py",
+   "english": "TorBox returned no download link",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "hoster list has too many domains",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "hoster list must be a non-empty list",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "hoster list has too many entries",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "hoster list holds no well-formed hoster",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "encoded host snapshot exceeds size limit",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "host snapshot payload is unusable",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "host snapshot payload is corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "host snapshot source is incompatible",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "host snapshot domains are corrupt",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/host_runtime.py",
+   "english": "refresh and retry intervals must be positive",
+   "reason": "Supported-host list validation inside the provider's background host runtime: logged, and the last known-good host list is kept. Never a response detail."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "files must be a list",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "file record must be an object",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "file id must be a non-negative integer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "file size must be a non-negative integer",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "file path must be a non-empty string",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/providers/torbox/translation.py",
+   "english": "native counter must be a number",
+   "reason": "Provider or executor protocol diagnostic: it is translated into a NormalizedError (category, stage, retryability) whose public payload withholds this text (`diagnostic`); the interface says `error_category.<category>`. Where a test boundary forwards it, the response is marked `unclassified`."
+  },
+  {
+   "owner": "backend/services/artifact_sampling.py",
+   "english": "Malformed FTP reply",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/artifact_sampling.py",
+   "english": "Truncated FTP reply",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/artifact_sampling.py",
+   "english": "FTP arguments must be single-line text",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/artifact_sampling.py",
+   "english": "FTP evidence needs a file path",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/artifact_sampling.py",
+   "english": "unusable private key",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/backup.py",
+   "english": "member larger than declared",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/backup.py",
+   "english": "database is still in use",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/backup.py",
+   "english": "An interrupted restore could not be reversed",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English. (An interrupted restore is reversed at start.)"
+  },
+  {
+   "owner": "backend/services/backup.py",
+   "english": "An interrupted restore cannot be reversed: a replaced file exists again",
+   "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English. (An interrupted restore is reversed at start.)"
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Provider download URL has no hostname",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "CONNECT target must include host and port",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Unsupported proxy request target",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Invalid egress budget name",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Invalid DebridPulse egress guard port",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "DebridPulse egress guard failed to bind",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Unsupported egress route scope",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "DebridPulse egress guard is not running",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Invalid egress lease",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Invalid public route scope",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "DebridPulse egress guard refused the connection",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "The server refused the connection",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Provider download host {0} could not be resolved",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Provider download host {0} is not public",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Provider download host {0} did not resolve to an address",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Provider download host {0} resolved to non-public address(es): ",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "Every approved address refused the connection",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/downloader_egress_guard.py",
+   "english": "No approved provider address accepted the connection",
+   "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Unsafe archive member path: longer than the filesystem allows",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Unsafe archive member path: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Unsafe ZIP symlink member: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Unsafe TAR special/link member: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Invalid archive member size for {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Archive listing did not contain member metadata",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extracted archive created a symlink: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extracted archive created a special file: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extracted path escapes staging directory: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extracted archive created a hard link: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extraction target escapes destination: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extraction target traverses symlink: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extraction directory collides with unsafe target: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/extraction_safety.py",
+   "english": "Extraction would overwrite existing file: {0}",
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+  },
+  {
+   "owner": "backend/services/maintenance_gate.py",
+   "english": "Application operation requires an asyncio task",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/maintenance_gate.py",
+   "english": "Application maintenance requires an asyncio task",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned an empty {0}",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned an invalid {0}",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned a non-HTTP(S) {0}",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned a credential-bearing {0}",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned an invalid {0} host",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned a local {0} host",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider returned a non-public {0} address",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider download host {0} did not resolve to an address",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider download host {0} resolved to non-public address(es): ",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider download URL has no hostname",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider download host {0} is not public",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/network_safety.py",
+   "english": "Provider download host {0} could not be resolved",
+   "reason": "Network-safety refusal of a provider-returned download address: translated into a NormalizedError in the security domain (`error_category.<category>`), whose public payload withholds this text."
+  },
+  {
+   "owner": "backend/services/ssh_channel.py",
+   "english": "channel material too large",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/ssh_channel.py",
+   "english": "incomplete channel option",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/ssh_channel.py",
+   "english": "channel descriptors missing",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/ssh_channel.py",
+   "english": "incomplete login option",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/services/ssh_channel.py",
+   "english": "unexpected channel host or empty command",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/_engine_base.py",
+   "english": "_resolution_provider_group is implemented by transfers.engine.TransferEngine",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/_engine_base.py",
+   "english": "_resolve is implemented by transfers.engine.TransferEngine",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/_engine_base.py",
+   "english": "_observe_resource is implemented by transfers.engine.TransferEngine",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/_engine_base.py",
+   "english": "Input challenge is stale",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/candidate_activation.py",
+   "english": "activate_candidate requires the caller's real RecoveryClaim",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/codec.py",
+   "english": "Transient input cannot be persisted",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/codec.py",
+   "english": "Execution handle is not in the canonical layout",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/errors.py",
+   "english": "Retry delay must be finite",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Selected authentication method is not accepted",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Input contains an unsupported field",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Input contains a field outside the selected method",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Authentication fields must be text",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Required authentication input is missing",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Input is already pending for this challenge",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Input challenge is no longer applicable",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/input_required.py",
+   "english": "Input challenge is stale",
+   "reason": "Caught by the authentication-input route and replaced by the coded refusal `auth_input.not_accepted`; its own words are never a response."
+  },
+  {
+   "owner": "backend/transfers/material.py",
+   "english": "Material ranges are integer byte offsets",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/material.py",
+   "english": "Material ranges must be non-negative half-open intervals",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Authentication field descriptors must be unique",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Unsupported authentication method",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Authentication method fields do not match the canonical contract",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Input fact names must be canonical",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Input fact values must be bounded printable text",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "An input authority is a credential-free absolute origin",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Unsupported input-required reason",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Authentication challenges require unique accepted methods",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Input challenge facts do not match the canonical reason contract",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Candidate materialization must be a canonical kind",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Accepted input methods must be unique canonical input methods",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Materialization plans require a canonical kind and a root",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Only a FILE plan names an exact target",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Executors must declare canonical materialization kinds",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Executors must declare canonical continuation capabilities, FULL_RESTART included",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Continuation alignment is a positive byte count",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "The minimum bandwidth ceiling is a positive byte rate",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/models.py",
+   "english": "Execution work must belong to this execution attempt",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/recovery_repository.py",
+   "english": "only a paused external hold is reinstated with its generation",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Provider must implement resolution and descriptor contracts",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Provider identity is missing or already registered",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Provider must declare resolution and supported request types",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Provider declares an unimplemented capability: {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor must implement the generalized execution contract",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor requires a unique identity",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor must declare neutral executor capabilities",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor declares an unimplemented capability: {0}",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor declares input-continued sampling without implementing it",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor declares boundary discovery without implementing it",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/registry.py",
+   "english": "Executor declares native quiesce or private resume without per-execution pause",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/storage.py",
+   "english": "StorageHealthError requires a hard storage state",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/transfers/storage.py",
+   "english": "short storage probe write",
+   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/api/settings_validation_routes.py",
+   "english": "Bundled DebridPulse legal documents are unavailable",
+   "reason": "Packaging fault (the bundled LICENSE/NOTICE files are missing): an uncaught error answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+  },
+  {
+   "owner": "backend/external/service.py",
+   "english": "The source was refused: ",
+   "reason": "External delivery API (/external/v1, the *arr clients): its refusal carries that API's own machine code (`source_unavailable` / `source_refused`) for programmatic callers; no first-party interface shows it. Programmatic API contract: English for API clients, kept apart from interface text."
   }
  ]
 }

@@ -264,9 +264,15 @@
   function refusalMessage(error, control) {
     const detail = Array.isArray(error?.detail) ? error.detail[0] : error?.detail;
     const label = labelOf(control);
-    // The server's requirement as it sent it, beneath the field's name.
-    return detail && typeof detail === 'object' && detail.requirement && label
-      ? t('settings.validation.requirement', {label, requirement: String(detail.requirement)}) : '';
+    // The rule the server names (``validation.<rule>``, WS3e) in the shown
+    // language, beneath the field's name; a rule the catalog cannot say keeps
+    // the server's English requirement.
+    if (!(detail && typeof detail === 'object' && detail.requirement && label)) return '';
+    const rule = typeof detail.code === 'string' && detail.code.startsWith('validation.') ? detail.code.slice('validation.'.length) : '';
+    const key = `error.requirement.${rule}`;
+    const requirement = rule && window.DPI18n.has(key)
+      ? t(key, detail.params && typeof detail.params === 'object' ? detail.params : {}) : String(detail.requirement);
+    return t('settings.validation.requirement', {label, requirement});
   }
 
   function report(error, control, draft) {

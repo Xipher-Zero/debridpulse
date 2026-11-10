@@ -28,6 +28,7 @@ from fastapi import HTTPException, Request
 
 from auth.accounts import Role
 from auth.models import Principal
+from core.localization import DisplayError
 
 
 class Capability(StrEnum):
@@ -337,8 +338,8 @@ def non_route_capability(path: str) -> Capability:
 
 def denial(principal: Principal | None) -> HTTPException:
     if principal is None or not principal.role:
-        return HTTPException(status_code=401, detail="Unauthorized")
-    return HTTPException(status_code=403, detail="Forbidden")
+        return DisplayError(401, "Unauthorized", code="auth.unauthorized")
+    return DisplayError(403, "Forbidden", code="auth.forbidden")
 
 
 async def authorize_request(request: Request) -> None:
@@ -346,7 +347,7 @@ async def authorize_request(request: Request) -> None:
     capability = ACTIONS.get(action_name(request.scope.get("endpoint")))
     principal = getattr(request.state, "principal", None)
     if capability is None:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise DisplayError(403, "Forbidden", code="auth.forbidden")
     if not permits(principal, capability):
         raise denial(principal)
 
@@ -427,8 +428,5 @@ async def require_destruction(request: Request, repository, transfer_id: int):
     permitted, expected = (await destruction_precondition(principal, repository, transfer_id)
                            if principal is not None else (False, None))
     if not permitted:
-        raise HTTPException(
-            status_code=403,
-            detail="Another account still needs this transfer; withdraw your own request instead",
-        )
+        raise DisplayError(403, "Another account still needs this transfer; withdraw your own request instead", code="transfer.needed_by_other",)
     return expected

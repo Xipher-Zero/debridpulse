@@ -18,6 +18,7 @@ from services.event_bus import publish
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers import file_selection
 from transfers.contracts import Manifest
+from transfers.applicability import AcquisitionScope
 from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
@@ -33,6 +34,7 @@ from transfers.requests import (
 from services.network_safety import names_private_lan
 from transfers.staged_input import StagedInputError
 from transfers.storage import StorageDomain
+from core.localization import CodedValueError, CodedRuntimeError, code_of, fact, known
 
 
 
@@ -282,7 +284,7 @@ class ApplicationService:
             new = current.integrations[definition.id].options
             if any(old.get(key) != new.get(key) for key in definition.ownership_fields):
                 if await self.repository.has_integration_references(definition.owned_identities):
-                    raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
+                    raise CodedValueError(f"Finish or remove existing {definition.name} resources before changing its connection", code="integration.resources_block_connection", params={"integration": fact(definition.name)})
         for definition in self.definitions:
             # An option only an entitled account can use is refused, when it
             # is turned on, while the connected account's own truth proves it
@@ -296,7 +298,7 @@ class ApplicationService:
                         raise ValueError(state["requirement"])
         download_folder_changed = previous.download_folder != current.download_folder
         if download_folder_changed and await self.repository.has_integration_references():
-            raise ValueError("Finish or remove existing resources before changing the download folder")
+            raise CodedValueError("Finish or remove existing resources before changing the download folder", code="settings.resources_block_download_folder")
         # Only a Download Folder change is a candidate-save operation. Runtime
         # recovery owns active-path re-probing, so a degraded current Download
         # Folder cannot block unrelated Settings changes.
@@ -481,7 +483,7 @@ class ApplicationService:
         try:
             return self.admins[identity]
         except KeyError:
-            raise ValueError("Integration administration is unavailable") from None
+            raise CodedValueError("Integration administration is unavailable", code="integration.administration_unavailable") from None
 
     async def require(self, transfer_id):
         transfer = await self.repository.get(transfer_id)
@@ -528,7 +530,7 @@ class ApplicationService:
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
         fingerprint = extract_hash(magnet)
         if not fingerprint or urlsplit(magnet).scheme != "magnet":
-            raise ValueError("A valid BitTorrent magnet is required")
+            raise CodedValueError("A valid BitTorrent magnet is required", code="submit.magnet_invalid")
         name = parse_qs(urlsplit(magnet).query).get("dn", [fingerprint])[0]
         return TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint,
                                selection_mode=selection_mode)
@@ -579,20 +581,22 @@ class ApplicationService:
         if isinstance(data, (bytes, bytearray)) and not validate:
             payload = bytes(data)
             if not payload:
-                raise ValueError("NZB file is empty")
+                raise CodedValueError("NZB file is empty", code="submit.nzb_empty")
         else:
             if self.staged_input is None or (validate and self.nzb_reader is None):
-                raise ValueError("Durable input storage is unavailable")
+                raise CodedValueError("Durable input storage is unavailable", code="submit.staging_unavailable")
             try:
                 payload = (self.staged_input.stage_bytes(bytes(data)) if isinstance(data, (bytes, bytearray))
                            else await self.staged_input.stage(data))
             except StagedInputError as exc:
-                raise ValueError(str(exc)) from None
+                # The refusal keeps the cause's words and, where it names one, its code.
+                raise CodedValueError(str(exc), code=code_of(exc)[0], params=code_of(exc)[1]) from None
             if validate:
                 try:
                     await self._read_staged_nzb(payload, fallback_name=str(filename or "upload.nzb"))
                 except StagedInputError as exc:
-                    raise ValueError(str(exc)) from None
+                    # The refusal keeps the cause's words and, where it names one, its code.
+                    raise CodedValueError(str(exc), code=code_of(exc)[0], params=code_of(exc)[1]) from None
         return await self.submit(
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb", name_supplied=bool(filename)),),
             name=name, source=source, demand=demand)
@@ -696,14 +700,15 @@ class ApplicationService:
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
         name = str(filename or "").rsplit(".", 1)[0] or "Multimeta"
         if self.staged_input is None:
-            raise ValueError("Durable input storage is unavailable")
+            raise CodedValueError("Durable input storage is unavailable", code="submit.staging_unavailable")
         try:
             payload = await self.staged_input.stage(data)
         except StagedInputError as exc:
-            raise ValueError(str(exc)) from None
+            # The refusal keeps the cause's words and, where it names one, its code.
+            raise CodedValueError(str(exc), code=code_of(exc)[0], params=code_of(exc)[1]) from None
         if not payload.byte_length:
             self.staged_input.discard(payload)
-            raise ValueError("Metalink file is empty")
+            raise CodedValueError("Metalink file is empty", code="submit.meta4_empty")
         return await self.submit(
             (TransferRequest("meta4", payload, name=filename or f"{name}.meta4", selection_mode=selection_mode),),
             name=name, source=source, demand=demand)
@@ -753,7 +758,7 @@ class ApplicationService:
             rows = [item if isinstance(item, tuple) else (item,) for item in links]
             urls = normalize_direct_links([url for row in rows for url in row])
             if len(urls) != sum(len(row) for row in rows):
-                raise ValueError("A link may be listed in only one row")
+                raise CodedValueError("A link may be listed in only one row", code="submit.link_listed_twice")
             groups = tuple(group if len(row) > 1 else None
                            for group, row in enumerate(rows, 1) for _url in row)
             members = [row[0] for row in rows]
@@ -787,7 +792,7 @@ class ApplicationService:
         for link, scope in dict(answers or {}).items():
             normalized = normalize_direct_links([str(link)])[0]
             if normalized in given:
-                raise ValueError("A link may be given only one acquisition scope")
+                raise CodedValueError("A link may be given only one acquisition scope", code="submit.scope_given_twice")
             given[normalized] = str(scope)
         registry = getattr(self.engine, "registry", None)
         scopes, missing = {}, []
@@ -795,7 +800,7 @@ class ApplicationService:
             choices = registry.scope_choices(TransferRequest(urlsplit(url).scheme.lower(), url)) if registry else ()
             if not choices:
                 if url in given:
-                    raise ValueError(f"Link {index + 1} has no acquisition scope to choose")
+                    raise CodedValueError(f"Link {index + 1} has no acquisition scope to choose", code="submit.link_no_scope", params={"number": fact(index + 1)})
                 continue
             answer = given.pop(url, None)
             if answer is None:
@@ -805,13 +810,17 @@ class ApplicationService:
                 missing.append({"index": index,
                                 "choices": [{"scope": scope, "label": label} for scope, label in choices]})
             elif answer not in {scope for scope, _label in choices}:
-                raise ValueError(f"Link {index + 1} has no acquisition scope {answer!r}")
+                raise CodedValueError(f"Link {index + 1} has no acquisition scope {answer!r}", code="submit.link_scope_missing",
+                                      # The scope is interpolated only when it is one DebridPulse defines:
+                                      # free-form caller text is never a parameter (``known``).
+                                      params={"number": fact(index + 1),
+                                              "scope": fact(repr(answer)) if known(answer, AcquisitionScope) else repr(answer)})
             elif answer == "collection" and groups and groups[index] is not None:
-                raise ValueError(f"Link {index + 1} is an alternate source and cannot be a collection")
+                raise CodedValueError(f"Link {index + 1} is an alternate source and cannot be a collection", code="submit.alternate_not_collection", params={"number": fact(index + 1)})
             else:
                 scopes[url] = answer
         if given:
-            raise ValueError("An acquisition scope names a link that is not in this submission")
+            raise CodedValueError("An acquisition scope names a link that is not in this submission", code="submit.scope_link_unknown")
         if missing:
             raise AcquisitionScopeRequired(tuple(missing))
         return scopes
@@ -1221,7 +1230,7 @@ class ApplicationService:
         await self.pause_all()
         residue = await self.engine.release_writers("state_replacement")
         if residue:
-            raise RuntimeError("Could not prove every native execution stopped")
+            raise CodedRuntimeError("Could not prove every native execution stopped", code="maintenance.executions_not_stopped")
         return {"live_before": live_before, "live_after": len(await self.repository.live_executions())}
 
     def configure(self):

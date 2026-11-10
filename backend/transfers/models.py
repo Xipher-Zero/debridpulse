@@ -10,6 +10,7 @@ from uuid import uuid4
 from transfers.errors import NormalizedError
 from transfers.size_evidence import positive_size
 from transfers.staged_input import StagedPayload
+from core.localization import CodedValueError
 
 
 def new_identity() -> str:
@@ -611,7 +612,7 @@ class DiscoveryDepth:
     def __post_init__(self):
         if self.levels is not None and (
                 isinstance(self.levels, bool) or not isinstance(self.levels, int) or self.levels < 0):
-            raise ValueError("A discovery depth is a non-negative number of subdirectory levels, or unlimited")
+            raise CodedValueError("A discovery depth is a non-negative number of subdirectory levels, or unlimited", code="tuning.discovery_depth_invalid")
 
     @classmethod
     def of(cls, levels: int) -> DiscoveryDepth:
@@ -652,11 +653,11 @@ class DiscoveryLimits:
     def __post_init__(self):
         if self.max_files is not None and (
                 isinstance(self.max_files, bool) or not isinstance(self.max_files, int) or self.max_files < 1):
-            raise ValueError("A file limit is a positive number of files")
+            raise CodedValueError("A file limit is a positive number of files", code="tuning.file_limit_invalid")
         if self.timeout_seconds is not None and (
                 isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float))
                 or not self.timeout_seconds > 0):
-            raise ValueError("A discovery timeout is a positive number of seconds")
+            raise CodedValueError("A discovery timeout is a positive number of seconds", code="tuning.discovery_timeout_invalid")
 
 
 @dataclass(frozen=True)
@@ -701,7 +702,7 @@ class DiscoveryRequest:
         if self.content_limit is not None and (
                 isinstance(self.content_limit, bool) or not isinstance(self.content_limit, int)
                 or self.content_limit < 1):
-            raise ValueError("A content limit is a positive number of bytes")
+            raise CodedValueError("A content limit is a positive number of bytes", code="tuning.content_limit_invalid")
 
 
 @dataclass(frozen=True)

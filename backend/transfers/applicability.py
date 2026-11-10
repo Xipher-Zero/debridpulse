@@ -9,6 +9,7 @@ from typing import Iterable
 from urllib.parse import urlsplit
 
 from transfers.models import TransferRequest
+from core.localization import CodedValueError
 
 
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*$", re.ASCII)
@@ -150,14 +151,14 @@ class ApplicabilityUnresolved(Exception):
 def _normalize_scheme(value: str) -> str:
     scheme = str(value or "").strip().casefold()
     if not _SCHEME_RE.fullmatch(scheme):
-        raise ValueError("Invalid URL scheme")
+        raise CodedValueError("Invalid URL scheme", code="link.scheme_invalid")
     return scheme
 
 
 def _normalize_hostname(value: str) -> tuple[str, bool]:
     raw = str(value or "").strip().rstrip(".")
     if not raw:
-        raise ValueError("URL hostname is missing")
+        raise CodedValueError("URL hostname is missing", code="link.host_missing")
 
     candidate = raw.strip("[]")
     try:
@@ -166,12 +167,12 @@ def _normalize_hostname(value: str) -> tuple[str, bool]:
         try:
             ascii_host = candidate.encode("idna").decode("ascii").casefold()
         except UnicodeError as exc:
-            raise ValueError("Invalid internationalized hostname") from exc
+            raise CodedValueError("Invalid internationalized hostname", code="link.idn_invalid") from exc
         if len(ascii_host) > 253:
-            raise ValueError("Hostname is too long")
+            raise CodedValueError("Hostname is too long", code="link.host_too_long")
         labels = ascii_host.split(".")
         if any(not label or len(label) > 63 or not _DNS_LABEL_RE.fullmatch(label) for label in labels):
-            raise ValueError("Invalid DNS hostname")
+            raise CodedValueError("Invalid DNS hostname", code="link.host_invalid")
         return ascii_host, False
     return address.compressed.casefold(), True
 

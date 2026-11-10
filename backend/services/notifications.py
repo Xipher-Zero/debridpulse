@@ -25,6 +25,7 @@ import aiohttp
 from core.branding import APP_SHORT_NAME, REPOSITORY_URL
 from core.logging_utils import sanitize_exception
 from core.version import read_version
+from core.localization import CodedRuntimeError
 
 logger = logging.getLogger("debridpulse.notify")
 
@@ -453,7 +454,7 @@ class NotificationService:
             # nothing. Admission refuses anything else; this is the last word.
             logger.error("Discord notification refused (%s): not a Discord webhook endpoint", title[:60])
             if strict:
-                raise RuntimeError("The destination is not a Discord webhook URL")
+                raise CodedRuntimeError("The destination is not a Discord webhook URL", code="notifications.not_discord_webhook")
             return False
 
         # Deduplication: same content within 30s → skip

@@ -37,11 +37,12 @@ itself is always the existing canonical command -- DebridPulse pause, resume
 and artifact cancellation -- never a native remove or delete. A stale or
 not-owned attempt is refused.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from application.dependencies import get_application
 from application.service import ApplicationService
 from transfers.models import ExecutionControl, ExecutionState
+from core.localization import DisplayError
 
 router = APIRouter()
 
@@ -232,24 +233,24 @@ async def control_executor_work(attempt_id: str, action: str,
     browser last saw.
     """
     if action not in ACTIONS:
-        raise HTTPException(400, "Unsupported executor action")
+        raise DisplayError(400, "Unsupported executor action", code="execution.action_unsupported")
 
     attempt = next((item for item in await _owned_attempts(application)
                     if item.handle.attempt_id == attempt_id), None)
     if attempt is None:
         # Either it was never ours or it is no longer current. Both are the same
         # answer: this request is about work this application does not own now.
-        raise HTTPException(409, "That execution is no longer owned by this application")
+        raise DisplayError(409, "That execution is no longer owned by this application", code="execution.not_owned")
 
     executor = application.engine.registry.executor_for_handle(attempt.handle)
     if executor is None:
-        raise HTTPException(503, "That execution's integration is not available")
+        raise DisplayError(503, "That execution's integration is not available", code="execution.integration_unavailable")
 
     snapshot = await application.engine.observe_existing(executor, (attempt.handle,))
     observation = snapshot.observations[0]
     cancellable = await application.repository.authorize_execution(attempt.handle, "cancel")
     if action not in _controls(observation, cancellable=cancellable):
-        raise HTTPException(409, "That action is not currently available for this execution")
+        raise DisplayError(409, "That action is not currently available for this execution", code="execution.action_unavailable")
 
     if action == PAUSE:
         return {"ok": True, "attempt_id": attempt_id, "action": action,

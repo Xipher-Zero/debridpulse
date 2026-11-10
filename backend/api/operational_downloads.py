@@ -60,6 +60,7 @@ from transfers.presentation_repository import (
 )
 from transfers.manual_failover import switch_eligible_sql
 from auth.permissions import require_destruction, transfer_access
+from core.localization import DisplayError, UNCLASSIFIED, code_of, disclosed
 
 logger = logging.getLogger("debridpulse.api.operational_downloads")
 router = APIRouter()
@@ -227,7 +228,9 @@ def _search_plan(raw: Optional[str]):
     try:
         return search_contract.plan(raw)
     except search_contract.InvalidSearch as exc:
-        raise HTTPException(status_code=400, detail={"code": "invalid_query", "message": str(exc)}) from None
+        # ``code`` stays the machine identifier; ``message_code`` names these words (WS3e).
+        raise HTTPException(status_code=400, detail={"code": "invalid_query", "message": str(exc),
+                                                     **_message_code(exc)}) from None
 
 
 # Downloads' text search, evaluated by SQLite on every row the list's other
@@ -429,6 +432,13 @@ class DiscardConfirmationBody(BaseModel):
     retained_bytes: int = Field(ge=0)
 
 
+def _message_code(exc: Exception) -> dict:
+    """The code naming a structured refusal's words, where its cause names one
+    (``message_code`` and ``params``; the machine ``code`` beside it is unchanged)."""
+    named, params = disclosed(str(exc), *code_of(exc))
+    return {"message_code": named, "params": params} if named != UNCLASSIFIED else {}
+
+
 def _switch_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, DiscardConfirmationRequired):
         return HTTPException(status_code=409, detail={
@@ -438,9 +448,10 @@ def _switch_http_error(exc: Exception) -> HTTPException:
             "changed": exc.changed,
             "message": ("Downloaded progress changed after the switch was confirmed; nothing was switched."
                         if exc.changed else "Switching to this source discards downloaded progress."),
+            "code": "switch.discard_changed" if exc.changed else "switch.discard_confirmation",
         })
     if isinstance(exc, KeyError):
-        return HTTPException(status_code=404, detail="Transfer not found")
+        return DisplayError(404, "Transfer not found", code="transfer.not_found")
     missing = exc.error.category in {Category.RESOURCE_NOT_FOUND, Category.SOURCE_NOT_FOUND}
     return HTTPException(status_code=404 if missing else 409, detail=exc.error.as_dict())
 
@@ -500,9 +511,9 @@ async def read_root_route(transfer_id: int, artifact_id: Annotated[Optional[int]
     try:
         status = await root_route_providers(application, transfer_id, artifact_id=artifact_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     if status is None:
-        raise HTTPException(status_code=404, detail="Transfer has no switchable provider route")
+        raise DisplayError(404, "Transfer has no switchable provider route", code="transfer.no_switchable_route")
     definitions = application.definitions
     for item in [status, *status["providers"]]:
         key = "current_provider_id" if item is status else "provider_id"
@@ -536,7 +547,7 @@ async def replace_root_route(
                                            expected_provider_id=expected_provider_id, expected_demand=expected,
                                            artifact_id=artifact_id, expected_root_id=expected_root_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     except TransferError as exc:
         raise HTTPException(status_code=409, detail=exc.error.as_dict()) from None
 
@@ -551,9 +562,9 @@ async def read_transfer_route(transfer_id: int, application: ApplicationService 
     try:
         status = await transfer_route_providers(application, transfer_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     if status is None:
-        raise HTTPException(status_code=404, detail="Transfer has no transfer-level provider choice")
+        raise DisplayError(404, "Transfer has no transfer-level provider choice", code="transfer.no_provider_choice")
     definitions = application.definitions
     for item in status["providers"]:
         item["provider_name"] = _provider_display_name(item["provider_id"], definitions)
@@ -584,7 +595,7 @@ async def switch_transfer_route(
         return await switch_transfer_provider(application, transfer_id, provider_id,
                                               expected_routes=dict(expected_routes), expected_demand=expected)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found") from None
     except TransferError as exc:
         raise HTTPException(status_code=409, detail=exc.error.as_dict()) from None
 
@@ -635,9 +646,9 @@ async def list_activity_events(
     send it back so every one of them -- Last's count included -- filters by
     the same window as the snapshot it shares."""
     if sum((before is not None, after is not None, bool(last))) > 1:
-        raise HTTPException(status_code=400, detail="Use only one of before, after or last.")
+        raise DisplayError(400, "Use only one of before, after or last.", code="activity.one_anchor_only")
     if window_start is not None and timeframe == "all":
-        raise HTTPException(status_code=400, detail="window_start applies only to a relative timeframe.")
+        raise DisplayError(400, "window_start applies only to a relative timeframe.", code="activity.window_start_relative_only")
     since = None if timeframe == "all" else (
         float(window_start) if window_start is not None else time.time() - _EVENT_TIMEFRAME_SECONDS[timeframe])
     plan = _search_plan(search)
@@ -655,9 +666,10 @@ async def list_activity_events(
                                             severity=severity, since=since, search=plan, after=after, last=last)
         except event_journal.LastPageUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "last_page_unavailable",
-                                                         "message": str(exc)}) from None
+                                                         "message": str(exc), **_message_code(exc)}) from None
         except event_journal.SearchUnavailable as exc:
-            raise HTTPException(status_code=503, detail={"code": "search_unavailable", "message": str(exc)}) from None
+            raise HTTPException(status_code=503, detail={"code": "search_unavailable", "message": str(exc),
+                                                         **_message_code(exc)}) from None
         except sqlite3.DatabaseError as exc:
             if plan is None or plan.text is None:
                 raise
@@ -667,7 +679,8 @@ async def list_activity_events(
             await event_journal.reset_index()
             raise HTTPException(status_code=503, detail={
                 "code": "search_unavailable",
-                "message": "The Activity Log search index is being rebuilt. Try the search again shortly."}) from None
+                "message": "The Activity Log search index is being rebuilt. Try the search again shortly.",
+                "message_code": "search.index_rebuilding", "params": {}}) from None
 
 
 _ACTIVITY_ORDER = "activity"

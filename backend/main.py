@@ -254,7 +254,8 @@ async def sqlite_operational_error_handler(_request: Request, exc: sqlite3.Opera
             content={"detail": fault.error.message, "error": fault.error.as_dict()},
         )
     logger.error("Unhandled SQLite operational error")
-    return JSONResponse(status_code=500, content={"detail": "Database operation failed"})
+    return JSONResponse(status_code=500, content={"detail": "Database operation failed", "code": "storage.database_failed",
+                                                  "params": {}})
 
 
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -326,7 +327,8 @@ async def demand_changed_handler(_request: Request, _exc: DemandChanged):
     after it was authorized. Nothing was changed."""
     return JSONResponse(
         status_code=409,
-        content={"detail": "Another account now needs this transfer; nothing was changed"},
+        content={"detail": "Another account now needs this transfer; nothing was changed",
+                 "code": "transfer.demand_changed", "params": {}},
     )
 
 
@@ -366,6 +368,9 @@ async def request_validation_error_handler(_request: Request, exc: RequestValida
                 "loc": list(error.get("loc") or ()),
                 "msg": refusal["message"],
                 **({"requirement": refusal["requirement"]} if "requirement" in refusal else {}),
+                # The rule's code and bounds (WS3e), never the refused value.
+                "code": refusal["code"],
+                "params": refusal["params"],
             }
         )
     return JSONResponse(
@@ -403,7 +408,7 @@ async def application_maintenance_busy_handler(_request: Request, exc: Applicati
     return JSONResponse(
         status_code=409,
         content={"detail": "Other work is still running, so nothing was changed. Try again when it has finished.",
-                 "waiting_operations": exc.waiting},
+                 "code": "maintenance.busy", "params": {}, "waiting_operations": exc.waiting},
         headers={"Retry-After": "5"},
     )
 

@@ -17,6 +17,7 @@ from external.profiles import ExternalDeliverySettings
 from integrations.definition import IntegrationGroupSettings, IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
+from core.localization import CodedValueError
 
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "/app/config/config.json"))
 logger = logging.getLogger("debridpulse.config")
@@ -219,7 +220,7 @@ class AppSettings(BaseModel):
         # a mode DebridPulse runs in: it is refused at load and restore, never
         # read as open or as multi-user.
         if self.deployment_type == "standalone" and self.auth_oidc_enabled:
-            raise ValueError("A Standalone installation cannot enable OpenID Connect")
+            raise CodedValueError("A Standalone installation cannot enable OpenID Connect", code="oidc.standalone_validator")
         return self
 
     @field_validator("preferred_subtitle_language", mode="before")

@@ -18,6 +18,7 @@ from transfers.filesystem import safe_name
 
 MAX_DIRECT_LINKS_PER_BATCH = 100
 import bencode2
+from core.localization import CodedValueError, fact
 
 
 class TorrentMetainfoRejected(ValueError):
@@ -37,13 +38,13 @@ def _bencode_element_end(data: bytes, start: int) -> int:
     depth, index, size = 0, start, len(data)
     while True:
         if index >= size:
-            raise ValueError("truncated bencode")
+            raise CodedValueError("truncated bencode", code="torrent.bencode_truncated")
         token = data[index]
         if token in b"dl":
             depth, index = depth + 1, index + 1
         elif token == ord("e"):
             if depth == 0:
-                raise ValueError("unexpected end marker")
+                raise CodedValueError("unexpected end marker", code="torrent.bencode_end_marker")
             depth, index = depth - 1, index + 1
         elif token == ord("i"):
             index = data.index(b"e", index) + 1
@@ -51,9 +52,9 @@ def _bencode_element_end(data: bytes, start: int) -> int:
             colon = data.index(b":", index)
             index = colon + 1 + int(data[index:colon])
             if index > size:
-                raise ValueError("truncated string")
+                raise CodedValueError("truncated string", code="torrent.bencode_string_truncated")
         else:
-            raise ValueError("invalid bencode token")
+            raise CodedValueError("invalid bencode token", code="torrent.bencode_token_invalid")
         if depth == 0:
             return index
 
@@ -63,10 +64,10 @@ def _raw_info(data: bytes) -> bytes:
     exactly as submitted -- never re-encoded -- after the whole metainfo has
     been validated by the strict decoder."""
     if not isinstance(data, (bytes, bytearray)) or not data[:1] == b"d":
-        raise ValueError("metainfo is not a dictionary")
+        raise CodedValueError("metainfo is not a dictionary", code="torrent.metainfo_not_dictionary")
     data = bytes(data)
     if not isinstance(bencode2.bdecode(data), dict):
-        raise ValueError("metainfo is not a dictionary")
+        raise CodedValueError("metainfo is not a dictionary", code="torrent.metainfo_not_dictionary")
     index, raw = 1, None
     while data[index:index + 1] != b"e":
         key_end = _bencode_element_end(data, index)
@@ -76,7 +77,7 @@ def _raw_info(data: bytes) -> bytes:
             raw = data[key_end:value_end]
         index = value_end
     if index + 1 != len(data) or raw is None:
-        raise ValueError("metainfo has no info dictionary")
+        raise CodedValueError("metainfo has no info dictionary", code="torrent.metainfo_no_info")
     return raw
 
 
@@ -354,11 +355,10 @@ def normalize_direct_links(values: List[str]) -> List[str]:
             normalized.append(value)
             seen.add(value)
     if not normalized:
-        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync link, or WebDAV link, is required")
+        raise CodedValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync link, or WebDAV link, is required", code="submit.links_required")
     if len(normalized) > MAX_DIRECT_LINKS_PER_BATCH:
-        raise ValueError(
-            f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"
-        )
+        raise CodedValueError(
+            f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once", code="submit.links_too_many", params={"count": str(MAX_DIRECT_LINKS_PER_BATCH)})
     return normalized
 
 
@@ -388,7 +388,7 @@ def direct_link_rows(values: List[str]) -> List[tuple[str, ...]]:
         if not row or row in rows:
             continue
         if any(owner.get(cell, row) != row for cell in row):
-            raise ValueError("A link may be listed in only one row")
+            raise CodedValueError("A link may be listed in only one row", code="submit.link_listed_twice")
         owner.update((cell, row) for cell in row)
         rows.append(row)
     return rows
@@ -481,6 +481,17 @@ def direct_link_collection_name(
 # submission admits at most MAX_DIRECT_LINKS_PER_BATCH links.
 MAX_LINK_FILE_BYTES = 1024 * 1024
 _MAX_LINK_FILE_VALUE = 64 * 1024
+
+
+class _Location(str):
+    """Where in a link file a value is: the words a refusal says ("Line 3",
+    "Entry 2") and the facts they state (``kind``, ``number``), so a refusal
+    names them as parameters rather than from its English."""
+
+    def __new__(cls, kind: str, number: int):
+        location = super().__new__(cls, f"{kind.capitalize()} {number}")
+        location.kind, location.number = kind, number
+        return location
 _MAX_XML_DEPTH = 3
 # The one field-name vocabulary that marks a record's link.
 _LINK_FIELDS = frozenset({"url", "uri", "link"})
@@ -497,13 +508,13 @@ def link_file_entries(data: bytes) -> tuple[tuple[str, str], ...]:
     ("Line 4", "Entry 2") so a refusal never has to echo the value itself.
     Raises ``ValueError`` when the file is not such a list."""
     if not data:
-        raise ValueError("The file is empty")
+        raise CodedValueError("The file is empty", code="linkfile.empty")
     if len(data) > MAX_LINK_FILE_BYTES:
-        raise ValueError("The file exceeds the 1 MB link file limit")
+        raise CodedValueError("The file exceeds the 1 MB link file limit", code="linkfile.too_large")
     text = _link_file_text(bytes(data))
     meaningful = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
     if not meaningful:
-        raise ValueError("The file contains no links")
+        raise CodedValueError("The file contains no links", code="linkfile.no_links")
     first = meaningful[0]
     if first.startswith(("[", "{")):
         entries = _listed_entries(_json_document(text))
@@ -517,14 +528,14 @@ def link_file_entries(data: bytes) -> tuple[tuple[str, str], ...]:
     for location, raw in entries:
         value = raw.strip()
         if not value:
-            raise ValueError(f"{location} has no link")
+            raise CodedValueError(f"{location} has no link", code="linkfile.location_no_link", params={"kind": fact(location.kind), "number": location.number})
         if len(value) > _MAX_LINK_FILE_VALUE:
-            raise ValueError(f"{location} is too long")
+            raise CodedValueError(f"{location} is too long", code="linkfile.location_too_long", params={"kind": fact(location.kind), "number": location.number})
         values.setdefault(value, location)
     if not values:
-        raise ValueError("The file contains no links")
+        raise CodedValueError("The file contains no links", code="linkfile.no_links")
     if len(values) > MAX_DIRECT_LINKS_PER_BATCH:
-        raise ValueError(f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once")
+        raise CodedValueError(f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once", code="submit.links_too_many", params={"count": str(MAX_DIRECT_LINKS_PER_BATCH)})
     return tuple((location, value) for value, location in values.items())
 
 
@@ -547,9 +558,9 @@ def _link_file_text(data: bytes) -> str:
     try:
         text = data.decode(encoding)
     except UnicodeDecodeError:
-        raise ValueError("The file is not a text file") from None
+        raise CodedValueError("The file is not a text file", code="linkfile.not_text") from None
     if _NOT_TEXT.search(text):
-        raise ValueError("The file is not a text file")
+        raise CodedValueError("The file is not a text file", code="linkfile.not_text")
     return text
 
 
@@ -561,9 +572,9 @@ def _link_field(names) -> int:
     """The position of the one link field among ``names``."""
     found = [index for index, name in enumerate(names) if str(name).strip().casefold() in _LINK_FIELDS]
     if not found:
-        raise ValueError("The file has no link field")
+        raise CodedValueError("The file has no link field", code="linkfile.no_link_field")
     if len(found) > 1:
-        raise ValueError("The file has more than one link field")
+        raise CodedValueError("The file has more than one link field", code="linkfile.link_fields_many")
     return found[0]
 
 
@@ -572,7 +583,7 @@ def _delimited_entries(text: str, first: str):
     Headerless rows carry exactly one link each."""
     for number, line in enumerate(text.splitlines(), 1):
         if len(line) > _MAX_LINK_FILE_VALUE:
-            raise ValueError(f"Line {number} is too long")
+            raise CodedValueError(f"Line {number} is too long", code="linkfile.line_too_long", params={"number": number})
     delimiter = "\t" if "\t" in first else ","
     header = next(csv.reader([first], delimiter=delimiter))
     if not any(_link_shaped(cell) for cell in header) and (
@@ -585,10 +596,10 @@ def _delimited_entries(text: str, first: str):
             continue
         cells = value.split() if any(char.isspace() for char in value) else next(csv.reader([value]))
         if sum(_link_shaped(cell) for cell in cells) > 1:
-            raise ValueError(f"Line {number} lists more than one link")
+            raise CodedValueError(f"Line {number} lists more than one link", code="linkfile.line_lists_many", params={"number": number})
         if any(char.isspace() for char in value):
-            raise ValueError(f"Line {number} is not a single link")
-        entries.append((f"Line {number}", value))
+            raise CodedValueError(f"Line {number} is not a single link", code="linkfile.line_not_link", params={"number": number})
+        entries.append((_Location("line", number), value))
     return entries
 
 
@@ -600,20 +611,20 @@ def _table_entries(text: str, delimiter: str):
             if any(cell.strip() for cell in row) and not row[0].lstrip().startswith("#"):
                 rows.append((reader.line_num, row))
     except csv.Error:
-        raise ValueError(f"Line {reader.line_num} is not a well-formed table row") from None
+        raise CodedValueError(f"Line {reader.line_num} is not a well-formed table row", code="linkfile.line_not_row", params={"number": str(reader.line_num)}) from None
     if not rows:
-        raise ValueError("The file contains no links")
+        raise CodedValueError("The file contains no links", code="linkfile.no_links")
     (_line, header), body = rows[0], rows[1:]
     column = _link_field(header)
     entries = []
     for number, row in body:
         if len(row) != len(header):
-            raise ValueError(f"Line {number} does not match the table header")
+            raise CodedValueError(f"Line {number} does not match the table header", code="linkfile.line_header_mismatch", params={"number": number})
         if any(_link_shaped(cell) for index, cell in enumerate(row) if index != column):
-            raise ValueError(f"Line {number} has more than one link")
-        entries.append((f"Line {number}", row[column]))
+            raise CodedValueError(f"Line {number} has more than one link", code="linkfile.line_links_many", params={"number": number})
+        entries.append((_Location("line", number), row[column]))
     if not entries:
-        raise ValueError("The file contains no links")
+        raise CodedValueError("The file contains no links", code="linkfile.no_links")
     return entries
 
 
@@ -621,37 +632,37 @@ def _json_document(text: str):
     try:
         return json.loads(text)
     except (ValueError, RecursionError):
-        raise ValueError("The file is not valid JSON") from None
+        raise CodedValueError("The file is not valid JSON", code="linkfile.not_json") from None
 
 
 def _yaml_document(text: str):
     try:
         return yaml.safe_load(text)
     except (yaml.YAMLError, RecursionError):
-        raise ValueError("The file is not valid YAML") from None
+        raise CodedValueError("The file is not valid YAML", code="linkfile.not_yaml") from None
 
 
 def _listed_entries(document):
     """A top-level list of links, or of records of one shape that each name
     one link field. Nothing nested is searched."""
     if not isinstance(document, list) or not document:
-        raise ValueError("The file is not a list of links")
+        raise CodedValueError("The file is not a list of links", code="linkfile.not_list")
     if all(isinstance(item, str) for item in document):
-        return [(f"Entry {index}", item) for index, item in enumerate(document, 1)]
+        return [(_Location("entry", index), item) for index, item in enumerate(document, 1)]
     if not all(isinstance(item, dict) for item in document):
-        raise ValueError("The file mixes links and records")
+        raise CodedValueError("The file mixes links and records", code="linkfile.mixed")
     names = list(document[0])
     if any(set(item) != set(names) for item in document):
-        raise ValueError("The records in the file do not share one shape")
+        raise CodedValueError("The records in the file do not share one shape", code="linkfile.records_mixed")
     key = names[_link_field(names)]
     entries = []
     for index, item in enumerate(document, 1):
         others = [value for name, value in item.items() if name != key]
         if not isinstance(item[key], str) or any(isinstance(value, (list, dict)) for value in others):
-            raise ValueError(f"Entry {index} is not a link record")
+            raise CodedValueError(f"Entry {index} is not a link record", code="linkfile.entry_not_record", params={"number": index})
         if any(_link_shaped(value) for value in others):
-            raise ValueError(f"Entry {index} has more than one link")
-        entries.append((f"Entry {index}", item[key]))
+            raise CodedValueError(f"Entry {index} has more than one link", code="linkfile.entry_links_many", params={"number": index})
+        entries.append((_Location("entry", index), item[key]))
     return entries
 
 
@@ -664,7 +675,7 @@ def _xml_entries(text: str):
     parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
 
     def refuse(*_arguments):
-        raise ValueError("The file is not a link list")
+        raise CodedValueError("The file is not a link list", code="linkfile.not_link_list")
 
     parser.StartDoctypeDeclHandler = refuse
     parser.EntityDeclHandler = refuse
@@ -689,7 +700,7 @@ def _xml_entries(text: str):
     try:
         parser.Parse(text.encode("utf-8"), True)
     except expat.ExpatError:
-        raise ValueError("The file is not well-formed XML") from None
+        raise CodedValueError("The file is not well-formed XML", code="linkfile.not_xml") from None
     (document,) = root["children"]
     records = document["children"]
     if not records or "".join(document["text"]).strip() or len({item["name"] for item in records}) != 1:
@@ -697,7 +708,7 @@ def _xml_entries(text: str):
     if all(not item["children"] for item in records):
         if records[0]["name"].casefold() not in _LINK_FIELDS:
             refuse()
-        return [(f"Entry {index}", "".join(item["text"])) for index, item in enumerate(records, 1)]
+        return [(_Location("entry", index), "".join(item["text"])) for index, item in enumerate(records, 1)]
     names = [field["name"] for field in records[0]["children"]]
     column = _link_field(names)
     entries = []
@@ -705,9 +716,9 @@ def _xml_entries(text: str):
         fields = item["children"]
         if ([field["name"] for field in fields] != names or "".join(item["text"]).strip()
                 or any(field["children"] for field in fields)):
-            raise ValueError(f"Entry {index} is not a link record")
+            raise CodedValueError(f"Entry {index} is not a link record", code="linkfile.entry_not_record", params={"number": index})
         values = ["".join(field["text"]) for field in fields]
         if any(_link_shaped(value) for position, value in enumerate(values) if position != column):
-            raise ValueError(f"Entry {index} has more than one link")
-        entries.append((f"Entry {index}", values[column]))
+            raise CodedValueError(f"Entry {index} has more than one link", code="linkfile.entry_links_many", params={"number": index})
+        entries.append((_Location("entry", index), values[column]))
     return entries

@@ -46,6 +46,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from transfers.filesystem import safe_name
 from transfers.models import BITTORRENT_REQUEST_KINDS, FileManifest, SourceEntry
+from core.localization import CodedValueError
 
 
 # Three independent, non-overlapping timing dimensions (specification sections
@@ -78,7 +79,7 @@ def normalize_selection_mode(value: str | None) -> str:
     if not text:
         return DEFAULT_SELECTION_MODE
     if text not in SELECTION_MODES:
-        raise ValueError(f"Unsupported selection_mode: {value!r}")
+        raise CodedValueError(f"Unsupported selection_mode: {value!r}", code="submit.selection_mode_unsupported", params={"mode": repr(value)})
     return text
 
 

@@ -126,7 +126,9 @@
       fail(ticket, error) {
         if (ticket.id !== latest) return false;
         if (error?.status === 400 && error?.detail?.code === 'invalid_query') {
-          const message = String(error.detail.message || error.message || window.DPI18n.t('search.invalid'));
+          // The refusal's own words in the shown language where the server names them (``api``).
+          const message = String((error.localized && error.message) || error.detail.message || error.message
+            || window.DPI18n.t('search.invalid'));
           // ``noun`` names the list ('downloads', 'events'): a whole sentence per list, never the noun spliced in.
           tell(window.DPI18n.t('search.invalid_kept', {message, kept: accepted
             ? window.DPI18n.t('search.still_for', {query: accepted})

@@ -52,6 +52,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from core.localization import Coded
+
 logger = logging.getLogger("debridpulse.backup")
 
 _BACKUP_DIR_RE = re.compile(r"^\d{8}_\d{6}(?:_[0-9a-f]{8}|_[0-9a-f]{32})?$")
@@ -177,28 +179,42 @@ UNSUPPORTED = "This backup was created by an unsupported version."
 MISSING = "The selected backup no longer exists."
 
 
-class BackupRejected(Exception):
-    """An operator-facing refusal. ``message`` is safe to show as-is."""
+class BackupRejected(Coded, Exception):
+    """An operator-facing refusal. ``message`` is safe to show as-is.
 
-    def __init__(self, action: str, detail: str = "", *, reason: str = "invalid"):
+    Its code is its facts (WS3e): ``backup.<action>``, and with a detail
+    ``backup.<action>_detail`` whose ``detail`` is the detail's own code
+    (``detail_code``, named where it is raised; ``error.backup.detail.*``)."""
+
+    def __init__(self, action: str, detail: str = "", *, reason: str = "invalid", detail_code: str = ""):
         self.action = action
         self.detail = detail
         self.reason = reason
         self.message = " ".join(part for part in (_HEADLINES.get(action, "Backup failed."), detail) if part)
-        super().__init__(self.message)
+        # The detail as a parameter of a wrapping refusal (a failed restore).
+        self.detail_said = {"$t": f"error.backup.detail.{detail_code}", "$v": {}} if detail and detail_code else None
+        named = action if action in _HEADLINES else "failed"
+        if detail and not detail_code:
+            code, params = None, {}
+        elif detail:
+            code, params = f"backup.{named}_detail", {"detail": self.detail_said}
+        else:
+            code, params = f"backup.{named}", {}
+        super().__init__(self.message, code=code, params=params)
 
 
 def _invalid(action: str) -> BackupRejected:
-    return BackupRejected(action, INVALID if action == "add" else "The backup is not a valid DebridPulse backup.")
+    return BackupRejected(action, INVALID if action == "add" else "The backup is not a valid DebridPulse backup.",
+                          detail_code="invalid_file" if action == "add" else "invalid")
 
 
 def _no_space() -> BackupRejected:
     return BackupRejected("add", "There is not enough free space in the Backup Folder for this backup.",
-                          reason="space")
+                          reason="space", detail_code="space")
 
 
 def _unsupported(action: str) -> BackupRejected:
-    return BackupRejected(action, UNSUPPORTED, reason="unsupported")
+    return BackupRejected(action, UNSUPPORTED, reason="unsupported", detail_code="unsupported")
 
 
 NO_USABLE_ADMIN = ("It holds no enabled Admin account that could sign in with its authentication settings, "
@@ -218,7 +234,7 @@ def _check_usable_admin(database: Path, config: Path, action: str) -> None:
     except (OSError, ValueError, sqlite3.Error):
         raise _invalid(action) from None
     if not usable:
-        raise BackupRejected(action, NO_USABLE_ADMIN, reason="no_usable_admin")
+        raise BackupRejected(action, NO_USABLE_ADMIN, reason="no_usable_admin", detail_code="no_usable_admin")
 
 
 @dataclass(frozen=True)
@@ -482,10 +498,10 @@ def list_restore_points() -> list[RestorePoint]:
 
 def restore_point(point_id: str, action: str = "restore") -> RestorePoint:
     if not isinstance(point_id, str) or not _BACKUP_DIR_RE.fullmatch(point_id):
-        raise BackupRejected(action, MISSING, reason="not_found")
+        raise BackupRejected(action, MISSING, reason="not_found", detail_code="missing")
     path = _folder() / point_id
     if not _managed_backup_dir(path):
-        raise BackupRejected(action, MISSING, reason="not_found")
+        raise BackupRejected(action, MISSING, reason="not_found", detail_code="missing")
     return _restore_point(path)
 
 
@@ -988,7 +1004,7 @@ async def add_backup(chunks) -> RestorePoint:
             manifest = await asyncio.to_thread(_validate_directory, unpacked, live, "add")
             target = folder / manifest["timestamp"]
             if target.exists():
-                raise BackupRejected("add", "This backup is already in Backups.", reason="duplicate")
+                raise BackupRejected("add", "This backup is already in Backups.", reason="duplicate", detail_code="duplicate")
             os.rename(unpacked, target)
         except BackupRejected:
             raise
@@ -1098,7 +1114,7 @@ class StagedRestore:
             # An earlier restore is unresolved: its journal is the only record
             # of where the original state is. Nothing is moved, nothing replaced.
             raise BackupRejected("restore", "An earlier restore has not been reversed yet; restart DebridPulse first.",
-                                 reason="unresolved")
+                                 reason="unresolved", detail_code="unresolved")
         _retire_wal(DB_PATH)
         self.moves = self._plan()
         atomic_write_json(journal, {

@@ -49,6 +49,7 @@ from services.notifications import NotificationService
 from application.dependencies import get_application
 from application.service import ApplicationService
 from transfers.storage import StorageReason, StorageState
+from core.localization import CodedRuntimeError, DisplayError, refusal
 
 
 router = APIRouter()
@@ -138,14 +139,14 @@ def _resolve_repository_root() -> Path:
 def _legal_document_payload(document_id: str) -> dict[str, str]:
     meta = _LEGAL_DOCUMENTS.get(str(document_id or ""))
     if meta is None:
-        raise HTTPException(404, "Unknown bundled document")
+        raise DisplayError(404, "Unknown bundled document", code="legal.document_unknown")
 
     root = _resolve_repository_root()
     document_path = root.joinpath(*meta["path"])
     try:
         content = document_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise HTTPException(500, "Bundled document could not be read") from exc
+        raise DisplayError(500, "Bundled document could not be read", code="legal.document_unreadable") from exc
 
     return {
         "id": document_id,
@@ -548,7 +549,7 @@ async def validate_alldebrid(payload: AllDebridValidationRequest,
     else:
         api_key = payload.api_key.strip() or str(alldebrid.api_key or "").strip()
     if not api_key:
-        raise HTTPException(400, "No API key configured or entered")
+        raise DisplayError(400, "No API key configured or entered", code="provider.api_key_missing")
 
     # Exactly what this request authenticates with, in the shape the AllDebrid
     # definition declares as its verification material.
@@ -558,7 +559,7 @@ async def validate_alldebrid(payload: AllDebridValidationRequest,
         user = await service.get_user()
     except Exception as exc:
         await _record_verification_outcome(application, ALLDEBRID_NAMESPACE, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc
     accepted = await _record_verification_outcome(application, ALLDEBRID_NAMESPACE, fingerprint, True)
     user_data = user.get("user", user)
     return {
@@ -628,10 +629,10 @@ async def validate_realdebrid(application: ApplicationService = Depends(get_appl
     """The Real-Debrid Test: prove the stored authorization against /user."""
     options = realdebrid_canonical_options(get_settings())
     if not (options.client_id and options.client_secret and options.refresh_token):
-        raise HTTPException(400, "Real-Debrid is not connected")
+        raise DisplayError(400, "Real-Debrid is not connected", code="provider.realdebrid_not_connected")
     account, accepted, failure = await _prove_realdebrid(application)
     if failure:
-        raise HTTPException(502, failure)
+        raise refusal(502, failure)
     return {"ok": True, **account, **_accepted(REALDEBRID_NAMESPACE, accepted)}
 
 
@@ -648,7 +649,7 @@ async def start_realdebrid_authorization():
     try:
         return await realdebrid_admin.start_authorization(service=_device_service())
     except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from None
+        raise refusal(502, _safe_failure(exc), exc) from None
 
 
 @router.post("/integrations/realdebrid/authorization/poll")
@@ -666,7 +667,7 @@ async def poll_realdebrid_authorization(application: ApplicationService = Depend
     try:
         outcome = await realdebrid_admin.poll_authorization(service=_device_service())
     except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from None
+        raise refusal(502, _safe_failure(exc), exc) from None
     if not isinstance(outcome, realdebrid_admin.Authorized):
         return outcome
     credential = outcome.credential
@@ -765,10 +766,10 @@ async def get_torbox_runtime_status(application: ApplicationService = Depends(ge
 async def validate_torbox(application: ApplicationService = Depends(get_application)):
     """The TorBox Test: prove the saved token against the account."""
     if not torbox_canonical_options(get_settings()).api_token:
-        raise HTTPException(400, "TorBox is not connected")
+        raise DisplayError(400, "TorBox is not connected", code="provider.torbox_not_connected")
     account, accepted, failure = await _prove_torbox(application)
     if failure:
-        raise HTTPException(502, failure)
+        raise refusal(502, failure)
     return {"ok": True, **account, **_accepted(TORBOX_NAMESPACE, accepted)}
 
 
@@ -785,7 +786,7 @@ async def start_torbox_authorization():
     try:
         return await torbox_admin.start_authorization(service=_torbox_device_service())
     except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from None
+        raise refusal(502, _safe_failure(exc), exc) from None
 
 
 @router.post("/integrations/torbox/authorization/poll")
@@ -797,7 +798,7 @@ async def poll_torbox_authorization(application: ApplicationService = Depends(ge
     try:
         outcome = await torbox_admin.poll_authorization(service=_torbox_device_service())
     except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from None
+        raise refusal(502, _safe_failure(exc), exc) from None
     if not isinstance(outcome, torbox_admin.Authorized):
         return outcome
     saved = await _write_torbox(application, options={"api_token": outcome.token})
@@ -855,7 +856,7 @@ async def validate_debridlink(payload: DebridLinkValidationRequest,
     options = debridlink_canonical_options(get_settings())
     api_key = payload.api_key.strip() or str(options.api_key or "").strip()
     if not api_key:
-        raise HTTPException(400, "No API key configured or entered")
+        raise DisplayError(400, "No API key configured or entered", code="provider.api_key_missing")
     # Exactly what this request authenticates with, in the shape the
     # Debrid-Link definition declares as its verification material.
     fingerprint = verification_fingerprint(debridlink_credential_material(options.model_copy(
@@ -864,7 +865,7 @@ async def validate_debridlink(payload: DebridLinkValidationRequest,
         account = await debridlink_admin.verify(api_key, options)
     except Exception as exc:
         await _record_verification_outcome(application, DEBRIDLINK_NAMESPACE, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc
     accepted = await _record_verification_outcome(application, DEBRIDLINK_NAMESPACE, fingerprint, True)
     return {"ok": True, **account, "verification": verification_proof(fingerprint),
             **_accepted(DEBRIDLINK_NAMESPACE, accepted)}
@@ -901,7 +902,7 @@ async def validate_premiumize(payload: PremiumizeValidationRequest,
     options = premiumize_canonical_options(get_settings())
     api_key = payload.api_key.strip() or str(options.api_key or "").strip()
     if not api_key:
-        raise HTTPException(400, "No API key configured or entered")
+        raise DisplayError(400, "No API key configured or entered", code="provider.api_key_missing")
     # Exactly what this request authenticates with, in the shape the
     # Premiumize definition declares as its verification material.
     fingerprint = verification_fingerprint(premiumize_credential_material(options.model_copy(
@@ -910,7 +911,7 @@ async def validate_premiumize(payload: PremiumizeValidationRequest,
         account = await premiumize_admin.verify(api_key, options)
     except Exception as exc:
         await _record_verification_outcome(application, PREMIUMIZE_NAMESPACE, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc
     accepted = await _record_verification_outcome(application, PREMIUMIZE_NAMESPACE, fingerprint, True)
     return {"ok": True, **account, "verification": verification_proof(fingerprint),
             **_accepted(PREMIUMIZE_NAMESPACE, accepted)}
@@ -930,7 +931,7 @@ async def validate_discord():
     cfg = get_settings()
     webhook_url = notifications.discord_destination(cfg)
     if not webhook_url:
-        raise HTTPException(400, "No Discord webhook configured")
+        raise DisplayError(400, "No Discord webhook configured", code="notifications.discord_missing")
     fingerprint = notifications.verification_fingerprints(cfg)[notifications.DISCORD_SUBJECT]
 
     try:
@@ -938,13 +939,13 @@ async def validate_discord():
         # operator-initiated Test report the actual delivery failure without a
         # second transport existing to produce it.
         if not await NotificationService(webhook_url).test(strict=True):
-            raise RuntimeError("Discord test did not send a notification")
+            raise CodedRuntimeError("Discord test did not send a notification", code="notifications.discord_test_failed")
     except Exception as exc:
         # A failure is the newest truth about this material: it retires a proof
         # that has stopped being true rather than leaving the card claiming
         # Verified. It changes no configuration.
         await _record_notification_outcome(notifications.DISCORD_SUBJECT, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc
     return {"ok": True, "notifications": await _record_notification_outcome(
         notifications.DISCORD_SUBJECT, fingerprint, True)}
 
@@ -964,7 +965,7 @@ async def send_statistics_report():
     cfg = get_settings()
     reporting_url = notifications.reporting_destination(cfg)
     if not reporting_url:
-        raise HTTPException(400, "No reporting or primary Discord webhook configured")
+        raise DisplayError(400, "No reporting or primary Discord webhook configured", code="notifications.report_missing")
     fingerprint = notifications.verification_fingerprints(cfg)[notifications.REPORTING_SUBJECT]
     hours = notifications.report_window_hours(cfg)
 
@@ -980,7 +981,7 @@ async def send_statistics_report():
         raise
     except Exception as exc:
         await _record_notification_outcome(notifications.REPORTING_SUBJECT, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc
     return {**result, "notifications": await _record_notification_outcome(
         notifications.REPORTING_SUBJECT, fingerprint, True)}
 
@@ -1017,7 +1018,7 @@ def _usenet_admin(application: ApplicationService):
     try:
         return application.integration_admin("sabnzbd")
     except ValueError:
-        raise HTTPException(503, "The Usenet integration is not available") from None
+        raise DisplayError(503, "The Usenet integration is not available", code="usenet.unavailable") from None
 
 
 @router.get("/integration-status/media")
@@ -1109,11 +1110,11 @@ async def test_usenet_server(payload: UsenetServerDraft,
                              application: ApplicationService = Depends(get_application)):
     """Validate an edited-but-unsaved server against SAB, with no persistence."""
     if not payload.host.strip():
-        raise HTTPException(400, "A server host is required")
+        raise DisplayError(400, "A server host is required", code="usenet.host_required")
     admin = _usenet_admin(application)
     proof = await _verify_usenet_server(application, admin, payload)
     if proof.failure:
-        raise HTTPException(502, proof.failure)
+        raise refusal(502, proof.failure)
     envelope = _accepted(USENET_NAMESPACE, proof.accepted)
     if not proof.ok:
         return {**proof.result, **envelope}
@@ -1184,4 +1185,4 @@ async def get_usenet_configuration_drift(application: ApplicationService = Depen
     try:
         return (await _usenet_admin(application).drift()).public()
     except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from exc
+        raise refusal(502, _safe_failure(exc), exc) from exc

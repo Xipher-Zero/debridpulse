@@ -58,6 +58,7 @@ from datetime import datetime, timezone
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, model_validator
+from core.localization import CodedValueError
 
 CATALOG = {
     "dark": (
@@ -109,7 +110,7 @@ class LoginAppearance(BaseModel):
     @model_validator(mode="after")
     def _in_catalog(self):
         if self.palette not in PALETTES[self.mode]:
-            raise ValueError("Unknown palette for this mode")
+            raise CodedValueError("Unknown palette for this mode", code="appearance.palette_unknown")
         return self
 
 
@@ -138,9 +139,9 @@ class AppearanceUpdate(BaseModel):
     @model_validator(mode="after")
     def _named_and_set(self):
         if not self.model_fields_set:
-            raise ValueError("Name at least one appearance choice")
+            raise CodedValueError("Name at least one appearance choice", code="appearance.choice_required")
         if any(getattr(self, field) is None for field in self.model_fields_set):
-            raise ValueError("An appearance choice cannot be null")
+            raise CodedValueError("An appearance choice cannot be null", code="appearance.choice_null")
         return self
 
 
@@ -279,7 +280,7 @@ async def set_presentation(account_id: str, mode: str) -> str:
     without a record gets the native theme with it, and an existing record
     keeps its theme exactly as stored."""
     if mode not in get_args(PresentationMode):
-        raise ValueError("Unknown presentation")
+        raise CodedValueError("Unknown presentation", code="appearance.presentation_unknown")
     async with _transaction() as db:
         await db.execute(
             "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,presentation_mode,updated_at) "
@@ -302,7 +303,7 @@ class LocaleUpdate(BaseModel):
         from core.localization import locale_tags
 
         if self.locale not in locale_tags():
-            raise ValueError("Unknown locale")
+            raise CodedValueError("Unknown locale", code="appearance.locale_unknown")
         return self
 
 
@@ -323,7 +324,7 @@ async def set_locale(account_id: str, tag: str) -> str:
     from core.localization import locale_tags
 
     if tag not in locale_tags():
-        raise ValueError("Unknown locale")
+        raise CodedValueError("Unknown locale", code="appearance.locale_unknown")
     async with _transaction() as db:
         await db.execute(
             "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,locale,updated_at) "

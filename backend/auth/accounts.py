@@ -174,6 +174,8 @@ class AccountRefused(Exception):
         super().__init__(message)
         self.code = code
         self.params = dict(params or {})
+        # The same name every response boundary reads (``core.localization.code_of``).
+        self.display_code, self.display_params = code, self.params
 
 
 class InvalidEmail(AccountRefused):
@@ -566,7 +568,7 @@ async def _mutation(touched: list[str], settings=None, persist=None, *, rebind: 
         had_usable_admin = await _usable_admin(db, current)
         yield db
         if had_usable_admin and not await _usable_admin(db, settings if settings is not None else current):
-            raise AccountRefused("At least one usable Admin account must remain")
+            raise AccountRefused("At least one usable Admin account must remain", code="account.last_admin")
         await _touch(db, touched)
         if persist is not None:
             persist()
@@ -588,13 +590,13 @@ async def _locked_mutation(touched: list[str], *, rebind: bool = False):
 async def _require(db, account_id: str) -> Account:
     account = await _fetch(db, account_id)
     if account is None or account.deleted_at or account.merged_into:
-        raise AccountRefused("Account does not exist")
+        raise AccountRefused("Account does not exist", code="account.missing")
     return account
 
 
 def _not_self(actor_id: str, account_id: str) -> None:
     if str(actor_id or "") == str(account_id or ""):
-        raise AccountRefused("An account cannot make this change to itself")
+        raise AccountRefused("An account cannot make this change to itself", code="account.self_change")
 
 
 # A password set from now on -- created, changed by its account or reset by an
@@ -633,9 +635,9 @@ async def _set_username(db, account_id: str, username: str) -> None:
     never taken over or varied."""
     name = str(username or "").strip()
     if not name or len(name) > USERNAME_LIMIT:
-        raise AccountRefused("A username is required")
+        raise AccountRefused("A username is required", code="account.username_required")
     if await _username_owner(db, name, account_id):
-        raise AccountRefused("That username belongs to another account")
+        raise AccountRefused("That username belongs to another account", code="account.username_taken")
     await db.execute("UPDATE accounts SET username=?, updated_at=? WHERE id=?", (name, _now(), account_id))
 
 
@@ -822,7 +824,7 @@ async def set_own_local_credential(
     async with _mutation(touched, settings, persist) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
-            raise AccountRefused("Integration accounts have no password")
+            raise AccountRefused("Integration accounts have no password", code="account.integration_no_password")
         if username is not None:
             await _set_username(db, account.id, username)
         if clear:
@@ -878,7 +880,7 @@ async def import_legacy_credential(username: str, password_hash: str) -> bool:
 async def create_local_account(username: str, password: str, *, role, display_name: str = "") -> Account:
     role = Role(role)
     if role not in HUMAN_ROLES:
-        raise AccountRefused("Local accounts hold a human role")
+        raise AccountRefused("Local accounts hold a human role", code="account.local_human_role")
     account_id = str(uuid.uuid4())
     verifier = await _new_verifier(password)
     async with _locked_mutation([]) as db:
@@ -912,9 +914,9 @@ async def set_role(actor_id: str, account_id: str, role) -> None:
     async with _locked_mutation([str(account_id)], rebind=True) as db:
         account = await _require(db, account_id)
         if account.protected:
-            raise AccountRefused("A default account's role cannot change")
+            raise AccountRefused("A default account's role cannot change", code="account.default_role_fixed")
         if (account.role is Role.INTEGRATION) != (role is Role.INTEGRATION):
-            raise AccountRefused("Integration and human roles are not interchangeable")
+            raise AccountRefused("Integration and human roles are not interchangeable", code="account.roles_not_interchangeable")
         await db.execute("UPDATE accounts SET role=? WHERE id=?", (role.value, account.id))
 
 
@@ -965,7 +967,7 @@ async def set_enabled(actor_id: str, account_id: str, enabled: bool) -> list[int
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         if account.protected == "default_admin" and not enabled:
-            raise AccountRefused("The default Admin account cannot be disabled")
+            raise AccountRefused("The default Admin account cannot be disabled", code="account.default_admin_not_disableable")
         await db.execute("UPDATE accounts SET enabled=? WHERE id=?", (int(bool(enabled)), account.id))
         if not enabled:
             withdrawn = await _withdraw_owned_demand(db, account.id, "account_disabled")
@@ -983,7 +985,7 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         if account.protected:
-            raise AccountRefused("A default account cannot be deleted")
+            raise AccountRefused("A default account cannot be deleted", code="account.default_not_deletable")
         await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
         # A removed account's username is released with its password.
         await db.execute("UPDATE accounts SET enabled=0, username=NULL, deleted_at=? WHERE id=?",
@@ -1008,27 +1010,27 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
     sources = [str(source_ids)] if isinstance(source_ids, str) else [str(item) for item in source_ids]
     sources = list(dict.fromkeys(sources))
     if not sources:
-        raise AccountRefused("Choose at least one account to merge")
+        raise AccountRefused("Choose at least one account to merge", code="account.merge_none")
     _not_self(actor_id, target_id)
     for source_id in sources:
         _not_self(actor_id, source_id)
     if str(target_id) in sources:
-        raise AccountRefused("An account cannot be merged into itself")
+        raise AccountRefused("An account cannot be merged into itself", code="account.merge_self")
     async with _locked_mutation([*sources, str(target_id)]) as db:
         target = await _require(db, target_id)
         holders = []
         for source_id in sources:
             source = await _require(db, source_id)
             if source.protected:
-                raise AccountRefused("A default account cannot be merged away")
+                raise AccountRefused("A default account cannot be merged away", code="account.merge_default")
             if (source.role is Role.INTEGRATION) != (target.role is Role.INTEGRATION):
-                raise AccountRefused("Integration and human accounts cannot be merged")
+                raise AccountRefused("Integration and human accounts cannot be merged", code="account.merge_kinds_mixed")
             if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (source.id,)):
                 holders.append(source.id)
         if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (target.id,)):
             holders.append(target.id)
         if len(holders) > 1:
-            raise AccountRefused("More than one of these accounts holds a local credential; remove all but one first")
+            raise AccountRefused("More than one of these accounts holds a local credential; remove all but one first", code="account.merge_credentials_conflict")
         now = _now()
         for source_id in sources:
             if source_id in holders:
@@ -1050,14 +1052,14 @@ async def reset_password(actor_id: str, account_id: str, password: str, *, usern
     _not_self(actor_id, account_id)
     known = await get_account(account_id)
     if known is not None and known.role is Role.INTEGRATION:
-        raise AccountRefused("Integration accounts have no password")
+        raise AccountRefused("Integration accounts have no password", code="account.integration_no_password")
     if not password:
         raise AccountRefused("A password is required", code="account.password_required")
     verifier = await _new_verifier(password)
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
-            raise AccountRefused("Integration accounts have no password")
+            raise AccountRefused("Integration accounts have no password", code="account.integration_no_password")
         if username is not None:
             await _set_username(db, account.id, username)
         await _set_password_row(db, account.id, verifier)
@@ -1075,9 +1077,9 @@ async def set_username(actor_id: str, account_id: str, username: str) -> None:
     async with _locked_mutation([str(account_id)], rebind=known is not None and not known.has_password) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
-            raise AccountRefused("Integration accounts have no username")
+            raise AccountRefused("Integration accounts have no username", code="account.integration_no_username")
         if known is None or account.has_password != known.has_password:
-            raise AccountRefused("The account changed meanwhile; try again")
+            raise AccountRefused("The account changed meanwhile; try again", code="account.changed")
         await _set_username(db, account.id, username)
 
 
@@ -1136,7 +1138,7 @@ async def set_own_email(account_id: str, email: str, expected: str = "") -> str:
     async with _locked_mutation([]) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
-            raise AccountRefused("Integration accounts have no email")
+            raise AccountRefused("Integration accounts have no email", code="account.integration_no_email")
         cursor = await db.execute(
             "UPDATE accounts SET email=?, email_verified=0, email_verified_known=1, email_self_entered=1, updated_at=? "
             "WHERE id=? AND email=? AND (email='' OR email_self_entered=1)", (address, _now(), account.id, expected))
@@ -1280,19 +1282,20 @@ async def _require_proven(db, account_id: str, proven: str) -> None:
         raise AccountRefused("The password was changed meanwhile; try again", code="account.password_changed")
 
 
-def _first_password_refusal(account: Account | None) -> str:
-    """Why ``account`` cannot set a first password now, or ``""``."""
+def _first_password_refusal(account: Account | None) -> tuple[str, str]:
+    """Why ``account`` cannot set a first password now, and that condition's
+    code, or ``("", "")``."""
     if account is None or account.deleted_at or account.merged_into:
-        return "Account does not exist"
+        return "Account does not exist", "account.missing"
     if account.role is Role.INTEGRATION:
-        return "Integration accounts have no password"
+        return "Integration accounts have no password", "account.integration_no_password"
     if not account.enabled:
-        return "The account is disabled"
+        return "The account is disabled", "account.disabled"
     if not account.username:
-        return "The account has no username to sign in with"
+        return "The account has no username to sign in with", "account.no_username"
     if account.has_password:
-        return "The account already has a password; use Change Password"
-    return ""
+        return "The account already has a password; use Change Password", "account.password_exists"
+    return "", ""
 
 
 async def set_own_first_password(account_id: str, new_password: str, *, peer: str = "unknown") -> None:
@@ -1331,9 +1334,9 @@ async def first_password_verifier(account_id: str, new_password: str, *, peer: s
     if not new_password:
         raise AccountRefused("A password is required", code="account.password_required")
     _new_password_rule(new_password)
-    refusal = _first_password_refusal(await get_account(account_id))
+    refusal, code = _first_password_refusal(await get_account(account_id))
     if refusal:
-        raise AccountRefused(refusal)
+        raise AccountRefused(refusal, code=code)
     if not password_attempt_admission.acquire(peer):
         raise PasswordAuthenticationBusy
     return await hash_password_async(new_password, finished=lambda: password_attempt_admission.release(peer))
@@ -1345,9 +1348,9 @@ async def commit_first_password(account_id: str, verifier: str, *, settings=None
     caller holds the authentication configuration lock."""
     async with _mutation([str(account_id)], settings, persist) as db:
         account = await _require(db, account_id)
-        refusal = _first_password_refusal(account)
+        refusal, code = _first_password_refusal(account)
         if refusal:
-            raise AccountRefused(refusal)
+            raise AccountRefused(refusal, code=code)
         if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (account.id,)):
             raise AccountRefused("The account already has a password; use Change Password", code="account.password_exists")
         await _set_password_row(db, account.id, verifier)
@@ -1394,19 +1397,19 @@ async def create_token(account_id: str, label: str, *, succeeds: str | None = No
     this account or to an account merged into it. Rotation withdraws nothing."""
     label = str(label or "").strip()[:128]
     if not label:
-        raise AccountRefused("A token needs a label")
+        raise AccountRefused("A token needs a label", code="account.token_label_required")
     raw = TOKEN_PREFIX + secrets.token_urlsafe(_TOKEN_RANDOM_BYTES)
     token_id = str(uuid.uuid4())
     client_id = token_id
     async with _transaction() as db:
         account = await _require(db, account_id)
         if account.role is not Role.INTEGRATION:
-            raise AccountRefused("Only Integration accounts hold API tokens")
+            raise AccountRefused("Only Integration accounts hold API tokens", code="account.tokens_integration_only")
         if succeeds is not None:
             predecessor = await db.fetchone("SELECT id, account_id, client_id FROM account_tokens WHERE id=?",
                                             (str(succeeds),))
             if predecessor is None or str(predecessor["account_id"]) not in await _owned_account_ids(db, account.id):
-                raise AccountRefused("The token to succeed does not exist")
+                raise AccountRefused("The token to succeed does not exist", code="account.token_successor_missing")
             client_id = str(predecessor["client_id"] or predecessor["id"])
             await db.execute("UPDATE account_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
                              (_now(), predecessor["id"]))

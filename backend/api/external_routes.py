@@ -20,9 +20,26 @@ from core.config import config_write_lock, get_settings, journal_configuration_c
 from db.database import get_db
 from external.profiles import DeliveryProfile, ExternalDeliverySettings, confined_to
 from external.service import ExternalClients, ExternalRefused
+from core.localization import UNCLASSIFIED, code_of, disclosed, fact
 
 router = APIRouter()
 PREFIX = "/external/v1"
+
+
+def _message_fields(message: str, code: str, params: dict) -> dict:
+    """A structured refusal's ``message_code`` and ``params``, never disclosing
+    more than its message (``disclosed``); none where they cannot be guaranteed."""
+    named, safe = disclosed(message, code, params)
+    return {"message_code": named, "params": safe} if named != UNCLASSIFIED else {}
+
+
+def _validator_code(exc: ValidationError) -> dict:
+    """A one-rule catalog refusal names that validator's own code
+    (``message_code``); several rules, or one without a code, name none."""
+    errors = exc.errors()
+    named, params = code_of((errors[0].get("ctx") or {}).get("error")) if len(errors) == 1 else (None, {})
+    # Never more than the joined message shows (``disclosed``).
+    return _message_fields("; ".join(str(item.get("msg")) for item in errors), named, params)
 
 
 def _refused(exc: ExternalRefused) -> HTTPException:
@@ -169,7 +186,8 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
             current = load_settings()
             if current.external_delivery.revision != body.expected_revision:
                 raise HTTPException(409, {"code": "stale_revision", "revision": current.external_delivery.revision,
-                                          "message": "The profile catalog changed; reload it and try again"})
+                                          "message": "The profile catalog changed; reload it and try again",
+                                          "message_code": "profiles.stale_revision", "params": {}})
             # Containment is judged for every profile this write creates or
             # changes in any way. Only a profile carried exactly as stored is
             # not re-judged: a Download Folder change must not make every later
@@ -186,13 +204,17 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
                     raise HTTPException(422, {
                         "code": "invalid_profile", "profile": profile.id, "field": "local_root",
                         "message": f"Delivery profile '{profile.id}': its DP Download Path (local_root) must be "
-                                   f"the Download Folder or beneath it"})
+                                   f"the Download Folder or beneath it",
+                        **_message_fields(f"Delivery profile '{profile.id}': its DP Download Path (local_root) must be "
+                                          f"the Download Folder or beneath it",
+                                          "profiles.root_outside_downloads", {"profile": fact(profile.id)})})
             try:
                 catalog = ExternalDeliverySettings(profiles=body.profiles,
                                                    revision=current.external_delivery.revision + 1)
             except ValidationError as exc:
                 raise HTTPException(422, {"code": "invalid_profile",
-                                          "message": "; ".join(str(item.get("msg")) for item in exc.errors())})
+                                          "message": "; ".join(str(item.get("msg")) for item in exc.errors()),
+                                          **_validator_code(exc)})
             replaced = {profile.id: profile for profile in catalog.profiles}
             authorized = set(body.retire_dependents)
             retired: list[str] = []
@@ -215,7 +237,8 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
                     raise HTTPException(409, {
                         "code": "profile_in_use", "profiles": in_use, "affected_jobs": total,
                         "message": f"{total} unsettled external job{'s' if total != 1 else ''} still depend"
-                                   f"{'s' if total == 1 else ''} on this profile; nothing was changed"})
+                                   f"{'s' if total == 1 else ''} on this profile; nothing was changed",
+                        "message_code": "profiles.in_use", "params": {"count": total}})
                 retired = await ExternalClients.retire_dependents_in(db, retiring)
                 current.external_delivery = catalog
                 # The database commit is the write's one commit point: the

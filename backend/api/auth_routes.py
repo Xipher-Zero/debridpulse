@@ -1097,7 +1097,7 @@ async def logout(request: Request):
     principal = getattr(request.state, "principal", Principal.anonymous())
     if principal.mechanism not in {AuthMechanism.PASSWORD_SESSION, AuthMechanism.OIDC_SESSION}:
         return JSONResponse(
-            content={"detail": "No browser application session"},
+            content={"detail": "No browser application session", "code": "auth.no_session", "params": {}},
             status_code=400,
         )
 

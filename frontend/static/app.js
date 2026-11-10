@@ -609,6 +609,31 @@ function openExternalUrl(url) {
   return true;
 }
 
+/* A refusal in the reader's language (WS3e). The server names it by ``code``
+ * (a structured refusal by its ``message_code``, beside its machine ``code``),
+ * with ``params``; a transfer failure by its category. The catalog says
+ * ``error.<code>`` (``error.category.<category>``); a parameter that is itself
+ * a coded cause ({"$t", "$v"}) is said the same way. An absent, unknown or
+ * ``unclassified`` code says nothing here, and the caller keeps the server's
+ * English ``detail`` -- never a guess from its words. */
+function saidRefusal(data, first) {
+  const holder = first && typeof first === 'object' ? first : data;
+  const named = typeof holder?.message_code === 'string' ? holder.message_code
+    : typeof holder?.code === 'string' ? holder.code : '';
+  const values = value => (value && typeof value === 'object' && typeof value.$t === 'string'
+    ? (DPI18n.has(value.$t) ? DPI18n.t(value.$t, resolved(value.$v)) : '') : value);
+  const resolved = params => Object.fromEntries(Object.entries(params && typeof params === 'object' ? params : {})
+    .map(([name, value]) => [name, values(value)]));
+  if (named && named !== 'unclassified' && DPI18n.has(`error.${named}`)) {
+    const params = resolved(holder.params);
+    // A coded cause the catalog cannot say leaves the whole refusal to its English.
+    if (!Object.values(params).some(value => value === '')) return DPI18n.t(`error.${named}`, params);
+  }
+  // A transfer refusal: its category's own sentence (the English is the server's ``detail``).
+  const category = holder?.category || data?.error?.category;
+  return typeof category === 'string' && DPI18n.has(`error.category.${category}`) ? DPI18n.t(`error.category.${category}`) : '';
+}
+
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   // A file sent as itself: the raw body, typed by the file.
@@ -639,9 +664,16 @@ async function api(method, path, body, timeoutMs, options) {
       const detail = data.detail;
       // A request-body refusal is a list of refused values: the first one speaks.
       const first = Array.isArray(detail) ? detail[0] : detail;
-      const error = new Error((first && typeof first === 'object' ? first.message || first.msg : first) || r.statusText);
+      const english = (first && typeof first === 'object' ? first.message || first.msg : first) || r.statusText;
+      const said = saidRefusal(data, first);
+      const error = new Error(said || english);
       error.detail = detail;
       error.status = r.status;
+      // The refusal's identity, and whether its words are the catalog's or the server's English.
+      error.code = typeof data?.code === 'string' ? data.code : null;
+      error.params = data?.params && typeof data.params === 'object' ? data.params : {};
+      error.english = english;
+      error.localized = Boolean(said);
       throw error;
     }
     return data;

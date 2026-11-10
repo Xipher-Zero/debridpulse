@@ -39,6 +39,7 @@ from auth.accounts import Role
 from services import notification_service as boundary
 from services.notifications import NotificationService as DiscordNotificationClient
 from services.notifications import is_discord_webhook_url
+from core.localization import Coded
 
 logger = logging.getLogger("debridpulse.notify")
 
@@ -100,7 +101,7 @@ class AccountNotificationUpdate(BaseModel):
     clear_secrets: list[str] = Field(default_factory=list, max_length=len(DESTINATIONS))
 
 
-class NotificationRefused(ValueError):
+class NotificationRefused(Coded, ValueError):
     """A personal notification change or action is not acceptable."""
 
 
@@ -175,18 +176,18 @@ async def update(account_id: str, change: AccountNotificationUpdate) -> AccountN
     boundary's own rule."""
     clears = set(change.clear_secrets)
     if not clears <= set(DESTINATIONS):
-        raise NotificationRefused("Only a stored webhook can be cleared")
+        raise NotificationRefused("Only a stored webhook can be cleared", code="notifications.clear_unstored")
     supplied = change.model_dump(exclude_none=True, exclude={"clear_secrets"})
     for field in DESTINATIONS:
         value = str(supplied.get(field) or "").strip()
         if value and not is_discord_webhook_url(value):
-            raise NotificationRefused("Enter a Discord webhook URL (https://discord.com/api/webhooks/…)")
+            raise NotificationRefused("Enter a Discord webhook URL (https://discord.com/api/webhooks/…)", code="notifications.webhook_invalid")
         if field in supplied:
             supplied[field] = value
     if "discord_avatar_url" in supplied:
         supplied["discord_avatar_url"] = str(supplied["discord_avatar_url"]).strip()
         if not _avatar_acceptable(supplied["discord_avatar_url"]):
-            raise NotificationRefused("The avatar must be a public HTTPS image URL (PNG, JPG, GIF, or WEBP)")
+            raise NotificationRefused("The avatar must be a public HTTPS image URL (PNG, JPG, GIF, or WEBP)", code="notifications.avatar_invalid")
     if "discord_username" in supplied:
         supplied["discord_username"] = str(supplied["discord_username"]).strip()
 

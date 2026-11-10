@@ -41,6 +41,7 @@ from typing import Any
 
 from core import search_contract
 from core.search_contract import SearchPlan
+from core.localization import Coded
 
 logger = logging.getLogger("debridpulse.event_journal")
 
@@ -362,7 +363,7 @@ async def pending_index_rows(db, bound: int) -> int:
 # ── reading ─────────────────────────────────────────────────────────────────
 
 
-class SearchUnavailable(RuntimeError):
+class SearchUnavailable(Coded, RuntimeError):
     """Text search cannot run on this installation right now; ``message`` is
     safe to show."""
 
@@ -383,7 +384,7 @@ def _phrase(text: str) -> str:
 LAST_PAGE_COUNT_LIMIT = 500_000
 
 
-class LastPageUnavailable(RuntimeError):
+class LastPageUnavailable(Coded, RuntimeError):
     """The final page of this investigation cannot be proven right now;
     ``message`` is safe to show."""
 
@@ -441,7 +442,8 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
             if not await _fts_present(db):
                 if search.transfer_id is None:
                     raise SearchUnavailable("Text search is unavailable on this installation "
-                                            "(its SQLite runtime has no FTS5 trigram support).")
+                                            "(its SQLite runtime has no FTS5 trigram support).",
+                                            code="search.unavailable_runtime")
                 status = search_contract.UNAVAILABLE
             else:
                 pending = await pending_index_rows(db, INDEX_BATCH + 1)
@@ -501,10 +503,13 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
         if status != search_contract.COMPLETE:
             raise LastPageUnavailable(
                 "The last page can't be found while text search is unavailable." if status == search_contract.UNAVAILABLE
-                else "The last page can't be found while recent events are still being indexed. Try again shortly.")
+                else "The last page can't be found while recent events are still being indexed. Try again shortly.",
+                code="activity.last_page_search_unavailable" if status == search_contract.UNAVAILABLE
+                else "activity.last_page_indexing")
         total = await matches(where(), LAST_PAGE_COUNT_LIMIT + 1)
         if total > LAST_PAGE_COUNT_LIMIT:
-            raise LastPageUnavailable("This history is too large to count for a direct jump to the last page.")
+            raise LastPageUnavailable("This history is too large to count for a direct jump to the last page.",
+                                      code="activity.last_page_too_large")
         final_page = max(1, -(-total // limit))
         found = list(reversed(await rows(where(), "ASC", total - (final_page - 1) * limit)))
         has_newer = final_page > 1

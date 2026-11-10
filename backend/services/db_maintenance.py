@@ -16,6 +16,7 @@ import logging
 
 from db import event_journal
 from db.database import get_db
+from core.localization import CodedRuntimeError
 
 logger = logging.getLogger("debridpulse.db_maintenance")
 
@@ -90,7 +91,7 @@ _KEPT = frozenset({"transfer_controls", "schema_migrations", "event_journal_inde
 
 async def wipe_database(*, verified_quiesced: bool = False) -> dict:
     if not verified_quiesced:
-        raise RuntimeError("Database wipe requires verified quiesced transfer state")
+        raise CodedRuntimeError("Database wipe requires verified quiesced transfer state", code="maintenance.wipe_not_quiesced")
     async with get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
         # Operational integration state is application database state, not user
