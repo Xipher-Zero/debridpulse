@@ -89,3 +89,29 @@ def says(source: str, words: str) -> bool:
                for built in re.findall(r"`([a-z][\w.]*\$\{[^`]*?\}[\w.]*)`", source)):
             return True
     return False
+
+
+_NAMED = re.compile(r"""(['"`])([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)\1(\s*,\s*\{([^{}]*)\})?""")
+_VALUE = re.compile(r"""(\w+):\s*'((?:[^'\\]|\\.)*)'""")
+
+
+def spoken(source: str) -> str:
+    """An owner's source as a reader hears it in English: each catalog key it
+    names -- quoted, with any literal argument object after it (``keyed('help.x',
+    {path: '/download'})``) -- is replaced by that key's English message, in the
+    same quotes (``accordion('AllDebrid', ...``), its
+    plain ``{name}`` arguments filled in from the literal values (ICU quoting
+    undone). A source-reading oracle keeps its meaning -- what the owner says,
+    where it says it -- whether the words are literals or the catalog's; words
+    the owner no longer says are absent from it too."""
+    messages = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))["messages"]
+
+    def say(match: re.Match) -> str:
+        key = match.group(2)
+        if key not in messages:
+            return match.group(0)
+        values = {name: re.sub(r"\\(.)", r"\1", value) for name, value in _VALUE.findall(match.group(4) or "")}
+        text = re.sub(r"\{(\w+)\}", lambda m: values.get(m.group(1), m.group(0)), messages[key])
+        return match.group(1) + text.replace("''", "'") + match.group(1)
+
+    return _NAMED.sub(say, source)

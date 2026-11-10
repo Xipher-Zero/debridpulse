@@ -2,6 +2,8 @@ from pathlib import Path
 import json
 import re
 
+from i18n_node import spoken
+
 
 ROOT = Path(__file__).parents[2]
 
@@ -158,7 +160,7 @@ def test_notice_preserves_legal_attribution_without_obsolete_single_provider_pro
 
 
 def test_help_page_explains_specialist_and_generic_paths_without_claiming_every_http_url_uses_alldebrid():
-    help_page = _text("frontend/static/ui-help-page.js")
+    help_page = spoken(_text("frontend/static/ui-help-page.js"))   # 1.0.14: its words are the catalog's
     assert "Specialist services come first." in help_page
     assert "A web link goes to a debrid service only if that service lists the link's host as supported" in help_page
     assert "For a normal HTTP or HTTPS source, DebridPulse sends the source to AllDebrid" not in help_page

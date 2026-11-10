@@ -1,7 +1,7 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a–WS3e
-complete; product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a–WS3e and
+WS4a complete; product localization incomplete.** The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -46,7 +46,15 @@ These surfaces read the catalog:
   become interface text); the interface says a coded refusal in the reader's
   language and keeps the English `detail` for anything else (§1, Errors).
 
-Every other surface is still English literals: Help (WS4). The census below counts them. No language is
+- WS4a, the Field Manual (the Help page, `ui-help-page.js`): every section,
+  passage, step, accordion, inset, heading and accessible name, for every
+  reader -- each role, deployment type and Easy or Advanced -- the License
+  viewer's own words (`ui-help-license-documents.js`; the bundled documents
+  stay as bundled), and the shared section navigator's tooltip
+  (`ui-section-nav.js`).
+
+Every other surface is still English literals: Settings Help (WS4b,
+`ui-settings-help.js`). The census below counts them. No language is
 offered: there is no picker, and no target catalog ships.
 
 ## 1. Pieces and owners
@@ -345,7 +353,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS3d
+## 3. Census (WS0) — snapshot at WS4a
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -375,25 +383,50 @@ attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
 `data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
 entries (3,038 unique English), not the 3,350 the WS0 packet reported.
 
-| Measure | At WS3a | At WS3b | At WS3c | At WS3d |
-|---|---|---|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) |
-| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 |
-| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 |
-| … long-form Help | 962 | 962 | 962 | 962 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 |
-| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding |
-| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,589 (+308 refusal codes, +82 transfer categories, +2 OIDC window) |
+| Measure | At WS3a | At WS3b | At WS3c | At WS3d | At WS4a |
+|---|---|---|---|---|---|
+| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) | 405 (361 unique English) |
+| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 | 0 / 0 |
+| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 | 34 |
+| … long-form Help | 962 | 962 | 962 | 962 | 405 |
+| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 | 353 |
+| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding | 768: 278 coded, 490 exempt, 0 outstanding |
+| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,592 (+308 refusal codes, +82 transfer categories, +2 OIDC window) | 3,129 (+537) |
 
-The largest owners still outside the catalog:
+The owner still outside the catalog:
 
 | Owner | Entries | Workstream |
 |---|---|---|
-| `ui-help-page.js` | 557 | WS4 |
-| `ui-settings-help.js` (all topics except My Account) | 405 | WS4 |
-| `ui-help-license-documents.js` | 11 | WS4 |
+| `ui-settings-help.js` (all topics except My Account) | 405 | WS4b |
 
-No WS3a–WS3d owner holds an entry outside the catalog or the exemption
+**WS4a notes.** The Field Manual's 568 entries (557 in `ui-help-page.js`, 11
+in the License viewer) are 567 keyed and 1 exempt (the internal section id
+`quickstart`); the census also finds 3 new literals, the argument values
+`Authorization: Bearer <token>` (twice) and the copyright notice, exempt with
+their reasons (3 register entries, 4 occurrences in all). 537 new keys: 513 passages and
+titles (`help.<section>.<topic>.<part>`), the section labels (`help.tab.*`),
+the header's identity levels (`help.header.*`) and its accessible name, the
+License viewer's words (`help.legal.*`) and the navigator's tooltip
+(`nav.section.current`). Rules:
+
+- The reader's context decides which passages exist; each wording of a
+  passage that differs by reader is its own message, named for the condition
+  that chooses it (`….standalone`, `….easy`, `….admin`,
+  `….activity_log_shown`), never a sentence joined from parts.
+- A `<code>` span is an argument (`{link}`, `{path}`, `{file_type}`,
+  `{literal}`): commands, link forms, paths and values are shown exactly in
+  every language. An argument may not share its name with a tag its message
+  uses (the validator refuses it: the formatter is given both together).
+- Bold words in a passage quote the interface's own labels; their context
+  asks the translator for the words the interface shows. They are not
+  separate keys: a passage is translated whole.
+- The composed manual names its keys (`data-i18n`, `data-i18n-rich`) and
+  `DPI18n.render()` says them, so a language change re-says it in place;
+  Help listens only to refit its navigator.
+- The License viewer's own words are keyed; the document's text and its own
+  title are the bundled English, shown exactly.
+
+No WS3a–WS3d or WS4a owner holds an entry outside the catalog or the exemption
 register, `index.html` holds none, and `ui-settings-page.js` is whole
 (`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly the 223
 subtitle language names (above) and provider and protocol names. WS3d's 742
@@ -454,6 +487,7 @@ metadata declares that argument a number):
 - arguments that differ from those declared or from the English source, by name or type;
 - tags outside the allowed set, or literal text that reads as markup (`<` then
   a letter, `/`, `!` or `?`);
+- an argument named like a rich-text tag its message uses (`<code>{code}</code>`);
 - plural categories the locale does not have, or a plural without `other`;
 - a `login.*` message with anything but plain arguments;
 - a translated key that English does not have.

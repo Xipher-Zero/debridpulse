@@ -3801,6 +3801,21 @@
    "owner": "backend/external/service.py",
    "english": "The source was refused: ",
    "reason": "External delivery API (/external/v1, the *arr clients): its refusal carries that API's own machine code (`source_unavailable` / `source_refused`) for programmatic callers; no first-party interface shows it. Programmatic API contract: English for API clients, kept apart from interface text."
+  },
+  {
+   "owner": "frontend/static/ui-help-page.js",
+   "english": "Authorization: Bearer",
+   "reason": "An HTTP header form (`Authorization: Bearer <token>`), the argument of a Field Manual message; shown exactly in every language."
+  },
+  {
+   "owner": "frontend/static/ui-help-page.js",
+   "english": "Copyright © 2026 Chris Moore",
+   "reason": "The copyright notice, the argument of the License section's statement; shown exactly in every language."
+  },
+  {
+   "owner": "frontend/static/ui-help-page.js",
+   "english": "quickstart",
+   "reason": "An internal section identifier (the Help tab id), never shown."
   }
  ]
 }

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from i18n_node import english
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -90,17 +92,25 @@ def test_help_header_is_one_row_through_the_shared_section_navigator():
     # own header and keeps no copy of its fit, window or placement.
     assert "window.DPSectionNav.create({\n    nav: () => root()?.querySelector('.dp-help-nav'),\n    copy: '.dp-help-header-copy',\n    identity: {title: '.dp-help-header-title', hint: '.dp-help-header-subtitle', levels: [" in runtime
     # The approved handheld identity levels, longest first (the last, none, is the owner's).
-    for level in ("{title: 'Field Manual', hint: 'When intuition fails.'}", "{title: 'Field Manual', hint: 'When stuck.'}",
-                  "{title: 'Manual', hint: 'When stuck.'}", "{title: 'Help', hint: ''}"):
+    # 1.0.14: each level's words are the catalog's, said in the page's language.
+    for level in ("{title: say('help.header.title'), hint: say('help.header.hint')}",
+                  "{title: say('help.header.title'), hint: say('help.header.hint_short')}",
+                  "{title: say('help.header.title_short'), hint: say('help.header.hint_short')}",
+                  "{title: say('help.header.title_shortest'), hint: ''}"):
         assert level in runtime, level
+    assert [english(f"help.header.{key}") for key in ("title", "hint", "hint_short", "title_short", "title_shortest")] == [
+        "Field Manual", "When intuition fails.", "When stuck.", "Manual", "Help"]
     # No iconless Help title: after Help (with its icon) the whole identity goes (the owner's none).
     assert "artwork: false" not in runtime
     for absent in ("function fitNavigation(", "function navLayout(", "navFit", "NAV_TRIM", "scrollLeft"):
         assert absent not in runtime, absent
-    assert runtime.count('role="tablist" aria-label="Help sections"') == 1
+    assert runtime.count('role="tablist" data-i18n-attr="aria-label:a11y.help_sections"') == 1
+    assert english("a11y.help_sections") == "Help sections"
     assert 'class="dp-tabs dp-help-tabs dp-section-nav-strip" role="tablist"' in runtime
-    assert "${travel('previous', 'chevronLeft', 'Previous section')}" in runtime
-    assert "${travel('next', 'chevronRight', 'Next section')}" in runtime
+    # 1.0.14: the travel actions' names are the shared section navigator's words.
+    assert "${travel('previous', 'chevronLeft', 'settings.nav.previous')}" in runtime
+    assert "${travel('next', 'chevronRight', 'settings.nav.next')}" in runtime
+    assert (english("settings.nav.previous"), english("settings.nav.next")) == ("Previous section", "Next section")
     assert "chevronFirst" not in runtime and "chevronLast" not in runtime and "First section" not in runtime
     assert "new ResizeObserver(() => navigation.fit()).observe(view);" in runtime
     assert "addEventListener?.('loadingdone', () => navigation.fit({measure: true}))" in runtime

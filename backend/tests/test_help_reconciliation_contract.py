@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from i18n_node import english, says
+from i18n_node import english, says, spoken
 
 from auth.accounts import Role
 from auth.permissions import ACTIONS, Capability, ROLE_CAPABILITIES
@@ -20,7 +20,8 @@ from auth.permissions import ACTIONS, Capability, ROLE_CAPABILITIES
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 BACKEND = ROOT / "backend"
-HELP = (STATIC / "ui-help-page.js").read_text(encoding="utf-8")
+# 1.0.14: the manual as a reader hears it in English (its words are the catalog's).
+HELP = spoken((STATIC / "ui-help-page.js").read_text(encoding="utf-8"))
 
 
 def _panel(name: str) -> str:
@@ -204,7 +205,7 @@ def test_settings_locations_named_in_help_exist():
                  "Event Logging", "Backups & Retention", "Database Reset Controls"):
         # 1.0.14: a card title is a literal, or the catalog's words said by a key the page names.
         assert f"'{card}'" in page or f"'{card}'," in page or says(page, card), card
-        assert card.replace("&", "&amp;") in HELP, card
+        assert card in HELP, card   # 1.0.14: the catalog's words are text ("&", not "&amp;")
     locations = re.findall(r"<b>Settings → ([A-Za-z &;]+?)(?: →|</b>)", HELP)
     assert len(locations) >= 10
     # A Standalone installation names its `users` tab by its own label.

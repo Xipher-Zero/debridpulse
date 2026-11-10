@@ -1,12 +1,15 @@
 from pathlib import Path
 
+from i18n_node import spoken
+
 
 ROOT = Path(__file__).resolve().parents[2]
 HELP_RUNTIME = ROOT / "frontend" / "static" / "ui-help-page.js"
 
 
 def _quick_start_source() -> str:
-    source = HELP_RUNTIME.read_text(encoding="utf-8")
+    # 1.0.14: the manual as a reader hears it in English (its words are the catalog's).
+    source = spoken(HELP_RUNTIME.read_text(encoding="utf-8"))
     start = source.index("  function quickStartPanel() {")
     end = source.index("\n  function usingPanel() {", start)
     return source[start:end]
@@ -38,7 +41,7 @@ def test_quick_start_uses_current_settings_paths_and_account_connection_styles()
     quick = _quick_start_source()
 
     for phrase in (
-        "Settings → Downloads → Download Behavior &amp; Limits",
+        "Settings → Downloads → Download Behavior & Limits",   # 1.0.14: the catalog's words are text
         "Download Folder",
         "isolated environment called a <b>container</b>",
         "Settings → Services",
@@ -54,7 +57,7 @@ def test_quick_start_uses_current_settings_paths_and_account_connection_styles()
 
     for retired in (
         "Apply Settings",
-        "Sources &amp; Providers",
+        "Sources & Providers",   # 1.0.14: as text (the catalog's words are not markup)
         "Downloads → Download Engine",
         "Click <b>Save</b>",
     ):
@@ -71,5 +74,5 @@ def test_quick_start_stays_proportionate():
 
 
 def test_help_copy_does_not_use_em_dashes():
-    source = HELP_RUNTIME.read_text(encoding="utf-8")
+    source = spoken(HELP_RUNTIME.read_text(encoding="utf-8"))
     assert "—" not in source

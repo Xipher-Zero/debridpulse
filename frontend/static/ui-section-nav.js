@@ -94,7 +94,10 @@
     control.dataset.tooltipIndex = '[role="tablist"]';
     // For the pointer, only after a deliberate pause over it (ui-tooltip.js).
     control.dataset.tooltipDwell = String(INDEX_DWELL_MS);
-    control.dataset.tooltip = `Current section: ${tabs[index].textContent.trim().replace(/\s+/g, ' ')}, ${index + 1} of ${tabs.length}`;
+    // Said in the page's language (ui-i18n.js); a language change fits the
+    // navigator again, which describes it again.
+    control.dataset.tooltip = window.DPI18n.t('nav.section.current', {
+      section: tabs[index].textContent.trim().replace(/\s+/g, ' '), position: index + 1, count: tabs.length});
   }
 
   /* One header's navigator. `nav` finds its .dp-section-nav (the page may

@@ -99,6 +99,9 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     ("quoted markup", {"test.case.message": "Click '<img src=x onerror=alert(1)>' here"}, {"test.case.message": _meta()}, None,
      "reads as markup"),
     ("translated markup", None, None, {"de": {"shell.nav.dashboard": "'<script>'x"}}, "reads as markup"),
+    # An argument named like a tag its message uses would replace that tag's element when said.
+    ("argument named like its tag", {"test.case.message": "Type <code>{code}</code>"},
+     {"test.case.message": _meta(args={"code": "string: a literal"})}, None, "named like the message's rich-text tag"),
     ("plural of a plain string", {"test.case.message": "Hello {name}"}, {"test.case.message": _meta(args={"name": "string: a name"})},
      {"de": {"test.case.message": "{name, plural, one {Hallo} other {Hallo}}"}}, "is a plural"),
 ])
@@ -247,6 +250,21 @@ def test_the_ws3a_to_ws3d_owners_hold_no_literal_outside_the_catalog_or_the_revi
     # WS3e: every server message is coded at its raise or exempt with a reason.
     assert [(entry["owner"], entry["line"], entry["english"]) for entry in data["server"]
             if not entry["coded"] and not entry.get("reason")] == []
+
+
+# WS4a: the Field Manual (the Help page), the License viewer's own words and
+# the shared section navigator it draws its header with. ui-settings-help.js
+# (Settings Help, WS4b) is the census's only owner left.
+WS4A_OWNERS = ("ui-help-page.js", "ui-help-license-documents.js", "ui-section-nav.js")
+
+
+def test_the_ws4a_help_owners_hold_no_literal_outside_the_catalog_or_the_reviewed_exemptions():
+    import inventory
+
+    data = inventory.census()
+    assert [(entry["owner"], entry["line"], entry["english"]) for entry in data["entries"]
+            if entry["owner"].rsplit("/", 1)[-1] in WS4A_OWNERS] == []
+    assert {entry["owner"].rsplit("/", 1)[-1] for entry in data["entries"]} <= {"ui-settings-help.js"}
 
 
 def test_the_census_counts_keyed_markup_as_keyed_and_a_sentence_as_a_sentence():

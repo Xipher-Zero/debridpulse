@@ -12,7 +12,8 @@
 // metadata without category, context, owner or criticality; a message that
 // does not parse; positional ({0}) arguments; arguments that differ from the
 // English source (names or types) or from the declared ones; tags outside
-// b/strong/em/i/code/kbd; literal text that reads as markup ('<' then a
+// b/strong/em/i/code/kbd, or an argument named like a tag its message uses;
+// literal text that reads as markup ('<' then a
 // letter, '/', '!' or '?': a translation is text, so whatever an owner does
 // with a formatted message, it never carries an element); plural categories
 // the locale does not have
@@ -135,6 +136,9 @@ for (const key of new Set([...Object.keys(english.messages), ...Object.keys(meta
   if (found.positional) error(where, 'positional arguments ({0}); name every argument');
   if (found.markup) error(where, 'literal text reads as markup');
   for (const tag of found.tags) if (!RICH_TAGS.has(tag)) error(where, `tag <${tag}> is not allowed`);
+  // An argument named like a rich-text tag the message uses would replace that
+  // tag's element when it is said (ui-i18n.js passes tags and arguments together).
+  for (const name of Object.keys(found.args)) if (found.tags.has(name)) error(where, `argument {${name}} is named like the message's rich-text tag <${name}>`);
   const declared = Object.keys(m.args || {}).sort().join(',');
   if (declared !== Object.keys(found.args).sort().join(',')) error(where, `arguments (${Object.keys(found.args)}) differ from the declared (${declared})`);
   checkPlurals(where, found, 'en');

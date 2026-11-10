@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from i18n_node import english, says
+from i18n_node import english, says, spoken
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -203,19 +203,21 @@ def test_non_auth_settings_contracts_remain_in_canonical_owner_or_semantic_modul
 
 def test_help_is_direct_final_owner_with_eight_reviewed_sections() -> None:
     source = read(HELP)
-    for tab in (
-        "['quickstart', 'Quick Start', 'rocket']",
-        "['using', 'Everyday Use', 'activity']",
-        "['howitworks', 'How It Works', 'workflow']",
-        "['services', 'Services', 'plug']",
-        "['engines', 'Engines', 'download']",
-        "['settings', 'Settings', 'settings']",
-        "['trouble', 'Troubleshooting', 'wrench']",
-        "['license', 'License', 'scale']",
+    # 1.0.14: each section's label is a catalog key (help.tab.<id>) said in the page's language.
+    for tab, label, icon in (
+        ("quickstart", "Quick Start", "rocket"),
+        ("using", "Everyday Use", "activity"),
+        ("howitworks", "How It Works", "workflow"),
+        ("services", "Services", "plug"),
+        ("engines", "Engines", "download"),
+        ("settings", "Settings", "settings"),
+        ("trouble", "Troubleshooting", "wrench"),
+        ("license", "License", "scale"),
     ):
-        assert tab in source
-    assert "Field Manual" in source
-    assert "When intuition fails." in source
+        assert f"['{tab}', 'help.tab.{tab}', '{icon}']" in source
+        assert english(f"help.tab.{tab}") == label
+    assert "${t('help.header.title')}" in source and english("help.header.title") == "Field Manual"
+    assert "${t('help.header.hint')}" in source and english("help.header.hint") == "When intuition fails."
     assert "dp-help-master-card" in source
     assert "dp-help-section-card" in source
     assert "window.loadHelp = load;" in source
@@ -228,10 +230,10 @@ def test_help_is_direct_final_owner_with_eight_reviewed_sections() -> None:
 
 
 def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> None:
-    help_source = read(HELP)
+    help_source = spoken(read(HELP))   # 1.0.14: the manual as a reader hears it in English
     legal = read(HELP_LEGAL)
     for fragment in (
-        "Copyright &copy; 2026 Chris Moore",
+        "Copyright © 2026 Chris Moore",
         "GPL-2.0-or-later",
         'data-legal-document="gpl"',
         'data-legal-document="source-offer"',

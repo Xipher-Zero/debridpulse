@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from i18n_node import english
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -25,7 +27,10 @@ def test_overlay_uses_canonical_dialog_semantics_and_normal_close_paths():
     assert "dp-dialog dp-dialog--lg dp-help-legal-dialog" in runtime
     assert "dialog.setAttribute('role', 'dialog');" in runtime
     assert "dialog.setAttribute('aria-modal', 'true');" in runtime
-    assert "close.setAttribute('aria-label', 'Close document');" in runtime
+    # 1.0.14: its accessible name is the catalog's, said again on a language change.
+    assert "close.dataset.i18nAttr = 'aria-label:help.legal.close';" in runtime
+    assert "close.setAttribute('aria-label', t('help.legal.close'));" in runtime
+    assert english("help.legal.close") == "Close document"
     assert "if (event.target === backdrop) closeModal();" in runtime
     assert "event.key === 'Escape'" in runtime
     assert "event.key !== 'Tab'" in runtime
@@ -63,8 +68,11 @@ def test_overlay_uses_card_material_and_document_text_reflows_to_modal_width():
 def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_link():
     runtime = read(RUNTIME)
 
-    assert "This is the copy bundled with DebridPulse " in runtime
-    assert "View the latest version on GitHub." in runtime
+    # 1.0.14: the viewer's words are the catalog's (the document itself stays as bundled).
+    assert "say(document.createElement('span'), 'help.legal.bundled', {version})" in runtime
+    assert english("help.legal.bundled") == "This is the copy bundled with DebridPulse {version}."
+    assert "say(link, 'help.legal.latest');" in runtime
+    assert english("help.legal.latest") == "View the latest version on GitHub."
     assert "link.target = '_blank';" in runtime
     assert "link.rel = 'noopener';" in runtime
     assert "payload.latest_url" in runtime

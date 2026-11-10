@@ -3,9 +3,30 @@
  * License actions open the exact document shipped with the running DebridPulse
  * build. GitHub is never required to read the bundled copy; the only external
  * navigation is the explicit "latest version" link shown inside the overlay.
+ *
+ * Words (1.0.14 localization): the viewer's own words are catalog messages
+ * its nodes name by key, so an open viewer is re-said in place on a language
+ * change (ui-i18n.js render). The document itself -- its text and its own
+ * title, as the server sends them -- is the legally authoritative English
+ * and is shown exactly as bundled, in every language.
  */
 (function () {
   'use strict';
+
+  const t = (key, values) => window.DPI18n.t(key, values);
+  // A node says a catalog message: now, and again on a language change.
+  function say(node, key, values) {
+    node.dataset.i18n = key;
+    if (values) node.dataset.i18nValues = JSON.stringify(values);
+    else delete node.dataset.i18nValues;
+    node.textContent = t(key, values);
+    return node;
+  }
+  // A node that now shows other words (the document, or its own title) is no longer said.
+  function unsay(node) {
+    delete node.dataset.i18n;
+    delete node.dataset.i18nValues;
+  }
 
   let activeBackdrop = null;
   let activeOpener = null;
@@ -165,7 +186,10 @@
       });
       const payload = await response.json().catch(function () { return {}; });
       if (!response.ok) {
-        throw new Error(payload.detail || response.statusText || 'Unable to load bundled document');
+        // The server's reason, or none (said in the shown language when the viewer shows it).
+        const failure = new Error(payload.detail || response.statusText || '');
+        failure.unexplained = !failure.message;
+        throw failure;
       }
       return payload;
     } finally {
@@ -190,12 +214,16 @@
     const title = document.createElement('div');
     title.className = 'dp-dialog__title';
     title.id = 'dp-help-legal-dialog-title';
-    title.textContent = String(opener.textContent || 'Bundled document').trim();
+    // Until the document's own title arrives: the words of the button that opened it.
+    const openerKey = opener.getAttribute('data-i18n');
+    if (openerKey) say(title, openerKey);
+    else say(title, 'help.legal.title_fallback');
 
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'dp-icon-btn dp-icon-btn--ghost dp-help-legal-close';
-    close.setAttribute('aria-label', 'Close document');
+    close.dataset.i18nAttr = 'aria-label:help.legal.close';
+    close.setAttribute('aria-label', t('help.legal.close'));
     close.textContent = '×';
 
     header.append(title, close);
@@ -206,11 +234,11 @@
     const latest = document.createElement('div');
     latest.className = 'dp-help-legal-latest';
     latest.setAttribute('role', 'note');
-    latest.textContent = 'Loading bundled document…';
+    latest.appendChild(say(document.createElement('span'), 'help.legal.loading_note'));
 
     const documentBody = document.createElement('div');
     documentBody.className = 'dp-help-legal-document';
-    documentBody.textContent = 'Loading…';
+    say(documentBody, 'common.loading');
 
     body.append(latest, documentBody);
     dialog.append(header, body);
@@ -242,30 +270,39 @@
       const payload = await fetchBundledDocument(documentId);
       if (activeBackdrop !== modal.backdrop) return;
 
-      modal.title.textContent = payload.title || String(opener.textContent || 'Bundled document').trim();
+      // The document's own title, as bundled; without one, the opener's words stay.
+      if (payload.title) {
+        unsay(modal.title);
+        modal.title.textContent = payload.title;
+      }
       modal.latest.replaceChildren();
 
-      const version = String(payload.bundled_version || 'this build').trim();
-      const prefix = document.createElement('span');
-      prefix.textContent = 'This is the copy bundled with DebridPulse ' + version + '. ';
+      const version = String(payload.bundled_version || '').trim();
+      const prefix = version
+        ? say(document.createElement('span'), 'help.legal.bundled', {version})
+        : say(document.createElement('span'), 'help.legal.bundled_unversioned');
 
       const link = document.createElement('a');
       link.href = String(payload.latest_url || '#');
       link.target = '_blank';
       link.rel = 'noopener';
-      link.textContent = 'View the latest version on GitHub.';
+      say(link, 'help.legal.latest');
 
-      modal.latest.append(prefix, link);
+      modal.latest.append(prefix, ' ', link);
+      unsay(modal.documentBody);
       renderBundledDocument(modal.documentBody, payload.content);
       modal.body.scrollTop = 0;
     } catch (error) {
       if (activeBackdrop !== modal.backdrop) return;
       modal.latest.classList.add('is-error');
-      modal.latest.textContent = 'The bundled document could not be loaded.';
-      renderBundledDocument(
-        modal.documentBody,
-        error && error.message ? String(error.message) : 'Unable to load bundled document.'
-      );
+      modal.latest.replaceChildren(say(document.createElement('span'), 'help.legal.failed'));
+      unsay(modal.documentBody);
+      if (error && error.message && !error.unexplained) renderBundledDocument(modal.documentBody, String(error.message));
+      else {
+        const block = document.createElement('div');
+        block.className = 'dp-help-legal-document-block';
+        modal.documentBody.replaceChildren(say(block, 'help.legal.load_failed'));
+      }
     }
   }
 

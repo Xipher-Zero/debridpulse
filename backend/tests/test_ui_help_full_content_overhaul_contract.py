@@ -1,12 +1,15 @@
 from pathlib import Path
 
+from i18n_node import spoken
+
 
 ROOT = Path(__file__).resolve().parents[2]
 HELP_RUNTIME = ROOT / "frontend" / "static" / "ui-help-page.js"
 
 
 def _source() -> str:
-    return HELP_RUNTIME.read_text(encoding="utf-8")
+    # 1.0.14: the manual as a reader hears it in English (its words are the catalog's).
+    return spoken(HELP_RUNTIME.read_text(encoding="utf-8"))
 
 
 def _panel(function_name: str, next_function_name: str) -> str:
@@ -45,7 +48,8 @@ def test_everyday_use_covers_the_pages_controls_and_prompts_an_operator_meets():
         "Submitted As", "Route History", "Advanced acquisition details",
         "Discard downloaded progress?", "Transfer Trace Log",
         "Activity Log", "Event Type",
-        "Overall &amp; Rolling Metrics", "Transfer Methods", "Unattributed",
+        # 1.0.14: "&" as text -- the catalog's words are not markup.
+        "Overall & Rolling Metrics", "Transfer Methods", "Unattributed",
     ):
         assert phrase in panel, phrase
 
@@ -115,8 +119,9 @@ def test_services_document_every_registered_user_facing_integration():
         "HTTP(S)", "(S)FTP", "SCP", "rsync", "WebDAV", "Metalink (Multimeta)", "Media Downloads",
     ):
         assert f"accordion('{name}'" in panel, name
-    assert "<h3>Premium Services</h3>" in panel
-    assert "<h3>Network Sources</h3>" in panel
+    # 1.0.14: each group's heading names its words by key (said in English here).
+    assert "<h3 ${keyed('Premium Services')}></h3>" in panel
+    assert "<h3 ${keyed('Network Sources')}></h3>" in panel
 
 
 def test_services_distinguish_api_key_and_device_authorization_accounts():
@@ -184,25 +189,26 @@ def test_engines_are_presented_as_four_managed_engines_not_one():
 
 def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_semantics():
     panel = _panel("settingsPanel", "troubleshootingPanel")
+    # 1.0.14: the catalog's words are text ("&", "<token>"), not markup.
 
-    for section in ("Services", "Downloads", "Extraction", "Authentication", "Users &amp; Access",
-                    "Notifications", "Data &amp; Maintenance"):
+    for section in ("Services", "Downloads", "Extraction", "Authentication", "Users & Access",
+                    "Notifications", "Data & Maintenance"):
         assert f"accordion('{section}'" in panel, section
 
     for phrase in (
         "There is no Save button.",
         "leaving it blank keeps the stored value",
-        "Download Behavior &amp; Limits", "Transfer Method Settings", "Disk Space &amp; Recovery",
+        "Download Behavior & Limits", "Transfer Method Settings", "Disk Space & Recovery",
         "Local Network Connections", "Skip Local Connection Confirmation",
         "Delete Archives After Extraction", "Archive Passwords", "Clear Passwords",
-        "Authentication Status", "Username &amp; Password", "OpenID Connect",
+        "Authentication Status", "Username & Password", "OpenID Connect",
         "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
         "Default Role for New OIDC Users", "Add Local Account", "Edit User",
-        "Integration Accounts", "Issue Token", "Authorization: Bearer &lt;token&gt;",
+        "Integration Accounts", "Issue Token", "Authorization: Bearer <token>",
         "finished downloads are never touched", "removing keeps the account's history",
         "Webhook Notifications", "Download Added Webhook", "Statistics Reporting",
         "Automatic Report Interval", "/api/metrics",
-        "Event Logging", "Backups &amp; Retention", "Run Backup",
+        "Event Logging", "Backups & Retention", "Run Backup",
         "Save Backup", "Restore Backup", "Add Backup",
         "Allow Database Reset", "Reset Database", "<code>WIPE</code>",
         "always makes a safety backup first",
@@ -255,10 +261,10 @@ def test_manual_removes_retired_names_and_single_provider_or_single_engine_claim
     manual = _manual()
 
     for stale in (
-        "Sources &amp; Providers",
+        "Sources & Providers",
         "External Providers",
         "Downloads → Download Engine</b>",
-        "Download Safety &amp; Recovery",
+        "Download Safety & Recovery",
         "Additional Engine Tuning",
         "Allow Database Wipe",
         "Test AllDebrid",
