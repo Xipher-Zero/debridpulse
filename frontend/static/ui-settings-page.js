@@ -5362,6 +5362,9 @@
    * read from the server when it is asked for (GET /accounts/{id}/impact) and
    * are never assumed; the mutation re-reads everything itself, and its own
    * answer is what the page reports afterwards. */
+  // A count in the shown language's digits and grouping (English as before: 1,234).
+  const count = value => Number(value || 0).toLocaleString(window.DPI18n.intlLocale());
+
   function impactFigures(impact) {
     // [figure, value, whether a bounded read may hold more than it says]
     const rows = [
@@ -5370,7 +5373,7 @@
       ['completed', impact.completed_unaffected, false],
     ];
     return `<dl class="dp-account-impact-figures">${rows.map(([figure, value, bounded]) =>
-      `<div><dt>${words(say(`settings.impact.${figure}`))}</dt><dd>${html(Number(value || 0).toLocaleString('en-US'))}${impact.bounded && bounded ? '+' : ''}</dd></div>`).join('')}</dl>`;
+      `<div><dt>${words(say(`settings.impact.${figure}`))}</dt><dd data-dp-count="${html(String(Number(value || 0)))}">${html(count(value))}${impact.bounded && bounded ? '+' : ''}</dd></div>`).join('')}</dl>`;
   }
 
   // Each act's words: its question (naming the account), its accept, and its lead sentence.
@@ -6705,7 +6708,7 @@
   function recordedEventsText() {
     if (state.recordedEvents === undefined) return '…';
     if (!Number.isInteger(state.recordedEvents)) return '—';
-    return state.recordedEvents.toLocaleString('en-US');
+    return count(state.recordedEvents);
   }
 
   function showRecordedEvents(value) {
@@ -8821,6 +8824,12 @@
       if (line) line.textContent = accountExpiry(id, account) || (standardAccount(account) ? t('settings.account.free') : '');
     }
     relabelSubtitleLanguages();
+    // The counts written as figures: the recorded events and an open impact confirmation's.
+    const recorded = view.querySelector('[data-setting="event_journal_recorded"]');
+    if (recorded) recorded.value = recordedEventsText();
+    document.querySelectorAll('.dp-account-impact-figures dd[data-dp-count]').forEach(figure => {
+      figure.textContent = count(figure.dataset.dpCount) + (figure.textContent.endsWith('+') ? '+' : '');
+    });
     // The Authentication Status values, which its painter writes as text.
     if (state.auth && view.querySelector('.dp-settings-auth-kpi')) paintAuthKpis(state.auth);
     view.querySelectorAll('.dp-settings-help-chip').forEach(chip => { chip.dataset.tooltip = chip.getAttribute('aria-label') || ''; });

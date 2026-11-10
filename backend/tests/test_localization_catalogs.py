@@ -182,6 +182,291 @@ def test_a_count_english_says_plainly_may_be_inflected_by_a_translation(tmp_path
     assert code == 0, report["errors"]
 
 
+# WS5-0: the translation checks a locale candidate passes before review. The
+# fixture is synthetic ("ZZ" words): test doubles of a German catalog, termbase
+# and review ledger, never translations. Each mutation breaks one rule.
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+WS5_DE = {
+    "settings.test": "ZZ-Test",
+    "help.notifications.statistics_reporting.test": "<b>ZZ-Test</b> zz zz.",
+    "downloads.summary.downloading": "{count, plural, =0 {Zz} one {{count} Zz} other {{count} Zzz}}",
+    "presentation.status.saved": "{mode, select, easy {ZZ-Leicht zz.} other {ZZ-Voll zz.}}",
+    "error.validation.setting_url": "Zz http:// zz https:// zz.",
+    "settings.oidc.public_base_hint_managed": "Zz PUBLIC_BASE_URL. Zz zz OIDC zz.",
+    "shell.version_label": "DebridPulse-Zz",
+    "role.admin": "ZZ-Admin",
+    "settings.deployment.standalone_hint_shortest": "Nur ZZ-Admin.",
+    "account.action.clear_password": "Zz zz zz",
+}
+WS5_TERMS = {"schema": "debridpulse-terms/1", "locale": "de", "register": "Sie (formal), test double",
+             "terms": {"easy": {"target": "ZZ-Leicht"}, "advanced": {"target": "ZZ-Voll"},
+                       "role_admin": {"target": "ZZ-Admin", "forbidden": ["ZZ-Boss"]}}}
+
+
+def _ws5(tmp_path, tag="de", messages=None, *, sources=None, terms=WS5_TERMS, review=None, entries=None):
+    """A scratch catalog set: the repository's English, one synthetic target with
+    current source hashes, its termbase and a review ledger of every key."""
+    i18n, meta_path = _scratch(tmp_path)
+    english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
+    messages = dict(WS5_DE if messages is None else messages)
+    hashes = {key: _sha(english[key]) for key in messages}
+    hashes.update(sources or {})
+    (i18n / f"{tag}.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": tag, "messages": messages,
+                                                  "sources": hashes}), encoding="utf-8")
+    meta = json.loads(META.read_text(encoding="utf-8"))["meta"]
+    if terms is not None:
+        (tmp_path / "terms").mkdir()
+        (tmp_path / "terms" / f"{tag}.json").write_text(json.dumps({**terms, "locale": tag}), encoding="utf-8")
+    ledger = {key: {"source": _sha(english[key]), "translation": _sha(text),
+                    "provenance": ["ai-generated", "ai-review"]
+                    + (["ai-back-translation"] if meta[key]["criticality"] == "critical-warning" else []),
+                    **({"backTranslation": "Zz back"} if meta[key]["criticality"] == "critical-warning" else {})}
+              for key, text in messages.items()}
+    for key, change in (entries or {}).items():
+        ledger[key] = {**ledger.get(key, {}), **change}
+    (tmp_path / "review").mkdir()
+    (tmp_path / "review" / f"{tag}.json").write_text(json.dumps(review or {"schema": "debridpulse-review/1", "locale": tag,
+                                                                           "entries": ledger}), encoding="utf-8")
+    return i18n, meta_path
+
+
+@needs_node
+def test_ws5_a_well_formed_planned_catalog_passes_and_its_gaps_are_debt_not_errors(tmp_path):
+    code, report = _validate(*_ws5(tmp_path))
+    assert code == 0, report["errors"]
+    row = report["locales"]["de"]
+    assert row["status"] == "planned" and row["missing"] == report["keys"] - len(WS5_DE) and row["stale"] == 0
+    assert row["termbase"] and row["ledger"] and row["unreviewed"] == 0 and row["noBackTranslation"] == 0
+    assert row["provenance"] == {"ai-generated": len(WS5_DE), "ai-review": len(WS5_DE), "ai-back-translation": 1}
+    # The English registers: the Help label map holds every <b> span, classified.
+    assert report["labels"] == {"spans": 770, "control": 503, "term": 40, "emphasis": 101, "control-unmapped": 125, "unresolved": 1}
+
+
+def _mutated(**change):
+    return {**WS5_DE, **change}
+
+
+WS5_MUTATIONS = [
+    ("placeholder renamed", _mutated(**{"downloads.summary.downloading": "{n, plural, =0 {Zz} one {{n} Zz} other {{n} Zzz}}"}), None,
+     "is not in the English source"),
+    ("rich-text tag dropped", _mutated(**{"help.notifications.statistics_reporting.test": "ZZ-Test zz zz."}), None,
+     "rich-text tags differ from the English"),
+    ("rich-text tag added", _mutated(**{"help.notifications.statistics_reporting.test": "<b>ZZ-Test</b> <b>zz</b> zz."}), None,
+     "rich-text tags differ from the English"),
+    ("select case dropped", _mutated(**{"presentation.status.saved": "{mode, select, other {ZZ-Voll zz.}}"}), None,
+     "select {mode} has the cases (other), the English (easy,other)"),
+    ("select case invented", _mutated(**{"presentation.status.saved": "{mode, select, easy {ZZ-Leicht zz.} advanced {ZZ-Voll zz.} other {ZZ-Voll zz.}}"}), None,
+     "select {mode} has the cases"),
+    ("exact case dropped", _mutated(**{"downloads.summary.downloading": "{count, plural, one {{count} Zz} other {{count} Zzz}}"}), None,
+     "lacks the English exact case =0"),
+    ("plural said plainly", _mutated(**{"downloads.summary.downloading": "{count} Zzz"}), None, "is said plainly; de distinguishes"),
+    ("untranslated", _mutated(**{"shell.nav.dashboard": "Dashboard"}), None, "is the English text"),
+    ("protected literal changed", _mutated(**{"error.validation.setting_url": "Zz http:// zz https:/ zz."}), None,
+     "the protected literal 'https://' appears 0 times, the English 1"),
+    ("identifier translated", _mutated(**{"settings.oidc.public_base_hint_managed": "Zz ÖFFENTLICHE_URL. Zz zz OIDC zz."}), None,
+     "the protected literal 'PUBLIC_BASE_URL' appears 0 times"),
+    ("name transliterated", _mutated(**{"shell.version_label": "ДебридПульс-Zz"}), None, "the protected name 'DebridPulse' is missing"),
+    ("help label differs from its control", _mutated(**{"help.notifications.statistics_reporting.test": "<b>ZZ-Prüfen</b> zz zz."}), None,
+     "no <b> span says its translation 'ZZ-Test'"),
+    ("concept key not its term", _mutated(**{"role.admin": "ZZ-Chef", "settings.deployment.standalone_hint_shortest": "Nur ZZ-Chef."}), None,
+     "which the termbase says as 'ZZ-Admin'"),
+    ("concept named without its term", _mutated(**{"settings.deployment.standalone_hint_shortest": "Nur zz."}), None,
+     "names the concept 'role_admin' without the termbase's 'ZZ-Admin'"),
+    ("forbidden alternative", _mutated(**{"settings.deployment.standalone_hint_shortest": "Nur ZZ-Admin (ZZ-Boss)."}), None,
+     "a forbidden alternative for the concept 'role_admin'"),
+]
+
+
+@needs_node
+@pytest.mark.parametrize("case,messages,sources,expected", WS5_MUTATIONS, ids=[case for case, *_ in WS5_MUTATIONS])
+def test_ws5_each_broken_translation_is_a_hard_error(tmp_path, case, messages, sources, expected):
+    code, report = _validate(*_ws5(tmp_path, messages=messages, sources=sources))
+    assert code == 1, case
+    assert any(expected in line for line in report["errors"]), (case, report["errors"])
+
+
+@needs_node
+@pytest.mark.parametrize("tag,lacking", [("pl", "few, many"), ("ru", "few, many"), ("uk", "few, many"),
+                                         ("ar", "zero, two, few, many"), ("es", "many")])
+def test_ws5_a_plural_lacks_no_category_its_language_reaches(tmp_path, tag, lacking):
+    messages = {"downloads.summary.downloading": "{count, plural, =0 {Zz} one {{count} Zz} other {{count} Zzz}}"}
+    code, report = _validate(*_ws5(tmp_path, tag, messages, terms=None))
+    assert code == 1
+    assert any(f"plural {{count}} lacks {lacking}" in line for line in report["errors"]), report["errors"]
+
+
+@needs_node
+@pytest.mark.parametrize("case,sources,entries,expected", [
+    ("malformed source hash", {"settings.test": "xyz"}, None, "is not sha256[:16] hex"),
+    ("hash without its translation", {"shell.nav.settings": "0123456789abcdef"}, None, "a source hash without its translation"),
+    ("human review without evidence", None, {"settings.test": {"provenance": ["ai-generated", "human-review"]}},
+     "names its reviewer and evidence"),
+    ("unknown provenance", None, {"settings.test": {"provenance": ["ai-generated", "native-certified"]}}, "unknown provenance 'native-certified'"),
+    ("two origins", None, {"settings.test": {"provenance": ["ai-generated", "human-translated", "ai-review"],
+                                             "human": {"reviewer": "r", "evidence": "e"}}}, "exactly one origin"),
+    ("finding without status", None, {"settings.test": {"findings": [{"kind": "meaning", "note": "zz"}]}}, "needs kind, note and status"),
+])
+def test_ws5_a_broken_source_hash_or_a_false_review_claim_is_a_hard_error(tmp_path, case, sources, entries, expected):
+    code, report = _validate(*_ws5(tmp_path, sources=sources, entries=entries))
+    assert code == 1, case
+    assert any(expected in line for line in report["errors"]), (case, report["errors"])
+
+
+@needs_node
+def test_ws5_stale_translations_unreviewed_text_and_open_findings_are_debt_and_exemptions_are_recorded(tmp_path):
+    english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
+    messages = _mutated(**{"shell.nav.dashboard": "Dashboard", "shell.nav.settings": "Zz the zz",
+                           "help.notifications.statistics_reporting.test": "<b>ZZ-Prüfen</b> zz zz."})
+    entries = {
+        "shell.nav.dashboard": {"identical": "The German interface word is Dashboard."},
+        "help.notifications.statistics_reporting.test": {"labels": {"0": "Test double: the control is named otherwise here."}},
+        "settings.test": {"translation": _sha("an earlier translation")},        # the review was of other text
+        "role.admin": {"findings": [{"kind": "ambiguity", "note": "zz", "status": "open"}]},
+        "account.action.clear_password": {"provenance": ["ai-generated", "ai-review"]},    # critical, not back-translated
+    }
+    code, report = _validate(*_ws5(tmp_path, messages=messages, sources={"shell.version_label": _sha("An older English text")},
+                                   entries=entries))
+    assert code == 0, report["errors"]
+    row = report["locales"]["de"]
+    assert row["staleKeys"] == ["shell.version_label"]                       # stale: debt, not delivered, not an error
+    assert english["shell.version_label"] and "shell.version_label" not in row["missingKeys"]
+    assert "settings.test" in row["unreviewedKeys"] and "shell.version_label" in row["unreviewedKeys"]
+    assert row["noBackTranslationKeys"] == ["account.action.clear_password"]
+    assert row["openFindings"] == [{"key": "role.admin", "kind": "ambiguity", "note": "zz"}]
+    assert row["englishFragmentKeys"] == ["shell.nav.settings"]              # a warning for review
+    # The same set as a candidate: none of it passes as complete.
+    again = tmp_path / "again"
+    again.mkdir()
+    i18n, meta_path = _ws5(again, messages=messages, sources={"shell.version_label": _sha("An older English text")}, entries=entries)
+    code, report = _validate(i18n, meta_path, "--complete=de")
+    assert code == 1
+    for expected in ("is not complete: ", "translations without a current independent review",
+                     "critical keys without a current back-translation", "1 open review findings", "its termbase has no term for"):
+        assert any(expected in line for line in report["errors"]), (expected, report["errors"])
+
+
+def _minimal(tmp_path, *, entries=None, terms=None):
+    """A whole (small) English source with a complete synthetic target, for the --complete gate."""
+    i18n = tmp_path / "i18n"
+    i18n.mkdir(parents=True)
+    english = {"shell.nav.settings": "Settings", "help.minimal.open": "Open <b>Settings</b> now.",
+               "account.clear.warning": "Anyone who can reach DebridPulse can sign in."}
+    meta = {key: _meta(owner="frontend/static/auth.js", criticality="critical-warning" if key == "account.clear.warning" else "normal")
+            for key in english}
+    manifest = json.loads((I18N / "manifest.json").read_text(encoding="utf-8"))
+    (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (i18n / "en.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "en", "messages": english}), encoding="utf-8")
+    (tmp_path / "en.meta.json").write_text(json.dumps({"schema": "debridpulse-catalog-meta/1", "locale": "en", "meta": meta}), encoding="utf-8")
+    (tmp_path / "labels.json").write_text(json.dumps({"schema": "debridpulse-help-labels/1", "spans": {"help.minimal.open": [
+        {"text": "Settings", "kind": "control", "key": "shell.nav.settings", "reason": "The sidebar entry."}]}}), encoding="utf-8")
+    (tmp_path / "concepts.json").write_text(json.dumps({"schema": "debridpulse-terms/1", "locale": "en",
+        "protected": [{"text": "DebridPulse", "kind": "name", "reason": "Product name."}],
+        "concepts": {"settings": {"en": "Settings", "key": "shell.nav.settings", "note": "Page name."}}}), encoding="utf-8")
+    target = {"shell.nav.settings": "ZZ-Einstellungen", "help.minimal.open": "Zz <b>ZZ-Einstellungen</b> zz.",
+              "account.clear.warning": "Zz DebridPulse zz zz."}
+    (i18n / "de.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "de", "messages": target,
+                                              "sources": {key: _sha(english[key]) for key in target}}), encoding="utf-8")
+    (tmp_path / "terms").mkdir()
+    (tmp_path / "terms" / "de.json").write_text(json.dumps(terms or {"schema": "debridpulse-terms/1", "locale": "de", "register": "test double",
+                                                                    "terms": {"settings": {"target": "ZZ-Einstellungen"}}}), encoding="utf-8")
+    ledger = {key: {"source": _sha(english[key]), "translation": _sha(text), "provenance": ["ai-generated", "ai-review"]}
+              for key, text in target.items()}
+    ledger["account.clear.warning"].update(provenance=["ai-generated", "ai-review", "ai-back-translation"],
+                                           backTranslation="Anyone who can reach DebridPulse can sign in.")
+    for key, change in (entries or {}).items():
+        ledger[key].update(change)
+    (tmp_path / "review").mkdir()
+    (tmp_path / "review" / "de.json").write_text(json.dumps({"schema": "debridpulse-review/1", "locale": "de", "entries": ledger}), encoding="utf-8")
+    return [f"--i18n={i18n}", f"--meta={tmp_path / 'en.meta.json'}", f"--labels={tmp_path / 'labels.json'}",
+            f"--terms={tmp_path / 'concepts.json'}", "--complete=de"]
+
+
+def _run(flags):
+    done = subprocess.run([NODE, str(VALIDATOR), "--json", *flags], capture_output=True, text=True, timeout=60)
+    return done.returncode, json.loads(done.stdout)
+
+
+@needs_node
+def test_ws5_the_candidate_check_passes_a_complete_reviewed_locale_and_nothing_less(tmp_path):
+    code, report = _run(_minimal(tmp_path / "whole"))
+    assert code == 0, report["errors"]
+    for case, entries, expected in [
+        ("unreviewed", {"shell.nav.settings": {"provenance": ["ai-generated"]}}, "1 translations without a current independent review"),
+        ("critical not back-translated", {"account.clear.warning": {"provenance": ["ai-generated", "ai-review"]}},
+         "1 critical keys without a current back-translation"),
+        ("open critical concern", {"account.clear.warning": {"findings": [{"kind": "critical", "note": "Consequence weakened?", "status": "open"}]}},
+         "1 open review findings (1 critical)"),
+    ]:
+        code, report = _run(_minimal(tmp_path / case, entries=entries))
+        assert code == 1 and any(expected in line for line in report["errors"]), (case, report["errors"])
+
+
+@needs_node
+def test_ws5_the_review_sheet_lays_out_each_key_with_its_samples_and_escapes_text(tmp_path):
+    flags = _minimal(tmp_path)
+    out = tmp_path / "sheet.html"
+    done = subprocess.run([NODE, str(ROOT / ".github" / "localization" / "review_sheet.mjs"), "--locale=de", f"--out={out}",
+                           *[flag for flag in flags if not flag.startswith("--complete")]], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    sheet = out.read_text(encoding="utf-8")
+    assert "account.clear.warning" in sheet and "critical-warning" in sheet and "ai-back-translation" in sheet
+    assert "Zz &lt;b&gt;ZZ-Einstellungen&lt;/b&gt; zz." in sheet           # text, never markup
+    assert "shell.nav.settings → ZZ-Einstellungen" in sheet                  # the Help's control references
+    assert (tmp_path / "sheet.csv").read_text(encoding="utf-8").startswith("key,category,criticality,")
+
+
+
+# WS5-0 r2: the sample values (messages.mjs samples) reach every value of every
+# count and every case, nested branches included, without the full product.
+def _samples(message: str) -> list[dict]:
+    script = ("import {samples} from '%s';"
+              "process.stdout.write(JSON.stringify(samples(process.argv[1]).map(row => Object.fromEntries("
+              "Object.entries(row).map(([k, v]) => [k, String(v).replace(/[\\uE002\\u27e8\\u27e9]/g, '')])))));"
+              % (ROOT / ".github" / "localization" / "messages.mjs").as_uri())
+    done = subprocess.run([NODE, "--input-type=module", "-e", script, message], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+COUNTS = {"0", "1", "2", "3", "5", "11", "21", "101", "1.5"}
+
+
+@needs_node
+def test_ws5_samples_show_each_of_several_counts_at_every_value():
+    english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
+    rows = _samples(english["consolidation.files.body"])           # matched > targets (nested), unmatched
+    for name in ("matched", "targets", "unmatched"):
+        assert {row[name] for row in rows} == COUNTS, name
+    # The nested plural is shown at every count under each of its parent's counts (so in each parent branch).
+    assert {(row["matched"], row["targets"]) for row in rows} >= {(m, t) for m in COUNTS for t in COUNTS}
+    assert len(rows) <= 100                                           # bounded: not 9 x 9 x 9
+
+
+@needs_node
+def test_ws5_samples_reach_an_argument_inside_each_select_case_with_that_case_chosen():
+    rows = _samples("{mode, select, x {{n, plural, one {# x} other {# xs}}} y {{m, plural, one {# y} other {# ys}}} other {z}}")
+    assert {row["mode"] for row in rows} == {"x", "y", "other"}
+    assert {row["n"] for row in rows if row["mode"] == "x"} == COUNTS
+    assert {row["m"] for row in rows if row["mode"] == "y"} == COUNTS
+
+
+@needs_node
+def test_ws5_a_defect_only_a_later_count_reaches_is_found(tmp_path):
+    # The first of three counts selects its broken branch only at 101: the 48-row
+    # odometer left it at 0, so the dropped <b> passed.
+    english = {"test.case.counts": "{p, plural, =101 {<b>p</b>} other {p}} {q, plural, one {q} other {qs}} {r, plural, one {r} other {rs}}"}
+    meta = {"test.case.counts": _meta(args={"p": "plural", "q": "plural", "r": "plural"})}
+    i18n, meta_path = _scratch(tmp_path, english=english, meta=meta)
+    (i18n / "de.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "de", "messages": {
+        "test.case.counts": "{p, plural, =101 {zp} one {zp} other {zp}} {q, plural, one {zq} other {zqs}} {r, plural, one {zr} other {zrs}}"},
+        "sources": {"test.case.counts": _sha(english["test.case.counts"])}}), encoding="utf-8")
+    code, report = _validate(i18n, meta_path)
+    assert code == 1 and report["errors"] == [report["errors"][0]] and "rich-text tags differ from the English at p=101" in report["errors"][0], report["errors"]
+
+
 # WS3a: the shell and shared owners say every word through the catalog. The
 # owners are whole, and index.html's shell, Dashboard, Activity Log and
 # Statistics regions (Downloads, Details and the download operations are WS3b).

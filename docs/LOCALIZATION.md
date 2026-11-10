@@ -62,6 +62,11 @@ The census finds no first-party interface literal outside the catalog or the
 reviewed exemptions. No language is offered: there is no picker, and no target
 catalog ships (WS5).
 
+WS5-0 adds the translation tooling a language candidate is qualified with (§4,
+WS5 translation checks): the concept register and protected names, termbases and
+review ledgers, the Help label map, the review sheet and the locale probe. Every
+target stays `planned`.
+
 ## 1. Pieces and owners
 
 | Piece | Owner |
@@ -77,7 +82,13 @@ catalog ships (WS5).
 | Server reads, pseudo, pre-sign-in text, coded errors | `backend/core/localization.py` |
 | Each account's language | `account_appearance.locale` (`services.account_appearance.load_locale` / `set_locale`), `GET/PUT /api/account/locale` |
 | First-paint projection | the `window.debridPulseLocale=…` line of `/ui-theme-bootstrap.js` |
-| Validator | `.github/localization/validate.mjs` |
+| Validator | `.github/localization/validate.mjs` (sample rendering shared with the review sheet: `messages.mjs`) |
+| Concept register and protected names/literals (English) | `frontend/i18n/terms/en.json` (not served) |
+| A locale's termbase | `frontend/i18n/terms/<tag>.json` (not served) |
+| A locale's review ledger (provenance, back-translations, findings, recorded exceptions) | `frontend/i18n/review/<tag>.json` (not served) |
+| Help label map (every `<b>` span of `help.*`, classified) | `frontend/i18n/en.labels.json` (not served) |
+| Bilingual review sheet | `.github/localization/review_sheet.mjs` |
+| Locale browser probe | `frontend/browser/localization-locale.spec.js` (`DP_LOCALE`, default `en-XA`) |
 | Census | `.github/localization/inventory.py` (lexer: `jslex.py`) |
 
 **Messages.** These are ICU MessageFormat with named arguments only, plus `plural`
@@ -551,6 +562,70 @@ each listed apart.
 
 A word that is intentionally the same as English still needs a recorded `sources`
 hash. Once recorded, it is no longer debt.
+
+### WS5 translation checks
+
+For each target translation the validator also renders the message at sample
+values (counts 0 1 2 3 5 11 21 101 1.5, every select case) and hard-fails:
+
+- rich-text tags that differ from the English rendering (dropped, added, moved);
+- select cases that differ from English; a plural lacking a CLDR category the
+  locale reaches with whole numbers (`pl`/`ru`/`uk` few and many; `ar` zero, two,
+  few and many; `es`/`fr`/`it`/`pt` many), or an exact `=N` case English has, or an
+  English plural that inflects said plainly in a language with several categories;
+- a rendering identical to English, unless the review ledger records it as
+  intentionally identical (`identical`);
+- a protected name missing, or a protected literal (`https://`,
+  `PUBLIC_BASE_URL`, `MB/s`…) changed in number (`terms/en.json` `protected`);
+- terminology: a concept key not translated as the locale's term, a forbidden
+  alternative, or English naming a concept (its `match`) where the translation
+  uses neither the term nor a listed form. An exception is recorded per key in
+  the ledger (`terms`);
+- Help control labels: where `en.labels.json` marks a span `control` (it names an
+  interface element by its displayed name), one of the translation's `<b>` spans
+  must say that element's current translation (a lead-in colon and an `A → B`
+  path are allowed). A `term` span (a concept in prose) may inflect; `emphasis`,
+  `control-unmapped` and `unresolved` spans are not checked. An exception is
+  recorded in the ledger (`labels`);
+- a malformed `sources` hash, a hash without its translation, a catalog without
+  its schema, and a review ledger that is malformed or claims a human
+  translation or review without naming its reviewer and evidence.
+
+Translations that still contain common English words are listed as a warning.
+
+**Review debt** (a warning): a translation without a current review (a ledger entry
+for the current English and the current text, with `ai-review` or `human-review`),
+a critical key without a current back-translation, and open findings (critical
+ones listed apart). **`--complete=TAG`** is the candidate check for one planned locale:
+zero translation debt, a termbase term for every concept, no review debt. `--release`
+applies the same to every `supported` locale.
+
+Nothing here certifies a translation. Automated checks prove structure, literals
+and recorded terminology. Meaning, register and the full consequence of a critical
+warning need review, and the ledger's provenance (`ai-generated`, `ai-review`,
+`ai-back-translation`, or `human-*` with reviewer and evidence) says which review
+happened.
+
+**A termbase** is `{"schema": "debridpulse-terms/1", "locale", "register", "terms":
+{concept: {"target", "forms"?, "forbidden"?}}}`. **A ledger** is `{"schema":
+"debridpulse-review/1", "locale", "entries": {key: {"source", "translation",
+"provenance", "backTranslation"?, "human"?: {"reviewer", "evidence"}, "findings"?:
+[{"kind", "note", "status", "resolution"?}], "identical"?, "terms"?, "labels"?}}}`,
+where `source` and `translation` are the sha256[:16] of the English and the translation reviewed.
+
+**The review sheet** (`node .github/localization/review_sheet.mjs --locale=TAG
+--out=FILE.html`) writes every key with its context, English, translation (plurals
+and selects at their samples), the Help control labels it must show, and the
+ledger's record, as HTML and CSV.
+
+**The locale probe** (`DP_LOCALE=<tag> npx playwright test localization-locale.spec.js`)
+shows the locale on an instance's own reader and fails on catalog or semantic
+defects: English left where the locale translates it, keys shown, debt, runtime
+notes, critical text in English, Help control labels, or a change in what exists
+(navigation, Settings tabs, Help passages, every topic's parts and the role answers
+for twelve reader contexts). It records geometry at 320 px for WS6 without failing,
+and marks an unloadable catalog `INFRASTRUCTURE`. With `DP_PROBE_OUT` it writes its
+findings as JSON. It sees only what that reader is shown.
 
 **A feature change that adds text** needs:
 

@@ -1,0 +1,5178 @@
+{
+ "schema": "debridpulse-help-labels/1",
+ "about": "Every <b> span of the Help catalog (help.*), in order. kind: control = it names an interface element by its displayed name, so a translation shows that element's translated label exactly (key, or keys joined by join, with suffix); term = a concept in prose, which a translation may inflect (terminology is the termbase's); emphasis = plain emphasis; control-unmapped = an interface name no catalog key is (not checked); unresolved = the passage does not say which element (not checked). Each choice carries its reason. See docs/LOCALIZATION.md §4.",
+ "spans": {
+  "help.quickstart.lead.debridpulse_application_use_submit": [
+   {
+    "text": "DebridPulse is the application you use to submit, route, track, and manage downloads.",
+    "kind": "emphasis",
+    "reason": "Emphasised introductory sentence."
+   }
+  ],
+  "help.quickstart.before_begin.storage": [
+   {
+    "text": "Storage:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   }
+  ],
+  "help.quickstart.before_begin.login_protection.standalone": [
+   {
+    "text": "Login protection:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "session.my_account",
+    "reason": "\"open My Account\" names the account control item the reader activates, not the dialog title."
+   },
+   {
+    "text": "Set Password",
+    "kind": "control",
+    "key": "account.action.set_password",
+    "reason": "The Set Password action in My Account."
+   }
+  ],
+  "help.quickstart.before_begin.who_can_do_what.standalone": [
+   {
+    "text": "Who can do what:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Administrator",
+    "kind": "term",
+    "reason": "Names the built-in Administrator account as a concept; no candidate."
+   },
+   {
+    "text": "Integration",
+    "kind": "term",
+    "key": "role.integration",
+    "reason": "\"Integration accounts\" uses the role name as terminology; role.integration is the fixed role label (not the Activity category, Details requester, or Users option)."
+   },
+   {
+    "text": "Settings → Access & Integrations",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.users_standalone"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Access & Integrations: the only interface key with this text"
+   }
+  ],
+  "help.quickstart.before_begin.login_protection.username_password_shown": [
+   {
+    "text": "Login protection:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Settings → Authentication",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.authentication"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Authentication: the only interface key with this text"
+   },
+   {
+    "text": "Username & Password",
+    "kind": "control",
+    "key": "settings.auth.credentials_title",
+    "reason": "\"set up Username & Password\" in Settings → Authentication is the card whose title is settings.auth.credentials_title (ui-settings-page.js card()), not the status-figure KPI labels."
+   }
+  ],
+  "help.quickstart.before_begin.login_protection.username_password_hidden": [
+   {
+    "text": "Login protection:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Username & Password",
+    "kind": "control",
+    "key": "settings.auth.credentials_title",
+    "reason": "The passage says \"its card is shown\"; the card title is settings.auth.credentials_title, not the KPI figure labels."
+   },
+   {
+    "text": "Settings → Authentication",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.authentication"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Authentication: the only interface key with this text"
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "\"when My Account is set to Advanced\" refers to the My Account dialog where the choice lives, so its title, not the opener item."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "The Easy/Advanced presentation choice in My Account, not the Usenet server Advanced disclosure."
+   }
+  ],
+  "help.quickstart.before_begin.who_can_do_what.server": [
+   {
+    "text": "Who can do what:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Admin",
+    "kind": "term",
+    "key": "role.admin",
+    "reason": "\"an Admin, the role that...\" uses the role name as terminology; role.admin is the fixed role label rather than the Users & Access option."
+   },
+   {
+    "text": "User",
+    "kind": "term",
+    "key": "role.user",
+    "reason": "\"the User ... role\" is role terminology; role.user is the fixed role label rather than the Users & Access option."
+   },
+   {
+    "text": "ReadOnly User",
+    "kind": "term",
+    "key": "role.readonly",
+    "reason": "\"ReadOnly User role\" is role terminology; role.readonly is the fixed role label rather than the Users & Access option."
+   },
+   {
+    "text": "Everyday Use",
+    "kind": "control-unmapped",
+    "reason": "Help manual tab name (Everyday Use); no candidate key."
+   }
+  ],
+  "help.quickstart.check_where_downloads.open_settings_downloads": [
+   {
+    "text": "Settings → Downloads → Download Behavior & Limits",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.downloads.behavior"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Download Behavior & Limits: the only interface key with this text"
+   },
+   {
+    "text": "Download Folder",
+    "kind": "control",
+    "key": "settings.downloads.folder",
+    "reason": "Download Folder field label on the Downloads tab."
+   },
+   {
+    "text": "Browse",
+    "kind": "control",
+    "key": "settings.browse",
+    "reason": "Browse button beside the Download Folder field."
+   }
+  ],
+  "help.quickstart.check_where_downloads.if_debridpulse_runs": [
+   {
+    "text": "container",
+    "kind": "term",
+    "reason": "Introduces the concept \"container\"; not an interface name."
+   }
+  ],
+  "help.quickstart.choose_services_want.open_settings_services": [
+   {
+    "text": "Settings → Services",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.sources"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Services: the only interface key with this text"
+   },
+   {
+    "text": "Network Sources",
+    "kind": "control",
+    "key": "integration.group.direct_sources",
+    "reason": "The Network Sources group in Settings → Services is titled with integration.group.direct_sources (ui-settings-page.js fallback), not the Statistics chart legend."
+   }
+  ],
+  "help.quickstart.choose_services_want.every_premium_service": [
+   {
+    "text": "Premium Service",
+    "kind": "term",
+    "reason": "\"Every Premium Service\" is a category term in prose; no candidate."
+   },
+   {
+    "text": "Premium Services",
+    "kind": "control",
+    "key": "settings.services.premium",
+    "reason": "\"its card under Premium Services\" in Settings → Services is the Services group header, not the Provider Status tier heading."
+   },
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "The Enable switch on a service card in Settings, not the Users & Access account Enable button."
+   }
+  ],
+  "help.quickstart.choose_services_want.alldebrid_debrid_link_premiumize": [
+   {
+    "text": "AllDebrid, Debrid-Link and Premiumize:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "API Key",
+    "kind": "control",
+    "key": "settings.key.label",
+    "reason": "API Key field on a provider card."
+   }
+  ],
+  "help.quickstart.choose_services_want.real_debrid_torbox": [
+   {
+    "text": "Real-Debrid and TorBox:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Connect Real-Debrid",
+    "kind": "control-unmapped",
+    "reason": "Connect Real-Debrid button; no candidate key with this exact text."
+   },
+   {
+    "text": "Connect TorBox",
+    "kind": "control-unmapped",
+    "reason": "Connect TorBox button; no candidate key with this exact text."
+   }
+  ],
+  "help.quickstart.choose_services_want.usenet": [
+   {
+    "text": "Usenet:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Add Server",
+    "kind": "control",
+    "key": "settings.usenet.add",
+    "reason": "Add Server button on the Usenet card."
+   }
+  ],
+  "help.quickstart.choose_services_want.press_test_card": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button on a service card in Settings."
+   },
+   {
+    "text": "Services",
+    "kind": "control-unmapped",
+    "reason": "\"The Services tab of this manual\" is the Help manual tab, not the Settings section tab (settings.tab.sources); no matching candidate."
+   }
+  ],
+  "help.quickstart.add_first_download.dashboard_paste_link": [
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.page.dashboard.title",
+    "reason": "\"On the Dashboard\" locates the reader on the page, whose header title is shell.page.dashboard.title, rather than the sidebar entry."
+   },
+   {
+    "text": "Quick Add",
+    "kind": "control",
+    "key": "quick_add.title",
+    "reason": "Quick Add card title."
+   },
+   {
+    "text": "Add",
+    "kind": "control",
+    "key": "quick_add.add",
+    "reason": "Quick Add submit button, not the User Accounts Add button."
+   },
+   {
+    "text": "Add",
+    "kind": "control",
+    "key": "quick_add.add",
+    "reason": "Quick Add submit button with an empty box, not the User Accounts Add button."
+   }
+  ],
+  "help.quickstart.follow_finish.download_appears_download.admin": [
+   {
+    "text": "Download Activity",
+    "kind": "control",
+    "key": "dashboard.activity.title",
+    "reason": "Download Activity card on the Dashboard."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.page.downloads.title",
+    "reason": "\"appears ... in Downloads\" names the Downloads page as a location (page title), not the sidebar entry, Event Type filter or Settings tab."
+   }
+  ],
+  "help.quickstart.follow_finish.if_something_does.activity_log_shown": [
+   {
+    "text": "Activity Log",
+    "kind": "control",
+    "key": "shell.page.activity_log.title",
+    "reason": "\"read ... the Activity Log\" refers to the page the reader reads, so its page title rather than the sidebar entry."
+   },
+   {
+    "text": "Troubleshooting",
+    "kind": "control-unmapped",
+    "reason": "Help manual tab name (Troubleshooting); no candidate key."
+   }
+  ],
+  "help.quickstart.follow_finish.if_something_does.activity_log_hidden": [
+   {
+    "text": "Troubleshooting",
+    "kind": "control-unmapped",
+    "reason": "Help manual tab name (Troubleshooting); no candidate key."
+   }
+  ],
+  "help.quickstart.where_read_next.everyday_use": [
+   {
+    "text": "Everyday Use:",
+    "kind": "control-unmapped",
+    "reason": "Lead naming the Help manual tab Everyday Use; no candidate key."
+   }
+  ],
+  "help.quickstart.where_read_next.how_works": [
+   {
+    "text": "How It Works:",
+    "kind": "control-unmapped",
+    "reason": "Lead naming the Help manual tab How It Works; no candidate key."
+   }
+  ],
+  "help.quickstart.where_read_next.services": [
+   {
+    "text": "Services",
+    "kind": "control-unmapped",
+    "reason": "First half of the Help manual tab name \"Services and Engines\", not the Settings section tab settings.tab.sources."
+   },
+   {
+    "text": "Engines:",
+    "kind": "control-unmapped",
+    "reason": "Second half of the Help manual tab name \"Services and Engines\"; no candidate key."
+   }
+  ],
+  "help.quickstart.where_read_next.settings": [
+   {
+    "text": "Settings:",
+    "kind": "control-unmapped",
+    "reason": "Lead naming the Help manual tab Settings; no candidate key."
+   },
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "The per-card Help (?) button in Settings; the only candidate is the phone-dock short name of Help & License, which is a different element."
+   }
+  ],
+  "help.using.lead.sidebar_has_three.activity_log_shown": [
+   {
+    "text": "Queue",
+    "kind": "control",
+    "key": "shell.nav.group.queue",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.nav.dashboard",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Review",
+    "kind": "control",
+    "key": "shell.nav.group.review",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Activity Log",
+    "kind": "control",
+    "key": "shell.nav.activity_log",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Statistics",
+    "kind": "control",
+    "key": "shell.nav.statistics",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "System",
+    "kind": "control",
+    "key": "shell.nav.group.system",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Settings",
+    "kind": "control",
+    "key": "shell.nav.settings",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Help & License",
+    "kind": "control",
+    "key": "shell.nav.help",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   }
+  ],
+  "help.using.lead.sidebar_has_three.admin": [
+   {
+    "text": "Queue",
+    "kind": "control",
+    "key": "shell.nav.group.queue",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.nav.dashboard",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Review",
+    "kind": "control",
+    "key": "shell.nav.group.review",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Statistics",
+    "kind": "control",
+    "key": "shell.nav.statistics",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "System",
+    "kind": "control",
+    "key": "shell.nav.group.system",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Settings",
+    "kind": "control",
+    "key": "shell.nav.settings",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Help & License",
+    "kind": "control",
+    "key": "shell.nav.help",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   }
+  ],
+  "help.using.lead.sidebar_has_three.personal": [
+   {
+    "text": "Queue",
+    "kind": "control",
+    "key": "shell.nav.group.queue",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.nav.dashboard",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Review",
+    "kind": "control",
+    "key": "shell.nav.group.review",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Statistics",
+    "kind": "control",
+    "key": "shell.nav.statistics",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "System",
+    "kind": "control",
+    "key": "shell.nav.group.system",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Help & License",
+    "kind": "control",
+    "key": "shell.nav.help",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   }
+  ],
+  "help.using.lead.sidebar_has_three.no_personal": [
+   {
+    "text": "Queue",
+    "kind": "control",
+    "key": "shell.nav.group.queue",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.nav.dashboard",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "Review",
+    "kind": "control",
+    "key": "shell.nav.group.review",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Statistics",
+    "kind": "control",
+    "key": "shell.nav.statistics",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   },
+   {
+    "text": "System",
+    "kind": "control",
+    "key": "shell.nav.group.system",
+    "reason": "Sidebar group heading."
+   },
+   {
+    "text": "Help & License",
+    "kind": "control",
+    "key": "shell.nav.help",
+    "reason": "In a sentence describing the sidebar groups, this is the sidebar navigation entry, not the page header title."
+   }
+  ],
+  "help.using.lead.standalone_installation_only": [
+   {
+    "text": "Administrator",
+    "kind": "term",
+    "reason": "Names the built-in Administrator account as a concept; no candidate."
+   }
+  ],
+  "help.using.lead.what_see_depends": [
+   {
+    "text": "Admin only",
+    "kind": "term",
+    "reason": "Refers to the manual's own \"(Admin only)\" marker used below; not an on-screen interface label and no candidate."
+   },
+   {
+    "text": "User",
+    "kind": "term",
+    "key": "role.user",
+    "reason": "\"a User sees\" is role terminology; role.user is the fixed role label rather than the Users & Access option."
+   },
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "A User sees the Notifications sidebar page in place of Settings, not the Settings section tab."
+   },
+   {
+    "text": "ReadOnly User",
+    "kind": "term",
+    "key": "role.readonly",
+    "reason": "\"a ReadOnly User can look\" is role terminology; role.readonly is the fixed role label."
+   }
+  ],
+  "help.using.lead.presentation_easy_so": [
+   {
+    "text": "Easy",
+    "kind": "control",
+    "key": "presentation.easy",
+    "reason": "The Easy presentation choice."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "\"Advanced, chosen in My Account\" is the presentation choice, not the Usenet Advanced disclosure."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "\"chosen in My Account\" refers to the dialog where the choice is made, so its title rather than the opener item."
+   }
+  ],
+  "help.using.who_uses_installation.built_administrator": [
+   {
+    "text": "The built-in Administrator",
+    "kind": "term",
+    "reason": "Names the built-in Administrator account as a concept; no candidate."
+   }
+  ],
+  "help.using.who_uses_installation.other_people_accounts": [
+   {
+    "text": "Other people's accounts",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase; not an interface name."
+   }
+  ],
+  "help.using.who_uses_installation.integration": [
+   {
+    "text": "Integration",
+    "kind": "term",
+    "key": "role.integration",
+    "reason": "\"Integration accounts\" uses the role name as terminology; role.integration is the fixed role label (not Activity category, Details requester or Users option)."
+   }
+  ],
+  "help.using.who_uses_installation.my_account": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "\"My Account, opened from the account control\" names the dialog that opens, so its title rather than the opener item."
+   },
+   {
+    "text": "Easy",
+    "kind": "control",
+    "key": "presentation.easy",
+    "reason": "The Easy presentation choice in My Account."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "The Advanced presentation choice in My Account, not the Usenet Advanced disclosure."
+   },
+   {
+    "text": "Log Out",
+    "kind": "control",
+    "key": "session.log_out",
+    "reason": "Log Out button beside the account control."
+   }
+  ],
+  "help.using.what_role_lets.admin": [
+   {
+    "text": "Admin:",
+    "kind": "term",
+    "reason": "Lead naming the Admin role (with colon); no exact candidate."
+   }
+  ],
+  "help.using.what_role_lets.user": [
+   {
+    "text": "User:",
+    "kind": "term",
+    "reason": "Lead naming the User role (with colon); no exact candidate."
+   },
+   {
+    "text": "Requested By",
+    "kind": "control",
+    "key": "details.field.requested_by",
+    "reason": "Requested By field in the download details."
+   },
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "For a User, Notifications is a sidebar page (not a Settings tab, which a User cannot open)."
+   }
+  ],
+  "help.using.what_role_lets.readonly_user": [
+   {
+    "text": "ReadOnly User:",
+    "kind": "term",
+    "reason": "Lead naming the ReadOnly User role (with colon); no exact candidate."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "\"presentation in My Account\" refers to the dialog contents, so its title rather than the opener item."
+   }
+  ],
+  "help.using.what_role_lets.name_bottom_sidebar": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "\"Your name ... opens My Account\": the visible control is the name, and My Account is the dialog it opens, so the dialog title."
+   },
+   {
+    "text": "Log Out",
+    "kind": "control",
+    "key": "session.log_out",
+    "reason": "Log Out button beside the account control."
+   }
+  ],
+  "help.using.what_role_lets.my_account_easy": [
+   {
+    "text": "Easy | Advanced",
+    "kind": "control-unmapped",
+    "reason": "The combined Easy | Advanced selector; no single candidate key for the composed text."
+   }
+  ],
+  "help.using.header_controls.pause_all": [
+   {
+    "text": "Pause All",
+    "kind": "control",
+    "key": "processing.pause_all",
+    "reason": "Topbar Pause All button."
+   },
+   {
+    "text": "Resume All",
+    "kind": "control",
+    "key": "processing.resume_all",
+    "reason": "Topbar Resume All button."
+   }
+  ],
+  "help.using.header_controls.resume_paused_n": [
+   {
+    "text": "Resume Paused (N)",
+    "kind": "control-unmapped",
+    "reason": "Resume Paused (N) button; its catalog key (processing.resume_paused_count, with a {count} placeholder) is not among the candidates."
+   }
+  ],
+  "help.using.header_controls.activity_badge.admin": [
+   {
+    "text": "Activity badge:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in describing the topbar activity badge; the badge has no such text label."
+   },
+   {
+    "text": "Custom cap (MB/s)",
+    "kind": "control",
+    "key": "speed_cap.custom_label",
+    "reason": "Speed-cap menu own-value field label."
+   },
+   {
+    "text": "Set Custom",
+    "kind": "control",
+    "key": "speed_cap.set_custom",
+    "reason": "Speed-cap menu button applying the own value."
+   }
+  ],
+  "help.using.header_controls.activity_badge.member": [
+   {
+    "text": "Activity badge:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in describing the topbar activity badge; the badge has no such text label."
+   }
+  ],
+  "help.using.header_controls.theme_button": [
+   {
+    "text": "Theme button:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in describing the theme toggle; not a displayed label."
+   }
+  ],
+  "help.using.provider_status_sidebar.green": [
+   {
+    "text": "Green:",
+    "kind": "emphasis",
+    "reason": "Lead naming a status colour; colours are not displayed text."
+   }
+  ],
+  "help.using.provider_status_sidebar.amber": [
+   {
+    "text": "Amber:",
+    "kind": "emphasis",
+    "reason": "Lead naming a status colour; colours are not displayed text."
+   }
+  ],
+  "help.using.provider_status_sidebar.red": [
+   {
+    "text": "Red:",
+    "kind": "emphasis",
+    "reason": "Lead naming a status colour; colours are not displayed text."
+   }
+  ],
+  "help.using.provider_status_sidebar.pulsing_amber": [
+   {
+    "text": "Pulsing amber:",
+    "kind": "emphasis",
+    "reason": "Lead naming a status colour/animation; not displayed text."
+   }
+  ],
+  "help.using.provider_status_sidebar.network_sources_share": [
+   {
+    "text": "aria2",
+    "kind": "term",
+    "reason": "Names the aria2 engine as a product/concept; no candidate."
+   },
+   {
+    "text": "aria2: offline",
+    "kind": "control",
+    "key": "status.aria2.offline",
+    "reason": "Sidebar status row text for aria2 offline."
+   }
+  ],
+  "help.using.dashboard_quick_add.summary_cards_count": [
+   {
+    "text": "Total Downloads",
+    "kind": "control",
+    "key": "dashboard.kpi.total.label",
+    "reason": "Dashboard summary card title."
+   },
+   {
+    "text": "Completed",
+    "kind": "control",
+    "key": "dashboard.kpi.completed.label",
+    "reason": "\"The summary cards count ... Completed\" is the Dashboard figure card title, not a route outcome, Statistics row, Details field or engine state."
+   },
+   {
+    "text": "Active Now",
+    "kind": "control",
+    "key": "dashboard.kpi.active.label",
+    "reason": "Dashboard summary card title."
+   },
+   {
+    "text": "Processing",
+    "kind": "control",
+    "key": "dashboard.kpi.processing.label",
+    "reason": "Listed among the Dashboard summary cards, so the figure card title, not the transfer status, Statistics row or Downloads filter."
+   },
+   {
+    "text": "Errors",
+    "kind": "control",
+    "key": "dashboard.kpi.errors.label",
+    "reason": "Listed among the Dashboard summary cards, so the figure card title, not the Statistics severity row."
+   },
+   {
+    "text": "Total Downloaded",
+    "kind": "control",
+    "key": "dashboard.kpi.downloaded.label",
+    "reason": "Dashboard summary card title."
+   },
+   {
+    "text": "Errors",
+    "kind": "control",
+    "key": "dashboard.kpi.errors.label",
+    "reason": "\"Click Errors to open Downloads filtered\" is the clickable Dashboard figure card, not the Statistics severity row."
+   }
+  ],
+  "help.using.dashboard_quick_add.quick_add": [
+   {
+    "text": "Quick Add",
+    "kind": "control",
+    "key": "quick_add.title",
+    "reason": "Quick Add card title."
+   }
+  ],
+  "help.using.dashboard_quick_add.links": [
+   {
+    "text": "Links:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "100 different links",
+    "kind": "emphasis",
+    "reason": "Emphasises a limit; not an interface name."
+   }
+  ],
+  "help.using.dashboard_quick_add.magnet_links": [
+   {
+    "text": "Magnet links",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   }
+  ],
+  "help.using.dashboard_quick_add.alternate_sources": [
+   {
+    "text": "Alternate sources:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   }
+  ],
+  "help.using.dashboard_quick_add.press_add_ctrl": [
+   {
+    "text": "Add",
+    "kind": "control",
+    "key": "quick_add.add",
+    "reason": "Quick Add submit button, not the User Accounts Add button."
+   }
+  ],
+  "help.using.dashboard_quick_add.add_file_empty": [
+   {
+    "text": "Add",
+    "kind": "control",
+    "key": "quick_add.add",
+    "reason": "Quick Add submit button with an empty box, not the User Accounts Add button."
+   }
+  ],
+  "help.using.dashboard_quick_add.any_other_file": [
+   {
+    "text": "Any other file:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   }
+  ],
+  "help.using.dashboard_quick_add.recover_all": [
+   {
+    "text": "Recover All",
+    "kind": "control",
+    "key": "recovery.recover_all",
+    "reason": "Recover All button in the Quick Add header."
+   },
+   {
+    "text": "How It Works",
+    "kind": "control-unmapped",
+    "reason": "Help manual tab name (How It Works); no candidate key."
+   }
+  ],
+  "help.using.dashboard_quick_add.download_activity.submit": [
+   {
+    "text": "Download Activity",
+    "kind": "control",
+    "key": "dashboard.activity.title",
+    "reason": "Download Activity card title."
+   },
+   {
+    "text": "View All",
+    "kind": "control",
+    "key": "dashboard.activity.view_all",
+    "reason": "View All button in Download Activity."
+   }
+  ],
+  "help.using.dashboard_quick_add.download_activity.viewer": [
+   {
+    "text": "Download Activity",
+    "kind": "control",
+    "key": "dashboard.activity.title",
+    "reason": "Download Activity card title."
+   },
+   {
+    "text": "View All",
+    "kind": "control",
+    "key": "dashboard.activity.view_all",
+    "reason": "View All button in Download Activity."
+   }
+  ],
+  "help.using.questions_debridpulse_may.connect_local_network_address": [
+   {
+    "text": "Connect to a local network address?",
+    "kind": "control",
+    "key": "submission.local_network.title",
+    "reason": "Local-network confirmation dialog title."
+   },
+   {
+    "text": "Local Network Connections",
+    "kind": "control",
+    "key": "settings.downloads.lan",
+    "reason": "Downloads tab option label."
+   },
+   {
+    "text": "Skip Local Connection Confirmation",
+    "kind": "control",
+    "key": "settings.downloads.lan_skip",
+    "reason": "Downloads tab option label."
+   },
+   {
+    "text": "Allow",
+    "kind": "control",
+    "key": "submission.local_network.allow",
+    "reason": "Allow button in the local-network dialog."
+   }
+  ],
+  "help.using.questions_debridpulse_may.download_item_collection": [
+   {
+    "text": "Download the item or its collection?",
+    "kind": "control",
+    "key": "submission.scope.title",
+    "reason": "Scope dialog title."
+   },
+   {
+    "text": "Cancel Transfer",
+    "kind": "control",
+    "key": "submission.scope.cancel",
+    "reason": "Cancel Transfer button in the scope dialog."
+   }
+  ],
+  "help.using.questions_debridpulse_may.authentication_required": [
+   {
+    "text": "Authentication Required",
+    "kind": "control",
+    "key": "auth_required.title",
+    "reason": "Authentication Required dialog title."
+   },
+   {
+    "text": "Cancel",
+    "kind": "control",
+    "key": "common.cancel",
+    "reason": "The Authentication Required dialog's Cancel button is rendered from common.cancel (ui-auth-required.js)."
+   }
+  ],
+  "help.using.questions_debridpulse_may.verify_server_identity": [
+   {
+    "text": "Verify Server Identity",
+    "kind": "control",
+    "key": "auth_required.title_identity",
+    "reason": "Identity-confirmation dialog title."
+   },
+   {
+    "text": "Verify & Continue",
+    "kind": "control",
+    "key": "auth_required.verify_continue",
+    "reason": "Verify & Continue button."
+   }
+  ],
+  "help.using.choosing_files.when_torrent_magnet": [
+   {
+    "text": "Select files",
+    "kind": "control",
+    "key": "file_selection.title_files",
+    "reason": "File chooser dialog title."
+   },
+   {
+    "text": "Confirm",
+    "kind": "control",
+    "key": "dialog.confirm",
+    "reason": "The file chooser's Confirm button is rendered from dialog.confirm (ui-file-selection.js)."
+   }
+  ],
+  "help.using.choosing_files.if_do_nothing": [
+   {
+    "text": "Close",
+    "kind": "control",
+    "key": "dialog.close",
+    "reason": "The file chooser's Close button is rendered from dialog.close (ui-file-selection.js)."
+   }
+  ],
+  "help.using.choosing_files.cancel_transfer": [
+   {
+    "text": "Cancel Transfer",
+    "kind": "control",
+    "key": "submission.scope.cancel",
+    "reason": "The file chooser's Cancel Transfer button is rendered from submission.scope.cancel (ui-file-selection.js)."
+   }
+  ],
+  "help.using.choosing_files.can_reopen_selection": [
+   {
+    "text": "Choose Files",
+    "kind": "control",
+    "key": "file_selection.choose",
+    "reason": "Choose Files button on the download."
+   },
+   {
+    "text": "Change Files",
+    "kind": "control",
+    "key": "file_selection.change",
+    "reason": "Change Files button on the download."
+   }
+  ],
+  "help.using.choosing_files.collection_separate_items": [
+   {
+    "text": "Select entries",
+    "kind": "control",
+    "key": "file_selection.title_entries",
+    "reason": "Collection chooser dialog title."
+   }
+  ],
+  "help.using.downloads_page.filters": [
+   {
+    "text": "Filters:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Search",
+    "kind": "control-unmapped",
+    "reason": "Downloads page search box; no candidate key."
+   }
+  ],
+  "help.using.downloads_page.order": [
+   {
+    "text": "Order:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Priority",
+    "kind": "control",
+    "key": "downloads.order.priority",
+    "reason": "The Downloads Order option Priority, not the Usenet server priority field."
+   },
+   {
+    "text": "Newest",
+    "kind": "control",
+    "key": "downloads.order.newest",
+    "reason": "The Downloads Order option Newest."
+   }
+  ],
+  "help.using.downloads_page.row_actions": [
+   {
+    "text": "Row actions:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Pause",
+    "kind": "control",
+    "key": "transfer.action.pause",
+    "reason": "Under \"Row actions\", the per-row Pause button, not the bulk action or engine-activity button."
+   },
+   {
+    "text": "Resume",
+    "kind": "control",
+    "key": "transfer.action.resume",
+    "reason": "Under \"Row actions\", the per-row Resume button, not the bulk action or engine-activity button."
+   },
+   {
+    "text": "Retry",
+    "kind": "control",
+    "key": "transfer.action.retry",
+    "reason": "Per-row Retry button on a failed download, not the Details route check or error-fact label."
+   },
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "transfer.action.remove",
+    "reason": "Per-row Remove button on a download, not the API key, Usenet, backup or user Remove."
+   },
+   {
+    "text": "Start Now",
+    "kind": "control",
+    "key": "downloads.queue.start_now",
+    "reason": "Start Now queue button."
+   },
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "transfer.action.remove",
+    "reason": "Per-row Remove button for a User, not the API key, Usenet, backup or user Remove."
+   }
+  ],
+  "help.using.downloads_page.several_once": [
+   {
+    "text": "Several at once:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Pause",
+    "kind": "control",
+    "key": "downloads.bulk.pause",
+    "reason": "\"tick rows to show Pause\" is the bulk action for selected downloads, not the row button."
+   },
+   {
+    "text": "Resume",
+    "kind": "control",
+    "key": "downloads.bulk.resume",
+    "reason": "\"tick rows to show Resume\" is the bulk action for selected downloads, not the row button."
+   },
+   {
+    "text": "Reset",
+    "kind": "control",
+    "key": "downloads.bulk.reset",
+    "reason": "Bulk Reset action."
+   },
+   {
+    "text": "Move to Top",
+    "kind": "control",
+    "key": "downloads.bulk.top",
+    "reason": "Shown after ticking rows, so the bulk Move to Top action, not the row context-menu command."
+   },
+   {
+    "text": "Delete",
+    "kind": "control",
+    "key": "downloads.bulk.delete",
+    "reason": "Bulk Delete action for selected downloads, not the User Accounts delete label."
+   }
+  ],
+  "help.using.downloads_page.queue_order": [
+   {
+    "text": "Queue order:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Move to Top",
+    "kind": "control",
+    "key": "downloads.move_to_top",
+    "reason": "\"Right-click offers Move to Top\" is the row context-menu command, not the bulk action."
+   }
+  ],
+  "help.using.downloads_page.beneath_each_name": [
+   {
+    "text": "name",
+    "kind": "emphasis",
+    "reason": "Emphasises the download name in the row; not a displayed label."
+   },
+   {
+    "text": "How It Works → Switching service or source",
+    "kind": "control-unmapped",
+    "reason": "Help manual tab/section path; no candidate key."
+   }
+  ],
+  "help.using.downloads_page.date_column_menu": [
+   {
+    "text": "Date",
+    "kind": "control-unmapped",
+    "reason": "Date column header; no candidate key."
+   }
+  ],
+  "help.using.download_details.provider": [
+   {
+    "text": "Provider",
+    "kind": "control",
+    "key": "details.field.provider",
+    "reason": "Details field label Provider (the service handling it now), not the fallback source name or the picker title."
+   },
+   {
+    "text": "Submitted As",
+    "kind": "control",
+    "key": "details.field.submitted_as",
+    "reason": "Details field label."
+   },
+   {
+    "text": "Original Resource",
+    "kind": "control",
+    "key": "details.field.original_resource",
+    "reason": "Details field label."
+   }
+  ],
+  "help.using.download_details.requested": [
+   {
+    "text": "Requested By",
+    "kind": "control",
+    "key": "details.field.requested_by",
+    "reason": "Details field label."
+   }
+  ],
+  "help.using.download_details.route_history": [
+   {
+    "text": "Route History",
+    "kind": "control",
+    "key": "details.route.title",
+    "reason": "Details Route History card title."
+   }
+  ],
+  "help.using.download_details.advanced_acquisition_details": [
+   {
+    "text": "Advanced acquisition details",
+    "kind": "control",
+    "key": "details.advanced.title",
+    "reason": "Details disclosure title."
+   }
+  ],
+  "help.using.download_details.files.operate": [
+   {
+    "text": "Files",
+    "kind": "control",
+    "key": "details.files.title",
+    "reason": "Details Files card title."
+   },
+   {
+    "text": "Provider",
+    "kind": "control",
+    "key": "root_provider.title",
+    "reason": "The Files-header control switches service by opening the picker titled Provider; details.field.provider is the Details header-field label (not in the Files header) and provider_fallback is an unknown-name placeholder."
+   },
+   {
+    "text": "Candidates",
+    "kind": "control",
+    "key": "details.candidates.chip",
+    "reason": "\"Each file's Candidates list\" is the per-file Files-row disclosure button (details.candidates.chip), not the transfer-level sources-count chip word (group_candidates.chip.candidates)."
+   },
+   {
+    "text": "Discard downloaded progress?",
+    "kind": "control",
+    "key": "group_candidates.discard.title",
+    "reason": "Title of the discard-progress confirmation dialog."
+   }
+  ],
+  "help.using.download_details.files.viewer": [
+   {
+    "text": "Files",
+    "kind": "control",
+    "key": "details.files.title",
+    "reason": "Title of the Details Files card."
+   },
+   {
+    "text": "Candidates",
+    "kind": "control",
+    "key": "details.candidates.chip",
+    "reason": "Per-file Candidates disclosure in the Files rows (details.candidates.chip), not the transfer-level chip word."
+   }
+  ],
+  "help.using.download_details.events.admin": [
+   {
+    "text": "Events",
+    "kind": "control",
+    "key": "details.events",
+    "reason": "Title of the Details Events card."
+   },
+   {
+    "text": "Transfer Trace Log",
+    "kind": "control",
+    "key": "details.trace.button",
+    "reason": "Details button that downloads the trace log."
+   }
+  ],
+  "help.using.download_details.events.member": [
+   {
+    "text": "Events",
+    "kind": "control",
+    "key": "details.events",
+    "reason": "Title of the Details Events card."
+   }
+  ],
+  "help.using.download_details.progress_marked_not": [
+   {
+    "text": "not yet verified",
+    "kind": "control",
+    "key": "transfer.progress.not_yet_verified",
+    "reason": "Label shown beneath a progress bar."
+   },
+   {
+    "text": "estimated",
+    "kind": "control-unmapped",
+    "reason": "Displayed progress marker 'estimated'; no catalog key with that exact text."
+   }
+  ],
+  "help.using.activity_log_admin.activity_log_full": [
+   {
+    "text": "Time Window",
+    "kind": "control",
+    "key": "activity.filter.time_window",
+    "reason": "Activity Log filter group label."
+   },
+   {
+    "text": "Severity",
+    "kind": "control",
+    "key": "activity.filter.severity",
+    "reason": "Activity Log filter group label."
+   },
+   {
+    "text": "Event Type",
+    "kind": "control",
+    "key": "activity.filter.event_type",
+    "reason": "Activity Log filter group label."
+   },
+   {
+    "text": "Details",
+    "kind": "control",
+    "key": "activity.details",
+    "reason": "Disclosure under an event in the Activity Log."
+   }
+  ],
+  "help.using.activity_log_admin.events_kept_until": [
+   {
+    "text": "Settings → Data & Maintenance → Event Logging",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.maintenance",
+     "settings.events.title"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Data & Maintenance: the only interface key with this text; Event Logging: the only interface key with this text"
+   }
+  ],
+  "help.using.statistics.top_cards_completions": [
+   {
+    "text": "Completions",
+    "kind": "control",
+    "key": "stats.chart.title",
+    "reason": "'the Completions chart' names the chart by its heading (stats.chart.title), not its data-series name."
+   },
+   {
+    "text": "Period",
+    "kind": "control-unmapped",
+    "reason": "Statistics Period selector label; no candidate key."
+   }
+  ],
+  "help.using.statistics.overall_rolling_metrics": [
+   {
+    "text": "Overall & Rolling Metrics",
+    "kind": "control",
+    "key": "stats.history.label",
+    "reason": "Statistics section separator title."
+   }
+  ],
+  "help.using.statistics.completions_chart_splits": [
+   {
+    "text": "Completions",
+    "kind": "control",
+    "key": "stats.chart.title",
+    "reason": "'The Completions chart' names the chart heading (stats.chart.title), not the dataset name."
+   }
+  ],
+  "help.using.statistics.transfer_methods": [
+   {
+    "text": "Transfer Methods",
+    "kind": "control",
+    "key": "stats.breakdown.transfer_methods",
+    "reason": "Statistics breakdown card title."
+   },
+   {
+    "text": "Unattributed",
+    "kind": "control-unmapped",
+    "reason": "Displayed breakdown row 'Unattributed'; no candidate key."
+   }
+  ],
+  "help.using.statistics.transfer_disposition": [
+   {
+    "text": "Transfer Disposition",
+    "kind": "control",
+    "key": "stats.breakdown.transfer_disposition",
+    "reason": "Statistics breakdown card title."
+   },
+   {
+    "text": "File Status",
+    "kind": "control",
+    "key": "stats.breakdown.file_status",
+    "reason": "Statistics breakdown card title."
+   },
+   {
+    "text": "Events Severity",
+    "kind": "control",
+    "key": "stats.breakdown.events_severity",
+    "reason": "Statistics breakdown card title."
+   }
+  ],
+  "help.howitworks.lead.each_thing_add": [
+   {
+    "text": "download",
+    "kind": "term",
+    "reason": "Defines the concept 'download'."
+   },
+   {
+    "text": "service",
+    "kind": "term",
+    "reason": "Defines the concept 'service'."
+   },
+   {
+    "text": "download engine",
+    "kind": "term",
+    "reason": "Defines the concept 'download engine'."
+   }
+  ],
+  "help.howitworks.how_service_chosen.specialist_services_come_first": [
+   {
+    "text": "Specialist services come first.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.how_service_chosen.links_added_together_one": [
+   {
+    "text": "Links added together are one download.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.how_service_chosen.waits_rather_than_guesses": [
+   {
+    "text": "It waits rather than guesses.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.how_service_chosen.ready_content_preferred": [
+   {
+    "text": "Ready content is preferred.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.how_service_chosen.no_ranking_setting": [
+   {
+    "text": "No ranking setting.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Use TorBox Before Usenet",
+    "kind": "control-unmapped",
+    "reason": "TorBox card switch label; no candidate key."
+   },
+   {
+    "text": "Use Premiumize Before Usenet",
+    "kind": "control-unmapped",
+    "reason": "Premiumize card switch label; no candidate key."
+   },
+   {
+    "text": "Switching service or source",
+    "kind": "control-unmapped",
+    "reason": "Cross-reference to a displayed Help section heading; no interface key."
+   }
+  ],
+  "help.howitworks.how_service_chosen.enabled_not_same_usable": [
+   {
+    "text": "Enabled is not the same as usable.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.what_status_words.pending_resolving_processing": [
+   {
+    "text": "Pending, Resolving, Processing:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.ready_queued_waiting_execution": [
+   {
+    "text": "Ready, Queued, Waiting for execution slot:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.downloading_verifying": [
+   {
+    "text": "Downloading, Verifying:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.waiting_provider_waiting_storage": [
+   {
+    "text": "Waiting for provider, Waiting for storage, Waiting for executor, Waiting for retry:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.input_required": [
+   {
+    "text": "Input Required:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.awaiting_confirmation": [
+   {
+    "text": "Awaiting confirmation:",
+    "kind": "control",
+    "keys": [
+     "status.unknown"
+    ],
+    "suffix": ":",
+    "reason": "Awaiting confirmation: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.howitworks.what_status_words.paused_recovering": [
+   {
+    "text": "Paused, Recovering:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.extracting": [
+   {
+    "text": "Extracting:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.what_status_words.done": [
+   {
+    "text": "Done:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   },
+   {
+    "text": "Completed with errors",
+    "kind": "control",
+    "key": "status.completed_with_errors",
+    "reason": "Transfer status chip text."
+   },
+   {
+    "text": "Partial:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   },
+   {
+    "text": "Consolidated:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   },
+   {
+    "text": "Consolidated · Unverified:",
+    "kind": "control",
+    "keys": [
+     "status.consolidated_unverified"
+    ],
+    "suffix": ":",
+    "reason": "Consolidated · Unverified: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Retry",
+    "kind": "control",
+    "key": "details.route.retry",
+    "reason": "'Retry on its unverified source in the other download's details' is the Details route action that re-checks a contributed source, not the row retry button or the error-fact label."
+   }
+  ],
+  "help.howitworks.what_status_words.failed_requires_attention_cancelled": [
+   {
+    "text": "Failed, Requires attention, Cancelled:",
+    "kind": "control-unmapped",
+    "reason": "Displayed status word(s) in the status glossary; colon-suffixed or combined span has no exact key."
+   }
+  ],
+  "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_shown": [
+   {
+    "text": "A temporary problem",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Download Error Retries",
+    "kind": "control",
+    "key": "settings.downloads.error_retries",
+    "reason": "Downloads tab field label."
+   },
+   {
+    "text": "Retry Delay",
+    "kind": "control-unmapped",
+    "reason": "Field name 'Retry Delay' as displayed; no exact candidate key."
+   },
+   {
+    "text": "Resolution Failure Retries",
+    "kind": "control",
+    "key": "settings.downloads.resolution_retries",
+    "reason": "Downloads tab field label."
+   },
+   {
+    "text": "Retry Delay (minutes)",
+    "kind": "control",
+    "key": "settings.downloads.retry_delay_minutes",
+    "reason": "Downloads tab field label."
+   },
+   {
+    "text": "Settings → Downloads → Download Behavior & Limits → Advanced Settings",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.downloads.behavior",
+     "settings.downloads.advanced"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Download Behavior & Limits: the only interface key with this text; Advanced Settings: the only interface key with this text"
+   }
+  ],
+  "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_hidden": [
+   {
+    "text": "A temporary problem",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.when_something_fails.problem_one_service": [
+   {
+    "text": "A problem with one service",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.when_something_fails.problem_download_itself": [
+   {
+    "text": "A problem with the download itself",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.when_something_fails.other_sources_file": [
+   {
+    "text": "Other sources for a file",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.when_something_fails.stalled_downloads": [
+   {
+    "text": "Stalled downloads:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Stalled Download Timeout",
+    "kind": "control-unmapped",
+    "reason": "Settings field 'Stalled Download Timeout'; no candidate key."
+   }
+  ],
+  "help.howitworks.switching_service_source.download_stays_same": [
+   {
+    "text": "service",
+    "kind": "term",
+    "reason": "Defines the concept 'service' in prose."
+   },
+   {
+    "text": "source",
+    "kind": "term",
+    "reason": "Defines the concept 'source'; group_candidates.source_lower is an unnamed-source fallback, not this concept."
+   }
+  ],
+  "help.howitworks.switching_service_source.choosing_service": [
+   {
+    "text": "Choosing a service:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Provider",
+    "kind": "control",
+    "key": "root_provider.title",
+    "reason": "'the Provider picker' is the picker whose title is root_provider.title, not the Details field label or the unknown-name fallback."
+   },
+   {
+    "text": "Provider for this transfer",
+    "kind": "control",
+    "key": "root_provider.title_transfer",
+    "reason": "Picker title when choosing for every link."
+   },
+   {
+    "text": "Current",
+    "kind": "control",
+    "key": "root_provider.status.current",
+    "reason": "A service's state in the provider picker, not the sign-in theme label."
+   },
+   {
+    "text": "Ready",
+    "kind": "control",
+    "key": "root_provider.status.prepared",
+    "reason": "The sentence lists provider-picker states, so the picker's 'Ready' state (root_provider.status.prepared), not the transfer status, stats row or Downloads filter."
+   },
+   {
+    "text": "Preparing…",
+    "kind": "control",
+    "key": "root_provider.status.preparing",
+    "reason": "Provider picker state."
+   },
+   {
+    "text": "Waiting for selection",
+    "kind": "control",
+    "key": "root_provider.status.waiting_for_selection",
+    "reason": "Provider picker state."
+   },
+   {
+    "text": "Retrying…",
+    "kind": "control",
+    "key": "root_provider.status.retrying",
+    "reason": "The list is of provider-picker states, so root_provider.status.retrying, not the Details route Retry-in-progress chip."
+   },
+   {
+    "text": "Unavailable",
+    "kind": "control",
+    "key": "root_provider.status.unavailable",
+    "reason": "The list is of provider-picker states, so root_provider.status.unavailable, not storage/health/theme/folder/auth states."
+   },
+   {
+    "text": "Switch",
+    "kind": "control",
+    "key": "root_provider.switch",
+    "reason": "Provider picker Switch button."
+   }
+  ],
+  "help.howitworks.switching_service_source.what_service_switch_does": [
+   {
+    "text": "What a service switch does:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Waiting for provider",
+    "kind": "control",
+    "key": "status.waiting_for_provider",
+    "reason": "Transfer status shown while the service prepares."
+   },
+   {
+    "text": "Preparing …",
+    "kind": "control-unmapped",
+    "reason": "Inline 'Preparing …' message beside the service name; no exact candidate key."
+   }
+  ],
+  "help.howitworks.switching_service_source.choosing_source": [
+   {
+    "text": "Choosing a source:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "N sources available for this file",
+    "kind": "control-unmapped",
+    "reason": "Displayed chooser wording with a count (its plural message group_candidates.chip.artifact_title was not offered as a candidate)."
+   },
+   {
+    "text": "Common sources",
+    "kind": "control",
+    "key": "group_candidates.title_group",
+    "reason": "Source chooser title for several files."
+   },
+   {
+    "text": "Switch to this source",
+    "kind": "control",
+    "key": "group_candidates.switch",
+    "reason": "The network-button source chooser is rendered by ui-group-candidates.js (group_candidates.switch); details.candidate.switch belongs to the separate Details per-file Candidates list."
+   },
+   {
+    "text": "ACTIVE",
+    "kind": "control",
+    "key": "group_candidates.active",
+    "reason": "The network-button source chooser marks the source in use with group_candidates.active; details.candidate.active is the Details Candidates list marker."
+   },
+   {
+    "text": "Not currently switchable",
+    "kind": "control",
+    "key": "group_candidates.not_switchable",
+    "reason": "Source chooser text for a source that cannot be chosen now."
+   }
+  ],
+  "help.howitworks.switching_service_source.service_shown_one_committed": [
+   {
+    "text": "The service shown is the one committed.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Switching to …",
+    "kind": "control-unmapped",
+    "reason": "Inline 'Switching to …' message; no candidate key."
+   },
+   {
+    "text": "Preparing …",
+    "kind": "control-unmapped",
+    "reason": "Inline 'Preparing …' message; no exact candidate key."
+   }
+  ],
+  "help.howitworks.switching_service_source.not_every_choice_accepted": [
+   {
+    "text": "Not every choice is accepted.",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "No link was switched to …",
+    "kind": "control-unmapped",
+    "reason": "Displayed refusal message example; no candidate key."
+   }
+  ],
+  "help.howitworks.switching_service_source.why_choices_change": [
+   {
+    "text": "Why the choices change:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.howitworks.switching_service_source.progress": [
+   {
+    "text": "Progress:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Discard downloaded progress?",
+    "kind": "control",
+    "key": "group_candidates.discard.title",
+    "reason": "Title of the discard-progress confirmation dialog."
+   },
+   {
+    "text": "would discard downloaded data; switch its source to confirm",
+    "kind": "control",
+    "key": "root_provider.refusal.discard_confirmation_required",
+    "reason": "Displayed refusal reason for a service switch."
+   }
+  ],
+  "help.howitworks.switching_service_source.while_download_paused": [
+   {
+    "text": "While a download is paused:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Switch to Real-Debrid (rapidgator.net) on resume",
+    "kind": "control-unmapped",
+    "reason": "Example instance of a displayed pending-switch message; no candidate key."
+   },
+   {
+    "text": "Switching to …",
+    "kind": "control-unmapped",
+    "reason": "Inline 'Switching to …' message; no candidate key."
+   },
+   {
+    "text": "service",
+    "kind": "term",
+    "reason": "'Choosing a service' uses service as a concept, not a label."
+   },
+   {
+    "text": "Preparing …",
+    "kind": "control-unmapped",
+    "reason": "Inline 'Preparing …' message; no exact candidate key."
+   }
+  ],
+  "help.howitworks.backup_torrents.each_debrid_service": [
+   {
+    "text": "Prepare Backup Torrents",
+    "kind": "control",
+    "key": "settings.provider.prepare_backup",
+    "reason": "Premium provider card switch label."
+   }
+  ],
+  "help.howitworks.backup_torrents.debrid_service_can.admin": [
+   {
+    "text": "Prepare Backup Torrents",
+    "kind": "control",
+    "key": "settings.provider.prepare_backup",
+    "reason": "Premium provider card setting label."
+   }
+  ],
+  "help.howitworks.backup_torrents.debrid_service_can.member": [
+   {
+    "text": "Prepare Backup Torrents",
+    "kind": "control",
+    "key": "settings.provider.prepare_backup",
+    "reason": "Premium provider card setting label."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.pause": [
+   {
+    "text": "Pause",
+    "kind": "control",
+    "key": "transfer.action.pause",
+    "reason": "'holds one download' is the per-row Pause button, not the bulk action or the engine-activity button."
+   },
+   {
+    "text": "Resume",
+    "kind": "control",
+    "key": "transfer.action.resume",
+    "reason": "Resume for one download is the per-row button, not the bulk action or engine-activity button."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.pause_all": [
+   {
+    "text": "Pause All",
+    "kind": "control",
+    "key": "processing.pause_all",
+    "reason": "Topbar Pause All button."
+   },
+   {
+    "text": "Resume All",
+    "kind": "control",
+    "key": "processing.resume_all",
+    "reason": "Topbar Resume All button."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.retry": [
+   {
+    "text": "Retry",
+    "kind": "control",
+    "key": "transfer.action.retry",
+    "reason": "'starts a failed download again' is the row Retry button, not the source re-check or error-fact label."
+   },
+   {
+    "text": "Reset",
+    "kind": "control",
+    "key": "downloads.bulk.reset",
+    "reason": "Reset action label."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.recover_all": [
+   {
+    "text": "Recover All",
+    "kind": "control",
+    "key": "recovery.recover_all",
+    "reason": "Quick Add header Recover All button."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.remove": [
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "transfer.action.remove",
+    "reason": "'takes a download off the list' is the transfer row Remove button, not API-key, Usenet, backup or user Remove."
+   },
+   {
+    "text": "Files that finished downloading stay in your folder.",
+    "kind": "emphasis",
+    "reason": "Emphasised sentence."
+   }
+  ],
+  "help.howitworks.pause_resume_retry.admin_can_remove": [
+   {
+    "text": "Requested By",
+    "kind": "control",
+    "key": "details.field.requested_by",
+    "reason": "Details field label."
+   }
+  ],
+  "help.howitworks.adding_same_thing.if_add_magnet": [
+   {
+    "text": "Already in queue",
+    "kind": "control-unmapped",
+    "reason": "Displayed duplicate-submission notice; no candidate key."
+   },
+   {
+    "text": "Consolidated",
+    "kind": "control",
+    "key": "status.consolidated",
+    "reason": "'the merged one shows Consolidated' is the transfer's status, not a Details source relationship chip."
+   },
+   {
+    "text": "Consolidated · Unverified",
+    "kind": "control",
+    "key": "status.consolidated_unverified",
+    "reason": "Transfer status chip."
+   }
+  ],
+  "help.services.summary.admin": [
+   {
+    "text": "Settings → Services",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.sources"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Services: the only interface key with this text"
+   }
+  ],
+  "help.services.lead.settings_services_has": [
+   {
+    "text": "Premium Services",
+    "kind": "control",
+    "key": "settings.services.premium",
+    "reason": "'Settings → Services has two groups' refers to the Services group header (settings.services.premium), not the Provider Status tier heading."
+   },
+   {
+    "text": "Network Sources",
+    "kind": "control-unmapped",
+    "reason": "The Settings → Services group header; candidates are a chart legend and a Provider Status row, neither is that header."
+   }
+  ],
+  "help.services.how_service_card.enable": [
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Service card Enable control (generic Settings label), not the User Accounts Enable button."
+   }
+  ],
+  "help.services.how_service_card.status_word_says": [
+   {
+    "text": "Unconfigured",
+    "kind": "control",
+    "key": "settings.status.unconfigured",
+    "reason": "Service card header status, not the Authentication KPI figure."
+   },
+   {
+    "text": "Unverified",
+    "kind": "control",
+    "key": "settings.status.unverified",
+    "reason": "Service card header status, not the Details route chip."
+   },
+   {
+    "text": "Verified",
+    "kind": "control",
+    "key": "settings.status.verified",
+    "reason": "Service card header status, not the email-verification status."
+   }
+  ],
+  "help.services.how_service_card.test": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Settings Test button."
+   }
+  ],
+  "help.services.how_service_card.additional_settings": [
+   {
+    "text": "Additional Settings",
+    "kind": "control",
+    "key": "settings.provider.additional",
+    "reason": "Premium provider card disclosure label."
+   },
+   {
+    "text": "Prepare Backup Torrents",
+    "kind": "control",
+    "key": "settings.provider.prepare_backup",
+    "reason": "Premium provider card setting label."
+   },
+   {
+    "text": "How It Works → Backup torrents",
+    "kind": "control-unmapped",
+    "reason": "Cross-reference to displayed Help section path; no interface key."
+   }
+  ],
+  "help.services.how_service_card.each_card_optional": [
+   {
+    "text": "Additional Settings",
+    "kind": "control",
+    "key": "settings.provider.additional",
+    "reason": "Premium provider card disclosure label."
+   }
+  ],
+  "help.services.how_service_card.help_button_card": [
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "The card's (?) Help button; the only candidate is the phone-dock navigation name, a different element."
+   }
+  ],
+  "help.services.alldebrid.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.alldebrid.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "API Key",
+    "kind": "control",
+    "key": "settings.key.label",
+    "reason": "Provider API key field label."
+   },
+   {
+    "text": "Key present",
+    "kind": "control-unmapped",
+    "reason": "Displayed key-state text; no candidate key."
+   },
+   {
+    "text": "Remove API Key",
+    "kind": "control-unmapped",
+    "reason": "Remove API Key control name; no exact candidate key."
+   }
+  ],
+  "help.services.alldebrid.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.alldebrid.good_know.provider_additional_settings_shown": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Maximum Active Torrents",
+    "kind": "control",
+    "key": "settings.provider.max_active",
+    "reason": "Premium provider card field label."
+   }
+  ],
+  "help.services.alldebrid.good_know.provider_additional_settings_hidden": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.alldebrid.if_fails": [
+   {
+    "text": "If it fails:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.debrid_link.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.debrid_link.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "API Key",
+    "kind": "control",
+    "key": "settings.key.label",
+    "reason": "Provider API key field label."
+   }
+  ],
+  "help.services.debrid_link.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.debrid_link.good_know.provider_additional_settings_shown": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Supported Host Refresh Interval",
+    "kind": "control-unmapped",
+    "reason": "Field label; no candidate key."
+   }
+  ],
+  "help.services.debrid_link.good_know.provider_additional_settings_hidden": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.debrid_link.if_fails": [
+   {
+    "text": "If it fails:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.premiumize.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.premiumize.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "API Key",
+    "kind": "control",
+    "key": "settings.key.label",
+    "reason": "Provider API key field label."
+   }
+  ],
+  "help.services.premiumize.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.premiumize.good_know.provider_additional_settings_shown": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Use Premiumize Before Usenet",
+    "kind": "control-unmapped",
+    "reason": "Premiumize card switch label; no candidate key."
+   }
+  ],
+  "help.services.premiumize.good_know.provider_additional_settings_hidden": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.premiumize.premiumize_news_server": [
+   {
+    "text": "Premiumize as a news server:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Usenet",
+    "kind": "control-unmapped",
+    "reason": "Usenet service card title; no candidate key."
+   },
+   {
+    "text": "Add Server",
+    "kind": "control",
+    "key": "settings.usenet.add",
+    "reason": "Usenet card Add Server button."
+   }
+  ],
+  "help.services.premiumize.if_fails": [
+   {
+    "text": "If it fails:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.real_debrid.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.real_debrid.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Connect Real-Debrid",
+    "kind": "control-unmapped",
+    "reason": "Connect button label; no candidate key."
+   },
+   {
+    "text": "Open Real-Debrid",
+    "kind": "control-unmapped",
+    "reason": "Open button label; no candidate key."
+   },
+   {
+    "text": "Copy",
+    "kind": "control",
+    "key": "settings.account.copy",
+    "reason": "Copy for the device code is the provider account connection button, not the OIDC callback or API-token copy."
+   },
+   {
+    "text": "Connected as",
+    "kind": "control-unmapped",
+    "reason": "Displayed connection text; no candidate key."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Settings Test button."
+   }
+  ],
+  "help.services.real_debrid.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.real_debrid.good_know.provider_additional_settings_shown": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Disconnect",
+    "kind": "control",
+    "key": "settings.account.disconnect",
+    "reason": "Provider account Disconnect button."
+   },
+   {
+    "text": "API Calls per Minute",
+    "kind": "control",
+    "key": "settings.provider.rate_limit",
+    "reason": "Field label on the premium provider card (ui-settings-page.js uses this key as the input label despite its 'error' category)."
+   }
+  ],
+  "help.services.real_debrid.good_know.provider_additional_settings_hidden": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Disconnect",
+    "kind": "control",
+    "key": "settings.account.disconnect",
+    "reason": "Provider account Disconnect button."
+   }
+  ],
+  "help.services.real_debrid.if_fails": [
+   {
+    "text": "If it fails:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.torbox.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.torbox.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Connect TorBox",
+    "kind": "control-unmapped",
+    "reason": "Connect button label; no candidate key."
+   },
+   {
+    "text": "Open TorBox",
+    "kind": "control-unmapped",
+    "reason": "Open button label; no candidate key."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Settings Test button."
+   }
+  ],
+  "help.services.torbox.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.torbox.plan_matters.provider_additional_settings_shown": [
+   {
+    "text": "Your plan matters:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Use TorBox Before Usenet",
+    "kind": "control-unmapped",
+    "reason": "TorBox card switch label; no candidate key."
+   },
+   {
+    "text": "Requires TorBox Pro.",
+    "kind": "control-unmapped",
+    "reason": "Displayed refusal message; no candidate key."
+   },
+   {
+    "text": "Maximum Active Torrents",
+    "kind": "control",
+    "key": "settings.provider.max_active",
+    "reason": "Premium provider card field label."
+   }
+  ],
+  "help.services.torbox.plan_matters.provider_additional_settings_hidden": [
+   {
+    "text": "Your plan matters:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.torbox.good_know": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Disconnect",
+    "kind": "control",
+    "key": "settings.account.disconnect",
+    "reason": "Provider account Disconnect button."
+   }
+  ],
+  "help.services.usenet.for": [
+   {
+    "text": "For:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   }
+  ],
+  "help.services.usenet.need": [
+   {
+    "text": "You need:",
+    "kind": "emphasis",
+    "reason": "Run-in lead phrase introducing the paragraph, not an interface name."
+   },
+   {
+    "text": "Add Server",
+    "kind": "control",
+    "key": "settings.usenet.add",
+    "reason": "Usenet card Add Server button."
+   },
+   {
+    "text": "Host",
+    "kind": "control",
+    "key": "settings.usenet.host",
+    "reason": "Usenet server field label."
+   },
+   {
+    "text": "Port",
+    "kind": "control",
+    "key": "settings.usenet.port",
+    "reason": "Usenet server field label."
+   },
+   {
+    "text": "SSL",
+    "kind": "control",
+    "key": "settings.usenet.ssl",
+    "reason": "Usenet server field label."
+   },
+   {
+    "text": "Username",
+    "kind": "control",
+    "key": "settings.usenet.username",
+    "reason": "Usenet section passage: the news-server card field, not sign-in/auth/user-account Username."
+   },
+   {
+    "text": "Password",
+    "kind": "control",
+    "key": "settings.usenet.password",
+    "reason": "Usenet section passage: the news-server card field, not sign-in/auth/user-account Password or KPI hints."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "settings.usenet.advanced",
+    "reason": "Under Advanced you set Connections/Priority: the Usenet server card disclosure, not the Easy/Advanced presentation mode."
+   },
+   {
+    "text": "Connections",
+    "kind": "control",
+    "key": "settings.usenet.connections",
+    "reason": "Usenet server field label."
+   },
+   {
+    "text": "Priority",
+    "kind": "control",
+    "key": "settings.usenet.priority",
+    "reason": "Usenet server card field under Advanced; not the queue order label."
+   },
+   {
+    "text": "Articles per Request",
+    "kind": "control",
+    "key": "settings.usenet.articles_per_request",
+    "reason": "Usenet server card field label."
+   },
+   {
+    "text": "Server Timeout",
+    "kind": "control-unmapped",
+    "reason": "Usenet server card field with no catalog candidate."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "The server card Test button, labelled by the shared Settings Test key."
+   }
+  ],
+  "help.services.usenet.what_happens": [
+   {
+    "text": "What happens:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Automatic Extraction",
+    "kind": "control",
+    "key": "settings.extraction.title",
+    "reason": "Names the Automatic Extraction card on the Extraction tab."
+   },
+   {
+    "text": "Archive Passwords",
+    "kind": "control",
+    "key": "settings.extraction.passwords",
+    "reason": "Extraction tab Archive Passwords field."
+   }
+  ],
+  "help.services.usenet.good_know.transfer_method_settings_shown": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Verified",
+    "kind": "control",
+    "key": "settings.status.verified",
+    "reason": "Usenet card header status; not the email-verification chip in Users & Access."
+   },
+   {
+    "text": "Settings → Downloads → Transfer Method Settings → Usenet",
+    "kind": "control-unmapped",
+    "reason": "Settings navigation path (breadcrumb of several displayed names); no single catalog key is that element."
+   },
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "A card's own Help (?) button; the only candidate is the phone dock's short Help & License nav name, which is a different element."
+   }
+  ],
+  "help.services.usenet.good_know.admin": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Verified",
+    "kind": "control",
+    "key": "settings.status.verified",
+    "reason": "Usenet card header status; not the email-verification chip in Users & Access."
+   },
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "A card's own Help (?) button; the only candidate is the phone dock's short Help & License nav name, which is a different element."
+   }
+  ],
+  "help.services.usenet.good_know.member": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Verified",
+    "kind": "control",
+    "key": "settings.status.verified",
+    "reason": "Usenet card header status; not the email-verification chip in Users & Access."
+   }
+  ],
+  "help.services.usenet.if_fails": [
+   {
+    "text": "If it fails:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Usenet card header Test button."
+   }
+  ],
+  "help.services.network_sources.all_network_sources.transfer_method_settings_shown": [
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Network Sources group Enable is a Settings card button, not the User Accounts enable action."
+   },
+   {
+    "text": "Settings → Downloads → Transfer Method Settings",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.downloads.methods"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Transfer Method Settings: the only interface key with this text"
+   }
+  ],
+  "help.services.network_sources.all_network_sources.transfer_method_settings_hidden": [
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Network Sources group Enable is a Settings card button, not the User Accounts enable action."
+   }
+  ],
+  "help.services.https.ordinary_web_links.transfer_method_settings_shown": [
+   {
+    "text": "Transfer Method Settings → Network Sources",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.methods",
+     "integration.group.direct_sources"
+    ],
+    "join": "→",
+    "reason": "Transfer Method Settings: the only interface key with this text; Network Sources: inside a tab, a path names a card"
+   }
+  ],
+  "help.services.rsync.rsync_host_path": [
+   {
+    "text": "Connection Timeout",
+    "kind": "control-unmapped",
+    "reason": "rsync tuning Connection Timeout setting; the only candidate is a failure-category chip, a different element."
+   }
+  ],
+  "help.services.rsync.folder_includes_subfolders": [
+   {
+    "text": "Directory Depth",
+    "kind": "control",
+    "key": "settings.depth.label",
+    "reason": "Directory Depth select used in rsync tuning."
+   }
+  ],
+  "help.services.rsync.over_ssh_server.transfer_method_settings_shown": [
+   {
+    "text": "Transfer Method Settings → rsync",
+    "kind": "control-unmapped",
+    "reason": "Settings navigation path (breadcrumb of several displayed names); no single catalog key is that element."
+   }
+  ],
+  "help.services.webdav.folder_opens_file.transfer_method_settings_shown": [
+   {
+    "text": "Directory Depth",
+    "kind": "control",
+    "key": "settings.depth.label",
+    "reason": "Directory Depth select used in WebDAV tuning."
+   },
+   {
+    "text": "Maximum Files",
+    "kind": "control",
+    "key": "settings.webdav.max_files",
+    "reason": "WebDAV tuning field."
+   },
+   {
+    "text": "Collection Scan Timeout",
+    "kind": "control-unmapped",
+    "reason": "WebDAV tuning field with no catalog candidate."
+   },
+   {
+    "text": "Transfer Method Settings → WebDAV",
+    "kind": "control-unmapped",
+    "reason": "Settings navigation path (breadcrumb of several displayed names); no single catalog key is that element."
+   }
+  ],
+  "help.services.webdav.folder_opens_file.transfer_method_settings_hidden": [
+   {
+    "text": "Directory Depth",
+    "kind": "control",
+    "key": "settings.depth.label",
+    "reason": "Directory Depth select used in WebDAV tuning."
+   },
+   {
+    "text": "Maximum Files",
+    "kind": "control",
+    "key": "settings.webdav.max_files",
+    "reason": "WebDAV tuning field."
+   },
+   {
+    "text": "Collection Scan Timeout",
+    "kind": "control-unmapped",
+    "reason": "WebDAV tuning field with no catalog candidate."
+   }
+  ],
+  "help.services.media_downloads.what_get": [
+   {
+    "text": "What you get:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Preferred Subtitle Language",
+    "kind": "control",
+    "key": "settings.media.subtitle",
+    "reason": "Media Downloads tuning field."
+   }
+  ],
+  "help.services.media_downloads.choices.transfer_method_settings_shown": [
+   {
+    "text": "Choices:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Target Resolution",
+    "kind": "control",
+    "key": "settings.media.resolution",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Video Quality",
+    "kind": "control",
+    "key": "settings.media.quality",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Preferred Video Codec",
+    "kind": "control",
+    "key": "settings.media.codec",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Transfer Method Settings → Media Downloads",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.methods",
+     "settings.tuning.media"
+    ],
+    "join": "→",
+    "reason": "Transfer Method Settings: the only interface key with this text; Media Downloads: the only interface key with this text"
+   }
+  ],
+  "help.services.media_downloads.choices.transfer_method_settings_hidden": [
+   {
+    "text": "Choices:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   }
+  ],
+  "help.services.media_downloads.playlists": [
+   {
+    "text": "Playlists:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "Current Video",
+    "kind": "control-unmapped",
+    "reason": "Choice shown in the playlist question; no catalog candidate."
+   },
+   {
+    "text": "Playlist",
+    "kind": "control-unmapped",
+    "reason": "Choice shown in the playlist question; no catalog candidate."
+   }
+  ],
+  "help.services.media_downloads.not_supported": [
+   {
+    "text": "Not supported:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   }
+  ],
+  "help.services.media_downloads.good_know": [
+   {
+    "text": "Good to know:",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   }
+  ],
+  "help.engines.lead.service_decides_where": [
+   {
+    "text": "where",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   },
+   {
+    "text": "downloading",
+    "kind": "emphasis",
+    "reason": "Lead-in or plain emphasis, not an interface name."
+   }
+  ],
+  "help.engines.aria2.admin_sidebar_shows": [
+   {
+    "text": "aria2: offline",
+    "kind": "control",
+    "key": "status.aria2.offline",
+    "reason": "Sidebar aria2 status row text."
+   }
+  ],
+  "help.engines.rsync.downloads_rsync_links": [
+   {
+    "text": "Partial Transfers",
+    "kind": "control",
+    "key": "settings.rsync.partial",
+    "reason": "rsync tuning field."
+   }
+  ],
+  "help.engines.limits_apply_every.maximum_concurrent_downloads": [
+   {
+    "text": "Maximum Concurrent Downloads",
+    "kind": "control",
+    "key": "settings.downloads.max_concurrent",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Settings → Downloads → Download Behavior & Limits",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.downloads.behavior"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Download Behavior & Limits: the only interface key with this text"
+   }
+  ],
+  "help.engines.limits_apply_every.speed_cap_header": [
+   {
+    "text": "speed cap",
+    "kind": "term",
+    "reason": "Describes the header speed cap as a concept, not by a displayed label; no candidate."
+   }
+  ],
+  "help.engines.limits_apply_every.disk_space_recovery": [
+   {
+    "text": "Disk Space & Recovery",
+    "kind": "control",
+    "key": "settings.downloads.recovery",
+    "reason": "Downloads tab card title."
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.connections_per_server": [
+   {
+    "text": "Connections per Server",
+    "kind": "control",
+    "key": "settings.direct.connections",
+    "reason": "Network Sources (aria2) tuning field."
+   },
+   {
+    "text": "Segments per File:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.segments"
+    ],
+    "suffix": ":",
+    "reason": "Segments per File: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.minimum_split_size": [
+   {
+    "text": "Minimum Split Size:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.min_split"
+    ],
+    "suffix": ":",
+    "reason": "Minimum Split Size: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.continue_partial_downloads": [
+   {
+    "text": "Continue Partial Downloads:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.continue"
+    ],
+    "suffix": ":",
+    "reason": "Continue Partial Downloads: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.lowest_speed_limit": [
+   {
+    "text": "Lowest Speed Limit:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.lowest_speed"
+    ],
+    "suffix": ":",
+    "reason": "Lowest Speed Limit: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.disk_cache": [
+   {
+    "text": "Disk Cache:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.disk_cache"
+    ],
+    "suffix": ":",
+    "reason": "Disk Cache: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_aria2_transfer.file_allocation": [
+   {
+    "text": "File Allocation:",
+    "kind": "control",
+    "keys": [
+     "settings.direct.allocation"
+    ],
+    "suffix": ":",
+    "reason": "File Allocation: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.engines.tuning_rsync_usenet.rsync": [
+   {
+    "text": "rsync:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed rsync tuning card; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Partial Transfers",
+    "kind": "control",
+    "key": "settings.rsync.partial",
+    "reason": "rsync tuning field."
+   },
+   {
+    "text": "Compression",
+    "kind": "control",
+    "key": "settings.rsync.compression",
+    "reason": "rsync tuning field."
+   },
+   {
+    "text": "Preserve Modification Time",
+    "kind": "control",
+    "key": "settings.rsync.mtime",
+    "reason": "rsync tuning field."
+   },
+   {
+    "text": "Connection Timeout",
+    "kind": "control-unmapped",
+    "reason": "rsync tuning Connection Timeout setting; the only candidate is a failure-category chip, a different element."
+   },
+   {
+    "text": "Transfer Timeout",
+    "kind": "control-unmapped",
+    "reason": "rsync tuning field with no catalog candidate."
+   },
+   {
+    "text": "Directory Depth",
+    "kind": "control",
+    "key": "settings.depth.label",
+    "reason": "Directory Depth select used in rsync tuning."
+   }
+  ],
+  "help.engines.tuning_rsync_usenet.usenet": [
+   {
+    "text": "Usenet:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed Usenet tuning card; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Article Cache Limit",
+    "kind": "control-unmapped",
+    "reason": "Usenet tuning field with no catalog candidate."
+   },
+   {
+    "text": "Maximum Retries",
+    "kind": "control",
+    "key": "settings.usenet_tuning.retries",
+    "reason": "Usenet tuning field."
+   },
+   {
+    "text": "Request Timeout",
+    "kind": "control-unmapped",
+    "reason": "Usenet tuning field with no catalog candidate."
+   },
+   {
+    "text": "Direct Write",
+    "kind": "control",
+    "key": "settings.usenet_tuning.direct_write",
+    "reason": "Usenet tuning field."
+   }
+  ],
+  "help.engines.tuning_rsync_usenet.media_downloads": [
+   {
+    "text": "Media Downloads:",
+    "kind": "control",
+    "keys": [
+     "settings.tuning.media"
+    ],
+    "suffix": ":",
+    "reason": "Media Downloads: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Target Resolution",
+    "kind": "control",
+    "key": "settings.media.resolution",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Video Quality",
+    "kind": "control",
+    "key": "settings.media.quality",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Preferred Video Codec",
+    "kind": "control",
+    "key": "settings.media.codec",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Preferred Subtitle Language",
+    "kind": "control",
+    "key": "settings.media.subtitle",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "Concurrent Fragment Downloads",
+    "kind": "control",
+    "key": "settings.media.fragments",
+    "reason": "Media Downloads tuning field."
+   },
+   {
+    "text": "YouTube Player Clients",
+    "kind": "control-unmapped",
+    "reason": "Media Downloads tuning field with no catalog candidate."
+   }
+  ],
+  "help.engines.download_engine_activity.settings_downloads_download_engine": [
+   {
+    "text": "Settings → Downloads → Download Engine Activity",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.engine_activity.title"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Download Engine Activity: the only interface key with this text"
+   },
+   {
+    "text": "Pause",
+    "kind": "control",
+    "key": "settings.engine_activity.action.pause",
+    "reason": "Passage is about Download Engine Activity jobs, so its own Pause button, not the transfer row or bulk Pause."
+   },
+   {
+    "text": "Resume",
+    "kind": "control",
+    "key": "settings.engine_activity.action.resume",
+    "reason": "Passage is about Download Engine Activity jobs, so its own Resume button, not the transfer row or bulk Resume."
+   },
+   {
+    "text": "Terminate",
+    "kind": "control",
+    "key": "settings.engine_activity.action.cancel",
+    "reason": "The Download Engine Activity button whose English label is Terminate."
+   }
+  ],
+  "help.settings.how_saving_works.stored_secrets_such": [
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "settings.key.remove",
+    "reason": "Removing a stored secret: the provider API key Remove is the only candidate that deletes a secret (others remove downloads, servers, backups or accounts)."
+   },
+   {
+    "text": "Clear",
+    "kind": "unresolved",
+    "reason": "Generic Clear for any stored secret; webhook, auth and Usenet Clear buttons all fit and the passage names none."
+   }
+  ],
+  "help.settings.how_saving_works.test": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Settings Test buttons in general."
+   }
+  ],
+  "help.settings.how_saving_works.every_card_has": [
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "A card's own Help (?) button; the only candidate is the phone dock's short Help & License nav name, which is a different element."
+   }
+  ],
+  "help.settings.services.premium_services.provider_additional_settings_shown": [
+   {
+    "text": "Premium Services:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed Premium Services group; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Premium service card Enable is a Settings card button, not the User Accounts enable action."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Premium service card Test button."
+   },
+   {
+    "text": "Additional Settings",
+    "kind": "control",
+    "key": "settings.provider.additional",
+    "reason": "Premium provider card disclosure."
+   }
+  ],
+  "help.settings.services.premium_services.provider_additional_settings_hidden": [
+   {
+    "text": "Premium Services:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed Premium Services group; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Premium service card Enable is a Settings card button, not the User Accounts enable action."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Premium service card Test button."
+   },
+   {
+    "text": "Additional Settings",
+    "kind": "control",
+    "key": "settings.provider.additional",
+    "reason": "Premium provider card disclosure."
+   }
+  ],
+  "help.settings.services.network_sources": [
+   {
+    "text": "Network Sources:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed Network Sources group; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Network Sources Enable is a Settings card button, not the User Accounts enable action."
+   }
+  ],
+  "help.settings.services.services_tab_manual": [
+   {
+    "text": "Services",
+    "kind": "control-unmapped",
+    "reason": "Refers to the Services tab of this Help manual, not the Settings section tab candidate."
+   }
+  ],
+  "help.settings.downloads.download_behavior_limits.download_behavior_advanced_shown": [
+   {
+    "text": "Download Behavior & Limits:",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.behavior"
+    ],
+    "suffix": ":",
+    "reason": "Download Behavior & Limits: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Download Folder",
+    "kind": "control",
+    "key": "settings.downloads.folder",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Browse",
+    "kind": "control",
+    "key": "settings.browse",
+    "reason": "Settings Browse button."
+   },
+   {
+    "text": "Maximum Concurrent Downloads",
+    "kind": "control",
+    "key": "settings.downloads.max_concurrent",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Advanced Settings",
+    "kind": "control",
+    "key": "settings.downloads.advanced",
+    "reason": "Downloads tab Advanced Settings disclosure."
+   },
+   {
+    "text": "Material Checkpoint Interval",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Graceful Stop Timeout",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Local Network Connections",
+    "kind": "control",
+    "key": "settings.downloads.lan",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Skip Local Connection Confirmation",
+    "kind": "control",
+    "key": "settings.downloads.lan_skip",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Provider Poll Interval",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Full Sync Interval",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Resolution Failure Retries",
+    "kind": "control",
+    "key": "settings.downloads.resolution_retries",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Retry Delay (minutes)",
+    "kind": "control",
+    "key": "settings.downloads.retry_delay_minutes",
+    "reason": "Downloads tab field."
+   }
+  ],
+  "help.settings.downloads.transfer_method_settings": [
+   {
+    "text": "Transfer Method Settings:",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.methods"
+    ],
+    "suffix": ":",
+    "reason": "Transfer Method Settings: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Network Sources",
+    "kind": "control-unmapped",
+    "reason": "Network Sources tuning card in Transfer Method Settings; candidates are a Statistics chart legend and a Provider Status group, neither of which is this element."
+   },
+   {
+    "text": "rsync",
+    "kind": "control-unmapped",
+    "reason": "rsync tuning card; no candidate."
+   },
+   {
+    "text": "WebDAV",
+    "kind": "control-unmapped",
+    "reason": "WebDAV tuning card; no candidate."
+   },
+   {
+    "text": "Usenet",
+    "kind": "control-unmapped",
+    "reason": "Usenet tuning card; no candidate."
+   },
+   {
+    "text": "Media Downloads",
+    "kind": "control",
+    "key": "settings.tuning.media",
+    "reason": "Transfer method tuning card label for Media Downloads."
+   },
+   {
+    "text": "Engines",
+    "kind": "control-unmapped",
+    "reason": "Engines tab of this Help manual; no candidate."
+   },
+   {
+    "text": "Services",
+    "kind": "control-unmapped",
+    "reason": "Refers to the Services tab of this Help manual, not the Settings section tab candidate."
+   }
+  ],
+  "help.settings.downloads.disk_space_recovery": [
+   {
+    "text": "Disk Space & Recovery:",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.recovery"
+    ],
+    "suffix": ":",
+    "reason": "Disk Space & Recovery: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Minimum Free Disk Space",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Resume Free Space Buffer",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Download Error Retries",
+    "kind": "control",
+    "key": "settings.downloads.error_retries",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Retry Delay",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   },
+   {
+    "text": "Stalled Download Timeout",
+    "kind": "control-unmapped",
+    "reason": "Downloads tab field with no catalog candidate."
+   }
+  ],
+  "help.settings.downloads.download_engine_activity": [
+   {
+    "text": "Download Engine Activity:",
+    "kind": "control",
+    "keys": [
+     "settings.engine_activity.title"
+    ],
+    "suffix": ":",
+    "reason": "Download Engine Activity: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.settings.downloads.download_behavior_limits.download_behavior_advanced_hidden": [
+   {
+    "text": "Download Behavior & Limits:",
+    "kind": "control",
+    "keys": [
+     "settings.downloads.behavior"
+    ],
+    "suffix": ":",
+    "reason": "Download Behavior & Limits: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Download Folder",
+    "kind": "control",
+    "key": "settings.downloads.folder",
+    "reason": "Downloads tab field."
+   },
+   {
+    "text": "Browse",
+    "kind": "control",
+    "key": "settings.browse",
+    "reason": "Settings Browse button."
+   },
+   {
+    "text": "Maximum Concurrent Downloads",
+    "kind": "control",
+    "key": "settings.downloads.max_concurrent",
+    "reason": "Downloads tab field."
+   }
+  ],
+  "help.settings.extraction.automatic_extraction_card": [
+   {
+    "text": "Automatic Extraction",
+    "kind": "control",
+    "key": "settings.extraction.title",
+    "reason": "Names the Automatic Extraction card."
+   }
+  ],
+  "help.settings.extraction.concurrent_extractions": [
+   {
+    "text": "Concurrent Extractions:",
+    "kind": "control",
+    "keys": [
+     "settings.extraction.concurrent"
+    ],
+    "suffix": ":",
+    "reason": "Concurrent Extractions: the only interface key with this text (a lead-in colon)"
+   }
+  ],
+  "help.settings.extraction.delete_archives_after_extraction": [
+   {
+    "text": "Delete Archives After Extraction",
+    "kind": "control",
+    "key": "settings.extraction.delete",
+    "reason": "Extraction tab field."
+   }
+  ],
+  "help.settings.extraction.archive_passwords": [
+   {
+    "text": "Archive Passwords:",
+    "kind": "control",
+    "keys": [
+     "settings.extraction.passwords"
+    ],
+    "suffix": ":",
+    "reason": "Archive Passwords: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Show all",
+    "kind": "control",
+    "key": "settings.extraction.show_all",
+    "reason": "Extraction tab button."
+   },
+   {
+    "text": "Clear Passwords",
+    "kind": "control",
+    "key": "settings.extraction.clear",
+    "reason": "Extraction tab button."
+   }
+  ],
+  "help.settings.signing.standalone_installation_has": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "Says 'in My Account', i.e. the profile dialog itself, so the dialog title fits rather than the sidebar entry that opens it."
+   }
+  ],
+  "help.settings.signing.when_sign_prometheus": [
+   {
+    "text": "Access & Integrations",
+    "kind": "control",
+    "key": "settings.tab.users_standalone",
+    "reason": "Standalone Settings tab Access & Integrations."
+   }
+  ],
+  "help.settings.authentication.authentication_status": [
+   {
+    "text": "Authentication Status:",
+    "kind": "control",
+    "keys": [
+     "settings.auth.status_title"
+    ],
+    "suffix": ":",
+    "reason": "Authentication Status: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Active Browser Sessions",
+    "kind": "control",
+    "key": "settings.auth.sessions",
+    "reason": "Authentication field."
+   },
+   {
+    "text": "Log Out Current Session",
+    "kind": "control",
+    "key": "settings.auth.logout",
+    "reason": "Authentication button/label."
+   },
+   {
+    "text": "Browser Session Lifetime",
+    "kind": "control",
+    "key": "settings.auth.session_lifetime",
+    "reason": "Authentication field."
+   }
+  ],
+  "help.settings.authentication.turning_username_password": [
+   {
+    "text": "Username & Password",
+    "kind": "control",
+    "key": "settings.auth.credentials_title",
+    "reason": "Says their own cards: credentials_title is the Username & Password card title (card() in ui-settings-page.js), the KPI candidates are status figures."
+   },
+   {
+    "text": "OpenID Connect",
+    "kind": "control",
+    "key": "settings.oidc.title",
+    "reason": "Says their own cards: the OpenID Connect card title, not the Authentication Status KPI figure."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "Choose Advanced in My Account = the presentation mode choice, not the Usenet card disclosure."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "Says 'in My Account', i.e. the profile dialog itself, so the dialog title fits rather than the sidebar entry that opens it."
+   }
+  ],
+  "help.settings.authentication.when_sign_prometheus.easy": [
+   {
+    "text": "Users & Access",
+    "kind": "control",
+    "key": "settings.tab.users",
+    "reason": "Server Settings tab Users & Access."
+   }
+  ],
+  "help.settings.authentication.username_password": [
+   {
+    "text": "Username & Password:",
+    "kind": "control-unmapped",
+    "reason": "Lead-in naming the displayed Username & Password card; the colon-suffixed span has no matching catalog key."
+   },
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "Username & Password card Enable is a Settings card button, not the User Accounts enable action."
+   },
+   {
+    "text": "Username",
+    "kind": "control",
+    "key": "settings.auth.username",
+    "reason": "Authentication tab Username & Password card field, not login, Usenet or User Accounts fields."
+   },
+   {
+    "text": "Password",
+    "kind": "control",
+    "key": "settings.auth.password",
+    "reason": "Authentication tab Username & Password card field, not login, Usenet, KPI or User Accounts fields."
+   },
+   {
+    "text": "Users & Access",
+    "kind": "control",
+    "key": "settings.tab.users",
+    "reason": "Settings tab Users & Access."
+   }
+  ],
+  "help.settings.authentication.openid_connect": [
+   {
+    "text": "OpenID Connect",
+    "kind": "control",
+    "key": "settings.oidc.title",
+    "reason": "Opens the OpenID Connect card section; card title rather than the Authentication Status KPI figure."
+   },
+   {
+    "text": "Public DebridPulse Base URL",
+    "kind": "control",
+    "key": "settings.oidc.public_base",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "OIDC Callback URL",
+    "kind": "control",
+    "key": "settings.oidc.callback",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Issuer URL",
+    "kind": "control",
+    "key": "settings.oidc.issuer",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Client ID",
+    "kind": "control",
+    "key": "settings.oidc.client_id",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Client Secret",
+    "kind": "control",
+    "key": "settings.oidc.client_secret",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "OIDC card Test button."
+   },
+   {
+    "text": "Access Control",
+    "kind": "control",
+    "key": "settings.oidc.access",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Allow Any Authenticated OIDC Identity",
+    "kind": "control",
+    "key": "settings.oidc.allow_all",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Allowed Subjects",
+    "kind": "control",
+    "key": "settings.oidc.subjects",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Allowed Emails",
+    "kind": "control",
+    "key": "settings.oidc.emails",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Allowed Groups",
+    "kind": "control",
+    "key": "settings.oidc.groups",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Group Claim",
+    "kind": "control",
+    "key": "settings.oidc.group_claim",
+    "reason": "OIDC field."
+   },
+   {
+    "text": "Default Role for New OIDC Users",
+    "kind": "control",
+    "key": "settings.oidc.default_role",
+    "reason": "OIDC field."
+   }
+  ],
+  "help.settings.authentication.when_sign_prometheus.server_advanced": [
+   {
+    "text": "Users & Access",
+    "kind": "control",
+    "key": "settings.tab.users",
+    "reason": "Settings tab Users & Access."
+   }
+  ],
+  "help.settings.access_integrations.deployment_type": [
+   {
+    "text": "Deployment Type",
+    "kind": "control",
+    "key": "settings.deployment.title",
+    "reason": "Deployment Type card title."
+   },
+   {
+    "text": "Standalone",
+    "kind": "control",
+    "key": "settings.deployment.standalone",
+    "reason": "Deployment Type card option shown as the current type."
+   },
+   {
+    "text": "Server",
+    "kind": "control",
+    "key": "settings.deployment.server",
+    "reason": "Deployment Type card option switched to."
+   },
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "A card's own Help (?) button; the only candidate is the phone dock's short Help & License nav name, which is a different element."
+   }
+  ],
+  "help.settings.access_integrations.integration": [
+   {
+    "text": "Integration",
+    "kind": "term",
+    "key": "role.integration",
+    "reason": "Integration names the account role as a concept (Integration accounts); role.integration is the fixed role name, not the event category or requested-by label."
+   }
+  ],
+  "help.settings.access_integrations.integration_accounts": [
+   {
+    "text": "Integration Accounts",
+    "kind": "control",
+    "key": "settings.integrations.title",
+    "reason": "Integration Accounts card title."
+   },
+   {
+    "text": "Issue Token",
+    "kind": "control",
+    "key": "settings.tokens.issue",
+    "reason": "API tokens button."
+   },
+   {
+    "text": "Revoke",
+    "kind": "control",
+    "key": "settings.tokens.revoke",
+    "reason": "API tokens button."
+   }
+  ],
+  "help.settings.access_integrations.integration_delivery_profiles": [
+   {
+    "text": "Integration Delivery Profiles",
+    "kind": "control",
+    "key": "settings.profiles.title",
+    "reason": "Delivery Profiles card title."
+   },
+   {
+    "text": "categories",
+    "kind": "term",
+    "reason": "Concept of submission categories, not a displayed label; no candidate."
+   },
+   {
+    "text": "Source Types",
+    "kind": "control",
+    "key": "settings.profiles.field.kinds",
+    "reason": "Delivery Profiles field."
+   },
+   {
+    "text": "Authorized API Tokens",
+    "kind": "control",
+    "key": "settings.profiles.field.clients",
+    "reason": "Delivery Profiles field."
+   },
+   {
+    "text": "DP Download Path",
+    "kind": "control",
+    "key": "settings.profiles.field.local_root",
+    "reason": "Delivery Profiles field."
+   },
+   {
+    "text": "External Import Path",
+    "kind": "control",
+    "key": "settings.profiles.field.import_root",
+    "reason": "Delivery Profiles field."
+   }
+  ],
+  "help.settings.access_integrations.administrator_changes_display": [
+   {
+    "text": "Easy",
+    "kind": "control",
+    "key": "presentation.easy",
+    "reason": "Easy presentation choice in My Account."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "Chooses Easy or Advanced in My Account = presentation mode, not the Usenet card disclosure."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "Says 'in My Account', i.e. the profile dialog itself, so the dialog title fits rather than the sidebar entry that opens it."
+   }
+  ],
+  "help.settings.users_access.admin": [
+   {
+    "text": "Admin:",
+    "kind": "term",
+    "reason": "Role-table lead-in naming the Admin role as a concept; colon-suffixed, no candidate."
+   }
+  ],
+  "help.settings.users_access.user": [
+   {
+    "text": "User:",
+    "kind": "term",
+    "reason": "Role-table lead-in naming the User role as a concept; colon-suffixed, no candidate."
+   },
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "A User's own Notifications page is the sidebar page; Settings are not available to them, so not the Settings tab."
+   }
+  ],
+  "help.settings.users_access.readonly_user": [
+   {
+    "text": "ReadOnly User:",
+    "kind": "term",
+    "reason": "Role-table lead-in naming the ReadOnly User role; colon-suffixed, no candidate."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "Says 'in My Account', i.e. the profile dialog itself, so the dialog title fits rather than the sidebar entry that opens it."
+   }
+  ],
+  "help.settings.users_access.integration": [
+   {
+    "text": "Integration:",
+    "kind": "term",
+    "reason": "Role-table lead-in naming the Integration role; colon-suffixed, no candidate."
+   }
+  ],
+  "help.settings.users_access.help_button_user": [
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "A card's own Help (?) button; the only candidate is the phone dock's short Help & License nav name, which is a different element."
+   },
+   {
+    "text": "Role",
+    "kind": "control",
+    "key": "settings.users.field.role",
+    "reason": "The Role selector inside Add Local Account / Edit User is the form field, not the table column header."
+   },
+   {
+    "text": "Add Local Account",
+    "kind": "control",
+    "key": "settings.users.add_local",
+    "reason": "User Accounts Add Local Account control."
+   },
+   {
+    "text": "Edit User",
+    "kind": "control-unmapped",
+    "reason": "Edit User dialog title; no candidate."
+   }
+  ],
+  "help.settings.users_access.user_accounts": [
+   {
+    "text": "User Accounts",
+    "kind": "control",
+    "key": "settings.users.title",
+    "reason": "The User Accounts card title."
+   },
+   {
+    "text": "Add Local Account",
+    "kind": "control",
+    "key": "settings.users.add_local",
+    "reason": "The Add Local Account control."
+   },
+   {
+    "text": "Edit User",
+    "kind": "control-unmapped",
+    "reason": "Edit User dialog; no candidate."
+   },
+   {
+    "text": "Edit User",
+    "kind": "control-unmapped",
+    "reason": "Edit User dialog title; no candidate."
+   },
+   {
+    "text": "Disable",
+    "kind": "control",
+    "key": "settings.users.disable",
+    "reason": "Disable button on User Accounts."
+   },
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "settings.users.remove",
+    "reason": "User Accounts section: the account Remove button, not the transfer/key/Usenet/backup Remove."
+   },
+   {
+    "text": "Merge",
+    "kind": "control",
+    "key": "settings.users.merge",
+    "reason": "Merge control on User Accounts."
+   }
+  ],
+  "help.settings.users_access.anyone_signed_can": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "account.title: the reader is in the My Account dialog itself (the sidebar entry shows the person's name), not the session.my_account entry point."
+   },
+   {
+    "text": "Log Out",
+    "kind": "control",
+    "key": "session.log_out",
+    "reason": "Sidebar Log Out button."
+   },
+   {
+    "text": "Change Password",
+    "kind": "control",
+    "key": "account.action.change_password",
+    "reason": "Change Password action in My Account."
+   }
+  ],
+  "help.settings.users_access.deployment_type": [
+   {
+    "text": "Deployment Type",
+    "kind": "control",
+    "key": "settings.deployment.title",
+    "reason": "Deployment Type card title."
+   },
+   {
+    "text": "Server",
+    "kind": "control",
+    "key": "settings.deployment.server",
+    "reason": "The card displays the current type label Server."
+   },
+   {
+    "text": "Standalone",
+    "kind": "control",
+    "key": "settings.deployment.standalone",
+    "reason": "The Standalone type label shown on the Deployment Type card."
+   },
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "The card's (?) Help button; the only candidate is the Help & License nav short name, which is a different element."
+   }
+  ],
+  "help.settings.users_access.my_account_also": [
+   {
+    "text": "Easy | Advanced",
+    "kind": "control-unmapped",
+    "reason": "The Easy | Advanced selector in My Account; no single key covers the two-part control."
+   }
+  ],
+  "help.settings.notifications.webhook_notifications": [
+   {
+    "text": "Webhook Notifications:",
+    "kind": "control",
+    "keys": [
+     "settings.notifications.webhook_title"
+    ],
+    "suffix": ":",
+    "reason": "Webhook Notifications: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "webhook",
+    "kind": "term",
+    "reason": "Defines the concept 'webhook'."
+   },
+   {
+    "text": "Primary Webhook",
+    "kind": "control",
+    "key": "settings.webhook.discord_webhook_url.label",
+    "reason": "Primary Webhook field."
+   },
+   {
+    "text": "Download Added Webhook",
+    "kind": "control",
+    "key": "settings.webhook.discord_webhook_added.label",
+    "reason": "Download Added Webhook field."
+   },
+   {
+    "text": "Display Name",
+    "kind": "control",
+    "key": "settings.notifications.display_name",
+    "reason": "Notifications tab Display Name field for Discord messages, not the account or Usenet display name."
+   },
+   {
+    "text": "Avatar URL",
+    "kind": "control",
+    "key": "settings.notifications.avatar_url",
+    "reason": "Avatar URL field."
+   },
+   {
+    "text": "Upload",
+    "kind": "control",
+    "key": "settings.avatar.upload",
+    "reason": "Avatar Upload button."
+   },
+   {
+    "text": "Notification Events & Delivery Options",
+    "kind": "control",
+    "key": "settings.notifications.events",
+    "reason": "Notification Events & Delivery Options section label."
+   },
+   {
+    "text": "Download Added",
+    "kind": "control",
+    "key": "settings.notifications.event_added",
+    "reason": "Event option."
+   },
+   {
+    "text": "Download Completed",
+    "kind": "control",
+    "key": "settings.notifications.event_finished",
+    "reason": "Event option."
+   },
+   {
+    "text": "Download Error",
+    "kind": "control",
+    "key": "settings.notifications.event_error",
+    "reason": "Event option."
+   },
+   {
+    "text": "Extraction Result",
+    "kind": "control",
+    "key": "settings.notifications.event_extract",
+    "reason": "Event option."
+   },
+   {
+    "text": "Update Available",
+    "kind": "control",
+    "key": "settings.notifications.event_update",
+    "reason": "Event option."
+   },
+   {
+    "text": "Update Check Interval",
+    "kind": "control",
+    "key": "settings.notifications.update_interval",
+    "reason": "Update Check Interval field."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.settings.notifications.statistics_reporting.statistics_reporting_shown": [
+   {
+    "text": "Statistics Reporting:",
+    "kind": "control",
+    "keys": [
+     "settings.reports.title"
+    ],
+    "suffix": ":",
+    "reason": "Statistics Reporting: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Reporting Webhook",
+    "kind": "control",
+    "key": "settings.webhook.stats_report_webhook_url.label",
+    "reason": "Reporting Webhook field."
+   },
+   {
+    "text": "Automatic Report Interval",
+    "kind": "control",
+    "key": "settings.reports.interval",
+    "reason": "Automatic Report Interval field."
+   },
+   {
+    "text": "Report Window",
+    "kind": "control",
+    "key": "settings.reports.window",
+    "reason": "Report Window field."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.settings.notifications.statistics_reporting.statistics_reporting_hidden": [
+   {
+    "text": "Statistics Reporting",
+    "kind": "control",
+    "key": "settings.reports.title",
+    "reason": "Statistics Reporting card title."
+   }
+  ],
+  "help.settings.notifications.user_has_their": [
+   {
+    "text": "User",
+    "kind": "term",
+    "key": "role.user",
+    "reason": "Names the User role as a concept; role.user is the fixed role name (preferred over the settings role option label)."
+   },
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "shell.nav.notifications: the User's own sidebar page, not the Admin Settings tab."
+   }
+  ],
+  "help.settings.data_maintenance.backups_retention.easy": [
+   {
+    "text": "Backups & Retention:",
+    "kind": "control",
+    "keys": [
+     "settings.backups.title"
+    ],
+    "suffix": ":",
+    "reason": "Backups & Retention: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Backup Folder",
+    "kind": "control",
+    "key": "settings.backups.folder",
+    "reason": "Backup Folder field."
+   },
+   {
+    "text": "Run Backup",
+    "kind": "control",
+    "key": "settings.backups.run",
+    "reason": "Run Backup button."
+   }
+  ],
+  "help.settings.data_maintenance.backups": [
+   {
+    "text": "Backups",
+    "kind": "control",
+    "key": "settings.backups.menu",
+    "reason": "'Backups opens the backup list': the opener control in Backups & Retention, not the manager dialog's title."
+   },
+   {
+    "text": "Save Backup",
+    "kind": "control",
+    "key": "backups.save",
+    "reason": "Save Backup in the Backups manager."
+   },
+   {
+    "text": "Restore Backup",
+    "kind": "control",
+    "key": "backups.restore",
+    "reason": "Restore Backup in the Backups manager."
+   },
+   {
+    "text": "Remove",
+    "kind": "control",
+    "key": "backups.remove",
+    "reason": "Inside the Backups manager dialog, so the backups Remove button."
+   },
+   {
+    "text": "Add Backup",
+    "kind": "control",
+    "key": "backups.add",
+    "reason": "Add Backup button."
+   }
+  ],
+  "help.settings.data_maintenance.event_logging": [
+   {
+    "text": "Event Logging:",
+    "kind": "control",
+    "keys": [
+     "settings.events.title"
+    ],
+    "suffix": ":",
+    "reason": "Event Logging: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Activity Log Page Size",
+    "kind": "control",
+    "key": "settings.events.page_size",
+    "reason": "Field."
+   },
+   {
+    "text": "Recorded Events",
+    "kind": "control",
+    "key": "settings.events.recorded",
+    "reason": "Field."
+   }
+  ],
+  "help.settings.data_maintenance.backups_retention.advanced": [
+   {
+    "text": "Backups & Retention:",
+    "kind": "control",
+    "keys": [
+     "settings.backups.title"
+    ],
+    "suffix": ":",
+    "reason": "Backups & Retention: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Backup Folder",
+    "kind": "control",
+    "key": "settings.backups.folder",
+    "reason": "Field."
+   },
+   {
+    "text": "Backup Interval",
+    "kind": "control",
+    "key": "settings.backups.interval",
+    "reason": "Field."
+   },
+   {
+    "text": "Backup Retention",
+    "kind": "control",
+    "key": "settings.backups.keep_days",
+    "reason": "Backup Retention field."
+   },
+   {
+    "text": "Maximum Retained Backups",
+    "kind": "control",
+    "key": "settings.backups.max_retained",
+    "reason": "Field."
+   },
+   {
+    "text": "Additional Backup & Retention Settings",
+    "kind": "control",
+    "key": "settings.backups.additional",
+    "reason": "Disclosure label."
+   },
+   {
+    "text": "statistics snapshots",
+    "kind": "term",
+    "reason": "Defines the concept of statistics snapshots; not a displayed control."
+   },
+   {
+    "text": "Run Backup",
+    "kind": "control",
+    "key": "settings.backups.run",
+    "reason": "Run Backup button."
+   }
+  ],
+  "help.settings.data_maintenance.database_reset_controls": [
+   {
+    "text": "Database Reset Controls:",
+    "kind": "control",
+    "keys": [
+     "settings.reset.title"
+    ],
+    "suffix": ":",
+    "reason": "Database Reset Controls: the only interface key with this text (a lead-in colon)"
+   },
+   {
+    "text": "Allow Database Reset",
+    "kind": "control",
+    "key": "settings.reset.allow",
+    "reason": "Switch."
+   },
+   {
+    "text": "Reset Database",
+    "kind": "control",
+    "key": "settings.reset.action",
+    "reason": "Reset Database button."
+   },
+   {
+    "text": "Wipe Database",
+    "kind": "control",
+    "key": "settings.reset.confirm_accept",
+    "reason": "The Wipe Database confirmation button."
+   }
+  ],
+  "help.trouble.before_changing_anything.open_download_details.activity_log_shown": [
+   {
+    "text": "Status",
+    "kind": "control",
+    "key": "details.field.status",
+    "reason": "'Open the download's details and read its Status': the Details field label, not a table column or filter."
+   },
+   {
+    "text": "Error",
+    "kind": "control",
+    "key": "details.field.error",
+    "reason": "Read in the download's details: the Details Error field label, not a status chip or filter."
+   },
+   {
+    "text": "Route History",
+    "kind": "control",
+    "key": "details.route.title",
+    "reason": "Details card."
+   },
+   {
+    "text": "Events",
+    "kind": "control",
+    "key": "details.events",
+    "reason": "Details Events card."
+   },
+   {
+    "text": "Activity Log",
+    "kind": "control",
+    "key": "shell.nav.activity_log",
+    "reason": "'Check the Activity Log': the reader goes to the page via the sidebar entry; nav chosen over page title."
+   }
+  ],
+  "help.trouble.before_changing_anything.open_download_details.activity_log_hidden": [
+   {
+    "text": "Status",
+    "kind": "control",
+    "key": "details.field.status",
+    "reason": "Read in the download's details: the Details Status field."
+   },
+   {
+    "text": "Error",
+    "kind": "control",
+    "key": "details.field.error",
+    "reason": "Read in the download's details: the Details Error field."
+   },
+   {
+    "text": "Route History",
+    "kind": "control",
+    "key": "details.route.title",
+    "reason": "Details card."
+   },
+   {
+    "text": "Events",
+    "kind": "control",
+    "key": "details.events",
+    "reason": "Details Events card."
+   }
+  ],
+  "help.trouble.before_changing_anything.avoid_removing_download.admin": [
+   {
+    "text": "Transfer Trace Log",
+    "kind": "control",
+    "key": "details.trace.button",
+    "reason": "Details button."
+   }
+  ],
+  "help.trouble.before_changing_anything.avoid_removing_download.operate": [
+   {
+    "text": "Transfer Trace Log",
+    "kind": "control",
+    "key": "details.trace.button",
+    "reason": "Names the Details trace button."
+   }
+  ],
+  "help.trouble.before_changing_anything.if_problem_needs": [
+   {
+    "text": "Transfer Trace Log",
+    "kind": "control",
+    "key": "details.trace.button",
+    "reason": "Names the Details trace button."
+   }
+  ],
+  "help.trouble.button_page_setting.presentation_easy_which": [
+   {
+    "text": "Easy",
+    "kind": "term",
+    "key": "presentation.easy",
+    "reason": "'Your presentation is Easy' names the mode as a state; presentation.easy is that concept's label."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "'Choose Advanced in My Account': the presentation selector option, not the Usenet Advanced disclosure."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "account.title: the reader is in the My Account dialog itself (the sidebar entry shows the person's name), not the session.my_account entry point."
+   }
+  ],
+  "help.trouble.button_page_setting.most_likely_role": [
+   {
+    "text": "Everyday Use → What your role lets you do",
+    "kind": "control-unmapped",
+    "reason": "Cross-reference to a Help section heading; no interface candidate."
+   },
+   {
+    "text": "Settings → Users & Access",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.users"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Users & Access: the only interface key with this text"
+   }
+  ],
+  "help.trouble.i_added_something.check_pause_all": [
+   {
+    "text": "Pause All",
+    "kind": "control",
+    "key": "processing.pause_all",
+    "reason": "Topbar button."
+   },
+   {
+    "text": "Resume All",
+    "kind": "control",
+    "key": "processing.resume_all",
+    "reason": "Topbar button."
+   },
+   {
+    "text": "PROCESSING PAUSED",
+    "kind": "control",
+    "key": "processing.paused_banner.title",
+    "reason": "Paused banner."
+   }
+  ],
+  "help.trouble.i_added_something.queued": [
+   {
+    "text": "Queued",
+    "kind": "control",
+    "key": "status.queued",
+    "reason": "A download's status chip, not the statistics row or engine-activity state."
+   },
+   {
+    "text": "Waiting for execution slot",
+    "kind": "control",
+    "key": "status.waiting_for_slot",
+    "reason": "Status chip."
+   },
+   {
+    "text": "Maximum Concurrent Downloads",
+    "kind": "control",
+    "key": "settings.downloads.max_concurrent",
+    "reason": "Field."
+   }
+  ],
+  "help.trouble.i_added_something.input_required.submit": [
+   {
+    "text": "Input Required",
+    "kind": "control",
+    "key": "status.input_required",
+    "reason": "Describes a download's status; the transfer status chip, not an event category/filter."
+   }
+  ],
+  "help.trouble.i_added_something.input_required.viewer": [
+   {
+    "text": "Input Required",
+    "kind": "control",
+    "key": "status.input_required",
+    "reason": "Describes a download's status; the transfer status chip, not an event category/filter."
+   }
+  ],
+  "help.trouble.i_added_something.waiting_provider.admin": [
+   {
+    "text": "Waiting for provider",
+    "kind": "control",
+    "key": "status.waiting_for_provider",
+    "reason": "Status chip."
+   }
+  ],
+  "help.trouble.i_added_something.waiting_provider.member": [
+   {
+    "text": "Waiting for provider",
+    "kind": "control",
+    "key": "status.waiting_for_provider",
+    "reason": "Status chip."
+   }
+  ],
+  "help.trouble.i_added_something.waiting_storage": [
+   {
+    "text": "Waiting for storage",
+    "kind": "control",
+    "key": "status.waiting_for_storage",
+    "reason": "Status chip."
+   },
+   {
+    "text": "Minimum Free Disk Space",
+    "kind": "control-unmapped",
+    "reason": "Minimum Free Disk Space field; no candidate."
+   }
+  ],
+  "help.trouble.quick_add_refuses.line_n_enter_https": [
+   {
+    "text": "Line N: enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI",
+    "kind": "control-unmapped",
+    "reason": "Quick Add refusal message shown on screen; no candidate."
+   }
+  ],
+  "help.trouble.quick_add_refuses.local_network_transfer_not": [
+   {
+    "text": "Local network transfer not added",
+    "kind": "control",
+    "key": "quick_add.local_not_added",
+    "reason": "Toast text."
+   },
+   {
+    "text": "Local Network Connections",
+    "kind": "control",
+    "key": "settings.downloads.lan",
+    "reason": "Field."
+   }
+  ],
+  "help.trouble.service_amber_red.api_key_services": [
+   {
+    "text": "API key services",
+    "kind": "term",
+    "reason": "Groups services by kind; not a displayed label."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.trouble.service_amber_red.real_debrid_torbox": [
+   {
+    "text": "Real-Debrid and TorBox:",
+    "kind": "term",
+    "reason": "Lead-in naming the services."
+   },
+   {
+    "text": "Connect Real-Debrid",
+    "kind": "control-unmapped",
+    "reason": "Connect Real-Debrid button; no candidate."
+   },
+   {
+    "text": "Connect TorBox",
+    "kind": "control-unmapped",
+    "reason": "Connect TorBox button; no candidate."
+   },
+   {
+    "text": "Disconnect",
+    "kind": "control",
+    "key": "settings.account.disconnect",
+    "reason": "Disconnect button."
+   }
+  ],
+  "help.trouble.service_amber_red.usenet": [
+   {
+    "text": "Usenet:",
+    "kind": "term",
+    "reason": "Lead-in naming the Usenet service."
+   }
+  ],
+  "help.trouble.service_amber_red.finish_remove_existing_resources": [
+   {
+    "text": "Finish or remove existing ... resources before changing its connection",
+    "kind": "control-unmapped",
+    "reason": "Error message shown on screen; no candidate."
+   }
+  ],
+  "help.trouble.download_stays_processing.torrent_may_take.operate": [
+   {
+    "text": "Recover All",
+    "kind": "control",
+    "key": "recovery.recover_all",
+    "reason": "Button."
+   },
+   {
+    "text": "Switching service or source",
+    "kind": "control-unmapped",
+    "reason": "Cross-reference to a Help section heading; no candidate."
+   }
+  ],
+  "help.trouble.download_stays_processing.torrent_may_take.viewer": [
+   {
+    "text": "Recover All",
+    "kind": "control",
+    "key": "recovery.recover_all",
+    "reason": "Button."
+   }
+  ],
+  "help.trouble.download_stays_processing.timing_lives_under": [
+   {
+    "text": "Settings → Downloads → Download Behavior & Limits → Advanced Settings",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.downloads",
+     "settings.downloads.behavior",
+     "settings.downloads.advanced"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Downloads: after Settings, a path names a Settings tab; Download Behavior & Limits: the only interface key with this text; Advanced Settings: the only interface key with this text"
+   },
+   {
+    "text": "Provider Poll Interval",
+    "kind": "control-unmapped",
+    "reason": "Provider Poll Interval field; no candidate."
+   },
+   {
+    "text": "Full Sync Interval",
+    "kind": "control-unmapped",
+    "reason": "Full Sync Interval field; no candidate."
+   },
+   {
+    "text": "Resolution Failure Retries",
+    "kind": "control",
+    "key": "settings.downloads.resolution_retries",
+    "reason": "Field."
+   },
+   {
+    "text": "Retry Delay (minutes)",
+    "kind": "control",
+    "key": "settings.downloads.retry_delay_minutes",
+    "reason": "Field."
+   }
+  ],
+  "help.trouble.download_slow_stalls.if_sidebar_shows": [
+   {
+    "text": "aria2: offline",
+    "kind": "control",
+    "key": "status.aria2.offline",
+    "reason": "Sidebar status."
+   }
+  ],
+  "help.trouble.download_slow_stalls.job_truly_stuck": [
+   {
+    "text": "Download Engine Activity",
+    "kind": "control",
+    "key": "settings.engine_activity.title",
+    "reason": "Card title."
+   },
+   {
+    "text": "Retry",
+    "kind": "control",
+    "key": "transfer.action.retry",
+    "reason": "'Retry on the download itself': the download row Retry button, not the route recheck or error-fact label."
+   }
+  ],
+  "help.trouble.server_keeps_asking.rejected_password_never": [
+   {
+    "text": "Host Identity Failed",
+    "kind": "control",
+    "key": "error_category.host_key_failure",
+    "reason": "Failure category badge."
+   }
+  ],
+  "help.trouble.usenet_download_fails.usenet_no_enabled_news": [
+   {
+    "text": "Usenet: no enabled news server is configured",
+    "kind": "control",
+    "key": "settings.usenet_test.none",
+    "reason": "Usenet Test result toast."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Usenet card Test button."
+   }
+  ],
+  "help.trouble.usenet_download_fails.passworded_7z_rar": [
+   {
+    "text": "Archive Passwords",
+    "kind": "control",
+    "key": "settings.extraction.passwords",
+    "reason": "Field."
+   }
+  ],
+  "help.trouble.files_not_where.check_download_folder": [
+   {
+    "text": "Download Folder",
+    "kind": "control",
+    "key": "settings.downloads.folder",
+    "reason": "Field."
+   },
+   {
+    "text": "Browse",
+    "kind": "control",
+    "key": "settings.browse",
+    "reason": "Browse button."
+   }
+  ],
+  "help.trouble.files_not_where.when_free_space.disk_space_recovery_shown": [
+   {
+    "text": "Minimum Free Disk Space",
+    "kind": "control-unmapped",
+    "reason": "Field; no candidate."
+   },
+   {
+    "text": "Resume Free Space Buffer",
+    "kind": "control-unmapped",
+    "reason": "Field; no candidate."
+   }
+  ],
+  "help.trouble.files_not_where.when_free_space.disk_space_recovery_hidden": [
+   {
+    "text": "Disk Space & Recovery",
+    "kind": "control",
+    "key": "settings.downloads.recovery",
+    "reason": "Card title."
+   }
+  ],
+  "help.trouble.automatic_extraction_did.check_settings_extraction": [
+   {
+    "text": "Settings → Extraction → Automatic Extraction",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.extraction",
+     "settings.extraction.title"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Extraction: after Settings, a path names a Settings tab; Automatic Extraction: the only interface key with this text"
+   },
+   {
+    "text": "Extraction",
+    "kind": "control",
+    "key": "details.field.extraction",
+    "reason": "'the download's Extraction ... fields': the Details field label, not the event category or Settings tab."
+   },
+   {
+    "text": "Extraction Error",
+    "kind": "control",
+    "key": "details.field.extraction_error",
+    "reason": "Details field."
+   },
+   {
+    "text": "Archive Passwords",
+    "kind": "control",
+    "key": "settings.extraction.passwords",
+    "reason": "Field."
+   }
+  ],
+  "help.trouble.webhook_notifications_prometheus.webhook_notifications_press.standalone": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   },
+   {
+    "text": "Access & Integrations",
+    "kind": "control",
+    "key": "settings.tab.users_standalone",
+    "reason": "Settings tab label in the standalone wording."
+   }
+  ],
+  "help.trouble.webhook_notifications_prometheus.webhook_notifications_press.server": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   },
+   {
+    "text": "Users & Access",
+    "kind": "control",
+    "key": "settings.tab.users",
+    "reason": "Settings tab."
+   }
+  ],
+  "help.trouble.my_webhook_notifications.notifications_page_press": [
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "'your Notifications page' is the User's own sidebar page, not the Admin Settings tab."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   },
+   {
+    "text": "Webhook Notifications",
+    "kind": "control",
+    "key": "settings.notifications.webhook_title",
+    "reason": "Webhook Notifications card title (rendered via card())."
+   }
+  ],
+  "help.trouble.i_cannot_sign.if_password_lost": [
+   {
+    "text": "If the password is lost:",
+    "kind": "emphasis",
+    "reason": "Emphasized lead-in phrase."
+   }
+  ],
+  "help.trouble.i_cannot_sign.if_another_sign": [
+   {
+    "text": "Settings → Authentication",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.authentication"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Authentication: the only interface key with this text"
+   },
+   {
+    "text": "Public DebridPulse Base URL",
+    "kind": "control",
+    "key": "settings.oidc.public_base",
+    "reason": "Field."
+   },
+   {
+    "text": "OIDC Callback URL",
+    "kind": "control",
+    "key": "settings.oidc.callback",
+    "reason": "Field."
+   },
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.trouble.i_cannot_sign.username_password_openid": [
+   {
+    "text": "Username & Password",
+    "kind": "control",
+    "key": "settings.auth.credentials_title",
+    "reason": "'The Username & Password ... cards': the card title (rendered by card()), not the Authentication Status KPI labels."
+   },
+   {
+    "text": "OpenID Connect",
+    "kind": "control",
+    "key": "settings.oidc.title",
+    "reason": "'OpenID Connect cards': the card title, not the KPI mode label."
+   },
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "'My Account is set to Advanced': the presentation option, not the Usenet Advanced disclosure."
+   }
+  ],
+  "help.trouble.i_cannot_sign.last_resort_if_no": [
+   {
+    "text": "Last resort, if no sign-in method works:",
+    "kind": "emphasis",
+    "reason": "Emphasized lead-in phrase."
+   }
+  ],
+  "help.trouble.backup_restore_reset.backup_disabled_settings": [
+   {
+    "text": "Backup is disabled in Settings",
+    "kind": "control",
+    "key": "settings.backups.skipped",
+    "reason": "Displayed status message."
+   },
+   {
+    "text": "Backups & Retention",
+    "kind": "control",
+    "key": "settings.backups.title",
+    "reason": "Card title."
+   }
+  ],
+  "help.trouble.backup_restore_reset.reset_needs_allow": [
+   {
+    "text": "Allow Database Reset",
+    "kind": "control",
+    "key": "settings.reset.allow",
+    "reason": "Switch."
+   }
+  ],
+  "help.trouble.backup_restore_reset.if_safety_backup": [
+   {
+    "text": "Backup Folder",
+    "kind": "control",
+    "key": "settings.backups.folder",
+    "reason": "Field."
+   }
+  ],
+  "help.license.lead.debridpulse_provided_without_warranty": [
+   {
+    "text": "DebridPulse is provided without warranty, as specified in the license.",
+    "kind": "emphasis",
+    "reason": "Emphasized sentence."
+   }
+  ],
+  "help.license.documents_can_open.gpl_2_0_later": [
+   {
+    "text": "GPL-2.0-or-later:",
+    "kind": "control-unmapped",
+    "reason": "Names a document in the License viewer; no candidate."
+   }
+  ],
+  "help.license.documents_can_open.source_offer": [
+   {
+    "text": "Source offer:",
+    "kind": "control-unmapped",
+    "reason": "Names a document in the License viewer; no candidate."
+   }
+  ],
+  "help.license.documents_can_open.third_party_licenses": [
+   {
+    "text": "Third-party licenses:",
+    "kind": "control-unmapped",
+    "reason": "Names a document in the License viewer; no candidate."
+   }
+  ],
+  "help.quickstart.lead.debridpulse_application_submits_routes.submit": [
+   {
+    "text": "DebridPulse is the application that submits, routes, tracks, and manages downloads.",
+    "kind": "emphasis",
+    "reason": "Emphasized sentence."
+   }
+  ],
+  "help.quickstart.lead.debridpulse_application_submits_routes.viewer": [
+   {
+    "text": "DebridPulse is the application that submits, routes, tracks, and manages downloads.",
+    "kind": "emphasis",
+    "reason": "Emphasized sentence."
+   }
+  ],
+  "help.quickstart.follow_finish.download_appears_download.submit": [
+   {
+    "text": "Download Activity",
+    "kind": "control",
+    "key": "dashboard.activity.title",
+    "reason": "Dashboard card title."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "'in Downloads' names the page, reached from the sidebar entry; not the event filter or Settings tab."
+   },
+   {
+    "text": "Requested By",
+    "kind": "control",
+    "key": "details.field.requested_by",
+    "reason": "Details field."
+   }
+  ],
+  "help.quickstart.hear_about.notifications.statistics_reporting_shown": [
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "'Notifications in the sidebar': explicitly the sidebar entry."
+   },
+   {
+    "text": "Webhook Notifications",
+    "kind": "control",
+    "key": "settings.notifications.webhook_title",
+    "reason": "Card title."
+   },
+   {
+    "text": "Statistics Reporting",
+    "kind": "control",
+    "key": "settings.reports.title",
+    "reason": "Card title."
+   }
+  ],
+  "help.quickstart.hear_about.notifications.statistics_reporting_hidden": [
+   {
+    "text": "Notifications",
+    "kind": "control",
+    "key": "shell.nav.notifications",
+    "reason": "'Notifications in the sidebar': explicitly the sidebar entry."
+   },
+   {
+    "text": "Webhook Notifications",
+    "kind": "control",
+    "key": "settings.notifications.webhook_title",
+    "reason": "Card title."
+   }
+  ],
+  "help.quickstart.see_what_happening.dashboard_shows_downloads": [
+   {
+    "text": "Dashboard",
+    "kind": "control",
+    "key": "shell.nav.dashboard",
+    "reason": "Names the Dashboard page; sidebar entry chosen (how the reader reaches it), page title equally exact."
+   },
+   {
+    "text": "Downloads",
+    "kind": "control",
+    "key": "shell.nav.downloads",
+    "reason": "Names the Downloads page; sidebar entry, not the event filter or Settings tab."
+   }
+  ],
+  "help.quickstart.look_back.statistics": [
+   {
+    "text": "Statistics",
+    "kind": "control",
+    "key": "shell.nav.statistics",
+    "reason": "Names the Statistics page; sidebar entry, not the page title or phone short title."
+   }
+  ],
+  "help.quickstart.where_read_next.notifications": [
+   {
+    "text": "Notifications:",
+    "kind": "control-unmapped",
+    "reason": "Names the Help chapter Notifications; no candidate."
+   }
+  ],
+  "help.quickstart.where_read_next.settings_controls_marked": [
+   {
+    "text": "Admin only",
+    "kind": "control-unmapped",
+    "reason": "The 'Admin only' marking shown on controls; no candidate."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "account.title: the reader is in the My Account dialog itself (the sidebar entry shows the person's name), not the session.my_account entry point."
+   },
+   {
+    "text": "Easy | Advanced",
+    "kind": "control-unmapped",
+    "reason": "The Easy | Advanced selector; no single key."
+   }
+  ],
+  "help.quickstart.where_read_next.changes_downloads_made": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "account.title: the reader is in the My Account dialog itself (the sidebar entry shows the person's name), not the session.my_account entry point."
+   },
+   {
+    "text": "Easy | Advanced",
+    "kind": "control-unmapped",
+    "reason": "The Easy | Advanced selector; no single key."
+   }
+  ],
+  "help.notifications.how_saving_works.there_no_save": [
+   {
+    "text": "Clear",
+    "kind": "control",
+    "key": "settings.webhook.clear",
+    "reason": "Clears a stored webhook: the Discord webhooks Clear button."
+   }
+  ],
+  "help.notifications.how_saving_works.each_card_has": [
+   {
+    "text": "Help",
+    "kind": "control-unmapped",
+    "reason": "The card's (?) Help button; the only candidate is the Help & License nav short name."
+   }
+  ],
+  "help.notifications.webhook_notifications.enable": [
+   {
+    "text": "Enable",
+    "kind": "control",
+    "key": "settings.enable",
+    "reason": "The Notifications card Enable control (generic Settings button), not the User Accounts enable."
+   }
+  ],
+  "help.notifications.webhook_notifications.primary_webhook": [
+   {
+    "text": "Primary Webhook",
+    "kind": "control",
+    "key": "settings.webhook.discord_webhook_url.label",
+    "reason": "Field."
+   },
+   {
+    "text": "Download Added Webhook",
+    "kind": "control",
+    "key": "settings.webhook.discord_webhook_added.label",
+    "reason": "Field."
+   }
+  ],
+  "help.notifications.webhook_notifications.display_name": [
+   {
+    "text": "Display Name",
+    "kind": "control",
+    "key": "settings.notifications.display_name",
+    "reason": "Discord message Display Name on the Notifications page, not account or Usenet."
+   },
+   {
+    "text": "Avatar URL",
+    "kind": "control",
+    "key": "settings.notifications.avatar_url",
+    "reason": "Field."
+   }
+  ],
+  "help.notifications.webhook_notifications.choose_which_events": [
+   {
+    "text": "Download Added",
+    "kind": "control",
+    "key": "settings.notifications.event_added",
+    "reason": "Event option."
+   },
+   {
+    "text": "Download Completed",
+    "kind": "control",
+    "key": "settings.notifications.event_finished",
+    "reason": "Event option."
+   },
+   {
+    "text": "Download Error",
+    "kind": "control",
+    "key": "settings.notifications.event_error",
+    "reason": "Event option."
+   },
+   {
+    "text": "Extraction Result",
+    "kind": "control",
+    "key": "settings.notifications.event_extract",
+    "reason": "Event option."
+   }
+  ],
+  "help.notifications.webhook_notifications.test": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.notifications.statistics_reporting.periodic_summary_download": [
+   {
+    "text": "Reporting Webhook",
+    "kind": "control",
+    "key": "settings.webhook.stats_report_webhook_url.label",
+    "reason": "Field."
+   }
+  ],
+  "help.notifications.statistics_reporting.report_window": [
+   {
+    "text": "Report Window",
+    "kind": "control",
+    "key": "settings.reports.window",
+    "reason": "Field."
+   }
+  ],
+  "help.notifications.statistics_reporting.automatic_report_interval": [
+   {
+    "text": "Automatic Report Interval",
+    "kind": "control",
+    "key": "settings.reports.interval",
+    "reason": "Field."
+   }
+  ],
+  "help.notifications.statistics_reporting.test": [
+   {
+    "text": "Test",
+    "kind": "control",
+    "key": "settings.test",
+    "reason": "Test button."
+   }
+  ],
+  "help.notifications.statistics_reports.statistics_reports_previously": [
+   {
+    "text": "Advanced",
+    "kind": "control",
+    "key": "presentation.advanced",
+    "reason": "'select Advanced in My Account': the presentation option, not the Usenet disclosure."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "account.title: the reader is in the My Account dialog itself (the sidebar entry shows the person's name), not the session.my_account entry point."
+   },
+   {
+    "text": "Notifications → Statistics Reporting",
+    "kind": "control",
+    "keys": [
+     "shell.nav.notifications",
+     "settings.reports.title"
+    ],
+    "join": "→",
+    "reason": "Notifications: a path starts at the sidebar entry (a User's own Notifications page); Statistics Reporting: the only interface key with this text"
+   }
+  ],
+  "help.settings.summary.standalone_easy": [
+   {
+    "text": "Easy",
+    "kind": "term",
+    "key": "presentation.easy",
+    "reason": "'as the Easy presentation shows them' names the mode as a concept."
+   }
+  ],
+  "help.settings.summary.server_easy": [
+   {
+    "text": "Easy",
+    "kind": "term",
+    "key": "presentation.easy",
+    "reason": "'as the Easy presentation shows them' names the mode as a concept."
+   }
+  ],
+  "help.license.lead.copyright": [
+   {
+    "text": "GNU General Public License v2.0 or later",
+    "kind": "term",
+    "reason": "The licence's proper name, kept as the licence names itself."
+   }
+  ]
+ }
+}
