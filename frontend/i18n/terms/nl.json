@@ -1,0 +1,147 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "nl",
+ "register": "Dutch. Formal 'u' throughout. Buttons and menu commands use the infinitive (Opslaan, Annuleren, Verwijderen); headings and labels use nouns. Help addresses the reader as 'u'. Dutch compounding and spelling (Groene Boekje): closed compounds (downloadmap, weergavenaam), hyphens only where the rules require them. Established English loan words where Dutch IT usage is settled (download, server, dashboard, token, provider, back-up).",
+ "terms": {
+  "transfer": {
+   "target": "Overdracht",
+   "forms": [
+    "Overdrachten",
+    "overdracht",
+    "overdrachten"
+   ]
+  },
+  "downloads_page": {
+   "target": "Downloads"
+  },
+  "premium_services": {
+   "target": "Premiumdiensten",
+   "forms": [
+    "premiumdienst",
+    "premiumdiensten"
+   ]
+  },
+  "network_sources": {
+   "target": "Netwerkbronnen",
+   "forms": [
+    "netwerkbron",
+    "netwerkbronnen"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Gebruiker"
+  },
+  "role_readonly": {
+   "target": "Alleen-lezengebruiker",
+   "forms": [
+    "Alleen-lezengebruikers",
+    "alleen-lezen"
+   ]
+  },
+  "role_integration": {
+   "target": "Integratie"
+  },
+  "display_name": {
+   "target": "Weergavenaam",
+   "forms": [
+    "weergavenaam",
+    "weergavenamen"
+   ]
+  },
+  "actual_name": {
+   "target": "Echte naam",
+   "forms": [
+    "echte naam",
+    "echte namen"
+   ]
+  },
+  "my_account": {
+   "target": "Mijn account"
+  },
+  "sign_in": {
+   "target": "Aanmelden"
+  },
+  "log_out": {
+   "target": "Afmelden"
+  },
+  "easy": {
+   "target": "Eenvoudig",
+   "forms": [
+    "eenvoudig",
+    "Eenvoudige",
+    "eenvoudige"
+   ]
+  },
+  "advanced": {
+   "target": "Geavanceerd",
+   "forms": [
+    "geavanceerd",
+    "Geavanceerde",
+    "geavanceerde"
+   ]
+  },
+  "server": {
+   "target": "Server"
+  },
+  "standalone": {
+   "target": "Zelfstandig",
+   "forms": [
+    "zelfstandig",
+    "Zelfstandige",
+    "zelfstandige"
+   ]
+  },
+  "help_license": {
+   "target": "Help en licentie"
+  },
+  "field_manual": {
+   "target": "Handleiding"
+  },
+  "activity_log": {
+   "target": "Activiteitenlogboek"
+  },
+  "download_activity": {
+   "target": "Downloadactiviteit"
+  },
+  "download_engine_activity": {
+   "target": "Activiteit van downloadengines"
+  },
+  "dashboard": {
+   "target": "Dashboard"
+  },
+  "settings": {
+   "target": "Instellingen"
+  },
+  "statistics": {
+   "target": "Statistieken"
+  },
+  "restore_point": {
+   "target": "Herstelpunt",
+   "forms": [
+    "herstelpunt",
+    "herstelpunten"
+   ]
+  },
+  "provider": {
+   "target": "Provider"
+  },
+  "source": {
+   "target": "Bron"
+  },
+  "retry": {
+   "target": "Opnieuw proberen"
+  },
+  "resume": {
+   "target": "Hervatten"
+  },
+  "recovery": {
+   "target": "Herstel"
+  }
+ }
+}

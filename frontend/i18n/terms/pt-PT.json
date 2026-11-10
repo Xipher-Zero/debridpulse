@@ -1,0 +1,149 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "pt-PT",
+ "register": "European Portuguese (Portugal, AO1990 spelling as used in Portugal: ação, atividade, contacto, receção). Buttons and menu commands use the infinitive (Guardar, Cancelar, Eliminar); headings and labels use nouns. Help is impersonal or uses the third person without 'você'. European vocabulary (ficheiro, ecrã, utilizador, palavra-passe, registo, definições) and grammar: 'a' + infinitive for ongoing states (A descarregar…), never the Brazilian gerund; clitic placement of Portugal (Guarde-o). The noun 'download' is kept as settled loan word; the verb is 'descarregar'. 'Transferência' is reserved for the Transfer concept.",
+ "terms": {
+  "transfer": {
+   "target": "Transferência",
+   "forms": [
+    "Transferências",
+    "transferência",
+    "transferências"
+   ]
+  },
+  "downloads_page": {
+   "target": "Downloads"
+  },
+  "premium_services": {
+   "target": "Serviços premium",
+   "forms": [
+    "serviço premium",
+    "serviços premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Origens de rede",
+   "forms": [
+    "origem de rede",
+    "origens de rede"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Utilizador"
+  },
+  "role_readonly": {
+   "target": "Utilizador só de leitura",
+   "forms": [
+    "Utilizadores só de leitura",
+    "só de leitura"
+   ]
+  },
+  "role_integration": {
+   "target": "Integração"
+  },
+  "display_name": {
+   "target": "Nome a apresentar",
+   "forms": [
+    "nome a apresentar",
+    "nomes a apresentar"
+   ]
+  },
+  "actual_name": {
+   "target": "Nome real",
+   "forms": [
+    "nome real",
+    "nomes reais"
+   ]
+  },
+  "my_account": {
+   "target": "A minha conta",
+   "forms": [
+    "minha conta"
+   ]
+  },
+  "sign_in": {
+   "target": "Iniciar sessão"
+  },
+  "log_out": {
+   "target": "Terminar sessão"
+  },
+  "easy": {
+   "target": "Simples"
+  },
+  "advanced": {
+   "target": "Avançado",
+   "forms": [
+    "Avançada",
+    "Avançados",
+    "Avançadas",
+    "avançado",
+    "avançada"
+   ]
+  },
+  "server": {
+   "target": "Servidor"
+  },
+  "standalone": {
+   "target": "Autónomo",
+   "forms": [
+    "Autónoma",
+    "autónomo",
+    "autónoma",
+    "autónomos",
+    "autónomas"
+   ]
+  },
+  "help_license": {
+   "target": "Ajuda e licença"
+  },
+  "field_manual": {
+   "target": "Manual"
+  },
+  "activity_log": {
+   "target": "Registo de atividade"
+  },
+  "download_activity": {
+   "target": "Atividade de downloads"
+  },
+  "download_engine_activity": {
+   "target": "Atividade dos motores de download"
+  },
+  "dashboard": {
+   "target": "Painel"
+  },
+  "settings": {
+   "target": "Definições"
+  },
+  "statistics": {
+   "target": "Estatísticas"
+  },
+  "restore_point": {
+   "target": "Ponto de restauro",
+   "forms": [
+    "ponto de restauro",
+    "pontos de restauro"
+   ]
+  },
+  "provider": {
+   "target": "Fornecedor"
+  },
+  "source": {
+   "target": "Origem"
+  },
+  "retry": {
+   "target": "Tentar novamente"
+  },
+  "resume": {
+   "target": "Retomar"
+  },
+  "recovery": {
+   "target": "Recuperação"
+  }
+ }
+}

@@ -82,6 +82,14 @@ independently AI-reviewed, every critical warning back-translated and compared, 
 human or native review. Each passes `validate.mjs --complete=<tag>` on its own and
 stays `planned`.
 
+WS5-A3 adds Brazilian Portuguese, European Portuguese and Dutch the same way
+(`frontend/static/i18n/{pt-BR,pt-PT,nl}.json`, each with its own termbase and review
+ledger). The two Portuguese catalogs are separate regional translations from the
+English, not copies of each other: each has its own termbase (for example Configurações /
+Definições, Salvar / Guardar, Excluir / Eliminar, the Brazilian gerund versus *a* +
+infinitive in Portugal). Each passes `validate.mjs --complete=<tag>` on its own and stays
+`planned`.
+
 ## 1. Pieces and owners
 
 | Piece | Owner |

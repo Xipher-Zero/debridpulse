@@ -1,0 +1,146 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "pt-BR",
+ "register": "Brazilian Portuguese. Buttons and menu commands use the infinitive (Salvar, Cancelar, Excluir); headings and labels use nouns. Help prefers impersonal constructions and addresses the reader as 'você' where an address is needed. Brazilian spelling and vocabulary (arquivo, tela, usuário, senha, registro, contato; gerund for ongoing states: Baixando). Established English loan words where Brazilian IT usage is settled (download, backup, token, webhook).",
+ "terms": {
+  "transfer": {
+   "target": "Transferência",
+   "forms": [
+    "Transferências",
+    "transferência",
+    "transferências"
+   ]
+  },
+  "downloads_page": {
+   "target": "Downloads"
+  },
+  "premium_services": {
+   "target": "Serviços premium",
+   "forms": [
+    "serviço premium",
+    "serviços premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Fontes de rede",
+   "forms": [
+    "fonte de rede",
+    "fontes de rede"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Usuário"
+  },
+  "role_readonly": {
+   "target": "Usuário somente leitura",
+   "forms": [
+    "Usuários somente leitura",
+    "somente leitura"
+   ]
+  },
+  "role_integration": {
+   "target": "Integração"
+  },
+  "display_name": {
+   "target": "Nome de exibição",
+   "forms": [
+    "nome de exibição",
+    "nomes de exibição"
+   ]
+  },
+  "actual_name": {
+   "target": "Nome real",
+   "forms": [
+    "nome real",
+    "nomes reais"
+   ]
+  },
+  "my_account": {
+   "target": "Minha conta"
+  },
+  "sign_in": {
+   "target": "Entrar"
+  },
+  "log_out": {
+   "target": "Sair"
+  },
+  "easy": {
+   "target": "Simples"
+  },
+  "advanced": {
+   "target": "Avançado",
+   "forms": [
+    "Avançada",
+    "Avançados",
+    "Avançadas",
+    "avançado",
+    "avançada"
+   ]
+  },
+  "server": {
+   "target": "Servidor"
+  },
+  "standalone": {
+   "target": "Autônomo",
+   "forms": [
+    "Autônoma",
+    "autônomo",
+    "autônoma",
+    "autônomos",
+    "autônomas"
+   ]
+  },
+  "help_license": {
+   "target": "Ajuda e licença"
+  },
+  "field_manual": {
+   "target": "Manual"
+  },
+  "activity_log": {
+   "target": "Registro de atividades"
+  },
+  "download_activity": {
+   "target": "Atividade de downloads"
+  },
+  "download_engine_activity": {
+   "target": "Atividade dos mecanismos de download"
+  },
+  "dashboard": {
+   "target": "Painel"
+  },
+  "settings": {
+   "target": "Configurações"
+  },
+  "statistics": {
+   "target": "Estatísticas"
+  },
+  "restore_point": {
+   "target": "Ponto de restauração",
+   "forms": [
+    "ponto de restauração",
+    "pontos de restauração"
+   ]
+  },
+  "provider": {
+   "target": "Provedor"
+  },
+  "source": {
+   "target": "Fonte"
+  },
+  "retry": {
+   "target": "Tentar novamente"
+  },
+  "resume": {
+   "target": "Retomar"
+  },
+  "recovery": {
+   "target": "Recuperação"
+  }
+ }
+}
