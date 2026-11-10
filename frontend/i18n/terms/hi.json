@@ -1,0 +1,199 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "hi",
+ "register": "Hindi (standard Hindi in Devanagari, as used in Indian software). The reader is addressed with the formal 'आप' and polite imperatives (-ें: सहेजें, रद्द करें, हटाएँ); never 'तुम' or 'तू'. Headings and labels use nouns. Correct gender and number agreement of verbs, adjectives and postpositions (का/की/के) with what they describe. Digits are Western Arabic numerals (0–9). Sentences end with the purna viram '।' (question and exclamation marks as in English); English letters only for product names, protocols and literals. Devanagari text is written in Unicode NFC, with a nukta letter as its base letter followed by U+093C (फ़, ज़, ड़) and chandrabindu where standard (एँ). Established English IT loan words transliterated where Hindi usage is settled (सर्वर, टोकन, वेबहुक, डाउनलोड, लॉग); otherwise standard Hindi (सेटिंग्स, पासवर्ड, फ़ोल्डर).",
+ "terms": {
+  "transfer": {
+   "target": "स्थानांतरण",
+   "forms": [
+    "स्थानांतरण"
+   ]
+  },
+  "downloads_page": {
+   "target": "डाउनलोड",
+   "forms": [
+    "डाउनलोड"
+   ]
+  },
+  "premium_services": {
+   "target": "प्रीमियम सेवाएँ",
+   "forms": [
+    "प्रीमियम सेवा"
+   ]
+  },
+  "network_sources": {
+   "target": "नेटवर्क स्रोत",
+   "forms": [
+    "नेटवर्क स्रोत"
+   ]
+  },
+  "role_admin": {
+   "target": "व्यवस्थापक",
+   "forms": [
+    "व्यवस्थापक"
+   ]
+  },
+  "role_user": {
+   "target": "उपयोगकर्ता",
+   "forms": [
+    "उपयोगकर्ता"
+   ]
+  },
+  "role_readonly": {
+   "target": "केवल-पठन उपयोगकर्ता",
+   "forms": [
+    "केवल-पठन",
+    "केवल पठन"
+   ]
+  },
+  "role_integration": {
+   "target": "एकीकरण",
+   "forms": [
+    "एकीकरण"
+   ]
+  },
+  "display_name": {
+   "target": "प्रदर्शित नाम",
+   "forms": [
+    "प्रदर्शित नाम"
+   ]
+  },
+  "actual_name": {
+   "target": "वास्तविक नाम",
+   "forms": [
+    "वास्तविक नाम"
+   ]
+  },
+  "my_account": {
+   "target": "मेरा खाता",
+   "forms": [
+    "मेरा खाता",
+    "मेरे खाते"
+   ]
+  },
+  "sign_in": {
+   "target": "साइन इन करें",
+   "forms": [
+    "साइन इन"
+   ]
+  },
+  "log_out": {
+   "target": "लॉग आउट करें",
+   "forms": [
+    "लॉग आउट"
+   ]
+  },
+  "easy": {
+   "target": "सरल",
+   "forms": [
+    "सरल"
+   ]
+  },
+  "advanced": {
+   "target": "उन्नत",
+   "forms": [
+    "उन्नत"
+   ]
+  },
+  "server": {
+   "target": "सर्वर",
+   "forms": [
+    "सर्वर"
+   ]
+  },
+  "standalone": {
+   "target": "स्टैंडअलोन",
+   "forms": [
+    "स्टैंडअलोन"
+   ]
+  },
+  "help_license": {
+   "target": "सहायता और लाइसेंस",
+   "forms": [
+    "सहायता और लाइसेंस"
+   ]
+  },
+  "field_manual": {
+   "target": "मार्गदर्शिका",
+   "forms": [
+    "मार्गदर्शिका"
+   ]
+  },
+  "activity_log": {
+   "target": "गतिविधि लॉग",
+   "forms": [
+    "गतिविधि लॉग"
+   ]
+  },
+  "download_activity": {
+   "target": "डाउनलोड गतिविधि",
+   "forms": [
+    "डाउनलोड गतिविधि"
+   ]
+  },
+  "download_engine_activity": {
+   "target": "डाउनलोड इंजन गतिविधि",
+   "forms": [
+    "डाउनलोड इंजन गतिविधि",
+    "डाउनलोड इंजनों की गतिविधि"
+   ]
+  },
+  "dashboard": {
+   "target": "डैशबोर्ड",
+   "forms": [
+    "डैशबोर्ड"
+   ]
+  },
+  "settings": {
+   "target": "सेटिंग्स",
+   "forms": [
+    "सेटिंग"
+   ]
+  },
+  "statistics": {
+   "target": "आँकड़े",
+   "forms": [
+    "आँकड़"
+   ]
+  },
+  "restore_point": {
+   "target": "पुनर्स्थापना बिंदु",
+   "forms": [
+    "पुनर्स्थापना बिंदु"
+   ]
+  },
+  "provider": {
+   "target": "प्रदाता",
+   "forms": [
+    "प्रदाता"
+   ]
+  },
+  "source": {
+   "target": "स्रोत",
+   "forms": [
+    "स्रोत"
+   ]
+  },
+  "retry": {
+   "target": "फिर से प्रयास करें",
+   "forms": [
+    "फिर से प्रयास",
+    "पुनः प्रयास"
+   ]
+  },
+  "resume": {
+   "target": "जारी रखें",
+   "forms": [
+    "जारी रख",
+    "जारी किया",
+    "जारी होत"
+   ]
+  },
+  "recovery": {
+   "target": "पुनर्प्राप्ति",
+   "forms": [
+    "पुनर्प्राप्ति"
+   ]
+  }
+ }
+}

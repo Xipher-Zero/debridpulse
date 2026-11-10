@@ -1,0 +1,202 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "id",
+ "register": "Indonesian (Bahasa Indonesia, standard EYD spelling, KBBI vocabulary). The reader is addressed with the formal 'Anda' (always capitalized) or impersonal forms; never 'kamu' or 'kau'. Buttons and menu commands use the base-form imperative standard in Indonesian software (Simpan, Batal, Hapus, Coba lagi); headings and labels use nouns. Correct affixation (me-/di-/-kan/-i); passive di- forms where Indonesian prefers them. Sentence case for titles and buttons. Indonesian typography (“…” quotes). Established IT loan words only where Indonesian usage is settled (token, webhook, server, log); prefer the standard Indonesian term otherwise (unduh, unggah, pengaturan, kata sandi).",
+ "terms": {
+  "transfer": {
+   "target": "Transfer",
+   "forms": [
+    "transfer"
+   ]
+  },
+  "downloads_page": {
+   "target": "Unduhan",
+   "forms": [
+    "unduhan"
+   ]
+  },
+  "premium_services": {
+   "target": "Layanan premium",
+   "forms": [
+    "layanan premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Sumber jaringan",
+   "forms": [
+    "sumber jaringan"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "admin"
+   ]
+  },
+  "role_user": {
+   "target": "Pengguna",
+   "forms": [
+    "pengguna"
+   ]
+  },
+  "role_readonly": {
+   "target": "Pengguna hanya-baca",
+   "forms": [
+    "hanya-baca",
+    "hanya baca"
+   ]
+  },
+  "role_integration": {
+   "target": "Integrasi",
+   "forms": [
+    "integrasi"
+   ]
+  },
+  "display_name": {
+   "target": "Nama tampilan",
+   "forms": [
+    "nama tampilan"
+   ]
+  },
+  "actual_name": {
+   "target": "Nama asli",
+   "forms": [
+    "nama asli"
+   ]
+  },
+  "my_account": {
+   "target": "Akun saya",
+   "forms": [
+    "akun saya"
+   ]
+  },
+  "sign_in": {
+   "target": "Masuk",
+   "forms": [
+    "masuk"
+   ]
+  },
+  "log_out": {
+   "target": "Keluar",
+   "forms": [
+    "keluar"
+   ]
+  },
+  "easy": {
+   "target": "Mudah",
+   "forms": [
+    "mudah"
+   ]
+  },
+  "advanced": {
+   "target": "Lanjutan",
+   "forms": [
+    "lanjutan"
+   ]
+  },
+  "server": {
+   "target": "Server",
+   "forms": [
+    "server"
+   ]
+  },
+  "standalone": {
+   "target": "Mandiri",
+   "forms": [
+    "mandiri"
+   ]
+  },
+  "help_license": {
+   "target": "Bantuan & lisensi",
+   "forms": [
+    "bantuan & lisensi",
+    "bantuan dan lisensi"
+   ]
+  },
+  "field_manual": {
+   "target": "Panduan",
+   "forms": [
+    "panduan"
+   ]
+  },
+  "activity_log": {
+   "target": "Log aktivitas",
+   "forms": [
+    "log aktivitas"
+   ]
+  },
+  "download_activity": {
+   "target": "Aktivitas unduhan",
+   "forms": [
+    "aktivitas unduhan"
+   ]
+  },
+  "download_engine_activity": {
+   "target": "Aktivitas mesin unduhan",
+   "forms": [
+    "aktivitas mesin unduhan"
+   ]
+  },
+  "dashboard": {
+   "target": "Dasbor",
+   "forms": [
+    "dasbor"
+   ]
+  },
+  "settings": {
+   "target": "Pengaturan",
+   "forms": [
+    "pengaturan"
+   ]
+  },
+  "statistics": {
+   "target": "Statistik",
+   "forms": [
+    "statistik"
+   ]
+  },
+  "restore_point": {
+   "target": "Titik pemulihan",
+   "forms": [
+    "titik pemulihan"
+   ]
+  },
+  "provider": {
+   "target": "Penyedia",
+   "forms": [
+    "penyedia"
+   ]
+  },
+  "source": {
+   "target": "Sumber",
+   "forms": [
+    "sumber"
+   ]
+  },
+  "retry": {
+   "target": "Coba lagi",
+   "forms": [
+    "coba lagi",
+    "mencoba lagi",
+    "dicoba lagi",
+    "percobaan ulang"
+   ]
+  },
+  "resume": {
+   "target": "Lanjutkan",
+   "forms": [
+    "lanjutkan",
+    "melanjutkan",
+    "dilanjutkan"
+   ]
+  },
+  "recovery": {
+   "target": "Pemulihan",
+   "forms": [
+    "pemulihan",
+    "memulihkan",
+    "dipulihkan"
+   ]
+  }
+ }
+}

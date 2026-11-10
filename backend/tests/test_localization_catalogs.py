@@ -75,12 +75,12 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     assert report["keys"] == len(english) >= 150
     # Every target is planned. One without a catalog reports its whole debt (a
     # warning), the critical-warning keys among it listed apart.
-    for tag in ("hi", "ja", "zh-Hans", "zh-Hant", "ar"):
+    for tag in ("ja", "ko", "zh-Hans", "zh-Hant", "ar"):
         row = report["locales"][tag]
         assert row["status"] == "planned" and row["missing"] == len(english) and row["critical"] >= 10
-    # WS5-A1 (de), WS5-A2 (fr, es, it), WS5-A3 (pt-BR, pt-PT, nl) and WS5-B1 (pl, ru, uk):
-    # complete, reviewed catalogs, still planned (never admitted).
-    for tag in ("de", "fr", "es", "it", "pt-BR", "pt-PT", "nl", "pl", "ru", "uk"):
+    # WS5-A1 (de), WS5-A2 (fr, es, it), WS5-A3 (pt-BR, pt-PT, nl), WS5-B1 (pl, ru, uk) and
+    # WS5-B2 (tr, id, hi): complete, reviewed catalogs, still planned (never admitted).
+    for tag in ("de", "fr", "es", "it", "pt-BR", "pt-PT", "nl", "pl", "ru", "uk", "tr", "id", "hi"):
         row = report["locales"][tag]
         assert row["status"] == "planned" and row["catalog"] and row["termbase"] and row["ledger"], tag
         assert (row["missing"], row["stale"], row["unreviewed"], row["noBackTranslation"], len(row["openFindings"])) == (0, 0, 0, 0, 0), tag

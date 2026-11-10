@@ -1,0 +1,199 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "tr",
+ "register": "Turkish. The reader is addressed with the formal 'siz' (verb forms -in/-ın, -iniz) or impersonal forms (-ebilirsiniz, yapılabilir); never 'sen'. Buttons and menu commands use the short imperative standard in Turkish software (Kaydet, İptal, Sil, Kaldır, Yeniden dene); headings and labels use nouns. Correct vowel harmony and consonant mutation in every suffix; dotted İ/i and dotless I/ı are distinct letters (İndir, İptal, Sıfırla). Suffixes are never attached directly to a {placeholder} whose final sound is unknown; the sentence is built so the placeholder needs no suffix. Turkish typography (“…” quotes). Established IT loan words only where Turkish usage is settled (token, webhook, sunucu, API).",
+ "terms": {
+  "transfer": {
+   "target": "Aktarım",
+   "forms": [
+    "aktarım"
+   ]
+  },
+  "downloads_page": {
+   "target": "İndirmeler",
+   "forms": [
+    "indirmeler"
+   ]
+  },
+  "premium_services": {
+   "target": "Premium hizmetler",
+   "forms": [
+    "premium hizmet"
+   ]
+  },
+  "network_sources": {
+   "target": "Ağ kaynakları",
+   "forms": [
+    "ağ kaynak",
+    "ağ kaynağ"
+   ]
+  },
+  "role_admin": {
+   "target": "Yönetici",
+   "forms": [
+    "yönetici"
+   ]
+  },
+  "role_user": {
+   "target": "Kullanıcı",
+   "forms": [
+    "kullanıcı"
+   ]
+  },
+  "role_readonly": {
+   "target": "Salt okunur kullanıcı",
+   "forms": [
+    "salt okunur"
+   ]
+  },
+  "role_integration": {
+   "target": "Entegrasyon",
+   "forms": [
+    "entegrasyon"
+   ]
+  },
+  "display_name": {
+   "target": "Görünen ad",
+   "forms": [
+    "görünen ad"
+   ]
+  },
+  "actual_name": {
+   "target": "Gerçek ad",
+   "forms": [
+    "gerçek ad"
+   ]
+  },
+  "my_account": {
+   "target": "Hesabım",
+   "forms": [
+    "hesabım"
+   ]
+  },
+  "sign_in": {
+   "target": "Oturum aç",
+   "forms": [
+    "oturum aç"
+   ]
+  },
+  "log_out": {
+   "target": "Oturumu kapat",
+   "forms": [
+    "oturumu kapat",
+    "oturum kapat"
+   ]
+  },
+  "easy": {
+   "target": "Kolay",
+   "forms": [
+    "kolay"
+   ]
+  },
+  "advanced": {
+   "target": "Gelişmiş",
+   "forms": [
+    "gelişmiş"
+   ]
+  },
+  "server": {
+   "target": "Sunucu",
+   "forms": [
+    "sunucu"
+   ]
+  },
+  "standalone": {
+   "target": "Bağımsız",
+   "forms": [
+    "bağımsız"
+   ]
+  },
+  "help_license": {
+   "target": "Yardım ve lisans",
+   "forms": [
+    "yardım ve lisans"
+   ]
+  },
+  "field_manual": {
+   "target": "Kılavuz",
+   "forms": [
+    "kılavuz"
+   ]
+  },
+  "activity_log": {
+   "target": "Etkinlik günlüğü",
+   "forms": [
+    "etkinlik günlü"
+   ]
+  },
+  "download_activity": {
+   "target": "İndirme etkinliği",
+   "forms": [
+    "indirme etkinli"
+   ]
+  },
+  "download_engine_activity": {
+   "target": "İndirme motoru etkinliği",
+   "forms": [
+    "indirme motoru etkinli",
+    "indirme motorları etkinli"
+   ]
+  },
+  "dashboard": {
+   "target": "Pano",
+   "forms": [
+    "pano"
+   ]
+  },
+  "settings": {
+   "target": "Ayarlar",
+   "forms": [
+    "ayar"
+   ]
+  },
+  "statistics": {
+   "target": "İstatistikler",
+   "forms": [
+    "istatistik"
+   ]
+  },
+  "restore_point": {
+   "target": "Geri yükleme noktası",
+   "forms": [
+    "geri yükleme nokta"
+   ]
+  },
+  "provider": {
+   "target": "Sağlayıcı",
+   "forms": [
+    "sağlayıcı"
+   ]
+  },
+  "source": {
+   "target": "Kaynak",
+   "forms": [
+    "kaynak",
+    "kaynağ"
+   ]
+  },
+  "retry": {
+   "target": "Yeniden dene",
+   "forms": [
+    "yeniden dene",
+    "yeniden den"
+   ]
+  },
+  "resume": {
+   "target": "Sürdür",
+   "forms": [
+    "sürdür"
+   ]
+  },
+  "recovery": {
+   "target": "Kurtarma",
+   "forms": [
+    "kurtarma",
+    "kurtar"
+   ]
+  }
+ }
+}

@@ -98,6 +98,17 @@ each has its own termbase (for example Настройки / Налаштуван
 Учётная запись / Обліковий запис), and an AI review of the pair confirmed it. Each passes
 `validate.mjs --complete=<tag>` on its own and stays `planned`.
 
+WS5-B2 adds Turkish, Indonesian and Hindi the same way
+(`frontend/static/i18n/{tr,id,hi}.json`, each with its own termbase and review ledger).
+Turkish keeps dotted İ/i and dotless I/ı distinct and never attaches a suffix to a
+placeholder; Indonesian is standard Indonesian (not Malay) with plurals in the single
+`other` category; Hindi is NFC Devanagari, where the `one` category covers both 0 and 1.
+Each passes `validate.mjs --complete=<tag>` on its own and stays `planned`.
+
+Progress: 13 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
+it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi), all still `planned`. Five remain without a
+catalog: ja, ko, zh-Hans, zh-Hant and ar.
+
 ## 1. Pieces and owners
 
 | Piece | Owner |
