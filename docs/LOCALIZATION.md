@@ -90,6 +90,14 @@ Definições, Salvar / Guardar, Excluir / Eliminar, the Brazilian gerund versus 
 infinitive in Portugal). Each passes `validate.mjs --complete=<tag>` on its own and stays
 `planned`.
 
+WS5-B1 adds Polish, Russian and Ukrainian the same way
+(`frontend/static/i18n/{pl,ru,uk}.json`, each with its own termbase and review ledger),
+the first catalogs whose plurals use the CLDR *few* and *many* categories. Russian and
+Ukrainian are independent translations from the English, neither a variant of the other:
+each has its own termbase (for example Настройки / Налаштування, Загрузка / Завантаження,
+Учётная запись / Обліковий запис), and an AI review of the pair confirmed it. Each passes
+`validate.mjs --complete=<tag>` on its own and stays `planned`.
+
 ## 1. Pieces and owners
 
 | Piece | Owner |

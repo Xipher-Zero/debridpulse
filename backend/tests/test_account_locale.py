@@ -276,7 +276,7 @@ async def test_the_catalog_asset_is_the_catalog_versioned_by_its_content(live):
     etag = served.headers["etag"]
     assert etag == f'"{localization.catalog_version("en")}"'
     assert (await client.get("/i18n/en.js", headers={**as_("reader"), "If-None-Match": etag})).status_code == 304
-    assert (await client.get("/i18n/pl.js", headers=as_("reader"))).status_code == 404     # planned: no catalog yet
+    assert (await client.get("/i18n/hi.js", headers=as_("reader"))).status_code == 404     # planned: no catalog yet
     # A planned target with a catalog (WS5-A1 German) is a fetchable development asset: it is
     # delivered, but never admitted as an account's language (test_production_admits_english_and_supported_targets_only_never_a_planned_one).
     german = await client.get("/i18n/de.js", headers=as_("reader"))

@@ -1,0 +1,243 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "pl",
+ "register": "Polish. Buttons and menu commands use the imperative standard in Polish software (Zapisz, Anuluj, Usuń, Ponów); headings and labels use nouns. Help prose is impersonal (można, należy, wystarczy) and never addresses the reader as 'ty' or 'Pan/Pani'. Correct case, gender and number agreement; Polish typography („…” quotes). Established IT loan words only where Polish usage is settled (token, webhook, serwer).",
+ "terms": {
+  "transfer": {
+   "target": "Transfer",
+   "forms": [
+    "transfer",
+    "Transfery",
+    "transfery",
+    "transferu",
+    "transferów",
+    "transferem",
+    "transferze",
+    "transferami",
+    "transferom",
+    "transferach"
+   ]
+  },
+  "downloads_page": {
+   "target": "Pobieranie"
+  },
+  "premium_services": {
+   "target": "Usługi premium",
+   "forms": [
+    "usługi premium",
+    "usług premium",
+    "usługa premium",
+    "usługę premium",
+    "usłudze premium",
+    "usługach premium",
+    "usługami premium",
+    "usługom premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Źródła sieciowe",
+   "forms": [
+    "źródła sieciowe",
+    "źródeł sieciowych",
+    "źródło sieciowe",
+    "źródła sieciowego",
+    "źródłach sieciowych",
+    "źródłami sieciowymi",
+    "źródłom sieciowym",
+    "źródle sieciowym"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admina",
+    "Adminem",
+    "Adminie",
+    "Adminowi",
+    "Admini",
+    "Adminów",
+    "Adminom",
+    "Adminami",
+    "Adminach"
+   ]
+  },
+  "role_user": {
+   "target": "Użytkownik"
+  },
+  "role_readonly": {
+   "target": "Użytkownik tylko do odczytu",
+   "forms": [
+    "tylko do odczytu"
+   ]
+  },
+  "role_integration": {
+   "target": "Integracja"
+  },
+  "display_name": {
+   "target": "Nazwa wyświetlana",
+   "forms": [
+    "nazwa wyświetlana",
+    "nazwę wyświetlaną",
+    "nazwy wyświetlanej",
+    "nazwie wyświetlanej",
+    "nazwą wyświetlaną",
+    "nazwy wyświetlane",
+    "nazw wyświetlanych"
+   ]
+  },
+  "actual_name": {
+   "target": "Imię i nazwisko",
+   "forms": [
+    "imię i nazwisko",
+    "imienia i nazwiska",
+    "imieniem i nazwiskiem",
+    "imieniu i nazwisku",
+    "imiona i nazwiska"
+   ]
+  },
+  "my_account": {
+   "target": "Moje konto",
+   "forms": [
+    "Mojego konta",
+    "Moim koncie",
+    "Moim kontem"
+   ]
+  },
+  "sign_in": {
+   "target": "Zaloguj się"
+  },
+  "log_out": {
+   "target": "Wyloguj się"
+  },
+  "easy": {
+   "target": "Prosty",
+   "forms": [
+    "prosty",
+    "Prosta",
+    "prosta",
+    "Proste",
+    "proste",
+    "Prostym",
+    "prostym",
+    "Prostej",
+    "prostej",
+    "Prostego",
+    "prostego",
+    "Prostą",
+    "prostą"
+   ]
+  },
+  "advanced": {
+   "target": "Zaawansowany",
+   "forms": [
+    "zaawansowany",
+    "Zaawansowana",
+    "zaawansowana",
+    "Zaawansowane",
+    "zaawansowane",
+    "Zaawansowanym",
+    "zaawansowanym",
+    "Zaawansowanej",
+    "zaawansowanej",
+    "Zaawansowanego",
+    "zaawansowanego",
+    "Zaawansowaną",
+    "zaawansowaną"
+   ]
+  },
+  "server": {
+   "target": "Serwer"
+  },
+  "standalone": {
+   "target": "Samodzielny",
+   "forms": [
+    "samodzielny",
+    "Samodzielna",
+    "samodzielna",
+    "Samodzielne",
+    "samodzielne",
+    "Samodzielnym",
+    "samodzielnym",
+    "Samodzielnej",
+    "samodzielnej",
+    "Samodzielnego",
+    "samodzielnego",
+    "Samodzielną",
+    "samodzielną"
+   ]
+  },
+  "help_license": {
+   "target": "Pomoc i licencja",
+   "forms": [
+    "Pomocy i licencji"
+   ]
+  },
+  "field_manual": {
+   "target": "Podręcznik",
+   "forms": [
+    "Podręcznika",
+    "Podręczniku",
+    "Podręcznikiem"
+   ]
+  },
+  "activity_log": {
+   "target": "Dziennik aktywności",
+   "forms": [
+    "Dziennika aktywności",
+    "Dzienniku aktywności",
+    "Dziennikiem aktywności"
+   ]
+  },
+  "download_activity": {
+   "target": "Aktywność pobierania",
+   "forms": [
+    "Aktywności pobierania",
+    "Aktywnością pobierania"
+   ]
+  },
+  "download_engine_activity": {
+   "target": "Aktywność silników pobierania",
+   "forms": [
+    "Aktywności silników pobierania",
+    "Aktywnością silników pobierania"
+   ]
+  },
+  "dashboard": {
+   "target": "Pulpit"
+  },
+  "settings": {
+   "target": "Ustawienia"
+  },
+  "statistics": {
+   "target": "Statystyki"
+  },
+  "restore_point": {
+   "target": "Punkt przywracania",
+   "forms": [
+    "punkt przywracania",
+    "punktu przywracania",
+    "punkty przywracania",
+    "punktów przywracania",
+    "punktem przywracania",
+    "punkcie przywracania",
+    "punktami przywracania",
+    "punktach przywracania"
+   ]
+  },
+  "provider": {
+   "target": "Dostawca"
+  },
+  "source": {
+   "target": "Źródło"
+  },
+  "retry": {
+   "target": "Ponów"
+  },
+  "resume": {
+   "target": "Wznów"
+  },
+  "recovery": {
+   "target": "Odzyskiwanie"
+  }
+ }
+}
