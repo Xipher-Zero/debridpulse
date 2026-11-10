@@ -60,12 +60,21 @@ These surfaces read the catalog:
 
 The census finds no first-party interface literal outside the catalog or the
 reviewed exemptions. No language is offered: there is no picker, and no target
-catalog ships (WS5).
+catalog is offered (WS5).
 
 WS5-0 adds the translation tooling a language candidate is qualified with (§4,
 WS5 translation checks): the concept register and protected names, termbases and
 review ledgers, the Help label map, the review sheet and the locale probe. Every
 target stays `planned`.
+
+WS5-A1 adds the German catalog (`frontend/static/i18n/de.json`, every key), its
+termbase (`frontend/i18n/terms/de.json`) and review ledger
+(`frontend/i18n/review/de.json`). It is AI-generated and independently AI-reviewed,
+and every critical warning was back-translated and compared with the English
+(the ledger records each step). No human or native review has taken place.
+German passes `validate.mjs --complete=de` and stays `planned`: its catalog is
+served as a development asset, but no account can choose it until a separate
+activation after WS6.
 
 ## 1. Pieces and owners
 

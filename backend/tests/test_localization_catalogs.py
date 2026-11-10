@@ -73,12 +73,18 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     assert code == 0, report["errors"]
     english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
     assert report["keys"] == len(english) >= 150
-    # Every target is planned with its whole debt reported (a warning), the
-    # critical-warning keys among it listed apart.
-    for tag in ("es", "de", "pl", "ru", "uk", "hi", "ja", "zh-Hans", "zh-Hant", "ar", "pt-PT", "pt-BR"):
+    # Every target is planned. One without a catalog reports its whole debt (a
+    # warning), the critical-warning keys among it listed apart.
+    for tag in ("es", "pl", "ru", "uk", "hi", "ja", "zh-Hans", "zh-Hant", "ar", "pt-PT", "pt-BR"):
         row = report["locales"][tag]
         assert row["status"] == "planned" and row["missing"] == len(english) and row["critical"] >= 10
+    # WS5-A1: German has a complete, reviewed catalog and is still planned (never admitted).
+    row = report["locales"]["de"]
+    assert row["status"] == "planned" and row["catalog"] and row["termbase"] and row["ledger"]
+    assert (row["missing"], row["stale"], row["unreviewed"], row["noBackTranslation"], len(row["openFindings"])) == (0, 0, 0, 0, 0)
     assert "en-XA" not in report["locales"]                   # pseudo locales carry no debt
+    code, complete = _validate(I18N, META, "--complete=de")
+    assert code == 0, complete["errors"]
 
 
 @needs_node
