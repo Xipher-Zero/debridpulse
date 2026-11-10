@@ -1,0 +1,133 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "es",
+ "register": "Formal 'usted' throughout, neutral international Spanish (no regionalisms, no vosotros). Buttons and menu commands use the infinitive (Guardar, Cancelar); headings and labels use nouns. Help addresses the reader as 'usted'. Spanish typography: « » or “ ” quotes, opening ¿ ¡. Standard Spanish software terminology.",
+ "terms": {
+  "transfer": {
+   "target": "Transferencia",
+   "forms": [
+    "Transferencias"
+   ]
+  },
+  "downloads_page": {
+   "target": "Descargas"
+  },
+  "premium_services": {
+   "target": "Servicios premium",
+   "forms": [
+    "servicio premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Fuentes de red",
+   "forms": [
+    "fuente de red"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Usuario"
+  },
+  "role_readonly": {
+   "target": "Usuario de solo lectura",
+   "forms": [
+    "Usuarios de solo lectura",
+    "solo lectura"
+   ]
+  },
+  "role_integration": {
+   "target": "Integración"
+  },
+  "display_name": {
+   "target": "Nombre visible",
+   "forms": [
+    "nombres visibles"
+   ]
+  },
+  "actual_name": {
+   "target": "Nombre real",
+   "forms": [
+    "nombres reales"
+   ]
+  },
+  "my_account": {
+   "target": "Mi cuenta"
+  },
+  "sign_in": {
+   "target": "Iniciar sesión"
+  },
+  "log_out": {
+   "target": "Cerrar sesión"
+  },
+  "easy": {
+   "target": "Sencillo",
+   "forms": [
+    "sencilla"
+   ]
+  },
+  "advanced": {
+   "target": "Avanzado",
+   "forms": [
+    "avanzada",
+    "avanzados",
+    "avanzadas"
+   ]
+  },
+  "server": {
+   "target": "Servidor"
+  },
+  "standalone": {
+   "target": "Independiente"
+  },
+  "help_license": {
+   "target": "Ayuda y licencia"
+  },
+  "field_manual": {
+   "target": "Manual"
+  },
+  "activity_log": {
+   "target": "Registro de actividad"
+  },
+  "download_activity": {
+   "target": "Actividad de descargas"
+  },
+  "download_engine_activity": {
+   "target": "Actividad de los motores de descarga"
+  },
+  "dashboard": {
+   "target": "Panel"
+  },
+  "settings": {
+   "target": "Configuración"
+  },
+  "statistics": {
+   "target": "Estadísticas"
+  },
+  "restore_point": {
+   "target": "Punto de restauración",
+   "forms": [
+    "puntos de restauración"
+   ]
+  },
+  "provider": {
+   "target": "Proveedor"
+  },
+  "source": {
+   "target": "Fuente"
+  },
+  "retry": {
+   "target": "Reintentar"
+  },
+  "resume": {
+   "target": "Reanudar"
+  },
+  "recovery": {
+   "target": "Recuperación"
+  }
+ }
+}

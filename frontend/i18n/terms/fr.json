@@ -1,0 +1,135 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "fr",
+ "register": "Formal 'vous' throughout. Buttons and menu commands use the infinitive (Enregistrer, Annuler); headings and labels use nouns. Help addresses the reader as 'vous'. French typography: « … » quotes with no-break spaces, a no-break space before : ; ! ?. Standard French software terminology (Microsoft/Apple French usage); established English loan words only where French IT usage is settled (token, webhook).",
+ "terms": {
+  "transfer": {
+   "target": "Transfert",
+   "forms": [
+    "Transferts"
+   ]
+  },
+  "downloads_page": {
+   "target": "Téléchargements"
+  },
+  "premium_services": {
+   "target": "Services premium",
+   "forms": [
+    "service premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Sources réseau",
+   "forms": [
+    "source réseau"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Utilisateur"
+  },
+  "role_readonly": {
+   "target": "Utilisateur en lecture seule",
+   "forms": [
+    "Utilisateurs en lecture seule",
+    "lecture seule"
+   ]
+  },
+  "role_integration": {
+   "target": "Intégration"
+  },
+  "display_name": {
+   "target": "Nom d’affichage",
+   "forms": [
+    "nom d'affichage",
+    "noms d’affichage",
+    "noms d'affichage"
+   ]
+  },
+  "actual_name": {
+   "target": "Nom réel",
+   "forms": [
+    "noms réels"
+   ]
+  },
+  "my_account": {
+   "target": "Mon compte"
+  },
+  "sign_in": {
+   "target": "Se connecter"
+  },
+  "log_out": {
+   "target": "Se déconnecter"
+  },
+  "easy": {
+   "target": "Simple"
+  },
+  "advanced": {
+   "target": "Avancé",
+   "forms": [
+    "Avancée",
+    "Avancés",
+    "Avancées"
+   ]
+  },
+  "server": {
+   "target": "Serveur"
+  },
+  "standalone": {
+   "target": "Autonome"
+  },
+  "help_license": {
+   "target": "Aide et licence"
+  },
+  "field_manual": {
+   "target": "Manuel"
+  },
+  "activity_log": {
+   "target": "Journal d’activité",
+   "forms": [
+    "journal d'activité"
+   ]
+  },
+  "download_activity": {
+   "target": "Activité des téléchargements"
+  },
+  "download_engine_activity": {
+   "target": "Activité des moteurs de téléchargement"
+  },
+  "dashboard": {
+   "target": "Tableau de bord"
+  },
+  "settings": {
+   "target": "Paramètres"
+  },
+  "statistics": {
+   "target": "Statistiques"
+  },
+  "restore_point": {
+   "target": "Point de restauration",
+   "forms": [
+    "points de restauration"
+   ]
+  },
+  "provider": {
+   "target": "Fournisseur"
+  },
+  "source": {
+   "target": "Source"
+  },
+  "retry": {
+   "target": "Réessayer"
+  },
+  "resume": {
+   "target": "Reprendre"
+  },
+  "recovery": {
+   "target": "Récupération"
+  }
+ }
+}

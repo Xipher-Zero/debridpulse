@@ -76,6 +76,12 @@ German passes `validate.mjs --complete=de` and stays `planned`: its catalog is
 served as a development asset, but no account can choose it until a separate
 activation after WS6.
 
+WS5-A2 adds French, Spanish and Italian the same way, each with its own catalog
+(`frontend/static/i18n/{fr,es,it}.json`), termbase and review ledger: AI-generated,
+independently AI-reviewed, every critical warning back-translated and compared, no
+human or native review. Each passes `validate.mjs --complete=<tag>` on its own and
+stays `planned`.
+
 ## 1. Pieces and owners
 
 | Piece | Owner |

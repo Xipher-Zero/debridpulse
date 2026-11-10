@@ -1,0 +1,135 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "it",
+ "register": "Italian software register: buttons and menu commands use the imperative-style verbs standard in Italian UIs (Salva, Annulla, Riprova); headings and labels use nouns. Help prefers impersonal forms (Per aggiungere…, fare clic su…) and the formal 'Lei' where an address is needed. Italian typography: « » or “ ” quotes. Standard Italian software terminology; established loan words where Italian IT usage is settled (download, server, account, token, dashboard, provider).",
+ "terms": {
+  "transfer": {
+   "target": "Trasferimento",
+   "forms": [
+    "Trasferimenti"
+   ]
+  },
+  "downloads_page": {
+   "target": "Download"
+  },
+  "premium_services": {
+   "target": "Servizi premium",
+   "forms": [
+    "servizio premium"
+   ]
+  },
+  "network_sources": {
+   "target": "Sorgenti di rete",
+   "forms": [
+    "sorgente di rete"
+   ]
+  },
+  "role_admin": {
+   "target": "Admin",
+   "forms": [
+    "Admins"
+   ]
+  },
+  "role_user": {
+   "target": "Utente"
+  },
+  "role_readonly": {
+   "target": "Utente in sola lettura",
+   "forms": [
+    "Utenti in sola lettura",
+    "sola lettura"
+   ]
+  },
+  "role_integration": {
+   "target": "Integrazione"
+  },
+  "display_name": {
+   "target": "Nome visualizzato",
+   "forms": [
+    "nomi visualizzati"
+   ]
+  },
+  "actual_name": {
+   "target": "Nome reale",
+   "forms": [
+    "nomi reali"
+   ]
+  },
+  "my_account": {
+   "target": "Il mio account"
+  },
+  "sign_in": {
+   "target": "Accedi"
+  },
+  "log_out": {
+   "target": "Esci"
+  },
+  "easy": {
+   "target": "Semplice"
+  },
+  "advanced": {
+   "target": "Avanzata",
+   "forms": [
+    "Avanzato",
+    "Avanzate",
+    "Avanzati"
+   ]
+  },
+  "server": {
+   "target": "Server"
+  },
+  "standalone": {
+   "target": "Autonoma",
+   "forms": [
+    "autonomo",
+    "autonomi",
+    "autonome"
+   ]
+  },
+  "help_license": {
+   "target": "Guida e licenza"
+  },
+  "field_manual": {
+   "target": "Manuale"
+  },
+  "activity_log": {
+   "target": "Registro attività"
+  },
+  "download_activity": {
+   "target": "Attività dei download"
+  },
+  "download_engine_activity": {
+   "target": "Attività dei motori di download"
+  },
+  "dashboard": {
+   "target": "Dashboard"
+  },
+  "settings": {
+   "target": "Impostazioni"
+  },
+  "statistics": {
+   "target": "Statistiche"
+  },
+  "restore_point": {
+   "target": "Punto di ripristino",
+   "forms": [
+    "punti di ripristino"
+   ]
+  },
+  "provider": {
+   "target": "Provider"
+  },
+  "source": {
+   "target": "Sorgente"
+  },
+  "retry": {
+   "target": "Riprova"
+  },
+  "resume": {
+   "target": "Riprendi"
+  },
+  "recovery": {
+   "target": "Recupero"
+  }
+ }
+}
