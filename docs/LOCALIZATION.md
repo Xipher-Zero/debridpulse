@@ -105,9 +105,16 @@ placeholder; Indonesian is standard Indonesian (not Malay) with plurals in the s
 `other` category; Hindi is NFC Devanagari, where the `one` category covers both 0 and 1.
 Each passes `validate.mjs --complete=<tag>` on its own and stays `planned`.
 
-Progress: 13 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
-it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi), all still `planned`. Five remain without a
-catalog: ja, ko, zh-Hans, zh-Hant and ar.
+WS5-C1 adds Japanese and Korean the same way (`frontend/static/i18n/{ja,ko}.json`, each
+with its own termbase and review ledger). Both use the single CLDR `other` plural
+category, with counters (件 / 개) after numbers; Japanese prose uses the polite です・ます
+form with full-width punctuation, Korean prose the formal polite style with standard
+spacing and dual particles after placeholders. Each passes `validate.mjs --complete=<tag>`
+on its own and stays `planned`.
+
+Progress: 15 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
+it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko), all still `planned`. Three remain
+without a catalog: zh-Hans, zh-Hant and ar.
 
 ## 1. Pieces and owners
 

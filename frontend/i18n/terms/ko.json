@@ -1,0 +1,103 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "ko",
+ "register": "Korean. Help prose and messages use the formal polite 합니다체 (…합니다, …하십시오/…하세요 consistently: choose …하세요 for instructions); buttons and menu commands use the short noun forms standard in Korean software (저장, 취소, 삭제, 다시 시도); headings and labels use nouns. Standard Korean spacing (띄어쓰기) between words; Korean typography with ‘ ’ or “ ” quotes. Particles after a {placeholder} or Latin text whose final sound is unknown use the dual form (을(를), 이(가), 은(는), (으)로, 과(와)) or the sentence is rebuilt so no particle attaches. Established loan words where Korean IT usage is settled (서버, 토큰, 대시보드).",
+ "terms": {
+  "transfer": {
+   "target": "전송"
+  },
+  "downloads_page": {
+   "target": "다운로드"
+  },
+  "premium_services": {
+   "target": "프리미엄 서비스"
+  },
+  "network_sources": {
+   "target": "네트워크 소스"
+  },
+  "role_admin": {
+   "target": "관리자"
+  },
+  "role_user": {
+   "target": "사용자"
+  },
+  "role_readonly": {
+   "target": "읽기 전용 사용자",
+   "forms": [
+    "읽기 전용"
+   ]
+  },
+  "role_integration": {
+   "target": "연동"
+  },
+  "display_name": {
+   "target": "표시 이름"
+  },
+  "actual_name": {
+   "target": "실명"
+  },
+  "my_account": {
+   "target": "내 계정"
+  },
+  "sign_in": {
+   "target": "로그인"
+  },
+  "log_out": {
+   "target": "로그아웃"
+  },
+  "easy": {
+   "target": "간편"
+  },
+  "advanced": {
+   "target": "고급"
+  },
+  "server": {
+   "target": "서버"
+  },
+  "standalone": {
+   "target": "독립형"
+  },
+  "help_license": {
+   "target": "도움말 및 라이선스"
+  },
+  "field_manual": {
+   "target": "설명서"
+  },
+  "activity_log": {
+   "target": "활동 로그"
+  },
+  "download_activity": {
+   "target": "다운로드 활동"
+  },
+  "download_engine_activity": {
+   "target": "다운로드 엔진 활동"
+  },
+  "dashboard": {
+   "target": "대시보드"
+  },
+  "settings": {
+   "target": "설정"
+  },
+  "statistics": {
+   "target": "통계"
+  },
+  "restore_point": {
+   "target": "복원 지점"
+  },
+  "provider": {
+   "target": "제공자"
+  },
+  "source": {
+   "target": "소스"
+  },
+  "retry": {
+   "target": "다시 시도"
+  },
+  "resume": {
+   "target": "재개"
+  },
+  "recovery": {
+   "target": "복구"
+  }
+ }
+}

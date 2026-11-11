@@ -1,0 +1,106 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "ja",
+ "register": "Japanese. Help prose and messages use the polite です・ます form; buttons and menu commands use the short noun or verb-stem forms standard in Japanese software (保存, キャンセル, 削除, 再試行); headings and labels use nouns. Full-width punctuation (、。「」：（）) in Japanese text; half-width for Latin literals, numbers and units. No spaces between Japanese words; a space only next to Latin text where Japanese software usually puts one. Established katakana loan words where Japanese IT usage is settled (サーバー, トークン, ダッシュボード), long-vowel mark included (サーバー, ユーザー, プロバイダー).",
+ "terms": {
+  "transfer": {
+   "target": "転送"
+  },
+  "downloads_page": {
+   "target": "ダウンロード"
+  },
+  "premium_services": {
+   "target": "プレミアムサービス"
+  },
+  "network_sources": {
+   "target": "ネットワークソース"
+  },
+  "role_admin": {
+   "target": "管理者"
+  },
+  "role_user": {
+   "target": "ユーザー"
+  },
+  "role_readonly": {
+   "target": "読み取り専用ユーザー",
+   "forms": [
+    "読み取り専用"
+   ]
+  },
+  "role_integration": {
+   "target": "連携"
+  },
+  "display_name": {
+   "target": "表示名"
+  },
+  "actual_name": {
+   "target": "実名"
+  },
+  "my_account": {
+   "target": "マイアカウント"
+  },
+  "sign_in": {
+   "target": "サインイン"
+  },
+  "log_out": {
+   "target": "ログアウト"
+  },
+  "easy": {
+   "target": "かんたん"
+  },
+  "advanced": {
+   "target": "上級"
+  },
+  "server": {
+   "target": "サーバー"
+  },
+  "standalone": {
+   "target": "スタンドアロン"
+  },
+  "help_license": {
+   "target": "ヘルプとライセンス"
+  },
+  "field_manual": {
+   "target": "マニュアル"
+  },
+  "activity_log": {
+   "target": "アクティビティログ"
+  },
+  "download_activity": {
+   "target": "ダウンロードアクティビティ"
+  },
+  "download_engine_activity": {
+   "target": "ダウンロードエンジンのアクティビティ",
+   "forms": [
+    "ダウンロードエンジンアクティビティ"
+   ]
+  },
+  "dashboard": {
+   "target": "ダッシュボード"
+  },
+  "settings": {
+   "target": "設定"
+  },
+  "statistics": {
+   "target": "統計"
+  },
+  "restore_point": {
+   "target": "復元ポイント"
+  },
+  "provider": {
+   "target": "プロバイダー"
+  },
+  "source": {
+   "target": "ソース"
+  },
+  "retry": {
+   "target": "再試行"
+  },
+  "resume": {
+   "target": "再開"
+  },
+  "recovery": {
+   "target": "復旧"
+  }
+ }
+}
