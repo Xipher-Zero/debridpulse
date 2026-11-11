@@ -254,6 +254,28 @@ test('L24b: 320px: Japanese and Arabic keep the whole Dashboard name in the head
   await show('en');
 });
 
+test('L08b: an open My Account dialog is re-worded in place on a language change: title, footer and actions, its focus kept', async ({page}) => {
+  await boot(page, 390);
+  await openAccount(page);
+  const words = () => dialog(page).evaluate(node => ({
+    title: node.querySelector('.dp-modal-title').textContent,
+    buttons: [...node.querySelectorAll('button')].filter(button => button.getClientRects().length && !button.closest('.dp-modal-header-end'))
+      .map(button => (button.getAttribute('aria-label') || button.textContent).trim()).filter(Boolean),
+    focusInside: node.contains(document.activeElement),
+  }));
+  const before = await words();
+  expect(before.title).toBe('My Account');
+  expect(await page.evaluate(() => window.DPI18n.setLocale('en-XA'))).toBe('en-XA');
+  const switched = await words();
+  expect(switched.title).toMatch(/^⟦Mý Àççöüñţ ·+⟧$/);
+  expect(switched.buttons.length).toBe(before.buttons.length);
+  for (const label of switched.buttons) expect(label).toMatch(/^⟦.+⟧$/);      // every control re-worded, none left in English
+  expect(switched.focusInside).toBe(true);
+  expect(await page.evaluate(() => window.DPI18n.setLocale('en'))).toBe('en');
+  expect(await words()).toEqual(before);
+  await closeAccount(page);
+});
+
 test('L07b: a catalog that never arrives leaves the page in English, said once; a partial or stale one is English key by key', async ({page}) => {
   await boot(page);
   await page.route('**/i18n/de.js*', () => {});                                    // never answered

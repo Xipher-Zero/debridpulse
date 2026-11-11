@@ -312,7 +312,8 @@
     if (spec.className) dialog.classList.add(...String(spec.className).split(/\s+/).filter(Boolean));
     if (spec.bodyClassName) body.classList.add(...String(spec.bodyClassName).split(/\s+/).filter(Boolean));
     overlay.querySelector(`#${dialogId}-title`).textContent = String(spec.title || '');
-    if (titleHint) overlay.querySelector('.dp-modal-title-hint').textContent = titleHint;
+    // (Said words keep their key: a language change re-says the hint in place.)
+    if (titleHint) sayInto(overlay.querySelector('.dp-modal-title-hint'), spec.titleHint);
     overlay.querySelector('.dp-modal-header-end')?.append(spec.headerEnd);
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
     // the only outcome there is, so it needs no second name and no second

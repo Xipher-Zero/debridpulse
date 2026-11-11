@@ -410,8 +410,11 @@
     // turns on password sign-in (the server does both, or neither).
     const standaloneFirst = first && standalone && sessionKind(data) === 'standalone';
     const required = typeof own?.sign_in_required === 'boolean' ? own.sign_in_required : null;
+    // Said words (ui-settings-modal.js): the key travels with them, so an open
+    // My Account re-words its title, hint and footer on a language change.
+    const said = key => ({key, values: null, toString: () => DPI18n.t(key)});
     const statusHint = !standalone || required === null ? ''
-      : DPI18n.t(required ? 'account.signin.required' : 'account.signin.not_required');
+      : said(required ? 'account.signin.required' : 'account.signin.not_required');
     // Clear Password: the password-protected Standalone installation's own
     // signed-in Administrator only.
     const clearable = standalone && required === true && own?.has_password === true
@@ -441,7 +444,7 @@
       ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
       // Clear Password's view is destructive: the red treatment, and its own accept.
       handle.setTone(next === 'clear' ? 'danger' : '');
-      handle.setAcceptLabel(DPI18n.t(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
+      handle.setAcceptLabel(said(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
       if (next === 'profile') {
         // Secrets never outlive their view.
         ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
@@ -454,8 +457,8 @@
     };
     const actions = [];
     if (passwordAction) actions.push({id: 'password', placement: 'leading',
-      label: DPI18n.t(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
-    if (clearable) actions.push({id: 'clear', label: DPI18n.t('account.action.clear_password'), tone: 'danger', placement: 'leading'});
+      label: said(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
+    if (clearable) actions.push({id: 'clear', label: said('account.action.clear_password'), tone: 'danger', placement: 'leading'});
 
     // The header's far end: My Account's Help, then Easy | Advanced for every
     // account that owns a presentation. Help explains what this dialog offers
@@ -474,11 +477,11 @@
     }}));
     if (selector) headerEnd.append(selector.element);
     const dialog = modal.open({
-      title: DPI18n.t('account.title'),
+      title: said('account.title'),
       titleHint: statusHint,
       headerEnd,
-      acceptLabel: DPI18n.t('common.save'),
-      cancelLabel: DPI18n.t('common.cancel'),
+      acceptLabel: said('common.save'),
+      cancelLabel: said('common.cancel'),
       className: 'dp-account-dialog',
       actions,
       onAction(id) {
