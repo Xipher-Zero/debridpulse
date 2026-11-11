@@ -10,3 +10,18 @@ html[data-dp-locale-pending] body {
 @keyframes dp-locale-veil-failsafe {
   to { visibility: visible; }
 }
+
+/* Where a line may break, by the page's script (WS6). Japanese: no line
+   starts with a small kana, a long-vowel mark or closing punctuation
+   (line-break: strict), and where the browser can segment phrases a word
+   such as アクティビティ is not split (word-break: auto-phrase; elsewhere
+   ignored). Korean: words break at spaces, as Korean text is set, never
+   between two syllables of one word (word-break: keep-all). */
+:lang(ja) body {
+  line-break: strict;
+  word-break: auto-phrase;
+}
+
+:lang(ko) body {
+  word-break: keep-all;
+}

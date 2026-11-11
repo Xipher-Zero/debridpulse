@@ -131,6 +131,11 @@
     font-size: var(--dp-shell-title-fluid);
     letter-spacing: -.02em;
   }
+  /* Japanese title and dock words are set with proportional kana (palt),
+     as Japanese headings are: ダッシュボード keeps its whole name at 320px
+     instead of losing its last kana. */
+  :lang(ja) #topbar h1,
+  :lang(ja) .dp-shell-label { font-feature-settings: "palt"; }
 
   .dp-topbar-account:not([hidden]) { display: block; }
   .dp-topbar-account-button,
@@ -344,6 +349,9 @@
   .dp-shell-sheet-item .icon svg { width: 22px; height: 22px; }
   .dp-shell-dock-item[data-view="dashboard"] .icon,
   .dp-shell-dock-item[data-view="dashboard"] .icon svg { width: 24px; height: 24px; }
+  /* Arabic words join, so letter-spacing cannot tighten them: a dock word
+     takes its button's whole width (لوحة المعلومات, 64px at 320px). */
+  :lang(ar) .dp-shell-dock-item { padding-inline: 0; }
   .dp-shell-label {
     max-width: 100%;
     overflow: hidden;

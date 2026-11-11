@@ -213,6 +213,47 @@ test('L03c: right-to-left: the compact section navigator keeps the chosen sectio
   await page.evaluate(() => window.DPI18n.setLocale('en'));
 });
 
+test('L24b: 320px: Japanese and Arabic keep the whole Dashboard name in the header and dock; Japanese and Korean break lines as their scripts do', async ({page}) => {
+  await boot(page, 320);
+  // The development catalogs these locales have (planned: delivered, never admitted).
+  const show = tag => page.evaluate(t => window.DPI18n.setLocale(t, {catalog: `/i18n/${t}.js`, dir: t === 'ar' ? 'rtl' : 'ltr'}), tag);
+  const whole = () => page.evaluate(() => {
+    const label = document.querySelector('.dp-shell-dock-item[data-view="dashboard"] .dp-shell-label');
+    const title = document.getElementById('page-title');
+    return {dock: label.scrollWidth <= label.clientWidth, title: title.scrollWidth <= title.clientWidth};
+  });
+  // Lines that start inside a word: a Japanese small kana or long-vowel mark, two kana of one katakana word, two syllables of one Korean word.
+  const badBreaks = () => page.evaluate(() => {
+    const SMALL = /[ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶー]/, KATA = /[゠-ヿ]/, HANGUL = /[가-힯]/;
+    const found = [], range = document.createRange();
+    const walker = document.createTreeWalker(document.getElementById('main'), NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement?.getClientRects().length) continue;
+      let top = null;
+      for (let i = 0; i < node.textContent.length; i += 1) {
+        range.setStart(node, i); range.setEnd(node, i + 1);
+        const box = range.getClientRects()[0];
+        if (!box?.width) continue;
+        const [a, c] = [node.textContent[i - 1], node.textContent[i]];
+        if (top !== null && box.top > top + 4 && (SMALL.test(c) || (HANGUL.test(a) && HANGUL.test(c)))) found.push(node.textContent.slice(Math.max(0, i - 6), i + 3));
+        top = box.top;
+      }
+    }
+    return found;
+  });
+  for (const tag of ['ja', 'ar']) {
+    expect(await show(tag)).toBe(tag);
+    await page.locator('#sidebar .nav-item[data-view="dashboard"]').evaluate(element => element.click());
+    await expect.poll(whole).toEqual({dock: true, title: true});
+  }
+  for (const tag of ['ja', 'ko']) {
+    expect(await show(tag)).toBe(tag);
+    await page.locator('#sidebar .nav-item[data-view="dashboard"]').evaluate(element => element.click());
+    expect(await badBreaks()).toEqual([]);
+  }
+  await show('en');
+});
+
 test('L07b: a catalog that never arrives leaves the page in English, said once; a partial or stale one is English key by key', async ({page}) => {
   await boot(page);
   await page.route('**/i18n/de.js*', () => {});                                    // never answered
