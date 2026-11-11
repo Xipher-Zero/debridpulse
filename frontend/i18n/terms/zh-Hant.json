@@ -1,0 +1,103 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "zh-Hant",
+ "register": "Traditional Chinese (Taiwan software usage). Traditional characters only, Taiwan standard forms (台/臺 as in common Taiwan usage, 裡, 為, 著). Help prose and messages are neutral, polite written Chinese addressing the reader as 您 where address is needed; buttons and menu commands use the short verb or verb-object forms standard in Taiwan software (儲存, 取消, 刪除, 重試); headings and labels use nouns. Full-width punctuation (，。、：；！？（）) and Taiwan-style quotation marks 「」 (『』 nested) in Chinese text; half-width for Latin literals, numbers and units; no space between Chinese and Latin words or numbers, consistently. Taiwan IT vocabulary (伺服器, 使用者, 資料夾, 網路, 設定, 預設, 資訊, 檔案, 程式).",
+ "terms": {
+  "transfer": {
+   "target": "傳輸"
+  },
+  "downloads_page": {
+   "target": "下載"
+  },
+  "premium_services": {
+   "target": "付費服務"
+  },
+  "network_sources": {
+   "target": "網路來源"
+  },
+  "role_admin": {
+   "target": "管理員"
+  },
+  "role_user": {
+   "target": "使用者"
+  },
+  "role_readonly": {
+   "target": "唯讀使用者",
+   "forms": [
+    "唯讀"
+   ]
+  },
+  "role_integration": {
+   "target": "整合"
+  },
+  "display_name": {
+   "target": "顯示名稱"
+  },
+  "actual_name": {
+   "target": "真實姓名"
+  },
+  "my_account": {
+   "target": "我的帳戶"
+  },
+  "sign_in": {
+   "target": "登入"
+  },
+  "log_out": {
+   "target": "登出"
+  },
+  "easy": {
+   "target": "簡易"
+  },
+  "advanced": {
+   "target": "進階"
+  },
+  "server": {
+   "target": "伺服器"
+  },
+  "standalone": {
+   "target": "獨立"
+  },
+  "help_license": {
+   "target": "說明與授權"
+  },
+  "field_manual": {
+   "target": "手冊"
+  },
+  "activity_log": {
+   "target": "活動記錄"
+  },
+  "download_activity": {
+   "target": "下載活動"
+  },
+  "download_engine_activity": {
+   "target": "下載引擎活動"
+  },
+  "dashboard": {
+   "target": "儀表板"
+  },
+  "settings": {
+   "target": "設定"
+  },
+  "statistics": {
+   "target": "統計"
+  },
+  "restore_point": {
+   "target": "還原點"
+  },
+  "provider": {
+   "target": "提供者"
+  },
+  "source": {
+   "target": "來源"
+  },
+  "retry": {
+   "target": "重試"
+  },
+  "resume": {
+   "target": "繼續"
+  },
+  "recovery": {
+   "target": "復原"
+  }
+ }
+}

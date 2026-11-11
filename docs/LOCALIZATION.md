@@ -112,9 +112,17 @@ form with full-width punctuation, Korean prose the formal polite style with stan
 spacing and dual particles after placeholders. Each passes `validate.mjs --complete=<tag>`
 on its own and stays `planned`.
 
-Progress: 15 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
-it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko), all still `planned`. Three remain
-without a catalog: zh-Hans, zh-Hant and ar.
+WS5-C2 adds Simplified and Traditional Chinese (`frontend/static/i18n/{zh-Hans,zh-Hant}.json`,
+each with its own termbase and review ledger). The two are translated and reviewed
+independently from English, never converted from one script to the other: zh-Hans follows
+mainland software usage (服务器, 用户, 文件夹, “ ” quotes), zh-Hant follows Taiwan software
+usage (伺服器, 使用者, 資料夾, 「」 quotes). Both use the single CLDR `other` plural category
+with measure words after numbers. Each passes `validate.mjs --complete=<tag>` on its own and
+stays `planned`.
+
+Progress: 17 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
+it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant), all still `planned`.
+One remains without a catalog: ar.
 
 ## 1. Pieces and owners
 

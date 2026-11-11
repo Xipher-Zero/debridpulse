@@ -1,0 +1,103 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "zh-Hans",
+ "register": "Simplified Chinese (mainland China software usage). Simplified characters only. Help prose and messages are neutral, polite written Chinese addressing the reader as 您 where address is needed; buttons and menu commands use the short verb or verb-object forms standard in Chinese software (保存, 取消, 删除, 重试); headings and labels use nouns. Full-width Chinese punctuation (，。、：；！？（）“”) in Chinese text; half-width for Latin literals, numbers and units; a half-width space between Chinese and Latin words or numbers is optional — use none, consistently. Mainland IT vocabulary (服务器, 用户, 文件夹, 网络, 设置, 默认, 信息).",
+ "terms": {
+  "transfer": {
+   "target": "传输"
+  },
+  "downloads_page": {
+   "target": "下载"
+  },
+  "premium_services": {
+   "target": "付费服务"
+  },
+  "network_sources": {
+   "target": "网络来源"
+  },
+  "role_admin": {
+   "target": "管理员"
+  },
+  "role_user": {
+   "target": "用户"
+  },
+  "role_readonly": {
+   "target": "只读用户",
+   "forms": [
+    "只读"
+   ]
+  },
+  "role_integration": {
+   "target": "集成"
+  },
+  "display_name": {
+   "target": "显示名称"
+  },
+  "actual_name": {
+   "target": "真实姓名"
+  },
+  "my_account": {
+   "target": "我的账户"
+  },
+  "sign_in": {
+   "target": "登录"
+  },
+  "log_out": {
+   "target": "退出登录"
+  },
+  "easy": {
+   "target": "简易"
+  },
+  "advanced": {
+   "target": "高级"
+  },
+  "server": {
+   "target": "服务器"
+  },
+  "standalone": {
+   "target": "独立"
+  },
+  "help_license": {
+   "target": "帮助与许可"
+  },
+  "field_manual": {
+   "target": "手册"
+  },
+  "activity_log": {
+   "target": "活动日志"
+  },
+  "download_activity": {
+   "target": "下载活动"
+  },
+  "download_engine_activity": {
+   "target": "下载引擎活动"
+  },
+  "dashboard": {
+   "target": "仪表板"
+  },
+  "settings": {
+   "target": "设置"
+  },
+  "statistics": {
+   "target": "统计"
+  },
+  "restore_point": {
+   "target": "还原点"
+  },
+  "provider": {
+   "target": "提供商"
+  },
+  "source": {
+   "target": "来源"
+  },
+  "retry": {
+   "target": "重试"
+  },
+  "resume": {
+   "target": "继续"
+  },
+  "recovery": {
+   "target": "恢复"
+  }
+ }
+}
