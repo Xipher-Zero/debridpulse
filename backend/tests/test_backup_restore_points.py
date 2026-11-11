@@ -2454,7 +2454,7 @@ async def test_a_fresh_installation_holds_the_locale_column_and_starts_english(i
     with closing(sqlite3.connect(database.DB_PATH)) as conn:
         assert [row[1] for row in conn.execute("PRAGMA table_info(account_appearance)")] == [
             "account_id", "mode", "dark_palette", "light_palette", "updated_at", "presentation_mode", "locale"]
-    assert await account_appearance.load_locale(DEFAULT_ADMIN_ID) == "en"
+    assert (await account_appearance.load_locale(DEFAULT_ADMIN_ID))["locale"] == "en"
     live = backup.schema_version(database.DB_PATH)
     await database.init_db()
     assert backup.schema_version(database.DB_PATH) == live
@@ -2502,7 +2502,7 @@ async def test_a_backup_from_before_the_locale_restores_english_with_every_accou
     assert {account_id: (tag, mode) for account_id, tag, mode in _locale_rows(database.DB_PATH)} == {
         people["ann"]: (None, "easy"), people["una"]: (None, None)}
     for account_id in (people["ann"], people["una"], accounts.DEFAULT_ADMIN_ID):
-        assert await account_appearance.load_locale(account_id) == "en"
+        assert (await account_appearance.load_locale(account_id))["locale"] == "en"
     assert await account_appearance.load_presentation(people["ann"]) == "easy"
     assert (await account_appearance.load(people["ann"]))["light_palette"] == "catppuccin-latte"
     assert (await account_notifications.load(people["una"])).discord_webhook_url.endswith("/900002/fixture-pre-locale")
@@ -2528,11 +2528,66 @@ async def test_a_new_backup_brings_back_each_language_and_a_wipe_keeps_them(serv
     restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
 
     assert restored.status_code == 200, restored.text
-    assert await account_appearance.load_locale(ann) == "de"
-    assert await account_appearance.load_locale(accounts.DEFAULT_ADMIN_ID) == "ar"
+    assert (await account_appearance.load_locale(ann))["locale"] == "de"
+    assert (await account_appearance.load_locale(accounts.DEFAULT_ADMIN_ID))["locale"] == "ar"
     assert await account_appearance.load_presentation(ann) == "easy"
     live = backup.schema_version(database.DB_PATH)
     rows = _locale_rows(database.DB_PATH)
     await db_maintenance.wipe_database(verified_quiesced=True)
     assert backup.schema_version(database.DB_PATH) == live
     assert _locale_rows(database.DB_PATH) == rows
+
+
+def _saved_default() -> str | None:
+    return json.loads(config.CONFIG_PATH.read_text(encoding="utf-8")).get("default_locale")
+
+
+async def test_the_default_language_comes_back_with_its_backup_and_a_wipe_keeps_it(served, supported):
+    """The installation's default language is a setting in the configuration
+    file: a restore brings back the backup's, a database wipe never touches
+    it, and the previous release's backup -- which has none -- restores it
+    unset (English), with no account's own choice changed."""
+    from auth import accounts
+    from services import account_appearance, db_maintenance
+
+    _app, client, _composed, _calls = served
+    await account_appearance.set_locale(accounts.DEFAULT_ADMIN_ID, "ar")
+    await account_appearance.set_default_locale("de")
+    point = await backup.create_restore_point()
+    await account_appearance.set_default_locale("ar")
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert config.get_settings().default_locale == "de" and _saved_default() == "de"
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert config.get_settings().default_locale == "de" and _saved_default() == "de"
+
+    with zipfile.ZipFile(PRE_DEMAND_BACKUP) as package:
+        assert "default_locale" not in json.loads(package.read("config.json"))
+    added = await client.post("/api/admin/backups", content=PRE_DEMAND_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    previous = await client.post("/api/admin/backups/restore", json={"id": added.json()["backup"]["id"]})
+    assert previous.status_code == 200, previous.text
+    assert config.get_settings().default_locale is None and _saved_default() is None
+    assert account_appearance.default_locale() == {"locale": "en", "configured": None}
+
+
+async def test_the_broad_settings_write_cannot_change_the_default_language(served, supported):
+    from services import account_appearance
+
+    _app, client, _composed, _calls = served
+    await account_appearance.set_default_locale("de")
+    document = (await client.get("/api/settings")).json()
+    for name in document.pop("compatibility_fields"):
+        document.pop(name, None)
+    for name in ("integrations", "integration_groups", "transfer_policy", "execution_runtime_limits"):
+        document.pop(name, None)
+    document = {k: v for k, v in document.items() if k in config.AppSettings.model_fields}
+    for submitted in ("ar", None):
+        written = await client.put("/api/settings", json={**document, "default_locale": submitted,
+                                                          "log_level": "DEBUG"})
+        assert written.status_code == 200, written.text
+        assert written.json()["default_locale"] == "de" and written.json()["log_level"] == "DEBUG"
+        assert config.get_settings().default_locale == "de" and _saved_default() == "de"

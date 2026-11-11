@@ -263,8 +263,8 @@ async def ensure_schema(db) -> None:
     # NULL: the account never chose Easy or Advanced, which is Advanced
     # (``services.account_appearance.load_presentation``).
     await _ensure_column(db, "account_appearance", "presentation_mode", "TEXT")
-    # NULL: the account never chose a language, which is English
-    # (``services.account_appearance.load_locale``).
+    # NULL: the account never chose a language, so it has the installation's
+    # default (``services.account_appearance.load_locale``).
     await _ensure_column(db, "account_appearance", "locale", "TEXT")
     now = _now()
     await db.execute(

@@ -731,6 +731,8 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             # The deployment type changes only through its confirmed transition
             # (``PUT /api/auth/deployment-type``); a submitted one is ignored.
             merged["deployment_type"] = previous.deployment_type
+            # So does the default language (``PUT /api/settings/default-locale``).
+            merged["default_locale"] = previous.default_locale
             clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
             clean = validate_and_sanitise(clean)
             # ... and then retired where it no longer describes what is about to

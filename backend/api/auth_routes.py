@@ -739,9 +739,10 @@ async def _appearance(principal: Principal) -> dict:
 
 async def _locale(principal: Principal) -> dict:
     """The language this page is composed in, decided before its first paint
-    (``core.localization``; the choice is ``account_appearance.load_locale``),
+    (``core.localization``; the language is ``account_appearance.load_locale``),
     for ``ui-i18n.js``: the account's own choice -- the default Admin's while
-    sign-in is off -- read within the same bounded time as the appearance.
+    sign-in is off -- or, without one, the installation's default language,
+    read within the same bounded time as the appearance.
     ``locale`` is null when it could not be read in time: the page is then
     English and says nothing about the saved choice. ``catalog`` is the
     locale's catalog asset, versioned by its content, where it has one."""
@@ -751,7 +752,7 @@ async def _locale(principal: Principal) -> dict:
     tag, read = DEFAULT_LOCALE, True
     if owner is not None:
         try:
-            tag = await asyncio.wait_for(account_appearance.load_locale(owner), _APPEARANCE_READ_SECONDS)
+            tag = (await asyncio.wait_for(account_appearance.load_locale(owner), _APPEARANCE_READ_SECONDS))["locale"]
         except Exception as exc:
             read = False
             logger.warning("Account locale unavailable at first paint: %s", type(exc).__name__)

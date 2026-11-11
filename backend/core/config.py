@@ -169,6 +169,15 @@ class AppSettings(BaseModel):
     # either type is open until interactive authentication is enabled.
     deployment_type: Literal["server", "standalone"] = "server"
 
+    # ── Default language ─────────────────────────────────────────────────────
+    # The interface language of every account that has not chosen its own:
+    # one locale tag, or None -- never chosen, which is English. Written only
+    # by an Admin through its own surface (``PUT /api/settings/default-locale``,
+    # ``services.account_appearance.set_default_locale``), never by a Settings
+    # write. A tag that is not (any more) admitted reads as English and stays
+    # as stored. It names no account and changes no account's own choice.
+    default_locale: Optional[str] = None
+
     # ── Authentication ────────────────────────────────────────────────────────
     # Mechanisms and admission only. Local credentials belong to accounts
     # (``auth.accounts``); a pre-account ``auth_username``/``auth_password``/

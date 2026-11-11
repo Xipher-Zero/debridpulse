@@ -151,6 +151,7 @@ debt, delivery and fallback (`LOCALIZATION_RELEASE.md`).
 | Catalog asset | `GET /i18n/{tag}.js` (`api.auth_routes.locale_catalog_script`): `window.DPI18nCatalog(tag, messages[, {stale}])`. English's ETag is sha256[:16] of `en.json`; a target's is sha256[:16] of the delivered body |
 | Server reads, pseudo, pre-sign-in text, coded errors | `backend/core/localization.py` |
 | Each account's language | `account_appearance.locale` (`services.account_appearance.load_locale` / `set_locale`), `GET/PUT /api/account/locale` |
+| The installation's default language (for accounts without their own) | `AppSettings.default_locale` in `config.json` (`services.account_appearance.default_locale` / `set_default_locale`), `GET/PUT /api/settings/default-locale` (Admin) |
 | First-paint projection | the `window.debridPulseLocale=…` line of `/ui-theme-bootstrap.js` |
 | Validator | `.github/localization/validate.mjs` (sample rendering shared with the review sheet: `messages.mjs`) |
 | Concept register and protected names/literals (English) | `frontend/i18n/terms/en.json` (not served) |
@@ -711,18 +712,41 @@ not failures.
 There is no picker, and this contract proposes no placement. A later choice in
 My Account or a first-run step would do the following:
 
-1. **Read.** Call `GET /api/account/locale`, which returns `{locale}`: the
-   account's own choice, or the open default Admin's. A stored tag that is
-   not admitted (unknown, planned, or a supported one whose catalog is gone)
-   reads as `en`, and is left as stored.
+1. **Read.** Call `GET /api/account/locale`, which returns
+   `{locale, preference, default}`: the account's own (the open default Admin's):
+   - `preference`: the account's stored choice, or `null` when it has none;
+   - `default`: the installation's default language;
+   - `locale`: the language shown, decided by the server. It is the
+     preference when there is one, otherwise the default. A preference that
+     is not admitted (unknown, planned, or a supported one whose catalog is
+     gone) shows `en`, never the default, and is left as stored.
+
+   The default is English until an Admin sets one. Choosing `en` is a
+   preference: the account stays English whatever the default becomes.
 2. **Offer.** List the manifest locales whose status is `supported`, naming each
    by its `native` name. Never offer a `planned` or `pseudo` locale; the API
    refuses a planned one in any case.
-3. **Choose and persist.** Call `PUT /api/account/locale` with `{locale}`. A
-   value that is not admitted (unknown, planned, pseudo without test locales)
-   or a foreign field returns 422 and changes nothing. The request is
-   authorized for every human role, refused for Integration and anonymous
-   callers, and has no target-account field.
+3. **Choose and persist.** Call `PUT /api/account/locale` with `{locale}`: a
+   tag to choose it, or `{"locale": null}` to clear the choice and inherit the
+   default. It answers like the GET. A value that is not admitted (unknown,
+   planned, pseudo without test locales), a missing `locale` or a foreign field
+   returns 422 and changes nothing. The request is authorized for every human
+   role, refused for Integration and anonymous callers, and has no
+   target-account field.
+
+   **The default.** `GET /api/settings/default-locale` returns
+   `{locale, configured}`: the language it gives (English while unset or no
+   longer admitted) and the stored tag (`null`: never set).
+   - `PUT /api/settings/default-locale` with `{locale}` sets it. It takes an
+     admitted tag only, with no `null`, and is **Admin only**. It changes that
+     one setting, under the configuration write lock, and answers like the GET.
+   - A refused value or a failed save changes nothing: the file is written
+     before the running settings change.
+   - The broad `PUT /api/settings` never changes it. A restore brings back the
+     backup's value; a backup from before it existed restores it unset.
+   - It changes no account's own choice and pushes nothing to open sessions:
+     an inheriting account gets it on its next read or cold load. An Admin who
+     inherits it applies the new `locale` after a successful PUT.
 4. **Apply.** Call `DPI18n.setLocale(tag, {catalog: '/i18n/<tag>.js?v=<version>',
    dir})`. Owners re-render on `debridpulse:locale-changed`. There is no reload,
    and every unsaved field is kept.

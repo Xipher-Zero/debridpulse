@@ -31,12 +31,17 @@ never changes it.
 
 The account's interface language (``locale``; ``load_locale`` and
 ``set_locale``) is the same kind of choice, kept the same way: one BCP 47 tag
-of the locales the interface knows (``core.localization.locale_tags``),
-English for an account that never chose, and a stored tag the interface no
-longer knows reads as English without being rewritten. It belongs to the
-same owner as the presentation (``presentation_owner``), the default Admin's
-while sign-in is off, and writing it changes that one column. It decides the
-language the interface is shown in, nothing else.
+of the locales the interface knows (``core.localization.locale_tags``), or
+none. An account without a choice inherits the installation's default
+language (``core.config.AppSettings.default_locale``, written only by an
+Admin, ``set_default_locale``), and English where none is configured; a
+chosen English is a choice and stays English whatever the default becomes.
+Clearing the choice returns the account to the default. A stored tag the
+interface no longer knows -- the account's or the default -- reads as
+English without being rewritten. It belongs to the same owner as the
+presentation (``presentation_owner``), the default Admin's while sign-in is
+off, and writing it changes that one column. It decides the language the
+interface is shown in, nothing else.
 
 The sign-in page has one appearance of its own, the installation's
 (``auth.accounts`` table ``login_appearance``, one row): a mode and that
@@ -292,7 +297,23 @@ async def set_presentation(account_id: str, mode: str) -> str:
 
 
 class LocaleUpdate(BaseModel):
-    """An account's language: exactly one known locale tag, nothing else."""
+    """An account's language: one known locale tag, or null to clear the
+    choice and inherit the installation's default. Nothing else: the field is
+    required, and any other key is refused."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    locale: str | None
+
+    @model_validator(mode="after")
+    def _known(self):
+        _admitted(self.locale, allow_none=True)
+        return self
+
+
+class DefaultLocaleUpdate(BaseModel):
+    """The installation's default language: exactly one known locale tag.
+    There is no null: English is chosen as English."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -300,39 +321,94 @@ class LocaleUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _known(self):
-        from core.localization import locale_tags
-
-        if self.locale not in locale_tags():
-            raise CodedValueError("Unknown locale", code="appearance.locale_unknown")
+        _admitted(self.locale)
         return self
 
 
-async def load_locale(account_id: str) -> str:
-    from core.localization import DEFAULT_LOCALE, locale_tags
+def _admitted(tag: str | None, *, allow_none: bool = False) -> None:
+    from core.localization import locale_tags
+
+    if tag is None and allow_none:
+        return
+    if tag not in locale_tags():
+        raise CodedValueError("Unknown locale", code="appearance.locale_unknown")
+
+
+def _effective(tag: str | None) -> str | None:
+    """A stored tag as the interface may show it, or None where it is unset
+    or no longer admitted."""
+    from core.localization import locale_tags
+
+    return tag if tag is not None and tag in locale_tags() else None
+
+
+def default_locale(settings=None) -> dict:
+    """The installation's default language for accounts without their own:
+    ``configured``, the tag an Admin chose (null: never chosen), and
+    ``locale``, the one it gives -- English where none is configured or the
+    configured one is no longer admitted."""
+    from core.config import get_settings
+    from core.localization import DEFAULT_LOCALE
+
+    configured = getattr(settings if settings is not None else get_settings(), "default_locale", None)
+    return {"locale": _effective(configured) or DEFAULT_LOCALE, "configured": configured}
+
+
+async def load_locale(account_id: str) -> dict:
+    """One account's language: ``preference``, its own stored choice (null:
+    none, so it inherits); ``default``, the installation's default it would
+    inherit; and ``locale``, the one the interface is shown in. A choice wins
+    over the default; a choice that is no longer admitted shows English,
+    never the default, and stays as stored."""
+    from core.localization import DEFAULT_LOCALE
     from db.database import get_db
 
     async with get_db() as db:
         row = await db.fetchone("SELECT locale FROM account_appearance WHERE account_id=?", (str(account_id),))
-    tag = row["locale"] if row is not None else None
-    return tag if tag in locale_tags() else DEFAULT_LOCALE
+    preference = row["locale"] if row is not None else None
+    inherited = default_locale()["locale"]
+    shown = inherited if preference is None else (_effective(preference) or DEFAULT_LOCALE)
+    return {"locale": shown, "preference": preference, "default": inherited}
 
 
-async def set_locale(account_id: str, tag: str) -> str:
-    """Record one account's language, atomically and alone: an account without
-    a record gets the native theme with it, and an existing record keeps its
-    theme and presentation exactly as stored."""
-    from core.localization import locale_tags
-
-    if tag not in locale_tags():
-        raise CodedValueError("Unknown locale", code="appearance.locale_unknown")
+async def set_locale(account_id: str, tag: str | None) -> dict:
+    """Record one account's language, atomically and alone, and return it as
+    ``load_locale`` reads it. A tag: an account without a record gets the
+    native theme with it, and an existing record keeps its theme and
+    presentation exactly as stored. None clears the choice (the account
+    inherits the default); an account without a record has none to clear."""
+    _admitted(tag, allow_none=True)
+    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     async with _transaction() as db:
-        await db.execute(
-            "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,locale,updated_at) "
-            "VALUES(?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET "
-            "locale=excluded.locale, updated_at=excluded.updated_at",
-            (str(account_id), DEFAULT["mode"], DEFAULT["dark_palette"], DEFAULT["light_palette"], tag,
-             datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
-    return tag
+        if tag is None:
+            await db.execute("UPDATE account_appearance SET locale=NULL, updated_at=? WHERE account_id=?",
+                             (stamp, str(account_id)))
+        else:
+            await db.execute(
+                "INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,locale,updated_at) "
+                "VALUES(?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET "
+                "locale=excluded.locale, updated_at=excluded.updated_at",
+                (str(account_id), DEFAULT["mode"], DEFAULT["dark_palette"], DEFAULT["light_palette"], tag, stamp))
+    return await load_locale(account_id)
+
+
+async def set_default_locale(tag: str) -> dict:
+    """Record the installation's default language: the one settings field,
+    saved with every other setting exactly as it is, under the configuration
+    write lock that serializes every settings writer. The file is written
+    before the running settings change, so a refused or failed write changes
+    neither."""
+    from core.config import apply_settings, config_write_lock, get_settings, journal_configuration_change, \
+        save_settings
+
+    _admitted(tag)
+    async with config_write_lock():
+        previous = get_settings()
+        current = previous.model_copy(update={"default_locale": tag}, deep=True)
+        save_settings(current)
+        apply_settings(current)
+    await journal_configuration_change(previous, current)
+    return default_locale(current)
 
 
 def public(row) -> dict:

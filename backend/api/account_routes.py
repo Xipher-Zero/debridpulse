@@ -348,19 +348,37 @@ async def choose_own_presentation(body: account_appearance.PresentationUpdate, r
 # ── the account's own interface language ────────────────────────────────────
 # Classified ``interface`` and owned exactly as the presentation is
 # (``account_appearance.presentation_owner``): the request's own human
-# account, or the default Admin while sign-in is off. There is no language
-# selector yet: this is the contract a later one uses.
+# account, or the default Admin while sign-in is off. Both answer
+# ``{locale, preference, default}``: the language shown, the account's own
+# choice (null: none, so it inherits) and the installation's default. A PUT of
+# ``{"locale": null}`` clears the choice.
 
 @router.get("/account/locale")
 async def own_locale(request: Request):
     account_id = _presentation_owner(request)
-    return {"locale": await account_appearance.load_locale(account_id)}
+    return await account_appearance.load_locale(account_id)
 
 
 @router.put("/account/locale")
 async def choose_own_locale(body: account_appearance.LocaleUpdate, request: Request):
     account_id = _presentation_owner(request)
-    return {"locale": await account_appearance.set_locale(account_id, body.locale)}
+    return await account_appearance.set_locale(account_id, body.locale)
+
+
+# ── the installation's default language ─────────────────────────────────────
+# Classified ``administer``: an Admin reads and sets the language of every
+# account without its own choice. Both answer ``{locale, configured}``: the
+# language it gives and the tag chosen (null: never chosen). No account's own
+# choice is read or changed here.
+
+@router.get("/settings/default-locale")
+async def default_locale():
+    return account_appearance.default_locale()
+
+
+@router.put("/settings/default-locale")
+async def choose_default_locale(body: account_appearance.DefaultLocaleUpdate):
+    return await account_appearance.set_default_locale(body.locale)
 
 
 # ── the installation's login appearance ─────────────────────────────────────

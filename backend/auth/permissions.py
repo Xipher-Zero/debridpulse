@@ -127,6 +127,9 @@ ACTIONS: dict[str, Capability] = {
     # Its own interface language, owned as its presentation is.
     "api.account_routes.own_locale": _I,
     "api.account_routes.choose_own_locale": _I,
+    # The installation's default language: read and set by an Admin.
+    "api.account_routes.default_locale": _A,
+    "api.account_routes.choose_default_locale": _A,
     # The installation's login appearance: read and published by an Admin.
     "api.account_routes.login_appearance": _A,
     "api.account_routes.publish_login_appearance": _A,
