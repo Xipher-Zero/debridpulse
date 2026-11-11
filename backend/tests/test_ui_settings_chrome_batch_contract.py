@@ -170,7 +170,11 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     # the middle of a slide; the slide's commit only draws the latest
     # decision, and the end state is written with it.
     assert "direction: motion.direction," in place and "Math.sign(target - strip.scrollLeft)" not in place
-    assert "(onScreen()?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap" in place
+    assert "(onScreen()?.left ?? fromStart(strip)) !== target && motion?.direction && !snap" in place
+    # The strip's scroll is read and written from its start edge (right in a
+    # right-to-left page, WS6-A): the window arithmetic is the same either way.
+    assert "const fromStart = strip => (rtl(strip) ? -strip.scrollLeft : strip.scrollLeft);" in mechanics
+    assert "if (fromStart(strip) !== target) toStart(strip, target);" in mechanics
     # "Where it is drawn" is the window on screen: a slide's commit draws at
     # once (DPMotion), so until that draw is painted a choice is judged from
     # the window shown before it.

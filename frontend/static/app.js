@@ -579,6 +579,7 @@ async function chooseAcquisitionScope(link, choices) {
       message.textContent = DPI18n.t('submission.scope.message');
       const address = document.createElement('code');
       address.className = 'dp-modal-message dp-modal-code';
+      address.dir = 'ltr';                     // the link reads as itself in a right-to-left page
       address.textContent = String(link || '');
       body.append(message, address);
       return message;

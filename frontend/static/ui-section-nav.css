@@ -147,6 +147,37 @@
     border-left: 1px solid var(--dp-segment-divider);
   }
 
+  /* A right-to-left page: the list starts at the right, Previous is the right
+     end and Next the left, so the sides above swap (the window arithmetic
+     measures from the start edge, ui-section-nav.js). */
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav [data-nav-at='first'] > .dp-section-nav-strip {
+    clip-path: inset(0 0 0 var(--dp-section-nav-slot));
+  }
+
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav [data-nav-at='last'] > .dp-section-nav-strip {
+    clip-path: inset(0 var(--dp-section-nav-slot) 0 0);
+  }
+
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav [role='tab'][data-nav-cut='start'] {
+    mask-image: linear-gradient(to left, transparent var(--dp-section-nav-cut-edge),
+      #000 calc(var(--dp-section-nav-cut-edge) + var(--dp-section-nav-cut-fade)));
+  }
+
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav [role='tab'][data-nav-cut='end'] {
+    mask-image: linear-gradient(to right, transparent var(--dp-section-nav-cut-edge),
+      #000 calc(var(--dp-section-nav-cut-edge) + var(--dp-section-nav-cut-fade)));
+  }
+
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav .dp-section-nav-end {
+    border-right: 0;
+    border-left: 1px solid var(--dp-segment-divider);
+  }
+
+  :root[dir='rtl'] [data-presentation='compact'] > .dp-section-nav .dp-section-nav-end:last-child {
+    border-left: 0;
+    border-right: 1px solid var(--dp-segment-divider);
+  }
+
   /* With the first section selected there is no Previous, with the last no
      Next, and neither takes any room. */
   [data-presentation='compact'] > .dp-section-nav :is([data-nav-at='first'], [data-nav-at='only']) > .dp-section-nav-end:first-child,

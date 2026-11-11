@@ -310,11 +310,12 @@
         parts.forEach(part => part.dpMotionPlace());
       }
 
-      // Forward: the old content leaves toward the start (left, or up) and the
-      // destination arrives from the end (right, or below); backward: the
-      // reverse. Travel is a share of the surface's own viewport.
+      // Forward: the old content leaves toward the start (left, or up; in a
+      // right-to-left surface, right) and the destination arrives from the end;
+      // backward: the reverse. Travel is a share of the surface's own viewport.
+      const reading = axis === 'x' && getComputedStyle(element).direction === 'rtl' ? -1 : 1;
       const travel = (parseFloat(token('--dp-motion-travel')) || 100) / 100
-        * (axis === 'y' ? element.clientHeight : element.clientWidth) * (direction > 0 ? 1 : -1);
+        * (axis === 'y' ? element.clientHeight : element.clientWidth) * (direction > 0 ? 1 : -1) * reading;
       const toward = px => (axis === 'y' ? `translateY(${px}px)` : `translateX(${px}px)`);
       const timing = {duration, easing, fill: 'both'};
       const leave = [{transform: 'none', opacity: 1}, {transform: toward(-travel), opacity: fade}];

@@ -7418,7 +7418,8 @@
       let index = buttons.indexOf(current);
       if (event.key === 'Home') index = 0;
       else if (event.key === 'End') index = buttons.length - 1;
-      else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      // The arrow toward the next section: Left in a right-to-left page.
+      else index = (index + (event.key === (getComputedStyle(current).direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight') ? 1 : -1) + buttons.length) % buttons.length;
       const next = buttons[index];
       chooseTab(next.dataset.tab);
       // (The navigator positions its own window; focus never scrolls it.)

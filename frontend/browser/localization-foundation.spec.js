@@ -162,6 +162,57 @@ test('L03: ar-XB: the document turns right-to-left and every argument is bidi-is
   await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
 });
 
+test('L03b: right-to-left: a literal is a left-to-right isolate with its exact characters, a printed argument a <bdi>', async ({page}) => {
+  await boot(page, 320);
+  const CONTROL = /[‎‏‪-‮⁦-⁩؜]/;
+  const args = {file: '.hidden.part1.rar', host: 'rapidgator.net'};
+  // Left to right: rich text is exactly the plain text, no element added.
+  expect(await page.evaluate(a => { const d = document.createElement('div'); d.append(window.DPI18n.rich('group_candidates.artifact_switched', a)); return d.innerHTML; }, args))
+    .toBe('.hidden.part1.rar file source switched to rapidgator.net');
+  expect(await page.evaluate(() => window.DPI18n.setLocale('ar-XB'))).toBe('ar-XB');
+  const rich = await page.evaluate(a => { const d = document.createElement('div'); d.append(window.DPI18n.rich('group_candidates.artifact_switched', a)); return [...d.querySelectorAll('bdi')].map(b => b.textContent); }, args);
+  expect(rich).toEqual(['.hidden.part1.rar', 'rapidgator.net']);
+  await page.locator('#sidebar .nav-item[data-view="help"]').evaluate(element => element.click());
+  const literals = await page.evaluate(() => [...document.querySelectorAll('#view-help code')].filter(code => code.getClientRects().length)
+    .map(code => {
+      const text = code.firstChild, range = document.createRange();
+      const left = at => { range.setStart(text, at); range.setEnd(text, at + 1); return range.getBoundingClientRect().left; };
+      return {text: code.textContent, dir: code.dir, simple: code.childNodes.length === 1 && text.nodeType === 3,
+        firstLeft: code.textContent.length < 2 || left(0) < left(1)};
+    }));
+  expect(literals.some(literal => literal.text === '.torrent')).toBe(true);
+  for (const literal of literals) {
+    expect(literal.dir).toBe('ltr');
+    expect(literal.simple).toBe(true);                   // its own characters, nothing around them
+    expect(literal.text).not.toMatch(CONTROL);
+    expect(literal.firstLeft).toBe(true);                // ".torrent", never "torrent."
+  }
+});
+
+test('L03c: right-to-left: the compact section navigator keeps the chosen section whole, and Left goes to the next one', async ({page}) => {
+  await boot(page, 320);
+  expect(await page.evaluate(() => window.DPI18n.setLocale('ar-XB'))).toBe('ar-XB');
+  await page.locator('#sidebar .nav-item[data-view="help"]').evaluate(element => element.click());
+  const strip = page.locator('#view-help .dp-section-nav-strip:not(.dp-motion-still):not(.dp-motion-still *)');
+  await expect(strip).toBeVisible();
+  const whole = () => strip.evaluate(element => {
+    const box = element.getBoundingClientRect(), tab = element.querySelector('[role="tab"][aria-selected="true"]').getBoundingClientRect();
+    return tab.left >= box.left - 0.5 && tab.right <= box.right + 0.5;
+  });
+  const selected = () => page.locator('#view-help .dp-help-tab[aria-selected="true"]:not(.dp-motion-still *)').getAttribute('data-tab');
+  expect(await selected()).toBe('quickstart');
+  await page.locator('#view-help .dp-section-nav-end:not(.dp-motion-still *)').last().click();
+  await expect.poll(selected).toBe('using');
+  await expect.poll(whole).toBe(true);
+  await page.locator('#view-help .dp-help-tab[aria-selected="true"]:not(.dp-motion-still *)').focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(selected).toBe('howitworks');
+  await expect.poll(whole).toBe(true);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(selected).toBe('using');
+  await page.evaluate(() => window.DPI18n.setLocale('en'));
+});
+
 test('L07b: a catalog that never arrives leaves the page in English, said once; a partial or stale one is English key by key', async ({page}) => {
   await boot(page);
   await page.route('**/i18n/de.js*', () => {});                                    // never answered

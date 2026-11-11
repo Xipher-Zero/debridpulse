@@ -110,7 +110,27 @@
         return {...element, options};
       }
       return element;
-    }).flatMap(element => (tag === 'ar-XB' && element.type === ARGUMENT
+    });
+  }
+
+  // ar-XB (a test locale): every simple argument an isolate inside its
+  // right-to-left text (U+2068 … U+2069), at every depth. A literal (<code>,
+  // <kbd>) is its own left-to-right isolate already (rich()): its value is
+  // left exactly as given. A real catalog's text carries no such characters;
+  // rich() isolates its arguments as elements instead.
+  function isolateArguments(elements) {
+    return elements.map(element => {
+      if (element.type === TAG && (element.value === 'code' || element.value === 'kbd')) return element;
+      if (element.type === TAG) return {...element, children: isolateArguments(element.children)};
+      if (element.type === SELECT || element.type === PLURAL) {
+        const options = {};
+        for (const [name, option] of Object.entries(element.options)) {
+          options[name] = {...option, value: isolateArguments(option.value)};
+        }
+        return {...element, options};
+      }
+      return element;
+    }).flatMap(element => (element.type === ARGUMENT
       ? [{type: LITERAL, value: '⁨'}, element, {type: LITERAL, value: '⁩'}] : [element]));
   }
 
@@ -129,6 +149,7 @@
         if (english !== undefined) {
           const ast = new Formatter(english, DEFAULT).getAst();
           let elements = pseudoAst(ast, tag);
+          if (tag === 'ar-XB') elements = isolateArguments(elements);
           if (tag === 'en-XA') {
             const pad = '·'.repeat(Math.max(1, Math.round(letters(ast) * 0.4)));
             elements = [{type: LITERAL, value: '⟦'}, ...elements, {type: LITERAL, value: ` ${pad}⟧`}];
@@ -193,12 +214,45 @@
     if (!made) { fragment.append(Formatter ? key : ''); return fragment; }
     const wrap = name => chunks => {
       const element = document.createElement(name);
+      // A literal (a file type, path, setting value) reads left to right as
+      // itself in any page: its own isolate, so ".torrent" never turns into
+      // "torrent." in right-to-left text. Its characters are unchanged.
+      if (name === 'code' || name === 'kbd') element.dir = 'ltr';
       element.append(...chunks.map(chunk => (chunk instanceof Node ? chunk : String(chunk))));
       return element;
     };
     const tags = Object.fromEntries([...RICH_TAGS].map(name => [name, wrap(name)]));
+    // In a right-to-left page each text argument (a file, host, name …) is
+    // its own <bdi>: it keeps its own direction (an Arabic name stays right to
+    // left, ".hidden.rar" keeps its dot first) and its characters, so copying
+    // it copies only the value. A left-to-right page is unchanged.
+    // Only an argument the message prints as text ({file}); one it selects by
+    // ({kind, select, …}) stays the string it chooses with, and one inside a
+    // literal (<code>{path}</code>) is that literal's own isolated text.
+    const printed = new Set(), chosen = new Set();
+    (function collect(elements) {
+      for (const element of elements) {
+        if (element.type === ARGUMENT) printed.add(element.value);
+        if (element.type === SELECT) chosen.add(element.value);
+        if (element.type === TAG && (element.value === 'code' || element.value === 'kbd')) {
+          (function inside(children) {
+            for (const child of children) {
+              if (child.type === ARGUMENT) chosen.add(child.value);
+              if (child.type === TAG) inside(child.children);
+            }
+          })(element.children);
+        } else if (element.type === TAG) collect(element.children);
+        if (element.type === SELECT || element.type === PLURAL) Object.values(element.options).forEach(option => collect(option.value));
+      }
+    })(direction(shown) === 'rtl' ? made.getAst() : []);
+    const isolated = direction(shown) !== 'rtl' ? values : Object.fromEntries(Object.entries(values).map(([name, value]) => {
+      if (typeof value !== 'string' || !printed.has(name) || chosen.has(name)) return [name, value];
+      const bdi = document.createElement('bdi');
+      bdi.textContent = value;
+      return [name, bdi];
+    }));
     try {
-      const out = made.format({...tags, ...values});
+      const out = made.format({...tags, ...isolated});
       (Array.isArray(out) ? out : [out]).forEach(part => fragment.append(part instanceof Node ? part : String(part)));
     } catch (error) {
       note('format failed', `${key}: ${error && error.message}`);

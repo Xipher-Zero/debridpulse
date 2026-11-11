@@ -1099,7 +1099,8 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
       let index = tabs.indexOf(current);
       if (event.key === 'Home') index = 0;
       else if (event.key === 'End') index = tabs.length - 1;
-      else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      // The arrow toward the next section: Left in a right-to-left page.
+      else index = (index + (event.key === (getComputedStyle(current).direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight') ? 1 : -1) + tabs.length) % tabs.length;
       chooseTab(tabs[index].dataset.tab, true);
     });
   }

@@ -424,7 +424,7 @@
       navFit.index = index;
       navFit.room = room;
       navFit.side = side;
-      if ((onScreen()?.left ?? strip.scrollLeft) !== target && motion?.direction && !snap && window.DPMotion) {
+      if ((onScreen()?.left ?? fromStart(strip)) !== target && motion?.direction && !snap && window.DPMotion) {
         const slide = navFit.slide = window.DPMotion.slide({element: strip, axis: 'x', direction: motion.direction,
           distance: motion.distance, windowed: true}, () => {
           apply();
@@ -459,6 +459,13 @@
      * window never shown. */
     const onScreen = () => navFit?.shown || navFit?.drawn;
 
+    /* The strip's scroll measured from its start edge, as every width and
+     * window here is: a right-to-left strip starts at the right and scrolls
+     * toward negative scrollLeft. */
+    const rtl = strip => getComputedStyle(strip).direction === 'rtl';
+    const fromStart = strip => (rtl(strip) ? -strip.scrollLeft : strip.scrollLeft);
+    const toStart = (strip, value) => { strip.scrollLeft = rtl(strip) ? -value : value; };
+
     // The latest decided window, drawn.
     function drawNavigation() {
       const nav = locate();
@@ -479,7 +486,7 @@
         if (at) control.dataset.navAt = at;
         else delete control.dataset.navAt;
       }
-      if (strip.scrollLeft !== target) strip.scrollLeft = target;
+      if (fromStart(strip) !== target) toStart(strip, target);
       // The section each window edge cuts where sections continue fades
       // outwards from that edge, over NAV_FADE of what it shows (NAV_TARGET at
       // least); a part smaller than NAV_TARGET is not shown at all. On the tab
