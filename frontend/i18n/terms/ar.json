@@ -1,0 +1,130 @@
+{
+ "schema": "debridpulse-terms/1",
+ "locale": "ar",
+ "register": "Arabic (Modern Standard Arabic, pan-regional software usage). Formal register addressing the reader with the second person singular in a neutral, polite style common in Arabic software (or impersonal/passive forms); buttons and menu commands use the short verbal noun (masdar) or imperative standard in Arabic software (حفظ, إلغاء, حذف, إعادة المحاولة); headings and labels use nouns. Arabic punctuation in Arabic text (، ؛ ؟) and the full stop '.'; guillemets « » for quoted on-screen labels. Western Arabic digits 0–9. No tashkeel except where needed to disambiguate (e.g. shadda on مزوّد is optional). Latin-script technical literals (URLs, paths, commands, product names, units) stay exactly in Latin script; never transliterate them.",
+ "terms": {
+  "transfer": {
+   "target": "نقل"
+  },
+  "downloads_page": {
+   "target": "التنزيلات",
+   "forms": [
+    "تنزيلات"
+   ]
+  },
+  "premium_services": {
+   "target": "الخدمات المدفوعة",
+   "forms": [
+    "خدمات مدفوعة"
+   ]
+  },
+  "network_sources": {
+   "target": "مصادر الشبكة"
+  },
+  "role_admin": {
+   "target": "مسؤول"
+  },
+  "role_user": {
+   "target": "مستخدم"
+  },
+  "role_readonly": {
+   "target": "مستخدم للقراءة فقط",
+   "forms": [
+    "للقراءة فقط"
+   ]
+  },
+  "role_integration": {
+   "target": "تكامل"
+  },
+  "display_name": {
+   "target": "الاسم المعروض",
+   "forms": [
+    "اسم معروض"
+   ]
+  },
+  "actual_name": {
+   "target": "الاسم الحقيقي",
+   "forms": [
+    "اسم حقيقي"
+   ]
+  },
+  "my_account": {
+   "target": "حسابي"
+  },
+  "sign_in": {
+   "target": "تسجيل الدخول"
+  },
+  "log_out": {
+   "target": "تسجيل الخروج"
+  },
+  "easy": {
+   "target": "مبسط",
+   "forms": [
+    "مبسّط"
+   ]
+  },
+  "advanced": {
+   "target": "متقدم"
+  },
+  "server": {
+   "target": "خادم"
+  },
+  "standalone": {
+   "target": "مستقل"
+  },
+  "help_license": {
+   "target": "المساعدة والترخيص"
+  },
+  "field_manual": {
+   "target": "دليل"
+  },
+  "activity_log": {
+   "target": "سجل النشاط"
+  },
+  "download_activity": {
+   "target": "نشاط التنزيل"
+  },
+  "download_engine_activity": {
+   "target": "نشاط محرك التنزيل"
+  },
+  "dashboard": {
+   "target": "لوحة المعلومات"
+  },
+  "settings": {
+   "target": "الإعدادات",
+   "forms": [
+    "إعدادات"
+   ]
+  },
+  "statistics": {
+   "target": "الإحصاءات",
+   "forms": [
+    "إحصاءات"
+   ]
+  },
+  "restore_point": {
+   "target": "نقطة الاستعادة"
+  },
+  "provider": {
+   "target": "مزود",
+   "forms": [
+    "مزوّد"
+   ]
+  },
+  "source": {
+   "target": "مصدر",
+   "forms": [
+    "مصادر"
+   ]
+  },
+  "retry": {
+   "target": "إعادة المحاولة"
+  },
+  "resume": {
+   "target": "استئناف"
+  },
+  "recovery": {
+   "target": "استرداد"
+  }
+ }
+}

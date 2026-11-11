@@ -120,9 +120,17 @@ usage (伺服器, 使用者, 資料夾, 「」 quotes). Both use the single CLDR
 with measure words after numbers. Each passes `validate.mjs --complete=<tag>` on its own and
 stays `planned`.
 
-Progress: 17 of the 18 production targets have complete, reviewed catalogs (de, fr, es,
-it, pt-BR, pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant), all still `planned`.
-One remains without a catalog: ar.
+WS5-D adds Arabic (`frontend/static/i18n/ar.json`, with its own termbase and review ledger):
+Modern Standard Arabic with all six CLDR plural categories (`zero`, `one`, `two`, `few`,
+`many`, `other`) wherever English varies by count, Arabic punctuation (، ؛ ؟) and « » quotes,
+Western digits, and Latin-script technical literals kept intact. The catalog carries no
+Unicode bidi control characters; page direction comes from the manifest (`dir: rtl`), and RTL
+layout and bidi isolation are WS6 qualification work. It passes `validate.mjs --complete=ar`
+and stays `planned`.
+
+Progress: all 18 production targets have complete, reviewed catalogs (de, fr, es, it, pt-BR,
+pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant, ar), all still `planned`; none is
+activated. Responsive/RTL qualification (WS6) and maintainability (WS7) remain.
 
 ## 1. Pieces and owners
 

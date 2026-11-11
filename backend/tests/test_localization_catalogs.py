@@ -73,15 +73,12 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     assert code == 0, report["errors"]
     english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
     assert report["keys"] == len(english) >= 150
-    # Every target is planned. One without a catalog reports its whole debt (a
-    # warning), the critical-warning keys among it listed apart.
-    for tag in ("ar",):
-        row = report["locales"][tag]
-        assert row["status"] == "planned" and row["missing"] == len(english) and row["critical"] >= 10
-    # WS5-A1 (de), WS5-A2 (fr, es, it), WS5-A3 (pt-BR, pt-PT, nl), WS5-B1 (pl, ru, uk),
-    # WS5-B2 (tr, id, hi), WS5-C1 (ja, ko) and WS5-C2 (zh-Hans, zh-Hant): complete, reviewed catalogs,
-    # still planned (never admitted).
-    for tag in ("de", "fr", "es", "it", "pt-BR", "pt-PT", "nl", "pl", "ru", "uk", "tr", "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant"):
+    # Every target is planned and, since WS5-D, every one has a catalog: WS5-A1 (de), WS5-A2 (fr, es,
+    # it), WS5-A3 (pt-BR, pt-PT, nl), WS5-B1 (pl, ru, uk), WS5-B2 (tr, id, hi), WS5-C1 (ja, ko), WS5-C2
+    # (zh-Hans, zh-Hant) and WS5-D (ar): complete, reviewed catalogs, still planned (never admitted).
+    targets = ("de", "fr", "es", "it", "pt-BR", "pt-PT", "nl", "pl", "ru", "uk", "tr", "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant", "ar")
+    assert set(report["locales"]) == set(targets)             # no target dropped, none without a catalog
+    for tag in targets:
         row = report["locales"][tag]
         assert row["status"] == "planned" and row["catalog"] and row["termbase"] and row["ledger"], tag
         assert (row["missing"], row["stale"], row["unreviewed"], row["noBackTranslation"], len(row["openFindings"])) == (0, 0, 0, 0, 0), tag
