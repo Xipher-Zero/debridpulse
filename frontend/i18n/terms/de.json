@@ -26,7 +26,7 @@
   "download_activity": {"target": "Download-Aktivität"},
   "download_engine_activity": {"target": "Download-Engine-Aktivität"},
   "dashboard": {"target": "Dashboard"},
-  "settings": {"target": "Einstellungen"},
+  "settings": {"target": "Optionen"},
   "statistics": {"target": "Statistik"},
   "restore_point": {"target": "Wiederherstellungspunkt"},
   "provider": {"target": "Anbieter"},

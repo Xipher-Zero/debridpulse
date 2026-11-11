@@ -37,10 +37,18 @@
   },
   "shell.nav.downloads": {
    "source": "d5fdc1af021e2d36",
-   "translation": "d9daadd1205256fa",
+   "translation": "45e4229a689e5988",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.nav.activity_log": {
@@ -85,10 +93,18 @@
   },
   "shell.nav.settings": {
    "source": "74a883a037bc227f",
-   "translation": "16e671aa4e14998b",
+   "translation": "2c56d4af59173c62",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.nav.notifications": {
@@ -157,10 +173,18 @@
   },
   "shell.page.downloads.title": {
    "source": "d5fdc1af021e2d36",
-   "translation": "d9daadd1205256fa",
+   "translation": "45e4229a689e5988",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.page.downloads.subtitle": {
@@ -205,10 +229,18 @@
   },
   "shell.page.settings.title": {
    "source": "74a883a037bc227f",
-   "translation": "16e671aa4e14998b",
+   "translation": "2c56d4af59173c62",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.page.settings.subtitle": {
@@ -23302,17 +23334,25 @@
   },
   "help.quickstart.before_begin.who_can_do_what.standalone": {
    "source": "6f15b8526dadafd8",
-   "translation": "91c61309472cb068",
+   "translation": "d2c535151cab3581",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Who can do what:</b> only the built-in <b>administrator</b> can sign in to a standalone installation, and it is the one that manages the settings. Other people's accounts left over from when this installation was of the \"Server\" type are not deleted or converted: they keep their data but cannot sign in while the installation is standalone. Other programs connect through accounts of the <b>Integration</b> type in <b>Settings → Access and integrations</b>."
+   "backTranslation": "<b>Who can do what:</b> only the built-in <b>administrator</b> can sign in to a standalone installation, and it is he who manages the settings. Other people's accounts that remain from the time when this installation was of type \"Server\" are neither deleted nor converted: they keep their data but cannot sign in while the installation is standalone. Other programs connect through accounts of type <b>Integration</b> in the section <b>Parameters → Access and integrations</b>.",
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.quickstart.before_begin.login_protection.username_password_shown": {
    "source": "42d48d569eb0978c",
-   "translation": "ebd2376c2fa3a571",
+   "translation": "458a09a1dc6d95c7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23323,12 +23363,18 @@
      "note": "Reviewer: \"Захист входу\" reads as protecting the login itself; the English lead means protecting access with a sign-in.",
      "status": "resolved",
      "resolution": "Changed to \"Захист доступу:\" (same in all three login_protection variants)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
   "help.quickstart.before_begin.login_protection.username_password_hidden": {
    "source": "be5f6baece2ce2b0",
-   "translation": "30acbc00de4098b5",
+   "translation": "da7f178f3ed4d5d2",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23339,6 +23385,12 @@
      "note": "Reviewer: \"Захист входу\" reads as protecting the login itself; the English lead means protecting access with a sign-in.",
      "status": "resolved",
      "resolution": "Changed to \"Захист доступу:\" (same in all three login_protection variants)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
@@ -23360,10 +23412,18 @@
   },
   "help.quickstart.check_where_downloads.open_settings_downloads": {
    "source": "f1891f0a01d5e80f",
-   "translation": "794e87251195c709",
+   "translation": "8031fe542b825fb3",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.check_where_downloads.if_debridpulse_runs": {
@@ -23376,10 +23436,18 @@
   },
   "help.quickstart.choose_services_want.open_settings_services": {
    "source": "6cb2c3f130edc17c",
-   "translation": "0e494b41de56c589",
+   "translation": "8c2d9dd3ffb8dcb2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.choose_services_want.every_premium_service": {
@@ -23440,10 +23508,18 @@
   },
   "help.quickstart.follow_finish.download_appears_download.admin": {
    "source": "c721570ae19324e0",
-   "translation": "f629cb5f95287ffd",
+   "translation": "f4981c344a9329e6",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.follow_finish.if_something_does.activity_log_shown": {
@@ -23562,34 +23638,78 @@
   },
   "help.using.lead.sidebar_has_three.activity_log_shown": {
    "source": "46afea0fd047d44e",
-   "translation": "f2d830f8ff4fc582",
+   "translation": "5e2a14d67325e4e4",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.admin": {
    "source": "26a4381ea99d4e59",
-   "translation": "dd74de2595631b59",
+   "translation": "fe1b0081e236461f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.personal": {
    "source": "a3e3fdc1e14da996",
-   "translation": "11215134e74f148f",
+   "translation": "077d05799107bfe0",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.no_personal": {
    "source": "212a396f46a3077a",
-   "translation": "681a585f0d895c51",
+   "translation": "f208e5340ee4907c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.standalone_installation_only": {
@@ -24232,10 +24352,18 @@
   },
   "help.using.activity_log_admin.events_kept_until": {
    "source": "f09c8d4bcf228814",
-   "translation": "cc01953d9416e7a9",
+   "translation": "bd8d45a22ba7de46",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.using.statistics.top_cards_completions": {
@@ -24464,7 +24592,7 @@
   },
   "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_shown": {
    "source": "3ec89c4bd968c858",
-   "translation": "9b6a600a985e3063",
+   "translation": "37d94c1c043005fc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24475,6 +24603,12 @@
      "note": "Translator: Span 2 «Retry Delay» is not a control label row; rendered «Затримка повтору» (shared stem of the minutes/seconds labels).",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
@@ -24857,10 +24991,18 @@
   },
   "help.services.summary.admin": {
    "source": "9ab41167115f9920",
-   "translation": "2c278c0ce8655abd",
+   "translation": "d4a7e5bd05a6e57c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.services.summary.member": {
@@ -25318,10 +25460,18 @@
   },
   "help.services.usenet.good_know.transfer_method_settings_shown": {
    "source": "bd792260f00ca77e",
-   "translation": "456a971641524ed9",
+   "translation": "e615c9095ce6dd64",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.services.usenet.good_know.admin": {
@@ -25358,19 +25508,25 @@
   },
   "help.services.network_sources.all_network_sources.transfer_method_settings_shown": {
    "source": "91fa8e4dd7955514",
-   "translation": "1ffae962fd1520f9",
+   "translation": "44f1c1854962ec32",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "In a new installation all network sources are turned on. The group's <b>Enable</b> toggle turns the whole group off or back on; each card also has its own, and a source works only when both are on. After the group is turned back on, each card returns to its previous state. They have no \"Test\" button: whether a link works depends on the respective server. Their fine-tuning is located in <b>Settings → Downloads → Transfer method settings</b>.",
+   "backTranslation": "In a new installation all network sources are enabled. The group's <b>Enable</b> switch disables or re-enables the whole group; each card also has its own, and a source works only when both are enabled. After the group is re-enabled, each card returns to its previous state. They have no \"Check\" button: whether a link works depends on the respective server. Their fine-tuning is located in the section <b>Parameters → Downloads → Transfer Method Settings</b>.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: harmonized: cross-chunk Help harmonization (tab/section names, UI labels and reviewed UI fixes, one rendering per concept, Ukrainian register)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -25698,10 +25854,18 @@
   },
   "help.engines.limits_apply_every.maximum_concurrent_downloads": {
    "source": "ab67241b8f9ea54b",
-   "translation": "9bf167c49a634b90",
+   "translation": "dd05fd4c5fae7e27",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.engines.limits_apply_every.speed_cap_header": {
@@ -25842,13 +26006,21 @@
   },
   "help.engines.download_engine_activity.settings_downloads_download_engine": {
    "source": "0b70ad9ba66c885b",
-   "translation": "b891130670f1f526",
+   "translation": "5fcf55cfce03fc96",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Settings → Downloads → Download engine activity</b> shows engine jobs (with the filters \"Active\", \"Waiting\", \"Paused\" and \"Stopped\") with <b>Pause</b>, <b>Resume</b> or <b>Abort</b> buttons, if the respective engine supports it. Before the \"Abort\" action a confirmation prompt appears. This is a recovery tool for a job that is truly stuck. For normal work, use the \"Downloads\" page: it keeps DebridPulse's own records consistent."
+   "backTranslation": "<b>Parameters → Downloads → Activity of download engines</b> shows the engines' tasks (with the filters \"Active\", \"Waiting\", \"Paused\" and \"Stopped\") with the buttons <b>Pause</b>, <b>Continue</b> or <b>Abort</b>, if the corresponding engine supports it. Before the \"Abort\" action, a confirmation prompt appears. This is a recovery tool for a task that has really hung. For normal work, use the \"Downloads\" page: it keeps DebridPulse's own records consistent.",
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.settings.title": {
    "source": "526d0b41605bb179",
@@ -26576,19 +26748,25 @@
   },
   "help.trouble.button_page_setting.most_likely_role": {
    "source": "bf6064eb63e3ea81",
-   "translation": "866313c27c252d26",
+   "translation": "3a8a3fe1b794a944",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Most likely your role does not allow this. Settings, Activity log, \"Pause all\", the speed limit menu, \"Provider status\", \"Recover all\" and \"Transfer trace log\" are available only to administrators. A user cannot remove or switch a download that another account still needs, and a read-only user can change neither downloads nor settings. See <b>Daily work → What your role allows</b>; an administrator can change roles in <b>Settings → Users and access</b>.",
+   "backTranslation": "Most likely, your role does not provide for this. Parameters, Activity Log, \"Pause all\", the speed limit menu, \"Provider Status\", \"Restore all\" and \"Transfer Trace Log\" are available only to administrators. A user cannot remove or switch a download that is still needed by another account, and a read-only user can change neither downloads nor settings. See <b>Daily Work → What Your Role Allows</b>; an administrator can change roles in the section <b>Parameters → Users and Access</b>.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: Help headings 'Everyday Use' / 'What your role lets you do' rendered «Щоденне використання» / «Що дозволяє ваша роль»; harmonize with the chunk that translates those headings. | harmonized: cross-chunk Help harmonization (tab/section names, UI labels and reviewed UI fixes, one rendering per concept, Ukrainian register)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -26784,10 +26962,18 @@
   },
   "help.trouble.download_stays_processing.timing_lives_under": {
    "source": "d5d935d74e464fbc",
-   "translation": "7f98ab8a09e7c0a4",
+   "translation": "7067fb9077a8925c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.trouble.download_slow_stalls.check_speed_cap": {
@@ -26940,10 +27126,18 @@
   },
   "help.trouble.automatic_extraction_did.check_settings_extraction": {
    "source": "8b3b3fa400b3dcde",
-   "translation": "d69e4717867e1dc8",
+   "translation": "4a0a197e7c4469db",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.trouble.webhook_notifications_prometheus.webhook_notifications_press.standalone": {
@@ -27004,7 +27198,7 @@
   },
   "help.trouble.i_cannot_sign.if_another_sign": {
    "source": "5948818cce34be75",
-   "translation": "0799bf0b094aa1f6",
+   "translation": "c226d10e37544211",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27015,6 +27209,12 @@
      "note": "Translator: identity service = «постачальник ідентичності» (as settings.oidc.callback_hint); label kept nominative via «таку саму адресу, як …».",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Налаштування» became «Параметри» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
@@ -27242,19 +27442,25 @@
   },
   "help.quickstart.follow_finish.download_appears_download.submit": {
    "source": "cfb31d157d9df8ac",
-   "translation": "1b845cada42f3138",
+   "translation": "88786978565565c6",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The download appears in the <b>Download activity</b> block on the dashboard and on the <b>Downloads</b> page. Click it to open the details: the service delivering it, files and events. You can pause, resume and retry downloads; a download can be removed only when no other account needs it any more, and otherwise you can revoke your own request in the <b>Requested by</b> field.",
+   "backTranslation": "The download appears in the <b>Download activity</b> block on the dashboard and on the <b>Downl.</b> page. Click it to open the details: the service that delivers it, the files and the events. You can pause, resume and retry downloads; a download can be removed only when it is no longer needed by any other account, and otherwise you can withdraw your own request in the <b>Request from</b> field.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: harmonized: cross-chunk Help harmonization (tab/section names, UI labels and reviewed UI fixes, one rendering per concept, Ukrainian register)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English (back-translated before a doubled sentence point after the abbreviation was removed; punctuation only)."
     }
    ]
   },
@@ -27292,10 +27498,18 @@
   },
   "help.quickstart.see_what_happening.dashboard_shows_downloads": {
    "source": "8fc85590202a675c",
-   "translation": "93a73c8d906ef6fc",
+   "translation": "f74a0492cf694816",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Завантаження» became the product-approved abbreviation «Завант.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.open_download.click_any_download": {

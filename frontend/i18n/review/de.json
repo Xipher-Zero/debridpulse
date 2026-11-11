@@ -88,10 +88,18 @@
   },
   "shell.nav.settings": {
    "source": "74a883a037bc227f",
-   "translation": "f5750a5d7231e1f7",
+   "translation": "f1daae3521fedae5",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.nav.notifications": {
@@ -216,10 +224,18 @@
   },
   "shell.page.settings.title": {
    "source": "74a883a037bc227f",
-   "translation": "f5750a5d7231e1f7",
+   "translation": "f1daae3521fedae5",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.page.settings.subtitle": {
@@ -23363,36 +23379,58 @@
   },
   "help.quickstart.before_begin.who_can_do_what.standalone": {
    "source": "6f15b8526dadafd8",
-   "translation": "fc924a33768f27c8",
+   "translation": "0fd509debee8e2ab",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Who can do what:</b> In a Standalone installation, only the built-in <b>Admin</b> can sign in, and it manages the settings. Other people's accounts that date from a time when this installation was a Server are neither deleted nor converted: they keep their data but cannot sign in while the installation is Standalone. Other applications connect via accounts of type <b>Integration</b>, under <b>Settings → Access & Integrations</b>.",
+   "backTranslation": "<b>Who may do what:</b> In a Standalone installation, only the built-in <b>Admin</b> can sign in, and he manages the settings. Other people's accounts that date from a time when this installation was a server are neither deleted nor converted: they keep their data but cannot sign in as long as the installation is Standalone. Other applications connect via accounts of type <b>Integration</b>, under <b>Options → Access & Integrations</b>.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: Term span Integration kept uninflected inside „Konten vom Typ <b>Integration</b>“. | harmonized: built-in Administrator → „integrierter Admin“",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
     }
    ]
   },
   "help.quickstart.before_begin.login_protection.username_password_shown": {
    "source": "42d48d569eb0978c",
-   "translation": "84f23d7347bae0ca",
+   "translation": "1f53f51c7752b6cd",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.before_begin.login_protection.username_password_hidden": {
    "source": "be5f6baece2ce2b0",
-   "translation": "0c043bca57a67f40",
+   "translation": "48575b1302cac2a6",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.before_begin.who_can_do_what.server": {
@@ -23413,10 +23451,18 @@
   },
   "help.quickstart.check_where_downloads.open_settings_downloads": {
    "source": "f1891f0a01d5e80f",
-   "translation": "47c2ab2953acd7d4",
+   "translation": "540a92b95acbf22d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.check_where_downloads.if_debridpulse_runs": {
@@ -23429,10 +23475,18 @@
   },
   "help.quickstart.choose_services_want.open_settings_services": {
    "source": "6cb2c3f130edc17c",
-   "translation": "4480cd8ac0a4a914",
+   "translation": "426ab45f491e89a8",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.choose_services_want.every_premium_service": {
@@ -23639,18 +23693,34 @@
   },
   "help.using.lead.sidebar_has_three.activity_log_shown": {
    "source": "46afea0fd047d44e",
-   "translation": "d4d31e0ae27c7187",
+   "translation": "5a7bddea59bfcfd7",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.admin": {
    "source": "26a4381ea99d4e59",
-   "translation": "972936b7becd2fd7",
+   "translation": "4fcf91a1410f4c76",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.personal": {
@@ -24415,10 +24485,18 @@
   },
   "help.using.activity_log_admin.events_kept_until": {
    "source": "f09c8d4bcf228814",
-   "translation": "f4b099767509e192",
+   "translation": "a27a4ec9b84e4f5d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.using.statistics.top_cards_completions": {
@@ -24691,7 +24769,7 @@
   },
   "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_shown": {
    "source": "3ec89c4bd968c858",
-   "translation": "feeeb433f7498c9d",
+   "translation": "012fb77068eb730a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24702,6 +24780,12 @@
      "note": "Translator: 'timeout' in prose → „Zeitüberschreitung“ (not the setting name); 'rate limit' → „Anfragelimit“.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
@@ -25083,10 +25167,18 @@
   },
   "help.services.summary.admin": {
    "source": "9ab41167115f9920",
-   "translation": "81cf561bdb66c0cf",
+   "translation": "2710818e9a2630ec",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.services.summary.member": {
@@ -25595,7 +25687,7 @@
   },
   "help.services.usenet.good_know.transfer_method_settings_shown": {
    "source": "bd792260f00ca77e",
-   "translation": "c8b30dd76747d65b",
+   "translation": "2a66fc4ab3c830c7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25612,6 +25704,12 @@
      "note": "Reviewer: „jeder solche Server“ is clumsy",
      "status": "resolved",
      "resolution": "„jeder dieser Server“"
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
     }
    ]
   },
@@ -25673,13 +25771,13 @@
   },
   "help.services.network_sources.all_network_sources.transfer_method_settings_shown": {
    "source": "91fa8e4dd7955514",
-   "translation": "6d7cd1cc7cc38845",
+   "translation": "12e2939ebf1440ff",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "In a new installation all network sources are turned on. The group's <b>Enable</b> switch turns the whole group off or back on; each box additionally has its own switch, and a source only works as long as both are turned on. When the group is turned back on, each box gets its previous state back. There is no Test button for them: whether a link works depends on the particular server. You can find their fine-tuning under <b>Settings → Downloads → Transfer method settings</b>.",
+   "backTranslation": "In a new installation, all network sources are switched on. The group's <b>Activate</b> switch turns the whole group off or back on; each box additionally has its own switch, and a source works only as long as both are switched on. When the group is switched back on, each box gets its previous state back. There is no Test button for them: whether a link works depends on the respective server. You can find their fine-tuning under <b>Options → Downloads → Settings of the transfer methods</b>.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -25692,6 +25790,12 @@
      "note": "Reviewer: „<b>Aktivieren</b> der Gruppe schaltet …“ reads as the nominalized verb, not the control",
      "status": "resolved",
      "resolution": "„Der Schalter <b>Aktivieren</b> der Gruppe …“; full scope (both switches must be on, restore on re-enable) unchanged"
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -26041,10 +26145,18 @@
   },
   "help.engines.limits_apply_every.maximum_concurrent_downloads": {
    "source": "ab67241b8f9ea54b",
-   "translation": "bc21e20d9d6ddced",
+   "translation": "d729ce76dbe7b0a2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.engines.limits_apply_every.speed_cap_header": {
@@ -26185,13 +26297,21 @@
   },
   "help.engines.download_engine_activity.settings_downloads_download_engine": {
    "source": "0b70ad9ba66c885b",
-   "translation": "877bbcd3ce7990f5",
+   "translation": "3819defcd006b69a",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Settings → Downloads → Download Engine Activity</b> lists the engines' jobs (filterable by \"Active\", \"Waiting\", \"Paused\" or \"Stopped\"), with <b>Pause</b>, <b>Resume</b> or <b>Stop</b>, where the respective engine supports it. Before stopping, a confirmation is required. This is a tool for recovering a job that is genuinely stuck. For normal work, use the \"Downloads\" page, which keeps DebridPulse's own records up to date."
+   "backTranslation": "<b>Options → Downloads → Download engine activity</b> lists the engines' jobs (filterable by \"Active\", \"Waiting\", \"Paused\" or \"Stopped\"), with <b>Pause</b>, <b>Resume</b> or <b>End</b>, provided the respective engine supports this. Before ending, a confirmation is required. This is a tool for recovering a job that is actually stuck. For normal work, use the \"Downloads\" page, which keeps DebridPulse's own records up to date.",
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.settings.title": {
    "source": "526d0b41605bb179",
@@ -27011,19 +27131,25 @@
   },
   "help.trouble.button_page_setting.most_likely_role": {
    "source": "bf6064eb63e3ea81",
-   "translation": "89bb512d7fed7e96",
+   "translation": "59ff973c26a0d099",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Most likely your role does not include this function. Settings, the Activity Log, \"Pause all\", the speed-limit menu, Provider Status, \"Restore all\" and the Transfer trace log are reserved for Admins. A User cannot remove or switch a download that another account still needs, and a Read-only user can change neither downloads nor settings. See <b>Day to day → What your role lets you do</b>; an Admin can change roles under <b>Settings → Users & Access</b>.",
+   "backTranslation": "Most likely your role does not include this function. Options, the Activity Log, \"Pause all\", the speed-limit menu, the Provider Status, \"Recover all\" and the Transfer Trace Log are reserved for Admins. A User cannot remove or switch a download that another account still needs, and a Read-only User can change neither downloads nor settings. See <b>In Everyday Use → What Your Role Allows You</b>; an Admin can change roles under <b>Options → Users & Access</b>.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: Section names not yet translated in this chunk set: 'Everyday Use' → „Alltägliche Nutzung“, 'What your role lets you do' → „Was Ihre Rolle erlaubt“; align with help.tab.using / help.using.what_role_lets.title. | harmonized: help-tab/section names = help.tab.* / *.title",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -27249,10 +27375,18 @@
   },
   "help.trouble.download_stays_processing.timing_lives_under": {
    "source": "d5d935d74e464fbc",
-   "translation": "ce9b212106658f1a",
+   "translation": "61a418385ecf9e9e",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.trouble.download_slow_stalls.check_speed_cap": {
@@ -27421,10 +27555,18 @@
   },
   "help.trouble.automatic_extraction_did.check_settings_extraction": {
    "source": "8b3b3fa400b3dcde",
-   "translation": "3232526e76cb2aef",
+   "translation": "0a7a0b5e71665c84",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.trouble.webhook_notifications_prometheus.webhook_notifications_press.standalone": {
@@ -27515,10 +27657,18 @@
   },
   "help.trouble.i_cannot_sign.if_another_sign": {
    "source": "5948818cce34be75",
-   "translation": "e9de9e20fb239968",
+   "translation": "4c87b5ab70da42b3",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.trouble.i_cannot_sign.username_password_openid": {

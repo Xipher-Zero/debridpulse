@@ -87,10 +87,18 @@
   },
   "shell.nav.settings": {
    "source": "74a883a037bc227f",
-   "translation": "7b855ce7525ebc18",
+   "translation": "5131ebf79de0168d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.nav.notifications": {
@@ -215,10 +223,18 @@
   },
   "shell.page.settings.title": {
    "source": "74a883a037bc227f",
-   "translation": "7b855ce7525ebc18",
+   "translation": "5131ebf79de0168d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.page.settings.subtitle": {
@@ -23214,28 +23230,52 @@
   },
   "help.quickstart.before_begin.who_can_do_what.standalone": {
    "source": "6f15b8526dadafd8",
-   "translation": "337cfb5533b45620",
+   "translation": "ffc68e8b91f54341",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Who can do what:</b> only the built-in <b>Admin</b>, who manages the Settings, can sign in to a Standalone installation. Other people's accounts, kept from when this installation was of the Server type, are not deleted or converted: they keep their data but cannot sign in while the installation is Standalone. Other applications connect as <b>Integration</b> accounts, in <b>Settings → Access and integrations</b>."
+   "backTranslation": "<b>Who can do what:</b> only the built-in <b>Admin</b>, who manages the Options, can sign in to a Standalone installation. Other people's accounts, kept from when this installation was of the Server type, are neither deleted nor converted: they keep their own data but cannot sign in while the installation is Standalone. Other applications connect as <b>Integration</b> accounts, in <b>Options → Access and integrations</b>.",
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.quickstart.before_begin.login_protection.username_password_shown": {
    "source": "42d48d569eb0978c",
-   "translation": "c0bc84d9e426d852",
+   "translation": "ecc6b0a8b60ab40a",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.before_begin.login_protection.username_password_hidden": {
    "source": "be5f6baece2ce2b0",
-   "translation": "5385cfb9a78d57ac",
+   "translation": "208a6ab8eda4d949",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.before_begin.who_can_do_what.server": {
@@ -23248,7 +23288,7 @@
   },
   "help.quickstart.check_where_downloads.open_settings_downloads": {
    "source": "f1891f0a01d5e80f",
-   "translation": "50a4464002176f18",
+   "translation": "b5211e2c7d96c026",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23259,6 +23299,12 @@
      "note": "Reviewer: A folder does not «contain» free space; unidiomatic.",
      "status": "resolved",
      "resolution": "«quanto spazio libero ha a disposizione»."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
     }
    ]
   },
@@ -23272,10 +23318,18 @@
   },
   "help.quickstart.choose_services_want.open_settings_services": {
    "source": "6cb2c3f130edc17c",
-   "translation": "f52595f36349078d",
+   "translation": "a520c9be786d186b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.choose_services_want.every_premium_service": {
@@ -23470,18 +23524,34 @@
   },
   "help.using.lead.sidebar_has_three.activity_log_shown": {
    "source": "46afea0fd047d44e",
-   "translation": "20190ab5fb2cc8e4",
+   "translation": "7f04be52160f01b9",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.admin": {
    "source": "26a4381ea99d4e59",
-   "translation": "84d9e9e34c3d14b6",
+   "translation": "6660edfc338e755b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.personal": {
@@ -24190,7 +24260,7 @@
   },
   "help.using.activity_log_admin.events_kept_until": {
    "source": "f09c8d4bcf228814",
-   "translation": "0ef8c8224d031547",
+   "translation": "3ef7a3323c6e3674",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24201,6 +24271,12 @@
      "note": "Reviewer: «ripristino» is reserved for restore/restore point (termbase «Punto di ripristino»); the UI calls the database reset «reimpostazione» (settings.reset.title).",
      "status": "resolved",
      "resolution": "Uses «reimpostazione»."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
     }
    ]
   },
@@ -24482,10 +24558,18 @@
   },
   "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_shown": {
    "source": "3ec89c4bd968c858",
-   "translation": "fe26ab5076ed6df3",
+   "translation": "947d05f64995c7f7",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_hidden": {
@@ -24856,10 +24940,18 @@
   },
   "help.services.summary.admin": {
    "source": "9ab41167115f9920",
-   "translation": "6b18711347f89335",
+   "translation": "a47eaeb89eee7d03",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.services.summary.member": {
@@ -25424,10 +25516,18 @@
   },
   "help.services.usenet.good_know.transfer_method_settings_shown": {
    "source": "bd792260f00ca77e",
-   "translation": "5d25f6f37d823397",
+   "translation": "ee44410839d5cee7",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.services.usenet.good_know.admin": {
@@ -25464,19 +25564,25 @@
   },
   "help.services.network_sources.all_network_sources.transfer_method_settings_shown": {
    "source": "91fa8e4dd7955514",
-   "translation": "310220bed5b8619b",
+   "translation": "4dbbe9b9690c9093",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "All network sources are on in a new installation. The group's <b>Enable</b> switch turns the whole group off or back on; each card also has its own switch, and a source works only when both are on. When the group is turned back on, each card returns to how it was. They have no Test button: whether a link works depends on the server in question. Their tuning is in <b>Settings → Downloads → Transfer method settings</b>.",
+   "backTranslation": "All network sources are active in a new installation. The group's <b>Active</b> switch deactivates or reactivates the whole group; each panel also has its own switch, and a source works only when both are active. When the group is reactivated, each panel returns to how it was. They do not have a Test button: whether a link works depends on the server in question. Their tuning is found in <b>Options → Downloads → Transfer method settings</b>.",
    "findings": [
     {
      "kind": "style",
      "note": "Reviewer: Sentence started with a bare bold label used as a noun (\"Attiva del gruppo\"), which reads as a verb.",
      "status": "resolved",
      "resolution": "Adds \"L'interruttore\"; bold label unchanged."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -25842,10 +25948,18 @@
   },
   "help.engines.limits_apply_every.maximum_concurrent_downloads": {
    "source": "ab67241b8f9ea54b",
-   "translation": "3cf14e6bca6286fa",
+   "translation": "69237d713794d0de",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.engines.limits_apply_every.speed_cap_header": {
@@ -25962,19 +26076,25 @@
   },
   "help.engines.download_engine_activity.settings_downloads_download_engine": {
    "source": "0b70ad9ba66c885b",
-   "translation": "77980ccf789a6af6",
+   "translation": "ccc202f759c53278",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Settings → Downloads → Download engine activity</b> lists the engine jobs (filterable by Active, Waiting, Paused or Stopped), with <b>Pause</b>, <b>Resume</b> or <b>Terminate</b> where the engine supports it. “Terminate” asks for confirmation first. It is a recovery tool for a job that is truly stuck. For normal work use the Downloads page, which keeps DebridPulse's records aligned.",
+   "backTranslation": "<b>Options → Downloads → Download engine activity</b> lists the engines' jobs (filterable by Active, Waiting, Paused or Stopped), with <b>Pause</b>, <b>Resume</b> or <b>End</b> where the engine supports it. \"End\" asks for confirmation first. It is a recovery tool for a truly stuck job. For normal work use the Downloads page, which keeps DebridPulse's records aligned.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: harmonized: on-screen names in plain-text prose quoted with « » (UI convention)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -26662,13 +26782,13 @@
   },
   "help.trouble.button_page_setting.most_likely_role": {
    "source": "bf6064eb63e3ea81",
-   "translation": "76150bc989c387dc",
+   "translation": "699b438cbfd944e2",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Most likely your role does not include it. Settings, the Activity Log, «Pause all», the speed limit menu, «Provider status», «Recover all» and «Transfer trace log» are reserved for Admins. A User cannot remove a download that another account still needs nor change its source, and a read-only User cannot modify downloads or settings. See <b>Daily use → What your role lets you do</b>; an Admin can change roles in <b>Settings → Users and access</b>.",
+   "backTranslation": "Most likely your role does not include it. Options, the Activity Log, \"Pause all\", the speed limit menu, \"Provider status\", \"Recover all\" and \"Transfer trace log\" are reserved for Admins. A User cannot remove a download that another account still needs nor change its source, and a read-only User cannot modify downloads or settings. See <b>Daily use → What your role lets you do</b>; an Admin can change roles in <b>Options → Users and access</b>.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -26687,6 +26807,12 @@
      "note": "Back-translation comparison: \"switch a download\" (switch its source/service) became \"cambiare un download\" (change a download), which broadens the restriction to any change; Users may pause, retry and reorder such downloads.",
      "status": "resolved",
      "resolution": "Corrected German from the comparison; back-translated again."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English."
     }
    ]
   },
@@ -26890,10 +27016,18 @@
   },
   "help.trouble.download_stays_processing.timing_lives_under": {
    "source": "d5d935d74e464fbc",
-   "translation": "38cf4a78a4dabe31",
+   "translation": "ee8edb5fc9f0eb4e",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.trouble.download_slow_stalls.check_speed_cap": {
@@ -27030,10 +27164,18 @@
   },
   "help.trouble.automatic_extraction_did.check_settings_extraction": {
    "source": "8b3b3fa400b3dcde",
-   "translation": "c009ac279ecb100a",
+   "translation": "f81d74ab4d89bbf3",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.trouble.webhook_notifications_prometheus.webhook_notifications_press.standalone": {
@@ -27086,10 +27228,18 @@
   },
   "help.trouble.i_cannot_sign.if_another_sign": {
    "source": "5948818cce34be75",
-   "translation": "b641e98458d52b36",
+   "translation": "b8434555c0c12f61",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Impostazioni» became the page name «Opzioni» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.trouble.i_cannot_sign.username_password_openid": {

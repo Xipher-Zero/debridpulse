@@ -10,7 +10,7 @@
    ]
   },
   "downloads_page": {
-   "target": "Téléchargements"
+   "target": "Téléch."
   },
   "premium_services": {
    "target": "Services premium",
@@ -102,7 +102,7 @@
    "target": "Activité des moteurs de téléchargement"
   },
   "dashboard": {
-   "target": "Tableau de bord"
+   "target": "Aperçu"
   },
   "settings": {
    "target": "Paramètres"

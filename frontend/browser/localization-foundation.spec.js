@@ -254,6 +254,22 @@ test('L24b: 320px: Japanese and Arabic keep the whole Dashboard name in the head
   await show('en');
 });
 
+test('L24c: 320px: the shortened page names fit the unchanged dock and header (French Dashboard and Downloads; Ukrainian Downloads; German, Spanish, Brazilian Portuguese, Ukrainian and Italian Settings)', async ({page}) => {
+  await boot(page, 320);
+  const show = tag => page.evaluate(t => window.DPI18n.setLocale(t, {catalog: `/i18n/${t}.js`, dir: 'ltr'}), tag);
+  const whole = view => page.evaluate(view => {
+    const label = document.querySelector(`.dp-shell-dock-item[data-view="${view}"] .dp-shell-label`);
+    const title = document.getElementById('page-title');
+    return {dock: label.scrollWidth <= label.clientWidth, title: title.scrollWidth <= title.clientWidth};
+  }, view);
+  for (const [tag, view] of [['fr', 'dashboard'], ['fr', 'torrents'], ['uk', 'torrents'], ['de', 'settings'], ['es', 'settings'], ['pt-BR', 'settings'], ['uk', 'settings'], ['it', 'settings']]) {
+    expect(await show(tag)).toBe(tag);
+    await page.locator(`#sidebar .nav-item[data-view="${view}"]`).first().evaluate(element => element.click());
+    await expect.poll(() => whole(view), {message: `${tag} ${view}`}).toEqual({dock: true, title: true});
+  }
+  await show('en');
+});
+
 test('L08b: an open My Account dialog is re-worded in place on a language change: title, footer and actions, its focus kept', async ({page}) => {
   await boot(page, 390);
   await openAccount(page);

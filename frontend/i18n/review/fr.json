@@ -29,18 +29,34 @@
   },
   "shell.nav.dashboard": {
    "source": "67b696468610b879",
-   "translation": "ac0e5fc936ade441",
+   "translation": "bb28a9f4a4e34fac",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.nav.downloads": {
    "source": "d5fdc1af021e2d36",
-   "translation": "9581d056ec2b1776",
+   "translation": "59471e34141ff2d2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.nav.activity_log": {
@@ -128,10 +144,18 @@
   },
   "shell.page.dashboard.title": {
    "source": "67b696468610b879",
-   "translation": "ac0e5fc936ade441",
+   "translation": "bb28a9f4a4e34fac",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "shell.page.dashboard.subtitle": {
@@ -144,10 +168,18 @@
   },
   "shell.page.downloads.title": {
    "source": "d5fdc1af021e2d36",
-   "translation": "9581d056ec2b1776",
+   "translation": "59471e34141ff2d2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "shell.page.downloads.subtitle": {
@@ -23086,10 +23118,18 @@
   },
   "help.quickstart.add_first_download.dashboard_paste_link": {
    "source": "4b0d2b973c5db101",
-   "translation": "f118278ad3ff01ba",
+   "translation": "404ce4403ea63719",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    }
    ]
   },
   "help.quickstart.add_first_download.if_download_contains": {
@@ -23102,10 +23142,18 @@
   },
   "help.quickstart.follow_finish.download_appears_download.admin": {
    "source": "c721570ae19324e0",
-   "translation": "76e708fd0b74706e",
+   "translation": "697cfc5cce2a137b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.follow_finish.if_something_does.activity_log_shown": {
@@ -23214,34 +23262,90 @@
   },
   "help.using.lead.sidebar_has_three.activity_log_shown": {
    "source": "46afea0fd047d44e",
-   "translation": "d1138691dbba1b98",
+   "translation": "0ee7d1ec8dd240a1",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.admin": {
    "source": "26a4381ea99d4e59",
-   "translation": "193eef1515922645",
+   "translation": "51188ce4981337d4",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.personal": {
    "source": "a3e3fdc1e14da996",
-   "translation": "08cebcb134c7eda8",
+   "translation": "817d9ee81cf642bb",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.sidebar_has_three.no_personal": {
    "source": "212a396f46a3077a",
-   "translation": "98be736a372f64fc",
+   "translation": "3e15a27ba0b82f26",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.using.lead.standalone_installation_only": {
@@ -26800,13 +26904,21 @@
   },
   "help.quickstart.follow_finish.download_appears_download.submit": {
    "source": "cfb31d157d9df8ac",
-   "translation": "67a3227e82779710",
+   "translation": "250efa580fa031d6",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The download appears in <b>Download activity</b> on the Dashboard and in <b>Downloads</b>. Click it to open its details: the service providing it, its files and its events. You can pause, resume and retry downloads; you can remove one only if no other account still needs it, and otherwise remove your own request in <b>Requested by</b>."
+   "backTranslation": "The download appears in <b>Download activity</b> on the Dashboard and in <b>Downl.</b>. Click it to open its details: the service that provides it, its files and its events. You can pause, resume and retry downloads; you can only remove one if no other account still needs it, and otherwise withdraw your own request in <b>Requested by</b>.",
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English (back-translated before a doubled sentence point after the abbreviation was removed; punctuation only)."
+    }
+   ]
   },
   "help.quickstart.hear_about.notifications.statistics_reporting_shown": {
    "source": "a98565a4ff4c5b64",
@@ -26826,10 +26938,24 @@
   },
   "help.quickstart.see_what_happening.dashboard_shows_downloads": {
    "source": "8fc85590202a675c",
-   "translation": "5377ab4ce45e99a8",
+   "translation": "199576ee85598d18",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "WS7-A (text-only fit): the page name «Tableau de bord» became «Aperçu» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision)."
+    },
+    {
+     "kind": "style",
+     "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
+     "status": "resolved",
+     "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    }
    ]
   },
   "help.quickstart.open_download.click_any_download": {
