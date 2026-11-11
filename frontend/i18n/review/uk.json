@@ -12670,10 +12670,18 @@
   },
   "settings.page_label": {
    "source": "74a883a037bc227f",
-   "translation": "16e671aa4e14998b",
+   "translation": "2c56d4af59173c62",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "settings.premium_provider": {
@@ -23722,7 +23730,7 @@
   },
   "help.using.lead.what_see_depends": {
    "source": "689f158b7a8abe73",
-   "translation": "51b3104b3190df2c",
+   "translation": "88d6de1bd9ed4085",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23733,6 +23741,12 @@
      "note": "Translator: harmonized: cross-chunk Help harmonization (tab/section names, UI labels and reviewed UI fixes, one rendering per concept, Ukrainian register)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -25015,18 +25029,34 @@
   },
   "help.services.lead.settings_services_has": {
    "source": "e87c2996eeb51fee",
-   "translation": "46ff588102882b1d",
+   "translation": "3e8ab3493e283fa2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.who_sets_up.admin_connects_configures": {
    "source": "8495020846e2ff88",
-   "translation": "38f137fdd983181a",
+   "translation": "f77da1ac374b5c84",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.how_service_card.enable": {
@@ -26040,10 +26070,18 @@
   },
   "help.settings.summary.server_advanced": {
    "source": "22536cb01261e2a1",
-   "translation": "12bdd91eda3c6e6c",
+   "translation": "f34c8e8fa428843b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.how_saving_works.there_no_save": {
@@ -27020,13 +27058,21 @@
   },
   "help.trouble.download_slow_stalls.job_truly_stuck": {
    "source": "0c58dbff211dd5b7",
-   "translation": "1aed5d3a044b333b",
+   "translation": "1ea6aa5531cf3c6f",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "A job that is truly stuck can be forcibly ended in the <b>Download engine activity</b> section (\"Settings → Downloads\"). However, it is better to click <b>Retry</b> on the download itself."
+   "backTranslation": "A task that has really hung can be forcibly ended in the <b>Download engines activity</b> section (\"Parameters → Downloads\"). However, it is better to press <b>Repeat</b> for the download itself.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.trouble.server_keeps_asking.rejected_password_never": {
    "source": "46caf26e21782c61",
@@ -27228,13 +27274,21 @@
   },
   "help.trouble.i_cannot_sign.last_resort_if_no": {
    "source": "53296de14acc536b",
-   "translation": "09f615d36e2c60ba",
+   "translation": "848c3ce4a0a15afd",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Last resort if no sign-in method works:</b> this requires access to the computer on which DebridPulse runs, and it temporarily removes all protection, so do it only on a trusted network. Stop DebridPulse and make a backup of its configuration file (usually <code>{path}</code> in the container). In that file, set <code>{literal_1}</code> and <code>{literal_2}</code> to the value <code>{literal_3}</code>, keeping the file valid JSON; with a damaged configuration file DebridPulse will not start. Start DebridPulse: it is now open to anyone who can reach it, including through its API. Your saved password and OIDC settings remain, so fix them in \"Settings → Authentication\" and immediately turn protection back on."
+   "backTranslation": "<b>Extreme measure, if no sign-in method works:</b> this requires access to the computer on which DebridPulse is running, and it temporarily removes all protection, so do this only on a trusted network. Stop DebridPulse and create a backup copy of its configuration file (usually <code>{path}</code> in the container). In this file set for <code>{literal_1}</code> and <code>{literal_2}</code> the value <code>{literal_3}</code>, keeping the file valid JSON; with a damaged configuration file DebridPulse will not start. Start DebridPulse: now it is open to anyone who can get to it, including via its API. Your saved password and OIDC settings remain, so fix them in the \"Parameters → Authentication\" section and immediately turn the protection back on.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.trouble.i_cannot_sign.sign_methods_accounts": {
    "source": "05f5cab03b5a7a44",
@@ -27538,7 +27592,7 @@
   },
   "help.quickstart.where_read_next.settings_controls_marked": {
    "source": "cf46274ac221386b",
-   "translation": "6651309ed41603cb",
+   "translation": "6f34c10a6ab45842",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27555,6 +27609,12 @@
      "note": "Reviewer: «входите з паролем» is an English calque of «sign in with one».",
      "status": "resolved",
      "resolution": "Uses «входите за допомогою пароля»."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -27584,10 +27644,18 @@
   },
   "help.notifications.summary": {
    "source": "e95e7795333ca169",
-   "translation": "22edb8362871b61f",
+   "translation": "e913eea1b3d0f0a5",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.notifications.how_saving_works.there_no_save": {
@@ -28428,26 +28496,50 @@
   },
   "help.settings.summary.standalone_easy": {
    "source": "07d3ae5af470676c",
-   "translation": "0f1b1c808871e0b7",
+   "translation": "e68051b6d871d92f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.standalone_advanced": {
    "source": "756839feb2ade733",
-   "translation": "83f7cab2b2fa0401",
+   "translation": "e5cdf2dce6cb166f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.server_easy": {
    "source": "dd5066bcd7c556a3",
-   "translation": "40db9ee336b87bcb",
+   "translation": "efb4353013219abd",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.howitworks.pipeline.add.title": {
@@ -28612,10 +28704,18 @@
   },
   "help.tab.settings": {
    "source": "74a883a037bc227f",
-   "translation": "16e671aa4e14998b",
+   "translation": "2c56d4af59173c62",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.tab.notifications": {
@@ -28934,10 +29034,18 @@
   },
   "help.roles.settings_accounts_maintenance_activity": {
    "source": "9b5483ade9004dff",
-   "translation": "f473c68257070725",
+   "translation": "d2e3f8ec37ce486e",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.roles.hold_api_tokens": {
@@ -30536,7 +30644,7 @@
   },
   "help.topic.tuning_direct.connections_segments.changes_also_apply": {
    "source": "e5f32f8f321a230c",
-   "translation": "85a9b88685f2198c",
+   "translation": "4ad5f4367061c485",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30547,6 +30655,12 @@
      "note": "Reviewer: «перепід’єднатися» is a non-standard coinage; «прогрес» less native than «поступ».",
      "status": "resolved",
      "resolution": "«повторно під’єднатися», «поступ»."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -30768,10 +30882,18 @@
   },
   "help.topic.heading.settings": {
    "source": "74a883a037bc227f",
-   "translation": "16e671aa4e14998b",
+   "translation": "2c56d4af59173c62",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Налаштування» after WS7-A renamed the page «Параметри»; it now says «Параметри». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.topic.tuning_usenet.settings.article_cache_limit": {

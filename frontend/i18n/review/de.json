@@ -9332,10 +9332,18 @@
   },
   "directory_picker.download.fallback_notice": {
    "source": "eadbc63b10d3c1df",
-   "translation": "d5c9671551e2de47",
+   "translation": "62590fed6a20ff31",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "directory_picker.backup.title": {
@@ -9364,10 +9372,18 @@
   },
   "directory_picker.backup.fallback_notice": {
    "source": "9101e8097d84d255",
-   "translation": "2cd6928f1fe90347",
+   "translation": "a5d3764c6edf5274",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "directory_picker.accept": {
@@ -12826,10 +12842,18 @@
   },
   "settings.page_label": {
    "source": "74a883a037bc227f",
-   "translation": "f5750a5d7231e1f7",
+   "translation": "f1daae3521fedae5",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "settings.premium_provider": {
@@ -15560,10 +15584,18 @@
   },
   "settings.backups.skipped": {
    "source": "4a4f198a51a0ae4d",
-   "translation": "6d0ea81e145d04f7",
+   "translation": "37eef473154b58a0",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "settings.backups.snapshot_interval": {
@@ -15675,19 +15707,25 @@
   },
   "settings.deployment.server_confirm_message": {
    "source": "7c5b7083bbd4e792",
-   "translation": "f44c1809fe0e337d",
+   "translation": "09b79ec0c3c767dd",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Existing user accounts get their stored status (enabled/disabled) back; none is deleted. Sign-in by password and OIDC will be disabled, the built-in Admin's password will be removed, if present, and existing browser sessions will be ended. The installation is accessible without authentication to anyone who can reach it, until you enable authentication in Settings. The stored authentication configuration is kept. Continue?",
+   "backTranslation": "Existing user accounts get back their saved status (enabled/disabled); none is deleted. Sign-in by password and OIDC will be disabled, the password of the built-in Admin will be removed, if present, and existing browser sessions will be ended. The installation is accessible without authentication to anyone who can reach it, until you enable authentication in the Options. The saved authentication configuration is retained. Continue?",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: „built-in Administrator“ rendered with the termbase role term „integrierter Admin“. | harmonized: Clear Password (sign-in password, consequence-bearing) → „Passwort entfernen“",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -18193,7 +18231,7 @@
   },
   "settings.role.admin_description": {
    "source": "d314626611402df8",
-   "translation": "8c866329f744790b",
+   "translation": "2ced381381bfd258",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -18204,6 +18242,12 @@
      "note": "Reviewer: Case mismatch after „einschließlich“: bare nominatives mixed with genitive „aller Transfers“.",
      "status": "resolved",
      "resolution": "Consistent genitive throughout."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23379,13 +23423,13 @@
   },
   "help.quickstart.before_begin.who_can_do_what.standalone": {
    "source": "6f15b8526dadafd8",
-   "translation": "0fd509debee8e2ab",
+   "translation": "a77d0cbe9244b74e",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Who may do what:</b> In a Standalone installation, only the built-in <b>Admin</b> can sign in, and he manages the settings. Other people's accounts that date from a time when this installation was a server are neither deleted nor converted: they keep their data but cannot sign in as long as the installation is Standalone. Other applications connect via accounts of type <b>Integration</b>, under <b>Options → Access & Integrations</b>.",
+   "backTranslation": "<b>Who may do what:</b> In a Standalone installation only the built-in <b>Admin</b> can sign in, and he manages the Options. Accounts of other people that date from a time when this installation was a Server are neither deleted nor converted: they keep their data, but cannot sign in as long as the installation is Standalone. Other applications connect via accounts of type <b>Integration</b>, under <b>Options → Access & Integrations</b>.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -23398,6 +23442,12 @@
      "note": "WS7-A (text-only fit): the page name «Einstellungen» became «Optionen» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
      "status": "resolved",
      "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -23435,7 +23485,7 @@
   },
   "help.quickstart.before_begin.who_can_do_what.server": {
    "source": "a8df7789b6cc587f",
-   "translation": "b40d0c82747225f6",
+   "translation": "c7cf7344f266b19f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23446,6 +23496,12 @@
      "note": "Translator: harmonized: help-tab/section names = help.tab.* / *.title",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23645,7 +23701,7 @@
   },
   "help.quickstart.where_read_next.settings": {
    "source": "417777f2d4739715",
-   "translation": "6a7c8884a1bae547",
+   "translation": "f1b25b92f596716a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23656,6 +23712,12 @@
      "note": "Translator: harmonized: UI tab → „Registerkarte“",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
     }
    ]
   },
@@ -23757,7 +23819,7 @@
   },
   "help.using.lead.what_see_depends": {
    "source": "689f158b7a8abe73",
-   "translation": "a03e9fe071990d8b",
+   "translation": "b13cda432ebfb88a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23768,6 +23830,12 @@
      "note": "Reviewer: The marker is written „(nur Admin)“ in the entries below and in help06 titles; the bold reference said „Nur Admin“.",
      "status": "resolved",
      "resolution": "Bold reference now matches the marker text „nur Admin“."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23789,7 +23857,7 @@
   },
   "help.using.who_uses_installation.built_administrator": {
    "source": "904ae141d0079327",
-   "translation": "f21939e55b82fc6d",
+   "translation": "470f97439cd99fdc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23806,6 +23874,12 @@
      "note": "Reviewer: List mixed bare button labels with nouns (no articles, no quotes), reading as broken German.",
      "status": "resolved",
      "resolution": "Button names quoted, nouns given articles."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23855,7 +23929,7 @@
   },
   "help.using.what_role_lets.admin": {
    "source": "bbd3036ec89fae8e",
-   "translation": "e0f56ea4dc5ebfb1",
+   "translation": "d0b86bc830f08e43",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23866,6 +23940,12 @@
      "note": "Reviewer: Genitive list broke on bare button names („…, Alle pausieren, des …“) and „jedes Downloads“.",
      "status": "resolved",
      "resolution": "Button names quoted, „aller Downloads“."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -24635,7 +24715,7 @@
   },
   "help.howitworks.how_service_chosen.no_ranking_setting": {
    "source": "001308c2367ff64b",
-   "translation": "35b59e648e6ec4bc",
+   "translation": "871d4f0a2a84d414",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24652,6 +24732,12 @@
      "note": "Reviewer: „lassen … diese Dienste zuerst versuchen“ is awkward and ambiguous (let them try / have them tried).",
      "status": "resolved",
      "resolution": "„sorgen … dafür, dass diese Dienste zuerst versucht werden“."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -25191,7 +25277,7 @@
   },
   "help.services.lead.settings_services_has": {
    "source": "e87c2996eeb51fee",
-   "translation": "93eba6868ce102b5",
+   "translation": "11b25f0323357621",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25202,15 +25288,29 @@
      "note": "Reviewer: „Einstellungen → Dienste hat zwei Gruppen“ and „bei niemandem ein Konto“ read as English syntax",
      "status": "resolved",
      "resolution": "„Unter … gibt es zwei Gruppen“, „benötigen keinerlei Konto“ (the server-password caveat is kept)"
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
   "help.services.who_sets_up.admin_connects_configures": {
    "source": "8495020846e2ff88",
-   "translation": "336f283c83917dfb",
+   "translation": "7042bed452aa19ce",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.how_service_card.enable": {
@@ -25273,10 +25373,18 @@
   },
   "help.services.how_service_card.help_button_card": {
    "source": "66e1b3b5526c0515",
-   "translation": "0d0ee4ffb6b409db",
+   "translation": "746837d7bb715258",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.group.premium_services": {
@@ -26315,15 +26423,23 @@
   },
   "help.settings.title": {
    "source": "526d0b41605bb179",
-   "translation": "b3e50553bfd28413",
+   "translation": "0b8ae788906aa098",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.server_advanced": {
    "source": "22536cb01261e2a1",
-   "translation": "8c855006c5c76c6b",
+   "translation": "ea5febd9e34d6cd0",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26334,6 +26450,12 @@
      "note": "Reviewer: 'die die meisten brauchen' is a clumsy double article with no noun.",
      "status": "resolved",
      "resolution": "Rephrased to 'die am häufigsten benötigten Optionen'."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -26773,27 +26895,41 @@
   },
   "help.settings.users_access.admin": {
    "source": "95c306f2ccfc6662",
-   "translation": "a8186f4fca58a2d4",
+   "translation": "96587ff1cc0022b6",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.users_access.user": {
    "source": "de76eae59e33391b",
-   "translation": "e57bd79281c7d86b",
+   "translation": "fde8fff8aa585844",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>User:</b> adds, pauses, resumes, retries and reorders downloads; sees all transfers; can remove, cancel or switch a download only if no other account still needs it, and otherwise withdraws their own request. Has their own <b>Notifications</b> page; the settings are not available.",
+   "backTranslation": "<b>User:</b> adds downloads, pauses them, resumes them, retries them and changes their order; sees all transfers; can remove, cancel or switch a download only when no other account still needs it, and otherwise withdraws their own request. Has their own <b>Notifications</b> page; the Options are not available.",
    "findings": [
     {
      "kind": "ambiguity",
      "note": "Translator: harmonized: download request = „Anfrage“, as in the UI (details.requested_by.*, withdraw).",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -27425,19 +27561,25 @@
   },
   "help.trouble.download_slow_stalls.job_truly_stuck": {
    "source": "0c58dbff211dd5b7",
-   "translation": "8507379ad60b942b",
+   "translation": "ca60ffc23d7b2d39",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "You can terminate a truly stuck job under <b>Download Engine Activity</b> (Settings → Downloads). Preferably use <b>Retry</b> on the download itself.",
+   "backTranslation": "You can end a truly hanging job under <b>Download Engine Activity</b> (Options → Downloads). Preferably use <b>Try Again</b> on the download itself.",
    "findings": [
     {
      "kind": "style",
      "note": "Reviewer: The card name used as the subject that terminates the job reads unnaturally.",
      "status": "resolved",
      "resolution": "Reader as subject, card as location; meaning and the preference for Retry unchanged."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -27681,13 +27823,21 @@
   },
   "help.trouble.i_cannot_sign.last_resort_if_no": {
    "source": "53296de14acc536b",
-   "translation": "cbcb1bbca6b22935",
+   "translation": "b5c70894eeae29e1",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Last resort if no sign-in method works:</b> This requires access to the computer on which DebridPulse runs, and it temporarily removes all protection; therefore do this only on a trusted network. Stop DebridPulse and create a backup of its configuration file (normally <code>{path}</code> in the container). In this file, set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code> and make sure that the file remains valid JSON; with a corrupted configuration file DebridPulse refuses to start. Start DebridPulse; it is now open to anyone who can reach it, including its API. Your saved password and your OIDC settings are kept; therefore repair them under Settings → Authentication and switch protection back on immediately."
+   "backTranslation": "<b>Last resort, if no sign-in method works:</b> This requires access to the computer on which DebridPulse is running, and it temporarily lifts all protection; therefore do this only on a trusted network. Stop DebridPulse and create a backup of its configuration file (normally <code>{path}</code> in the container). In this file set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code> and make sure that the file remains valid JSON; with a damaged configuration file DebridPulse refuses to start. Start DebridPulse; it is now open to anyone who can reach it, including its API. Your saved password and your OIDC settings are retained; therefore repair them under Options → Authentication and switch the protection back on immediately.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.trouble.i_cannot_sign.sign_methods_accounts": {
    "source": "05f5cab03b5a7a44",
@@ -27699,10 +27849,18 @@
   },
   "help.trouble.backup_restore_reset.backup_disabled_settings": {
    "source": "b4f0b50843630806",
-   "translation": "741ba0e760c6f1de",
+   "translation": "c6843a7d33fc2383",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.trouble.backup_restore_reset.reset_needs_allow": {
@@ -27977,7 +28135,7 @@
   },
   "help.quickstart.where_read_next.settings_controls_marked": {
    "source": "cf46274ac221386b",
-   "translation": "fb0285d3cab32732",
+   "translation": "f0de20df6ed9947a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27988,6 +28146,12 @@
      "note": "Reviewer: „falls Sie sich mit einem anmelden“ – the elliptical „einem“ does not work in German.",
      "status": "resolved",
      "resolution": "„falls Sie sich mit einem Passwort anmelden“."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -28017,10 +28181,18 @@
   },
   "help.notifications.summary": {
    "source": "e95e7795333ca169",
-   "translation": "a1d6623ebda4aed1",
+   "translation": "9830cd4417283a08",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.notifications.how_saving_works.there_no_save": {
@@ -28871,26 +29043,50 @@
   },
   "help.settings.summary.standalone_easy": {
    "source": "07d3ae5af470676c",
-   "translation": "28700604ddbdbf7a",
+   "translation": "a07ef8c1287a8442",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.standalone_advanced": {
    "source": "756839feb2ade733",
-   "translation": "13c15dcf4adf1610",
+   "translation": "a826c98d285ae5c2",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.server_easy": {
    "source": "dd5066bcd7c556a3",
-   "translation": "505fae94e392a929",
+   "translation": "230a3a75cf9be854",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.howitworks.pipeline.add.title": {
@@ -29048,10 +29244,18 @@
   },
   "help.tab.settings": {
    "source": "74a883a037bc227f",
-   "translation": "f5750a5d7231e1f7",
+   "translation": "f1daae3521fedae5",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.tab.notifications": {
@@ -29362,10 +29566,18 @@
   },
   "help.roles.global_ones_settings": {
    "source": "840f623a09670392",
-   "translation": "530f7557ce677453",
+   "translation": "479fd3db737ec149",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.roles.own_under_notifications": {
@@ -29378,10 +29590,18 @@
   },
   "help.roles.settings_accounts_maintenance_activity": {
    "source": "9b5483ade9004dff",
-   "translation": "67b624b0d24ccea8",
+   "translation": "111fbac8d417ae6a",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.roles.hold_api_tokens": {
@@ -30626,10 +30846,18 @@
   },
   "help.topic.tuning_direct.connections_segments.changes_also_apply": {
    "source": "e5f32f8f321a230c",
-   "translation": "8a78ae42f4ccb7da",
+   "translation": "f0d4d0f68f31ca67",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.topic.heading.interrupted_slow_downloads": {
@@ -31337,10 +31565,18 @@
   },
   "help.topic.user_accounts.roles.admin": {
    "source": "d842fe15c800b665",
-   "translation": "ff3d1993e2080376",
+   "translation": "961b7dd47ad96540",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Einstellungen» after WS7-A renamed the page «Optionen»; it now says «Optionen». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.topic.user_accounts.roles.user": {

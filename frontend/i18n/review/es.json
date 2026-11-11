@@ -1126,7 +1126,7 @@
   },
   "help.my_account.presentation.admin_example": {
    "source": "34e84a3d3db83f69",
-   "translation": "d79aa154194e360e",
+   "translation": "7f22d0e2d4d1775a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1137,6 +1137,12 @@
      "note": "Translator: Card names copied from UI: settings.downloads.methods 'Métodos de transferencia', settings.events.title, settings.reset.title.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -9140,10 +9146,18 @@
   },
   "directory_picker.download.fallback_notice": {
    "source": "eadbc63b10d3c1df",
-   "translation": "3f9ebcf4d91069c5",
+   "translation": "2d7c90af4ba36c6e",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "directory_picker.backup.title": {
@@ -9164,10 +9178,18 @@
   },
   "directory_picker.backup.fallback_notice": {
    "source": "9101e8097d84d255",
-   "translation": "98f315a6c468de86",
+   "translation": "63d3298ac2fa7d7a",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "directory_picker.accept": {
@@ -12703,10 +12725,18 @@
   },
   "settings.page_label": {
    "source": "74a883a037bc227f",
-   "translation": "bb507137e3631379",
+   "translation": "4f2debbbf4fab6c9",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "settings.premium_provider": {
@@ -15515,10 +15545,18 @@
   },
   "settings.backups.skipped": {
    "source": "4a4f198a51a0ae4d",
-   "translation": "425e663f06185a44",
+   "translation": "37794425012f803b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "settings.backups.snapshot_interval": {
@@ -15629,19 +15667,25 @@
   },
   "settings.deployment.server_confirm_message": {
    "source": "7c5b7083bbd4e792",
-   "translation": "524ed7956b1a6852",
+   "translation": "f4db30316b5b487b",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Existing user accounts regain their saved enabled or disabled state; none will be deleted. Password and OIDC sign-in will be disabled, the built-in Administrator's password will be cleared if one exists, and existing browser sessions will be signed out. The installation will be accessible to anyone who can reach it, without authentication, until you enable authentication in Settings. The saved authentication configuration is preserved. Do you want to continue?",
+   "backTranslation": "Existing user accounts recover their saved status of enabled or disabled; none will be deleted. Sign-in with password and with OIDC will be disabled, the password of the built-in Administrator will be erased if it exists, and existing browser sessions will be closed. The installation will be accessible to any person who can access it, without authentication, until you enable authentication in Settings. The saved authentication configuration is kept. Do you want to continue?",
    "findings": [
     {
      "kind": "critical",
      "note": "Reviewer: “hasta que la active” is ambiguous (the pronoun can refer to “la instalación”); the warning must say that authentication stays off until enabled. “pueda llegar a ella” is a calque of “reach”.",
      "status": "resolved",
      "resolution": "States “hasta que active la autenticación en Configuración” and uses “pueda acceder a ella” (consistent with the Help wording “cualquier persona que pueda acceder a DebridPulse”)."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -18057,10 +18101,18 @@
   },
   "settings.role.admin_description": {
    "source": "d314626611402df8",
-   "translation": "9f9de6a2cacdc3ac",
+   "translation": "0ba1dee40032d025",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
+    }
    ]
   },
   "settings.role.integration": {
@@ -23158,19 +23210,25 @@
   },
   "help.quickstart.before_begin.who_can_do_what.standalone": {
    "source": "6f15b8526dadafd8",
-   "translation": "1b97833362163015",
+   "translation": "ede359bf10df2537",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Who can do what:</b> only the built-in <b>Administrator</b> can sign in to a Standalone installation, and he is the one who manages the Configuration. Other people's accounts, kept from when this installation was a Server, are neither deleted nor converted: they keep their data, but cannot sign in while the installation is Standalone. Other applications connect as <b>Integration</b> accounts, in <b>Adjustments → Access and integrations</b>.",
+   "backTranslation": "<b>Who can do what:</b> only the built-in <b>Administrator</b> can sign in to an Independent installation, and is the one who manages the Settings. The accounts of other people, kept from when this installation was a Server, are not deleted or converted: they keep their data, but cannot sign in while the installation is Independent. Other applications connect as <b>Integration</b> accounts, in <b>Settings → Access and integrations</b>.",
    "findings": [
     {
      "kind": "style",
      "note": "WS7-A (text-only fit): the page name «Configuración» became «Ajustes» so the phone dock label fits 62px at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
      "status": "resolved",
      "resolution": "Independently AI-reviewed in context (grammar, agreement, case, elision); blind AI back-translation compared with the English."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -23208,7 +23266,7 @@
   },
   "help.quickstart.before_begin.who_can_do_what.server": {
    "source": "a8df7789b6cc587f",
-   "translation": "aa75094fe1c5241b",
+   "translation": "ce17212ed9ec8967",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23219,6 +23277,12 @@
      "note": "Translator: Help tab 'Everyday Use' rendered as 'Uso diario' (help.tab.* not yet translated in out/; harmonize with help.tab.using).",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23394,10 +23458,18 @@
   },
   "help.quickstart.where_read_next.settings": {
    "source": "417777f2d4739715",
-   "translation": "2d06b4f3a7f51976",
+   "translation": "58a07877333a5144",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.quickstart.where_read_next.optional_features_such.standalone": {
@@ -23490,10 +23562,18 @@
   },
   "help.using.lead.what_see_depends": {
    "source": "689f158b7a8abe73",
-   "translation": "dfd588008a8262e7",
+   "translation": "5d50dd3c44d2d30d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
+    }
    ]
   },
   "help.using.lead.presentation_easy_so": {
@@ -23514,7 +23594,7 @@
   },
   "help.using.who_uses_installation.built_administrator": {
    "source": "904ae141d0079327",
-   "translation": "68943cff659c1f50",
+   "translation": "6c53b689f71b996c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23525,6 +23605,12 @@
      "note": "Translator: built-in Administrator = 'Administrador integrado' as in UI settings.deployment.*.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23558,10 +23644,18 @@
   },
   "help.using.what_role_lets.admin": {
    "source": "bbd3036ec89fae8e",
-   "translation": "f6d33744d63e4f63",
+   "translation": "2453c4c4f225ab9c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
+    }
    ]
   },
   "help.using.what_role_lets.user": {
@@ -24264,7 +24358,7 @@
   },
   "help.howitworks.how_service_chosen.no_ranking_setting": {
    "source": "001308c2367ff64b",
-   "translation": "7385cb97341ca0a4",
+   "translation": "79b31d4c2b54a3f4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24275,6 +24369,12 @@
      "note": "Translator: Bold labels follow settings.provider.before_usenet pattern \"Usar {provider} antes que Usenet\".",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -24770,18 +24870,34 @@
   },
   "help.services.lead.settings_services_has": {
    "source": "e87c2996eeb51fee",
-   "translation": "9b5f136e65a62e1b",
+   "translation": "a4a6bf04337a0994",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.who_sets_up.admin_connects_configures": {
    "source": "8495020846e2ff88",
-   "translation": "150bad60f125dba3",
+   "translation": "35359693068cbeff",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.how_service_card.enable": {
@@ -24844,10 +24960,18 @@
   },
   "help.services.how_service_card.help_button_card": {
    "source": "66e1b3b5526c0515",
-   "translation": "a17725d70f2e6ddf",
+   "translation": "6246afcd605a44ad",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.services.group.premium_services": {
@@ -25674,18 +25798,34 @@
   },
   "help.settings.title": {
    "source": "526d0b41605bb179",
-   "translation": "649e05a6c4b98465",
+   "translation": "3bf5f1fe865f2549",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.server_advanced": {
    "source": "22536cb01261e2a1",
-   "translation": "27efb29ad38bad07",
+   "translation": "d81c50472d36eb6b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.how_saving_works.there_no_save": {
@@ -26022,21 +26162,37 @@
   },
   "help.settings.users_access.admin": {
    "source": "95c306f2ccfc6662",
-   "translation": "033c8b5181ea162d",
+   "translation": "25a92ab80459b8ad",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.users_access.user": {
    "source": "de76eae59e33391b",
-   "translation": "61096a89c7b64b17",
+   "translation": "3e26266c392d7cff",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>User:</b> adds downloads and pauses, resumes, retries and reorders them; sees all transfers; can only remove, cancel or change a download when no other account still needs it and, otherwise, withdraws their own request. Has their own <b>Notifications</b> page; Settings is not available."
+   "backTranslation": "<b>User:</b> adds downloads and pauses, resumes, retries and reorders them; sees all transfers; can only remove, cancel or switch a download when no other account still needs it and, otherwise, withdraws its own request. Has its own <b>Notifications</b> page; the Settings are not available.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.settings.users_access.readonly_user": {
    "source": "4739a62204f8ba70",
@@ -26626,19 +26782,25 @@
   },
   "help.trouble.download_slow_stalls.job_truly_stuck": {
    "source": "0c58dbff211dd5b7",
-   "translation": "2a41174f33d0bed0",
+   "translation": "a5b765016d2dd90b",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "For a job that is truly stuck, <b>Download engine activity</b> in Settings → Downloads can terminate it. It is preferable to use <b>Retry</b> on the download itself.",
+   "backTranslation": "For a job that is really stuck, <b>Download engines activity</b> in Settings → Downloads can end it. It is preferable to use <b>Retry</b> on the download itself.",
    "findings": [
     {
      "kind": "terminology",
      "note": "Reviewer: The action is the \"Finalizar\" button (settings.engine_activity.action.cancel), also used in help04; \"terminarlo\" varies the verb.",
      "status": "resolved",
      "resolution": "Uses the button verb."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -26828,13 +26990,21 @@
   },
   "help.trouble.i_cannot_sign.last_resort_if_no": {
    "source": "53296de14acc536b",
-   "translation": "bc60a5d6b6eb2fb8",
+   "translation": "7125e51388d0aeef",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Last resort, if no sign-in method works:</b> it requires access to the computer on which DebridPulse runs and temporarily removes all protection, so do it only on a trusted network. Stop DebridPulse and make a backup of its configuration file (normally <code>{path}</code> inside the container). In that file, set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code>, keeping the file as valid JSON; DebridPulse refuses to start with a damaged configuration file. Start DebridPulse; it is now open to anyone who can reach it, including its API. Your saved password and the OIDC configuration are kept, so repair them in Settings → Authentication and turn protection back on immediately."
+   "backTranslation": "<b>Last resort, if no sign-in method works:</b> access to the computer on which DebridPulse runs is needed and all protection is temporarily removed, so do it only on a trusted network. Stop DebridPulse and make a backup copy of its configuration file (normally <code>{path}</code> inside the container). In that file, set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code>, keeping the file as valid JSON; DebridPulse refuses to start with a damaged configuration file. Start DebridPulse; it is now open to anyone who can access it, including its API. Your saved password and the OIDC configuration are kept, so repair them in Settings → Authentication and turn the protection back on immediately.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.trouble.i_cannot_sign.sign_methods_accounts": {
    "source": "05f5cab03b5a7a44",
@@ -26846,10 +27016,18 @@
   },
   "help.trouble.backup_restore_reset.backup_disabled_settings": {
    "source": "b4f0b50843630806",
-   "translation": "fc6fc70c9b47dddc",
+   "translation": "e7db4d0d3cfe2728",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.trouble.backup_restore_reset.reset_needs_allow": {
@@ -27112,7 +27290,7 @@
   },
   "help.quickstart.where_read_next.settings_controls_marked": {
    "source": "cf46274ac221386b",
-   "translation": "d1db2356a4b97687",
+   "translation": "edfc2d3af9efbfa1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27123,6 +27301,12 @@
      "note": "Translator: «Admin only» badge rendered as «Solo Admin» (cf. settings.deployment.standalone_hint_shortest); Easy | Advanced = presentation.easy/advanced.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
     }
    ]
   },
@@ -27152,10 +27336,18 @@
   },
   "help.notifications.summary": {
    "source": "e95e7795333ca169",
-   "translation": "48a5b062f560787f",
+   "translation": "40f3e9753561b7ed",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.notifications.how_saving_works.there_no_save": {
@@ -27964,7 +28156,7 @@
   },
   "help.settings.summary.standalone_easy": {
    "source": "07d3ae5af470676c",
-   "translation": "bf6b3c08c86c36d8",
+   "translation": "076c2fc3dd95ee22",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27975,20 +28167,34 @@
      "note": "Translator: Easy inflected to «Sencilla» to agree with «presentación».; harmonized: presentation option named with its UI label (Sencillo)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
   "help.settings.summary.standalone_advanced": {
    "source": "756839feb2ade733",
-   "translation": "31e491d8662af485",
+   "translation": "f6bba8ed9a68f0ab",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.summary.server_easy": {
    "source": "dd5066bcd7c556a3",
-   "translation": "61a40bbca6134049",
+   "translation": "0eace5ae91d84fa6",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27999,6 +28205,12 @@
      "note": "Translator: harmonized: presentation option named with its UI label (Sencillo)",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -28164,10 +28376,18 @@
   },
   "help.tab.settings": {
    "source": "74a883a037bc227f",
-   "translation": "bb507137e3631379",
+   "translation": "4f2debbbf4fab6c9",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.tab.notifications": {
@@ -28487,7 +28707,7 @@
   },
   "help.roles.global_ones_settings": {
    "source": "840f623a09670392",
-   "translation": "e62cf8e7173fb583",
+   "translation": "78d3649d598d955d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28498,6 +28718,12 @@
      "note": "Reviewer: The cell answers the row «Notificaciones por webhook e informes de estadísticas» (mixed genders); Spanish coordinated mixed-gender antecedents take masculine agreement, and «Las globales» reads as if only notifications were meant.",
      "status": "resolved",
      "resolution": "Masculine plural «Los globales», covering both notifications and reports."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -28519,10 +28745,18 @@
   },
   "help.roles.settings_accounts_maintenance_activity": {
    "source": "9b5483ade9004dff",
-   "translation": "dfb400f297e927dc",
+   "translation": "8fd7715ee06cbe9d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.roles.hold_api_tokens": {
@@ -30089,10 +30323,18 @@
   },
   "help.topic.tuning_direct.connections_segments.changes_also_apply": {
    "source": "e5f32f8f321a230c",
-   "translation": "a270493a1eb20c61",
+   "translation": "fdf6c8ef5b42a72b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; the review's correction applied and confirmed."
+    }
    ]
   },
   "help.topic.heading.interrupted_slow_downloads": {
@@ -30790,10 +31032,18 @@
   },
   "help.topic.user_accounts.roles.admin": {
    "source": "d842fe15c800b665",
-   "translation": "660f5e327850a184",
+   "translation": "c2a116d4d9acf586",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.topic.user_accounts.roles.user": {
@@ -30995,13 +31245,21 @@
   },
   "help.topic.integration_accounts.what_integration_can.cannot_pause_delete": {
    "source": "4fc6428f2e4a8329",
-   "translation": "c2d6646abc66e4ed",
+   "translation": "54264273e6db9a54",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "It cannot pause, delete or redirect transfers directly, change the Settings or see other clients' jobs."
+   "backTranslation": "It cannot pause, delete or redirect transfers directly, change the Settings or see the jobs of other clients.",
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Settings page still said «Configuración» after WS7-A renamed the page «Ajustes»; it now says «Ajustes». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
+    }
+   ]
   },
   "help.topic.heading.disable_delete": {
    "source": "e124b28807e0c02c",

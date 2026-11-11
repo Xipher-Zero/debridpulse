@@ -23142,7 +23142,7 @@
   },
   "help.quickstart.follow_finish.download_appears_download.admin": {
    "source": "c721570ae19324e0",
-   "translation": "697cfc5cce2a137b",
+   "translation": "7489825d3a680a27",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23153,6 +23153,12 @@
      "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
      "status": "resolved",
      "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged)."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23442,7 +23448,7 @@
   },
   "help.using.what_role_lets.readonly_user": {
    "source": "f34ed7a4099e5e31",
-   "translation": "798343c3760cb5d6",
+   "translation": "189c46d1a9e33b6a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23453,6 +23459,12 @@
      "note": "Reviewer: « restent modifiables par lui seul » adds exclusivity (“only it can change them”); English says these remain its own to change, i.e. it can still change them.",
      "status": "resolved",
      "resolution": "Now states it can still change its own profile and presentation in Mon compte."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
     }
    ]
   },
@@ -23894,10 +23906,18 @@
   },
   "help.using.downloads_page.date_column_menu": {
    "source": "6f009e4485e5b2b6",
-   "translation": "b337340c9067e883",
+   "translation": "a1f93fb09c795fc3",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.using.download_details.click_any_download": {
@@ -25894,10 +25914,18 @@
   },
   "help.settings.users_access.readonly_user": {
    "source": "4739a62204f8ba70",
-   "translation": "a3959656f5de77e2",
+   "translation": "b9684a40a962cc46",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.settings.users_access.integration": {
@@ -26250,10 +26278,18 @@
   },
   "help.trouble.i_added_something.check_pause_all": {
    "source": "150b77845d1880f8",
-   "translation": "389f6b2b92d45166",
+   "translation": "3703d4eeadaafb78",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.trouble.i_added_something.processing_may_paused": {
@@ -26904,19 +26940,25 @@
   },
   "help.quickstart.follow_finish.download_appears_download.submit": {
    "source": "cfb31d157d9df8ac",
-   "translation": "250efa580fa031d6",
+   "translation": "e5b8b602fb14d44d",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The download appears in <b>Download activity</b> on the Dashboard and in <b>Downl.</b>. Click it to open its details: the service that provides it, its files and its events. You can pause, resume and retry downloads; you can only remove one if no other account still needs it, and otherwise withdraw your own request in <b>Requested by</b>.",
+   "backTranslation": "The download appears in <b>Downloads activity</b> on the Overview and in <b>Downl.</b> Click on it to open its details: the service that provides it, its files and its events. You can suspend, resume and retry downloads; you can only remove one if no other account still needs it, and otherwise withdraw your own request in <b>Requested by</b>.",
    "findings": [
     {
      "kind": "style",
      "note": "WS7-A r2 (text-only fit): the page name «Téléchargements» became the product-approved abbreviation «Téléch.» so the phone dock label and page title fit at 320px without any UI change; nav label, page title and every Help path naming the page follow it.",
      "status": "resolved",
      "resolution": "Independently AI-reviewed in context (grammar, case, agreement; the Settings › Downloads tab segment left unchanged); blind AI back-translation compared with the English (back-translated before a doubled sentence point after the abbreviation was removed; punctuation only)."
+    },
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context; blind AI back-translation compared with the English."
     }
    ]
   },
@@ -27242,18 +27284,34 @@
   },
   "help.using.dashboard_quick_add.title": {
    "source": "0a752bdf70e9713c",
-   "translation": "2a04371a17ea5a09",
+   "translation": "1d452641cba3645f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.using.dashboard.title": {
    "source": "67b696468610b879",
-   "translation": "ac0e5fc936ade441",
+   "translation": "bb28a9f4a4e34fac",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.using.questions_debridpulse_may.title": {
@@ -28249,10 +28307,18 @@
   },
   "help.roles.view_dashboard_downloads_transfer": {
    "source": "fe757f5f27703226",
-   "translation": "2eef531a7acc4158",
+   "translation": "71a7505a245f6c6b",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "WS7-B text inventory: a reference to the Dashboard page still said «Tableau de bord» after WS7-A renamed the page «Aperçu»; it now says «Aperçu». Generic uses of the word are unchanged.",
+     "status": "resolved",
+     "resolution": "Classified page reference vs generic use, then independently AI-reviewed in context."
+    }
    ]
   },
   "help.roles.view_statistics": {

@@ -1,7 +1,9 @@
 # Localization
 
-DebridPulse 1.0.14 status: **foundation complete (WS0–WS2); WS3a–WS3e and
-WS4 (WS4a, WS4b) complete; product localization incomplete.** The runtime, the catalogs, the validators,
+DebridPulse 1.0.14 status: **WS0–WS7 complete: 18 complete, AI-reviewed target catalogs, all still
+`planned`; no language is offered.** The operating guide, the per-language readiness matrix and the
+release-decision ledger (what is verified, corrected, accepted, unresolved and activation-dependent) are in
+[`LOCALIZATION_RELEASE.md`](LOCALIZATION_RELEASE.md). The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
@@ -130,7 +132,10 @@ and stays `planned`.
 
 Progress: all 18 production targets have complete, reviewed catalogs (de, fr, es, it, pt-BR,
 pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant, ar), all still `planned`; none is
-activated. Responsive/RTL qualification (WS6) and maintainability (WS7) remain.
+activated. WS6 qualified right-to-left layout, CJK typography, dialogs, focus and first paint (WS6-A–C).
+WS7-A shortened six languages' page names, in text only, so that every page title and dock label fits the
+unchanged interface at 320 px. WS7-B reconciled the Help with those names and qualified CI, release-cut
+debt, delivery and fallback (`LOCALIZATION_RELEASE.md`).
 
 ## 1. Pieces and owners
 
