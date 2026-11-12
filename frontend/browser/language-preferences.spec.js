@@ -253,8 +253,11 @@ test('LP05: at 320px the language button wraps beneath Email, the card reads Dep
     const email = dialog.querySelector('.dp-account-email').getBoundingClientRect();
     const button = dialog.querySelector('[data-account-language]').getBoundingClientRect();
     const footer = dialog.querySelector('.dp-modal-footer').getBoundingClientRect();
+    // The profile through the language button fits without scrolling; an Admin's Setup Wizard section
+    // follows it inside the same scrolling body (setup-wizard.spec.js measures that section).
     return {below: button.top >= email.bottom, left: Math.abs(button.left - email.left) < 1, clear: button.bottom <= footer.top,
-      fits: body.scrollHeight <= body.clientHeight, inside: button.right <= dialog.getBoundingClientRect().right};
+      fits: body.scrollTop === 0 && button.bottom <= body.getBoundingClientRect().bottom,
+      inside: button.right <= dialog.getBoundingClientRect().right};
   });
   expect(geometry).toEqual({below: true, left: true, clear: true, fits: true, inside: true});
   await account(page).locator('[data-account-language]').click();

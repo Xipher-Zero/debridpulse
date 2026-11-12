@@ -845,6 +845,12 @@
           {key: 'help.my_account.language.saved'},
           {key: 'help.my_account.language.not_saved'},
         ]},
+        // Only where the dialog offers Rerun Setup Wizard (an Admin's).
+        {headingKey: 'help.my_account.setup_wizard', when: c => c.account?.setupWizard === true, list: [
+          {key: 'help.my_account.setup_wizard.rerun'},
+          {key: 'help.my_account.setup_wizard.server', when: c => c.account?.standalone !== true},
+          {key: 'help.my_account.setup_wizard.close'},
+        ]},
       ],
     },
   });

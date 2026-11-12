@@ -322,8 +322,8 @@ body.light .dp-modal-dialog {
    aligned; the title and its hint take what is left and reflow. */
 .dp-modal-header-end {
   flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: 12px;
+  margin-inline-start: auto;
+  padding-inline-start: 12px;
 }
 
 /* A title action (`placement: 'title'`): the compact icon control right after

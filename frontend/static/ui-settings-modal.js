@@ -32,7 +32,9 @@
  * A dialog with more than one view changes its slot labels through
  * `handle.setAcceptLabel` / `setCancelLabel` -- withdraws the accept slot
  * from a view that settles nothing of its own (`handle.setAcceptHidden`: a
- * choice saved where it is made, the cancel slot then its way back) -- and,
+ * choice saved where it is made, the cancel slot then its way back), withdraws
+ * the cancel slot from a view that must be completed (`handle.setCancelHidden`)
+ * -- and,
  * for a view that asks a
  * different question, its title and tone through `handle.setTitle(title)` and
  * `handle.setTone(tone, acceptTone)`, the same two choices `open` takes -- and
@@ -409,6 +411,9 @@
       close() { settle(false); },
       setAcceptEnabled(enabled) { if (accept) accept.disabled = !enabled; },
       setAcceptHidden(hidden) { if (accept) accept.hidden = !!hidden; },
+      // A view with no way out but its own controls (a step that must be
+      // completed) withdraws the cancel slot; Escape stays the client's guard.
+      setCancelHidden(hidden) { if (cancel) cancel.hidden = !!hidden; },
       setActionEnabled(id, enabled) {
         const button = actionButtons.get(String(id));
         if (button) button.disabled = !enabled;

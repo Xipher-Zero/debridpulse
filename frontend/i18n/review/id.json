@@ -31593,6 +31593,449 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.step": {
+   "source": "145f3c29752a3416",
+   "translation": "ea4c870a8fd6cf29",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.action.next": {
+   "source": "1ff57a29d7c9d11b",
+   "translation": "205753c9c6aceb91",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.action.get_started": {
+   "source": "983f311018642b0a",
+   "translation": "bc692f0398d9e6ef",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.action.finish": {
+   "source": "0015e9341cee0eb3",
+   "translation": "b4647dce37d1d7bb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.title": {
+   "source": "76defe5ecea03c43",
+   "translation": "f0c3d5a60817f93b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.intro": {
+   "source": "b37161c2cba569f6",
+   "translation": "360379a1af40163d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "c174a30673553359",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.language_hint": {
+   "source": "b945f984b010510e",
+   "translation": "2a441bea8f6b54bd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.title": {
+   "source": "5240b921765a0d88",
+   "translation": "ca7d8e747dae8331",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.intro": {
+   "source": "752985a879ef057c",
+   "translation": "52469aa291fb931d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.standalone.text": {
+   "source": "d4af6261460d538e",
+   "translation": "de4c707f5545bf39",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.server.text": {
+   "source": "b600a59e57f221a7",
+   "translation": "8e742bfc245be213",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.locked": {
+   "source": "30e697d449674411",
+   "translation": "201adf7eaa229752",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.title": {
+   "source": "813484bb8626814f",
+   "translation": "1ee7814c4518c5e6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.intro": {
+   "source": "d2885bb9f7d5da65",
+   "translation": "b38572dab1b2cb33",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.hint": {
+   "source": "f79436d71ccf9c91",
+   "translation": "a88b7036bd68e30c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.required": {
+   "source": "6e24a6f98a5e2a7e",
+   "translation": "7e0f754465b5345b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.title": {
+   "source": "66d4042c5cffcd89",
+   "translation": "91b57130f16951e9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.intro": {
+   "source": "bf181da4d0832e21",
+   "translation": "f71267356cdc0c67",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.confirm": {
+   "source": "c292210c44167923",
+   "translation": "f243c47f4e64b509",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.sign_in_on": {
+   "source": "e5ab24e6c2cce83a",
+   "translation": "34a5bf8ac1ff59c8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.more_accounts": {
+   "source": "3ef86d4cfd5d7b99",
+   "translation": "58c830a54d1874cf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.oidc": {
+   "source": "35e9740304cc87c9",
+   "translation": "6679cc41a8dd107c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.created": {
+   "source": "6e8ea7ec729022b5",
+   "translation": "c64e55b0d4c7dc02",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.resubmit": {
+   "source": "3709a976251a5ccf",
+   "translation": "27df61bc61aab292",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.username_required": {
+   "source": "78db4f777c25eea5",
+   "translation": "43a19205b6b04c67",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.password_required": {
+   "source": "f88a41ed96a3bc47",
+   "translation": "c47415da3e0d99eb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.passwords_differ": {
+   "source": "f694aaa8da2c0516",
+   "translation": "04f3d25852f02935",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.guidance.title": {
+   "source": "e7d3e769f3f593da",
+   "translation": "e7d3e769f3f593da",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "identical": "'Administrator' is the same word in Indonesian."
+  },
+  "setup.administrator.guidance.text": {
+   "source": "dfdea1450820abbd",
+   "translation": "d7db2fb7eb10995d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.open_users": {
+   "source": "5babdd21a120d6a1",
+   "translation": "5bf36587e7e3ee57",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.hint": {
+   "source": "bf82ea495fa6bac5",
+   "translation": "383785620bb57aef",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.title": {
+   "source": "d00eca1bae674280",
+   "translation": "a89300bdb45c396b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.intro": {
+   "source": "255683bf857246fa",
+   "translation": "5834208bd81fb56f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step_paste": {
+   "source": "770fb000362bdba8",
+   "translation": "42597eac2a9c8552",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step_add": {
+   "source": "43f6502a99d04cd1",
+   "translation": "1a8b23a0fc698734",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step_watch": {
+   "source": "442a78e341c0571a",
+   "translation": "45d0ea5b9528233f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.sign_in": {
+   "source": "8059e1fcdc516327",
+   "translation": "ae70867b70658486",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.error.not_saved": {
+   "source": "504e1a8352995bb1",
+   "translation": "7645362ce33f5963",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.error.language_unavailable": {
+   "source": "9a7140363203dee3",
+   "translation": "7b441d9bc2c91126",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.error.not_opened": {
+   "source": "06299574fbd07f80",
+   "translation": "4c59425b18ff30fc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.setup.title": {
+   "source": "13d16249923201c7",
+   "translation": "895b926bd2aa4ac3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.setup.hint.review": {
+   "source": "eb4e90a90f9b4b74",
+   "translation": "f8cecf308ff09d8d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.setup.hint.preserved": {
+   "source": "83a150f73bd2e338",
+   "translation": "12453a6197b984e6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.setup.rerun": {
+   "source": "b4285e526bf75944",
+   "translation": "5fe03171e114882d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.setup_wizard": {
+   "source": "13d16249923201c7",
+   "translation": "895b926bd2aa4ac3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.setup_wizard.rerun": {
+   "source": "93a84bdd1562be6c",
+   "translation": "c1ae2cc5279e0acf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.setup_wizard.server": {
+   "source": "4d8635d8bdf92bc4",
+   "translation": "40ee1aa9679032f6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.setup_wizard.close": {
+   "source": "3d3ff7c863af716f",
+   "translation": "4c7991a894e3f84c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.quickstart.before_begin.setup_wizard.server": {
+   "source": "38c7de2ce3ae9473",
+   "translation": "af8990a2866c34a0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.quickstart.before_begin.setup_wizard.standalone": {
+   "source": "4cf651ac9d926e24",
+   "translation": "2ca1146b59294711",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.leave.title": {
+   "source": "c80b20ddb790be85",
+   "translation": "101f8abd01e0db73",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.leave.message": {
+   "source": "80d03f8d27929540",
+   "translation": "767eeb9643ce8f96",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Your changes that have not been saved in \"My Account\" will be lost."
+  },
+  "account.leave.discard": {
+   "source": "e07e053c2e10b3f1",
+   "translation": "134995a5e318c4c8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.leave.keep": {
+   "source": "624a83c761415dc9",
+   "translation": "30e3a57f659c13de",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

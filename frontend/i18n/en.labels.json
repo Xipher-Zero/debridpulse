@@ -5307,6 +5307,58 @@
     "key": "common.cancel",
     "reason": "The Default Language dialog's Cancel button."
    }
+  ],
+  "help.my_account.setup_wizard.rerun": [
+   {
+    "text": "Rerun Setup Wizard",
+    "kind": "control",
+    "key": "account.setup.rerun",
+    "reason": "My Account's Rerun Setup Wizard button."
+   }
+  ],
+  "help.quickstart.before_begin.setup_wizard.server": [
+   {
+    "text": "Setup Wizard:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Username & Password",
+    "kind": "control",
+    "key": "settings.auth.credentials_title",
+    "reason": "The sign-in method the wizard turns on is the Username & Password card's (settings.auth.credentials_title)."
+   },
+   {
+    "text": "Finish & Open Dashboard",
+    "kind": "control",
+    "key": "setup.action.finish",
+    "reason": "The Setup Wizard's last footer button."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "session.my_account",
+    "reason": "\"run it again from My Account\" names the account control the reader opens."
+   }
+  ],
+  "help.quickstart.before_begin.setup_wizard.standalone": [
+   {
+    "text": "Setup Wizard:",
+    "kind": "emphasis",
+    "reason": "Bulleted lead-in phrase of the Help text itself, not an on-screen name."
+   },
+   {
+    "text": "Finish & Open Dashboard",
+    "kind": "control",
+    "key": "setup.action.finish",
+    "reason": "The Setup Wizard's last footer button."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "session.my_account",
+    "reason": "\"run it again from My Account\" names the account control the reader opens."
+   }
   ]
  }
 }

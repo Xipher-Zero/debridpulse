@@ -154,7 +154,13 @@ jobs:
           cat > "$RUNNER_TEMP/qualification/runtime.sh" <<'RUNTIME'
           start_runtime() {
             local image="$1" open_name="$2" auth_name="$3" open_port="$4" auth_port="$5" auth_dir="$6" port ready
-            docker run -d --name "$open_name" -p "127.0.0.1:${open_port}:8080" "$image" || return 1
+            # An existing installation, never a new one: a configuration file
+            # is present at its first start, so it opens no Setup Wizard
+            # (services.setup_lifecycle) and every spec meets the application
+            # as an operator's running installation.
+            mkdir -p "${auth_dir}-open"
+            echo '{}' > "${auth_dir}-open/config.json"
+            docker run -d --name "$open_name" -p "127.0.0.1:${open_port}:8080" -v "${auth_dir}-open:/app/config" "$image" || return 1
 
             mkdir -p "$auth_dir"
             docker run --rm --entrypoint python "$image" -c '
@@ -191,7 +197,11 @@ jobs:
           start_runtime "$IMAGE" dp-browser-open dp-browser-auth 8080 8081 "$RUNNER_TEMP/dp-browser-auth-config"
           # The same candidate image, serving the real application through the
           # test-only composition that can raise a real INPUT_REQUIRED challenge.
-          docker run -d --name dp-browser-contract -p "127.0.0.1:8084:8080" "$IMAGE" \
+          # An existing installation too (see start_runtime).
+          mkdir -p "$RUNNER_TEMP/dp-browser-contract-config"
+          echo '{}' > "$RUNNER_TEMP/dp-browser-contract-config/config.json"
+          docker run -d --name dp-browser-contract -p "127.0.0.1:8084:8080" \
+            -v "$RUNNER_TEMP/dp-browser-contract-config:/app/config" "$IMAGE" \
             uvicorn browser_contract_app:app --app-dir /app/tests --host 0.0.0.0 --port 8080 --workers 1
           ready=0
           for _ in $(seq 1 90); do

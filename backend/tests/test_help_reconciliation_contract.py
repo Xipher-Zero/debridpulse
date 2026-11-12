@@ -226,7 +226,9 @@ def test_terminology_and_scope_stay_current():
     assert "Metalink (Multimeta)" in HELP
     # Future scope is not described as present. Standalone (a deployment
     # type) and Easy / Advanced (a presentation) are present since 1.0.14 and
-    # are read from the interface's own context, never as a "mode" name.
-    for future in ("wizard", "browser plugin", "browser extension", "easy mode", "advanced mode"):
+    # are read from the interface's own context, never as a "mode" name. So is
+    # the Setup Wizard, which Quick Start describes by deployment type.
+    for future in ("browser plugin", "browser extension", "easy mode", "advanced mode"):
         assert future not in lowered, future
+    assert HELP.count("a new installation opens the Setup Wizard") == 2   # Server and Standalone
     assert "window.debridPulseAuth?.presentation?.context?.()" in HELP

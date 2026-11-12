@@ -1986,6 +1986,41 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-modal-dialog.dp-account-dialog .dp-account-language {
   flex: 0 0 auto;
 }
+/* Rerun Setup Wizard: the last part of the profile, in its scrolling body
+   above the fixed footer -- a short centred rule (about 60% of the content's
+   width), then the centred heading, its two sentences (each its own line,
+   wrapping within itself when narrow) and the secondary button. */
+.dp-modal-dialog.dp-account-dialog .dp-account-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  text-align: center;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-setup::before {
+  content: '';
+  inline-size: 60%;
+  max-inline-size: 22rem;
+  border-block-start: 1px solid var(--dp-divider);
+  margin-block-end: 10px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-setup-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-setup-hint {
+  margin: 0;
+  max-inline-size: 100%;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-setup-rerun {
+  margin-block-start: 6px;
+}
 /* The language view: its list scrolls inside the dialog's fixed body, so the
    header and the footer stay where the profile has them. */
 .dp-modal-dialog.dp-account-dialog .dp-account-language-view {

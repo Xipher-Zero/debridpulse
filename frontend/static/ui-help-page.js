@@ -140,8 +140,10 @@
           <ul>
             <li ${keyed('help.quickstart.before_begin.storage')}></li>
             ${c.standalone ? `
+            <li ${keyed('help.quickstart.before_begin.setup_wizard.standalone')}></li>
             <li ${keyed('help.quickstart.before_begin.login_protection.standalone')}></li>
             <li ${keyed('help.quickstart.before_begin.who_can_do_what.standalone')}></li>` : `
+            <li ${keyed('help.quickstart.before_begin.setup_wizard.server')}></li>
             ${c.shows('username-password') ? `<li ${keyed('help.quickstart.before_begin.login_protection.username_password_shown')}></li>`
               : `<li ${keyed('help.quickstart.before_begin.login_protection.username_password_hidden')}></li>`}
             <li ${keyed('help.quickstart.before_begin.who_can_do_what.server')}></li>`}

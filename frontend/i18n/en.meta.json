@@ -22833,6 +22833,344 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal",
    "context": "Settings Help: the role comparison table, one role's plain answer to whether it can do a capability (a cell, and in the narrow list the answer beside the role's name); one word."
+  },
+  "setup.step": {
+   "category": "label",
+   "context": "Setup wizard header: which page of the wizard is shown, e.g. Step 2 of 5. Short; sits beside the page title.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short.",
+   "args": {
+    "current": "number: the page shown, from 1",
+    "total": "number: how many pages this setup has"
+   }
+  },
+  "setup.action.next": {
+   "category": "action",
+   "context": "Setup wizard footer button: saves this page's choice and goes to the next page.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.action.get_started": {
+   "category": "action",
+   "context": "Setup wizard footer button on the first (Welcome) page of a new installation's setup; saves the language and goes on.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short."
+  },
+  "setup.action.finish": {
+   "category": "action",
+   "context": "Setup wizard footer button on the last page: finishes setup and opens the Dashboard (on a Server, the sign-in page first).",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short."
+  },
+  "setup.welcome.title": {
+   "category": "modal-title",
+   "context": "Setup wizard: title of the first page.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.intro": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page introduction.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.language": {
+   "category": "label",
+   "context": "Setup wizard Welcome page: heading of the language list (the installation's default language).",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.language_hint": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page: what the chosen language is. My Account is the account dialog's name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.title": {
+   "category": "modal-title",
+   "context": "Setup wizard: title of the page that chooses Standalone or Server.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.intro": {
+   "category": "hint",
+   "context": "Setup wizard Deployment Mode page introduction.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.standalone.text": {
+   "category": "hint",
+   "context": "Setup wizard: description under the Standalone choice.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.server.text": {
+   "category": "hint",
+   "context": "Setup wizard: description under the Server choice.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.locked": {
+   "category": "hint",
+   "context": "Setup wizard Deployment Mode page, shown read-only after the Administrator was created. Settings path names: keep them as the interface names them.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.title": {
+   "category": "modal-title",
+   "context": "Setup wizard: title of the page that chooses the folder downloads are saved in.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.intro": {
+   "category": "hint",
+   "context": "Setup wizard Download Directory page introduction.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.hint": {
+   "category": "hint",
+   "context": "Setup wizard Download Directory page hint. Browse and Next are button names.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.required": {
+   "category": "error",
+   "context": "Setup wizard: shown when Next is pressed with an empty Download Folder field.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.title": {
+   "category": "modal-title",
+   "context": "Setup wizard: title of the page that creates a Server installation's own Administrator account.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.intro": {
+   "category": "hint",
+   "context": "Setup wizard Administrator Setup page introduction.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.confirm": {
+   "category": "label",
+   "context": "Setup wizard Administrator Setup: field title for repeating the new password.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.sign_in_on": {
+   "category": "hint",
+   "context": "Setup wizard Administrator Setup hint. Username & Password is the sign-in method's name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.more_accounts": {
+   "category": "hint",
+   "context": "Setup wizard Administrator page pointer to the accounts settings.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.oidc": {
+   "category": "hint",
+   "context": "Setup wizard Administrator page pointer to the OIDC settings.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.created": {
+   "category": "hint",
+   "context": "Setup wizard Administrator Setup page after the account exists (read-only).",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.resubmit": {
+   "category": "hint",
+   "context": "Setup wizard Administrator Setup page after an interrupted creation.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.username_required": {
+   "category": "error",
+   "context": "Setup wizard Administrator Setup: the username field is empty.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.password_required": {
+   "category": "error",
+   "context": "Setup wizard Administrator Setup: the password field is empty.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.passwords_differ": {
+   "category": "error",
+   "context": "Setup wizard Administrator Setup: Password and Confirm Password differ.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.guidance.title": {
+   "category": "modal-title",
+   "context": "Setup wizard (rerun, Server): title of the page that only points to where accounts are managed.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.guidance.text": {
+   "category": "hint",
+   "context": "Setup wizard rerun, Server: guidance page text.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.open_users": {
+   "category": "action",
+   "context": "Setup wizard rerun, Server: button that opens Settings at the Users & Access tab.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.hint": {
+   "category": "hint",
+   "context": "Setup wizard Premium Services page hint: a positive statement that zero services is fine.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.title": {
+   "category": "modal-title",
+   "context": "Setup wizard: title of the last page.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.intro": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started introduction.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step_paste": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, step 1. Quick Add is the Dashboard input's name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step_add": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, step 2. Add is the Quick Add button's name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step_watch": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, step 3. Dashboard and Downloads are page names.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.sign_in": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, Server: sign-in is required after finishing.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.error.not_saved": {
+   "category": "error",
+   "context": "Setup wizard: a step's save failed without a more specific reason.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.error.language_unavailable": {
+   "category": "error",
+   "context": "Setup wizard Welcome: the installation's language could not be read.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.error.not_opened": {
+   "category": "error",
+   "context": "My Account: Rerun Setup Wizard failed to open the wizard.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.setup.title": {
+   "category": "modal-title",
+   "context": "My Account profile: heading of the section that reruns the setup wizard.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.setup.hint.review": {
+   "category": "hint",
+   "context": "My Account profile, Setup Wizard section, first sentence (its own line).",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.setup.hint.preserved": {
+   "category": "hint",
+   "context": "My Account profile, Setup Wizard section, second sentence (its own line).",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.setup.rerun": {
+   "category": "action",
+   "context": "My Account profile: button that opens the setup wizard again.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short."
+  },
+  "help.my_account.setup_wizard": {
+   "category": "long-form-help",
+   "context": "My Account Help: heading of the Setup Wizard section.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.setup_wizard.rerun": {
+   "category": "long-form-help",
+   "context": "My Account Help: what the Rerun Setup Wizard button does.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.setup_wizard.server": {
+   "category": "long-form-help",
+   "context": "My Account Help (Server): the rerun's Administrator page.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.setup_wizard.close": {
+   "category": "long-form-help",
+   "context": "My Account Help: dismissing a rerun.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.quickstart.before_begin.setup_wizard.server": {
+   "category": "long-form-help",
+   "context": "Help Quick Start, Before you begin (Server).",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
+  "help.quickstart.before_begin.setup_wizard.standalone": {
+   "category": "long-form-help",
+   "context": "Help Quick Start, Before you begin (Standalone).",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
+  "account.leave.title": {
+   "category": "modal-title",
+   "context": "Confirmation title, shown when the Setup Wizard (opened over My Account) is about to open Settings while My Account has unsaved profile edits. My Account is the dialog's name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.leave.message": {
+   "category": "critical-warning",
+   "context": "Confirmation message: continuing discards the unsaved profile edits (display name, actual name, email). Keep the warning's full strength.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.leave.discard": {
+   "category": "action",
+   "context": "Confirmation button: discard the unsaved My Account edits and continue to Settings.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.leave.keep": {
+   "category": "action",
+   "context": "Confirmation button: keep the unsaved edits; nothing changes.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
   }
  }
 }

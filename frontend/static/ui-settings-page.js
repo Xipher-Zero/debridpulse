@@ -9038,5 +9038,19 @@
     fitPage();
   });
 
-  window.DPSettingsPage = Object.freeze({load});
+  /* Settings opened at one of its tabs, for a surface outside this page that
+   * points the operator there (the setup wizard): the page is loaded exactly
+   * as a sidebar visit loads it, then that tab is selected. */
+  function openTab(name) {
+    const entries = Array.from(document.querySelectorAll('.nav-item[data-view="settings"]'));
+    const entry = entries.find(item => item.getClientRects().length) || entries[0];
+    if (!entry || typeof window.nav !== 'function') return;
+    document.addEventListener('debridpulse:settings-rendered', () => activateTab(name), {once: true});
+    window.nav(entry);
+  }
+
+  /* The ONE whole-settings write (writeSettingsDocument), for a surface that
+   * changes a settings-document value outside this page (the setup wizard's
+   * Download Directory): never a second write path. */
+  window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides)});
 })();

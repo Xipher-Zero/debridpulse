@@ -436,6 +436,9 @@
     // signed-in Administrator only.
     const clearable = standalone && required === true && own?.has_password === true
       && sessionKind(data) === 'authenticated';
+    // Rerun Setup Wizard: for an Admin (a Server's, or a Standalone
+    // installation's protected one); the server refuses anyone else.
+    const setupWizard = can('administer') && Boolean(window.DPSetupWizard);
     let emailSlot = null;
     // The Pencil turns the shown address into the field, holding it; Save
     // sends the change, Cancel discards it.
@@ -552,6 +555,21 @@
       },
     };
 
+    /* Whether the profile holds an edit Save has not sent. */
+    const profileEdited = () => Boolean(fields.display_name) && (
+      fields.display_name.value.trim() !== String(profile.display_name || data.display_name || '')
+      || fields.actual_name.value.trim() !== String(profile.actual_name || '')
+      || Boolean(fields.email && fields.email.value.trim() !== String(profile.email || '')));
+    /* The setup wizard (opened over this dialog) takes the operator to a
+     * page: this dialog steps aside -- at once when nothing is unsaved, else
+     * only once the operator chooses to discard the edits. Keep Editing leaves
+     * every edit and both dialogs as they are. */
+    async function leaveForSetup() {
+      if (!profileEdited()) return true;
+      return modal.confirm({tone: 'warning', title: said('account.leave.title'), message: said('account.leave.message'),
+        confirmLabel: said('account.leave.discard'), cancelLabel: said('account.leave.keep')});
+    }
+
     const actions = [];
     if (passwordAction) actions.push({id: 'password', placement: 'leading',
       label: said(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
@@ -570,7 +588,7 @@
       standalone, open: sessionKind(data) === 'standalone', signInRequired: required, hasPassword: own?.has_password === true,
       passwordAction, first, standaloneFirst, clearable, showsUsername: !standalone,
       email: Boolean(profile.email), emailSelfEntered: profile.email_self_entered === true,
-      presentation: presentation.owned, language: Boolean(localeState),
+      presentation: presentation.owned, language: Boolean(localeState), setupWizard,
     }}));
     if (selector) headerEnd.append(selector.element);
     const dialog = modal.open({
@@ -600,7 +618,13 @@
             <div class="dp-account-email-row">
               <div class="dp-modal-field dp-account-email" data-account-email></div>${localeState ? `
               <button type="button" class="btn dp-language-button dp-account-language" data-account-language></button>` : ''}
-            </div>
+            </div>${setupWizard ? `
+            <div class="dp-account-setup">
+              <h3 class="dp-account-setup-title" data-i18n="account.setup.title"></h3>
+              <p class="dp-account-setup-hint" data-i18n="account.setup.hint.review"></p>
+              <p class="dp-account-setup-hint" data-i18n="account.setup.hint.preserved"></p>
+              <button type="button" class="btn dp-account-setup-rerun" data-account-setup-rerun data-i18n="account.setup.rerun"></button>
+            </div>` : ''}
           </div>${localeState ? `
           <div class="dp-account-view dp-account-language-view" data-account-view="language" hidden>
             <p class="dp-language-error" role="alert" data-account-language-error hidden></p>
@@ -636,6 +660,13 @@
         emailSlot = body.querySelector('[data-account-email]');
         paintEmail();
         language.mount(body, handle);
+        // Opened over this dialog, which keeps every unsaved edit as it is:
+        // the wizard never saves them, and they are discarded only by the
+        // operator's own choice when it opens a page (leaveForSetup).
+        body.querySelector('[data-account-setup-rerun]')?.addEventListener('click', () => {
+          window.DPSetupWizard.rerun({opener: {mayLeave: leaveForSetup, leave: () => handle.close()}})
+            .catch(error => notice(error?.message || DPI18n.t('setup.error.not_opened')));
+        });
         return null;
       },
       onCancel(handle) {

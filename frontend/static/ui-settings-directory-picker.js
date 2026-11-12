@@ -7,7 +7,9 @@
  * the Settings markup emitted by ui-settings-page.js, which calls
  * DPSettingsDirectoryPicker.open(purpose) from the button; this module reads the
  * field's current value and writes the chosen one back, and touches no other
- * Settings markup. Backup purpose is directory navigation only (see backend
+ * Settings markup; a caller may name its own field instead
+ * (DPSettingsDirectoryPicker.open(purpose, {field})), whose value it sets and
+ * whose commit stays that caller's. Backup purpose is directory navigation only (see backend
  * GET /settings/directories?purpose=backup); it never calls Download Storage
  * validation, so its selectable wording does not reuse "Selectable as Download
  * Storage".
@@ -70,8 +72,10 @@
     return t(`format.size.${units[unit].toLowerCase()}`, {value: window.DPI18n.number(scaled, 1)});
   }
 
-  function openDirectoryPicker(config) {
-    const field = root()?.querySelector(config.fieldSelector);
+  function openDirectoryPicker(config, own = null) {
+    // The field it chooses for: the Settings field, or one its caller owns
+    // (the setup wizard's Download Directory), which it commits nothing for.
+    const field = own instanceof HTMLInputElement ? own : root()?.querySelector(config.fieldSelector);
     if (!field || typeof api !== 'function') return;
 
     const originalValue = String(field.value ?? '');
@@ -277,7 +281,7 @@
       if (controller) controller.abort();
       controller = null;
       if (!accepted || currentResponse?.current?.selectable !== true) return;
-      const liveField = document.getElementById(field.id);
+      const liveField = own ? (field.isConnected ? field : null) : document.getElementById(field.id);
       if (!liveField) return;
       const canonicalPath = String(currentResponse.current.path ?? '');
       liveField.value = canonicalPath;
@@ -299,9 +303,9 @@
   }
 
   window.DPSettingsDirectoryPicker = Object.freeze({
-    open(purpose) {
+    open(purpose, {field = null} = {}) {
       const config = PICKERS[purpose];
-      if (config) openDirectoryPicker(config);
+      if (config) openDirectoryPicker(config, field);
     },
   });
 })();

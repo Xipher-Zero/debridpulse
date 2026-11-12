@@ -263,7 +263,7 @@ def test_ws5_a_well_formed_planned_catalog_passes_and_its_gaps_are_debt_not_erro
     assert row["termbase"] and row["ledger"] and row["unreviewed"] == 0 and row["noBackTranslation"] == 0
     assert row["provenance"] == {"ai-generated": len(WS5_DE), "ai-review": len(WS5_DE), "ai-back-translation": 1}
     # The English registers: the Help label map holds every <b> span, classified.
-    assert report["labels"] == {"spans": 787, "control": 520, "term": 40, "emphasis": 101, "control-unmapped": 125, "unresolved": 1}
+    assert report["labels"] == {"spans": 795, "control": 526, "term": 40, "emphasis": 103, "control-unmapped": 125, "unresolved": 1}
 
 
 def _mutated(**change):

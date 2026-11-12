@@ -1,0 +1,117 @@
+/* The setup wizard (ui-setup-wizard.js): its pages inside the canonical
+   dialog shell (ui-modal-contract.css). Layout only; the artwork of Welcome
+   and Getting Started is provisional and replaced later without changing
+   these pages. Logical properties throughout, so right-to-left languages
+   mirror without a rule of their own. */
+.dp-modal-dialog.dp-setup-dialog {
+  inline-size: min(560px, calc(100vw - 32px));
+}
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dp-setup-step {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dp-setup-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-inline-size: 0;
+}
+.dp-setup-lead,
+.dp-setup-hint,
+.dp-setup-label {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+.dp-setup-hint {
+  color: var(--dp-text-muted);
+  font-size: 12px;
+}
+.dp-setup-label {
+  font-weight: 600;
+}
+.dp-setup-error {
+  margin: 0;
+  color: var(--red);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.dp-setup-error[hidden] {
+  display: none;
+}
+.dp-setup-language {
+  max-block-size: 260px;
+}
+
+/* Deployment: two described choices, one radio group. */
+.dp-setup-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 10px;
+}
+.dp-setup-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dp-setup-choice[aria-checked="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dp-setup-choice:disabled {
+  cursor: default;
+  opacity: .7;
+}
+.dp-setup-choice-name {
+  font-weight: 650;
+}
+.dp-setup-choice-text {
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Download Directory: the field and its Browse control on one row, the
+   control beneath the field when the row is too narrow for both. */
+.dp-setup-directory-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dp-setup-directory-row > .input {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+/* Getting Started: the place the Dashboard illustration takes later, and the
+   three numbered steps. */
+.dp-setup-illustration {
+  margin: 0;
+  block-size: 96px;
+  border: 1px dashed var(--dp-border-default);
+  border-radius: 8px;
+}
+.dp-setup-steps {
+  margin: 0;
+  padding-inline-start: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.5;
+}
