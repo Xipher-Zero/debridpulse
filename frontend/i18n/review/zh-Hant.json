@@ -534,6 +534,62 @@
     "ai-review"
    ]
   },
+  "account.language.title": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "df028fd6bd35363e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.language.button": {
+   "source": "c09c83fed7aa493f",
+   "translation": "27d61bf6e2e46aaf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.system_default": {
+   "source": "97dde1d9006ed924",
+   "translation": "2675f814652d1605",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 使用系統預設 (Taiwan 預設; independent of zh-Hans 默认).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "language.picker.account_not_saved": {
+   "source": "f8bb79f2e68433eb",
+   "translation": "7b81167b1434ef9e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.default_not_saved": {
+   "source": "5b148dad5d44df0b",
+   "translation": "625a3cb52d28f80e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.unavailable": {
+   "source": "4d1a08f5f80323b9",
+   "translation": "6600c0da390ef6bf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "account.field.current_password": {
    "source": "8ac76099cc6666b3",
    "translation": "cfd5861bdd7d14b6",
@@ -1115,6 +1171,54 @@
   "help.my_account.presentation.open": {
    "source": "93e003cfc45440c3",
    "translation": "33bb2c0732033121",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "df028fd6bd35363e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.button": {
+   "source": "2248c75f986c4981",
+   "translation": "17a6a80700790c3b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.system_default": {
+   "source": "713081db68c0814d",
+   "translation": "0ac329dff296af67",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.explicit": {
+   "source": "b0545343eaf95649",
+   "translation": "a8b702bf110e51de",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.saved": {
+   "source": "307753b7c0ecee0f",
+   "translation": "f66f74c9acb17f3e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.not_saved": {
+   "source": "fd989b277348ab2f",
+   "translation": "640019ea5fb79530",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15933,12 +16037,92 @@
     "ai-review"
    ]
   },
-  "settings.deployment.title": {
-   "source": "b4b5d250c00617a3",
-   "translation": "610abc4125ab8a87",
+  "settings.default_language.title": {
+   "source": "28bee2441243a8fc",
+   "translation": "7191ee8b3376889f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "settings.default_language.hint": {
+   "source": "be21dfd4fae7a19d",
+   "translation": "3ac2b5e05f792f33",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_short": {
+   "source": "fe874de04df1b7db",
+   "translation": "b3527db104cea472",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_shortest": {
+   "source": "13fdd2bf384ae59e",
+   "translation": "1f279f7ca4362e82",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 10 characters, no final 。.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.default_language.button": {
+   "source": "11865ea0c999dd47",
+   "translation": "1a4c1b9aeca81b1f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.unavailable": {
+   "source": "ca184496974204a0",
+   "translation": "9dde7d1f9f5370cb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.deployment.title": {
+   "source": "89932107dba4775f",
+   "translation": "e9552fe4cf53ad1c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 部署與語言 replaces 部署類型; consistent with 目前部署類型.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title_short": {
+   "source": "870a8ffd98f4f2bd",
+   "translation": "3ca7718593c06f4f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 部署.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "settings.email.self_entered": {
@@ -23635,6 +23819,30 @@
     }
    ]
   },
+  "help.using.language.account": {
+   "source": "ee453105bb3a13fc",
+   "translation": "2f94604d10905c92",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.server": {
+   "source": "9d4f24dbdfb6c8c2",
+   "translation": "fdb18cd716da81ab",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.standalone": {
+   "source": "bdeceb0980e4ca0c",
+   "translation": "89fcdae87ef365ed",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.using.header_controls.pause_all": {
    "source": "ee10f83c94abad47",
    "translation": "880507ec9a33d585",
@@ -25968,11 +26176,19 @@
    ]
   },
   "help.settings.access_integrations.deployment_type": {
-   "source": "875385c8205d3c54",
-   "translation": "2b36c922c8eafca1",
+   "source": "5c3639c149259ddb",
+   "translation": "7aa81064aff3123d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Only 部署類型 -> 部署與語言 changed from the previous translation.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "help.settings.access_integrations.only_built_administrator": {
@@ -26100,8 +26316,24 @@
    ]
   },
   "help.settings.users_access.deployment_type": {
-   "source": "2dd3a0cdd8680ce2",
-   "translation": "d33ca97f3f0ede37",
+   "source": "ce16dd2c957f80ea",
+   "translation": "1fe1d24fae7cec07",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Only 部署類型 -> 部署與語言 changed from the previous translation.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "help.settings.users_access.default_language": {
+   "source": "941fa8c1a8615c83",
+   "translation": "ce110f09dd83aa00",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30671,6 +30903,14 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.default_language": {
+   "source": "730f861754ffc2d7",
+   "translation": "7191ee8b3376889f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "source": "2b7970d578ec1d66",
    "translation": "53b4350397a2aae2",
@@ -30702,6 +30942,38 @@
   "help.topic.deployment_type.what_switching_changes.stays_open_until": {
    "source": "ed0cbb2fe9a83de1",
    "translation": "002286dd568364a9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "source": "fc30956ae904d6a2",
+   "translation": "9a9c5a81e758108d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "source": "d23a5289113271f6",
+   "translation": "a7c815a68514b453",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "source": "1b93d27247919f84",
+   "translation": "e9ca2eedc3b09378",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "source": "c6d204e2f5a55375",
+   "translation": "fb7c2b28b58271b1",
    "provenance": [
     "ai-generated",
     "ai-review"

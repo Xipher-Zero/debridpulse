@@ -580,6 +580,62 @@
     "ai-review"
    ]
   },
+  "account.language.title": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "f2a1cc71fa59a04b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.language.button": {
+   "source": "c09c83fed7aa493f",
+   "translation": "e97cc4e76173c70f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.system_default": {
+   "source": "97dde1d9006ed924",
+   "translation": "0f5a451b540ff11f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Systemstandard verwenden»: infinitive per termbase for actions.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "language.picker.account_not_saved": {
+   "source": "f8bb79f2e68433eb",
+   "translation": "c92bbdb042b2241f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.default_not_saved": {
+   "source": "5b148dad5d44df0b",
+   "translation": "79baf350331de93a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.unavailable": {
+   "source": "4d1a08f5f80323b9",
+   "translation": "cefcb7c0ba5af263",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "account.field.current_password": {
    "source": "8ac76099cc6666b3",
    "translation": "7bdf6e89701c9637",
@@ -1259,6 +1315,70 @@
     {
      "kind": "ambiguity",
      "note": "Translator: harmonized: built-in Administrator → „integrierter Admin“",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "help.my_account.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "f2a1cc71fa59a04b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.button": {
+   "source": "2248c75f986c4981",
+   "translation": "bf069667e167ce8b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.system_default": {
+   "source": "713081db68c0814d",
+   "translation": "c5719b24c5ba5c46",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.explicit": {
+   "source": "b0545343eaf95649",
+   "translation": "daa119e729fc0fc5",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Reviewer: Elliptical 'bleibt Ihre' is unidiomatic German; completed as 'bleibt Ihre Sprache'.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
+    }
+   ]
+  },
+  "help.my_account.language.saved": {
+   "source": "307753b7c0ecee0f",
+   "translation": "2d57d600fcc0c9ba",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.not_saved": {
+   "source": "fd989b277348ab2f",
+   "translation": "f6eb7375ff0ee350",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «drücken Sie <b>Zurück</b>» so the control label stays uninflected.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
@@ -15850,12 +15970,92 @@
     "ai-review"
    ]
   },
-  "settings.deployment.title": {
-   "source": "b4b5d250c00617a3",
-   "translation": "816c86917f304ba3",
+  "settings.default_language.title": {
+   "source": "28bee2441243a8fc",
+   "translation": "603c9bc73f31f2d9",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "settings.default_language.hint": {
+   "source": "be21dfd4fae7a19d",
+   "translation": "b5890439838c200d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_short": {
+   "source": "fe874de04df1b7db",
+   "translation": "0fa4f5f137d9f8ca",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_shortest": {
+   "source": "13fdd2bf384ae59e",
+   "translation": "0beff14ddeead816",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Für Konten ohne eigene Wahl.» (28 chars).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.default_language.button": {
+   "source": "11865ea0c999dd47",
+   "translation": "b17c03245ac98419",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.unavailable": {
+   "source": "ca184496974204a0",
+   "translation": "5db96a2a9332950f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.deployment.title": {
+   "source": "89932107dba4775f",
+   "translation": "4a97115cb98da72d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Bereitstellung & Sprache»; the card sets both the type and the default language.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title_short": {
+   "source": "870a8ffd98f4f2bd",
+   "translation": "6227c31c083461d9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Bereitstellung» (14 chars) kept for consistency with «Bereitstellungstyp»; no shorter common German word names the same card.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "settings.email.self_entered": {
@@ -23991,6 +24191,38 @@
     "ai-review"
    ]
   },
+  "help.using.language.account": {
+   "source": "ee453105bb3a13fc",
+   "translation": "69339d794891c510",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Reviewer: Same elliptical 'bleibt Ihre' as in help.my_account.language.explicit; completed for natural German.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
+    }
+   ]
+  },
+  "help.using.language.default.server": {
+   "source": "9d4f24dbdfb6c8c2",
+   "translation": "fbe43b49ed90bda3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.standalone": {
+   "source": "bdeceb0980e4ca0c",
+   "translation": "75e13a9f9a777bf1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.using.header_controls.pause_all": {
    "source": "ee10f83c94abad47",
    "translation": "f7be939fbe49664f",
@@ -26790,8 +27022,8 @@
    ]
   },
   "help.settings.access_integrations.deployment_type": {
-   "source": "875385c8205d3c54",
-   "translation": "61ba47430472aab8",
+   "source": "5c3639c149259ddb",
+   "translation": "3766d3e75ca425cb",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27006,11 +27238,27 @@
    ]
   },
   "help.settings.users_access.deployment_type": {
-   "source": "2dd3a0cdd8680ce2",
-   "translation": "d853f4254e0e3c81",
+   "source": "ce16dd2c957f80ea",
+   "translation": "a3a3c4e84d920abc",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "help.settings.users_access.default_language": {
+   "source": "941fa8c1a8615c83",
+   "translation": "47595e36485f42b6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Reviewer: 'Wählen Sie eine und dann Übernehmen' lacked a verb for the Apply control; catalog style is 'drücken Sie'.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
+    }
    ]
   },
   "help.settings.users_access.my_account_also": {
@@ -32144,6 +32392,14 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.default_language": {
+   "source": "730f861754ffc2d7",
+   "translation": "603c9bc73f31f2d9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "source": "2b7970d578ec1d66",
    "translation": "54ad4ed00715cd0f",
@@ -32200,6 +32456,38 @@
      "status": "resolved",
      "resolution": "Quoted the on-screen names (exact UI German) and adjusted the sentence where needed."
     }
+   ]
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "source": "fc30956ae904d6a2",
+   "translation": "2fcae00ac132769f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "source": "d23a5289113271f6",
+   "translation": "dd979ae076775a88",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "source": "1b93d27247919f84",
+   "translation": "a15ba0aad6fc6137",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "source": "c6d204e2f5a55375",
+   "translation": "f0621de2af90cfd8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
    ]
   },
   "help.topic.discord.intro.instance_wide_webhook": {

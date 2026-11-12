@@ -544,6 +544,62 @@
     "ai-review"
    ]
   },
+  "account.language.title": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "7ae9d418353b399f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.language.button": {
+   "source": "c09c83fed7aa493f",
+   "translation": "1b3d2d810edc76fc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.system_default": {
+   "source": "97dde1d9006ed924",
+   "translation": "73df903ea104e783",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Infinitive action per termbase; 'el predeterminado' = the default (language).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "language.picker.account_not_saved": {
+   "source": "f8bb79f2e68433eb",
+   "translation": "2a079e68e9afe722",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.default_not_saved": {
+   "source": "5b148dad5d44df0b",
+   "translation": "6f660e1a00dc217a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.unavailable": {
+   "source": "4d1a08f5f80323b9",
+   "translation": "8631812e121f04ea",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "account.field.current_password": {
    "source": "8ac76099cc6666b3",
    "translation": "14a433147337bb11",
@@ -1173,6 +1229,54 @@
   "help.my_account.presentation.open": {
    "source": "93e003cfc45440c3",
    "translation": "5a5faceaefdffcb9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "7ae9d418353b399f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.button": {
+   "source": "2248c75f986c4981",
+   "translation": "c8d22e2ca2b7060e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.system_default": {
+   "source": "713081db68c0814d",
+   "translation": "b03a091f515d81db",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.explicit": {
+   "source": "b0545343eaf95649",
+   "translation": "18e7078e411109d4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.saved": {
+   "source": "307753b7c0ecee0f",
+   "translation": "96a9c95667938645",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.not_saved": {
+   "source": "fd989b277348ab2f",
+   "translation": "791d94f50947445a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15809,9 +15913,33 @@
     "ai-review"
    ]
   },
-  "settings.deployment.title": {
-   "source": "b4b5d250c00617a3",
-   "translation": "34b38f218e79c9a3",
+  "settings.default_language.title": {
+   "source": "28bee2441243a8fc",
+   "translation": "44b989fe5cbd116c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint": {
+   "source": "be21dfd4fae7a19d",
+   "translation": "326c9427b70b99bf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_short": {
+   "source": "fe874de04df1b7db",
+   "translation": "b767c29c3ce38986",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_shortest": {
+   "source": "13fdd2bf384ae59e",
+   "translation": "f2569d63d3f60942",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15819,7 +15947,55 @@
    "findings": [
     {
      "kind": "ambiguity",
-     "note": "Translator: Deployment Type → 'Tipo de implementación' (use consistently).",
+     "note": "Translator: 'Si la cuenta no elige otro.' (27 chars) = applies unless the account chooses its own.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.default_language.button": {
+   "source": "11865ea0c999dd47",
+   "translation": "c49cff33d01bba00",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.unavailable": {
+   "source": "ca184496974204a0",
+   "translation": "b781f6bd9b98e43d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.deployment.title": {
+   "source": "89932107dba4775f",
+   "translation": "7f2308cce2a4b181",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 'Implementación' kept consistent with 'Tipo de implementación actual'; '& Language' rendered 'e idioma'.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title_short": {
+   "source": "870a8ffd98f4f2bd",
+   "translation": "ca541a9f3c7c44ed",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 'Implementación' (14 chars) names the card; no shorter word keeps the established deployment term.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
@@ -23708,6 +23884,30 @@
     }
    ]
   },
+  "help.using.language.account": {
+   "source": "ee453105bb3a13fc",
+   "translation": "b651d3c153d6b6b2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.server": {
+   "source": "9d4f24dbdfb6c8c2",
+   "translation": "4bd30ae46e779f13",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.standalone": {
+   "source": "bdeceb0980e4ca0c",
+   "translation": "5f5beec356b3146b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.using.header_controls.pause_all": {
    "source": "ee10f83c94abad47",
    "translation": "1959929173b119b5",
@@ -26089,18 +26289,18 @@
    ]
   },
   "help.settings.access_integrations.deployment_type": {
-   "source": "875385c8205d3c54",
-   "translation": "f807d138f7c0f39a",
+   "source": "5c3639c149259ddb",
+   "translation": "1bbf6a5d1f1f9da3",
    "provenance": [
     "ai-generated",
     "ai-review"
    ],
    "findings": [
     {
-     "kind": "style",
-     "note": "Reviewer: \"lo primero de esta pestaña\" is vague/awkward for \"first on this tab\"; Deployment Type is a card (settings.deployment.title).",
+     "kind": "ambiguity",
+     "note": "Translator: Only the card name changed from previous translation.",
      "status": "resolved",
-     "resolution": "Names it as the first card on the tab."
+     "resolution": "The translator chose the wording recorded in the note."
     }
    ]
   },
@@ -26253,18 +26453,34 @@
    ]
   },
   "help.settings.users_access.deployment_type": {
-   "source": "2dd3a0cdd8680ce2",
-   "translation": "74dc8b9cfe7542f7",
+   "source": "ce16dd2c957f80ea",
+   "translation": "9af9de9a5c3029e9",
    "provenance": [
     "ai-generated",
     "ai-review"
    ],
    "findings": [
     {
-     "kind": "style",
-     "note": "Reviewer: \"lo primero de esta pestaña\" is vague/awkward for \"first on this tab\"; Deployment Type is a card (settings.deployment.title).",
+     "kind": "ambiguity",
+     "note": "Translator: Only the card name changed from previous translation.",
      "status": "resolved",
-     "resolution": "Names it as the first card on the tab."
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "help.settings.users_access.default_language": {
+   "source": "941fa8c1a8615c83",
+   "translation": "e81511a5a094eed2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Reviewer: 'Su Idioma predeterminado' reads as 'your default language' in formal Spanish; made explicit as the card's.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
     }
    ]
   },
@@ -31513,6 +31729,14 @@
     }
    ]
   },
+  "help.topic.heading.default_language": {
+   "source": "730f861754ffc2d7",
+   "translation": "44b989fe5cbd116c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "source": "2b7970d578ec1d66",
    "translation": "2d3d6cb8421c8222",
@@ -31552,6 +31776,46 @@
   "help.topic.deployment_type.what_switching_changes.stays_open_until": {
    "source": "ed0cbb2fe9a83de1",
    "translation": "fea93ba4acc0dedb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "source": "fc30956ae904d6a2",
+   "translation": "69a3cb8ce34c74bf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "source": "d23a5289113271f6",
+   "translation": "51fb617f1192fb2a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Reviewer: 'Pulse su botón' reads as 'press your button'; named the default language button explicitly.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
+    }
+   ]
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "source": "1b93d27247919f84",
+   "translation": "0bc3126a141dd7ba",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "source": "c6d204e2f5a55375",
+   "translation": "a98a644d59a65d96",
    "provenance": [
     "ai-generated",
     "ai-review"

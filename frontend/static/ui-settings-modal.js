@@ -30,7 +30,10 @@
  * the title names -- whose `label` is its accessible name and tooltip;
  * `handle.focusAction(id)` returns focus to any action.
  * A dialog with more than one view changes its slot labels through
- * `handle.setAcceptLabel` / `setCancelLabel` -- and, for a view that asks a
+ * `handle.setAcceptLabel` / `setCancelLabel` -- withdraws the accept slot
+ * from a view that settles nothing of its own (`handle.setAcceptHidden`: a
+ * choice saved where it is made, the cancel slot then its way back) -- and,
+ * for a view that asks a
  * different question, its title and tone through `handle.setTitle(title)` and
  * `handle.setTone(tone, acceptTone)`, the same two choices `open` takes -- and
  * (a title or slot label may be said words, {key, values}: its key is kept with
@@ -378,7 +381,7 @@
     // Settlement through the client's guards: a guard answering ``false``
     // keeps the dialog open (a Back, a refused save).
     async function requestAccept() {
-      if (settled || accepting || (accept && accept.disabled)) return;
+      if (settled || accepting || (accept && (accept.disabled || accept.hidden))) return;
       if (typeof spec.onAccept !== 'function') { settle(true); return; }
       // Busy, not disabled: whether the accept slot is enabled stays the
       // client's to say (setAcceptEnabled), during and after the guard.
@@ -405,6 +408,7 @@
       get isOpen() { return !settled; },
       close() { settle(false); },
       setAcceptEnabled(enabled) { if (accept) accept.disabled = !enabled; },
+      setAcceptHidden(hidden) { if (accept) accept.hidden = !!hidden; },
       setActionEnabled(id, enabled) {
         const button = actionButtons.get(String(id));
         if (button) button.disabled = !enabled;

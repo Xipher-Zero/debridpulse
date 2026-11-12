@@ -684,18 +684,21 @@
   }
 
   /* A header whose title may wrap (data-header-fit-wrap) fits while its title
-   * takes at most two lines, no word of it runs past its region, and nothing
-   * runs past the header. */
+   * takes at most two lines -- one on a card that declares it
+   * (data-header-title-lines, Deployment & Language: its short title is drawn
+   * rather than its full title wrapped) -- no word of it runs past its
+   * region, and nothing runs past the header. */
   function wrappedHeaderFits({header, title}) {
     const text = header.querySelector('.dp-settings-card-title-text');
     if (!text) return true;
+    const most = Number(header.closest('[data-header-title-lines]')?.dataset.headerTitleLines) || 2;
     const range = document.createRange();
     range.selectNodeContents(text);
     const lines = new Set([...range.getClientRects()].filter(box => box.width > 1 && box.height > 8)
       .map(box => Math.round(box.bottom))).size;
     // Overflow shows on whichever box narrowed: the identity, its title or
     // the header.
-    return lines <= 2 && [title, title.querySelector('.card-title'), text, header]
+    return lines <= most && [title, title.querySelector('.card-title'), text, header]
       .every(box => !box || box.scrollWidth <= box.clientWidth + 1);
   }
 
@@ -1272,11 +1275,13 @@
     // Connect identity group) declares ``helpRow: false``: no row is drawn.
     const helpRow = fit && options.helpRow !== false;
     // ``shortTitleFirst``: its short title is drawn before Help is lent (the
-    // stylesheet's step order), not as the last resort.
+    // stylesheet's step order), not as the last resort. ``titleLines: 1``: its
+    // full title never wraps; where it would, the steps go on (wrappedHeaderFits).
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}"${
         fit ? ' data-header-fit="0" data-header-fit-self data-header-fit-wrap' : ''}${
-        fit && options.shortTitleFirst ? ' data-header-short-first' : ''}>
+        fit && options.shortTitleFirst ? ' data-header-short-first' : ''}${
+        fit && options.titleLines ? ` data-header-title-lines="${Number(options.titleLines)}"` : ''}>
         <div class="card-header${options.hinted ? ' dp-settings-card-header dp-settings-card-header--hinted' : ''}">
           ${options.hinted ? `<span class="dp-settings-card-title-group">${identity}${disclosure}</span>` : identity}
           ${center ? `<div class="${centerClass}">${center}</div>` : ''}
@@ -4760,6 +4765,7 @@
     const type = DEPLOYMENT_TYPES[current];
     const other = DEPLOYMENT_TYPES[type.other];
     return card(say('settings.deployment.title'), `
+      <div class="dp-settings-deployment-language" data-language-layout="beside">
       <div class="dp-settings-deployment" data-deployment-type="${current}" data-deployment-fit="0">
         <div class="dp-settings-deployment-reading">
           <span class="dp-settings-deployment-copy">
@@ -4771,9 +4777,19 @@
         <button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
           type.other}"${keyed(say('settings.deployment.switch_to', {type: other.label}))}>${html(t('settings.deployment.switch_to', {type: other.label}))}</button>
       </div>
+      <div class="dp-settings-default-language" data-default-language data-default-language-fit="0">
+        <span class="form-label"${keyed(say('settings.default_language.title'))}>${html(t('settings.default_language.title'))}</span>
+        <span class="form-hint" data-default-language-hint${keyed(DEFAULT_LANGUAGE_HINTS[0])}>${html(DEFAULT_LANGUAGE_HINTS[0])}</span>
+        <button class="btn dp-language-button" type="button" data-user-action="default-language" disabled${
+          keyed(null, {'aria-label': say('settings.default_language.title')})}></button>
+      </div>
+      </div>
     `, {
       className: 'dp-settings-deployment-card',
       help: 'deployment-type',
+      shortTitle: say('settings.deployment.title_short'),
+      shortTitleFirst: true,
+      titleLines: 1,
       titlePrefix: familyIcon('users', 'settings-users'),
       headerCenter: say('settings.deployment.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
@@ -4794,18 +4810,28 @@
   const DEPLOYMENT_GUTTER = 16;
   let deploymentObserver = null;
 
+  /* Deployment & Language: the Deployment Type assembly and, beside it, the
+   * Default Language block, while the assembly keeps its full one-row
+   * reading there and the two fit the card side by side; otherwise the whole
+   * language block is beneath the assembly (data-language-layout). Then the
+   * assembly fits its own reading exactly as before, in the room it has, and
+   * the language block keeps the longest hint that fits on one line beneath
+   * its title (data-default-language-fit 0, 1, 2), none when even the
+   * shortest does not. Only a change of the card's width fits it again. */
   function fitDeploymentType() {
     deploymentObserver?.disconnect();
     deploymentObserver = null;
     const assembly = root()?.querySelector('.dp-settings-deployment');
     if (!assembly) return;
+    const pair = assembly.closest('.dp-settings-deployment-language');
+    const language = pair?.querySelector('[data-default-language]');
+    const languageHint = language?.querySelector('[data-default-language-hint]');
     const reading = assembly.querySelector('.dp-settings-deployment-reading');
     const hint = assembly.querySelector('[data-deployment-hint]');
     const hints = DEPLOYMENT_TYPES[assembly.dataset.deploymentType].hints;
+    const measured = pair || assembly;
     let width = null;
-    const fit = () => {
-      if (!assembly.getClientRects().length) return;
-      width = assembly.clientWidth;
+    const fitReading = () => {
       hint.hidden = false;
       for (let step = 0; step < DEPLOYMENT_FIT_STACKED; step += 1) {
         assembly.dataset.deploymentFit = String(step);
@@ -4815,13 +4841,135 @@
       assembly.dataset.deploymentFit = String(DEPLOYMENT_FIT_STACKED);
       hint.hidden = true;
     };
+    const fitLanguageHint = () => {
+      languageHint.hidden = false;
+      for (let step = 0; step < DEFAULT_LANGUAGE_HINTS.length; step += 1) {
+        language.dataset.defaultLanguageFit = String(step);
+        sayInto(languageHint, DEFAULT_LANGUAGE_HINTS[step]);
+        if (languageHint.getBoundingClientRect().width + 2 * DEPLOYMENT_GUTTER <= language.clientWidth) return true;
+      }
+      language.dataset.defaultLanguageFit = String(DEFAULT_LANGUAGE_HINTS.length);
+      languageHint.hidden = true;
+      return false;
+    };
+    const fit = () => {
+      if (!assembly.getClientRects().length) return;
+      width = measured.clientWidth;
+      if (!pair || !language) { fitReading(); return; }
+      pair.dataset.languageLayout = 'beside';
+      language.dataset.defaultLanguageFit = '0';
+      languageHint.hidden = false;
+      sayInto(languageHint, DEFAULT_LANGUAGE_HINTS[0]);
+      fitReading();
+      if (assembly.dataset.deploymentFit === '0' && pair.scrollWidth <= pair.clientWidth) return;
+      pair.dataset.languageLayout = 'below';
+      fitReading();
+      fitLanguageHint();
+    };
     fit();
     if (typeof ResizeObserver === 'function') {
       deploymentObserver = new ResizeObserver(() => {
-        if (assembly.clientWidth !== width) fit();
+        if (measured.clientWidth !== width) fit();
       });
-      deploymentObserver.observe(assembly);
+      deploymentObserver.observe(measured);
     }
+  }
+
+  /* The installation's default language (Default Language, an Admin's): read
+   * from the server each time the card is drawn, shown on its button as the
+   * language it gives (flag and name), chosen in the shared language list
+   * with a pending choice that only Apply saves. The read and the save are
+   * the server's (GET/PUT /settings/default-locale); a failed read leaves the
+   * button unavailable rather than showing a language that was not read. */
+  const DEFAULT_LANGUAGE_HINTS = Object.freeze(['hint', 'hint_short', 'hint_shortest']
+    .map(step => say(`settings.default_language.${step}`)));
+  const defaultLanguage = {state: null};
+
+  async function paintDefaultLanguage() {
+    const button = root()?.querySelector('[data-user-action="default-language"]');
+    const picker = window.DPLanguagePicker;
+    if (!button || !picker) return;
+    if (!defaultLanguage.state) {
+      button.disabled = true;
+      button.replaceChildren(document.createTextNode(t('settings.default_language.unavailable')));
+      button.setAttribute('aria-label', t('settings.default_language.unavailable'));
+      return;
+    }
+    const shown = await picker.language(defaultLanguage.state.locale);
+    picker.paintButton(button, shown, t('settings.default_language.button', {language: shown.native}));
+    button.disabled = false;
+  }
+
+  async function loadDefaultLanguage() {
+    if (!root()?.querySelector('[data-user-action="default-language"]')) return;
+    try {
+      const read = await request('GET', '/settings/default-locale');
+      defaultLanguage.state = read && typeof read.locale === 'string' ? read : null;
+    } catch (_) {
+      defaultLanguage.state = null;
+    }
+    await paintDefaultLanguage();
+  }
+
+  /* Choose the default: a row only moves the pending choice; Cancel discards
+   * it; Apply saves it once and, only on the server's success, shows it on
+   * the button -- and in this page too when this Admin has no language of its
+   * own (its own read says so). A refused or failed Apply keeps the dialog,
+   * the pending choice, and says so. No other Settings draft is touched. */
+  async function chooseDefaultLanguage(button) {
+    const picker = window.DPLanguagePicker;
+    if (!picker || !defaultLanguage.state) return;
+    let choices = null;
+    try { choices = await picker.choices(); } catch (_) { choices = null; }
+    if (!choices) { notify(t('language.picker.unavailable'), 'error'); return; }
+    let pending = defaultLanguage.state.locale;
+    let rows = null;
+    let error = null;
+    const dialog = window.DPSettingsModal.open({
+      title: say('settings.default_language.title'),
+      acceptLabel: say('common.apply'),
+      cancelLabel: say('common.cancel'),
+      className: 'dp-language-dialog',
+      mount(body) {
+        body.innerHTML = '<p class="dp-language-error" role="alert" hidden></p><div class="dp-language-slot"></div>';
+        error = body.querySelector('.dp-language-error');
+        rows = picker.list(body.querySelector('.dp-language-slot'), {
+          languages: choices, selected: pending, label: t('settings.default_language.title'),
+          onChoose(value) { pending = value; rows.setSelected(value); },
+        });
+        return null;
+      },
+      async onAccept() {
+        error.hidden = true;
+        let saved = null;
+        try {
+          saved = await request('PUT', '/settings/default-locale', {locale: pending});
+        } catch (_) {
+          saved = null;
+        }
+        if (!saved || typeof saved.locale !== 'string') {
+          sayInto(error, say('language.picker.default_not_saved'));
+          error.hidden = false;
+          return false;
+        }
+        defaultLanguage.state = saved;
+        await paintDefaultLanguage();
+        await followDefaultLanguage();
+        return true;
+      },
+    });
+    rows.focus();
+    await dialog.closed;
+    if (button.isConnected) button.focus();
+  }
+
+  // This Admin's own page follows the new default only while it has no
+  // language of its own: the server's answer for this account decides.
+  async function followDefaultLanguage() {
+    let own = null;
+    try { own = await request('GET', '/account/locale'); } catch (_) { own = null; }
+    if (!own || own.preference !== null || own.locale === window.DPI18n.locale()) return;
+    await window.DPLanguagePicker.apply(await window.DPLanguagePicker.language(own.locale));
   }
 
   async function changeDeploymentType(target, button) {
@@ -6647,6 +6795,7 @@
     else if (action === 'create-integration') void createIntegrationAccount();
     else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));
     else if (action === 'deployment') void changeDeploymentType(button.dataset.deploymentTarget || '', button);
+    else if (action === 'default-language') void chooseDefaultLanguage(button);
     else if (!account) return true;
     else if (action === 'edit') { if (account.id !== selfId() && !account.protected) void editUser(account); }
     else if (action === 'details') void showAccountDetails(account);
@@ -6902,6 +7051,7 @@
 
     activateTab(state.activeTab);
     fitPage();
+    void loadDefaultLanguage();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -8834,6 +8984,7 @@
     // The Authentication Status values, which its painter writes as text.
     if (state.auth && view.querySelector('.dp-settings-auth-kpi')) paintAuthKpis(state.auth);
     view.querySelectorAll('.dp-settings-help-chip').forEach(chip => { chip.dataset.tooltip = chip.getAttribute('aria-label') || ''; });
+    void paintDefaultLanguage();
     fitPage();
   });
 

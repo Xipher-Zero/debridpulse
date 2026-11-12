@@ -554,6 +554,62 @@
     "ai-review"
    ]
   },
+  "account.language.title": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "7ae9d418353b399f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.language.button": {
+   "source": "c09c83fed7aa493f",
+   "translation": "1b3d2d810edc76fc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.system_default": {
+   "source": "97dde1d9006ed924",
+   "translation": "061c6e5608467dc8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Article dropped for a short list row; used verbatim inside every bold span.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "language.picker.account_not_saved": {
+   "source": "f8bb79f2e68433eb",
+   "translation": "755826b8883f0f60",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.default_not_saved": {
+   "source": "5b148dad5d44df0b",
+   "translation": "1addf19115cacf27",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.unavailable": {
+   "source": "4d1a08f5f80323b9",
+   "translation": "e610681b1c6a7c6c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "account.field.current_password": {
    "source": "8ac76099cc6666b3",
    "translation": "070b4b3394f4075c",
@@ -1180,6 +1236,62 @@
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "help.my_account.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "7ae9d418353b399f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.button": {
+   "source": "2248c75f986c4981",
+   "translation": "05f23b8cd6f3be90",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.system_default": {
+   "source": "713081db68c0814d",
+   "translation": "c33d69fb1c15d075",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.explicit": {
+   "source": "b0545343eaf95649",
+   "translation": "b8f8bcc98bb01835",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.saved": {
+   "source": "307753b7c0ecee0f",
+   "translation": "33ae240de584dd16",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.not_saved": {
+   "source": "fd989b277348ab2f",
+   "translation": "293f3b712ba4b997",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 'go Back' rendered device-neutral as 'use <b>Voltar</b>'.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "login.title": {
@@ -15433,12 +15545,92 @@
     }
    ]
   },
-  "settings.deployment.title": {
-   "source": "b4b5d250c00617a3",
-   "translation": "2f00bca01e653e80",
+  "settings.default_language.title": {
+   "source": "28bee2441243a8fc",
+   "translation": "5054aa14b090a32c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "settings.default_language.hint": {
+   "source": "be21dfd4fae7a19d",
+   "translation": "fb736b1347044a4b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_short": {
+   "source": "fe874de04df1b7db",
+   "translation": "3d426c384aaad754",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_shortest": {
+   "source": "13fdd2bf384ae59e",
+   "translation": "b5075750dfcb0848",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 30 chars; 'if the account does not choose another' = default applies unless an account chose its own.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.default_language.button": {
+   "source": "11865ea0c999dd47",
+   "translation": "bbdcf96bfa72ef1a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.unavailable": {
+   "source": "ca184496974204a0",
+   "translation": "60cf6b61c55f4a3f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.deployment.title": {
+   "source": "89932107dba4775f",
+   "translation": "fef207056c6234e2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Implantação» kept from the existing deployment terminology (Tipo de implantação atual); card renamed per the English change.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title_short": {
+   "source": "870a8ffd98f4f2bd",
+   "translation": "b2d024fe99a8fc83",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: One word, same card.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "settings.email.self_entered": {
@@ -23174,6 +23366,30 @@
     "ai-review"
    ]
   },
+  "help.using.language.account": {
+   "source": "ee453105bb3a13fc",
+   "translation": "3cc6a2ca7f7b6860",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.server": {
+   "source": "9d4f24dbdfb6c8c2",
+   "translation": "d4f65f8c5576210c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.standalone": {
+   "source": "bdeceb0980e4ca0c",
+   "translation": "2ee63043e2e6bf43",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.using.header_controls.pause_all": {
    "source": "ee10f83c94abad47",
    "translation": "db1f7ec845b2d0d8",
@@ -25645,25 +25861,11 @@
    ]
   },
   "help.settings.access_integrations.deployment_type": {
-   "source": "875385c8205d3c54",
-   "translation": "7f951f52d16a7008",
+   "source": "5c3639c149259ddb",
+   "translation": "7b4935672606ff65",
    "provenance": [
     "ai-generated",
     "ai-review"
-   ],
-   "findings": [
-    {
-     "kind": "ambiguity",
-     "note": "Translator: Deployment type labels kept exactly as the UI shows them (Autônomo/Servidor) in bold, as on-screen names.",
-     "status": "resolved",
-     "resolution": "The translator chose the wording recorded in the note."
-    },
-    {
-     "kind": "other",
-     "note": "Reviewer: Gender mismatch: \"esta instalação é Autônomo\" (the exact masculine UI label after a feminine noun).",
-     "status": "resolved",
-     "resolution": "Inserts \"do tipo\" so the exact UI label stays unchanged and the sentence agrees."
-    }
    ]
   },
   "help.settings.access_integrations.only_built_administrator": {
@@ -25807,11 +26009,27 @@
    ]
   },
   "help.settings.users_access.deployment_type": {
-   "source": "2dd3a0cdd8680ce2",
-   "translation": "9a2ab8fe45b797f3",
+   "source": "ce16dd2c957f80ea",
+   "translation": "1499e67daca32cea",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "help.settings.users_access.default_language": {
+   "source": "941fa8c1a8615c83",
+   "translation": "d373ab4222d453c3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: 'Its' (the card's) rendered 'Nele'; 'then Apply' as 'confirme com <b>Aplicar</b>' to keep the bold label uninflected.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "help.settings.users_access.my_account_also": {
@@ -31105,6 +31323,14 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.default_language": {
+   "source": "730f861754ffc2d7",
+   "translation": "5054aa14b090a32c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "source": "2b7970d578ec1d66",
    "translation": "50c2d8c8b956d744",
@@ -31136,6 +31362,38 @@
   "help.topic.deployment_type.what_switching_changes.stays_open_until": {
    "source": "ed0cbb2fe9a83de1",
    "translation": "c0a41dc126087a17",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "source": "fc30956ae904d6a2",
+   "translation": "87fb97e21b2df1de",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "source": "d23a5289113271f6",
+   "translation": "8c3fcc17dee59e3d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "source": "1b93d27247919f84",
+   "translation": "fe3b1731d9018f2f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "source": "c6d204e2f5a55375",
+   "translation": "ab1ad3af977b0a50",
    "provenance": [
     "ai-generated",
     "ai-review"

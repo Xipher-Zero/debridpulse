@@ -325,6 +325,17 @@
     }
   }
 
+  /* The account's own language as the server decides it ({locale,
+   * preference, default}; Candidate A's contract), or null when unread. */
+  async function readAccountLocale() {
+    try {
+      const response = await debridPulseFetch('/api/account/locale', {headers: {'Accept': 'application/json'}});
+      return response.ok ? await response.json() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function sendJson(method, url, body) {
     const response = await debridPulseFetch(url, {
       method, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: JSON.stringify(body),
@@ -394,7 +405,13 @@
   async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
     if (!modal) return;
+    // The language belongs to the same account the presentation does (the
+    // server says so before first paint); unread, no language is offered.
+    const languages = window.DPLanguagePicker;
+    const languageOwned = window.debridPulseLocale?.owned === true && Boolean(languages);
+    const localeReading = languageOwned ? readAccountLocale() : Promise.resolve(null);
     const own = await readProfile();
+    let localeState = await localeReading;
     const profile = own || {display_name: data.display_name || '', actual_name: '', email: '',
       email_verification: null, has_password: false};
     const fields = {};
@@ -438,23 +455,103 @@
       });
     };
 
-    const show = (next, handle) => {
+    const show = (next, handle, returnTo = null) => {
+      // Back from the language view returns to the control that opened it.
+      const from = view;
       view = next;
       Object.entries(views).forEach(([name, node]) => { node.hidden = name !== next; });
       ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
       // Clear Password's view is destructive: the red treatment, and its own accept.
       handle.setTone(next === 'clear' ? 'danger' : '');
       handle.setAcceptLabel(said(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
+      // The language view saves where a row is chosen: no Save, and its
+      // Cancel is the way back to the profile.
+      handle.setAcceptHidden(next === 'language');
+      handle.setTitle(said(next === 'language' ? 'account.language.title' : 'account.title'));
+      handle.setCancelLabel(said(next === 'language' ? 'settings.common.back' : 'common.cancel'));
       if (next === 'profile') {
         // Secrets never outlive their view.
         ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
-        fields.display_name.focus();
+        (returnTo || (from === 'language' ? language.button : null) || fields.display_name).focus();
+      } else if (next === 'language') {
+        language.open();
       } else if (next === 'clear') {
         fields.clear_current.focus();
       } else {
         (fields.current || fields.next).focus();
       }
     };
+    /* The account's language, chosen in its own view of this dialog: the
+     * button shows the language the server says it is shown in (flag and
+     * name); a row saves at once, independent of the profile's Save and
+     * Cancel, and only the server's answer changes the page's language.
+     * Nothing else in the dialog is rebuilt, so every draft stays. */
+    const language = {
+      button: null, error: null, slot: null, rows: null, handle: null, saving: false,
+      async paint() {
+        if (!this.button || !localeState) return;
+        const shown = await languages.language(localeState.locale);
+        languages.paintButton(this.button, shown, DPI18n.t('account.language.button', {language: shown.native}));
+      },
+      mount(body, handle) {
+        this.handle = handle;
+        this.button = body.querySelector('[data-account-language]');
+        this.error = body.querySelector('[data-account-language-error]');
+        this.slot = body.querySelector('[data-account-language-list]');
+        if (!this.button) return;
+        void this.paint();
+        this.button.addEventListener('click', () => show('language', handle));
+        // A language change re-says the button's name (its face is the language's own).
+        this.relabel = () => { void this.paint(); };
+        document.addEventListener('debridpulse:locale-changed', this.relabel);
+      },
+      release() {
+        if (this.relabel) document.removeEventListener('debridpulse:locale-changed', this.relabel);
+      },
+      async open() {
+        this.error.hidden = true;
+        const [choices, inherited] = await Promise.all([languages.choices().catch(() => null),
+          languages.language(localeState.default)]);
+        if (view !== 'language') return;
+        if (!choices) { this.fail(); this.slot.replaceChildren(); return; }
+        this.rows = languages.list(this.slot, {
+          languages: choices, selected: localeState.preference, systemDefault: {language: inherited},
+          label: DPI18n.t('account.language.title'), onChoose: value => void this.choose(value),
+        });
+        this.rows.focus();
+      },
+      fail() {
+        this.error.textContent = DPI18n.t('language.picker.account_not_saved');
+        this.error.dataset.i18n = 'language.picker.account_not_saved';
+        this.error.hidden = false;
+      },
+      async choose(value) {
+        if (this.saving) return;
+        this.saving = true;
+        this.error.hidden = true;
+        this.rows.setBusy(true);
+        this.handle.setBusy(true);
+        let next = null;
+        try {
+          const response = await debridPulseFetch('/api/account/locale', {method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: JSON.stringify({locale: value})});
+          next = response.ok ? await response.json() : null;
+        } catch (_) {
+          next = null;
+        }
+        this.saving = false;
+        this.rows.setBusy(false);
+        this.handle.setBusy(false);
+        if (!next || typeof next.locale !== 'string') { this.fail(); return; }
+        localeState = next;
+        const shown = await languages.language(next.locale);
+        await languages.apply(shown);
+        await this.paint();
+        if (view === 'language') show('profile', this.handle, this.button);
+      },
+    };
+
     const actions = [];
     if (passwordAction) actions.push({id: 'password', placement: 'leading',
       label: said(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
@@ -473,7 +570,7 @@
       standalone, open: sessionKind(data) === 'standalone', signInRequired: required, hasPassword: own?.has_password === true,
       passwordAction, first, standaloneFirst, clearable, showsUsername: !standalone,
       email: Boolean(profile.email), emailSelfEntered: profile.email_self_entered === true,
-      presentation: presentation.owned,
+      presentation: presentation.owned, language: Boolean(localeState),
     }}));
     if (selector) headerEnd.append(selector.element);
     const dialog = modal.open({
@@ -500,8 +597,15 @@
               <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
             <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.actual_name"></span>
               <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
-            <div class="dp-modal-field dp-account-email" data-account-email></div>
-          </div>
+            <div class="dp-account-email-row">
+              <div class="dp-modal-field dp-account-email" data-account-email></div>${localeState ? `
+              <button type="button" class="btn dp-language-button dp-account-language" data-account-language></button>` : ''}
+            </div>
+          </div>${localeState ? `
+          <div class="dp-account-view dp-account-language-view" data-account-view="language" hidden>
+            <p class="dp-language-error" role="alert" data-account-language-error hidden></p>
+            <div class="dp-language-slot" data-account-language-list></div>
+          </div>` : ''}
           <div class="dp-account-view" data-account-view="password" hidden>${first ? `
             <input type="text" data-account-password-username autocomplete="username" readonly hidden>` : `
             <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.current_password"></span>
@@ -531,6 +635,7 @@
         fields.actual_name.value = String(profile.actual_name || '');
         emailSlot = body.querySelector('[data-account-email]');
         paintEmail();
+        language.mount(body, handle);
         return null;
       },
       onCancel(handle) {
@@ -611,6 +716,7 @@
       },
     });
     if (selector) dialog.closed.then(selector.release);
+    dialog.closed.then(() => language.release());
   }
 
   async function refreshSession({force = false} = {}) {

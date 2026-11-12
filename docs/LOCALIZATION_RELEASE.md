@@ -2,14 +2,16 @@
 
 This is the standalone guide for working on DebridPulse's interface languages, and the record of what
 the 1.0.14 localization work proved and did not prove. The reference for the pieces themselves (runtime,
-catalogs, metadata, validator rules, census, glossary and the future language-choice contract) is
+catalogs, metadata, validator rules, census, glossary and the language-choice contract) is
 [`LOCALIZATION.md`](LOCALIZATION.md); this file does not repeat it.
 
 **Status at WS7-B (2026-11-11).**
 - All 18 target catalogs are complete: 3467 of 3467 messages each, current against the English, and
   reviewed.
-- Every target is still **`planned`**. No language is offered, there is no language picker, and nothing
-  was activated, tagged or released.
+- Every target is still **`planned`**. Nothing was activated, tagged or released.
+- **The language choice exists** (language preferences, 2026-11-11): each account's own in My Account and
+  the installation default in Users & Access → Deployment & Language (`LOCALIZATION.md` §5). With every
+  target `planned` it offers English only; that is expected, not a fault.
 - Every translation and review is **AI-made**. No human or native-speaker review has taken place.
 
 ## 1. Product rules that govern localization
@@ -146,8 +148,10 @@ A language changes words only. These are verified by existing tests:
 | Admission: production admits English and `supported` targets only. A `planned`, unknown or foreign value is refused with **422** and changes nothing; a stored tag that is no longer admitted reads as English and stays stored | `test_account_locale.py` (`…never_a_planned_one`, `…refused_and_changes_nothing`, `…reads_as_english_and_stays_stored`); live probe 2026-11-11: `PUT /api/account/locale {"locale":"de"}` returned 422 `appearance.locale_unknown` |
 | A preference that cannot be read in time is never shown as the saved choice: the page is English and says nothing about the choice | `test_account_locale.py` (`…an_unanswered_read_as_unknown`) |
 
-**Not exercised.** A failed save through a **future production language picker** does not exist yet. The
-refusal above is the API contract such a picker would rely on, not a test of the picker (§7).
+**The language choice's own failure handling** (a refused or failed save keeps the list open, says so,
+and leaves the language as it was; a second press while saving sends nothing; Cancel and Back save
+nothing) is proven on the release image's own manifest by `language-preferences.spec.js` (LP03, LP04).
+The isolated qualification of the same lifecycle with real catalogs is D2/D3 in §6.
 
 ## 6. Release-decision ledger
 
@@ -196,14 +200,18 @@ refusal above is the API contract such a picker would rely on, not a test of the
 | U2 | **Catalogs are served uncompressed** (§4): 0.73–1.13 MB on an account's first load, against about 0.2 MB with gzip | Changing it is an application change, which WS7 is not authorized to make. Options: accept it (paid once per version; often compressed by a reverse proxy), or authorize response compression separately |
 | U3 | **125 Help spans name a control that has no exact catalog key** (14 are the Help manual's own tab names), plus 1 deliberately generic «Clear». The label-identity check cannot verify these; only per-message review covers them | Recorded per span in `frontend/i18n/en.labels.json`. Accept as review-only, or map them to keys in a later English-source change |
 
-### Activation-dependent requirements not yet exercised
+### Activation-dependent requirements
 
-| # | Requirement | Why not yet |
+What an isolated fixture proves is recorded here; it does not activate anything. The fixture is a scratch
+copy of the static files whose manifest marks the targets `supported`, with the repository's real
+catalogs, on a local instance (language preferences candidate B, 2026-11-11, Chromium, host fonts).
+
+| # | Requirement | State |
 |---|---|---|
-| D1 | First paint with a real translated catalog (veil until it arrives, no English flash) | Needs a `supported` language; only the pseudo-locale path is qualified |
-| D2 | The production language choice: picker, persistence and switching lifecycle (the contract is in `LOCALIZATION.md` §5) | No picker exists or is authorized |
-| D3 | A failed save through that picker | The API refusal is tested; the picker's handling is not |
-| D4 | Real-device and real-font fits (iOS, Android, Safari, Firefox) | Only Chromium with host fonts was measured |
+| D1 | First paint with a real translated catalog (veil until it arrives, no English flash) | **Fixture-qualified in Chromium:** a cold load of an account saved as Arabic is `lang="ar" dir="rtl"` and veiled at `DOMContentLoaded`, then Arabic with no debt. Still to be re-run on the release candidate with the real manifest change |
+| D2 | The production language choice: picker, persistence and switching lifecycle (`LOCALIZATION.md` §5) | **Implemented; fixture-qualified in Chromium** at 320 and 1440 px: German and Arabic chosen live (drafts kept, focus returned, one dialog), Use system default, the installation default with Apply (an inheriting Admin follows it; an explicit English does not). English-only behaviour is in CI (`language-preferences.spec.js`) |
+| D3 | A failed save through that picker | **Qualified** on the release image's manifest (`language-preferences.spec.js` LP03, LP04) |
+| D4 | Real-device and real-font fits (iOS, Android, Safari, Firefox) | **Not tested.** Only Chromium with host fonts was measured (the 19-language census of the new surfaces at 320, 375 and 779 px included) |
 
 ## 7. Activation and rollback
 

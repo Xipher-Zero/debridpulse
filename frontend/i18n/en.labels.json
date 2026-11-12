@@ -2,6 +2,52 @@
  "schema": "debridpulse-help-labels/1",
  "about": "Every <b> span of the Help catalog (help.*), in order. kind: control = it names an interface element by its displayed name, so a translation shows that element's translated label exactly (key, or keys joined by join, with suffix); term = a concept in prose, which a translation may inflect (terminology is the termbase's); emphasis = plain emphasis; control-unmapped = an interface name no catalog key is (not checked); unresolved = the passage does not say which element (not checked). Each choice carries its reason. See docs/LOCALIZATION.md §4.",
  "spans": {
+  "help.my_account.language.button": [
+   {
+    "text": "Email",
+    "kind": "control",
+    "key": "account.field.email",
+    "reason": "My Account's Email field title, which the language button stands beside."
+   }
+  ],
+  "help.my_account.language.system_default": [
+   {
+    "text": "Use system default",
+    "kind": "control",
+    "key": "language.picker.system_default",
+    "reason": "The first row of My Account's language list."
+   }
+  ],
+  "help.my_account.language.explicit": [
+   {
+    "text": "Use system default",
+    "kind": "control",
+    "key": "language.picker.system_default",
+    "reason": "The first row of My Account's language list."
+   }
+  ],
+  "help.my_account.language.saved": [
+   {
+    "text": "Save",
+    "kind": "control",
+    "key": "common.save",
+    "reason": "My Account's Save button."
+   },
+   {
+    "text": "Cancel",
+    "kind": "control",
+    "key": "common.cancel",
+    "reason": "My Account's Cancel button."
+   }
+  ],
+  "help.my_account.language.not_saved": [
+   {
+    "text": "Back",
+    "kind": "control",
+    "key": "settings.common.back",
+    "reason": "The language view's Back button, its way back to the profile."
+   }
+  ],
   "help.quickstart.lead.debridpulse_application_use_submit": [
    {
     "text": "DebridPulse is the application you use to submit, route, track, and manage downloads.",
@@ -732,6 +778,46 @@
     "text": "Easy | Advanced",
     "kind": "control-unmapped",
     "reason": "The combined Easy | Advanced selector; no single candidate key for the composed text."
+   }
+  ],
+  "help.using.language.account": [
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "The My Account dialog."
+   },
+   {
+    "text": "Use system default",
+    "kind": "control",
+    "key": "language.picker.system_default",
+    "reason": "The first row of My Account's language list."
+   }
+  ],
+  "help.using.language.default.server": [
+   {
+    "text": "Settings → Users & Access → Deployment & Language",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.users",
+     "settings.deployment.title"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Users & Access: the tab; Deployment & Language: the card title."
+   }
+  ],
+  "help.using.language.default.standalone": [
+   {
+    "text": "Settings → Access & Integrations → Deployment & Language",
+    "kind": "control",
+    "keys": [
+     "shell.nav.settings",
+     "settings.tab.users_standalone",
+     "settings.deployment.title"
+    ],
+    "join": "→",
+    "reason": "Settings: a path starts at the sidebar entry; Access & Integrations: the Standalone tab's name; Deployment & Language: the card title."
    }
   ],
   "help.using.header_controls.pause_all": [
@@ -3687,10 +3773,10 @@
   ],
   "help.settings.access_integrations.deployment_type": [
    {
-    "text": "Deployment Type",
+    "text": "Deployment & Language",
     "kind": "control",
     "key": "settings.deployment.title",
-    "reason": "Deployment Type card title."
+    "reason": "Deployment & Language card title."
    },
    {
     "text": "Standalone",
@@ -3923,10 +4009,10 @@
   ],
   "help.settings.users_access.deployment_type": [
    {
-    "text": "Deployment Type",
+    "text": "Deployment & Language",
     "kind": "control",
     "key": "settings.deployment.title",
-    "reason": "Deployment Type card title."
+    "reason": "Deployment & Language card title."
    },
    {
     "text": "Server",
@@ -3944,6 +4030,26 @@
     "text": "Help",
     "kind": "control-unmapped",
     "reason": "The card's (?) Help button; the only candidate is the Help & License nav short name, which is a different element."
+   }
+  ],
+  "help.settings.users_access.default_language": [
+   {
+    "text": "Default Language",
+    "kind": "control",
+    "key": "settings.default_language.title",
+    "reason": "The Default Language block's title on the Deployment & Language card."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "The My Account dialog."
+   },
+   {
+    "text": "Apply",
+    "kind": "control",
+    "key": "common.apply",
+    "reason": "The Default Language dialog's Apply button."
    }
   ],
   "help.settings.users_access.my_account_also": [
@@ -5172,6 +5278,34 @@
     "text": "GNU General Public License v2.0 or later",
     "kind": "term",
     "reason": "The licence's proper name, kept as the licence names itself."
+   }
+  ],
+  "help.topic.deployment_type.default_language.what": [
+   {
+    "text": "Default Language",
+    "kind": "control",
+    "key": "settings.default_language.title",
+    "reason": "The Default Language block's title on the Deployment & Language card."
+   },
+   {
+    "text": "My Account",
+    "kind": "control",
+    "key": "account.title",
+    "reason": "The My Account dialog, where an account chooses its own language."
+   }
+  ],
+  "help.topic.deployment_type.default_language.apply": [
+   {
+    "text": "Apply",
+    "kind": "control",
+    "key": "common.apply",
+    "reason": "The Default Language dialog's Apply button."
+   },
+   {
+    "text": "Cancel",
+    "kind": "control",
+    "key": "common.cancel",
+    "reason": "The Default Language dialog's Cancel button."
    }
   ]
  }

@@ -65,7 +65,7 @@ test('Server: Authentication and Users & Access, Deployment Type first and the a
   await page.locator('#view-settings [data-tab="users"]').click();
   await expect(page.locator('[data-users-mount] .dp-settings-users-card').first()).toBeVisible();
   expect(await usersCards(page).allTextContents()).toEqual(
-    ['Deployment Type', 'User Accounts', 'Integration Accounts', 'Integration Delivery Profiles']);
+    ['Deployment & Language', 'User Accounts', 'Integration Accounts', 'Integration Delivery Profiles']);
   await expect(page.locator('[data-panel="users"] [data-user-action="create-local"]')).toHaveCount(1);
   await expect(page.locator('.dp-settings-deployment')).toHaveAttribute('data-deployment-type', 'server');
 });
@@ -82,7 +82,7 @@ test('Standalone: no Authentication tab or panel, Access & Integrations on the u
   await users.click();
   await expect(page.locator('.dp-settings-users-integrations-card')).toBeVisible();
   expect(await usersCards(page).allTextContents()).toEqual(
-    ['Deployment Type', 'Integration Accounts', 'Integration Delivery Profiles']);
+    ['Deployment & Language', 'Integration Accounts', 'Integration Delivery Profiles']);
   await expect(page.locator('#view-settings .dp-settings-users-table')).toHaveCount(0);
   await expect(page.locator('#view-settings [data-user-action="create-local"], #view-settings [data-user-action="merge"]')).toHaveCount(0);
   // The integration cards keep their actions.

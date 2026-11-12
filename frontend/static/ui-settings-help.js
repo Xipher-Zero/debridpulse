@@ -644,6 +644,12 @@
           'help.topic.deployment_type.what_switching_changes.afterwards_no_sign',
           'help.topic.deployment_type.what_switching_changes.stays_open_until',
         ]},
+        {heading: 'help.topic.heading.default_language', list: [
+          'help.topic.deployment_type.default_language.what',
+          'help.topic.deployment_type.default_language.apply',
+          'help.topic.deployment_type.default_language.inherited',
+          'help.topic.deployment_type.default_language.sessions',
+        ]},
       ],
     },
 
@@ -830,6 +836,14 @@
           {key: 'help.my_account.presentation.unchanged'},
           {key: 'help.my_account.presentation.saved'},
           {key: 'help.my_account.presentation.open', when: c => c.account?.open === true},
+        ]},
+        // Only where the dialog offers the account's language (its own read succeeded).
+        {headingKey: 'help.my_account.language', when: c => c.account?.language === true, list: [
+          {key: 'help.my_account.language.button'},
+          {key: 'help.my_account.language.system_default'},
+          {key: 'help.my_account.language.explicit'},
+          {key: 'help.my_account.language.saved'},
+          {key: 'help.my_account.language.not_saved'},
         ]},
       ],
     },

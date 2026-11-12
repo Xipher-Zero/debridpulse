@@ -1,7 +1,8 @@
 # Localization
 
 DebridPulse 1.0.14 status: **WS0–WS7 complete: 18 complete, AI-reviewed target catalogs, all still
-`planned`; no language is offered.** The operating guide, the per-language readiness matrix and the
+`planned`. The language choice exists (My Account, and the installation default under Users & Access →
+Deployment & Language, §5); with every target `planned` it offers English only.** The operating guide, the per-language readiness matrix and the
 release-decision ledger (what is verified, corrected, accepted, unresolved and activation-dependent) are in
 [`LOCALIZATION_RELEASE.md`](LOCALIZATION_RELEASE.md). The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
@@ -61,8 +62,8 @@ These surfaces read the catalog:
   headings and answers.
 
 The census finds no first-party interface literal outside the catalog or the
-reviewed exemptions. No language is offered: there is no picker, and no target
-catalog is offered (WS5).
+reviewed exemptions. No target is offered while every target is `planned`: the
+language choice (§5) lists English and the `supported` targets only.
 
 WS5-0 adds the translation tooling a language candidate is qualified with (§4,
 WS5 translation checks): the concept register and protected names, termbases and
@@ -707,10 +708,26 @@ findings as JSON. It sees only what that reader is shown.
 It does not need any target translation: the missing keys show as debt warnings,
 not failures.
 
-## 5. Future language-choice integration contract
+## 5. The language choice
 
-There is no picker, and this contract proposes no placement. A later choice in
-My Account or a first-run step would do the following:
+Two places choose a language, through one list (`ui-language-picker.js`,
+`window.DPLanguagePicker`: the manifest's English and `supported` targets, each
+by its flag and its own `native` name, the flag hidden from assistive
+technology, each name its own `lang`/`dir` run):
+
+- **My Account** (`auth.js`, every account that owns a presentation, the open
+  default Admin included): the button beside Email shows the language the
+  account is shown in. It opens the list as a view of the same dialog; the
+  first row, **Use system default**, clears the account's choice. A row saves at
+  once, independent of the profile's Save and Cancel; only the server's answer
+  changes the page's language (`DPI18n.setLocale`), a refusal keeps the list
+  open and says so, and every draft is kept.
+- **Users & Access → Deployment & Language → Default Language**
+  (`ui-settings-page.js`, an Admin's): the installation's default, chosen in the
+  same list in its own dialog, where a row is only pending until **Apply**; an
+  Admin with no language of its own follows the new default at once.
+
+Both use the contract below.
 
 1. **Read.** Call `GET /api/account/locale`, which returns
    `{locale, preference, default}`: the account's own (the open default Admin's):

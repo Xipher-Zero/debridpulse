@@ -535,6 +535,62 @@
     "ai-review"
    ]
   },
+  "account.language.title": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "314cd0c9855dffc4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.language.button": {
+   "source": "c09c83fed7aa493f",
+   "translation": "4a3271d6ad789a3c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.system_default": {
+   "source": "97dde1d9006ed924",
+   "translation": "f49a938837e3a12d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Użyj języka domyślnego» (Use the default language): 'system' dropped because a literal «domyślnego systemu» misreads as 'the system's default'; the row shows the default language beside it.",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "language.picker.account_not_saved": {
+   "source": "f8bb79f2e68433eb",
+   "translation": "ce4474d1d405ab2d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.default_not_saved": {
+   "source": "5b148dad5d44df0b",
+   "translation": "f4f77fb1d5a1580e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "language.picker.unavailable": {
+   "source": "4d1a08f5f80323b9",
+   "translation": "aab5694c2c19cacd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "account.field.current_password": {
    "source": "8ac76099cc6666b3",
    "translation": "55956051853a648f",
@@ -1158,6 +1214,54 @@
   "help.my_account.presentation.open": {
    "source": "93e003cfc45440c3",
    "translation": "956f1fece252fcb5",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language": {
+   "source": "a4fe65264ef7dbb3",
+   "translation": "314cd0c9855dffc4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.button": {
+   "source": "2248c75f986c4981",
+   "translation": "5435e0d22cd4fb35",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.system_default": {
+   "source": "713081db68c0814d",
+   "translation": "a794a770f90c5989",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.explicit": {
+   "source": "b0545343eaf95649",
+   "translation": "713d907c8359338a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.saved": {
+   "source": "307753b7c0ecee0f",
+   "translation": "03b1f6e55f87210b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.my_account.language.not_saved": {
+   "source": "fd989b277348ab2f",
+   "translation": "0d233c6e2efae9e4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15713,12 +15817,100 @@
     "ai-review"
    ]
   },
-  "settings.deployment.title": {
-   "source": "b4b5d250c00617a3",
-   "translation": "3e67e000ca15831e",
+  "settings.default_language.title": {
+   "source": "28bee2441243a8fc",
+   "translation": "a735b28fc4c62372",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "settings.default_language.hint": {
+   "source": "be21dfd4fae7a19d",
+   "translation": "cbf393924636a302",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_short": {
+   "source": "fe874de04df1b7db",
+   "translation": "85fd56372932af0a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.hint_shortest": {
+   "source": "13fdd2bf384ae59e",
+   "translation": "eb6aacdee1e51b42",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Gdy konto nie wybrało języka.» (29 chars).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.default_language.button": {
+   "source": "11865ea0c999dd47",
+   "translation": "d382c2a6942e7ac6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.default_language.unavailable": {
+   "source": "ca184496974204a0",
+   "translation": "694577aa86a7a4ac",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Masculine «Niedostępny», agreeing with «język».",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title": {
+   "source": "89932107dba4775f",
+   "translation": "b6d4e54e89f50fa6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Wdrożenie i język»; 'wdrożenie' matches «Bieżący typ wdrożenia».",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "settings.deployment.title_short": {
+   "source": "870a8ffd98f4f2bd",
+   "translation": "ae1e109bc0630422",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: «Wdrożenie» (9 chars).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
    ]
   },
   "settings.email.self_entered": {
@@ -23719,6 +23911,38 @@
     }
    ]
   },
+  "help.using.language.account": {
+   "source": "ee453105bb3a13fc",
+   "translation": "d9a18f6323bab77d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.server": {
+   "source": "9d4f24dbdfb6c8c2",
+   "translation": "d71eb337007c17e2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.using.language.default.standalone": {
+   "source": "bdeceb0980e4ca0c",
+   "translation": "e80a4f3dbfadfa0f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Translator: Impersonal «ustawia się» per the termbase (help never addresses the reader).",
+     "status": "resolved",
+     "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
   "help.using.header_controls.pause_all": {
    "source": "ee10f83c94abad47",
    "translation": "f9288cc5c1716556",
@@ -26629,19 +26853,11 @@
    ]
   },
   "help.settings.access_integrations.deployment_type": {
-   "source": "875385c8205d3c54",
-   "translation": "9d3afebfa4ab6187",
+   "source": "5c3639c149259ddb",
+   "translation": "2613c6800f7ff431",
    "provenance": [
     "ai-generated",
     "ai-review"
-   ],
-   "findings": [
-    {
-     "kind": "ambiguity",
-     "note": "Translator: harmonized: cross-chunk Help/UI terminology",
-     "status": "resolved",
-     "resolution": "The translator chose the wording recorded in the note."
-    }
    ]
   },
   "help.settings.access_integrations.only_built_administrator": {
@@ -26799,18 +27015,26 @@
    ]
   },
   "help.settings.users_access.deployment_type": {
-   "source": "2dd3a0cdd8680ce2",
-   "translation": "32b0b7a82800c632",
+   "source": "ce16dd2c957f80ea",
+   "translation": "a4bab0c5c2604f6e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.settings.users_access.default_language": {
+   "source": "941fa8c1a8615c83",
+   "translation": "390a373ed90d8d85",
    "provenance": [
     "ai-generated",
     "ai-review"
    ],
    "findings": [
     {
-     "kind": "ambiguity",
-     "note": "Translator: harmonized: cross-chunk Help/UI terminology",
+     "kind": "style",
+     "note": "Reviewer: «wystarczy wybrać język, a następnie Zastosuj» lacks a verb for Apply and adds an 'it suffices' tone; now an impersonal instruction with «nacisnąć».",
      "status": "resolved",
-     "resolution": "The translator chose the wording recorded in the note."
+     "resolution": "The independent AI review's correction was applied."
     }
    ]
   },
@@ -31676,6 +31900,14 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.default_language": {
+   "source": "730f861754ffc2d7",
+   "translation": "a735b28fc4c62372",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "source": "2b7970d578ec1d66",
    "translation": "9c3af6a8b0fcc3ff",
@@ -31725,6 +31957,46 @@
      "note": "Translator: harmonized: cross-chunk Help/UI terminology",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
+    }
+   ]
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "source": "fc30956ae904d6a2",
+   "translation": "67be4e257cdbfc95",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "source": "d23a5289113271f6",
+   "translation": "7db9b40b3ecb86b5",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "source": "1b93d27247919f84",
+   "translation": "9987c958568cdb91",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "source": "c6d204e2f5a55375",
+   "translation": "04ef9a5b7d0db74e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "ambiguity",
+     "note": "Reviewer: «Własny interfejs … jeśli korzysta» is unclear about whose interface and who follows the default; now names the reader's own account.",
+     "status": "resolved",
+     "resolution": "The independent AI review's correction was applied."
     }
    ]
   },

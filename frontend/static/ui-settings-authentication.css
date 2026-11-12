@@ -1079,6 +1079,56 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: 10px;
 }
 
+/* Deployment & Language: the Deployment Type assembly above, as it always
+   was, and the Default Language block -- its title over its one-line hint,
+   both centred, and the language button centred beneath them. Beside the
+   assembly, divided from it, while both fit at their full width (the
+   assembly keeps its full one-row reading); otherwise the whole block beneath
+   it (fitDeploymentType decides, data-language-layout). */
+#view-settings .dp-settings-deployment-language {
+  display: flex;
+  align-items: center;
+  gap: 16px 24px;
+  min-width: 0;
+}
+#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-deployment {
+  flex: 1 1 0;
+}
+#view-settings .dp-settings-deployment-language[data-language-layout='below'] {
+  flex-direction: column;
+  align-items: stretch;
+}
+#view-settings .dp-settings-default-language {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  text-align: center;
+}
+#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-default-language {
+  flex: 0 0 auto;
+  padding-inline-start: 24px;
+  border-inline-start: 1px solid var(--dp-divider);
+}
+#view-settings .dp-settings-deployment-language[data-language-layout='below'] > .dp-settings-default-language {
+  padding-top: 16px;
+  border-top: 1px solid var(--dp-divider);
+}
+#view-settings .dp-settings-default-language > .form-label,
+#view-settings .dp-settings-default-language > .form-hint {
+  white-space: nowrap;
+}
+#view-settings .dp-settings-default-language > .form-hint {
+  margin-top: 0;
+}
+#view-settings .dp-settings-default-language > .form-hint[hidden] {
+  display: none;
+}
+#view-settings .dp-settings-default-language > .dp-language-button {
+  margin-top: 9px;
+}
+
 #view-settings .dp-settings-users-table-wrap {
   min-width: 0;
   overflow-x: auto;
@@ -1889,8 +1939,40 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     max-height: calc(100dvh - 24px);
   }
 }
+/* Email and the account's language share one row: the two-line Email block
+   (its title close over the address) and, at the row's far end, the language
+   button, centred against it. When the two no longer fit side by side, the
+   whole button wraps beneath Email and starts the row there (a lone item on
+   a space-between line starts it). An address being entered takes the room
+   it needs before the button keeps its place beside it. */
+.dp-modal-dialog.dp-account-dialog .dp-account-email-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 6px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-email-row > .dp-account-email {
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 2px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-email-row > .dp-account-email:has(input) {
+  flex: 1 1 16rem;
+  gap: 5px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-language {
+  flex: 0 0 auto;
+}
+/* The language view: its list scrolls inside the dialog's fixed body, so the
+   header and the footer stay where the profile has them. */
+.dp-modal-dialog.dp-account-dialog .dp-account-language-view {
+  height: 100%;
+  min-height: 0;
+}
 .dp-modal-dialog.dp-account-dialog .dp-account-email-value {
-  min-height: var(--dp-input-height, 38px);
+  min-height: 28px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2038,10 +2120,12 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    header and footer leave, so swapping views -- or withdrawing the leading
    Change Password action -- never moves the dialog or its action row, and
    neither view scrolls. Below the dialog contract's narrow breakpoint the
-   footer stacks its buttons, and the fixed height allows for that. */
+   footer stacks its buttons, and the fixed height allows for that, and for
+   the language button wrapping beneath Email (the profile's last row). The
+   language view's list scrolls inside the same body. */
 .dp-modal-dialog.dp-account-dialog {
   width: min(460px, 100%);
-  height: min(498px, calc(100dvh - 48px));
+  height: min(501px, calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
 }
@@ -2051,15 +2135,21 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-modal-dialog.dp-account-dialog:has(.dp-modal-action-leading ~ .dp-modal-action-leading) {
   width: min(560px, 100%);
 }
+/* The body never hides its last row: where a language's words make the
+   profile taller than the fixed size, the body scrolls instead (in English
+   it fits exactly and nothing scrolls). The language view's list scrolls on
+   its own inside it. */
 .dp-modal-dialog.dp-account-dialog .dp-modal-body {
   flex: 1 1 auto;
   min-height: 0;
   display: block;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 @media (max-width: 620px) {
   .dp-modal-dialog.dp-account-dialog {
-    height: min(606px, calc(100dvh - 24px));
+    height: min(656px, calc(100dvh - 24px));
   }
 }
 

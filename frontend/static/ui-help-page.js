@@ -214,7 +214,9 @@
               <li ${keyed('help.using.who_uses_installation.other_people_accounts')}></li>
               <li ${keyed('help.using.who_uses_installation.integration')}></li>
             </ul>
-            <p ${keyed('help.using.who_uses_installation.my_account')}></p>`, true) : accordion('help.using.what_role_lets.title', `
+            <p ${keyed('help.using.who_uses_installation.my_account')}></p>
+            <p ${keyed('help.using.language.account')}></p>
+            ${c.shows('deployment-type') ? `<p ${keyed('help.using.language.default.standalone')}></p>` : ''}`, true) : accordion('help.using.what_role_lets.title', `
             <ul>
               <li ${keyed('help.using.what_role_lets.admin')}></li>
               <li ${keyed('help.using.what_role_lets.user')}></li>
@@ -222,7 +224,9 @@
               <li ${keyed('help.using.who_uses_installation.integration')}></li>
             </ul>
             <p ${keyed('help.using.what_role_lets.name_bottom_sidebar')}></p>
-            <p ${keyed('help.using.what_role_lets.my_account_easy')}></p>`, true)}
+            <p ${keyed('help.using.what_role_lets.my_account_easy')}></p>
+            <p ${keyed('help.using.language.account')}></p>
+            ${adminSees('deployment-type') ? `<p ${keyed('help.using.language.default.server')}></p>` : ''}`, true)}
 
           ${accordion('help.using.header_controls.title', `
             <ul>
@@ -653,7 +657,8 @@ ${c.shows('download-behavior-advanced') ? `              <li ${keyed('help.setti
             <p ${keyed('help.settings.authentication.when_sign_prometheus.server_advanced', {path: '/api/metrics'})}></p>`) : ''}
 
           ${c.standalone ? accordion('help.settings.access_integrations.title', `
-            ${c.shows('deployment-type') ? `<p ${keyed('help.settings.access_integrations.deployment_type')}></p>` : ''}
+            ${c.shows('deployment-type') ? `<p ${keyed('help.settings.access_integrations.deployment_type')}></p>
+            <p ${keyed('help.settings.users_access.default_language')}></p>` : ''}
             <p ${keyed('help.settings.access_integrations.only_built_administrator')}></p>
             <p ${keyed('help.settings.access_integrations.integration')}></p>
             <p ${keyed('help.settings.access_integrations.integration_accounts', {literal: 'Authorization: Bearer <token>'})}></p>
@@ -671,7 +676,8 @@ ${c.shows('download-behavior-advanced') ? `              <li ${keyed('help.setti
             <p ${keyed('help.settings.users_access.user_accounts')}></p>
             <p ${keyed('help.settings.access_integrations.integration_accounts', {literal: 'Authorization: Bearer <token>'})}></p>
             <p ${keyed('help.settings.access_integrations.integration_delivery_profiles')}></p>
-            <p ${keyed('help.settings.users_access.anyone_signed_can')}></p>            ${c.shows('deployment-type') ? `<p ${keyed('help.settings.users_access.deployment_type')}></p>` : ''}
+            <p ${keyed('help.settings.users_access.anyone_signed_can')}></p>            ${c.shows('deployment-type') ? `<p ${keyed('help.settings.users_access.deployment_type')}></p>
+            <p ${keyed('help.settings.users_access.default_language')}></p>` : ''}
             <p ${keyed('help.settings.users_access.my_account_also')}></p>`) : ''}
 
           ${accordion('help.settings.notifications.title', `

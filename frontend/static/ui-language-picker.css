@@ -1,0 +1,134 @@
+/* The one language list and its button (ui-language-picker.js), wherever a
+   language is chosen: My Account's language view and the Default Language
+   dialog. Layout only; the rows take the theme picker's row treatment. */
+
+/* A language as it is shown: its flag, then its own name. */
+.dp-language-flag {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+}
+.dp-language-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+}
+
+/* The button that opens the list: the flag and the name, nothing else. */
+.dp-language-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* The list: rows that scroll on their own, inside whatever room the dialog's
+   header and footer leave. */
+.dp-language-list {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dp-language-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--dp-radius-sm);
+  background: transparent;
+  color: var(--dp-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  transition: color .12s ease, background-color .12s ease;
+}
+.dp-language-option:hover,
+.dp-language-option:focus-visible {
+  color: var(--dp-text-primary);
+  background: color-mix(in srgb, var(--dp-accent-purple) 10%, transparent);
+}
+.dp-language-option:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: -2px;
+}
+.dp-language-option[aria-checked="true"] {
+  color: var(--dp-text-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--dp-accent-purple) 15%, transparent);
+}
+.dp-language-list[aria-busy="true"] .dp-language-option {
+  cursor: progress;
+}
+.dp-language-option-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.dp-language-system-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--dp-text-muted);
+  font-weight: 500;
+}
+.dp-language-check {
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+  color: var(--dp-accent-purple-bright);
+}
+.dp-language-check svg { width: 15px; height: 15px; }
+.dp-language-option[aria-checked="true"] .dp-language-check { visibility: visible; }
+
+/* Where a caller places the list: it takes the room its view leaves, and
+   the list scrolls inside it. */
+.dp-language-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dp-language-slot > .dp-language-list {
+  flex: 1 1 auto;
+}
+
+/* A save the server refused: said once, above the list, until the next choice. */
+.dp-language-error {
+  margin: 0;
+  color: var(--dp-state-error);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* The Default Language dialog: the list scrolls between the header and the
+   footer, which stay where they are at every height. */
+.dp-modal-dialog.dp-language-dialog {
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.dp-modal-dialog.dp-language-dialog > .dp-modal-header,
+.dp-modal-dialog.dp-language-dialog > .dp-modal-footer {
+  flex: 0 0 auto;
+}
+.dp-modal-dialog.dp-language-dialog > .dp-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}

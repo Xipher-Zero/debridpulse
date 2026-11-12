@@ -356,7 +356,7 @@ test('E04/E07-E10/E12/E15: Server Settings in Easy omit exactly the listed parts
   await expect(page.locator('#dp-settings-field-auth-password')).toHaveValue(`draft-${run}-pass`);
   await expect(page.locator('[data-action="apply-credentials"]')).toBeEnabled();
   await showSection(page, 'users');
-  expect((await panelCards(page, 'users'))[0]).toBe('Deployment Type');
+  expect((await panelCards(page, 'users'))[0]).toBe('Deployment & Language');
   await showSection(page, 'sources');
   await expect(page.locator('#view-settings details.dp-settings-additional')).toHaveCount(5);
   expect(writes).toEqual([]);
@@ -381,7 +381,7 @@ test('E07/E09/E10: Standalone keeps no Authentication section and no User Accoun
     await expect(page.locator('[data-users-mount] .dp-settings-users-card').first()).toBeVisible();
     expect(await panelCards(page, 'users')).toEqual(mode === 'easy'
       ? ['Integration Accounts', 'Integration Delivery Profiles']
-      : ['Deployment Type', 'Integration Accounts', 'Integration Delivery Profiles']);
+      : ['Deployment & Language', 'Integration Accounts', 'Integration Delivery Profiles']);
     await showSection(page, 'sources');
     for (const id of PREMIUM) await expect(page.locator(`#view-settings [data-integration-enabled="${id}"]`)).toHaveCount(1);
     await expect(page.locator('#view-settings details.dp-settings-additional')).toHaveCount(mode === 'easy' ? 0 : 5);

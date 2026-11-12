@@ -424,6 +424,47 @@
    "owner": "frontend/static/auth.js",
    "criticality": "normal"
   },
+  "account.language.title": {
+   "category": "modal-title",
+   "context": "My Account: the title of its language view (the list of languages), and the list's accessible name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "geometry": "Replaces the My Account title beside the Help chip and the Easy | Advanced control at 320px; one or two words."
+  },
+  "account.language.button": {
+   "category": "tooltip/aria",
+   "context": "My Account: the accessible name of the language button, which shows only a flag and the language's own name. {language} is that name, in its own language (for example Deutsch), never translated.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "language": "string: the language's own name, from the locale manifest (for example Deutsch), shown as is"
+   }
+  },
+  "language.picker.system_default": {
+   "category": "action",
+   "context": "The first row of My Account's language list: follow the installation's default language instead of a language of one's own. The default's flag and name follow it in the row.",
+   "owner": "frontend/static/ui-language-picker.js",
+   "criticality": "normal",
+   "geometry": "One row of a list about 280px wide at 320px; the default language follows on the same row or wraps beneath."
+  },
+  "language.picker.account_not_saved": {
+   "category": "error",
+   "context": "My Account's language list: shown above the list when the chosen language was not saved. The interface keeps the language it had.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "language.picker.default_not_saved": {
+   "category": "error",
+   "context": "The Default Language dialog: shown above the list when Apply did not save the chosen default. Nothing changed.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "language.picker.unavailable": {
+   "category": "toast",
+   "context": "Shown when the list of languages to choose from could not be read.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
   "account.field.current_password": {
    "category": "label",
    "context": "The password the account has now.",
@@ -844,6 +885,42 @@
    "criticality": "normal"
   },
   "help.my_account.presentation.open": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language": {
+   "category": "long-form-help",
+   "context": "My Account's help: the heading over the part about the account's language.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language.button": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language.system_default": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language.explicit": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language.saved": {
+   "category": "long-form-help",
+   "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.my_account.language.not_saved": {
    "category": "long-form-help",
    "context": "A paragraph or list item of My Account's help, shown only where it applies to the reader.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -11790,103 +11867,103 @@
   },
   "settings.deployment.copy": {
    "category": "action",
-   "context": "Users & Access › Deployment Type: button label.",
+   "context": "Users & Access › Deployment & Language: button label.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.current": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label.",
+   "context": "Users & Access › Deployment & Language: field or option label.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.server": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label.",
+   "context": "Users & Access › Deployment & Language: field or option label.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.server_confirm_accept": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.server_confirm_message": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.server_confirm_title": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.server_hint": {
    "category": "hint",
-   "context": "Users & Access › Deployment Type: explanatory hint beside a control.",
+   "context": "Users & Access › Deployment & Language: explanatory hint beside a control.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.server_hint_short": {
    "category": "hint",
-   "context": "Users & Access › Deployment Type: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "context": "Users & Access › Deployment & Language: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.server_hint_shortest": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "context": "Users & Access › Deployment & Language: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.standalone": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label.",
+   "context": "Users & Access › Deployment & Language: field or option label.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.standalone_confirm_accept": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.standalone_confirm_message": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.standalone_confirm_title": {
    "category": "critical-warning",
-   "context": "Users & Access › Deployment Type: confirmation of an action that removes or stops something; nothing happens until confirmed.",
+   "context": "Users & Access › Deployment & Language: confirmation of an action that removes or stops something; nothing happens until confirmed.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning"
   },
   "settings.deployment.standalone_hint": {
    "category": "hint",
-   "context": "Users & Access › Deployment Type: explanatory hint beside a control.",
+   "context": "Users & Access › Deployment & Language: explanatory hint beside a control.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.standalone_hint_short": {
    "category": "hint",
-   "context": "Users & Access › Deployment Type: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "context": "Users & Access › Deployment & Language: explanatory hint beside a control. A shorter form drawn at narrow widths: keep it at most as long as the English.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.standalone_hint_shortest": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
+   "context": "Users & Access › Deployment & Language: field or option label. A shorter form drawn at narrow widths: keep it at most as long as the English.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.switch_to": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label.",
+   "context": "Users & Access › Deployment & Language: field or option label.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal",
    "args": {
@@ -11895,15 +11972,65 @@
   },
   "settings.deployment.switching": {
    "category": "label",
-   "context": "Users & Access › Deployment Type: field or option label.",
+   "context": "Users & Access › Deployment & Language: field or option label.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.default_language.title": {
+   "category": "label",
+   "context": "Users & Access › Deployment & Language: the title of the block that sets the installation's default language, and the title of its dialog.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, centred, in a block about 240px wide at 320px."
+  },
+  "settings.default_language.hint": {
+   "category": "hint",
+   "context": "Users & Access › Deployment & Language: one line beneath Default Language. The longest of three wordings; the interface shows the longest that fits on one line.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped; replaced by the shorter wording when it does not fit."
+  },
+  "settings.default_language.hint_short": {
+   "category": "hint",
+   "context": "Users & Access › Deployment & Language: the shorter wording of the line beneath Default Language, same meaning.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped, about 240px at 320px."
+  },
+  "settings.default_language.hint_shortest": {
+   "category": "hint",
+   "context": "Users & Access › Deployment & Language: the shortest wording of the line beneath Default Language: the default applies unless an account has chosen its own language.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped, about 200px."
+  },
+  "settings.default_language.button": {
+   "category": "tooltip/aria",
+   "context": "Users & Access › Deployment & Language: the accessible name of the default language button, which shows only a flag and the language's own name. {language} is that name, in its own language, never translated.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "language": "string: the language's own name, from the locale manifest (for example Deutsch), shown as is"
+   }
+  },
+  "settings.default_language.unavailable": {
+   "category": "status-chip",
+   "context": "Users & Access › Deployment & Language: shown on the default language button when the default could not be read.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.deployment.title": {
    "category": "card-title",
-   "context": "Users & Access › Deployment Type: card or group title.",
+   "context": "Users & Access › Deployment & Language: card or group title.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
+  },
+  "settings.deployment.title_short": {
+   "category": "card-title",
+   "context": "Users & Access › Deployment & Language: the card's short title, shown instead of the full one when the card's header is narrow. It must name the same card.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "The handheld header at 320px, beside the card icon and the Help chip; one word if possible."
   },
   "settings.email.self_entered": {
    "category": "label",
@@ -17425,6 +17552,24 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
+  "help.using.language.account": {
+   "category": "long-form-help",
+   "context": "Field Manual (the Help page), Using DebridPulse: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
+  "help.using.language.default.server": {
+   "category": "long-form-help",
+   "context": "Field Manual (the Help page), Using DebridPulse (a Server installation, an Admin reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
+  "help.using.language.default.standalone": {
+   "category": "long-form-help",
+   "context": "Field Manual (the Help page), Using DebridPulse (a Standalone installation, its Administrator reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
   "help.using.header_controls.pause_all": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Everyday Use → Header controls: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
@@ -19064,6 +19209,12 @@
   "help.settings.users_access.deployment_type": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Settings → Users & Access: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal"
+  },
+  "help.settings.users_access.default_language": {
+   "category": "long-form-help",
+   "context": "Field Manual (the Help page), Settings → Users & Access, also Settings → Access & Integrations: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
@@ -22169,103 +22320,133 @@
   },
   "help.topic.deployment_type.intro.deployment_type_decides": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.heading.server": {
    "category": "long-form-help",
-   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment & Language).",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.server.every_enabled_admin": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.heading.standalone": {
    "category": "long-form-help",
-   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment & Language).",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.standalone.only_built_administrator": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.standalone.password_set_sign": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.standalone.without_password_no": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "critical-warning"
   },
   "help.topic.heading.what_switching_keeps": {
    "category": "long-form-help",
-   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment & Language).",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.what_switching_keeps.no_account": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "critical-warning"
   },
   "help.topic.deployment_type.what_switching_keeps.returning_server": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.what_switching_keeps.saved_openid_connect": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.what_switching_keeps.integration_accounts_their": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.heading.what_switching_changes": {
    "category": "long-form-help",
-   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment Type).",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment & Language).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.default_language": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a Settings card's help dialog (Deployment & Language).",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.what_switching_changes.each_switch_either": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
   "help.topic.deployment_type.what_switching_changes.clears_built_administrator": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "critical-warning"
   },
   "help.topic.deployment_type.what_switching_changes.afterwards_no_sign": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "critical-warning"
   },
   "help.topic.deployment_type.what_switching_changes.stays_open_until": {
    "category": "long-form-help",
-   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment Type), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.default_language.what": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.default_language.apply": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.default_language.inherited": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.default_language.sessions": {
+   "category": "long-form-help",
+   "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Deployment & Language), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },

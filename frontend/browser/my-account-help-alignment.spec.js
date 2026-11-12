@@ -411,7 +411,7 @@ const MATRIX = [
     has: ['The six Settings tabs, their cards as the Easy presentation shows them', 'A Standalone installation has no Authentication tab',
       'Integration Accounts are for automation', 'the full interface your role and this installation\'s deployment type allow',
       'Advanced does not add them'],
-    not: ['Settings → Authentication', 'User Accounts lists each person', 'DP Username', 'Deployment Type, first on this tab', 'Under Advanced Settings:',
+    not: ['Settings → Authentication', 'User Accounts lists each person', 'DP Username', 'Deployment & Language, first on this tab', 'Default Language is the language of every account', 'Under Advanced Settings:',
       'Tuning aria2', 'everything your role allows']},
   {id: 'H06', role: 'user', deployment: 'server', mode: 'advanced', tabs: SECTIONS.map(id => (id === 'settings' ? 'settings:Notifications' : id)),
     has: ['Your Notifications', 'Statistics Reporting A periodic summary of the download activity attributed to you', 'Add your first download',
