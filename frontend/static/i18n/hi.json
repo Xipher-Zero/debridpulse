@@ -3560,7 +3560,9 @@
   "account.leave.title": "“मेरा खाता” छोड़ें?",
   "account.leave.message": "“मेरा खाता” में आपके बिना सहेजे गए बदलाव खो जाएँगे।",
   "account.leave.discard": "बदलाव त्यागें",
-  "account.leave.keep": "संपादन जारी रखें"
+  "account.leave.keep": "संपादन जारी रखें",
+  "setup.premium.test_after_save": "परीक्षण करने के लिए अपने बदलाव सहेजें।",
+  "setup.premium.immediate": "“सक्षम करें”, “परीक्षण करें” और “हटाएँ” तुरंत लागू होते हैं। “सहेजें” आपका लिखा हुआ सहेजता है; “रद्द करें” उसे छोड़ देता है।"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

@@ -53,7 +53,7 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     # keeps no column model of its own.
     assert "hinted: true," in downloads
     assert ".dp-settings-download-engine-card > .card-header" not in css
-    hinted = css.split("#view-settings .card-header.dp-settings-card-header {", 1)[1].split("}", 1)[0]
+    hinted = css.split(":is(#view-settings, .dp-setup-provider-surface) .card-header.dp-settings-card-header {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in hinted
     assert ".dp-settings-card-header-center" in css
     assert "text-align: center;" in css

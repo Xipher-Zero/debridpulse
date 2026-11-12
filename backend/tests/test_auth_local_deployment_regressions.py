@@ -279,7 +279,7 @@ def test_authentication_session_assets_are_packaged_without_settings_or_help_aug
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "sidebar-bottom-stack" in ux_style
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides)});" in settings
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider});" in settings
 
 
 # ── Open mode: the standalone Admin answers only at this installation's own

@@ -335,10 +335,10 @@ def test_tuning_headers_have_centred_neutral_explanatory_text():
     # DP 1.0.13 work item E: the copy is centred against the FULL header by the
     # canonical three-region Settings card header, not against a flex remainder.
     css = (STATIC / "ui-settings-page.css").read_text(encoding="utf-8")
-    header = css[css.index("#view-settings .card-header.dp-settings-card-header"):]
+    header = css[css.index(":is(#view-settings, .dp-setup-provider-surface) .card-header.dp-settings-card-header"):]
     header = header[:header.index("}") + 1]
     assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)" in header
-    centre = css[css.index("#view-settings .dp-settings-card-header > .dp-settings-card-header-center"):]
+    centre = css[css.index(":is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header > .dp-settings-card-header-center"):]
     centre = centre[:centre.index("}") + 1]
     assert "justify-self: center" in centre
     assert "text-align: center" in centre

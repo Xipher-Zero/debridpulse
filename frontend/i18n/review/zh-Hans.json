@@ -31538,6 +31538,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.test_after_save": {
+   "source": "f7554168beaf37e7",
+   "translation": "2bb30c9df0a03eb8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate": {
+   "source": "a19a0cbcc0d3dc10",
+   "translation": "9a6fdc1abddb077e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

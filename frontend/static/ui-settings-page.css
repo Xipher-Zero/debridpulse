@@ -193,7 +193,7 @@
   display: none !important;
 }
 
-#view-settings .dp-settings-card {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card {
   width: 100%;
 }
 
@@ -209,7 +209,7 @@
   margin-bottom: 0;
 }
 
-#view-settings .dp-settings-card > .card-header {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card > .card-header {
   min-height: 50px;
 }
 
@@ -220,14 +220,14 @@
    any title or control width -- a flex remainder could only centre the copy
    inside whatever the title happened to leave over, which made the apparent
    centre move with the title's length. */
-#view-settings .card-header.dp-settings-card-header {
+:is(#view-settings, .dp-setup-provider-surface) .card-header.dp-settings-card-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
 }
 
-#view-settings .dp-settings-card-header > .dp-settings-card-title-group {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header > .dp-settings-card-title-group {
   min-width: 0;
   justify-self: start;
   display: inline-flex;
@@ -238,12 +238,12 @@
 /* The shared card material gives .card-title `flex: 1`; inside the title group
    that would push the chip to the far edge, which is exactly the placement
    this correction removes. */
-#view-settings .dp-settings-card-title-group > .card-title {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-title-group > .card-title {
   flex: 0 1 auto;
   min-width: 0;
 }
 
-#view-settings .dp-settings-card-header > .dp-settings-card-header-center {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header > .dp-settings-card-header-center {
   min-width: 0;
   justify-self: center;
   text-align: center;
@@ -258,7 +258,7 @@
    a provider card, an Authentication card and a Notifications card all render
    THIS rail, and each used to restate it. `justify-self` is inert outside a
    grid, so the one rule serves every header that has one. */
-#view-settings .dp-settings-card-header-controls {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header-controls {
   min-width: 0;
   justify-self: end;
   display: flex;
@@ -298,7 +298,7 @@
 }
 
 /* The status sits WITH its rail, so it is not the centred provider variant. */
-#view-settings .dp-settings-card-header-controls > .dp-settings-provider-config-status {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header-controls > .dp-settings-provider-config-status {
   justify-self: auto;
   flex: 0 0 auto;
   text-align: right;
@@ -310,7 +310,7 @@
    put more than one action in it -- Backups & Retention puts two -- so the
    slot carries the rail's own rhythm between them; with a single action the
    gap resolves to nothing. */
-#view-settings .dp-settings-header-action {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-action {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -326,7 +326,7 @@
    is. */
 /* The Test/toggle island's material, one declaration: the handheld header
    Test group, and a Usenet server card's Test/Enable at every width. */
-#view-settings :is(.dp-settings-header-test-group, .dp-usenet-server-controls) {
+:is(#view-settings, .dp-setup-provider-surface) :is(.dp-settings-header-test-group, .dp-usenet-server-controls) {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -337,7 +337,7 @@
 }
 
 @media (min-width: 780px) {
-  #view-settings .dp-settings-header-test-group {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group {
     display: contents;
   }
 }
@@ -346,7 +346,7 @@
   display: none;
 }
 
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test {
   border-color: var(--dp-secondary-border);
   background: var(--dp-secondary-surface);
   color: var(--dp-text-muted);
@@ -358,12 +358,12 @@
   color: var(--dp-text-primary);
 }
 
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-chip {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-chip {
   border-color: var(--dp-secondary-border);
   background: transparent;
 }
 
-#view-settings .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-glyph {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group:has(input[type="checkbox"]:not(:checked)) > .dp-settings-header-action > .dp-settings-provider-test .dp-settings-action-glyph {
   filter: grayscale(1);
 }
 
@@ -554,7 +554,7 @@
   display: none !important;
 }
 
-#view-settings .dp-settings-card-header-center {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header-center {
   min-width: 0;
   justify-self: center;
   text-align: center;
@@ -874,19 +874,19 @@
   min-width: 0;
 }
 
-#view-settings .dp-settings-inline-field-info {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-#view-settings .dp-settings-inline-field-info > .form-hint {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info > .form-hint {
   margin-top: 0;
 }
 
 /* Bounded by default: a control earns extra room by asking for it. */
-#view-settings .dp-settings-inline-field-control {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-control {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -942,7 +942,7 @@
    body -- holding the title/hint, the field and the removal side by side at
    the ordinary Settings spacing. The field takes what the island has left,
    never the card's width. */
-#view-settings .dp-settings-alldebrid-key-row {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row {
   box-sizing: border-box;
   justify-content: center;
   gap: 18px;
@@ -954,19 +954,19 @@
   padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
   max-width: 240px;
 }
 
-#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
   /* The field is what absorbs the row's spare width. */
   flex: 1 1 auto;
 }
 
 /* The key field carries Remove inside its own border (.dp-action-field): the
    key text ends where Remove begins, so nothing has to reserve room for it. */
-#view-settings .dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .dp-action-field {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .dp-action-field {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -974,7 +974,7 @@
 
 /* The Debrid-Link and Premiumize credential rows: the AllDebrid row's island, exactly. */
 #view-settings .dp-settings-debridlink-key-row,
-#view-settings .dp-settings-premiumize-key-row {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row {
   box-sizing: border-box;
   justify-content: center;
   gap: 18px;
@@ -986,19 +986,19 @@
   padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
-#view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
   max-width: 240px;
 }
 
-#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-control,
-#view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-control {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row > .dp-settings-inline-field-control,
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row > .dp-settings-inline-field-control {
   flex: 1 1 auto;
 }
 
-#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .dp-action-field,
-#view-settings .dp-settings-premiumize-key-row .dp-settings-inline-field-control > .dp-action-field {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .dp-action-field,
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row .dp-settings-inline-field-control > .dp-action-field {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -1505,7 +1505,7 @@
   font-size: 11px;
 }
 
-#view-settings .dp-settings-inline-field {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1540,27 +1540,27 @@
 @media (max-width: 779px) {
   /* Stacked: the informational block and the field (Remove inside it) each
      take the full width, in that order. */
-  #view-settings .dp-settings-alldebrid-key-row {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row {
     width: 100%;
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
   }
 
-  #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
     max-width: none;
   }
 
-  #view-settings .dp-settings-debridlink-key-row,
-  #view-settings .dp-settings-premiumize-key-row {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row,
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row {
     width: 100%;
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
   }
 
-  #view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
-  #view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
     max-width: none;
   }
 
@@ -1616,7 +1616,7 @@
 
   /* A Settings island's settings keep their inline form; the island's own
      steps decide how they yield (data-island-fit). */
-  #view-settings .dp-settings-inline-field:not(.dp-settings-island .dp-settings-inline-field) {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field:not(.dp-settings-island .dp-settings-inline-field) {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1648,7 +1648,7 @@
   border: 0;
   background: linear-gradient(90deg, transparent, var(--dp-divider), transparent);
 }
-#view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-integration-header-enable { flex:0 0 auto; }
 
 /* ── The Network Source protocol boxes ───────────────────────────────────
    A compact bounded box per real registered member, in canonical order, in
@@ -1761,13 +1761,13 @@
      carried by its help chip there). The title group keeps its own width and
      the rail takes the rest, wrapping within it -- a rail wider than the room
      left wraps onto a second line instead of covering the title. */
-  #view-settings .card-header.dp-settings-card-header {
+  :is(#view-settings, .dp-setup-provider-surface) .card-header.dp-settings-card-header {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 10px;
     row-gap: 4px;
   }
-  #view-settings .dp-settings-card-header > .dp-settings-card-title-group { grid-column: 1; grid-row: 1; }
-  #view-settings .dp-settings-card-header > .dp-settings-card-header-controls { grid-column: 2; grid-row: 1; }
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header > .dp-settings-card-title-group { grid-column: 1; grid-row: 1; }
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header > .dp-settings-card-header-controls { grid-column: 2; grid-row: 1; }
   /* Downloads and Extraction: the rail is reserved first, whole and on one
      line (Help; Automatic Extraction's Help and Enable), and the identity --
      the title with its disclosure -- takes what is left, the title wrapping
@@ -1789,7 +1789,7 @@
      header never shows, keeps its own last line; the header declares no grid
      tracks, so the hint fitter (fitHeaderHints) never reads it as the
      three-track header. */
-  #view-settings .card-header.dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) {
+  :is(#view-settings, .dp-setup-provider-surface) .card-header.dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) {
     display: flex;
     grid-template-columns: none;
     flex-wrap: wrap;
@@ -1797,7 +1797,7 @@
     column-gap: 10px;
     row-gap: 6px;
   }
-  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-title-group {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-title-group {
     flex: 0 1 auto;
     /* Room before the rail has to wrap, taken first from the space between
        the title and its disclosure, then from the identity mark: the whole
@@ -1805,18 +1805,18 @@
        title. The title's type is unchanged. */
     gap: 2px;
   }
-  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) .dp-settings-card-title--with-icon {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) .dp-settings-card-title--with-icon {
     gap: 8px;
   }
-  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) :is(.dp-settings-protocol-chip, .dp-settings-provider-chip) {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) :is(.dp-settings-protocol-chip, .dp-settings-provider-chip) {
     zoom: calc(30 / 38);
   }
-  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-controls {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-controls {
     flex: 0 0 auto;
     margin-inline-start: auto;
     flex-wrap: nowrap;
   }
-  #view-settings .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-center {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header:has(> .dp-settings-card-header-controls > .dp-settings-header-test-group) > .dp-settings-card-header-center {
     flex: 1 0 100%;
     order: 1;
   }
@@ -2046,7 +2046,7 @@
 /* A body box a header may lend its help chip to (fitHeaderHints): the chip
    sits in the box's upper-right corner, out of the box's flow, so the box and
    everything in it keep their geometry. */
-#view-settings .dp-settings-help-slot {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-help-slot {
   position: relative;
 }
 
@@ -2344,7 +2344,7 @@
    (caution), unconfigured (the accent purple). One press still runs it. The
    status stays the rail's live region (read, not drawn). */
 @media (max-width: 779px) {
-  #view-settings .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-provider-config-status {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header-controls:has(> .dp-settings-header-test-group) > .dp-settings-provider-config-status {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2361,15 +2361,15 @@
     display: inline-flex;
   }
 
-  #view-settings .dp-settings-header-test-group > .dp-settings-header-action {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group > .dp-settings-header-action {
     display: contents;
   }
 
-  #view-settings .dp-settings-header-test-group .dp-settings-provider-test .dp-settings-action-chip {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group .dp-settings-provider-test .dp-settings-action-chip {
     display: none;
   }
 
-  #view-settings .dp-settings-header-test-group[data-verification] .dp-settings-provider-test {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group[data-verification] .dp-settings-provider-test {
     box-shadow: none;
   }
 
@@ -2385,7 +2385,7 @@
     color: var(--dp-state-caution);
   }
 
-  #view-settings .dp-settings-header-test-group[data-verification="unconfigured"] .dp-settings-provider-test {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group[data-verification="unconfigured"] .dp-settings-provider-test {
     border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 34%, transparent);
     background: color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent);
     color: var(--dp-accent-purple-bright);

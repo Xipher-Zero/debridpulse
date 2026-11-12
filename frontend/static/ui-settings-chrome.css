@@ -135,7 +135,7 @@ body.light #view-settings .dp-settings-tab-glyph {
 }
 
 /* ── Services / Download Engine identity ─────────────────────────────── */
-#view-settings .dp-settings-card-title--with-icon {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-title--with-icon {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -166,7 +166,7 @@ body.light #view-settings .dp-settings-tab-glyph {
  * border, surface and glow derive from ONE per-provider datum,
  * --dp-provider-color; each provider contributes that colour and its own
  * shipped mark, nothing else. */
-#view-settings :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
+:is(#view-settings, .dp-setup-provider-surface) :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
                    .dp-settings-provider-chip--premiumize, .dp-settings-provider-chip--realdebrid,
                    .dp-settings-provider-chip--torbox) {
   width: 38px;
@@ -212,13 +212,13 @@ body.light #view-settings .dp-settings-provider-chip--debridlink {
     color-mix(in srgb, var(--dp-provider-color) 48%, #fff) 100%);
 }
 
-#view-settings .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }
-#view-settings .dp-settings-provider-chip--debridlink { --dp-provider-color: var(--dp-identity-debridlink); }
-#view-settings .dp-settings-provider-chip--premiumize { --dp-provider-color: var(--dp-identity-premiumize); }
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--debridlink { --dp-provider-color: var(--dp-identity-debridlink); }
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--premiumize { --dp-provider-color: var(--dp-identity-premiumize); }
 #view-settings .dp-settings-provider-chip--realdebrid { --dp-provider-color: var(--dp-identity-realdebrid); }
 #view-settings .dp-settings-provider-chip--torbox { --dp-provider-color: var(--dp-identity-torbox); }
 
-#view-settings .dp-settings-provider-logo--alldebrid {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--alldebrid {
   width: 34px;
   height: 34px;
   display: block;
@@ -258,7 +258,7 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
 
 
 
-#view-settings .dp-settings-provider-logo--debridlink {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--debridlink {
   width: 28px;
   height: 28px;
   display: block;
@@ -267,7 +267,7 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
 
 
 
-#view-settings .dp-settings-provider-logo--premiumize {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--premiumize {
   width: 28px;
   height: 28px;
   display: block;
@@ -278,13 +278,13 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
    and remains a secondary action within its card's header rail. The treatment
    belongs to the CONTROL, so every provider-level Test renders identically and
    no provider has styling of its own. */
-#view-settings button.dp-settings-provider-test {
+:is(#view-settings, .dp-setup-provider-surface) button.dp-settings-provider-test {
   --dp-settings-action-color: #b866f5;
   position: relative;
   gap: 7px;
 }
 
-#view-settings .dp-settings-action-chip {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-action-chip {
   width: 22px;
   height: 22px;
   flex: 0 0 22px;
@@ -295,7 +295,7 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
   background: color-mix(in srgb, var(--dp-settings-action-color) 20%, #111119);
 }
 
-#view-settings .dp-settings-action-glyph {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-action-glyph {
   width: 13px;
   height: 13px;
   display: block;
@@ -318,6 +318,6 @@ body.light #view-settings .dp-settings-action-glyph {
 
 /* Same cache-eviction rule for the Test glyph: the SVG now carries the exact
    Sources & Providers purple rather than the previous darker purple. */
-#view-settings button.dp-settings-provider-test .dp-settings-action-glyph {
+:is(#view-settings, .dp-setup-provider-surface) button.dp-settings-provider-test .dp-settings-action-glyph {
   content: url('/icons/lucide/flask-conical.svg?v=2');
 }

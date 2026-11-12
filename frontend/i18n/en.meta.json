@@ -23171,6 +23171,18 @@
    "context": "Confirmation button: keep the unsaved edits; nothing changes.",
    "owner": "frontend/static/auth.js",
    "criticality": "normal"
+  },
+  "setup.premium.test_after_save": {
+   "category": "hint",
+   "context": "Setup wizard, a premium provider's configuration: shown while fields have unsaved changes, when Test is unavailable (Test proves the saved configuration).",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.immediate": {
+   "category": "hint",
+   "context": "Setup wizard, a premium provider's configuration: which actions apply immediately and what Save and Cancel do. Enable, Test, Remove, Save and Cancel are button names.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
   }
  }
 }

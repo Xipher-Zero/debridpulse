@@ -3560,7 +3560,9 @@
   "account.leave.title": "¿Salir de «Mi cuenta»?",
   "account.leave.message": "Los cambios sin guardar en «Mi cuenta» se perderán.",
   "account.leave.discard": "Descartar cambios",
-  "account.leave.keep": "Seguir editando"
+  "account.leave.keep": "Seguir editando",
+  "setup.premium.test_after_save": "Guarde sus cambios para probarlos.",
+  "setup.premium.immediate": "Activar, Probar y Quitar se aplican de inmediato. Guardar conserva lo que escribe; Cancelar lo descarta."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

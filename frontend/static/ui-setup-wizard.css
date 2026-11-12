@@ -115,3 +115,48 @@
   gap: 6px;
   line-height: 1.5;
 }
+
+/* Premium Services: the six services, one button each, with what the server
+   says each is (configured, verified, disabled) beneath its name. */
+.dp-setup-services {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  gap: 8px;
+}
+.dp-setup-service {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-inline-size: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dp-setup-service:disabled {
+  cursor: default;
+  opacity: .55;
+}
+.dp-setup-service-name {
+  font-weight: 650;
+}
+.dp-setup-service-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+}
+.dp-setup-service-fact[data-fact="verified"] { color: var(--green); }
+.dp-setup-service-fact[data-fact="unverified"] { color: var(--amber, var(--dp-state-caution)); }
+
+/* A provider's configuration in place of the list: its Settings card, drawn
+   by its Settings owner (DPSettingsPage.mountProvider). */
+.dp-setup-provider-slot {
+  min-inline-size: 0;
+}

@@ -3816,6 +3816,31 @@
    "owner": "frontend/static/ui-help-page.js",
    "english": "quickstart",
    "reason": "An internal section identifier (the Help tab id), never shown."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "Usenet",
+   "reason": "Provider or service name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "AllDebrid",
+   "reason": "Provider or service name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "Premiumize",
+   "reason": "Provider or service name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "TorBox",
+   "reason": "Provider or service name (a proper name)."
+  },
+  {
+   "owner": "frontend/static/ui-settings-page.js",
+   "english": "No wizard configuration for {0}",
+   "reason": "Developer Error for a provider the setup wizard does not configure; never reached from the wizard."
   }
  ]
 }

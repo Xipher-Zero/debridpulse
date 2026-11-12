@@ -11,7 +11,7 @@
   line-height: 1.45;
 }
 
-#view-settings .dp-settings-auth-header-enable {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-auth-header-enable {
   width: auto;
   min-width: 0;
   display: inline-flex;
@@ -36,7 +36,7 @@
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-auth-header-enable .toggle {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-auth-header-enable .toggle {
   flex: 0 0 auto;
   align-self: center;
   margin: 0;

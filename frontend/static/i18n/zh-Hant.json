@@ -3560,7 +3560,9 @@
   "account.leave.title": "要離開「我的帳戶」嗎？",
   "account.leave.message": "「我的帳戶」中未儲存的變更將會遺失。",
   "account.leave.discard": "捨棄變更",
-  "account.leave.keep": "繼續編輯"
+  "account.leave.keep": "繼續編輯",
+  "setup.premium.test_after_save": "請先儲存變更，再進行測試。",
+  "setup.premium.immediate": "「啟用」、「測試」與「移除」會立即生效。「儲存」會儲存您輸入的內容；「取消」則將其捨棄。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

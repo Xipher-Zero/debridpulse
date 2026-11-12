@@ -3560,7 +3560,9 @@
   "account.leave.title": "Tinggalkan “Akun saya”?",
   "account.leave.message": "Perubahan Anda yang belum disimpan di “Akun saya” akan hilang.",
   "account.leave.discard": "Buang perubahan",
-  "account.leave.keep": "Lanjutkan mengedit"
+  "account.leave.keep": "Lanjutkan mengedit",
+  "setup.premium.test_after_save": "Simpan perubahan Anda untuk mengujinya.",
+  "setup.premium.immediate": "Aktifkan, Uji, dan Keluarkan langsung berlaku. Simpan menyimpan yang Anda ketik; Batal membuangnya."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

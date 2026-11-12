@@ -3560,7 +3560,9 @@
   "account.leave.title": "「マイアカウント」を離れますか？",
   "account.leave.message": "「マイアカウント」の保存されていない変更は失われます。",
   "account.leave.discard": "変更を破棄",
-  "account.leave.keep": "編集を続ける"
+  "account.leave.keep": "編集を続ける",
+  "setup.premium.test_after_save": "テストするには変更を保存してください。",
+  "setup.premium.immediate": "「有効化」「テスト」「除去」はすぐに反映されます。「保存」を押すと入力内容が保存され、「キャンセル」を押すと破棄されます。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

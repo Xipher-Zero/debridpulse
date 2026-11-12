@@ -263,15 +263,126 @@
     },
   };
 
+  /* Premium Services: six services in this fixed order -- Usenet, the one
+   * service category, first; then the debrid providers alphabetically -- each
+   * showing what the server says it is: configured or not, verified or not,
+   * and disabled when it is off (three facts, never merged). Choosing one
+   * shows its configuration, as Easy shows it, in this same dialog
+   * (DPSettingsPage.mountProvider). None is required: Next is the ordinary
+   * Next however many are configured. */
+  const SERVICES = Object.freeze([
+    ['usenet', 'Usenet'], ['alldebrid', 'AllDebrid'], ['debridlink', 'Debrid-Link'],
+    ['premiumize', 'Premiumize'], ['realdebrid', 'Real-Debrid'], ['torbox', 'TorBox'],
+  ]);
+  // The services whose configuration the wizard shows here.
+  const CONFIGURABLE = new Set(['alldebrid', 'debridlink', 'premiumize']);
+
+  function serviceState(fact) {
+    if (!fact) return '';
+    const parts = [fact.configured ? 'settings.status.configured' : 'settings.status.unconfigured'];
+    if (fact.configured) parts.push(fact.verified ? 'settings.status.verified' : 'settings.status.unverified');
+    if (!fact.enabled) parts.push('provider_status.state.disabled');
+    return parts.map(key => `<span class="dp-setup-service-fact" data-fact="${key.split('.').pop()}" data-i18n="${key}"></span>`).join('');
+  }
+
   const premiumServices = {
-    render() {
-      return element(`
+    render(wizard) {
+      const section = element(`
         <section class="dp-setup-page dp-setup-premium">
           <p class="dp-setup-lead" data-i18n="setup.premium.hint"></p>
+          <div class="dp-setup-services">
+            ${SERVICES.map(([id, name]) => `
+              <button type="button" class="dp-setup-service" data-service="${id}" ${CONFIGURABLE.has(id) ? '' : 'disabled'}>
+                <span class="dp-setup-service-name">${name}</span>
+                <span class="dp-setup-service-state">${serviceState(wizard.data.services?.[id])}</span>
+              </button>`).join('')}
+          </div>
         </section>`);
+      section.querySelectorAll('[data-service]').forEach(button => {
+        button.addEventListener('click', () => { void openProvider(wizard, button.dataset.service); });
+      });
+      // The state shown is read afresh whenever the list is shown.
+      void refreshServices(wizard, section);
+      return section;
     },
     async commit() {},
   };
+
+  async function refreshServices(wizard, section) {
+    let facts;
+    try { facts = await window.DPSettingsPage.providerStatuses(); } catch (_) { return; }
+    wizard.data.services = facts;
+    if (!section.isConnected) return;
+    section.querySelectorAll('[data-service]').forEach(button => {
+      const slot = button.querySelector('.dp-setup-service-state');
+      slot.innerHTML = serviceState(facts[button.dataset.service]);
+      window.DPI18n.render(slot);
+    });
+  }
+
+  /* One service's configuration, in place of the list, in the same dialog:
+   * Save and Cancel take the footer. Save commits every changed field
+   * through its own canonical scope and returns to the list once all were
+   * accepted; Cancel discards what was not saved. Test, Enable and Remove act
+   * at once, as on Services, and Cancel does not undo them; Test is offered
+   * only while nothing is unsaved, so it proves what is saved. */
+  async function openProvider(wizard, id) {
+    if (wizard.provider || !CONFIGURABLE.has(id)) return;
+    const name = SERVICES.find(([service]) => service === id)[1];
+    const section = element(`
+      <section class="dp-setup-page dp-setup-provider" data-provider="${id}">
+        <div class="dp-setup-provider-slot"></div>
+        <p class="dp-setup-hint" data-setup-test-note data-i18n="setup.premium.test_after_save" hidden></p>
+        <p class="dp-setup-hint" data-i18n="setup.premium.immediate"></p>
+      </section>`);
+    wizard.provider = {id, section, handle: null};
+    wizard.error.hidden = true;
+    wizard.body.replaceChildren(section, wizard.error);
+    window.DPI18n.render(section);
+    const handle = wizard.dialog;
+    handle.setTitle(name);
+    handle.setAcceptLabel(said('common.save'));
+    handle.setCancelLabel(said('common.cancel'));
+    handle.setCancelHidden(false);
+    handle.setActionHidden('back', true);
+    try {
+      wizard.provider.handle = await window.DPSettingsPage.mountProvider(id, section.querySelector('.dp-setup-provider-slot'));
+    } catch (error) {
+      fail(wizard, error);
+      return;
+    }
+    const note = section.querySelector('[data-setup-test-note]');
+    const paintTest = () => {
+      const unsaved = wizard.provider?.handle?.dirty() === true;
+      section.querySelectorAll('.dp-settings-provider-test').forEach(test => { test.disabled = unsaved; });
+      note.hidden = !unsaved;
+    };
+    section.addEventListener('input', paintTest);
+    section.addEventListener('dp-settings-settled', paintTest);
+    paintTest();
+    section.querySelector('.dp-setup-provider-slot input:not([type="checkbox"])')?.focus({preventScroll: true});
+  }
+
+  function closeProvider(wizard) {
+    if (!wizard.provider) return;
+    wizard.provider = null;
+    wizard.repaint();
+  }
+
+  async function saveProvider(wizard) {
+    const handle = wizard.provider?.handle;
+    if (!handle) return false;
+    wizard.error.hidden = true;
+    const accepted = await handle.save();
+    if (accepted) closeProvider(wizard);
+    else fail(wizard, new Error(t('setup.error.not_saved')));
+    return false;
+  }
+
+  function fail(wizard, error) {
+    wizard.error.textContent = String(error?.message || t('setup.error.not_saved'));
+    wizard.error.hidden = false;
+  }
 
   const gettingStarted = {
     render(wizard) {
@@ -334,7 +445,7 @@
     }
     const indicator = stepIndicator();
     const wizard = {mode, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
-      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener,
+      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, repaint: null,
       // The furthest page the server records: Next moves the record only beyond it.
       recordedIndex: Math.max(0, pages.indexOf(recorded)),
       async showOwnLanguage() {
@@ -373,7 +484,16 @@
       wizard.error.hidden = false;
     }
 
+    // The page as it is now, labels and all (a provider's view returns here).
+    wizard.repaint = () => {
+      if (mode === 'initial') wizard.dialog.setCancelHidden(true);
+      wizard.dialog.setCancelLabel(said('dialog.close'));
+      paint(wizard.dialog);
+    };
+
     async function next(handle) {
+      // A provider's view: its Save.
+      if (wizard.provider) return saveProvider(wizard);
       wizard.error.hidden = true;
       handle.setActionEnabled('back', false);
       try {
@@ -452,13 +572,16 @@
         return null;
       },
       onAction(id) {
-        if (id !== 'back' || wizard.index === 0) return;
+        if (id !== 'back' || wizard.index === 0 || wizard.provider) return;
         wizard.error.hidden = true;
         wizard.index -= 1;
         paint(wizard.dialog);
       },
       onAccept: handle => next(handle),
       async onCancel() {
+        // A provider's view: Cancel (and Escape) return to the list; what was
+        // not saved is discarded.
+        if (wizard.provider) { closeProvider(wizard); return false; }
         if (mode === 'initial') return false;
         // Dismissed: the rerun ends; nothing it committed is undone.
         try { await request('DELETE', '/setup/rerun'); } catch (_) { /* the record stays; reopening resumes it */ }

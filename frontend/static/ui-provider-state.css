@@ -98,18 +98,18 @@
    data-provider-premium attribute, so these selectors target the real
    classes the runtime creates rather than an attribute it never sets. */
 
-#view-settings .dp-settings-provider-card .dp-settings-card-title-text {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-card .dp-settings-card-title-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-provider-card .dp-settings-integration-header-enable {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-card .dp-settings-integration-header-enable {
   min-width: 0;
   margin: 0;
 }
 
-#view-settings .dp-settings-provider-config-status {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-config-status {
   min-width: 0;
   max-width: 280px;
   justify-self: center;
@@ -136,7 +136,7 @@
   color: var(--dp-state-success);
 }
 
-#view-settings .dp-settings-provider-config-status[hidden] {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-config-status[hidden] {
   visibility: hidden;
   display: block !important;
 }

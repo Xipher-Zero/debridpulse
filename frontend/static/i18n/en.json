@@ -3560,6 +3560,8 @@
   "account.leave.title": "Leave My Account?",
   "account.leave.message": "Your unsaved changes in My Account will not be saved.",
   "account.leave.discard": "Discard Changes",
-  "account.leave.keep": "Keep Editing"
+  "account.leave.keep": "Keep Editing",
+  "setup.premium.test_after_save": "Save your changes to test them.",
+  "setup.premium.immediate": "Enable, Test and Remove take effect at once. Save stores what you type; Cancel discards it."
  }
 }

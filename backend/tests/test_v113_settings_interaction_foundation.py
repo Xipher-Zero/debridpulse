@@ -725,13 +725,13 @@ def test_the_header_rail_geometry_has_one_owner_and_no_positioning_hack():
     # The rail is declared for the RAIL, not for one card family's header grid:
     # a provider card, an Authentication card and a Notifications card all
     # render it, and each used to restate it.
-    rail = rule(SETTINGS_CSS, "#view-settings .dp-settings-card-header-controls {")
+    rail = rule(SETTINGS_CSS, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-card-header-controls {")
     assert "display: flex" in rail
     # Narrow layouts reflow; they do not overflow, and wrapping preserves the
     # rail's order because the order is the source order.
     assert "flex-wrap: wrap" in rail
     assert "align-items: center" in rail
-    slot = rule(SETTINGS_CSS, "#view-settings .dp-settings-header-action {")
+    slot = rule(SETTINGS_CSS, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-action {")
     for banned in ("position: absolute", "margin", "top:", "transform"):
         assert banned not in slot, banned
 
@@ -1281,7 +1281,7 @@ def test_the_clear_group_is_centred_against_the_api_key_input_itself():
     # And the field is what absorbs the row's spare width, so the action takes
     # room from it rather than adding a band beneath it.
     control_rule = rule(SETTINGS_CSS,
-        "#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {")
+        ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {")
     assert "flex: 1 1 auto" in control_rule
 
 

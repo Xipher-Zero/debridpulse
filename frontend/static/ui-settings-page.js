@@ -404,9 +404,12 @@
     // An empty control that stands for one canonical value (``blank``) says
     // so, so the persistence owner accepts it as a draft rather than refusing
     // an empty number as missing.
-    return `data-commit="${html(declared.commit || 'changed-blur')}" `
+    const attributes = `data-commit="${html(declared.commit || 'changed-blur')}" `
       + `data-commit-key="${html(key)}" data-commit-scope="${html(declared.scope)}"`
       + (declared.blank !== undefined ? ' data-commit-blank' : '');
+    // On the wizard's surface a changed-blur field waits for its Save
+    // (``explicit``: no boundary of its own); everything else is unchanged.
+    return renderSurface === 'wizard' ? attributes.replace('data-commit="changed-blur"', 'data-commit="explicit"') : attributes;
   }
 
   /* OIDC in the same three-state vocabulary every mechanism KPI uses, plus the
@@ -990,8 +993,16 @@
     syncGlobalSettings(state.settings);
   }
 
+  // The surface a provider card is being rendered for: Settings (null), or
+  // the setup wizard ('wizard', mountProvider) -- always Easy, its fields
+  // committed by the wizard's own Save, its IDs its own.
+  let renderSurface = null;
+  // While the wizard draws one provider: which (sourcesPanel returns its card alone).
+  let renderOnly = null;
+  const surfacePrefix = () => (renderSurface === 'wizard' ? 'dp-setup' : 'dp-settings');
+
   function fieldId(key) {
-    return `dp-settings-field-${key.replaceAll('_', '-')}`;
+    return `${surfacePrefix()}-field-${key.replaceAll('_', '-')}`;
   }
 
   /* What an API rate field says when the server refuses a value above its
@@ -1472,9 +1483,15 @@
     return line ? providerStatusLine(html(line), 'dp-settings-account-expiry') : '';
   }
 
+  /* Every rendered card of a provider -- Services' and, while open, the
+   * setup wizard's -- converges on the same accepted state. */
+  const providerCards = id => Array.from(document.querySelectorAll(`.dp-settings-provider-card--${id}`));
+
   function renderApiKeyAccount(id) {
-    const region = root()?.querySelector(`[data-${id}-account]`);
-    if (region) region.innerHTML = apiKeyAccountLine(id);
+    for (const card of providerCards(id)) {
+      const region = card.querySelector(`[data-${id}-account]`);
+      if (region) region.innerHTML = apiKeyAccountLine(id);
+    }
   }
 
   /* A stored key changed (replaced or removed): the account it described is no
@@ -1499,20 +1516,21 @@
   /* Converge an API-key row on ACCEPTED canonical state; the input element is
    * never replaced (see renderAllDebridCredential). */
   function renderApiKeyCredential(id, dispatched) {
-    const card = root()?.querySelector(`.dp-settings-provider-card--${id}`);
-    const row = card?.querySelector(`.dp-settings-${id}-key-row`);
-    if (!card || !row) return;
     const configured = API_KEY_ACCOUNTS[id].configured(state.settings);
-    const field = fieldFor(`${id}_api_key`);
-    if (field) {
-      if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
-      sayAttr(field, 'placeholder', apiKeyPlaceholder(id, configured));
+    for (const card of providerCards(id)) {
+      const row = card.querySelector(`.dp-settings-${id}-key-row`);
+      if (!row) continue;
+      const field = card.querySelector(`[data-setting="${id}_api_key"]`);
+      if (field) {
+        if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
+        sayAttr(field, 'placeholder', apiKeyPlaceholder(id, configured));
+      }
+      row.classList.toggle('is-configured', configured);
+      sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), apiKeyHint(id, configured));
+      renderKeyRemove(row.querySelector(`[data-action="clear-${id}-key"]`), configured);
+      renderIntegrationState(card, id);
     }
-    row.classList.toggle('is-configured', configured);
-    sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), apiKeyHint(id, configured));
-    renderKeyRemove(row.querySelector(`[data-action="clear-${id}-key"]`), configured);
     renderApiKeyAccount(id);
-    renderIntegrationState(card, id);
   }
 
   // The one confirmation for erasing a stored provider key, re-worded while open.
@@ -1532,11 +1550,10 @@
    * canonical mutation as erasing the AllDebrid key (clearAllDebridKey). */
   async function clearApiKey(id, button) {
     const {name} = API_KEY_ACCOUNTS[id];
-    const card = root()?.querySelector(`.dp-settings-provider-card--${id}`);
-    if (!card) return;
+    if (!button.closest(`.dp-settings-provider-card--${id}`)) return;
     const confirmed = await confirmClearKey(name);
     if (!confirmed) return;
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     setBusy(button, true, say('settings.key.clearing'));
     try {
       const result = await request('PATCH', `/integrations/${id}/configuration`,
@@ -1635,7 +1652,7 @@
   // control, keeps the word (``visibleLabel``).
   function integrationHeaderToggle(identity, value, displayName, extraClass = '', {visibleLabel = false} = {}) {
     const safeIdentity = String(identity || '').replace(/[^a-z0-9_-]/gi, '-');
-    const id = `dp-settings-integration-${safeIdentity}-enabled`;
+    const id = `${surfacePrefix()}-integration-${safeIdentity}-enabled`;
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable ${html(extraClass)}" for="${id}">
         ${visibleLabel ? `<span class="toggle-info"><span class="tl"${keyed(say('settings.enable'))}>${html(t('settings.enable'))}</span></span>` : ''}
@@ -1925,23 +1942,28 @@
     const titleMarkup = titlePrefix
       ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${words(title)}</span>${crown}</span>`
       : `<span class="card-title">${words(title)}${crown}</span>`;
-    const bodyId = `dp-settings-provider-body-${safe}`;
+    const bodyId = `${surfacePrefix()}-provider-body-${safe}`;
+    // On the wizard's surface the card IS what was opened: its body is shown,
+    // with no disclosure, no Help chip of its own and no one-line purpose
+    // (Services fits that line to its header by measuring the page).
+    const wizard = renderSurface === 'wizard';
+    if (wizard) headerCopy = '';
     // Every expandable card renders CLOSED. Arriving at Services is
     // not an opinion about what should be open, and enabled/configured/verified
     // state is canonical truth about the provider, never about the card.
-    const disclosure = settingsDisclosure(bodyId, false, say('settings.provider_configuration'));
+    const disclosure = wizard ? '' : settingsDisclosure(bodyId, false, say('settings.provider_configuration'));
     const status = providerStatus(enabled, configured, verified);
     const report = providerStatus(true, configured, verified);
     const controls = headerAction ? headerTestControls(title, headerAction, enable, report) : enable;
     return `
-      <section class="card dp-settings-card dp-large-panel-surface ${className} dp-settings-provider-card--collapsed" data-provider-configured="${configured}">
+      <section class="card dp-settings-card dp-large-panel-surface ${className}${wizard ? '' : ' dp-settings-provider-card--collapsed'}" data-provider-configured="${configured}">
         <div class="card-header dp-settings-card-header${headerCopy ? ' dp-settings-card-header--hinted' : ''}">
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
           <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy"${keyed(headerCopy)}>${html(headerCopy)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}${keyed(status.text)}>${html(status.text)}</div>${
-            helpChip(help, title)}${controls}</div>
+            wizard ? '' : helpChip(help, title)}${controls}</div>
         </div>
-        <div class="card-body" id="${bodyId}" hidden>${body}</div>
+        <div class="card-body" id="${bodyId}"${wizard ? '' : ' hidden'}>${body}</div>
       </section>`;
   }
 
@@ -2407,6 +2429,19 @@
     }
   }
 
+  /* The API-key providers' card actions (Test, Remove key), wherever their
+   * card is drawn: Services' one dispatch and the setup wizard's surface. */
+  function apiKeyProviderAction(action, button) {
+    if (action === 'test-alldebrid') testConnection('alldebrid', button);
+    else if (action === 'test-debridlink') testConnection('debridlink', button);
+    else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);
+    else if (action === 'test-premiumize') testConnection('premiumize', button);
+    else if (action === 'clear-premiumize-key') clearApiKey('premiumize', button);
+    else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
+    else return false;
+    return true;
+  }
+
   // A device-account control's action names its provider:
   // ``<verb>-<provider>`` (``copy-<provider>-code`` for the code).
   function deviceAccountAction(action, button) {
@@ -2465,7 +2500,9 @@
   /* A premium service's Additional Settings: the native disclosure of its
    * tuning, omitted from the card in Easy. */
   function providerAdditional(body) {
-    return omitted('provider-additional-settings') ? '' : `
+    // The wizard shows a provider as Easy does, whatever the reader's own
+    // presentation: no Additional Settings there.
+    return renderSurface === 'wizard' || omitted('provider-additional-settings') ? '' : `
       <details class="dp-settings-additional">
         <summary><span${keyed(say('settings.provider.additional'))}>${html(t('settings.provider.additional'))}</span></summary>
         <div class="dp-settings-additional-body">
@@ -2687,6 +2724,9 @@
       help: 'premiumize',
     });
 
+    // One API-key provider's card alone (the setup wizard's, mountProvider),
+    // from the same markup this page composes.
+    if (renderOnly) return {alldebrid: provider, debridlink: debridLinkCard, premiumize: premiumizeCard}[renderOnly] || '';
     const {families, providers} = premiumServiceOrder([
       ['usenet', usenetCard], ['alldebrid', provider], ['debridlink', debridLinkCard],
       ['premiumize', premiumizeCard], ['realdebrid', realDebridCard], ['torbox', torBoxCard],
@@ -7405,11 +7445,14 @@
       const accepted = state.settings?.integrations?.[identity] || {};
       // A card replaced while this was in flight was rendered from canonical
       // state already; only this card, still on the page, converges here.
+      // Every other drawing of the provider (Services' card, the setup
+      // wizard's) shows the accepted participation too.
+      for (const other of providerCards(identity)) if (other !== card) renderIntegrationState(other, identity);
       if (card.isConnected) {
         renderIntegrationState(card, identity);
         // The admission the server ACCEPTED keeps an unconfigured provider's
         // configuration open (whatever the click predicted about it).
-        if (accepted.enabled !== false && !accepted.configured && disclosure?.getAttribute('aria-expanded') !== 'true') {
+        if (disclosure && accepted.enabled !== false && !accepted.configured && disclosure.getAttribute('aria-expanded') !== 'true') {
           setDisclosureExpanded(disclosure, true, {animate: true});
         }
       }
@@ -7704,14 +7747,9 @@
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
-      if (action === 'test-alldebrid') testConnection('alldebrid', button);
-      else if (action === 'test-debridlink') testConnection('debridlink', button);
-      else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);
-      else if (action === 'test-premiumize') testConnection('premiumize', button);
-      else if (action === 'clear-premiumize-key') clearApiKey('premiumize', button);
-      else if (deviceAccountAction(action, button)) return;
+      if (apiKeyProviderAction(action, button)) return;
+      if (deviceAccountAction(action, button)) return;
       else if (action === 'test-usenet') testUsenet(button);
-      else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
       else if (action === 'clear-archive-passwords') clearArchivePasswords(button);
       else if (action === 'test-discord') testDiscordDelivery(button);
       else if (action === 'clear-webhook') clearWebhook(button);
@@ -8081,28 +8119,27 @@
    * and commits on its own blur. Only the draft this write actually carried is
    * consumed. */
   function renderAllDebridCredential(dispatched) {
-    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
-    const row = card?.querySelector('.dp-settings-alldebrid-key-row');
-    if (!card || !row) return;
     const configured = !!allDebridOf(state.settings).api_key_configured;
+    for (const card of providerCards('alldebrid')) {
+      const row = card.querySelector('.dp-settings-alldebrid-key-row');
+      if (!row) continue;
+      const field = card.querySelector('[data-setting="alldebrid_api_key"]');
+      if (field) {
+        if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
+        sayAttr(field, 'placeholder', ALLDEBRID_KEY_PLACEHOLDER(configured));
+      }
+      row.classList.toggle('is-configured', configured);
+      // Only the parts that DEPEND on whether a key is stored: the hint and the
+      // destructive action's state. The input element itself
+      // is still never replaced -- destroying a control the operator may be
+      // editing would remove focus from it, which IS its commit boundary.
+      sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), ALLDEBRID_KEY_HINT(configured));
 
-    const field = fieldFor('alldebrid_api_key');
-    if (field) {
-      if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
-      sayAttr(field, 'placeholder', ALLDEBRID_KEY_PLACEHOLDER(configured));
+      // The action never appears or disappears; only its state converges.
+      renderKeyRemove(row.querySelector('[data-action="clear-alldebrid-key"]'), configured);
+      renderIntegrationState(card, 'alldebrid');
     }
-    row.classList.toggle('is-configured', configured);
-    // Only the parts that DEPEND on whether a key is stored: the hint and the
-    // destructive action's state. The input element itself
-    // is still never replaced -- destroying a control the operator may be
-    // editing would remove focus from it, which IS its commit boundary.
-    sayInto(row.querySelector('.dp-settings-inline-field-info > .form-hint'), ALLDEBRID_KEY_HINT(configured));
-
-    // The action never appears or disappears; only its state converges.
-    renderKeyRemove(row.querySelector('[data-action="clear-alldebrid-key"]'), configured);
-
     renderApiKeyAccount('alldebrid');
-    renderIntegrationState(card, 'alldebrid');
   }
 
   /* Erasing the stored credential.
@@ -8118,11 +8155,10 @@
    * before this, so the stored key ends up removed either way and this request
    * never saves one. A failure converges nothing. */
   async function clearAllDebridKey(button) {
-    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
-    if (!card) return;
+    if (!button.closest('.dp-settings-provider-card--alldebrid')) return;
     const confirmed = await confirmClearKey('AllDebrid');
     if (!confirmed) return;
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     setBusy(button, true, say('settings.key.clearing'));
     try {
       const result = await request('PATCH', '/integrations/alldebrid/configuration',
@@ -8208,11 +8244,18 @@
     if (kind === 'premiumize') return {api_key: valueOf('premiumize_api_key')};
     throw new Error(`Unsupported connection test: ${kind}`);
   }
+  /* What an explicit action settles first: Services' pending field commits (the
+   * click may have ended a field's edit), so the action reads the current
+   * draft. The setup wizard's surface commits only by its own Save, so there
+   * the action carries no draft and only waits for writes already under way. */
+  function settleScope(control) {
+    return control?.closest?.('.dp-setup-provider-surface') ? null : root();
+  }
 
   async function testConnection(kind, button) {
     // An explicit action reads the CURRENT draft, and never races a blur that
     // the same click started.
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
       debridlink: '/settings/validate-debridlink',
@@ -8221,7 +8264,12 @@
     const labels = {alldebrid: 'AllDebrid', debridlink: 'Debrid-Link', premiumize: 'Premiumize'};
     setBusy(button, true, say('settings.testing'));
     try {
-      const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
+      // A Test on the setup wizard's surface reads that surface's own field
+      // (there, nothing unsaved): never a draft in Services' card.
+      const surface = button.closest('.dp-setup-provider-surface');
+      const own = surface?.querySelector(`[data-setting="${kind}_api_key"]`);
+      const payload = surface ? {api_key: String(own?.value ?? '').trim()} : connectionTestPayload(kind);
+      const result = await request('POST', endpoints[kind], payload, 20000);
       rememberTestedDraft(kind, result.verification);
       // A Test of exactly the SAVED configuration establishes durable
       // verification, so the header must stop saying Unverified about a
@@ -9049,8 +9097,64 @@
     window.nav(entry);
   }
 
+  /* The premium services' authoritative state, as the setup wizard's chooser
+   * shows it: whether each is configured, verified and enabled -- three facts,
+   * never merged -- read afresh from the server, which also refreshes this
+   * page's cached document. */
+  const PREMIUM_SERVICES = Object.freeze(['usenet', 'alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox']);
+  async function providerStatuses() {
+    const settings = await request('GET', '/settings', undefined, 10000);
+    syncGlobalSettings(settings);
+    return Object.fromEntries(PREMIUM_SERVICES.map(id => {
+      // An integration absent from the document is off, as its card draws it.
+      const entry = settings?.integrations?.[id];
+      return [id, {enabled: !!entry && entry.enabled !== false, configured: !!entry?.configured, verified: !!entry?.verified}];
+    }));
+  }
+
+  /* A provider's card, drawn into the setup wizard (``container``) as Easy
+   * shows it, from the same builder Services uses: the same controls,
+   * actions, validation and persistence scopes. Its fields commit only by the
+   * wizard's Save (``save``: every changed field through its own scope;
+   * resolves to whether all were accepted) and are discarded by leaving it
+   * unsaved. Test, Enable and Remove act at once, exactly as on Services. */
+  const WIZARD_PROVIDERS = Object.freeze(['alldebrid', 'debridlink', 'premiumize']);
+  async function mountProvider(identity, container) {
+    if (!WIZARD_PROVIDERS.includes(identity)) throw new Error(`No wizard configuration for ${identity}`);
+    const persistence = window.DPSettingsPersistence;
+    const settings = await request('GET', '/settings', undefined, 10000);
+    syncGlobalSettings(settings);
+    renderSurface = 'wizard';
+    renderOnly = identity;
+    let markup;
+    try { markup = sourcesPanel(settings); } finally { renderSurface = null; renderOnly = null; }
+    container.innerHTML = `<div class="dp-setup-provider-surface">${markup}</div>`;
+    const surface = container.firstElementChild;
+    window.DPI18n?.render(surface);
+    persistence.adopt(surface);
+    surface.addEventListener('click', event => {
+      const button = event.target.closest?.('button[data-action]');
+      if (button && surface.contains(button) && !button.disabled) apiKeyProviderAction(button.dataset.action, button);
+    });
+    surface.addEventListener('change', event => {
+      if (event.target.matches?.('[data-integration-enabled]')) void providerEnableChanged(event.target);
+    });
+    const fields = () => Array.from(surface.querySelectorAll('[data-commit-key]'));
+    return Object.freeze({
+      surface,
+      dirty: () => fields().some(field => persistence.dirty(field)),
+      // Saved only when every changed field's write -- its own, or the same
+      // draft's already on its way -- was ACCEPTED; nothing changed is saved.
+      async save() {
+        const writes = fields().filter(field => persistence.dirty(field)).map(field => persistence.commit(field));
+        const results = await Promise.all(writes);
+        return results.every(result => result === true);
+      },
+    });
+  }
+
   /* The ONE whole-settings write (writeSettingsDocument), for a surface that
    * changes a settings-document value outside this page (the setup wizard's
    * Download Directory): never a second write path. */
-  window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides)});
+  window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider});
 })();

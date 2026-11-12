@@ -56,6 +56,9 @@
   // control identity -> the draft its latest queued write carries, so flushing
   // never re-issues a write that is already on its way
   const dispatched = new Map();
+  // control identity -> that queued write itself, whose outcome a caller
+  // committing the same draft shares
+  const runs = new Map();
   // scope id + record instance -> tail of that record's serialized write chain
   const chains = new Map();
   // control -> the exact draft that crossed its commit boundary while its
@@ -299,6 +302,12 @@
    * not to a snapshot taken when the write was queued: earlier writes in the
    * same lane may have been accepted in between. No false optimistic value,
    * and no false pessimistic one either.
+   *
+   * A write resolves to whether it was accepted (``true``) or refused or
+   * declined (``false``), for a caller that commits on its own Save; one
+   * superseded by a newer write resolves to nothing. A draft refused before
+   * any request is ``false``; one already on its way is that write's own
+   * promise. Nothing to write is ``null``.
    */
   function commit(control, replayed) {
     if (!control || !control.dataset || !control.dataset.commitKey) return null;
@@ -324,7 +333,7 @@
       present(control, baselines.get(key));
       report(new Error(refusal), control, draft);
       settled(control);
-      return null;
+      return false;
     }
     // The record this control belongs to does not exist yet. The operator has
     // crossed the commit boundary all the same, so THAT DRAFT is remembered
@@ -344,8 +353,9 @@
     const instance = instanceOf(control);
     const field = String(control.dataset.commitKey);
     // This exact draft is already on its way: a blur and the flush an explicit
-    // action performs are the SAME commit, never two.
-    if (dispatched.get(key) === draft) return null;
+    // action performs are the SAME commit, never two -- and the caller shares
+    // that write's outcome (accepted or refused), never a premature answer.
+    if (dispatched.get(key) === draft) return runs.get(key) ?? null;
     // Only a fallback, for the impossible case of a control with no baseline;
     // the rollback below always prefers what the server has accepted SINCE.
     const fallback = baselines.get(key);
@@ -372,6 +382,7 @@
         if (tokens.get(key) === token && control.isConnected && signature(control) === draft) {
           present(control, value);
         }
+        return true;
       } catch (error) {
         // Superseded: the newer write owns the outcome, including what the
         // control ends up showing.
@@ -394,13 +405,16 @@
         // A commit the operator declined in its scope's own confirmation is
         // no failure: the field simply returns to what the server holds.
         if (!(error && error.cancelled)) report(error, control, draft);
+        return false;
       }
     }).finally(() => {
       outstanding -= 1;
       if (dispatched.get(key) === draft) dispatched.delete(key);
+      if (runs.get(key) === run) runs.delete(key);
       settled(control);
     });
 
+    runs.set(key, run);
     chains.set(lane, run.catch(() => {}));
     return run;
   }

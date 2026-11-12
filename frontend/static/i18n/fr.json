@@ -3560,7 +3560,9 @@
   "account.leave.title": "Quitter « Mon compte » ?",
   "account.leave.message": "Vos modifications non enregistrées dans « Mon compte » seront perdues.",
   "account.leave.discard": "Abandonner les modifications",
-  "account.leave.keep": "Continuer à modifier"
+  "account.leave.keep": "Continuer à modifier",
+  "setup.premium.test_after_save": "Enregistrez vos modifications pour les tester.",
+  "setup.premium.immediate": "Activer, Tester et Retirer s’appliquent immédiatement. Enregistrer conserve ce que vous saisissez ; Annuler l’abandonne."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

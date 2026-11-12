@@ -3560,7 +3560,9 @@
   "account.leave.title": "Sair de “Minha conta”?",
   "account.leave.message": "Suas alterações não salvas em “Minha conta” serão perdidas.",
   "account.leave.discard": "Descartar alterações",
-  "account.leave.keep": "Continuar editando"
+  "account.leave.keep": "Continuar editando",
+  "setup.premium.test_after_save": "Salve as alterações para testá-las.",
+  "setup.premium.immediate": "Ativar, Testar e Remover têm efeito na hora. Salvar grava o que você digitar; Cancelar o descarta."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

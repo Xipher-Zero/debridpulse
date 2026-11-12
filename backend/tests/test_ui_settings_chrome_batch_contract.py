@@ -356,7 +356,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     # an action sized by its own content; that is now a property of the
     # grammar rather than a template this row restates.
     control_rule = page.split(
-        "#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
+        ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
     assert "flex: 1 1 auto" in control_rule
     action_rule = page.split("#view-settings .dp-settings-inline-field-action {", 1)[1].split("}", 1)[0]
     assert "flex: 0 0 auto;" in action_rule
@@ -409,7 +409,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_identity_chip_and_la
     assert "dp-settings-provider-logo--alldebrid" in runtime
     assert 'src="/icons/providers/alldebrid.svg"' in runtime
     # The locked AllDebrid colour is the chip's one datum.
-    assert ("#view-settings .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }"
+    assert (":is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }"
             in chrome)
     assert "--dp-identity-alldebrid: #FFA34E;" in read(STATIC / "design-tokens.css")
 

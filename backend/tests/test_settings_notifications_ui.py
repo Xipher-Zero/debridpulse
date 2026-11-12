@@ -389,7 +389,7 @@ def test_the_shared_inline_primitive_puts_the_title_over_its_hint():
     assert '<span class="form-hint"' in block(runtime, "const hintMarkup = hint =>", ";\n")
     layout = block(source(SHARED), "#view-settings .dp-settings-inline-field {", "}")
     assert "display: flex" in layout and "align-items: center" in layout
-    stack = block(source(SHARED), "#view-settings .dp-settings-inline-field-info {", "}")
+    stack = block(source(SHARED), ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info {", "}")
     assert "flex-direction: column" in stack
 
 
@@ -404,8 +404,8 @@ def test_the_page_states_no_field_layout_of_its_own():
             assert "clip-path: inset(50%)" in rule and "width: 1px" in rule, rule
     for banned in ("inset-inline-start", "float:",
                    "#view-settings .dp-settings-inline-field {",
-                   "#view-settings .dp-settings-inline-field-info {",
-                   "#view-settings .dp-settings-inline-field-control {",
+                   ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info {",
+                   ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-control {",
                    "#view-settings .dp-settings-inline-field-action {"):
         assert banned not in css, banned
 

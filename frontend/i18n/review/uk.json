@@ -33319,6 +33319,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.test_after_save": {
+   "source": "f7554168beaf37e7",
+   "translation": "d48d2c664d7d7000",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate": {
+   "source": "a19a0cbcc0d3dc10",
+   "translation": "4d4b8ac56039adce",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

@@ -81,7 +81,7 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "function authenticationPanel(" in module
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides)});" in module
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider});" in module
     assert "baseRenderSettings" not in module
     assert "removeLegacyAuthenticationControls" not in module
 

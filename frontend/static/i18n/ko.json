@@ -3560,7 +3560,9 @@
   "account.leave.title": "‘내 계정’에서 나가시겠습니까?",
   "account.leave.message": "‘내 계정’에서 저장하지 않은 변경 내용이 사라집니다.",
   "account.leave.discard": "변경 내용 폐기",
-  "account.leave.keep": "계속 편집"
+  "account.leave.keep": "계속 편집",
+  "setup.premium.test_after_save": "테스트하려면 변경 사항을 저장하세요.",
+  "setup.premium.immediate": "‘사용’, ‘테스트’, ‘제거’는 즉시 적용됩니다. ‘저장’은 입력한 내용을 저장하고, ‘취소’는 이를 버립니다."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7121,6 +7123,8 @@
   "account.leave.title": "c80b20ddb790be85",
   "account.leave.message": "80d03f8d27929540",
   "account.leave.discard": "e07e053c2e10b3f1",
-  "account.leave.keep": "624a83c761415dc9"
+  "account.leave.keep": "624a83c761415dc9",
+  "setup.premium.test_after_save": "f7554168beaf37e7",
+  "setup.premium.immediate": "a19a0cbcc0d3dc10"
  }
 }

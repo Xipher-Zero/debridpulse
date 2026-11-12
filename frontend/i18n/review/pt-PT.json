@@ -31331,6 +31331,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.test_after_save": {
+   "source": "f7554168beaf37e7",
+   "translation": "af41a2aca57556cd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate": {
+   "source": "a19a0cbcc0d3dc10",
+   "translation": "fced8e097257a081",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }
