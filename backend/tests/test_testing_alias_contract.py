@@ -318,7 +318,7 @@ def test_only_fork_image_calls_it_after_its_own_publication():
     jobs = _yaml("fork-image.yml")["jobs"]
     assert jobs["testing-alias"] == {
         "name": "Testing alias",
-        "needs": ["build-and-smoke-test", "publish"],
+        "needs": "publish",
         "if": "github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'",
         "permissions": {"contents": "read", "packages": "write", "statuses": "write"},
         "uses": "./.github/workflows/testing-alias.yml",

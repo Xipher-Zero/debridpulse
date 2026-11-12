@@ -21,9 +21,13 @@ The rule, exactly as implemented:
   A branch name, tag, or file diff is a pointer to a SHA, never a substitute
   for it. No short-SHA identity is used anywhere in the publication,
   qualification, or promotion chain.
-- **The source-SHA tag is write-once.** `Fork Image`'s `publish` job derives
-  exactly one tag, `ghcr.io/xipher-zero/debridpulse:sha-<full-git-sha>`.
-  Before building anything it checks whether that tag already exists:
+- **The source-SHA tag is write-once.** `Fork Image`'s `publish` job (a push,
+  or an authorized publishing dispatch) first runs the same build and smoke
+  qualification as `build-and-smoke-test` -- the same steps, by YAML alias, on
+  its own runner -- and fails before any registry login if it does not pass.
+  It then derives exactly one tag,
+  `ghcr.io/xipher-zero/debridpulse:sha-<full-git-sha>`, and before building
+  anything to publish it checks whether that tag already exists:
   - **absent** — the job builds and pushes the multi-architecture image once;
   - **present, recorded `org.opencontainers.image.revision` equals the exact
     `GITHUB_SHA`, both linux platform children present** — the job reuses the
