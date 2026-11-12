@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Salve as alterações para testá-las.",
   "setup.premium.immediate": "Ativar, Testar e Remover têm efeito na hora. Salvar grava o que você digitar; Cancelar o descarta.",
   "setup.premium.immediate_account": "Conectar, Desconectar, Ativar e Testar têm efeito na hora; Cancelar não os desfaz.",
-  "setup.premium.immediate_usenet": "Ativar, SSL, os nomes dos servidores, Limpar e Remover têm efeito na hora. Salvar grava o que você digitar, inclusive servidores novos; Cancelar o descarta. Testar em um servidor verifica o que ele mostra."
+  "setup.premium.immediate_usenet": "Ativar, SSL, os nomes dos servidores, Limpar e Remover têm efeito na hora. Salvar grava o que você digitar, inclusive servidores novos; Cancelar o descarta. Testar em um servidor verifica o que ele mostra.",
+  "setup.progress.label": "Progresso da configuração",
+  "setup.progress.step_done": "Etapa {current, number} de {total, number}, concluída"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

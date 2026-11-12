@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Збережіть зміни, щоб перевірити їх.",
   "setup.premium.immediate": "«Увімкнути», «Перевірити» і «Прибрати» діють одразу. «Зберегти» зберігає введене; «Скасувати» відкидає його.",
   "setup.premium.immediate_account": "«Підключити», «Відключити», «Увімкнути» і «Перевірити» діють одразу; «Скасувати» не повертає їх дію.",
-  "setup.premium.immediate_usenet": "«Увімкнути», SSL, назви серверів, «Очистити» і «Прибрати» діють одразу. «Зберегти» зберігає введене, зокрема нові сервери; «Скасувати» відкидає його. «Перевірити» в кожного сервера перевіряє те, що на ньому показано."
+  "setup.premium.immediate_usenet": "«Увімкнути», SSL, назви серверів, «Очистити» і «Прибрати» діють одразу. «Зберегти» зберігає введене, зокрема нові сервери; «Скасувати» відкидає його. «Перевірити» в кожного сервера перевіряє те, що на ньому показано.",
+  "setup.progress.label": "Перебіг налаштування",
+  "setup.progress.step_done": "Крок {current, number} з {total, number}, виконаний"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

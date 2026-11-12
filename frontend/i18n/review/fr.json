@@ -32596,6 +32596,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "95181658a0db7ca3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "18e3a7109a7b8d7c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

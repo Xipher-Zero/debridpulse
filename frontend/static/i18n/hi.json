@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "परीक्षण करने के लिए अपने बदलाव सहेजें।",
   "setup.premium.immediate": "“सक्षम करें”, “परीक्षण करें” और “हटाएँ” तुरंत लागू होते हैं। “सहेजें” आपका लिखा हुआ सहेजता है; “रद्द करें” उसे छोड़ देता है।",
   "setup.premium.immediate_account": "“कनेक्ट करें”, “डिस्कनेक्ट करें”, “सक्षम करें” और “परीक्षण करें” तुरंत लागू होते हैं; “रद्द करें” उन्हें वापस नहीं लेता।",
-  "setup.premium.immediate_usenet": "“सक्षम करें”, SSL, सर्वर के नाम, “साफ़ करें” और “हटाएँ” तुरंत लागू होते हैं। “सहेजें” आपका लिखा हुआ सहेजता है, नए सर्वर भी; “रद्द करें” उसे छोड़ देता है। किसी सर्वर का अपना “परीक्षण करें” वही जाँचता है जो वह दिखा रहा है।"
+  "setup.premium.immediate_usenet": "“सक्षम करें”, SSL, सर्वर के नाम, “साफ़ करें” और “हटाएँ” तुरंत लागू होते हैं। “सहेजें” आपका लिखा हुआ सहेजता है, नए सर्वर भी; “रद्द करें” उसे छोड़ देता है। किसी सर्वर का अपना “परीक्षण करें” वही जाँचता है जो वह दिखा रहा है।",
+  "setup.progress.label": "सेटअप की प्रगति",
+  "setup.progress.step_done": "चरण {current, number}/{total, number}, पूर्ण"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

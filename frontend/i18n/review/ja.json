@@ -31952,6 +31952,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "5579557c040d8f2f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "5b1969a8e8a5c59d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

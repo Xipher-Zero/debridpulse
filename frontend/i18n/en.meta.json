@@ -22836,10 +22836,9 @@
   },
   "setup.step": {
    "category": "label",
-   "context": "Setup wizard header: which page of the wizard is shown, e.g. Step 2 of 5. Short; sits beside the page title.",
+   "context": "Setup wizard: the screen-reader name of one progress bubble (the Connected Page Progress Indicator) whose page is not completed yet, e.g. Step 2 of 5. Not visible text.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal",
-   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short.",
    "args": {
     "current": "number: the page shown, from 1",
     "total": "number: how many pages this setup has"
@@ -23195,6 +23194,22 @@
    "context": "Setup wizard, Usenet configuration (news servers): which actions apply immediately, what Save and Cancel do, and that a server's own Test checks the values its card shows, saved or not. Enable, SSL, Clear, Remove, Save, Cancel and Test are button or toggle names.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
+  },
+  "setup.progress.label": {
+   "category": "label",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "context": "Setup wizard: the screen-reader name of the Connected Page Progress Indicator, the row of numbered bubbles that shows which pages are done. Not visible text."
+  },
+  "setup.progress.step_done": {
+   "category": "label",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "args": {
+    "current": "number: the page, from 1",
+    "total": "number: how many pages this setup has"
+   },
+   "context": "Setup wizard: the screen-reader name of one progress bubble whose page has been completed, e.g. Step 2 of 5, completed. Not visible text; reuse the exact wording of setup.step and add the completed state."
   }
  }
 }

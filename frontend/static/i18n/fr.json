@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Enregistrez vos modifications pour les tester.",
   "setup.premium.immediate": "Activer, Tester et Retirer s’appliquent immédiatement. Enregistrer conserve ce que vous saisissez ; Annuler l’abandonne.",
   "setup.premium.immediate_account": "Connecter, Déconnecter, Activer et Tester s’appliquent immédiatement ; Annuler ne les défait pas.",
-  "setup.premium.immediate_usenet": "Activer, SSL, les noms de serveur, Effacer et Retirer s’appliquent immédiatement. Enregistrer conserve ce que vous saisissez, nouveaux serveurs compris ; Annuler l’abandonne. Tester sur un serveur vérifie ce qu’il affiche."
+  "setup.premium.immediate_usenet": "Activer, SSL, les noms de serveur, Effacer et Retirer s’appliquent immédiatement. Enregistrer conserve ce que vous saisissez, nouveaux serveurs compris ; Annuler l’abandonne. Tester sur un serveur vérifie ce qu’il affiche.",
+  "setup.progress.label": "Progression de la configuration",
+  "setup.progress.step_done": "Étape {current, number} sur {total, number}, terminée"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

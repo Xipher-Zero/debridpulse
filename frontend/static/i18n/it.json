@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Salva le modifiche per testarle.",
   "setup.premium.immediate": "«Attiva», «Test» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti; «Annulla» lo scarta.",
   "setup.premium.immediate_account": "«Collega», «Scollega», «Attiva» e «Test» hanno effetto subito; «Annulla» non li revoca.",
-  "setup.premium.immediate_usenet": "«Attiva», SSL, i nomi dei server, «Cancella» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti, compresi i nuovi server; «Annulla» lo scarta. Il «Test» di un server verifica ciò che mostra."
+  "setup.premium.immediate_usenet": "«Attiva», SSL, i nomi dei server, «Cancella» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti, compresi i nuovi server; «Annulla» lo scarta. Il «Test» di un server verifica ciò che mostra.",
+  "setup.progress.label": "Avanzamento della configurazione",
+  "setup.progress.step_done": "Passo {current, number} di {total, number}, completato"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

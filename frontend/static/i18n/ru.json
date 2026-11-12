@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Сохраните изменения, чтобы проверить их.",
   "setup.premium.immediate": "Кнопки «Включить», «Проверить» и «Удалить» действуют сразу. Кнопка «Сохранить» сохраняет введённое; кнопка «Отменить» отбрасывает его.",
   "setup.premium.immediate_account": "Кнопки «Подключить», «Отключить», «Включить» и «Проверить» действуют сразу; кнопка «Отменить» не возвращает их действие.",
-  "setup.premium.immediate_usenet": "«Включить», SSL, имена серверов, «Очистить» и «Удалить» действуют сразу. Кнопка «Сохранить» сохраняет введённое, включая новые серверы; кнопка «Отменить» отбрасывает его. «Проверить» у сервера проверяет то, что он показывает."
+  "setup.premium.immediate_usenet": "«Включить», SSL, имена серверов, «Очистить» и «Удалить» действуют сразу. Кнопка «Сохранить» сохраняет введённое, включая новые серверы; кнопка «Отменить» отбрасывает его. «Проверить» у сервера проверяет то, что он показывает.",
+  "setup.progress.label": "Ход настройки",
+  "setup.progress.step_done": "Шаг {current, number} из {total, number}, выполнен"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

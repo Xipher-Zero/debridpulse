@@ -73,9 +73,9 @@ test('W01: My Account offers Rerun Setup Wizard; a rerun opens over it, changes 
   await expect(wizard(page)).toBeVisible();
   const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
   const total = deployment === 'standalone' ? 4 : 5;
-  await expect(wizard(page).locator('.dp-setup-step')).toHaveText(await t(page, 'setup.step', {current: 1, total}));
+  await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeVisible();      // a rerun may be closed
-  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeHidden();
+  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeDisabled();  // in its place, nowhere to go
   expect((await state(page)).rerun).toEqual({phase: 'welcome'});
   // Welcome (language unchanged) and Download Directory (folder unchanged): Next commits nothing new.
   await wizard(page).locator('[data-modal-accept]').click();
@@ -109,9 +109,9 @@ test('W02: a new installation\'s setup opens by itself, cannot be dismissed, and
   await expect(wizard(page)).toBeVisible();
   const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
   const total = deployment === 'standalone' ? 5 : 6;
-  await expect(wizard(page).locator('.dp-setup-step')).toHaveText(await t(page, 'setup.step', {current: 1, total}));
+  await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeHidden();
-  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeHidden();
+  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeDisabled();
   await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.get_started'));
   await page.keyboard.press('Escape');
   await expect(wizard(page)).toBeVisible();
@@ -256,7 +256,12 @@ async function emulateNewInstallation(page, {deployment, phase}) {
   return server;
 }
 
-const step = async (page, current, total) => expect(wizard(page).locator('.dp-setup-step')).toHaveText(await t(page, 'setup.step', {current, total}));
+// Page `current` of `total`: the Connected Page Progress Indicator's bubble count and current bubble.
+async function step(page, current, total) {
+  const steps = wizard(page).locator('.dp-setup-progress-step');
+  await expect(steps).toHaveCount(total);
+  await expect(steps.nth(current - 1)).toHaveAttribute('aria-current', 'step');
+}
 
 test('W05: Standalone at Getting Started, Back to Deployment, Server: resumes at Download Directory and then requires Administrator Setup (emulated record)', async ({page}) => {
   const server = await emulateNewInstallation(page, {deployment: 'standalone', phase: 'getting_started'});
@@ -459,3 +464,325 @@ test('W11: Test First-Run Wizard is offered only to a development build', async 
   }
   await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
+
+/* The wizard shell and its Connected Page Progress Indicator.
+ *
+ * One dialog of one size for the viewport on every page and provider view;
+ * the header (progress and heading) and the footer keep their places; only
+ * the body scrolls. The indicator is a reading -- bubbles and strings, never
+ * controls -- and completed is not "before the current page": a page is
+ * completed once its Next succeeded and the wizard moved on, and stays so when
+ * the operator goes Back. */
+
+const progress = page => wizard(page).locator('.dp-setup-progress');
+async function bubbles(page) {
+  return progress(page).locator('.dp-setup-progress-step').evaluateAll(steps => steps.map(item => ({
+    state: item.dataset.state, current: item.getAttribute('aria-current') === 'step',
+    check: !!item.querySelector('svg[data-dp-lucide="check"]'), number: item.querySelector('.dp-setup-progress-bubble').textContent.trim(),
+    link: item.querySelector('.dp-setup-progress-link')?.dataset.link || null,
+    label: item.getAttribute('aria-label'),
+  })));
+}
+async function openRerun(page) {
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await openAccount(page);
+  await account(page).locator('[data-account-setup-rerun]').click();
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+}
+const rect = locator => locator.evaluate(node => { const box = node.getBoundingClientRect(); return [box.left, box.top, box.width, box.height].map(Math.round); });
+const next = page => wizard(page).locator('[data-modal-accept]').click();
+
+for (const [width, height] of [[1280, 900], [375, 667]]) {
+  test(`W12: one shell at ${width}x${height}: the same dialog, header and footer on every page and provider view; only the body scrolls`, async ({page}) => {
+    await load(page, {width, height});
+    await openRerun(page);
+    const dialog = wizard(page);
+    const shape = async () => ({dialog: await rect(dialog), header: await rect(dialog.locator('.dp-modal-header')),
+      footer: await rect(dialog.locator('.dp-modal-footer')),
+      progress: await rect(progress(page)), heading: await rect(dialog.locator('.dp-modal-heading'))});
+    const seen = [await shape()];
+    const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+    for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) { await next(page); seen.push(await shape()); }
+    await expect(dialog.locator('.dp-setup-premium')).toBeVisible();
+    for (const id of ['debridlink', 'torbox', 'usenet']) {
+      await dialog.locator(`[data-service="${id}"]`).click();
+      await expect(dialog.locator('.dp-setup-provider-surface')).toBeVisible();
+      seen.push(await shape());
+      if (id === 'usenet') {
+        for (let n = 0; n < 4; n += 1) await dialog.locator('.dp-setup-provider-surface [data-usenet-action="add"]').click();
+        await dialog.locator('.dp-setup-provider-surface [data-usenet-advanced-toggle]').first().click();
+        seen.push(await shape());
+        // Long content scrolls inside the body; the footer's Save stays reachable.
+        const body = await dialog.locator('.dp-modal-body').evaluate(node => ({scrolls: node.scrollHeight > node.clientHeight, overflow: getComputedStyle(node).overflowY}));
+        expect(body).toEqual({scrolls: true, overflow: 'auto'});
+        await expect(dialog.locator('[data-modal-accept]')).toBeInViewport({ratio: 1});
+      }
+      await dialog.locator('[data-modal-cancel]').click();
+      await expect(dialog.locator('.dp-setup-premium')).toBeVisible();
+    }
+    await next(page);
+    await expect(dialog.locator('.dp-setup-getting-started')).toBeVisible();
+    seen.push(await shape());
+    for (const key of ['dialog', 'header', 'footer', 'progress', 'heading']) {
+      expect(new Set(seen.map(entry => JSON.stringify(entry[key]))).size, key).toBe(1);
+    }
+    const [left, top, w, h] = seen[0].dialog;
+    expect(left).toBeGreaterThanOrEqual(0); expect(top).toBeGreaterThanOrEqual(0);
+    expect(left + w).toBeLessThanOrEqual(width); expect(top + h).toBeLessThanOrEqual(height);
+    expect(h).toBeGreaterThan(w);                                                   // portrait
+    // No top close control, no step label.
+    await expect(dialog.locator('[data-modal-close], .dp-setup-step')).toHaveCount(0);
+    await dialog.locator('[data-modal-cancel]').click();
+  });
+}
+
+test('W13: the indicator is a reading: no completion at the start, the current page marked, no control in it', async ({page}) => {
+  await load(page);
+  await openRerun(page);
+  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const total = deployment === 'standalone' ? 4 : 5;
+  const now = await bubbles(page);
+  expect(now.map(item => [item.state, item.current, item.number])).toEqual(
+    Array.from({length: total}, (_, index) => ['todo', index === 0, String(index + 1)]));
+  expect(now.map(item => item.label)).toEqual(await Promise.all(
+    Array.from({length: total}, (_, index) => t(page, 'setup.step', {current: index + 1, total}))));
+  await expect(progress(page)).toHaveAttribute('aria-label', await t(page, 'setup.progress.label'));
+  await expect(progress(page).locator('button, a, input, [tabindex], [onclick], [role="button"]')).toHaveCount(0);
+  // Clicking a later bubble moves nothing.
+  await progress(page).locator('.dp-setup-progress-bubble').nth(2).click({force: true});
+  expect((await bubbles(page)).findIndex(item => item.current)).toBe(0);
+  await wizard(page).locator('[data-modal-cancel]').click();
+});
+
+test('W14: a page is completed only once its Next was accepted and the wizard moved on; a refused Next leaves it incomplete', async ({page}) => {
+  await load(page);
+  await openRerun(page);
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  let refuse = false;
+  await page.route(url => url.pathname === '/api/setup/rerun', async route => {
+    if (route.request().method() !== 'PUT') return route.continue();
+    if (refuse) return route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'synthetic failure', code: 'unclassified', params: {}})});
+    await held;
+    return route.continue();
+  });
+  await next(page);
+  // Pending: nothing completed, still on the first page.
+  await page.waitForTimeout(400);
+  expect((await bubbles(page)).map(item => [item.state, item.current]).slice(0, 2)).toEqual([['todo', true], ['todo', false]]);
+  release();
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  let now = await bubbles(page);
+  expect(now.map(item => item.state).slice(0, 3)).toEqual(['done', 'todo', 'todo']);
+  expect(now[0].check && now[0].number === '' && now[1].current).toBe(true);
+  expect(now[0].label).toBe(await t(page, 'setup.progress.step_done', {current: 1, total: now.length}));
+  // Strings follow completion: the boundary from the completed page into the next, unfinished beyond.
+  expect([now[1].link, now[2].link]).toEqual(['boundary', 'todo']);
+  // A refused Next: the error, the same page, still incomplete.
+  refuse = true;
+  await next(page);
+  await expect(wizard(page).locator('.dp-setup-error')).toBeVisible();
+  now = await bubbles(page);
+  expect(now.map(item => item.state).slice(0, 3)).toEqual(['done', 'todo', 'todo']);
+  expect(now[1].current).toBe(true);
+  await page.unroute(url => url.pathname === '/api/setup/rerun');
+  await wizard(page).locator('[data-modal-cancel]').click();
+});
+
+test('W15: Back keeps every completed page: the page viewed again keeps its check under the current glow', async ({page}) => {
+  await load(page);
+  await openRerun(page);
+  await next(page);
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  await next(page);
+  await expect(wizard(page).locator('.dp-setup-administrator, .dp-setup-premium')).toBeVisible();
+  await wizard(page).locator('[data-modal-action="back"]').click();
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  const now = await bubbles(page);
+  expect(now.map(item => [item.state, item.current, item.check]).slice(0, 3)).toEqual([['done', false, true], ['done', true, true], ['todo', false, false]]);
+  // Strings: completed green between the two completed pages; the boundary where completion ends.
+  expect([now[1].link, now[2].link]).toEqual(['done', 'boundary']);
+  // The current glow is the strong one, and differs from a completed page's normal glow.
+  const glow = await progress(page).locator('.dp-setup-progress-bubble').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).boxShadow));
+  expect(glow[1]).not.toBe(glow[0]);                                                // its hue and strength: W19
+  // Back again, to the first page: the glow moves, the boundary does not.
+  await wizard(page).locator('[data-modal-action="back"]').click();
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  const first = await bubbles(page);
+  expect(first.map(item => [item.state, item.current]).slice(0, 3)).toEqual([['done', true], ['done', false], ['todo', false]]);
+  expect([first[1].link, first[2].link]).toEqual(['done', 'boundary']);
+  await wizard(page).locator('[data-modal-cancel]').click();
+});
+
+test('W16: an optional page is completed by its Next alone; a provider view changes no progress and does not complete Premium Services', async ({page}) => {
+  await load(page);
+  await openRerun(page);
+  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) await next(page);
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  const atPremium = await bubbles(page);
+  const premium = atPremium.findIndex(item => item.current);
+  await wizard(page).locator('[data-service="realdebrid"]').click();
+  await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
+  expect(await bubbles(page)).toEqual(atPremium);
+  await wizard(page).locator('[data-modal-accept]').click();                       // its Save (nothing to store)
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  expect(await bubbles(page)).toEqual(atPremium);
+  expect(atPremium[premium].state).toBe('todo');
+  await next(page);                                                                 // nothing configured
+  await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
+  expect((await bubbles(page))[premium].state).toBe('done');
+  await wizard(page).locator('[data-modal-cancel]').click();
+});
+
+test('W17: the preview completes its pages for itself, writing nothing', async ({page}) => {
+  await load(page);
+  await openRerun(page);
+  const writes = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== 'GET' && path !== '/api/settings/test-aria2') writes.push(`${request.method()} ${path}`);
+  });
+  await wizard(page).locator('[data-setup-preview]').click();
+  await expect(wizard(page).locator('.dp-setup-preview-note')).toBeVisible();
+  expect((await bubbles(page)).every(item => item.state === 'todo')).toBe(true);
+  await next(page);
+  await wizard(page).locator('[data-deployment="server"]').click();
+  await next(page);
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  const now = await bubbles(page);
+  expect(now.length).toBe(6);
+  expect(now.map(item => item.state)).toEqual(['done', 'done', 'todo', 'todo', 'todo', 'todo']);
+  expect(writes).toEqual([]);
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await expect(wizard(page).locator('[data-setup-preview]')).toBeVisible();
+  expect((await bubbles(page)).every(item => item.state === 'todo')).toBe(true);   // the rerun's own progress, untouched
+  expect((await state(page)).rerun).toEqual({phase: 'welcome'});
+  await wizard(page).locator('[data-modal-cancel]').click();
+});
+
+test('W18: an interrupted initial setup resumes with the progress its record holds (emulated record)', async ({page}) => {
+  const server = await emulateNewInstallation(page, {deployment: 'standalone', phase: 'premium_services'});
+  await load(page);
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  const now = await bubbles(page);
+  expect(now.map(item => [item.state, item.current])).toEqual([['done', false], ['done', false], ['done', false], ['todo', true], ['todo', false]]);
+  await wizard(page).locator('[data-modal-action="back"]').click();
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  expect((await bubbles(page)).map(item => [item.state, item.current])).toEqual([['done', false], ['done', false], ['done', true], ['todo', false], ['todo', false]]);
+  expect(server.writes).toEqual([]);
+});
+
+/* The indicator as rendered, in both themes, at desktop and phone widths,
+ * anchored to the theme's own colour authorities -- the accent (`--accent`)
+ * and the completion green (`--dp-state-success`), each resolved in the page
+ * and normalised to RGBA by drawing it -- never to the indicator's own
+ * variables: every string meets its two bubbles' borders; completed bubbles
+ * and strings are the green; incomplete bubbles and strings are the accent's
+ * hue (at reduced intensity, never grey); the boundary string runs from the
+ * green into that accent; the current bubble's strong glow is its own state's
+ * colour -- green around a completed page, the accent around an incomplete
+ * one -- while the others keep their normal glow; and Back moves the glow,
+ * never the boundary. */
+const INDICATOR = () => {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext('2d', {willReadFrequently: true});
+  const rgba = color => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = '#000'; context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, Math.round(a / 2.55) / 100];
+  };
+  const colours = text => (String(text).match(/(?:rgba?|color|oklab|oklch|lab|lch|hsla?)\([^()]*\)|#[0-9a-f]{3,8}\b/gi) || []).map(rgba);
+  const dialog = document.querySelector('.dp-setup-dialog');
+  const probe = (property, value) => {
+    const node = document.createElement('span');
+    node.style.setProperty(property, value);
+    dialog.append(node);
+    const read = getComputedStyle(node).getPropertyValue(property);
+    node.remove();
+    return read;
+  };
+  const tokens = {accent: rgba(probe('color', 'var(--accent)')), green: rgba(probe('color', 'var(--dp-state-success)')),
+    normalGreenGlow: probe('box-shadow', 'var(--dp-glow-success)')};
+  const steps = [...document.querySelectorAll('.dp-setup-progress-step')].map(step => {
+    const bubble = step.querySelector('.dp-setup-progress-bubble'), link = step.querySelector('.dp-setup-progress-link');
+    const b = bubble.getBoundingClientRect(), l = link?.getBoundingClientRect();
+    const style = getComputedStyle(bubble), linkStyle = link && getComputedStyle(link);
+    return {state: step.dataset.state, current: step.getAttribute('aria-current') === 'step', kind: link?.dataset.link || null,
+      bubble: {left: b.left, right: b.right, mid: b.top + b.height / 2, border: rgba(style.borderTopColor),
+        shadow: style.boxShadow, glow: colours(style.boxShadow)},
+      link: l && {left: l.left, right: l.right, mid: l.top + l.height / 2, colour: rgba(linkStyle.backgroundColor),
+        stops: linkStyle.backgroundImage === 'none' ? [] : colours(linkStyle.backgroundImage)}};
+  });
+  return {tokens, steps};
+};
+const hue = (colour, of) => [0, 1, 2].every(channel => Math.abs(colour[channel] - of[channel]) <= 3);
+
+for (const [width, height] of [[1280, 900], [375, 667]]) {
+  for (const theme of ['dark', 'light']) {
+    test(`W19: completion green, the theme accent and state-coloured glows, joined (${theme}, ${width}px)`, async ({page}) => {
+      await load(page, {width, height});
+      await page.evaluate(light => document.body.classList.toggle('light', light), theme === 'light');
+      await openRerun(page);
+      await next(page);
+      await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+      await next(page);
+      await expect(wizard(page).locator('.dp-setup-administrator, .dp-setup-premium')).toBeVisible();
+      const check = async expectedCurrent => {
+        const {tokens, steps} = await page.evaluate(INDICATOR);
+        const {accent, green} = tokens;
+        expect(hue(accent, green), 'the accent and the green are distinct colours').toBe(false);
+        expect(steps.findIndex(step => step.current)).toBe(expectedCurrent);
+        steps.forEach((step, index) => {
+          const {bubble} = step;
+          if (step.state === 'done') expect(bubble.border, `bubble ${index}`).toEqual([...green.slice(0, 3), 1]);
+          else expect(hue(bubble.border, accent) && bubble.border[3] >= .5, `bubble ${index} has the accent's hue: ${bubble.border}`).toBe(true);
+          // Glow: the current bubble's is its own state's colour, the strong one; others keep their normal glow.
+          if (step.current) {
+            const own = step.state === 'done' ? green : accent, other = step.state === 'done' ? accent : green;
+            expect(bubble.glow.length).toBeGreaterThanOrEqual(2);
+            expect(bubble.glow.every(colour => hue(colour, own)), `current glow ${bubble.shadow}`).toBe(true);
+            expect(bubble.glow.some(colour => hue(colour, other))).toBe(false);
+          } else if (step.state === 'done') {
+            expect(bubble.shadow).toBe(tokens.normalGreenGlow);
+            expect(bubble.glow.some(colour => hue(colour, accent))).toBe(false);
+          } else {
+            expect(bubble.shadow).toBe('none');
+          }
+          if (index === 0) return;
+          const {link} = step;
+          // Joined: no seam at either border, on the bubbles' centre line.
+          expect(Math.abs(link.left - steps[index - 1].bubble.right), `seam before ${index}`).toBeLessThan(0.75);
+          expect(Math.abs(link.right - bubble.left), `seam after ${index}`).toBeLessThan(0.75);
+          expect(Math.abs(link.mid - bubble.mid)).toBeLessThan(1);
+          const kind = steps[index - 1].state !== 'done' ? 'todo' : step.state === 'done' ? 'done' : 'boundary';
+          expect(step.kind).toBe(kind);
+          if (kind === 'done') expect(link.colour).toEqual([...green.slice(0, 3), 1]);
+          if (kind === 'todo') {
+            expect(hue(link.colour, accent), `string ${index} has the accent's hue: ${link.colour}`).toBe(true);
+            expect(link.colour).toEqual(bubble.border);                      // the same unfinished accent as the bubble
+          }
+          if (kind === 'boundary') {
+            expect(link.stops.length).toBe(2);
+            expect(link.stops[0]).toEqual([...green.slice(0, 3), 1]);           // starts at the completion green
+            expect(hue(link.stops[1], accent), `ends at the accent: ${link.stops[1]}`).toBe(true);
+            expect(link.stops[1]).toEqual(bubble.border);                    // ... the incomplete bubble's own border
+          }
+        });
+        return steps;
+      };
+      const forward = await check(2);
+      const boundary = forward.findIndex(step => step.kind === 'boundary');
+      expect(boundary).toBe(2);
+      for (const back of [1, 0]) {
+        await wizard(page).locator('[data-modal-action="back"]').click();
+        const steps = await check(back);
+        expect(steps.findIndex(step => step.kind === 'boundary')).toBe(boundary);
+      }
+      await wizard(page).locator('[data-modal-cancel]').click();
+    });
+  }
+}

@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Sla uw wijzigingen op om ze te testen.",
   "setup.premium.immediate": "Inschakelen, Testen en Weghalen werken meteen. Opslaan bewaart wat u typt; Annuleren gooit het weg.",
   "setup.premium.immediate_account": "Koppelen, Ontkoppelen, Inschakelen en Testen werken meteen; Annuleren draait ze niet terug.",
-  "setup.premium.immediate_usenet": "Inschakelen, SSL, servernamen, Wissen en Weghalen werken meteen. Opslaan bewaart wat u typt, nieuwe servers inbegrepen; Annuleren gooit het weg. Testen bij een server controleert wat die toont."
+  "setup.premium.immediate_usenet": "Inschakelen, SSL, servernamen, Wissen en Weghalen werken meteen. Opslaan bewaart wat u typt, nieuwe servers inbegrepen; Annuleren gooit het weg. Testen bij een server controleert wat die toont.",
+  "setup.progress.label": "Voortgang van de installatie",
+  "setup.progress.step_done": "Stap {current, number} van {total, number}, voltooid"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

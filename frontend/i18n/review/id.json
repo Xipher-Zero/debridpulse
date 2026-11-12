@@ -32068,6 +32068,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "4555ffacb92c925a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "984467deb36b6f1e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

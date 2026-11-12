@@ -32233,6 +32233,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "906d50760ac2b348",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "05e821f47a662e2b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

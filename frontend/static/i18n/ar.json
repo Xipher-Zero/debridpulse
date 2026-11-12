@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "احفظ تغييراتك لاختبارها.",
   "setup.premium.immediate": "تسري «تفعيل» و«اختبار» و«إزالة» على الفور. يحفظ «حفظ» ما تكتبه؛ ويتجاهله «إلغاء».",
   "setup.premium.immediate_account": "تسري «ربط» و«إلغاء الربط» و«تفعيل» و«اختبار» على الفور؛ ولا يتراجع «إلغاء» عنها.",
-  "setup.premium.immediate_usenet": "تسري «تفعيل» و«SSL» وأسماء الخوادم و«مسح» و«إزالة» على الفور. يحفظ «حفظ» ما تكتبه، بما في ذلك الخوادم الجديدة؛ ويتجاهله «إلغاء». يفحص «اختبار» الخاص بكل خادم ما يعرضه."
+  "setup.premium.immediate_usenet": "تسري «تفعيل» و«SSL» وأسماء الخوادم و«مسح» و«إزالة» على الفور. يحفظ «حفظ» ما تكتبه، بما في ذلك الخوادم الجديدة؛ ويتجاهله «إلغاء». يفحص «اختبار» الخاص بكل خادم ما يعرضه.",
+  "setup.progress.label": "تقدّم الإعداد",
+  "setup.progress.step_done": "الخطوة {current, number} من {total, number}، مكتملة"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

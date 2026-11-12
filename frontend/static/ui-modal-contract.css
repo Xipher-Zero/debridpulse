@@ -326,6 +326,30 @@ body.light .dp-modal-dialog {
   padding-inline-start: 12px;
 }
 
+/* A title icon (`titleIcon`): the title's own mark, on its line. */
+.dp-modal-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dp-modal-title-icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+.dp-modal-title-icon[hidden],
+.dp-modal-title-hint[hidden] {
+  display: none;
+}
+
+/* A header top (`headerTop`): its client's reading above the title line. */
+.dp-modal-header-top {
+  min-width: 0;
+}
+
 /* A title action (`placement: 'title'`): the compact icon control right after
    the title, in the established pencil treatment (the Usenet server name's). */
 .dp-modal-title-action.btn {

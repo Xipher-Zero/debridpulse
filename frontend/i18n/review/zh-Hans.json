@@ -31570,6 +31570,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "3f5e1647cf70558d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "7910e0e080d312c6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

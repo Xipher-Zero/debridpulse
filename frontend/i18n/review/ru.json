@@ -31788,6 +31788,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.progress.label": {
+   "source": "e9b4495ace726330",
+   "translation": "a830b1411ab27b80",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.progress.step_done": {
+   "source": "b6b38cb19c4fdca0",
+   "translation": "8c9187335bc5c447",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

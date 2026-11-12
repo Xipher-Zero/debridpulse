@@ -3,13 +3,16 @@
    and Getting Started is provisional and replaced later without changing
    these pages. Logical properties throughout, so right-to-left languages
    mirror without a rule of their own. */
-/* Contained like Edit User: never taller than the overlay leaves; the header
-   (title, step) and footer (Back, Next or Save) stay in view and the body
-   scrolls -- a Usenet configuration with several servers is taller than a
-   phone. */
+/* One shell for every page and every provider view: a portrait dialog whose
+   outer size is fixed for the viewport -- the same on a short page as on a
+   Usenet configuration with several servers -- bounded by what the overlay
+   leaves (its 24px padding, 12px at 620px and below). Its four regions, in
+   order: the Connected Page Progress Indicator and the heading (the dialog
+   owner's header: `headerTop`, title icon, title, hint), the page body -- the
+   one region that scrolls -- and the footer, anchored at the bottom. */
 .dp-modal-dialog.dp-setup-dialog {
-  inline-size: min(560px, calc(100vw - 32px));
-  max-height: calc(100dvh - 48px);
+  inline-size: min(480px, calc(100vw - 48px));
+  block-size: min(760px, calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
 }
@@ -29,24 +32,185 @@
   flex-shrink: 0;
 }
 @media (max-width: 620px) {
+  /* The dialog owner stacks footer controls full-width here, so a footer is as
+     tall as its controls. The wizard's footer keeps one footprint -- its
+     pages' three stacked slots (Back, Close, Next: three control heights,
+     the owner's two 10px gaps, its 14px/18px padding and 1px top border; the
+     box is border-box) -- in a provider view with two, so the body and the
+     footer's top never move. */
+  .dp-modal-dialog.dp-setup-dialog > .dp-modal-footer {
+    min-block-size: calc(3 * var(--dp-control-height-md) + 2 * 10px + 14px + 18px + 1px);
+  }
   .dp-modal-dialog.dp-setup-dialog {
-    max-height: calc(100dvh - 24px);
+    inline-size: calc(100vw - 24px);
+    block-size: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 }
-.dp-setup-step {
+
+/* The header: progress above a centred heading, both of one fixed height --
+   the hint keeps three lines (four on a phone) whatever it says, and scrolls
+   within them if a language needs more -- so no page moves the body. Theme
+   accents sit behind and beside it (decoration only). */
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header {
+  position: relative;
+  overflow: hidden;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 18px 14px;
+}
+.dp-setup-dialog > .dp-modal-header > .dp-modal-header-top,
+.dp-setup-dialog > .dp-modal-header > .dp-modal-heading {
+  position: relative;
+  z-index: 1;
+}
+.dp-setup-dialog .dp-modal-heading {
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.dp-setup-dialog .dp-modal-title-line {
+  justify-content: center;
+}
+.dp-setup-dialog .dp-modal-title {
+  font-size: 17px;
+}
+.dp-setup-dialog .dp-modal-title-icon {
+  width: 22px;
+  height: 22px;
+}
+.dp-setup-dialog .dp-modal-title-hint {
+  --dp-setup-hint-lines: 3;
+  block-size: calc(var(--dp-setup-hint-lines) * 1.45em);
+  max-inline-size: 40ch;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+@media (max-width: 620px) {
+  .dp-setup-dialog .dp-modal-title-hint {
+    --dp-setup-hint-lines: 4;
+  }
+}
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before,
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
+  content: "";
+  position: absolute;
+  inset-block-end: -34px;
+  inline-size: 128px;
+  block-size: 128px;
+  opacity: .16;
+  pointer-events: none;
+  -webkit-mask: var(--dp-setup-accent-rings) center / contain no-repeat;
+  mask: var(--dp-setup-accent-rings) center / contain no-repeat;
+}
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before {
+  inset-inline-start: -46px;
+  background: linear-gradient(135deg, var(--accent), var(--dp-state-active));
+}
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
+  inset-inline-end: -46px;
+  background: linear-gradient(225deg, var(--accent), var(--dp-state-connectivity));
+}
+.dp-modal-dialog.dp-setup-dialog {
+  --dp-setup-accent-rings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.5'%3E%3Ccircle cx='64' cy='64' r='62'/%3E%3Ccircle cx='64' cy='64' r='46'/%3E%3Ccircle cx='64' cy='64' r='30' stroke-dasharray='3 5'/%3E%3C/g%3E%3Ccircle cx='64' cy='64' r='6'/%3E%3C/svg%3E");
+}
+body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before,
+body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
+  opacity: .12;
+}
+
+/* The Connected Page Progress Indicator (ui-setup-wizard.js paintProgress):
+   numbered bubbles on one string that meets each bubble's border. Completed:
+   the completion green (--dp-state-success), a check and the normal glow.
+   Incomplete: the theme accent (--accent) at reduced intensity -- the same
+   on its border and on every unfinished string. Each bubble carries its own
+   state colour (--dp-setup-state); the current page only intensifies that
+   colour's glow -- green around a completed page, the accent around an
+   incomplete one -- and moves no string. Strings follow the two pages they
+   join: green between completed pages, one gradient from green into the
+   unfinished accent at the completion boundary, the unfinished accent
+   between incomplete pages. */
+.dp-setup-progress {
+  --dp-setup-bubble: 28px;
+  --dp-setup-link: clamp(14px, 5vw, 40px);
+  --dp-setup-unfinished: color-mix(in srgb, var(--accent) 70%, transparent);
+  display: flex;
+  justify-content: center;
+  align-items: center;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dp-setup-progress-step {
+  display: flex;
+  align-items: center;
+}
+.dp-setup-progress-link {
+  inline-size: var(--dp-setup-link);
+  block-size: 3px;
+  background: var(--dp-setup-unfinished);
+}
+.dp-setup-progress-link[data-link="done"] {
+  background: var(--dp-state-success);
+  box-shadow: var(--dp-glow-success);
+}
+.dp-setup-progress-link[data-link="boundary"] {
+  /* In oklch: the hue turns from the green to the accent, never through grey. */
+  background: linear-gradient(to right in oklch, var(--dp-state-success), var(--dp-setup-unfinished));
+}
+[dir="rtl"] .dp-setup-progress-link[data-link="boundary"] {
+  background: linear-gradient(to left in oklch, var(--dp-state-success), var(--dp-setup-unfinished));
+}
+.dp-setup-progress-bubble {
+  --dp-setup-state: var(--accent);
+  display: grid;
+  place-items: center;
+  inline-size: var(--dp-setup-bubble);
+  block-size: var(--dp-setup-bubble);
+  border: 2px solid var(--dp-setup-unfinished);
+  border-radius: 50%;
+  background: var(--dp-panel-surface);
   color: var(--dp-text-muted);
   font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
 }
+.dp-setup-progress-bubble svg {
+  inline-size: 15px;
+  block-size: 15px;
+  stroke-width: 3;
+}
+[data-state="done"] > .dp-setup-progress-bubble {
+  --dp-setup-state: var(--dp-state-success);
+  border-color: var(--dp-state-success);
+  background: var(--dp-state-success-bg);
+  color: var(--dp-state-success-mark);
+  box-shadow: var(--dp-glow-success);
+}
+[aria-current="step"] > .dp-setup-progress-bubble {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dp-setup-state) 34%, transparent),
+    0 0 18px 5px color-mix(in srgb, var(--dp-setup-state) 60%, transparent);
+}
+[aria-current="step"][data-state="todo"] > .dp-setup-progress-bubble {
+  color: var(--dp-text-primary);
+}
+@media (max-width: 620px) {
+  .dp-setup-progress {
+    --dp-setup-bubble: 24px;
+    --dp-setup-link: clamp(12px, 5vw, 26px);
+  }
+}
+
 .dp-setup-page {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-inline-size: 0;
 }
-.dp-setup-lead,
 .dp-setup-hint,
 .dp-setup-label {
   margin: 0;

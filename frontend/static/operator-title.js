@@ -29,6 +29,7 @@
     upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     circleCheck: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
     circleX: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
     clock3: '<path d="M12 6v6h4"/><circle cx="12" cy="12" r="10"/>',
     loaderCircle: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',

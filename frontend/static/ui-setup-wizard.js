@@ -42,6 +42,16 @@
   });
   // The pages after a Server installation's Administrator exists.
   const AFTER_ADMINISTRATOR = new Set(['premium_services', 'getting_started']);
+  // Each page's heading: its mark and the reading beneath its title (the
+  // dialog owner's title icon and hint). Administrator says what it is now.
+  const ICONS = Object.freeze({
+    welcome: 'globe', deployment: 'network', download_directory: 'folder-sync', administrator: 'shield-user',
+    premium_services: 'crown', getting_started: 'rocket',
+  });
+  const HINTS = Object.freeze({
+    welcome: 'setup.welcome.intro', deployment: 'setup.deployment.intro', download_directory: 'setup.directory.intro',
+    premium_services: 'setup.premium.hint', getting_started: 'setup.getting_started.intro',
+  });
   const TITLES = Object.freeze({
     welcome: 'setup.welcome.title', deployment: 'setup.deployment.title',
     download_directory: 'setup.directory.title', premium_services: 'settings.services.premium',
@@ -69,7 +79,6 @@
     render(wizard) {
       const section = element(`
         <section class="dp-setup-page dp-setup-welcome">
-          <p class="dp-setup-lead" data-i18n="setup.welcome.intro"></p>
           <p class="dp-setup-label" id="dp-setup-language-label" data-i18n="setup.welcome.language"></p>
           <p class="dp-setup-hint" data-i18n="setup.welcome.language_hint"></p>
           <div class="dp-language-slot dp-setup-language" data-setup-language></div>
@@ -121,7 +130,6 @@
       wizard.data.deployment = wizard.data.deployment || deploymentType();
       const section = element(`
         <section class="dp-setup-page dp-setup-deployment">
-          <p class="dp-setup-lead" data-i18n="setup.deployment.intro"></p>
           <div class="dp-setup-choices" role="radiogroup" data-i18n-attr="aria-label:setup.deployment.title">
             ${['standalone', 'server'].map(type => `
               <button type="button" class="dp-setup-choice" role="radio" data-deployment="${type}" ${locked ? 'disabled' : ''}>
@@ -169,7 +177,6 @@
     render(wizard) {
       const section = element(`
         <section class="dp-setup-page dp-setup-directory">
-          <p class="dp-setup-lead" data-i18n="setup.directory.intro"></p>
           <label class="dp-modal-field" for="dp-setup-download-folder">
             <span class="form-label" data-i18n="settings.downloads.folder"></span>
           </label>
@@ -202,6 +209,10 @@
     title(wizard) {
       return wizard.mode === 'rerun' ? 'setup.administrator.guidance.title' : 'setup.administrator.title';
     },
+    hint(wizard) {
+      if (wizard.mode === 'rerun') return 'setup.administrator.guidance.text';
+      return this.creating(wizard) ? 'setup.administrator.intro' : 'setup.administrator.created';
+    },
     // The initial setup creates the Administrator here, once; afterwards --
     // and in every rerun -- this page only points to where accounts are kept.
     creating(wizard) {
@@ -212,7 +223,6 @@
       if (wizard.mode === 'rerun') {
         const section = element(`
           <section class="dp-setup-page dp-setup-administrator">
-            <p class="dp-setup-lead" data-i18n="setup.administrator.guidance.text"></p>
             <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
             <button type="button" class="btn btn-ghost" data-setup-users data-i18n="setup.administrator.open_users"></button>
           </section>`);
@@ -231,14 +241,12 @@
       if (!this.creating(wizard)) {
         return element(`
           <section class="dp-setup-page dp-setup-administrator">
-            <p class="dp-setup-lead" data-i18n="setup.administrator.created"></p>
             <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
             <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
           </section>`);
       }
       const section = element(`
         <section class="dp-setup-page dp-setup-administrator">
-          <p class="dp-setup-lead" data-i18n="setup.administrator.intro"></p>
           ${wizard.state.initial.administrator === 'pending' ? '<p class="dp-setup-hint" data-i18n="setup.administrator.resubmit"></p>' : ''}
           <label class="dp-modal-field"><span class="form-label" data-i18n="settings.users.field.username"></span>
             <input class="input" data-setup-field="username" type="text" maxlength="256" autocomplete="username" spellcheck="false"></label>
@@ -306,7 +314,6 @@
     render(wizard) {
       const section = element(`
         <section class="dp-setup-page dp-setup-premium">
-          <p class="dp-setup-lead" data-i18n="setup.premium.hint"></p>
           <div class="dp-setup-services">
             ${SERVICES.map(([id, name]) => `
               <button type="button" class="dp-setup-service" data-service="${id}">
@@ -352,14 +359,17 @@
       <section class="dp-setup-page dp-setup-provider" data-provider="${id}">
         <div class="dp-setup-provider-slot"></div>
         <p class="dp-setup-hint" data-setup-test-note data-i18n="setup.premium.test_after_save" hidden></p>
-        <p class="dp-setup-hint" data-i18n="${IMMEDIATE_NOTES[id] || 'setup.premium.immediate'}"></p>
       </section>`);
     wizard.provider = {id, section, handle: null};
     wizard.error.hidden = true;
     wizard.body.replaceChildren(section, wizard.error);
     window.DPI18n.render(section);
     const handle = wizard.dialog;
+    // A view of Premium Services, not a page of its own: its heading names the
+    // service under the page's mark, and the progress stays where it is.
     handle.setTitle(name);
+    // Its reading: what acts at once there, and what Save and Cancel do.
+    handle.setTitleHint(said(IMMEDIATE_NOTES[id] || 'setup.premium.immediate'));
     handle.setAcceptLabel(said('common.save'));
     handle.setCancelLabel(said('common.cancel'));
     handle.setCancelHidden(false);
@@ -409,7 +419,6 @@
       const signIn = wizard.mode === 'initial' && wizard.deployment === 'server';
       return element(`
         <section class="dp-setup-page dp-setup-getting-started">
-          <p class="dp-setup-lead" data-i18n="setup.getting_started.intro"></p>
           <figure class="dp-setup-illustration" aria-hidden="true"></figure>
           <ol class="dp-setup-steps">
             <li data-i18n="setup.getting_started.step_paste"></li>
@@ -429,10 +438,46 @@
 
   /* ── the wizard ───────────────────────────────────────────────────────── */
 
-  function stepIndicator() {
-    const node = document.createElement('p');
-    node.className = 'dp-setup-step';
+  /* The Connected Page Progress Indicator: one bubble per page of the active
+   * sequence, joined by strings, above the heading. A reading, never a
+   * control -- pages change only through Back, Next and Finish.
+   *
+   * Completed and current are separate facts. A page is completed once its
+   * Next succeeded and the wizard moved on: every page before the furthest
+   * page the record holds (the server's for the initial setup and a rerun,
+   * the preview's own for the preview), which only a successful Next moves.
+   * Going Back undoes nothing, so a completed page keeps its check; the
+   * current page -- completed or not -- carries the strong glow. A string is
+   * read from the two pages it joins, never from where the operator is: solid
+   * completion green between two completed pages, one gradient from that green
+   * into the unfinished colour where a completed page meets an incomplete one
+   * (the completion boundary, wherever Back has taken the operator), and the
+   * unfinished colour between two incomplete pages. */
+  const iconUrl = name => `/icons/lucide/${name}.svg`;
+
+  function progressList() {
+    const node = document.createElement('ol');
+    node.className = 'dp-setup-progress';
+    node.dataset.i18nAttr = 'aria-label:setup.progress.label';
+    node.setAttribute('aria-label', t('setup.progress.label'));
     return node;
+  }
+
+  function paintProgress(node, wizard) {
+    const total = wizard.pages.length;
+    const done = index => index < wizard.recordedIndex;
+    node.innerHTML = wizard.pages.map((_, index) => {
+      const current = index === wizard.index;
+      const values = JSON.stringify({current: index + 1, total});
+      const label = done(index) ? 'setup.progress.step_done' : 'setup.step';
+      // done -> done: completed; done -> incomplete: the boundary; else unfinished.
+      const link = index === 0 ? ''
+        : `<span class="dp-setup-progress-link" data-link="${!done(index - 1) ? 'todo' : done(index) ? 'done' : 'boundary'}" aria-hidden="true"></span>`;
+      return `<li class="dp-setup-progress-step" data-state="${done(index) ? 'done' : 'todo'}"${current ? ' aria-current="step"' : ''}
+          data-i18n-attr="aria-label:${label}" data-i18n-values='${values}'>${link}<span class="dp-setup-progress-bubble" aria-hidden="true">${
+          done(index) ? window.DPIcons.svg('check') : index + 1}</span></li>`;
+    }).join('');
+    window.DPI18n.render(node);
   }
 
   async function readData() {
@@ -467,10 +512,11 @@
     if (mode === 'initial' && state.initial.administrator === 'pending' && signedIn() && pages.includes('administrator')) {
       index = pages.indexOf('administrator');
     }
-    const indicator = stepIndicator();
+    const progress = progressList();
     const wizard = {mode, preview, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
       phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, repaint: null,
-      // The furthest page the server records: Next moves the record only beyond it.
+      // The furthest page the server records: Next moves the record only beyond
+      // it, and every page before it is completed.
       recordedIndex: Math.max(0, pages.indexOf(recorded)),
       async showOwnLanguage() {
         const own = await request('GET', '/account/locale').catch(() => null);
@@ -481,6 +527,7 @@
 
     const page = () => PAGES[pages[wizard.index]];
     const titleKey = () => (page().title ? page().title(wizard) : TITLES[pages[wizard.index]]);
+    const hintKey = () => (page().hint ? page().hint(wizard) : HINTS[pages[wizard.index]]);
     const acceptKey = () => (wizard.index === pages.length - 1 ? 'setup.action.finish'
       : wizard.index === 0 && mode === 'initial' ? 'setup.action.get_started' : 'setup.action.next');
 
@@ -494,11 +541,14 @@
       }
       window.DPI18n.render(wizard.body);
       handle.setTitle(said(titleKey()));
+      handle.setTitleIcon(iconUrl(ICONS[pages[wizard.index]]));
+      handle.setTitleHint(said(hintKey()));
       handle.setAcceptLabel(said(acceptKey()));
-      handle.setActionHidden('back', wizard.index === 0);
-      indicator.dataset.i18n = 'setup.step';
-      indicator.dataset.i18nValues = JSON.stringify({current: wizard.index + 1, total: pages.length});
-      window.DPI18n.render(indicator);
+      // Back is always in its place -- the footer keeps one shape from page to
+      // page -- and has nowhere to go from the first page.
+      handle.setActionHidden('back', false);
+      handle.setActionEnabled('back', wizard.index > 0);
+      paintProgress(progress, wizard);
       wizard.body.scrollTop = 0;
       // The page's first thing to answer: a field, the chosen option, a control.
       const first = section.querySelector('input') || section.querySelector('[role="radio"][tabindex="0"]:not([disabled])')
@@ -529,6 +579,8 @@
         pages = wizard.pages = ROSTERS.initial[wizard.deployment];
       }
       wizard.index = pages.indexOf(current) + 1;
+      // The preview's own record: this page's Next succeeded (nothing is written).
+      wizard.recordedIndex = Math.max(wizard.recordedIndex, wizard.index);
       paint(handle);
       return false;
     }
@@ -565,7 +617,7 @@
         fail(error);
         return false;
       } finally {
-        handle.setActionEnabled('back', true);
+        handle.setActionEnabled('back', wizard.index > 0);
       }
     }
 
@@ -602,7 +654,9 @@
       title: said(titleKey()),
       className: 'dp-setup-dialog',
       bodyClassName: 'dp-setup-body',
-      headerEnd: indicator,
+      headerTop: progress,
+      titleIcon: iconUrl(ICONS[pages[wizard.index]]),
+      titleHint: said(hintKey()),
       // The initial setup is finished, never dismissed (its preview is).
       blocking: mode === 'initial' && !preview,
       acceptLabel: said(acceptKey()),

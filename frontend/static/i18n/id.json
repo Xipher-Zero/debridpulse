@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "Simpan perubahan Anda untuk mengujinya.",
   "setup.premium.immediate": "Aktifkan, Uji, dan Keluarkan langsung berlaku. Simpan menyimpan yang Anda ketik; Batal membuangnya.",
   "setup.premium.immediate_account": "Hubungkan, Putuskan sambungan, Aktifkan, dan Uji langsung berlaku; Batal tidak membatalkannya.",
-  "setup.premium.immediate_usenet": "Aktifkan, SSL, nama server, Kosongkan, dan Keluarkan langsung berlaku. Simpan menyimpan yang Anda ketik, termasuk server baru; Batal membuangnya. Uji pada sebuah server memeriksa yang ditampilkannya."
+  "setup.premium.immediate_usenet": "Aktifkan, SSL, nama server, Kosongkan, dan Keluarkan langsung berlaku. Simpan menyimpan yang Anda ketik, termasuk server baru; Batal membuangnya. Uji pada sebuah server memeriksa yang ditampilkannya.",
+  "setup.progress.label": "Kemajuan penyiapan",
+  "setup.progress.step_done": "Langkah {current, number} dari {total, number}, selesai"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

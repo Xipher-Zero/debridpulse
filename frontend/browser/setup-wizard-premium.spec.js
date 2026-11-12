@@ -365,7 +365,8 @@ test('P11: Real-Debrid and TorBox open in the same dialog as Easy shows them -- 
       await wizard(page).locator('[data-modal-accept]').click();
       await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
     }
-    expect(writes.filter(write => !write.endsWith('/api/setup/rerun'))).toEqual([]);
+    // The rerun's own record and the page's aria2 reachability probe (a POST that writes nothing) aside.
+    expect(writes.filter(write => !write.endsWith('/api/setup/rerun') && !write.endsWith('/api/settings/test-aria2'))).toEqual([]);
     expect((await call(page, 'GET', '/api/account/presentation')).body.presentation_mode).toBe('advanced');
     await wizard(page).locator('[data-modal-cancel]').click();
     await page.locator('.dp-account-dialog [data-modal-cancel]').click();

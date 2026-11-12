@@ -3564,7 +3564,9 @@
   "setup.premium.test_after_save": "请先保存更改，再进行测试。",
   "setup.premium.immediate": "“启用”“测试”和“移除”会立即生效。“保存”会保存您输入的内容；“取消”则将其舍弃。",
   "setup.premium.immediate_account": "“连接”“断开连接”“启用”和“测试”会立即生效；“取消”不会撤销它们。",
-  "setup.premium.immediate_usenet": "“启用”、SSL、服务器名称、“清除”和“移除”会立即生效。“保存”会保存您输入的内容（包括新服务器）；“取消”则将其舍弃。各服务器自己的“测试”检查其当前显示的内容。"
+  "setup.premium.immediate_usenet": "“启用”、SSL、服务器名称、“清除”和“移除”会立即生效。“保存”会保存您输入的内容（包括新服务器）；“取消”则将其舍弃。各服务器自己的“测试”检查其当前显示的内容。",
+  "setup.progress.label": "设置进度",
+  "setup.progress.step_done": "第{current, number}步，共{total, number}步，已完成"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7129,6 +7131,8 @@
   "setup.premium.test_after_save": "f7554168beaf37e7",
   "setup.premium.immediate": "a19a0cbcc0d3dc10",
   "setup.premium.immediate_account": "502f55ab1c4de483",
-  "setup.premium.immediate_usenet": "88350ee4105373ab"
+  "setup.premium.immediate_usenet": "88350ee4105373ab",
+  "setup.progress.label": "e9b4495ace726330",
+  "setup.progress.step_done": "b6b38cb19c4fdca0"
  }
 }

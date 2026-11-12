@@ -46,6 +46,13 @@
  * save -- and while an `onAccept` is pending the accept slot is busy.
  * `titleHint` is one short line of plain text directly beneath the title, in
  * the header: a reading of what the title names, never a control.
+ * `titleIcon` (an image URL) is the title's own mark, beside it in the header,
+ * never a control. A dialog that declares either keeps the hint slot, so a view
+ * changes both through `handle.setTitleHint(hint)` / `setTitleIcon(url)` (said
+ * words, or '' to withdraw one).
+ * `headerTop` (an element its client owns) leads the header, above the title:
+ * a reading about the whole dialog (a multi-page client's progress), never a
+ * control.
  * `headerEnd` (an element its client owns) is the header's far end: a choice
  * about the whole dialog's subject, kept beside the title, never a footer
  * action.
@@ -256,7 +263,12 @@
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
     const titleHint = progress ? '' : String(spec.titleHint || '');
+    const titleIcon = progress ? '' : String(spec.titleIcon || '');
     const titleSlot = `<div class="dp-modal-title" id="${dialogId}-title"></div>`;
+    // A title with its own mark: the icon and the title are one line, the hint beneath.
+    const heading = titleIcon
+      ? `<div class="dp-modal-heading"><div class="dp-modal-title-line"><img class="dp-modal-title-icon" alt="" aria-hidden="true">${titleSlot}</div><p class="dp-modal-title-hint"></p></div>`
+      : titleHint ? `<div class="dp-modal-heading">${titleSlot}<p class="dp-modal-title-hint"></p></div>` : titleSlot;
 
     const overlay = document.createElement('div');
     overlay.className = 'dp-modal-overlay';
@@ -269,7 +281,8 @@
       </section>` : `
       <section class="dp-modal-dialog" role="${role}" aria-modal="true" aria-labelledby="${dialogId}-title">
         <header class="dp-modal-header">
-          ${titleHint ? `<div class="dp-modal-heading">${titleSlot}<p class="dp-modal-title-hint"></p></div>` : titleSlot}
+          ${spec.headerTop instanceof HTMLElement ? '<div class="dp-modal-header-top"></div>' : ''}
+          ${heading}
           ${titled.map(() => '<button class="btn btn-ghost btn-sm dp-modal-title-action" type="button" data-modal-action><img alt="" aria-hidden="true"></button>').join('')}
           ${spec.headerEnd instanceof HTMLElement ? '<div class="dp-modal-header-end"></div>' : ''}
           ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close data-i18n-attr="aria-label:dialog.close;data-tooltip:dialog.close"></button>' : ''}
@@ -319,6 +332,11 @@
     overlay.querySelector(`#${dialogId}-title`).textContent = String(spec.title || '');
     // (Said words keep their key: a language change re-says the hint in place.)
     if (titleHint) sayInto(overlay.querySelector('.dp-modal-title-hint'), spec.titleHint);
+    const hintSlot = overlay.querySelector('.dp-modal-title-hint');
+    if (hintSlot) hintSlot.hidden = !titleHint;
+    const iconSlot = overlay.querySelector('.dp-modal-title-icon');
+    if (iconSlot) iconSlot.src = titleIcon;
+    overlay.querySelector('.dp-modal-header-top')?.append(spec.headerTop);
     overlay.querySelector('.dp-modal-header-end')?.append(spec.headerEnd);
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
     // the only outcome there is, so it needs no second name and no second
@@ -426,6 +444,17 @@
       setAcceptLabel(label) { sayInto(accept, label || ''); },
       setCancelLabel(label) { sayInto(cancel, label || ''); },
       setTitle(title) { if (!progress) sayInto(overlay.querySelector(`#${dialogId}-title`), title || ''); },
+      // Only a dialog that declared a hint or an icon has their slots.
+      setTitleHint(hint) {
+        if (!hintSlot) return;
+        sayInto(hintSlot, hint || '');
+        hintSlot.hidden = !String(hint || '');
+      },
+      setTitleIcon(url) {
+        if (!iconSlot) return;
+        iconSlot.src = String(url || '');
+        iconSlot.hidden = !url;
+      },
       setTone(next, acceptTone) {
         const value = toneOf(next);
         if (value) dialog.dataset.tone = value; else delete dialog.dataset.tone;
