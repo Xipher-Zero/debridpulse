@@ -3562,7 +3562,9 @@
   "account.leave.discard": "変更を破棄",
   "account.leave.keep": "編集を続ける",
   "setup.premium.test_after_save": "テストするには変更を保存してください。",
-  "setup.premium.immediate": "「有効化」「テスト」「除去」はすぐに反映されます。「保存」を押すと入力内容が保存され、「キャンセル」を押すと破棄されます。"
+  "setup.premium.immediate": "「有効化」「テスト」「除去」はすぐに反映されます。「保存」を押すと入力内容が保存され、「キャンセル」を押すと破棄されます。",
+  "setup.premium.immediate_account": "「接続」「接続解除」「有効化」「テスト」はすぐに反映され、「キャンセル」では元に戻りません。",
+  "setup.premium.immediate_usenet": "「有効化」、SSL、サーバー名、「クリア」「除去」はすぐに反映されます。「保存」を押すと新しいサーバーを含む入力内容が保存され、「キャンセル」を押すと破棄されます。各サーバーの「テスト」は表示中の内容を確認します。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

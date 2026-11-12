@@ -3562,7 +3562,9 @@
   "account.leave.discard": "捨棄變更",
   "account.leave.keep": "繼續編輯",
   "setup.premium.test_after_save": "請先儲存變更，再進行測試。",
-  "setup.premium.immediate": "「啟用」、「測試」與「移除」會立即生效。「儲存」會儲存您輸入的內容；「取消」則將其捨棄。"
+  "setup.premium.immediate": "「啟用」、「測試」與「移除」會立即生效。「儲存」會儲存您輸入的內容；「取消」則將其捨棄。",
+  "setup.premium.immediate_account": "「連線」、「中斷連線」、「啟用」與「測試」會立即生效；「取消」不會復原它們。",
+  "setup.premium.immediate_usenet": "「啟用」、SSL、伺服器名稱、「清除」與「移除」會立即生效。「儲存」會儲存您輸入的內容（包括新伺服器）；「取消」則將其捨棄。各伺服器自己的「測試」會檢查其目前顯示的內容。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

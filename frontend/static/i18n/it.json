@@ -3562,7 +3562,9 @@
   "account.leave.discard": "Scarta modifiche",
   "account.leave.keep": "Continua a modificare",
   "setup.premium.test_after_save": "Salva le modifiche per testarle.",
-  "setup.premium.immediate": "«Attiva», «Test» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti; «Annulla» lo scarta."
+  "setup.premium.immediate": "«Attiva», «Test» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti; «Annulla» lo scarta.",
+  "setup.premium.immediate_account": "«Collega», «Scollega», «Attiva» e «Test» hanno effetto subito; «Annulla» non li revoca.",
+  "setup.premium.immediate_usenet": "«Attiva», SSL, i nomi dei server, «Cancella» e «Rimuovi» hanno effetto subito. «Salva» memorizza ciò che digiti, compresi i nuovi server; «Annulla» lo scarta. Il «Test» di un server verifica ciò che mostra."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

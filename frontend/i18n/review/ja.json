@@ -31936,6 +31936,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.immediate_account": {
+   "source": "502f55ab1c4de483",
+   "translation": "699b06292e013a99",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate_usenet": {
+   "source": "88350ee4105373ab",
+   "translation": "6367ec7a28836b1e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

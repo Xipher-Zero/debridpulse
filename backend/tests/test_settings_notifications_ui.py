@@ -387,7 +387,7 @@ def test_the_shared_inline_primitive_puts_the_title_over_its_hint():
     info = primitive[primitive.index("dp-settings-inline-field-info"):]
     assert info.index("${title}") < info.index("hintMarkup(hint)")
     assert '<span class="form-hint"' in block(runtime, "const hintMarkup = hint =>", ";\n")
-    layout = block(source(SHARED), "#view-settings .dp-settings-inline-field {", "}")
+    layout = block(source(SHARED), ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {", "}")
     assert "display: flex" in layout and "align-items: center" in layout
     stack = block(source(SHARED), ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info {", "}")
     assert "flex-direction: column" in stack
@@ -403,7 +403,7 @@ def test_the_page_states_no_field_layout_of_its_own():
         if "position: absolute" in rule:
             assert "clip-path: inset(50%)" in rule and "width: 1px" in rule, rule
     for banned in ("inset-inline-start", "float:",
-                   "#view-settings .dp-settings-inline-field {",
+                   ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {",
                    ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-info {",
                    ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field-control {",
                    "#view-settings .dp-settings-inline-field-action {"):

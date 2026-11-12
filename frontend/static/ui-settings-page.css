@@ -417,7 +417,7 @@
   }
 }
 
-#view-settings .dp-settings-copy {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-copy {
   margin: 0 0 14px;
   color: var(--dp-text-muted);
   font-size: 11px;
@@ -432,11 +432,11 @@
    when the card is too narrow for them. The state's one line is the card's
    reserved top row above it. The island ends the region: what follows it owns
    its own spacing (.dp-settings-additional). */
-#view-settings .dp-settings-account-connection {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-connection {
   margin: 0;
 }
 
-#view-settings .dp-settings-account-island {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island {
   box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
@@ -451,7 +451,7 @@
   padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-account-island-copy {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island-copy {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
@@ -460,14 +460,14 @@
   max-width: 300px;
 }
 
-#view-settings .dp-settings-account-island-copy > .dp-settings-copy {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island-copy > .dp-settings-copy {
   margin: 0;
 }
 
 /* The controls reserve one field's height in every state -- the code field
    is the tallest thing any state shows -- so the island, and the card, keep
    one height as the connection moves between states. */
-#view-settings .dp-settings-account-island-actions {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island-actions {
   display: flex;
   flex: 0 1 auto;
   flex-wrap: wrap;
@@ -478,7 +478,7 @@
   min-height: var(--dp-input-height);
 }
 
-#view-settings .dp-settings-account-heading {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-heading {
   margin: 0;
   color: var(--dp-text-primary);
   font-size: 12px;
@@ -487,11 +487,11 @@
 
 /* Sized for an eight-character code and its Copy, never wider than the
    island: the code never forces a horizontal scroll. */
-#view-settings .dp-settings-account-island .dp-action-field {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island .dp-action-field {
   width: min(100%, 220px);
 }
 
-#view-settings .dp-settings-account-code {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-code {
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 16px;
@@ -503,7 +503,7 @@
    12px copy, a FIXED height whether it is blank or carries a status, so no
    card changes height when its status does. The status inside is centred on
    both axes. */
-#view-settings .dp-settings-provider-status-line {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-status-line {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -525,7 +525,7 @@
 
 /* Larger than the row's own line, set solid (line-height 1) so it still sits
    inside the row's fixed height. */
-#view-settings .dp-settings-account-waiting {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-waiting {
   font-size: 16px;
   font-weight: 600;
   line-height: 1;
@@ -538,7 +538,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #view-settings .dp-settings-account-waiting {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-waiting {
     animation: none;
   }
 }
@@ -867,7 +867,7 @@
    Every surface that reads this way uses THIS; none states a geometry of its
    own. What a caller may state is how much room its own control deserves --
    a path, a credential and a job count are not the same control. */
-#view-settings .dp-settings-inline-field {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {
   display: flex;
   align-items: center;
   gap: 18px;
@@ -973,7 +973,7 @@
 }
 
 /* The Debrid-Link and Premiumize credential rows: the AllDebrid row's island, exactly. */
-#view-settings .dp-settings-debridlink-key-row,
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row,
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row {
   box-sizing: border-box;
   justify-content: center;
@@ -1224,7 +1224,7 @@
    chosen value -- centred in the room beside its chevron. Paths, addresses,
    names and credentials are never tunables: they keep the ordinary alignment. */
 #view-settings .dp-settings-tuning-grid .dp-settings-field > .input,
-#view-settings input[type="number"].input,
+:is(#view-settings, .dp-setup-provider-surface) input[type="number"].input,
 #view-settings .dp-dropdown__value {
   text-align: center;
 }
@@ -2059,14 +2059,14 @@
 /* Usenet's body has no box with a free corner (its server cards and the Add
    Server tile fill it), so its slot is a row of its own above the servers,
    drawn only while it holds the lent chip, which sits at its trailing edge. */
-#view-settings .dp-settings-help-slot.dp-settings-help-slot--row {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-help-slot.dp-settings-help-slot--row {
   position: static;
   display: flex;
   justify-content: flex-end;
   margin-bottom: 8px;
 }
 
-#view-settings .dp-settings-help-slot.dp-settings-help-slot--row:empty {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-help-slot.dp-settings-help-slot--row:empty {
   display: none;
 }
 
@@ -2379,7 +2379,7 @@
     color: var(--dp-state-success);
   }
 
-  #view-settings .dp-settings-header-test-group[data-verification="unverified"] .dp-settings-provider-test {
+  :is(#view-settings, .dp-setup-provider-surface) .dp-settings-header-test-group[data-verification="unverified"] .dp-settings-provider-test {
     border-color: color-mix(in srgb, var(--dp-state-caution) 34%, transparent);
     background: var(--dp-state-caution-bg);
     color: var(--dp-state-caution);

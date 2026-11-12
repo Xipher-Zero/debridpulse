@@ -535,3 +535,49 @@ async def test_a_wipe_keeps_the_setup_and_every_rerun(installation):
     assert not {"installation_setup", "account_setup_rerun"} & set(result["wiped_tables"])
     assert _row() == before
     assert (await setup_lifecycle.state(bea.id))["rerun"] == {"phase": "premium_services"}
+
+
+# ── WS3b: the TEMPORARY development-only preview's build fact ───────────────
+
+async def test_a_development_build_is_named_by_its_own_changelog_entry_title():
+    from core.version import development_entry_title
+
+    changelog = ("# Changelog\n\n## [2.0.1] — Development\n\n2.0.1 once said `## [2.0.0] — Development` in passing.\n\n"
+                 "## [2.0.0] — A release\n\n### [2.0.0] notes\n- the one change\n")
+    assert development_entry_title(changelog, "2.0.1") is True
+    # a released entry, a heading quoted in another entry, a prefix of a version and an unknown one are not
+    assert development_entry_title(changelog, "2.0.0") is False
+    assert development_entry_title(changelog, "2.0") is False
+    assert development_entry_title(changelog, "9.9.9") is False
+
+
+async def test_the_running_build_fails_closed_without_a_readable_development_entry(monkeypatch, tmp_path):
+    import core.version as version
+
+    def running(text, number="3.1.0"):
+        path = tmp_path / "CHANGELOG.md"
+        if text is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(text, encoding="utf-8")
+        monkeypatch.setattr(version, "_changelog_candidates", lambda: (path,))
+        monkeypatch.setattr(version, "read_version", lambda: number)
+        version.is_development_build.cache_clear()
+        return version.is_development_build()
+
+    try:
+        assert running("## [3.1.0] — Development\n") is True
+        assert running("## [3.1.0] — The release\n\n## [3.0.0] — Development\n") is False
+        assert running(None) is False
+        assert running("## [unknown] — Development\n", number="unknown") is False
+    finally:
+        version.is_development_build.cache_clear()
+
+
+async def test_the_setup_state_says_whether_this_is_a_development_build(live, monkeypatch):
+    import api.setup_routes as routes
+
+    for development in (True, False):
+        monkeypatch.setattr(routes, "is_development_build", lambda value=development: value)
+        state = (await live.client.get("/api/setup/state")).json()
+        assert state["development_build"] is development and "initial" in state

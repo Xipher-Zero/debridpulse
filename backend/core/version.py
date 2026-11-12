@@ -107,6 +107,39 @@ def read_version() -> str:
 
 # --- running build identity --------------------------------------------------
 
+def _changelog_candidates() -> tuple[Path, ...]:
+    return (Path(__file__).resolve().parents[2] / "CHANGELOG.md", Path("/app/CHANGELOG.md"))
+
+
+def development_entry_title(changelog: str, version: str) -> bool:
+    """Whether ``version``'s own CHANGELOG entry is titled Development: the
+    release identity (docs/RELEASE_PROCESS.md) that ``release.py`` refuses to
+    publish and a release-identity commit retitles. Its heading is found
+    exactly as ``release.py extract_entry`` finds it -- only a ``## [version]``
+    at the start of a line."""
+    match = re.search(rf"^## \[{re.escape(version)}\][^\n]*", changelog, re.M)
+    return bool(match) and "development" in match.group(0).casefold()
+
+
+@lru_cache(maxsize=1)
+def is_development_build() -> bool:
+    """Whether the running build is a development build, by its own release
+    identity: the CHANGELOG.md shipped with it (the image's ``/app``) titles the
+    running VERSION's entry Development. No released build can say so, and
+    nothing here is configured, stored or inferred from who is asking. Anything
+    unreadable, or an unknown version, is not development (fails closed)."""
+    version = read_version()
+    if version == "unknown":
+        return False
+    for candidate in _changelog_candidates():
+        try:
+            changelog = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        return development_entry_title(changelog, version)
+    return False
+
+
 # Packaging records the exact source revision an image was built from here
 # (``Dockerfile``: ``ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}``). A source or
 # development run has none, and neither does an image built without VCS_REF.

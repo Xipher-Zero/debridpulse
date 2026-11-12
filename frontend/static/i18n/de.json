@@ -3562,7 +3562,9 @@
   "account.leave.discard": "Änderungen verwerfen",
   "account.leave.keep": "Weiter bearbeiten",
   "setup.premium.test_after_save": "Speichern Sie Ihre Änderungen, um sie zu testen.",
-  "setup.premium.immediate": "Aktivieren, Testen und Entfernen wirken sofort. Speichern übernimmt Ihre Eingaben; Abbrechen verwirft sie."
+  "setup.premium.immediate": "Aktivieren, Testen und Entfernen wirken sofort. Speichern übernimmt Ihre Eingaben; Abbrechen verwirft sie.",
+  "setup.premium.immediate_account": "Verbinden, Trennen, Aktivieren und Testen wirken sofort; Abbrechen macht sie nicht rückgängig.",
+  "setup.premium.immediate_usenet": "Aktivieren, SSL, Servernamen, Löschen und Entfernen wirken sofort. Speichern übernimmt Ihre Eingaben, auch neue Server; Abbrechen verwirft sie. Testen bei einem Server prüft, was er gerade anzeigt."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

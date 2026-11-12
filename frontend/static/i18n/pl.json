@@ -3562,7 +3562,9 @@
   "account.leave.discard": "Odrzuć zmiany",
   "account.leave.keep": "Edytuj dalej",
   "setup.premium.test_after_save": "Zapisz zmiany, aby je przetestować.",
-  "setup.premium.immediate": "Przyciski „Włącz”, „Testuj” i „Usuń” działają od razu. „Zapisz” zapisuje to, co wpiszesz; „Anuluj” to odrzuca."
+  "setup.premium.immediate": "Przyciski „Włącz”, „Testuj” i „Usuń” działają od razu. „Zapisz” zapisuje to, co wpiszesz; „Anuluj” to odrzuca.",
+  "setup.premium.immediate_account": "Przyciski „Połącz”, „Rozłącz”, „Włącz” i „Testuj” działają od razu; „Anuluj” ich nie cofa.",
+  "setup.premium.immediate_usenet": "„Włącz”, SSL, nazwy serwerów, „Wyczyść” i „Usuń” działają od razu. „Zapisz” zapisuje to, co wpiszesz, także nowe serwery; „Anuluj” to odrzuca. „Testuj” przy serwerze sprawdza to, co on pokazuje."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

@@ -64,7 +64,7 @@ def test_this_late_layer_is_not_a_second_owner_of_two_bounded_geometries() -> No
     # the shared inline field, where the informational stack is one unit and the
     # control is centred against it. The excessive band this case was written
     # about cannot come back, because there is no stacked row left to gap.
-    grammar = page.split("#view-settings .dp-settings-inline-field {", 1)[1].split("}", 1)[0]
+    grammar = page.split(":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {", 1)[1].split("}", 1)[0]
     assert "align-items: center;" in grammar
     row = page.split(":is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
     assert "flex: 1 1 auto" in row

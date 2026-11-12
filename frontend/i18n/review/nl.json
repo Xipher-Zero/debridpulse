@@ -32060,6 +32060,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.immediate_account": {
+   "source": "502f55ab1c4de483",
+   "translation": "fe4547655c013e8c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate_usenet": {
+   "source": "88350ee4105373ab",
+   "translation": "37c6b8111b02305a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

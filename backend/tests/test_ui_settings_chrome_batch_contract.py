@@ -420,7 +420,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_identity_chip_and_la
     assert "drop-shadow(0 0 3px color-mix(in srgb, var(--dp-provider-color) 92%, transparent))" in logo
     assert "drop-shadow(0 0 7px color-mix(in srgb, var(--dp-provider-color) 52%, transparent))" in logo
 
-    light_logo = chrome.split("body.light #view-settings .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
+    light_logo = chrome.split("body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "drop-shadow(0 0 8px color-mix(in srgb, var(--dp-provider-color) 62%, transparent))" in light_logo
 
     assert root.tag.endswith("svg")
@@ -448,7 +448,7 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
     action_owner = chrome.split("button.dp-settings-provider-test {", 1)[1].split("}", 1)[0]
     action_glyph = chrome.split(".dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
-    light_action = chrome.split("body.light #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
+    light_action = chrome.split("body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     action_chip = chrome.split(".dp-settings-action-chip {", 1)[1].split("}", 1)[0]
     assert "--dp-settings-action-color: #b866f5;" in action_owner
     assert "saturate(1.5)" in action_glyph
@@ -476,7 +476,7 @@ def test_provider_additional_settings_has_no_separator_and_real_debrid_no_spacer
     additional = page.split("#view-settings .dp-settings-additional {", 1)[1].split("}", 1)[0]
     assert "margin-top: 0;" in additional
     assert "border" not in additional
-    connection = page.split("#view-settings .dp-settings-account-connection {", 1)[1].split("}", 1)[0]
+    connection = page.split(":is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-connection {", 1)[1].split("}", 1)[0]
     assert "margin: 0;" in connection
     summary = page.split("#view-settings .dp-settings-additional > summary {", 1)[1].split("}", 1)[0]
     assert "min-height: 42px" in summary

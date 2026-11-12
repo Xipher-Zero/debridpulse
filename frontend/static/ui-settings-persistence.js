@@ -22,6 +22,12 @@
  *                    commits nothing, and a destructive act carries only its
  *                    own removal.
  *
+ * A surface that stores its fields with its own Save (`data-commit-explicit`,
+ * the setup wizard's provider view) holds every changed-blur boundary inside
+ * it until that Save: its controls are `data-commit="explicit"`, committed
+ * only by the surface's own commit() call -- never by a blur, and never by an
+ * explicit action's settle.
+ *
  * This module owns everything generic that a changed-blur control needs -- the
  * canonical accepted baseline, dirty comparison, scoped mutation dispatch,
  * per-record serialization, stale-response protection, success convergence and
@@ -155,16 +161,21 @@
    * writes the same value a second time. That is idempotent and ordered on the
    * record's own lane, and it is the ordinary deferred-draft semantics rather
    * than a second writer.
+   *
+   * It returns that creation's promise, resolving to whether the record was
+   * created, for a surface whose own Save creates it (nothing to ask: null).
    */
   function materialize(control) {
     const owner = record(control);
     const scope = scopes.get(String(control.dataset.commitScope || ''));
-    if (!owner || !scope || typeof scope.materialize !== 'function') return;
-    if (materializing.has(owner)) return;
+    if (!owner || !scope || typeof scope.materialize !== 'function') return null;
+    // The creation already running is THE creation: a caller shares its outcome.
+    if (materializing.has(owner)) return materializing.get(owner);
     outstanding += 1;
+    // Resolves to whether the record was created (the hook said ``true``).
     const run = Promise.resolve()
       .then(() => scope.materialize({record: owner, control}))
-      .catch(() => {})
+      .then(created => created === true, () => false)
       .finally(() => {
         outstanding -= 1;
         materializing.delete(owner);
@@ -172,6 +183,7 @@
       });
     materializing.set(owner, run);
     materializations.add(run);
+    return run;
   }
 
   /* The canonical accepted baseline is whatever the page just rendered FROM
@@ -179,7 +191,12 @@
    * control would look dirty and a later blur would write a value nobody
    * changed. */
   function adopt(host) {
-    for (const control of controls(host)) baselines.set(identity(control), signature(control));
+    for (const control of controls(host)) {
+      if (control.dataset.commit === 'changed-blur' && control.closest('[data-commit-explicit]')) {
+        control.dataset.commit = 'explicit';
+      }
+      baselines.set(identity(control), signature(control));
+    }
   }
 
   function baseline(control) {
@@ -508,7 +525,8 @@
    * scoped write, so an action can neither read a stale value nor be overtaken
    * by a commit that started underneath it. */
   async function settle(host) {
-    for (const control of controls(host)) commit(control);
+    // A field held for its surface's own Save has crossed no boundary yet.
+    for (const control of controls(host)) if (control.dataset.commit !== 'explicit') commit(control);
     for (let guard = 0; outstanding > 0 && guard < 50; guard += 1) {
       // A record still being created is outstanding work too: an action must
       // not read form state, or dispatch, underneath one.
@@ -547,7 +565,7 @@
   });
 
   window.DPSettingsPersistence = Object.freeze({
-    defineScope, adopt, baseline, dirty, commit, settle, perform, accept, resume, supersede, refusalMessage,
+    defineScope, adopt, baseline, dirty, commit, materialize, settle, perform, accept, resume, supersede, refusalMessage,
     numberDraft, identity,
     pending: () => outstanding,
   });

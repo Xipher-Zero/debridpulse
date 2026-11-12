@@ -77,8 +77,8 @@
    nowhere else. */
 #view-settings .dp-settings-field > .form-label,
 #view-settings .dp-settings-field > .form-hint,
-#view-settings .dp-usenet-field > .form-label,
-#view-settings .dp-usenet-field > .form-hint {
+:is(#view-settings, .dp-setup-provider-surface) .dp-usenet-field > .form-label,
+:is(#view-settings, .dp-setup-provider-surface) .dp-usenet-field > .form-hint {
   position: static;
   inset-inline-start: auto;
   margin-inline-start: 0;

@@ -20,6 +20,7 @@ from auth.models import Principal
 from auth.policy import standalone_deployment
 from core.config import get_settings
 from core.localization import DisplayError, refusal
+from core.version import is_development_build
 from services import setup_lifecycle
 from services.setup_lifecycle import SetupRefused
 
@@ -55,7 +56,11 @@ def _no_store(body: dict) -> JSONResponse:
 
 @router.get("/setup/state")
 async def setup_state(request: Request):
-    return _no_store(await setup_lifecycle.state(request.state.principal.account_id))
+    # ``development_build``: whether this build is a development build by its
+    # release identity (core.version.is_development_build), for the setup
+    # wizard's TEMPORARY development-only preview; a released build says false.
+    state = await setup_lifecycle.state(request.state.principal.account_id)
+    return _no_store({**state, "development_build": is_development_build()})
 
 
 @router.put("/setup/initial/phase")

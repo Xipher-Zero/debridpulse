@@ -355,3 +355,107 @@ test('W09: the phase write lost in place, Next again: only the record is retried
   await step(page, 3, 6);
   expect(server.writes).toEqual(['deployment server', 'phase download_directory (lost)', 'phase download_directory']);
 });
+
+/* TEMPORARY, development only (WS3b): Test First-Run Wizard, on the rerun's
+ * Welcome. It previews every first-run page of BOTH deployment types with the
+ * wizard's own pages and commits nothing: no language, deployment, folder,
+ * Administrator, phase or completion. Leaving it -- Finish or Close --
+ * returns to the rerun. Removed with this control at the final cleanup. */
+test('W10: Test First-Run Wizard previews the first-run pages of Standalone and Server, writes nothing, and returns to the rerun', async ({page}) => {
+  await load(page);
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const folder = (await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder;
+  await openAccount(page);
+  await account(page).locator('[data-account-setup-rerun]').click();
+  await expect(wizard(page)).toBeVisible();
+  const entry = wizard(page).locator('[data-setup-preview]');
+  await expect(entry).toBeVisible();
+  const overlays = await page.locator('.dp-modal-overlay').count();
+  const writes = [];
+  // The page's own aria2 reachability probe (a POST that writes nothing) aside.
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== 'GET' && path !== '/api/settings/test-aria2') writes.push(`${request.method()} ${path}`);
+  });
+
+  const accept = () => wizard(page).locator('[data-modal-accept]').click();
+  const title = async key => expect(wizard(page).locator('.dp-modal-title')).toHaveText(await t(page, key));
+  async function walk(type) {
+    await entry.click();
+    await expect(wizard(page).locator('.dp-setup-preview-note')).toBeVisible();
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(overlays);      // the same one dialog layer
+    await expect(wizard(page).locator('[data-setup-preview]')).toHaveCount(0);  // not offered inside itself
+    await expect(wizard(page).locator('[data-modal-cancel]')).toBeVisible();    // a preview may be left
+    const total = type === 'server' ? 6 : 5;
+    await title('setup.welcome.title');
+    await step(page, 1, deployment === 'server' ? 6 : 5);
+    await accept();
+    await title('setup.deployment.title');
+    await wizard(page).locator(`[data-deployment="${type}"]`).click();
+    await accept();
+    await title('setup.directory.title');
+    await step(page, 3, total);
+    await wizard(page).locator('#dp-setup-download-folder').fill('/synthetic/preview-only');
+    await accept();
+    if (type === 'server') {
+      await title('setup.administrator.title');
+      await wizard(page).locator('[data-setup-field="username"]').fill('synthetic-preview');
+      await wizard(page).locator('[data-setup-field="password"]').fill('synthetic-preview-pass');
+      await wizard(page).locator('[data-setup-field="confirm"]').fill('synthetic-preview-pass');
+      await accept();
+    }
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    await step(page, total - 1, total);
+    await accept();
+    await title('setup.getting_started.title');
+    await expect(wizard(page).locator('[data-i18n="setup.getting_started.sign_in"]')).toHaveCount(type === 'server' ? 1 : 0);
+    await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.finish'));
+  }
+
+  await walk('standalone');
+  await accept();                                                                // Finish ends the preview
+  await expect(wizard(page).locator('[data-setup-preview]')).toBeVisible();      // back at the rerun's Welcome
+  await walk('server');
+  await wizard(page).locator('[data-modal-cancel]').click();                    // Close ends it too
+  await expect(wizard(page).locator('[data-setup-preview]')).toBeVisible();
+
+  expect(writes).toEqual([]);
+  const after = await state(page);
+  expect(after.initial.complete).toBe(true);
+  expect(after.rerun).toEqual({phase: 'welcome'});
+  expect(await page.evaluate(() => window.debridPulseAuth.authority.deployment_type)).toBe(deployment);
+  expect((await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder).toBe(folder);
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+});
+
+/* TEMPORARY (WS3b): the preview is offered only where the server says this is
+ * a development build -- its own release identity, the running VERSION's
+ * CHANGELOG entry titled Development (core.version.is_development_build,
+ * proven in backend/tests/test_setup_lifecycle.py). A released build is shown
+ * here by answering the one setup-state read with `development_build: false`
+ * (a labelled mock of that one server fact). */
+test('W11: Test First-Run Wizard is offered only to a development build', async ({page}) => {
+  await load(page);
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  // This source tree is a development build: the server says so itself.
+  expect((await state(page)).development_build).toBe(true);
+  let released = true;
+  await page.route(url => url.pathname === '/api/setup/state', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    return route.fulfill({response, json: released ? {...body, development_build: false} : body});
+  });
+  for (const expected of [0, 1]) {
+    await openAccount(page);
+    await account(page).locator('[data-account-setup-rerun]').click();
+    await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+    await expect(wizard(page).locator('[data-setup-preview]')).toHaveCount(expected);
+    await wizard(page).locator('[data-modal-cancel]').click();
+    await expect(wizard(page)).toHaveCount(0);
+    await account(page).locator('[data-modal-cancel]').click();
+    released = false;
+  }
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+});

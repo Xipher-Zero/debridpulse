@@ -3562,7 +3562,9 @@
   "account.leave.discard": "Değişiklikleri at",
   "account.leave.keep": "Düzenlemeye devam et",
   "setup.premium.test_after_save": "Test etmek için değişikliklerinizi kaydedin.",
-  "setup.premium.immediate": "“Etkinleştir”, “Test et” ve “Kaldır” hemen uygulanır. “Kaydet” yazdıklarınızı kaydeder; “İptal” ise bunları atar."
+  "setup.premium.immediate": "“Etkinleştir”, “Test et” ve “Kaldır” hemen uygulanır. “Kaydet” yazdıklarınızı kaydeder; “İptal” ise bunları atar.",
+  "setup.premium.immediate_account": "“Bağla”, “Bağlantıyı kes”, “Etkinleştir” ve “Test et” hemen uygulanır; “İptal” bunları geri almaz.",
+  "setup.premium.immediate_usenet": "“Etkinleştir”, SSL, sunucu adları, “Temizle” ve “Kaldır” hemen uygulanır. “Kaydet” yeni sunucular dahil yazdıklarınızı kaydeder; “İptal” ise bunları atar. Bir sunucunun kendi “Test et” düğmesi, o sunucuda gösterilenleri sınar."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

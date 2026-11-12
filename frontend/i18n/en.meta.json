@@ -23183,6 +23183,18 @@
    "context": "Setup wizard, a premium provider's configuration: which actions apply immediately and what Save and Cancel do. Enable, Test, Remove, Save and Cancel are button names.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
+  },
+  "setup.premium.immediate_account": {
+   "category": "hint",
+   "context": "Setup wizard, Real-Debrid or TorBox configuration (account connected by device authorization on the provider's site): which actions apply immediately. Connect, Disconnect, Enable, Test and Cancel are button names.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.immediate_usenet": {
+   "category": "hint",
+   "context": "Setup wizard, Usenet configuration (news servers): which actions apply immediately, what Save and Cancel do, and that a server's own Test checks the values its card shows, saved or not. Enable, SSL, Clear, Remove, Save, Cancel and Test are button or toggle names.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
   }
  }
 }

@@ -1271,7 +1271,7 @@ def test_the_clear_group_is_centred_against_the_api_key_input_itself():
     # informational stack, the control and the trailing action -- share one
     # centre line. The clear is therefore centred against the control by the
     # grammar itself, with no placement of its own to drift.
-    grammar = rule(SETTINGS_CSS, "#view-settings .dp-settings-inline-field {")
+    grammar = rule(SETTINGS_CSS, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-inline-field {")
     assert "display: flex" in grammar
     assert "align-items: center" in grammar
     action = rule(SETTINGS_CSS, "#view-settings .dp-settings-inline-field-action {")
@@ -1371,10 +1371,10 @@ def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
     datum = rule(icons, "#view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {")
     assert "var(--dp-identity-general_http)" in datum
     assert "--dp-identity-general_http: #3B82F6;" in read("design-tokens.css")
-    chip = rule(icons, "#view-settings .dp-settings-protocol-chip {")
+    chip = rule(icons, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip {")
     for kept in ("width: 38px", "height: 38px", "border-radius: 9px", "inset 0 1px 0"):
         assert kept in chip, kept
-    glyph = rule(icons, "#view-settings .dp-settings-protocol-chip img {")
+    glyph = rule(icons, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip img {")
     assert "drop-shadow" in glyph, "the internal glyph glow was removed"
 
 

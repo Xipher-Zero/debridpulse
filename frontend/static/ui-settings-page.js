@@ -2049,8 +2049,10 @@
 
   function usenetServerCard(server, index) {
     const safe = String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-');
-    const advancedId = `dp-usenet-advanced-${safe}`;
-    const passwordId = `dp-usenet-password-${safe}`;
+    // The setup wizard draws the same card beside Services': its own ids.
+    const prefix = renderSurface === 'wizard' ? 'dp-setup-usenet' : 'dp-usenet';
+    const advancedId = `${prefix}-advanced-${safe}`;
+    const passwordId = `${prefix}-password-${safe}`;
     const derived = String(server.host || '').trim();
     const override = String(server.display_name || '').trim();
     const name = override || derived || say('settings.usenet.new_server');
@@ -2278,20 +2280,24 @@
    * same account once per settled observation, and replacing identical
    * controls would take the operator's focus with them. */
   function renderDeviceConnection(id) {
-    const region = root()?.querySelector(`[data-${id}-connection]`);
-    if (!region) return;
-    const next = document.createElement('template');
-    next.innerHTML = deviceConnectionMarkup(id);
-    // The card's help chip, when its header lent it to the island, is the
-    // header's control: it is not part of what this region shows, and it
-    // moves into the rebuilt island rather than being rebuilt.
-    const help = region.querySelector('.dp-settings-help-slot > .dp-settings-help-chip');
-    const shown = help ? region.innerHTML.replace(help.outerHTML, '') : region.innerHTML;
-    if (shown !== next.innerHTML) {
-      const focused = help && document.activeElement === help;
-      if (help) next.content.querySelector('.dp-settings-help-slot')?.append(help);
-      region.replaceChildren(next.content);
-      if (focused) help.focus({preventScroll: true});
+    // Every drawing of the card -- Services' and the setup wizard's -- shows
+    // the one connection state.
+    for (const card of providerCards(id)) {
+      const region = card.querySelector(`[data-${id}-connection]`);
+      if (!region) continue;
+      const next = document.createElement('template');
+      next.innerHTML = deviceConnectionMarkup(id);
+      // The card's help chip, when its header lent it to the island, is the
+      // header's control: it is not part of what this region shows, and it
+      // moves into the rebuilt island rather than being rebuilt.
+      const help = region.querySelector('.dp-settings-help-slot > .dp-settings-help-chip');
+      const shown = help ? region.innerHTML.replace(help.outerHTML, '') : region.innerHTML;
+      if (shown !== next.innerHTML) {
+        const focused = help && document.activeElement === help;
+        if (help) next.content.querySelector('.dp-settings-help-slot')?.append(help);
+        region.replaceChildren(next.content);
+        if (focused) help.focus({preventScroll: true});
+      }
     }
   }
 
@@ -2367,8 +2373,9 @@
     renderDeviceConnection(id);
   }
 
-  async function copyDeviceCode(id) {
-    const field = root()?.querySelector(`[data-${id}-code]`);
+  async function copyDeviceCode(id, button) {
+    // The code shown beside the Copy that was pressed, wherever its card is drawn.
+    const field = button?.closest('.dp-settings-account-connection')?.querySelector(`[data-${id}-code]`);
     const code = deviceConnections[id].authorization?.user_code;
     if (!field || !code) return;
     try {
@@ -2396,7 +2403,7 @@
         messageValues: values, accept: 'settings.account.disconnect_accept', acceptValues: values},
     });
     if (!confirmed) return;
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     setBusy(button, true, say('settings.account.disconnecting'));
     try {
       const result = await request('POST', `/integrations/${id}/disconnect`, undefined, 20000);
@@ -2413,7 +2420,7 @@
 
   async function testDeviceAccount(id, button) {
     const {name, identity} = DEVICE_ACCOUNTS[id];
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     setBusy(button, true, say('settings.testing'));
     try {
       const result = await request('POST', `/settings/validate-${id}`, undefined, 20000);
@@ -2449,7 +2456,7 @@
       if (action === `test-${id}`) testDeviceAccount(id, button);
       else if (action === `connect-${id}`) connectDeviceAccount(id, button);
       else if (action === `open-${id}`) openExternalUrl(deviceConnections[id].authorization?.verification_url);
-      else if (action === `copy-${id}-code`) copyDeviceCode(id);
+      else if (action === `copy-${id}-code`) copyDeviceCode(id, button);
       else if (action === `cancel-${id}`) cancelDeviceAuthorization(id, button);
       else if (action === `disconnect-${id}`) disconnectDeviceAccount(id, button);
       else continue;
@@ -2724,9 +2731,12 @@
       help: 'premiumize',
     });
 
-    // One API-key provider's card alone (the setup wizard's, mountProvider),
+    // One premium provider's card alone (the setup wizard's, mountProvider),
     // from the same markup this page composes.
-    if (renderOnly) return {alldebrid: provider, debridlink: debridLinkCard, premiumize: premiumizeCard}[renderOnly] || '';
+    if (renderOnly) {
+      return {usenet: usenetCard, alldebrid: provider, debridlink: debridLinkCard, premiumize: premiumizeCard,
+        realdebrid: realDebridCard, torbox: torBoxCard}[renderOnly] || '';
+    }
     const {families, providers} = premiumServiceOrder([
       ['usenet', usenetCard], ['alldebrid', provider], ['debridlink', debridLinkCard],
       ['premiumize', premiumizeCard], ['realdebrid', realDebridCard], ['torbox', torBoxCard],
@@ -8344,7 +8354,7 @@
    * Usenet ends up Verified are all the backend's, decided from the same
    * per-server evidence the individual Test records. */
   async function testUsenet(button) {
-    await window.DPSettingsPersistence.settle(root());
+    await window.DPSettingsPersistence.settle(settleScope(button));
     setBusy(button, true, say('settings.testing'));
     try {
       const result = await request('POST', '/usenet/test', undefined, 60000);
@@ -9115,10 +9125,13 @@
   /* A provider's card, drawn into the setup wizard (``container``) as Easy
    * shows it, from the same builder Services uses: the same controls,
    * actions, validation and persistence scopes. Its fields commit only by the
-   * wizard's Save (``save``: every changed field through its own scope;
-   * resolves to whether all were accepted) and are discarded by leaving it
-   * unsaved. Test, Enable and Remove act at once, exactly as on Services. */
-  const WIZARD_PROVIDERS = Object.freeze(['alldebrid', 'debridlink', 'premiumize']);
+   * wizard's Save (``save``: every changed field through its own scope, and
+   * a record not created yet -- a new Usenet server -- through its scope's
+   * one creation; resolves to whether all were accepted) and are discarded by
+   * leaving it unsaved. Every action -- Test, Enable, Remove, Connect,
+   * Disconnect, a server's SSL, name and Clear -- acts at once, exactly as on
+   * Services. */
+  const WIZARD_PROVIDERS = PREMIUM_SERVICES;
   async function mountProvider(identity, container) {
     if (!WIZARD_PROVIDERS.includes(identity)) throw new Error(`No wizard configuration for ${identity}`);
     const persistence = window.DPSettingsPersistence;
@@ -9128,13 +9141,16 @@
     renderOnly = identity;
     let markup;
     try { markup = sourcesPanel(settings); } finally { renderSurface = null; renderOnly = null; }
-    container.innerHTML = `<div class="dp-setup-provider-surface">${markup}</div>`;
+    container.innerHTML = `<div class="dp-setup-provider-surface" data-commit-explicit>${markup}</div>`;
     const surface = container.firstElementChild;
     window.DPI18n?.render(surface);
     persistence.adopt(surface);
     surface.addEventListener('click', event => {
       const button = event.target.closest?.('button[data-action]');
-      if (button && surface.contains(button) && !button.disabled) apiKeyProviderAction(button.dataset.action, button);
+      if (!button || !surface.contains(button) || button.disabled) return;
+      const action = button.dataset.action;
+      if (apiKeyProviderAction(action, button) || deviceAccountAction(action, button)) return;
+      if (action === 'test-usenet') testUsenet(button);
     });
     surface.addEventListener('change', event => {
       if (event.target.matches?.('[data-integration-enabled]')) void providerEnableChanged(event.target);
@@ -9146,7 +9162,19 @@
       // Saved only when every changed field's write -- its own, or the same
       // draft's already on its way -- was ACCEPTED; nothing changed is saved.
       async save() {
-        const writes = fields().filter(field => persistence.dirty(field)).map(field => persistence.commit(field));
+        const writes = [];
+        const creating = new Set();
+        for (const field of fields().filter(control => persistence.dirty(control))) {
+          // A record with no id yet is created whole, from what it shows, by
+          // its scope's one creation -- once, never field by field.
+          const record = field.closest('[data-commit-instance]');
+          if (record && !record.dataset.commitInstance) {
+            if (!creating.has(record)) writes.push(persistence.materialize(field));
+            creating.add(record);
+          } else {
+            writes.push(persistence.commit(field));
+          }
+        }
         const results = await Promise.all(writes);
         return results.every(result => result === true);
       },

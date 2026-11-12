@@ -33070,6 +33070,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.immediate_account": {
+   "source": "502f55ab1c4de483",
+   "translation": "c96c8bbd06717d25",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate_usenet": {
+   "source": "88350ee4105373ab",
+   "translation": "d7720459f6f7431a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

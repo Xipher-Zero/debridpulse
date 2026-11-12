@@ -42,6 +42,12 @@
  * THIS scope to materialize one the first time an ordinary commit boundary is
  * crossed on a draft that has a Host; from that moment the card joins the
  * universal model. There is no Save.
+ *
+ * The setup wizard draws the same cards on a surface that stores its fields
+ * with its own Save (`data-commit-explicit`; ui-settings-persistence.js): there
+ * a field crosses no boundary until that Save, which writes an existing record
+ * field by field and creates a new card's record through the same `materialize`
+ * creation -- whose outcome it waits for. Every action keeps its own semantics.
  */
 (function () {
   'use strict';
@@ -83,6 +89,9 @@
 
   const PANEL = '#view-settings [data-panel="sources"]';
   const collection = () => document.querySelector(`${PANEL} [data-usenet-collection]`);
+  // The collection an event happened in: Services' or the setup wizard's copy
+  // (ui-settings-page.js mountProvider), each its own cards and its own records.
+  const collectionOf = event => event.target?.closest?.('[data-usenet-collection]') || null;
 
   function cards(host) {
     return Array.from(host.querySelectorAll('[data-usenet-server-id]'));
@@ -769,7 +778,7 @@
    * universal persistence model. */
   async function createServer(card) {
     const server = readCard(card);
-    if (!server.host) { validation(card, 'settings.usenet.host_required'); return; }
+    if (!server.host) { validation(card, 'settings.usenet.host_required'); return false; }
     validation(card, '');
     const name = serverName(card);
     // Published BEFORE the request is awaited, so a removal raised in this
@@ -797,12 +806,15 @@
       // Removal owns the outcome from here; carrying intent onto a record that
       // is about to be deleted would be noise, and claiming it was saved would
       // be untrue.
-      if (card.dataset.usenetRemoving === '1') return;
+      if (card.dataset.usenetRemoving === '1') return false;
       await resumeCreation(card, result, server.display_name);
       const native = nativeMessage(result);
       toast(native || t('settings.usenet.saved', {name}), native ? 'warn' : 'success');
+      // Created -- what a surface that creates it with its own Save waits for.
+      return true;
     } catch (error) {
       toast(t('settings.usenet.save_failed', {name, reason: failure(card, error)}), 'error');
+      return false;
     } finally {
       creations.delete(card);
       refreshClearGate(card);
@@ -945,8 +957,8 @@
   }
 
   function onClick(event) {
-    const host = collection();
-    if (!host || !host.contains(event.target)) return;
+    const host = collectionOf(event);
+    if (!host) return;
     const advanced = event.target.closest('[data-usenet-advanced-toggle]');
     if (advanced) {
       event.preventDefault();
@@ -980,8 +992,8 @@
   }
 
   function onInput(event) {
-    const host = collection();
-    if (!host || !host.contains(event.target)) return;
+    const host = collectionOf(event);
+    if (!host) return;
     const card = event.target.closest('[data-usenet-server-id]');
     if (!card) return;
     if (event.target.dataset?.usenetField === 'host') refreshDerivedName(card);
@@ -992,8 +1004,8 @@
    * other immediate control of a card -- Enable -- is an ordinary one and is
    * committed by the canonical persistence owner, not here. */
   function onChange(event) {
-    const host = collection();
-    if (!host || !host.contains(event.target)) return;
+    const host = collectionOf(event);
+    if (!host) return;
     const card = event.target.closest('[data-usenet-server-id]');
     if (!card) return;
     if (event.target.dataset?.usenetField === 'ssl') void sslChanged(card, event.target);

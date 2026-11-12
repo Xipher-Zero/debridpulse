@@ -3841,6 +3841,16 @@
    "owner": "frontend/static/ui-settings-page.js",
    "english": "No wizard configuration for {0}",
    "reason": "Developer Error for a provider the setup wizard does not configure; never reached from the wizard."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "Test First-Run Wizard",
+   "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
+  },
+  {
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "english": "Preview: nothing on these pages is saved, except a provider's own Save.",
+   "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
   }
  ]
 }

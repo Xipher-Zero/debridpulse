@@ -32580,6 +32580,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.immediate_account": {
+   "source": "502f55ab1c4de483",
+   "translation": "69cc9454814b454b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate_usenet": {
+   "source": "88350ee4105373ab",
+   "translation": "6c16dfb6a9695d89",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

@@ -32423,6 +32423,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "setup.premium.immediate_account": {
+   "source": "502f55ab1c4de483",
+   "translation": "464ed0bc3c9d4a03",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.immediate_usenet": {
+   "source": "88350ee4105373ab",
+   "translation": "6f456b4f6f4b0358",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

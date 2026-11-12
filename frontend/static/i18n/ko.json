@@ -3562,7 +3562,9 @@
   "account.leave.discard": "변경 내용 폐기",
   "account.leave.keep": "계속 편집",
   "setup.premium.test_after_save": "테스트하려면 변경 사항을 저장하세요.",
-  "setup.premium.immediate": "‘사용’, ‘테스트’, ‘제거’는 즉시 적용됩니다. ‘저장’은 입력한 내용을 저장하고, ‘취소’는 이를 버립니다."
+  "setup.premium.immediate": "‘사용’, ‘테스트’, ‘제거’는 즉시 적용됩니다. ‘저장’은 입력한 내용을 저장하고, ‘취소’는 이를 버립니다.",
+  "setup.premium.immediate_account": "‘연결’, ‘연결 해제’, ‘사용’, ‘테스트’는 즉시 적용되며 ‘취소’로 되돌릴 수 없습니다.",
+  "setup.premium.immediate_usenet": "‘사용’, SSL, 서버 이름, ‘지우기’, ‘제거’는 즉시 적용됩니다. ‘저장’은 새 서버를 포함해 입력한 내용을 저장하고, ‘취소’는 이를 버립니다. 서버별 ‘테스트’는 현재 표시된 내용을 확인합니다."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7125,6 +7127,8 @@
   "account.leave.discard": "e07e053c2e10b3f1",
   "account.leave.keep": "624a83c761415dc9",
   "setup.premium.test_after_save": "f7554168beaf37e7",
-  "setup.premium.immediate": "a19a0cbcc0d3dc10"
+  "setup.premium.immediate": "a19a0cbcc0d3dc10",
+  "setup.premium.immediate_account": "502f55ab1c4de483",
+  "setup.premium.immediate_usenet": "88350ee4105373ab"
  }
 }

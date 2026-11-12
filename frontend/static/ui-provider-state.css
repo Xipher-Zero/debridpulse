@@ -128,7 +128,7 @@
   color: var(--dp-state-error);
 }
 
-#view-settings .dp-settings-provider-config-status[data-tone="warning"] {
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-config-status[data-tone="warning"] {
   color: var(--dp-state-caution);
 }
 

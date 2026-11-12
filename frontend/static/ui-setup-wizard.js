@@ -74,6 +74,18 @@
           <p class="dp-setup-hint" data-i18n="setup.welcome.language_hint"></p>
           <div class="dp-language-slot dp-setup-language" data-setup-language></div>
         </section>`);
+      // TEMPORARY, development only (WS3b): a preview of the first-run setup
+      // from an Admin's rerun, for refining its pages -- offered only where the
+      // server says this is a development build (its release identity,
+      // ``development_build``). Removed with the final wizard cleanup.
+      if (wizard.mode === 'rerun' && !wizard.preview && wizard.data.development === true) {
+        const entry = element(`
+          <div class="dp-setup-preview-entry">
+            <button type="button" class="btn btn-ghost btn-sm" data-setup-preview>Test First-Run Wizard</button>
+          </div>`);
+        entry.querySelector('[data-setup-preview]').addEventListener('click', () => { void previewInitial(wizard); });
+        section.append(entry);
+      }
       const slot = section.querySelector('[data-setup-language]');
       const picker = window.DPLanguagePicker;
       if (wizard.data.locale && wizard.data.choices && picker) {
@@ -274,8 +286,13 @@
     ['usenet', 'Usenet'], ['alldebrid', 'AllDebrid'], ['debridlink', 'Debrid-Link'],
     ['premiumize', 'Premiumize'], ['realdebrid', 'Real-Debrid'], ['torbox', 'TorBox'],
   ]);
-  // The services whose configuration the wizard shows here.
-  const CONFIGURABLE = new Set(['alldebrid', 'debridlink', 'premiumize']);
+  // What acts at once in a service's configuration, said under it: the
+  // account services connect on the provider's own site, Usenet's servers
+  // have their own immediate controls, the rest a key.
+  const IMMEDIATE_NOTES = Object.freeze({
+    usenet: 'setup.premium.immediate_usenet', realdebrid: 'setup.premium.immediate_account',
+    torbox: 'setup.premium.immediate_account',
+  });
 
   function serviceState(fact) {
     if (!fact) return '';
@@ -292,7 +309,7 @@
           <p class="dp-setup-lead" data-i18n="setup.premium.hint"></p>
           <div class="dp-setup-services">
             ${SERVICES.map(([id, name]) => `
-              <button type="button" class="dp-setup-service" data-service="${id}" ${CONFIGURABLE.has(id) ? '' : 'disabled'}>
+              <button type="button" class="dp-setup-service" data-service="${id}">
                 <span class="dp-setup-service-name">${name}</span>
                 <span class="dp-setup-service-state">${serviceState(wizard.data.services?.[id])}</span>
               </button>`).join('')}
@@ -323,17 +340,19 @@
   /* One service's configuration, in place of the list, in the same dialog:
    * Save and Cancel take the footer. Save commits every changed field
    * through its own canonical scope and returns to the list once all were
-   * accepted; Cancel discards what was not saved. Test, Enable and Remove act
-   * at once, as on Services, and Cancel does not undo them; Test is offered
-   * only while nothing is unsaved, so it proves what is saved. */
+   * accepted; Cancel discards what was not saved. Test, Enable, Remove,
+   * Connect and Disconnect act at once, as on Services, and Cancel does not
+   * undo them. A provider's own Test (its header's) is offered only while
+   * nothing is unsaved, so it proves what is saved; a Usenet server's Test
+   * checks what that server shows, as it does on Services. */
   async function openProvider(wizard, id) {
-    if (wizard.provider || !CONFIGURABLE.has(id)) return;
+    if (wizard.provider) return;
     const name = SERVICES.find(([service]) => service === id)[1];
     const section = element(`
       <section class="dp-setup-page dp-setup-provider" data-provider="${id}">
         <div class="dp-setup-provider-slot"></div>
         <p class="dp-setup-hint" data-setup-test-note data-i18n="setup.premium.test_after_save" hidden></p>
-        <p class="dp-setup-hint" data-i18n="setup.premium.immediate"></p>
+        <p class="dp-setup-hint" data-i18n="${IMMEDIATE_NOTES[id] || 'setup.premium.immediate'}"></p>
       </section>`);
     wizard.provider = {id, section, handle: null};
     wizard.error.hidden = true;
@@ -354,8 +373,9 @@
     const note = section.querySelector('[data-setup-test-note]');
     const paintTest = () => {
       const unsaved = wizard.provider?.handle?.dirty() === true;
-      section.querySelectorAll('.dp-settings-provider-test').forEach(test => { test.disabled = unsaved; });
-      note.hidden = !unsaved;
+      const tests = section.querySelectorAll('button[data-action^="test-"]');
+      tests.forEach(test => { test.disabled = unsaved; });
+      note.hidden = !unsaved || !tests.length;
     };
     section.addEventListener('input', paintTest);
     section.addEventListener('dp-settings-settled', paintTest);
@@ -424,9 +444,13 @@
     return {locale, choices, folder: settings ? String(settings.download_folder ?? '') : null};
   }
 
-  function open(mode, state, data, opener = null) {
+  /* ``preview`` (TEMPORARY, development only): the first-run pages shown from
+   * an Admin's rerun, committing nothing -- no language, deployment, folder,
+   * Administrator, phase or completion. Its Deployment choice only picks which
+   * roster is shown. A provider's own Save still saves, as it always does. */
+  function open(mode, state, data, opener = null, {preview = false} = {}) {
     const deploymentNow = deploymentType();
-    const pages = ROSTERS[mode][deploymentNow];
+    let pages = ROSTERS[mode][deploymentNow];
     let recorded = mode === 'initial' ? state.initial.phase : state.rerun?.phase;
     // A deployment change whose resume page was never recorded (interrupted
     // between its two writes) leaves the other type's page: one this roster
@@ -434,7 +458,7 @@
     // Administrator Setup, which the lifecycle never admits there. The new
     // roster resumes where every deployment change does, at Download
     // Directory, and the record is brought there through the one phase write.
-    const reconcile = mode === 'initial' && (!pages.includes(recorded)
+    const reconcile = mode === 'initial' && !preview && (!pages.includes(recorded)
       || (deploymentNow === 'server' && state.initial.administrator === 'none' && AFTER_ADMINISTRATOR.has(recorded)));
     if (reconcile) recorded = 'download_directory';
     let index = Math.max(0, pages.indexOf(recorded));
@@ -444,7 +468,7 @@
       index = pages.indexOf('administrator');
     }
     const indicator = stepIndicator();
-    const wizard = {mode, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
+    const wizard = {mode, preview, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
       phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, repaint: null,
       // The furthest page the server records: Next moves the record only beyond it.
       recordedIndex: Math.max(0, pages.indexOf(recorded)),
@@ -465,6 +489,9 @@
       const error = element('<p class="dp-setup-error" role="alert" hidden></p>');
       wizard.error = error;
       wizard.body.replaceChildren(section, error);
+      if (preview) {
+        wizard.body.prepend(element('<p class="dp-setup-preview-note">Preview: nothing on these pages is saved, except a provider\'s own Save.</p>'));
+      }
       window.DPI18n.render(wizard.body);
       handle.setTitle(said(titleKey()));
       handle.setAcceptLabel(said(acceptKey()));
@@ -486,14 +513,30 @@
 
     // The page as it is now, labels and all (a provider's view returns here).
     wizard.repaint = () => {
-      if (mode === 'initial') wizard.dialog.setCancelHidden(true);
+      if (mode === 'initial' && !preview) wizard.dialog.setCancelHidden(true);
       wizard.dialog.setCancelLabel(said('dialog.close'));
       paint(wizard.dialog);
     };
 
+    // A preview's Next only moves on (Finish ends the preview); after
+    // Deployment it shows the chosen type's pages.
+    function previewNext(handle) {
+      wizard.error.hidden = true;
+      if (wizard.index === pages.length - 1) return true;
+      const current = pages[wizard.index];
+      if (current === 'deployment') {
+        wizard.deployment = wizard.data.deployment;
+        pages = wizard.pages = ROSTERS.initial[wizard.deployment];
+      }
+      wizard.index = pages.indexOf(current) + 1;
+      paint(handle);
+      return false;
+    }
+
     async function next(handle) {
       // A provider's view: its Save.
       if (wizard.provider) return saveProvider(wizard);
+      if (preview) return previewNext(handle);
       wizard.error.hidden = true;
       handle.setActionEnabled('back', false);
       try {
@@ -560,14 +603,14 @@
       className: 'dp-setup-dialog',
       bodyClassName: 'dp-setup-body',
       headerEnd: indicator,
-      // The initial setup is finished, never dismissed.
-      blocking: mode === 'initial',
+      // The initial setup is finished, never dismissed (its preview is).
+      blocking: mode === 'initial' && !preview,
       acceptLabel: said(acceptKey()),
       cancelLabel: said('dialog.close'),
       actions: [{id: 'back', label: said('settings.common.back'), placement: 'leading'}],
       mount(body, handle) {
         wizard.body = body;
-        if (mode === 'initial') handle.setCancelHidden(true);
+        if (mode === 'initial' && !preview) handle.setCancelHidden(true);
         paint(handle);
         return null;
       },
@@ -582,6 +625,7 @@
         // A provider's view: Cancel (and Escape) return to the list; what was
         // not saved is discarded.
         if (wizard.provider) { closeProvider(wizard); return false; }
+        if (preview) return true;
         if (mode === 'initial') return false;
         // Dismissed: the rerun ends; nothing it committed is undone.
         try { await request('DELETE', '/setup/rerun'); } catch (_) { /* the record stays; reopening resumes it */ }
@@ -594,12 +638,22 @@
       void request('PUT', '/setup/initial/phase', {phase: 'download_directory'})
         .then(result => { wizard.state = result; }, () => { /* the next Next records forward from here */ });
     }
+    // A service saved or connected meanwhile (an account authorized after
+    // its view was left) shows on the list at once.
+    const accepted = () => {
+      const list = !wizard.provider && wizard.body?.querySelector('.dp-setup-premium');
+      if (list) void refreshServices(wizard, list);
+    };
     document.addEventListener('debridpulse:locale-changed', relabel);
+    document.addEventListener('debridpulse:integration-accepted', accepted);
     void dialog.closed.then(() => {
       document.removeEventListener('debridpulse:locale-changed', relabel);
+      document.removeEventListener('debridpulse:integration-accepted', accepted);
       if (active === wizard) active = null;
       // A previewed language that Next never saved is withdrawn.
-      if (pages[wizard.index] === 'welcome') void wizard.showOwnLanguage();
+      if (preview || pages[wizard.index] === 'welcome') void wizard.showOwnLanguage();
+      // The preview returns to the rerun it was opened from.
+      if (preview) void rerun({opener: wizard.opener});
     });
     active = wizard;
     return wizard;
@@ -607,6 +661,16 @@
 
   async function readState() {
     return request('GET', '/setup/state');
+  }
+
+  /* TEMPORARY, development only (WS3b): Test First-Run Wizard. The rerun is
+   * set aside, not ended (its record stays at Welcome), and the first-run
+   * pages open as a preview with nothing created, chosen or recorded; leaving
+   * the preview reopens the rerun. */
+  async function previewInitial(wizard) {
+    const data = await readData();
+    wizard.dialog.close();
+    open('initial', {initial: {phase: 'welcome', complete: false, administrator: 'none'}}, data, wizard.opener, {preview: true});
   }
 
   /* At start: an Admin of an installation whose setup is unfinished sees it. */
@@ -627,7 +691,8 @@
     const state = await readState();
     if (!state.initial.complete) { open('initial', state, await readData(), opener); return; }
     const current = state.rerun ? state : await request('PUT', '/setup/rerun', {phase: 'welcome'});
-    open('rerun', current, await readData(), opener);
+    // TEMPORARY (WS3b): whether this build offers the development-only preview.
+    open('rerun', current, {...await readData(), development: state.development_build === true}, opener);
   }
 
   window.DPSetupWizard = Object.freeze({rerun});

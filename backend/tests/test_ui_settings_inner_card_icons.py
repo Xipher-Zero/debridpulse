@@ -62,7 +62,7 @@ def test_settings_inner_card_icons_use_section_tab_color_families_and_shared_foo
         rule = css.split(f"#view-settings .dp-settings-protocol-chip[data-section='{section}'] {{", 1)[1].split('}', 1)[0]
         assert rule.strip() == f'--dp-protocol-color: {colour};', section
     assert '.dp-settings-inner-card-icon' not in css
-    chip = css.split('#view-settings .dp-settings-protocol-chip {', 1)[1].split('}', 1)[0]
+    chip = css.split(':is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip {', 1)[1].split('}', 1)[0]
     assert 'width: 38px' in chip and 'height: 38px' in chip
 
 

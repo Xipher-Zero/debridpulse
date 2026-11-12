@@ -3,13 +3,35 @@
    and Getting Started is provisional and replaced later without changing
    these pages. Logical properties throughout, so right-to-left languages
    mirror without a rule of their own. */
+/* Contained like Edit User: never taller than the overlay leaves; the header
+   (title, step) and footer (Back, Next or Save) stay in view and the body
+   scrolls -- a Usenet configuration with several servers is taller than a
+   phone. */
 .dp-modal-dialog.dp-setup-dialog {
   inline-size: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header,
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-footer {
+  flex: 0 0 auto;
 }
 .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body > * {
+  flex-shrink: 0;
+}
+@media (max-width: 620px) {
+  .dp-modal-dialog.dp-setup-dialog {
+    max-height: calc(100dvh - 24px);
+  }
 }
 .dp-setup-step {
   margin: 0;
@@ -159,4 +181,23 @@
    by its Settings owner (DPSettingsPage.mountProvider). */
 .dp-setup-provider-slot {
   min-inline-size: 0;
+}
+
+/* TEMPORARY, development only (WS3b): Test First-Run Wizard on the rerun's
+   Welcome, and the preview's standing note. Removed with the final wizard
+   cleanup. */
+.dp-setup-preview-entry {
+  display: flex;
+  justify-content: center;
+  padding-block-start: 4px;
+}
+.dp-setup-preview-note {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--dp-border-default);
+  border-radius: 6px;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
 }

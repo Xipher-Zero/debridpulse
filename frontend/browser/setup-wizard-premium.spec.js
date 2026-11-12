@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.14 setup wizard, WS3a: Premium Services.
+/* DP 1.0.14 setup wizard, WS3a and WS3b: Premium Services.
  *
  * The page lists the six services in their fixed order, each with what the
  * server says it is (configured, verified, disabled: three facts). Choosing an
@@ -64,8 +64,8 @@ test('P01: six services in the fixed order, each with the server\'s three facts;
     if (!entry || entry.enabled === false) expected.push('disabled');
     expect(facts, id).toEqual(expected);
   }
-  // Configured by the three API-key providers here; the others in the next step.
-  for (const id of ['alldebrid', 'debridlink', 'premiumize']) await expect(wizard(page).locator(`[data-service="${id}"]`)).toBeEnabled();
+  // Every one of the six opens its configuration here.
+  for (const id of SERVICES) await expect(wizard(page).locator(`[data-service="${id}"]`)).toBeEnabled();
   await wizard(page).locator('[data-modal-accept]').click();
   await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
   await call(page, 'DELETE', '/api/setup/rerun');
@@ -297,4 +297,242 @@ test('P10: the wizard\'s Test sends its own (saved) state, never an unsaved draf
   await wizard(page).locator('[data-modal-cancel]').click();
   await settingsCard.locator('[data-setting="alldebrid_api_key"]').evaluate(field => { field.value = ''; });
   await call(page, 'DELETE', '/api/setup/rerun');
+});
+
+/* WS3b: Real-Debrid, TorBox and Usenet, through the same owners.
+ *
+ * The account services (Real-Debrid, TorBox) connect on the provider's own
+ * site: their Easy configuration is the Account Connection alone, and every
+ * control on it acts at once. The provider's authorization endpoints are
+ * emulated here (labelled mocks: no real provider is contacted); what is
+ * proven is that the wizard drives Services' own connection owner. Usenet's
+ * servers are the real local records; its fields wait for Save, which writes
+ * an existing server field by field and creates a new one once, and a
+ * server's own Test checks what it shows, saving nothing. */
+
+/* Labelled mock of one account service's device authorization. */
+async function emulateAuthorization(page, id, {connect = false} = {}) {
+  const seen = [];
+  const json = body => ({status: 200, contentType: 'application/json', body: JSON.stringify(body)});
+  await page.route(url => url.pathname.startsWith(`/api/integrations/${id}/`), async route => {
+    const path = new URL(route.request().url()).pathname.replace(`/api/integrations/${id}`, '');
+    const method = route.request().method();
+    if (path === '/authorization' && method === 'POST') {
+      seen.push('authorize');
+      return route.fulfill(json({user_code: 'SYNTH-CODE', verification_url: 'https://synthetic.invalid/device', interval: 5, expires_in: 600}));
+    }
+    if (path === '/authorization/poll') {
+      seen.push('poll');
+      if (!connect) return route.fulfill(json({state: 'pending', user_code: 'SYNTH-CODE', verification_url: 'https://synthetic.invalid/device', interval: 5}));
+      const settings = await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()));
+      const integration = {...settings.integrations[id], configured: true, verified: true};
+      integration.options = {...integration.options, api_token_configured: true, client_id_configured: true};
+      return route.fulfill(json({state: 'connected', integration_id: id, integration, email: 'synthetic@example.invalid', username: 'synthetic'}));
+    }
+    if (path === '/authorization' && method === 'DELETE') { seen.push('cancel'); return route.fulfill(json({ok: true})); }
+    if (path === '/disconnect') {
+      seen.push('disconnect');
+      const settings = await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()));
+      return route.fulfill(json({ok: true, integration_id: id, integration: settings.integrations[id]}));
+    }
+    return route.continue();
+  });
+  return seen;
+}
+
+test('P11: Real-Debrid and TorBox open in the same dialog as Easy shows them -- the Account Connection only -- for an Advanced reader', async ({page}) => {
+  await load(page);
+  const presentation = (await call(page, 'GET', '/api/account/presentation')).body;
+  await call(page, 'PUT', '/api/account/presentation', {presentation_mode: 'advanced'});
+  await page.reload();
+  await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeAttached();
+  const writes = [];
+  page.on('request', request => { if (request.method() !== 'GET') writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
+  try {
+    await premium(page);
+    const overlays = await page.locator('.dp-modal-overlay').count();
+    for (const [id, name] of [['realdebrid', 'Real-Debrid'], ['torbox', 'TorBox']]) {
+      await wizard(page).locator(`[data-service="${id}"]`).click();
+      const card = wizard(page).locator(`.dp-setup-provider-surface .dp-settings-provider-card--${id}`);
+      await expect(card).toBeVisible();
+      await expect(page.locator('.dp-modal-overlay')).toHaveCount(overlays);
+      await expect(wizard(page).locator('.dp-modal-title')).toHaveText(name);
+      await expect(card.locator(`[data-${id}-connection] [data-action="connect-${id}"]`)).toBeVisible();
+      await expect(card.locator('.dp-settings-additional')).toHaveCount(0);
+      await expect(card.locator('[data-commit-key]:not([data-integration-enabled])')).toHaveCount(0);   // nothing to type
+      await expect(wizard(page).locator('[data-i18n="setup.premium.immediate_account"]')).toBeVisible();
+      // Nothing waits for Save: Save is the ordinary return to the list.
+      await wizard(page).locator('[data-modal-accept]').click();
+      await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    }
+    expect(writes.filter(write => !write.endsWith('/api/setup/rerun'))).toEqual([]);
+    expect((await call(page, 'GET', '/api/account/presentation')).body.presentation_mode).toBe('advanced');
+    await wizard(page).locator('[data-modal-cancel]').click();
+    await page.locator('.dp-account-dialog [data-modal-cancel]').click();
+    await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
+    await expect(page.locator('#view-settings .dp-settings-provider-card--realdebrid .dp-settings-additional')).toHaveCount(1);
+  } finally {
+    await call(page, 'PUT', '/api/account/presentation', {presentation_mode: presentation.presentation_mode});
+    await call(page, 'DELETE', '/api/setup/rerun');
+  }
+});
+
+test('P12: Connect, the code, its Copy and Cancel, then a connection and Disconnect act at once through Services\' own owner (emulated provider)', async ({page}) => {
+  await load(page);
+  const seen = await emulateAuthorization(page, 'torbox', {connect: true});
+  await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = text => { window.__copied.push(text); return Promise.resolve(); }; });
+  await premium(page);
+  await wizard(page).locator('[data-service="torbox"]').click();
+  const card = wizard(page).locator('.dp-setup-provider-surface .dp-settings-provider-card--torbox');
+  await card.locator('[data-action="connect-torbox"]').click();
+  await expect(card.locator('[data-torbox-code]')).toHaveValue('SYNTH-CODE');
+  await card.locator('[data-action="copy-torbox-code"]').click();
+  await expect.poll(() => page.evaluate(() => window.__copied)).toEqual(['SYNTH-CODE']);
+  // Cancel the authorization (the island's own Cancel): immediate, the view stays.
+  await card.locator('[data-action="cancel-torbox"]').click();
+  await expect(card.locator('[data-action="connect-torbox"]')).toBeVisible();
+  expect(seen).toEqual(['authorize', 'cancel']);
+  // Connect again; the emulated provider authorizes at its first poll.
+  await card.locator('[data-action="connect-torbox"]').click();
+  await expect(card.locator('[data-action="disconnect-torbox"]')).toBeVisible({timeout: 15000});
+  // Disconnect: Services' confirmation, then at once.
+  await card.locator('[data-action="disconnect-torbox"]').click();
+  await page.locator('.dp-modal-dialog[role="alertdialog"] [data-modal-accept]').click();
+  await expect.poll(() => seen.includes('disconnect')).toBe(true);
+  await expect(card.locator('[data-action="connect-torbox"]')).toBeVisible();
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  await call(page, 'DELETE', '/api/setup/rerun');
+});
+
+/* One synthetic Usenet server, created through the real local API. */
+async function usenetServer(page) {
+  const created = await call(page, 'POST', '/api/usenet/servers', {host: 'news.synthetic.invalid', port: 563, ssl: true,
+    username: 'synthetic', connections: 8, priority: 0, articles_per_request: 2, timeout_seconds: 60, enabled: true, display_name: ''});
+  expect(created.status).toBe(200);
+  return created.body.server_id;
+}
+const usenetServers = async page => ((await integration(page, 'usenet')).options?.servers) || [];
+async function removeUsenetServers(page) {
+  for (const server of await usenetServers(page)) await call(page, 'DELETE', `/api/usenet/servers/${server.id}`);
+}
+
+test('P13: a Usenet server\'s fields wait for Save: blur and Cancel write nothing, Save writes the changed field; a server action settles no draft', async ({page}) => {
+  await load(page);
+  expect(await usenetServers(page), 'the open runtime holds no Usenet server').toEqual([]);
+  const id = await usenetServer(page);
+  const writes = [];
+  page.on('request', request => { if (/\/api\/usenet\//.test(request.url()) && request.method() !== 'GET') writes.push({method: request.method(), path: new URL(request.url()).pathname, body: request.postDataJSON()}); });
+  try {
+    await premium(page);
+    await wizard(page).locator('[data-service="usenet"]').click();
+    const server = wizard(page).locator(`.dp-setup-provider-surface [data-usenet-server-id="${id}"]`);
+    await expect(server).toBeVisible();
+    await expect(wizard(page).locator('[data-i18n="setup.premium.immediate_usenet"]')).toBeVisible();
+    const username = server.locator('[data-usenet-field="username"]');
+    await expect(username).toHaveAttribute('data-commit', 'explicit');
+    await username.fill('synthetic-edited');
+    await username.blur();
+    // The provider's own Test (saved servers) waits; the server's Test does not.
+    await expect(wizard(page).locator('[data-action="test-usenet"]')).toBeDisabled();
+    await expect(server.locator('[data-usenet-action="test"]')).toBeEnabled();
+    // An immediate act (SSL) carries only itself, never the username draft.
+    await server.locator('.dp-usenet-ssl').click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].method).toBe('PUT');
+    expect(writes[0].body).toHaveProperty('ssl', false);
+    expect(writes[0].body).not.toHaveProperty('username');
+    await wizard(page).locator('[data-modal-cancel]').click();
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect((await usenetServers(page))[0].username).toBe('synthetic');
+    // Again, and Save: exactly that field, through the server's own record.
+    await wizard(page).locator('[data-service="usenet"]').click();
+    await server.locator('[data-usenet-field="username"]').fill('synthetic-saved');
+    await wizard(page).locator('[data-modal-accept]').click();
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    expect(writes.slice(1)).toEqual([{method: 'PUT', path: `/api/usenet/servers/${id}`, body: {username: 'synthetic-saved'}}]);
+    expect((await usenetServers(page))[0].username).toBe('synthetic-saved');
+  } finally {
+    await removeUsenetServers(page);
+    await call(page, 'DELETE', '/api/setup/rerun');
+  }
+});
+
+test('P14: a new Usenet server is created once by Save, with its credential sent once; without a Host, Save stays and says so', async ({page}) => {
+  await load(page);
+  expect(await usenetServers(page), 'the open runtime holds no Usenet server').toEqual([]);
+  const writes = [];
+  page.on('request', request => { if (/\/api\/usenet\//.test(request.url()) && request.method() !== 'GET') writes.push({method: request.method(), path: new URL(request.url()).pathname, body: request.postDataJSON()}); });
+  try {
+    await premium(page);
+    await wizard(page).locator('[data-service="usenet"]').click();
+    await wizard(page).locator('.dp-setup-provider-surface [data-usenet-action="add"]').click();
+    const card = wizard(page).locator('.dp-setup-provider-surface [data-usenet-server-id=""]');
+    await expect(card).toHaveCount(1);
+    await expect(card.locator('[data-usenet-field="host"]')).toHaveAttribute('data-commit', 'explicit');
+    await card.locator('[data-usenet-field="password"]').fill('synthetic-news-pass');
+    await card.locator('[data-usenet-field="password"]').blur();
+    expect(writes).toEqual([]);
+    // No Host: nothing is sent, and the wizard stays and says so.
+    await wizard(page).locator('[data-modal-accept]').click();
+    await expect(wizard(page).locator('.dp-setup-error')).toBeVisible();
+    await expect(card.locator('[data-usenet-validation]')).toBeVisible();
+    expect(writes).toEqual([]);
+    await card.locator('[data-usenet-field="host"]').fill('news2.synthetic.invalid');
+    await card.locator('[data-usenet-field="username"]').fill('synthetic-new');
+    await wizard(page).locator('[data-modal-accept]').click();
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    await expect(wizard(page).locator('[data-service="usenet"] [data-fact="configured"]')).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].method).toBe('POST');
+    expect(writes[0].path).toBe('/api/usenet/servers');
+    expect(writes[0].body).toMatchObject({host: 'news2.synthetic.invalid', username: 'synthetic-new', password: 'synthetic-news-pass'});
+    const servers = await usenetServers(page);
+    expect(servers.map(server => [server.host, server.password_configured])).toEqual([['news2.synthetic.invalid', true]]);
+  } finally {
+    await removeUsenetServers(page);
+    await call(page, 'DELETE', '/api/setup/rerun');
+  }
+});
+
+test('P15: a refused new server stays in the view with its draft; a server\'s Test checks the draft and saves nothing (emulated news server)', async ({page}) => {
+  await load(page);
+  expect(await usenetServers(page), 'the open runtime holds no Usenet server').toEqual([]);
+  let refuse = true;
+  let tested = null;
+  await page.route(url => url.pathname === '/api/usenet/servers' || url.pathname === '/api/usenet/servers/test', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/test')) {
+      tested = route.request().postDataJSON();
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({ok: true, message: 'synthetic ok'})});
+    }
+    if (route.request().method() === 'POST' && refuse) {
+      refuse = false;
+      return route.fulfill({status: 409, contentType: 'application/json', body: JSON.stringify({detail: 'synthetic refusal', code: 'unclassified', params: {}})});
+    }
+    return route.continue();
+  });
+  try {
+    await premium(page);
+    await wizard(page).locator('[data-service="usenet"]').click();
+    await wizard(page).locator('.dp-setup-provider-surface [data-usenet-action="add"]').click();
+    const card = wizard(page).locator('.dp-setup-provider-surface .dp-usenet-server').last();
+    await card.locator('[data-usenet-field="host"]').fill('news3.synthetic.invalid');
+    await card.locator('[data-usenet-field="password"]').fill('synthetic-draft-pass');
+    await card.locator('[data-usenet-action="test"]').click();
+    await expect.poll(() => tested).not.toBeNull();
+    expect(tested).toMatchObject({host: 'news3.synthetic.invalid', password: 'synthetic-draft-pass', server_id: null});
+    expect(await usenetServers(page)).toEqual([]);                               // Test saved nothing
+    await wizard(page).locator('[data-modal-accept]').click();
+    await expect(wizard(page).locator('.dp-setup-error')).toBeVisible();
+    await expect(card.locator('[data-usenet-field="host"]')).toHaveValue('news3.synthetic.invalid');
+    expect(await usenetServers(page)).toEqual([]);
+    await wizard(page).locator('[data-modal-accept]').click();
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+    expect((await usenetServers(page)).map(server => server.host)).toEqual(['news3.synthetic.invalid']);
+  } finally {
+    await removeUsenetServers(page);
+    await call(page, 'DELETE', '/api/setup/rerun');
+  }
 });

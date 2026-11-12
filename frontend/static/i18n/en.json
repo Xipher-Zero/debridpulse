@@ -3562,6 +3562,8 @@
   "account.leave.discard": "Discard Changes",
   "account.leave.keep": "Keep Editing",
   "setup.premium.test_after_save": "Save your changes to test them.",
-  "setup.premium.immediate": "Enable, Test and Remove take effect at once. Save stores what you type; Cancel discards it."
+  "setup.premium.immediate": "Enable, Test and Remove take effect at once. Save stores what you type; Cancel discards it.",
+  "setup.premium.immediate_account": "Connect, Disconnect, Enable and Test take effect at once; Cancel does not undo them.",
+  "setup.premium.immediate_usenet": "Enable, SSL, server names, Clear and Remove take effect at once. Save stores what you type, new servers included; Cancel discards it. A server's own Test checks what it shows."
  }
 }
