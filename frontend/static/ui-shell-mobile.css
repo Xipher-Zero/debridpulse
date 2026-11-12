@@ -159,7 +159,10 @@
   }
 
   /* The theme control: the mode toggle and its attached palette chevron, two
-     separate targets drawn as one control. */
+     separate targets drawn as one control. Its edges are the reading
+     direction's (logical): the toggle rounds the start, the chevron the end
+     (ui-theme-picker.css), and the chevron's divider-coloured start border is
+     the one seam between them. */
   .sidebar-theme-control.topbar-theme-control {
     position: static;
     display: flex;
@@ -172,7 +175,10 @@
   .topbar-theme-control .theme-toggle {
     width: var(--dp-shell-control);
     height: var(--dp-shell-control);
-    border-radius: var(--dp-radius-md) 0 0 var(--dp-radius-md);
+    border-radius: 0;
+    border-start-start-radius: var(--dp-radius-md);
+    border-end-start-radius: var(--dp-radius-md);
+    border-inline-end-width: 0;
     -webkit-touch-callout: none;
     user-select: none;
     touch-action: manipulation;
@@ -183,7 +189,7 @@
     box-shadow: var(--dp-focus-ring), var(--dp-shadow-control);
   }
   .topbar-theme-control .dp-theme-picker-trigger {
-    border-left-color: var(--dp-divider);
+    border-inline-start-color: var(--dp-divider);
   }
   body.light .topbar-theme-control .dp-theme-picker-trigger { background: rgba(255, 255, 255, .90); }
 

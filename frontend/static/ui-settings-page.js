@@ -4810,61 +4810,109 @@
   const DEPLOYMENT_GUTTER = 16;
   let deploymentObserver = null;
 
-  /* Deployment & Language: the Deployment Type assembly and, beside it, the
-   * Default Language block, while the assembly keeps its full one-row
-   * reading there and the two fit the card side by side; otherwise the whole
-   * language block is beneath the assembly (data-language-layout). Then the
-   * assembly fits its own reading exactly as before, in the room it has, and
-   * the language block keeps the longest hint that fits on one line beneath
-   * its title (data-default-language-fit 0, 1, 2), none when even the
-   * shortest does not. Only a change of the card's width fits it again. */
+  /* Deployment & Language: the Deployment Type assembly and the Default
+   * Language block side by side -- each as wide as its own content, centred as
+   * one group -- while some pair of their approved wordings fits the card with
+   * a clear gutter on each side; otherwise the whole language block beneath the
+   * assembly, each then keeping its own longest wording that fits the full
+   * width, exactly as the assembly alone did (data-deployment-fit 0-2, or the
+   * stacked form 3 without a hint; data-default-language-fit 0-2, or no hint).
+   * The side-by-side candidates are one chain from both full wordings, each
+   * link one step down one ladder -- the step that keeps the wider pair while
+   * still saving room -- and the first link that fits is kept: the longest
+   * wordings that fit, and as the card narrows no wording ever grows back.
+   * Every candidate is measured on hidden clones in a zero-size box beside the
+   * card's content, never on the card itself: the result is committed once,
+   * and only what changes is written, so the card never shows a candidate it
+   * does not keep. Only a change of the card's width fits it again (stacking
+   * changes its height alone), and so does a language change or the default
+   * language arriving on its button. */
+  // The side-by-side chain over the measured natural widths (see above).
+  function besideChain(size, between) {
+    const span = ([d, h]) => size.deployment[d] + between + size.language[h];
+    const last = [size.deployment.length - 1, size.language.length - 1];
+    const chain = [[0, 0]];
+    for (let at = chain[0]; at[0] < last[0] || at[1] < last[1];) {
+      const next = [[at[0] + 1, at[1]], [at[0], at[1] + 1]].filter(([d, h]) => d <= last[0] && h <= last[1]);
+      const saving = next.filter(step => span(step) < span(at)).sort((a, b) => span(b) - span(a));
+      at = saving[0] || next[0];
+      chain.push(at);
+    }
+    return chain.filter((step, index) => index === 0 || span(step) < span(chain[index - 1]));
+  }
+
+  function measureDeploymentLanguage(pair, assembly, language, hints) {
+    const box = document.createElement('div');
+    box.setAttribute('data-language-measure', '');
+    box.setAttribute('aria-hidden', 'true');
+    const deployment = assembly.cloneNode(true);
+    const block = language.cloneNode(true);
+    box.append(deployment, block);
+    pair.append(box);
+    if (deployment.dataset.deploymentFit !== '0') deployment.dataset.deploymentFit = '0';
+    const reading = deployment.querySelector('.dp-settings-deployment-reading');
+    const hint = deployment.querySelector('[data-deployment-hint]');
+    const blockHint = block.querySelector('[data-default-language-hint]');
+    hint.hidden = false;
+    blockHint.hidden = false;
+    const width = node => node.getBoundingClientRect().width;
+    const measured = {reading: [], deployment: [], hint: [], language: []};
+    hints.forEach((words, step) => {
+      hint.textContent = String(words);
+      measured.reading.push(width(reading));
+      measured.deployment.push(width(deployment));
+    });
+    DEFAULT_LANGUAGE_HINTS.forEach(words => {
+      blockHint.textContent = String(words);
+      measured.hint.push(width(blockHint));
+      measured.language.push(width(block));
+    });
+    box.remove();
+    return measured;
+  }
+
   function fitDeploymentType() {
     deploymentObserver?.disconnect();
     deploymentObserver = null;
     const assembly = root()?.querySelector('.dp-settings-deployment');
-    if (!assembly) return;
-    const pair = assembly.closest('.dp-settings-deployment-language');
+    const pair = assembly?.closest('.dp-settings-deployment-language');
     const language = pair?.querySelector('[data-default-language]');
-    const languageHint = language?.querySelector('[data-default-language-hint]');
-    const reading = assembly.querySelector('.dp-settings-deployment-reading');
+    if (!language) return;
+    const languageHint = language.querySelector('[data-default-language-hint]');
     const hint = assembly.querySelector('[data-deployment-hint]');
     const hints = DEPLOYMENT_TYPES[assembly.dataset.deploymentType].hints;
-    const measured = pair || assembly;
+    const measured = pair;
     let width = null;
-    const fitReading = () => {
-      hint.hidden = false;
-      for (let step = 0; step < DEPLOYMENT_FIT_STACKED; step += 1) {
-        assembly.dataset.deploymentFit = String(step);
-        sayInto(hint, hints[step]);
-        if (reading.getBoundingClientRect().width + 2 * DEPLOYMENT_GUTTER <= assembly.clientWidth) return;
-      }
-      assembly.dataset.deploymentFit = String(DEPLOYMENT_FIT_STACKED);
-      hint.hidden = true;
-    };
-    const fitLanguageHint = () => {
-      languageHint.hidden = false;
-      for (let step = 0; step < DEFAULT_LANGUAGE_HINTS.length; step += 1) {
-        language.dataset.defaultLanguageFit = String(step);
-        sayInto(languageHint, DEFAULT_LANGUAGE_HINTS[step]);
-        if (languageHint.getBoundingClientRect().width + 2 * DEPLOYMENT_GUTTER <= language.clientWidth) return true;
-      }
-      language.dataset.defaultLanguageFit = String(DEFAULT_LANGUAGE_HINTS.length);
-      languageHint.hidden = true;
-      return false;
+    const set = (node, name, value) => { if (node.getAttribute(name) !== value) node.setAttribute(name, value); };
+    const sayHint = (node, step, ladder) => {
+      const hidden = step >= ladder.length;
+      if (node.hidden !== hidden) node.hidden = hidden;
+      if (!hidden && (node.dataset.i18n !== ladder[step].key || node.textContent !== String(ladder[step]))) sayInto(node, ladder[step]);
     };
     const fit = () => {
       if (!assembly.getClientRects().length) return;
       width = measured.clientWidth;
-      if (!pair || !language) { fitReading(); return; }
-      pair.dataset.languageLayout = 'beside';
-      language.dataset.defaultLanguageFit = '0';
-      languageHint.hidden = false;
-      sayInto(languageHint, DEFAULT_LANGUAGE_HINTS[0]);
-      fitReading();
-      if (assembly.dataset.deploymentFit === '0' && pair.scrollWidth <= pair.clientWidth) return;
-      pair.dataset.languageLayout = 'below';
-      fitReading();
-      fitLanguageHint();
+      const room = measured.clientWidth - 2 * DEPLOYMENT_GUTTER;
+      const size = measureDeploymentLanguage(pair, assembly, language, hints);
+      const style = getComputedStyle(pair);
+      // Between the two: the pair's gap; the divider and the room after it are in the block's measured width.
+      const between = parseFloat(style.columnGap) || 0;
+      const beside = besideChain(size, between).find(([d, h]) => size.deployment[d] + between + size.language[h] <= room);
+      let deploymentStep;
+      let languageStep;
+      if (beside) {
+        [deploymentStep, languageStep] = beside;
+      } else {
+        deploymentStep = size.reading.findIndex(reading => reading + 2 * DEPLOYMENT_GUTTER <= measured.clientWidth);
+        if (deploymentStep < 0) deploymentStep = DEPLOYMENT_FIT_STACKED;
+        languageStep = size.hint.findIndex(hintWidth => hintWidth + 2 * DEPLOYMENT_GUTTER <= measured.clientWidth);
+        if (languageStep < 0) languageStep = DEFAULT_LANGUAGE_HINTS.length;
+      }
+      set(pair, 'data-language-layout', beside ? 'beside' : 'below');
+      set(assembly, 'data-deployment-fit', String(deploymentStep));
+      sayHint(hint, deploymentStep, hints);
+      set(language, 'data-default-language-fit', String(languageStep));
+      sayHint(languageHint, languageStep, DEFAULT_LANGUAGE_HINTS);
     };
     fit();
     if (typeof ResizeObserver === 'function') {
@@ -4898,6 +4946,8 @@
     const shown = await picker.language(defaultLanguage.state.locale);
     picker.paintButton(button, shown, t('settings.default_language.button', {language: shown.native}));
     button.disabled = false;
+    // Its flag and name are part of the block's width.
+    fitDeploymentType();
   }
 
   async function loadDefaultLanguage() {

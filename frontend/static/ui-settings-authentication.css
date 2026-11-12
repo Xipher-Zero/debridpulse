@@ -1079,20 +1079,38 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: 10px;
 }
 
-/* Deployment & Language: the Deployment Type assembly above, as it always
-   was, and the Default Language block -- its title over its one-line hint,
-   both centred, and the language button centred beneath them. Beside the
-   assembly, divided from it, while both fit at their full width (the
-   assembly keeps its full one-row reading); otherwise the whole block beneath
-   it (fitDeploymentType decides, data-language-layout). */
+/* Deployment & Language: the Deployment Type assembly, as it always was, and
+   the Default Language block -- its title over its one-line hint, both
+   centred, and the language button centred beneath them. Side by side, each
+   as wide as its own content and the two centred as one group, with the same
+   room on each side of the divider between them, while that fits; otherwise
+   the whole block beneath the assembly, centred (fitDeploymentType decides,
+   from measured natural widths, data-language-layout). The fitter measures on
+   hidden clones in its own zero-size box ([data-language-measure]), so the
+   card never shows a candidate it does not keep. */
 #view-settings .dp-settings-deployment-language {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px 24px;
   min-width: 0;
 }
 #view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-deployment {
-  flex: 1 1 0;
+  flex: 0 0 auto;
+}
+#view-settings .dp-settings-deployment-language > [data-language-measure] {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+#view-settings .dp-settings-deployment-language > [data-language-measure] > * {
+  width: max-content;
 }
 #view-settings .dp-settings-deployment-language[data-language-layout='below'] {
   flex-direction: column;
@@ -1106,7 +1124,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-width: 0;
   text-align: center;
 }
-#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-default-language {
+/* The divider and the room after it -- the same as the pair's gap before it --
+   are the side-by-side block's, and its measured clone's. */
+#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-default-language,
+#view-settings .dp-settings-deployment-language > [data-language-measure] > .dp-settings-default-language {
   flex: 0 0 auto;
   padding-inline-start: 24px;
   border-inline-start: 1px solid var(--dp-divider);
@@ -2029,11 +2050,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   transition: color .12s ease, background-color .12s ease, border-color .12s ease;
 }
 .dp-presentation-option:first-of-type {
-  border-radius: var(--dp-presentation-radius) 0 0 var(--dp-presentation-radius);
+  border-start-start-radius: var(--dp-presentation-radius);
+  border-end-start-radius: var(--dp-presentation-radius);
 }
+/* The edges are the reading direction's (logical), so a right-to-left
+   language rounds its own outer corners and keeps one seam between them. */
 .dp-presentation-option:last-of-type {
-  margin-left: -1px;
-  border-radius: 0 var(--dp-presentation-radius) var(--dp-presentation-radius) 0;
+  margin-inline-start: -1px;
+  border-start-end-radius: var(--dp-presentation-radius);
+  border-end-end-radius: var(--dp-presentation-radius);
 }
 .dp-presentation-option:hover {
   color: var(--dp-text-primary);

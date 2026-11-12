@@ -57,6 +57,19 @@ const rows = page => page.locator('.dp-language-list [role="radio"]').evaluateAl
     lang: node.querySelector('.dp-language-name')?.lang, dir: node.querySelector('.dp-language-name')?.dir})));
 const withoutRun = list => list.map(({value, checked, text}) => ({value, checked, text}));
 
+// A two-part control drawn as one (Easy | Advanced, the handheld theme toggle and its chevron): read in
+// screen order, its outer corners are round and its shared edge square, in either reading direction,
+// and the two meet on one line -- overlapping borders (-1) or one divider (0).
+const segmented = (page, first, second) => page.evaluate(([first, second]) => {
+  const [left, right] = [document.querySelector(first), document.querySelector(second)]
+    .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+  const s = node => getComputedStyle(node), r = value => parseFloat(value) > 0;
+  const seamLines = (s(left).borderRightWidth !== '0px') + (s(right).borderLeftWidth !== '0px');
+  return {outerRound: r(s(left).borderTopLeftRadius) && r(s(left).borderBottomLeftRadius) && r(s(right).borderTopRightRadius) && r(s(right).borderBottomRightRadius),
+    seamSquare: !r(s(left).borderTopRightRadius) && !r(s(left).borderBottomRightRadius) && !r(s(right).borderTopLeftRadius) && !r(s(right).borderBottomLeftRadius),
+    meet: Math.round(right.getBoundingClientRect().left - left.getBoundingClientRect().right), seamLines};
+}, [first, second]);
+
 test.beforeEach(async ({page}) => {
   await boot(page);
   await reset(page);
@@ -231,6 +244,9 @@ test('LP04: Default Language keeps a pending choice until Apply; Cancel and a re
 
 test('LP05: at 320px the language button wraps beneath Email, the card reads Deployment with the language block beneath, and nothing overflows', async ({page}) => {
   await boot(page, 320);
+  // The handheld theme toggle and its chevron: one capsule with one seam (English, left to right).
+  expect(await segmented(page, '.topbar-theme-control .theme-toggle', '.topbar-theme-control .dp-theme-picker-trigger'))
+    .toEqual({outerRound: true, seamSquare: true, meet: 0, seamLines: 1});
   await openAccount(page);
   const geometry = await page.evaluate(() => {
     const dialog = document.querySelector('.dp-account-dialog'), body = dialog.querySelector('.dp-modal-body');
@@ -310,17 +326,30 @@ test('LP07: a saved Arabic is the first paint at 320px -- right to left and veil
   await page.setViewportSize({width: 320, height: 760});
   await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
     window.__firstPaint = {lang: document.documentElement.lang, dir: document.documentElement.dir,
-      veiled: document.documentElement.hasAttribute('data-dp-locale-pending')};
+      veiled: document.documentElement.hasAttribute('data-dp-locale-pending'),
+      settings: document.querySelector('#sidebar .nav-item[data-view="settings"] .nav-label')?.textContent};
   }));
   await page.goto('/');
   await page.evaluate(() => window.DPI18n.ready);
-  expect(await page.evaluate(() => window.__firstPaint)).toEqual({lang: 'ar', dir: 'rtl', veiled: true});
+  // No English frame: before the body is shown the page is Arabic and right to left, and either still
+  // veiled or already in Arabic (a catalog that arrives first lifts the veil with its words in place).
+  const first = await page.evaluate(() => window.__firstPaint);
+  expect([first.lang, first.dir]).toEqual(['ar', 'rtl']);
+  expect(first.veiled || first.settings === arabic['shell.nav.settings']).toBe(true);
   expect(await page.evaluate(() => [document.documentElement.lang, document.documentElement.dir,
     document.documentElement.hasAttribute('data-dp-locale-pending')])).toEqual(['ar', 'rtl', false]);
   await expect(page.locator('#page-title')).toHaveText(arabic['shell.page.dashboard.title']);
 
+  // Right to left, both two-part controls keep their outer corners round and one square seam.
+  expect(await segmented(page, '.topbar-theme-control .theme-toggle', '.topbar-theme-control .dp-theme-picker-trigger'))
+    .toEqual({outerRound: true, seamSquare: true, meet: 0, seamLines: 1});
   await page.locator('#topbar-account-button').click();
   await expect(account(page).locator('[data-account-language]')).toHaveText('🇸🇦العربية');
+  expect(await segmented(page, '.dp-account-dialog .dp-presentation-option:first-of-type', '.dp-account-dialog .dp-presentation-option:last-of-type'))
+    .toEqual({outerRound: true, seamSquare: true, meet: -1, seamLines: 2});
+  // ... in reading order: Easy at the start (the right), Advanced at its end.
+  expect(await page.evaluate(() => [...document.querySelectorAll('.dp-account-dialog .dp-presentation-option')].map(node => Math.round(node.getBoundingClientRect().left))
+    .reduce((first, second) => first > second))).toBe(true);
   await expect(account(page).locator('.dp-modal-title')).toHaveText(arabic['account.title']);
   await account(page).locator('[data-account-language]').click();
   const shown = await rows(page);
@@ -334,4 +363,44 @@ test('LP07: a saved Arabic is the first paint at 320px -- right to left and veil
   await account(page).locator('.dp-account-header-end .dp-settings-help-chip').click();
   const help = page.locator('.dp-modal-dialog').last();
   await expect(help.locator('[data-i18n="help.my_account.language"]')).toHaveText(arabic['help.my_account.language']);
+});
+
+test('LP08: Deployment & Language keeps its two blocks side by side and centred while they fit, stacks only when they do not, and fits once', async ({page}) => {
+  const card = () => page.evaluate(() => {
+    const c = document.querySelector('.dp-settings-deployment-card'), pair = c.querySelector('.dp-settings-deployment-language');
+    const body = c.querySelector('.card-body').getBoundingClientRect(), pad = parseFloat(getComputedStyle(c.querySelector('.card-body')).paddingLeft);
+    const span = el => { const boxes = [...el.children].filter(n => n.getClientRects().length).map(n => n.getBoundingClientRect());
+      return {left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right))}; };
+    const d = span(c.querySelector('.dp-settings-deployment')), l = span(c.querySelector('[data-default-language]'));
+    const divider = c.querySelector('[data-default-language]').getBoundingClientRect().left;
+    const left = Math.min(d.left, l.left), right = Math.max(d.right, l.right);
+    return {layout: pair.dataset.languageLayout, centred: Math.abs((left + right) / 2 - (body.left + body.right) / 2) <= 1,
+      roomBefore: Math.round(divider - d.right), roomAfter: Math.round(l.left - divider - 1),
+      deploymentFit: c.querySelector('.dp-settings-deployment').dataset.deploymentFit,
+      clipped: [...c.querySelectorAll('.form-label, .form-hint, button')].some(n => n.getClientRects().length && n.scrollWidth > n.clientWidth + 1)};
+  });
+  // The default language's read is held, so the card is fitted before its button is filled.
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/settings/default-locale', async route => { if (route.request().method() === 'GET') await held; await route.continue(); });
+  await page.setViewportSize({width: 700, height: 900});
+  await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
+  await page.locator('.dp-settings-tabs [data-tab="users"]').click();
+  await expect(page.locator('.dp-settings-deployment-card')).toBeVisible();
+  // The card's own attributes only: the fitter's measuring clones are removed as soon as measured.
+  await page.evaluate(() => { window.__layoutWrites = 0;
+    new MutationObserver(list => { window.__layoutWrites += list.filter(m => m.target.isConnected).length; }).observe(document.querySelector('.dp-settings-deployment-card'),
+      {subtree: true, attributes: true, attributeFilter: ['data-language-layout', 'data-deployment-fit', 'data-default-language-fit']}); });
+  release();
+  await expect(page.locator('[data-user-action="default-language"] .dp-language-name')).toHaveText('English');
+  // At 700px both fit side by side once the deployment hint takes its approved shorter wording.
+  expect(await card()).toEqual({layout: 'beside', centred: true, roomBefore: 24, roomAfter: 24, deploymentFit: '1', clipped: false});
+  expect(await page.evaluate(() => window.__layoutWrites)).toBe(0);           // the button's arrival changed nothing
+  await page.setViewportSize({width: 1440, height: 900});
+  await expect.poll(async () => (await card()).deploymentFit).toBe('0');
+  expect(await card()).toEqual({layout: 'beside', centred: true, roomBefore: 24, roomAfter: 24, deploymentFit: '0', clipped: false});
+  await page.setViewportSize({width: 420, height: 800});
+  await expect.poll(async () => (await card()).layout).toBe('below');
+  const stacked = await card();
+  expect([stacked.centred, stacked.clipped]).toEqual([true, false]);
 });
