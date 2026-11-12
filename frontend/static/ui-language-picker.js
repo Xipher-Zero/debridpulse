@@ -29,10 +29,13 @@
 
   let manifest = null;
 
-  /* The manifest's locales, read once per page (a failed read is tried again). */
+  /* The manifest's locales, read once per page (a failed read is tried again),
+   * always revalidated with the server (no-cache: an unchanged file is a 304),
+   * so a changed admission -- a language activated or withdrawn -- is the list
+   * the next page offers, never a copy a browser kept. */
   function locales() {
     if (!manifest) {
-      manifest = fetch('/i18n/manifest.json', {credentials: 'same-origin', headers: {Accept: 'application/json'}})
+      manifest = fetch('/i18n/manifest.json', {credentials: 'same-origin', cache: 'no-cache', headers: {Accept: 'application/json'}})
         .then(response => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
         .then(document => document.locales || {})
         .catch(error => { manifest = null; throw error; });

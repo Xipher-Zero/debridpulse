@@ -1,8 +1,9 @@
 # Localization
 
-DebridPulse 1.0.14 status: **WS0–WS7 complete: 18 complete, AI-reviewed target catalogs, all still
-`planned`. The language choice exists (My Account, and the installation default under Users & Access →
-Deployment & Language, §5); with every target `planned` it offers English only.** The operating guide, the per-language readiness matrix and the
+DebridPulse 1.0.14 status: **WS0–WS7 complete: 18 complete, AI-reviewed target catalogs, all
+`supported` since their activation on the development branch (2026-11-11). The language choice (My
+Account, and the installation default under Users & Access → Deployment & Language, §5) offers English
+and the 18 targets.** The operating guide, the per-language readiness matrix and the
 release-decision ledger (what is verified, corrected, accepted, unresolved and activation-dependent) are in
 [`LOCALIZATION_RELEASE.md`](LOCALIZATION_RELEASE.md). The runtime, the catalogs, the validators,
 the pseudo locales, the per-account language and the coded-error seam exist.
@@ -62,8 +63,8 @@ These surfaces read the catalog:
   headings and answers.
 
 The census finds no first-party interface literal outside the catalog or the
-reviewed exemptions. No target is offered while every target is `planned`: the
-language choice (§5) lists English and the `supported` targets only.
+reviewed exemptions. The language choice (§5) lists English and the `supported`
+targets only -- since the activation, all 18.
 
 WS5-0 adds the translation tooling a language candidate is qualified with (§4,
 WS5 translation checks): the concept register and protected names, termbases and
@@ -132,8 +133,8 @@ layout and bidi isolation are WS6 qualification work. It passes `validate.mjs --
 and stays `planned`.
 
 Progress: all 18 production targets have complete, reviewed catalogs (de, fr, es, it, pt-BR,
-pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant, ar), all still `planned`; none is
-activated. WS6 qualified right-to-left layout, CJK typography, dialogs, focus and first paint (WS6-A–C).
+pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant, ar); all 18 were activated together
+(`supported`) on 2026-11-11, after the language choice landed. WS6 qualified right-to-left layout, CJK typography, dialogs, focus and first paint (WS6-A–C).
 WS7-A shortened six languages' page names, in text only, so that every page title and dock label fits the
 unchanged interface at 320 px. WS7-B reconciled the Help with those names and qualified CI, release-cut
 debt, delivery and fallback (`LOCALIZATION_RELEASE.md`).
@@ -212,10 +213,12 @@ A `planned` target is never admitted, and the test setting does not admit one.
 Choosing a locale that is not admitted returns 422 and changes nothing. A
 stored value that is not (or is no longer) admitted, such as an older build's
 planned tag, reads as English and is left as stored. Every target in the
-repository is `planned`, so today an account can hold English only. Tests
-that need a supported target point `STATIC_DIR` at a synthetic catalog
-directory (test doubles, not translations); no production setting admits a
-planned locale.
+repository is `supported`, so an account can hold English or any of the 18.
+Tests that need a planned or a withdrawn target point `STATIC_DIR` at a
+synthetic catalog directory (test doubles, not translations), or start from
+the development manifest (`_development_manifest` in
+`test_localization_catalogs.py`); no production setting admits a planned
+locale.
 
 **Pseudo locales** are for tests only and are never offered:
 

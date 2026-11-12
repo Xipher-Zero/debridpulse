@@ -60,13 +60,17 @@ SUPPORTED = ("de", "ar")       # synthetic: supported only inside the ``supporte
 def supported(tmp_path, monkeypatch):
     """A synthetic catalog directory whose manifest marks ``de`` and ``ar``
     supported, each with a one-key catalog made from the current English
-    (a test double), served through ``STATIC_DIR``."""
+    (a test double), and every other target planned, served through
+    ``STATIC_DIR`` -- whatever the repository's own manifest admits."""
     source = localization.catalog_dir()
     i18n = tmp_path / "static" / "i18n"
     i18n.mkdir(parents=True)
     shutil.copy(source / "en.json", i18n / "en.json")
     english = json.loads((i18n / "en.json").read_text(encoding="utf-8"))["messages"]
     manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+    for info in manifest["locales"].values():
+        if info["status"] == "supported":
+            info["status"] = "planned"
     for tag in SUPPORTED:
         manifest["locales"][tag]["status"] = "supported"
         key = "shell.nav.dashboard"
@@ -76,6 +80,15 @@ def supported(tmp_path, monkeypatch):
     (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setenv("STATIC_DIR", str(tmp_path / "static"))
     return i18n
+
+
+def _withdraw(i18n, *tags):
+    """The installation stops supporting these targets: the ``supported``
+    fixture's manifest marks them planned again (their catalogs stay)."""
+    manifest = json.loads((i18n / "manifest.json").read_text(encoding="utf-8"))
+    for tag in tags:
+        manifest["locales"][tag]["status"] = "planned"
+    (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
 async def _store_raw(account_id: str, tag: str):
@@ -166,30 +179,48 @@ async def test_an_unknown_or_foreign_choice_is_refused_and_changes_nothing(live,
     assert await _stored(DEFAULT_ADMIN_ID) is None
 
 
-async def test_production_admits_english_and_supported_targets_only_never_a_planned_one(live, tmp_path, monkeypatch):
+TARGETS = ("es", "fr", "de", "it", "pt-BR", "nl", "pt-PT", "pl", "tr", "ru", "uk", "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant", "ar")
+
+
+async def test_production_admits_english_and_supported_targets_only_never_a_planned_one(live, tmp_path, monkeypatch, config_file):
     client, as_ = live.client, live.as_
-    # The repository as shipped: every target is planned, so English only.
-    assert localization.locale_tags() == ("en",)
-    for tag in ("de", "ar", "ja", "es", "pt-BR", "zh-Hans"):
-        refused = await client.put(OWN, headers=as_("alice"), json={"locale": tag})
-        assert refused.status_code == 422, (tag, refused.text)
-    assert await _stored(live.people["alice"].id) is None
-    assert (await client.put(OWN, headers=as_("alice"), json={"locale": "en"})).json() == said("en", "en")
-    # Test locales admit the pseudo locales and nothing else.
+    alice = live.people["alice"].id
+    # The repository as shipped: English and the 18 activated targets, in the manifest's order.
+    assert localization.locale_tags() == ("en", *TARGETS)
+    # Each is an account's own choice and the installation's default, read back as saved.
+    for tag in TARGETS:
+        assert (await client.put(OWN, headers=as_("alice"), json={"locale": tag})).json() == said(tag, tag), tag
+    for tag in TARGETS:
+        assert (await client.put(DEFAULT, headers=as_("admin"), json={"locale": tag})).json() == {"locale": tag, "configured": tag}, tag
+    assert (await client.put(OWN, headers=as_("alice"), json={"locale": "en"})).json() == said("en", "en", "ar")
+    # Never a pseudo locale, an unknown tag or a variant of a known one, on either surface; nothing changes.
+    before = config_file.read_bytes()
+    for tag in ("en-XA", "ar-XB", "xx", "EN", "DE", "de-DE", "pt", "zh", "ar-SA"):
+        assert (await client.put(OWN, headers=as_("alice"), json={"locale": tag})).status_code == 422, tag
+        refused = await client.put(DEFAULT, headers=as_("admin"), json={"locale": tag})
+        assert refused.status_code == 422 and [item["code"] for item in refused.json()["detail"]] == ["appearance.locale_unknown"], (tag, refused.text)
+    assert await _stored(alice) == ("en", None) and config_file.read_bytes() == before
+    # Test locales add the pseudo locales and nothing else.
     monkeypatch.setenv(localization.TEST_LOCALES_ENV, "1")
-    assert localization.locale_tags() == ("en", "en-XA", "ar-XB")
-    assert (await client.put(OWN, headers=as_("alice"), json={"locale": "de"})).status_code == 422
+    assert localization.locale_tags() == ("en", *TARGETS, "en-XA", "ar-XB")
     monkeypatch.delenv(localization.TEST_LOCALES_ENV)
-    # Supported is the manifest's status AND a readable catalog: without the
-    # catalog, or with an unreadable one, the target is not admitted.
+    # A planned target is never admitted: the same manifest with de planned again.
     i18n = tmp_path / "static" / "i18n"
     i18n.mkdir(parents=True)
-    shutil.copy(localization.catalog_dir() / "en.json", i18n / "en.json")
+    for name in ("en.json", "de.json"):
+        shutil.copy(localization.catalog_dir() / name, i18n / name)
     manifest = json.loads((localization.catalog_dir() / "manifest.json").read_text(encoding="utf-8"))
-    manifest["locales"]["de"]["status"] = "supported"
+    manifest["locales"]["de"]["status"] = "planned"
     (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setenv("STATIC_DIR", str(tmp_path / "static"))
-    assert localization.locale_tags() == ("en",)
+    assert "de" not in localization.locale_tags()
+    assert (await client.put(OWN, headers=as_("alice"), json={"locale": "de"})).status_code == 422
+    # Supported is the manifest's status AND a readable catalog: without the
+    # catalog, or with an unreadable one, the target is not admitted.
+    manifest["locales"]["de"]["status"] = "supported"
+    (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (i18n / "de.json").unlink()
+    assert localization.locale_tags() == ("en",)            # the other targets have no catalog here either
     (i18n / "de.json").write_text("{not json", encoding="utf-8")
     assert localization.locale_tags() == ("en",)
     assert (await client.put(OWN, headers=as_("alice"), json={"locale": "de"})).status_code == 422
@@ -206,7 +237,7 @@ async def test_a_stored_tag_that_is_not_admitted_reads_as_english_and_stays_stor
     assert (await client.get(OWN, headers=as_("bob"))).json() == said("en", "ja")
     assert _projection((await client.get(SCRIPT, headers=as_("bob"))).text)["locale"] == "en"
     # The installation stops supporting de: alice reads English, her value kept.
-    monkeypatch.delenv("STATIC_DIR")
+    _withdraw(supported, "de")
     assert (await client.get(OWN, headers=as_("alice"))).json() == said("en", "de")
     assert _projection((await client.get(SCRIPT, headers=as_("alice"))).text) == {
         "owned": True, "locale": "en", "dir": "ltr", "status": "canonical", "catalog": None}
@@ -284,8 +315,8 @@ async def test_the_catalog_asset_is_the_catalog_versioned_by_its_content(live):
     etag = served.headers["etag"]
     assert etag == f'"{localization.catalog_version("en")}"'
     assert (await client.get("/i18n/en.js", headers={**as_("reader"), "If-None-Match": etag})).status_code == 304
-    # A planned target with a catalog (WS5-A1 German; since WS5-D every target, Arabic included) is a
-    # fetchable development asset: it is delivered, but never admitted as an account's language
+    # Every target's catalog (WS5-A1 German; since WS5-D every target, Arabic included) is delivered
+    # alike; whether an account may hold the language is the manifest's status
     # (test_production_admits_english_and_supported_targets_only_never_a_planned_one).
     german = await client.get("/i18n/de.js", headers=as_("reader"))
     assert german.status_code == 200 and german.text.startswith('window.DPI18nCatalog("de",')
@@ -454,8 +485,8 @@ async def test_a_default_that_is_not_admitted_reads_as_english_and_stays_stored(
     client, as_ = live.client, live.as_
     await client.put(DEFAULT, headers=as_("admin"), json={"locale": "de"})
     await client.put(OWN, headers=as_("bob"), json={"locale": "ar"})
-    # The installation stops supporting de and ar (the repository manifest: all planned).
-    monkeypatch.delenv("STATIC_DIR")
+    # The installation stops supporting de and ar.
+    _withdraw(supported, "de", "ar")
     assert (await client.get(DEFAULT, headers=as_("admin"))).json() == {"locale": "en", "configured": "de"}
     assert (await client.get(OWN, headers=as_("alice"))).json() == said("en", None, "en")
     # bob's own choice is withdrawn too: English, never the default, and kept.
@@ -530,3 +561,25 @@ async def test_the_open_default_admin_sets_the_default_and_inherits_it_across_de
         assert (await client.get(OWN)).json() == said(tag, None, tag)
         assert _projection((await client.get(SCRIPT)).text)["locale"] == tag
     assert await _stored(DEFAULT_ADMIN_ID) is None
+
+
+async def test_the_activated_manifest_changes_no_one_and_keeps_each_choice_its_owners(live, config_file):
+    """On the repository's own manifest (no fixture): activation alone writes nothing -- a fresh
+    account and the default are English and unset -- and with a German default an account's
+    explicit French is its own, an account without one inherits, and only an Admin sets it."""
+    client, as_ = live.client, live.as_
+    alice, bob = live.people["alice"].id, live.people["bob"].id
+    assert (await client.get(OWN, headers=as_("bob"))).json() == said("en", None)
+    assert (await client.get(DEFAULT, headers=as_("admin"))).json() == {"locale": "en", "configured": None}
+    assert await _stored(bob) is None and _saved(config_file)["default_locale"] is None
+
+    assert (await client.put(OWN, headers=as_("alice"), json={"locale": "fr"})).json() == said("fr", "fr")
+    assert (await client.put(DEFAULT, headers=as_("admin"), json={"locale": "de"})).json() == {"locale": "de", "configured": "de"}
+    assert (await client.get(OWN, headers=as_("alice"))).json() == said("fr", "fr", "de")      # another account's choice: untouched
+    assert (await client.get(OWN, headers=as_("bob"))).json() == said("de", None, "de")        # inherits
+    assert (await client.get(OWN, headers=as_("admin"))).json() == said("de", None, "de")
+    assert _projection((await client.get(SCRIPT, headers=as_("bob"))).text)["catalog"].startswith("/i18n/de.js?v=")
+    for name in ("alice", "reader", "integration"):
+        assert (await client.put(DEFAULT, headers=as_(name), json={"locale": "ar"})).status_code == 403, name
+    assert (await client.put(DEFAULT, json={"locale": "ar"})).status_code == 401
+    assert _saved(config_file)["default_locale"] == "de" and await _stored(alice) == ("fr", None) and await _stored(bob) is None

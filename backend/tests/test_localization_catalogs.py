@@ -40,12 +40,24 @@ def _validate(i18n: Path = I18N, meta: Path = META, *flags: str) -> tuple[int, d
     return done.returncode, json.loads(done.stdout)
 
 
+def _development_manifest() -> dict:
+    """The repository's locale manifest with every target ``planned``, the state a
+    synthetic catalog set starts from: its own targets are what it declares, and a case
+    that needs a ``supported`` one marks it so -- the repository's own activation (all 18
+    supported) never decides what a synthetic case proves."""
+    manifest = json.loads((I18N / "manifest.json").read_text(encoding="utf-8"))
+    for info in manifest["locales"].values():
+        if info["status"] == "supported":
+            info["status"] = "planned"
+    return manifest
+
+
 def _scratch(tmp_path: Path, *, english=None, meta=None, catalogs=None, manifest=None) -> tuple[Path, Path]:
     i18n = tmp_path / "i18n"
     i18n.mkdir()
     source = json.loads((I18N / "en.json").read_text(encoding="utf-8"))
     source_meta = json.loads(META.read_text(encoding="utf-8"))
-    source_manifest = json.loads((I18N / "manifest.json").read_text(encoding="utf-8"))
+    source_manifest = _development_manifest()
     if english:
         source["messages"].update(english)
     if meta:
@@ -73,18 +85,21 @@ def test_the_repository_catalogs_validate_and_report_their_translation_debt():
     assert code == 0, report["errors"]
     english = json.loads((I18N / "en.json").read_text(encoding="utf-8"))["messages"]
     assert report["keys"] == len(english) >= 150
-    # Every target is planned and, since WS5-D, every one has a catalog: WS5-A1 (de), WS5-A2 (fr, es,
-    # it), WS5-A3 (pt-BR, pt-PT, nl), WS5-B1 (pl, ru, uk), WS5-B2 (tr, id, hi), WS5-C1 (ja, ko), WS5-C2
-    # (zh-Hans, zh-Hant) and WS5-D (ar): complete, reviewed catalogs, still planned (never admitted).
+    # Every target has a catalog: WS5-A1 (de), WS5-A2 (fr, es, it), WS5-A3 (pt-BR, pt-PT, nl), WS5-B1
+    # (pl, ru, uk), WS5-B2 (tr, id, hi), WS5-C1 (ja, ko), WS5-C2 (zh-Hans, zh-Hant) and WS5-D (ar):
+    # complete, reviewed catalogs, all 18 supported since their activation (an account may hold each).
     targets = ("de", "fr", "es", "it", "pt-BR", "pt-PT", "nl", "pl", "ru", "uk", "tr", "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant", "ar")
     assert set(report["locales"]) == set(targets)             # no target dropped, none without a catalog
     for tag in targets:
         row = report["locales"][tag]
-        assert row["status"] == "planned" and row["catalog"] and row["termbase"] and row["ledger"], tag
+        assert row["status"] == "supported" and row["catalog"] and row["termbase"] and row["ledger"], tag
         assert (row["missing"], row["stale"], row["unreviewed"], row["noBackTranslation"], len(row["openFindings"])) == (0, 0, 0, 0, 0), tag
         code, complete = _validate(I18N, META, f"--complete={tag}")
         assert code == 0, (tag, complete["errors"])
     assert "en-XA" not in report["locales"]                   # pseudo locales carry no debt
+    # Supported means zero debt: the strict check of every supported locale passes on this manifest.
+    code, strict = _validate(I18N, META, "--release")
+    assert code == 0, strict["errors"]
 
 
 @needs_node
@@ -362,8 +377,7 @@ def _minimal(tmp_path, *, entries=None, terms=None):
                "account.clear.warning": "Anyone who can reach DebridPulse can sign in."}
     meta = {key: _meta(owner="frontend/static/auth.js", criticality="critical-warning" if key == "account.clear.warning" else "normal")
             for key in english}
-    manifest = json.loads((I18N / "manifest.json").read_text(encoding="utf-8"))
-    (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (i18n / "manifest.json").write_text(json.dumps(_development_manifest()), encoding="utf-8")
     (i18n / "en.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "en", "messages": english}), encoding="utf-8")
     (tmp_path / "en.meta.json").write_text(json.dumps({"schema": "debridpulse-catalog-meta/1", "locale": "en", "meta": meta}), encoding="utf-8")
     (tmp_path / "labels.json").write_text(json.dumps({"schema": "debridpulse-help-labels/1", "spans": {"help.minimal.open": [
@@ -605,7 +619,11 @@ def test_the_english_catalog_asset_is_versioned_by_its_content_and_the_server_re
     assert index.index('/ui-i18n-formatter.js') < index.index(f"/i18n/en.js?v={version}") < index.index('/app.js?v=')
     assert set(localization.manifest()["locales"]) >= {"en", "es", "fr", "de", "it", "pt-BR", "nl", "pt-PT", "pl", "tr",
                                                         "ru", "uk", "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant", "ar"}
-    assert all(info["status"] in ("canonical", "planned", "pseudo") for info in localization.manifest()["locales"].values())
+    # The activation: English canonical, the 18 targets supported, the two pseudo locales test-only.
+    census = {tag: info["status"] for tag, info in localization.manifest()["locales"].items()}
+    assert census == {"en": "canonical", **dict.fromkeys(("es", "fr", "de", "it", "pt-BR", "nl", "pt-PT", "pl", "tr", "ru", "uk",
+                                                          "id", "hi", "ja", "ko", "zh-Hans", "zh-Hant", "ar"), "supported"),
+                      "en-XA": "pseudo", "ar-XB": "pseudo"}
 
 
 def _function(source: str, name: str) -> str:

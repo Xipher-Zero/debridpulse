@@ -4,15 +4,26 @@ const { test, expect } = require('@playwright/test');
  * chosen) and Users & Access → Deployment & Language's default language
  * (saved by Apply), both through the one language list (ui-language-picker.js).
  *
- * This runs on the release image's own manifest, where every target is
- * planned: the list offers Use system default and English, and nothing
- * planned. The state the server holds is read back through the API each time
- * (the stored preference and the language shown are separate facts);
- * failures are the server's own answer replaced by the test. Real languages,
- * right-to-left and a translated first paint are qualified on an isolated
- * supported-locale fixture, outside this suite. The open installation's
+ * This runs on the image's own manifest, where English and all 18 targets
+ * are supported: both lists offer exactly those 19 (LANGUAGES, written out
+ * here from the manifest and the approved flag table), never a pseudo locale.
+ * The state the server holds is read back through the API each time (the
+ * stored preference and the language shown are separate facts); failures are
+ * the server's own answer replaced by the test. The open installation's
  * default Admin; synthetic values only. Each case leaves the account with no
- * language of its own. */
+ * language of its own and the default English. */
+
+// [tag, flag, native name, direction], in the manifest's order.
+const LANGUAGES = [
+  ['en', '🇺🇸', 'English', 'ltr'], ['es', '🇪🇸', 'Español', 'ltr'], ['fr', '🇫🇷', 'Français', 'ltr'],
+  ['de', '🇩🇪', 'Deutsch', 'ltr'], ['it', '🇮🇹', 'Italiano', 'ltr'], ['pt-BR', '🇧🇷', 'Português (Brasil)', 'ltr'],
+  ['nl', '🇳🇱', 'Nederlands', 'ltr'], ['pt-PT', '🇵🇹', 'Português (Portugal)', 'ltr'], ['pl', '🇵🇱', 'Polski', 'ltr'],
+  ['tr', '🇹🇷', 'Türkçe', 'ltr'], ['ru', '🇷🇺', 'Русский', 'ltr'], ['uk', '🇺🇦', 'Українська', 'ltr'],
+  ['id', '🇮🇩', 'Bahasa Indonesia', 'ltr'], ['hi', '🇮🇳', 'हिन्दी', 'ltr'], ['ja', '🇯🇵', '日本語', 'ltr'],
+  ['ko', '🇰🇷', '한국어', 'ltr'], ['zh-Hans', '🇨🇳', '简体中文', 'ltr'], ['zh-Hant', '🇹🇼', '繁體中文', 'ltr'],
+  ['ar', '🇸🇦', 'العربية', 'rtl']];
+const listed = (checked = null) => LANGUAGES.map(([tag, flag, native, dir]) =>
+  ({value: tag, checked: tag === checked, text: `${flag}${native}`, lang: tag, dir}));
 
 const ownLocale = page => page.evaluate(() => fetch('/api/account/locale').then(response => response.json()));
 const defaultLocale = page => page.evaluate(() => fetch('/api/settings/default-locale').then(response => response.json()));
@@ -33,16 +44,25 @@ async function openAccount(page) {
   await expect(account(page).locator('[data-account-language] .dp-language-name')).toHaveText('English');
 }
 
-async function clearOwn(page) {
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/account/locale', {method: 'PUT',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({locale: null})}));
+const put = (page, path, body) => page.evaluate(([path, body]) => window.debridPulseAuth.fetch(path, {method: 'PUT',
+  headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(response => response.status), [path, body]);
+
+async function reset(page) {
+  await put(page, '/api/account/locale', {locale: null});
+  await put(page, '/api/settings/default-locale', {locale: 'en'});
 }
 
 const rows = page => page.locator('.dp-language-list [role="radio"]').evaluateAll(nodes =>
-  nodes.map(node => ({value: node.dataset.value, checked: node.getAttribute('aria-checked') === 'true', text: node.textContent.trim()})));
+  nodes.map(node => ({value: node.dataset.value, checked: node.getAttribute('aria-checked') === 'true', text: node.textContent.trim(),
+    lang: node.querySelector('.dp-language-name')?.lang, dir: node.querySelector('.dp-language-name')?.dir})));
+const withoutRun = list => list.map(({value, checked, text}) => ({value, checked, text}));
 
-test.beforeEach(async ({page}) => { await boot(page); await clearOwn(page); });
-test.afterEach(async ({page}) => { await clearOwn(page); });
+test.beforeEach(async ({page}) => {
+  await boot(page);
+  await reset(page);
+  if (await page.evaluate(() => window.DPI18n.locale()) !== 'en') await boot(page);
+});
+test.afterEach(async ({page}) => { await reset(page); });
 
 test('LP01: My Account shows the language as a flag and its name, and its list is a view of the same dialog with Use system default checked', async ({page}) => {
   await openAccount(page);
@@ -60,11 +80,15 @@ test('LP01: My Account shows the language as a flag and its name, and its list i
   await expect(account(page).locator('[data-modal-accept]')).toBeHidden();
   await expect(account(page).locator('[data-modal-cancel]')).toHaveText('Back');
   await expect(page.getByRole('radiogroup', {name: 'Language'})).toBeVisible();
-  // English and the supported targets only: none is supported in this image.
-  expect(await rows(page)).toEqual([
-    {value: '', checked: true, text: 'Use system default🇺🇸English'},
-    {value: 'en', checked: false, text: '🇺🇸English'}]);
+  // Use system default, then English and the 18 supported targets: 19 languages, no pseudo locale.
+  const shown = await rows(page);
+  expect(withoutRun(shown.slice(0, 1))).toEqual([{value: '', checked: true, text: 'Use system default🇺🇸English'}]);
+  expect(shown.slice(1)).toEqual(listed());
+  expect(shown.map(row => row.value)).not.toContain('en-XA');
+  expect(shown.map(row => row.value)).not.toContain('ar-XB');
   await expect(page.getByRole('radio', {name: /Use system default/})).toBeFocused();
+  // Each flag is decoration; a row is named by its language alone.
+  await expect(page.getByRole('radio', {name: 'Deutsch', exact: true})).toHaveCount(1);
   // One tab stop; the arrows and Home/End move along the list without choosing.
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('radio', {name: 'English', exact: true})).toBeFocused();
@@ -166,33 +190,43 @@ test('LP04: Default Language keeps a pending choice until Apply; Cancel and a re
   await button.click();
   await expect(languageDialog(page)).toBeVisible();
   await expect(page.locator('.dp-modal-overlay')).toHaveCount(1);
-  // No Use system default here: the default is a language.
-  expect((await rows(page)).map(row => row.value)).toEqual(['en']);
-  await page.getByRole('radio', {name: 'English', exact: true}).click();
+  // No Use system default here: the default is one of the same 19 languages.
+  expect(await rows(page)).toEqual(listed('en'));
+  // A row is only the pending choice: Cancel discards it.
+  await page.getByRole('radio', {name: 'Deutsch', exact: true}).click();
+  expect((await rows(page)).filter(row => row.checked).map(row => row.value)).toEqual(['de']);
   await languageDialog(page).locator('[data-modal-cancel]').click();
   await expect(languageDialog(page)).toHaveCount(0);
   await expect(button).toBeFocused();
   expect(saves).toEqual([]);
+  expect(await defaultLocale(page)).toEqual(before);
 
   await page.route('**/api/settings/default-locale', route => (route.request().method() === 'PUT'
     ? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'synthetic failure', code: 'unclassified', params: {}})})
     : route.continue()));
   await button.click();
-  await page.getByRole('radio', {name: 'English', exact: true}).click();
+  await page.getByRole('radio', {name: 'Deutsch', exact: true}).click();
   await languageDialog(page).locator('[data-modal-accept]').click();
   const error = languageDialog(page).locator('.dp-language-error');
   await expect(error).toHaveText('The default language could not be saved. Apply it again, or cancel.');
   await expect(languageDialog(page)).toBeVisible();
-  expect((await rows(page)).filter(row => row.checked).map(row => row.value)).toEqual(['en']);
+  expect((await rows(page)).filter(row => row.checked).map(row => row.value)).toEqual(['de']);
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
   await page.unroute('**/api/settings/default-locale');
   expect(await defaultLocale(page)).toEqual(before);
 
+  // Apply saves the pending choice once; this Admin has no language of its own, so it follows at once.
   await languageDialog(page).locator('[data-modal-accept]').click();
   await expect(languageDialog(page)).toHaveCount(0);
-  expect(await defaultLocale(page)).toEqual({locale: 'en', configured: 'en'});
-  expect(saves).toEqual([{locale: 'en'}, {locale: 'en'}]);
-  // The account still has no language of its own: it follows the default.
-  expect(await ownLocale(page)).toEqual({locale: 'en', preference: null, default: 'en'});
+  expect(await defaultLocale(page)).toEqual({locale: 'de', configured: 'de'});
+  expect(saves).toEqual([{locale: 'de'}, {locale: 'de'}]);
+  expect(await ownLocale(page)).toEqual({locale: 'de', preference: null, default: 'de'});
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('de');
+  await expect(button.locator('.dp-language-name')).toHaveText('Deutsch');
+  // An explicit English is the account's own: a new default does not move it.
+  expect(await put(page, '/api/account/locale', {locale: 'en'})).toBe(200);
+  expect(await put(page, '/api/settings/default-locale', {locale: 'ja'})).toBe(200);
+  expect(await ownLocale(page)).toEqual({locale: 'en', preference: 'en', default: 'ja'});
 });
 
 test('LP05: at 320px the language button wraps beneath Email, the card reads Deployment with the language block beneath, and nothing overflows', async ({page}) => {
@@ -238,4 +272,66 @@ test('LP05: at 320px the language button wraps beneath Email, the card reads Dep
   });
   expect(dialogFit).toEqual({inView: true, listAbove: true});
   await languageDialog(page).locator('[data-modal-cancel]').click();
+});
+
+test('LP06: German chosen in My Account switches the page after the save, keeps the draft, and Use system default returns it to the default', async ({page}) => {
+  await openAccount(page);
+  const name = account(page).locator('[data-field="display_name"]');
+  const draft = `Entwurf ${Date.now().toString(36)}`;
+  await name.fill(draft);
+  const german = await page.evaluate(() => fetch('/i18n/de.json').then(response => response.json()).then(catalog => catalog.messages));
+  await account(page).locator('[data-account-language]').click();
+  await page.getByRole('radio', {name: 'Deutsch', exact: true}).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('de');
+  await expect(account(page).locator('[data-account-view="profile"]')).toBeVisible();
+  await expect(account(page).locator('.dp-modal-title')).toHaveText(german['account.title']);
+  await expect(account(page).locator('[data-modal-accept]')).toHaveText(german['common.save']);
+  await expect(account(page).locator('[data-account-language]')).toHaveText('🇩🇪Deutsch');
+  await expect(account(page).locator('[data-account-language]')).toBeFocused();
+  await expect(name).toHaveValue(draft);
+  expect(await ownLocale(page)).toEqual({locale: 'de', preference: 'de', default: 'en'});
+  await expect(page.locator('#sidebar .nav-item[data-view="settings"] .nav-label')).toHaveText(german['shell.nav.settings']);
+
+  await account(page).locator('[data-account-language]').click();
+  expect((await rows(page)).filter(row => row.checked).map(row => row.value)).toEqual(['de']);
+  await page.getByRole('radio', {name: /Use system default|Systemstandard/}).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en');
+  await expect(name).toHaveValue(draft);
+  expect(await ownLocale(page)).toEqual({locale: 'en', preference: null, default: 'en'});
+  // The profile's Cancel does not undo a saved language.
+  await account(page).locator('[data-modal-cancel]').click();
+  await expect(account(page)).toHaveCount(0);
+  expect(await ownLocale(page)).toEqual({locale: 'en', preference: null, default: 'en'});
+});
+
+test('LP07: a saved Arabic is the first paint at 320px -- right to left and veiled, never English first -- and the list and Help say it', async ({page}) => {
+  expect(await put(page, '/api/account/locale', {locale: 'ar'})).toBe(200);
+  const arabic = await page.evaluate(() => fetch('/i18n/ar.json').then(response => response.json()).then(catalog => catalog.messages));
+  await page.setViewportSize({width: 320, height: 760});
+  await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
+    window.__firstPaint = {lang: document.documentElement.lang, dir: document.documentElement.dir,
+      veiled: document.documentElement.hasAttribute('data-dp-locale-pending')};
+  }));
+  await page.goto('/');
+  await page.evaluate(() => window.DPI18n.ready);
+  expect(await page.evaluate(() => window.__firstPaint)).toEqual({lang: 'ar', dir: 'rtl', veiled: true});
+  expect(await page.evaluate(() => [document.documentElement.lang, document.documentElement.dir,
+    document.documentElement.hasAttribute('data-dp-locale-pending')])).toEqual(['ar', 'rtl', false]);
+  await expect(page.locator('#page-title')).toHaveText(arabic['shell.page.dashboard.title']);
+
+  await page.locator('#topbar-account-button').click();
+  await expect(account(page).locator('[data-account-language]')).toHaveText('🇸🇦العربية');
+  await expect(account(page).locator('.dp-modal-title')).toHaveText(arabic['account.title']);
+  await account(page).locator('[data-account-language]').click();
+  const shown = await rows(page);
+  expect(shown.slice(1)).toEqual(listed('ar'));
+  expect(shown[0].checked).toBe(false);
+  const fits = await page.evaluate(() => { const d = document.querySelector('.dp-account-dialog').getBoundingClientRect();
+    return [...document.querySelectorAll('.dp-language-option')].every(row => { const r = row.getBoundingClientRect(); return r.left >= d.left - 1 && r.right <= d.right + 1; })
+      && document.documentElement.scrollWidth <= innerWidth; });
+  expect(fits).toBe(true);
+  await account(page).locator('[data-modal-cancel]').click();
+  await account(page).locator('.dp-account-header-end .dp-settings-help-chip').click();
+  const help = page.locator('.dp-modal-dialog').last();
+  await expect(help.locator('[data-i18n="help.my_account.language"]')).toHaveText(arabic['help.my_account.language']);
 });

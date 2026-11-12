@@ -5,13 +5,16 @@ the 1.0.14 localization work proved and did not prove. The reference for the pie
 catalogs, metadata, validator rules, census, glossary and the language-choice contract) is
 [`LOCALIZATION.md`](LOCALIZATION.md); this file does not repeat it.
 
-**Status at WS7-B (2026-11-11).**
-- All 18 target catalogs are complete: 3467 of 3467 messages each, current against the English, and
-  reviewed.
-- Every target is still **`planned`**. Nothing was activated, tagged or released.
-- **The language choice exists** (language preferences, 2026-11-11): each account's own in My Account and
-  the installation default in Users & Access → Deployment & Language (`LOCALIZATION.md` §5). With every
-  target `planned` it offers English only; that is expected, not a fault.
+**Status at the activation (2026-11-11, development branch `1.0.14`).**
+- **All 18 targets are `supported`**: the product owner activated them together, on the development
+  branch, once the language choice had landed. English stays `canonical`; `en-XA` and `ar-XB` stay
+  test-only `pseudo`. The activation is not a release: 1.0.14 remains in feature development, and nothing
+  was tagged, released or deployed.
+- All 18 catalogs are complete: **3495 of 3495** messages each (the English after the language
+  preferences work; WS7-B's figures below are 3467), current against the English and reviewed; the strict
+  check of every supported locale (`validate.mjs --release`) passes on the repository's own manifest.
+- **The language choice** (`LOCALIZATION.md` §5) -- each account's own in My Account and the installation
+  default in Users & Access → Deployment & Language -- offers English and the 18 targets: 19 languages.
 - Every translation and review is **AI-made**. No human or native-speaker review has taken place.
 
 ## 1. Product rules that govern localization
@@ -105,10 +108,11 @@ errors, debt warnings and review checks are listed in `LOCALIZATION.md` §4.
 test is skipped, and this module is skipped only when Node is missing.
 - **Hard errors fail CI.** `test_the_repository_catalogs_validate_and_report_their_translation_debt`
   asserts that the validator exits 0, that **all 18 targets** have a catalog, termbase and ledger, are
-  `planned`, have zero missing, stale, unreviewed and un-back-translated keys and no open finding, and
-  that each passes `--complete=<tag>`.
-- **Planned catalogs therefore cannot silently lose completeness.** `--release` checks only `supported`
-  locales; the CI test checks all 18.
+  `supported`, have zero missing, stale, unreviewed and un-back-translated keys and no open finding, that
+  each passes `--complete=<tag>`, and that `--release` (every supported locale) passes.
+- **Supported catalogs therefore cannot silently lose completeness:** the CI test checks all 18 against
+  the repository's own manifest, whose status census (English canonical, 18 supported, 2 pseudo) another
+  test of the module pins.
 - **Other tests in the module** cover each class of broken message, the census of first-party literals
   outside the catalog, the shell's keys, the sign-in page, the pseudo locales and the catalog asset's
   versioning.
@@ -202,57 +206,63 @@ The isolated qualification of the same lifecycle with real catalogs is D2/D3 in 
 
 ### Activation-dependent requirements
 
-What an isolated fixture proves is recorded here; it does not activate anything. The fixture is a scratch
-copy of the static files whose manifest marks the targets `supported`, with the repository's real
-catalogs, on a local instance (language preferences candidate B, 2026-11-11, Chromium, host fonts).
+They were first proved on an isolated fixture (a scratch copy of the static files marking the targets
+`supported`, language preferences candidate B), then on the **activated repository manifest itself**
+(2026-11-11, local instance, desktop Chromium, host fonts; `language-preferences.spec.js` LP01–LP07, which
+runs in CI's Browser Runtime on the image's own manifest). None was a gate to the activation: the product
+owner decided the activation without one.
 
 | # | Requirement | State |
 |---|---|---|
-| D1 | First paint with a real translated catalog (veil until it arrives, no English flash) | **Fixture-qualified in Chromium:** a cold load of an account saved as Arabic is `lang="ar" dir="rtl"` and veiled at `DOMContentLoaded`, then Arabic with no debt. Still to be re-run on the release candidate with the real manifest change |
-| D2 | The production language choice: picker, persistence and switching lifecycle (`LOCALIZATION.md` §5) | **Implemented; fixture-qualified in Chromium** at 320 and 1440 px: German and Arabic chosen live (drafts kept, focus returned, one dialog), Use system default, the installation default with Apply (an inheriting Admin follows it; an explicit English does not). English-only behaviour is in CI (`language-preferences.spec.js`) |
-| D3 | A failed save through that picker | **Qualified** on the release image's manifest (`language-preferences.spec.js` LP03, LP04) |
-| D4 | Real-device and real-font fits (iOS, Android, Safari, Firefox) | **Not tested.** Only Chromium with host fonts was measured (the 19-language census of the new surfaces at 320, 375 and 779 px included) |
+| D1 | First paint with a real translated catalog (veil until it arrives, no English flash) | **Verified on the activated manifest (Chromium):** a cold load of an account saved as Arabic at 320 px is `lang="ar" dir="rtl"` and veiled at `DOMContentLoaded`, then Arabic, the veil lifted (LP07) |
+| D2 | The production language choice: picker, persistence and switching lifecycle (`LOCALIZATION.md` §5) | **Verified on the activated manifest (Chromium)** at 1440 and 320 px: both lists offer exactly the 19 languages by flag and native name, Arabic right to left (LP01, LP04, LP07); German chosen and cleared in My Account with the draft kept (LP06); the default with Cancel and Apply, the inheriting Admin following it, an explicit English not (LP04) |
+| D3 | A failed save through that picker | **Verified** (LP03, LP04): the list or dialog stays open, says so, and the language and stored state are unchanged |
+| D4 | Real-device and real-font fits (iOS, Android, Safari, Firefox) | **Accepted as untested** by the product owner. Only desktop Chromium with host fonts was measured (including the 19-language census of the new surfaces at 320, 375 and 779 px). Not a pass |
 
 ## 7. Activation and rollback
 
-- **Activating a language is a separate product decision.** It means changing that tag's manifest status
-  from `planned` to `supported`. Before doing so:
-  - `node .github/localization/validate.mjs --release` must exit 0 with that manifest;
-  - the activation-dependent items D1–D4 must be qualified on the release candidate;
-  - this ledger must be updated.
+- **The 18 targets were activated together on 2026-11-11** (`planned` → `supported` in
+  `frontend/static/i18n/manifest.json`, nothing else), by the product owner's decision, on the
+  development branch. `validate.mjs --release` passes on that manifest. D1–D3 were verified on it; D4 is
+  an accepted untested environment, not a condition of the activation.
+- **A language added later** is activated the same way: its manifest status becomes `supported` once
+  `--release` exits 0 with that manifest, and this ledger is updated.
 - **Rollback** means setting the status back to `planned`. Accounts that chose the language read it as
   English, and their stored choice is kept, so re-activating restores it. Removing or corrupting a catalog
   has the same effect: the language is withdrawn, never half-shown.
-- **Release qualification** recomputes §6 on the tagged candidate. Zero debt is required for every
-  advertised language, and any withdrawal of a contemplated language is an explicit, owner-approved
+- **A later release** (not this activation) recomputes §6 on its tagged candidate. Zero debt is required
+  for every advertised language, and any withdrawal of a language is an explicit, owner-approved
   decision.
 
-## 8. Per-language readiness matrix
+## 8. Per-language matrix
 
-Every target: 3467/3467 messages, current and reviewed; 251/251 critical keys back-translated; termbase
-31/31; `--complete` passes; no 320 px page-title or dock truncation (Chromium); status `planned`; AI-only
-review (A9). Activation also needs D1–D4 in every case.
+Every target: 3495/3495 messages, current and reviewed (3467 at WS7-B, plus the language preferences
+work's 28 new messages and 3 changed ones, none critical); 251/251 critical keys back-translated; termbase
+31/31; `--complete` passes; no 320 px page-title or dock truncation (Chromium); status **`supported`**
+(activated 2026-11-11); AI-only review (A9). D1–D3 verified on the activated manifest; D4 not tested
+(accepted).
 
-| Language | Script and direction | Notes beyond the common state | Ready for an activation decision? |
+| Language | Script and direction | Notes beyond the common state | State |
 |---|---|---|---|
-| de German | Latin, LTR | Settings page «Optionen» (WS7-A); A7 | Yes, subject to A9 and D1–D4 |
-| fr French | Latin, LTR | «Aperçu» and «Téléch.» (A8) | Yes, subject to A8, A9, D1–D4 |
-| es Spanish | Latin, LTR | Settings page «Ajustes» | Yes, subject to A9, D1–D4 |
-| it Italian | Latin, LTR | Settings page «Opzioni» | Yes, subject to A9, D1–D4 |
-| pt-BR Portuguese (Brazil) | Latin, LTR | Settings page «Ajustes» | Yes, subject to A9, D1–D4 |
-| pt-PT Portuguese (Portugal) | Latin, LTR | Independent of pt-BR | Yes, subject to A9, D1–D4 |
-| nl Dutch | Latin, LTR | — | Yes, subject to A9, D1–D4 |
-| pl Polish | Latin, LTR | few/many plurals | Yes, subject to A9, D1–D4 |
-| ru Russian | Cyrillic, LTR | few/many plurals | Yes, subject to A9, D1–D4 |
-| uk Ukrainian | Cyrillic, LTR | «Параметри» and «Завант.» (A8); few/many plurals | Yes, subject to A8, A9, D1–D4 |
-| tr Turkish | Latin, LTR | Dotted and dotless i kept distinct | Yes, subject to A9, D1–D4 |
-| id Indonesian | Latin, LTR | — | Yes, subject to A9, D1–D4 |
-| hi Hindi | Devanagari, LTR | Largest catalog (763 KB uncompressed, U2) | Yes, subject to A9, D1–D4 |
-| ja Japanese | CJK, LTR | A3 and A4 (zero-margin fits) | Yes, subject to A3, A4, A9, D1–D4 |
-| ko Korean | Hangul, LTR | `keep-all` word breaking | Yes, subject to A9, D1–D4 |
-| zh-Hans Chinese (Simplified) | CJK, LTR | Mainland usage | Yes, subject to A9, D1–D4 |
-| zh-Hant Chinese (Traditional) | CJK, LTR | Taiwan usage (A6) | Yes, subject to A6, A9, D1–D4 |
-| ar Arabic | Arabic, **RTL** | A1 (plain-text bidi) and A4 (zero-margin dock) | Yes, subject to A1, A4, A9, D1–D4 |
+| de German | Latin, LTR | Settings page «Optionen» (WS7-A); A7 | Supported; accepted limits A9; D4 not tested |
+| fr French | Latin, LTR | «Aperçu» and «Téléch.» (A8) | Supported; accepted limits A8, A9; D4 not tested |
+| es Spanish | Latin, LTR | Settings page «Ajustes» | Supported; accepted limits A9; D4 not tested |
+| it Italian | Latin, LTR | Settings page «Opzioni» | Supported; accepted limits A9; D4 not tested |
+| pt-BR Portuguese (Brazil) | Latin, LTR | Settings page «Ajustes» | Supported; accepted limits A9; D4 not tested |
+| pt-PT Portuguese (Portugal) | Latin, LTR | Independent of pt-BR | Supported; accepted limits A9; D4 not tested |
+| nl Dutch | Latin, LTR | — | Supported; accepted limits A9; D4 not tested |
+| pl Polish | Latin, LTR | few/many plurals | Supported; accepted limits A9; D4 not tested |
+| ru Russian | Cyrillic, LTR | few/many plurals | Supported; accepted limits A9; D4 not tested |
+| uk Ukrainian | Cyrillic, LTR | «Параметри» and «Завант.» (A8); few/many plurals | Supported; accepted limits A8, A9; D4 not tested |
+| tr Turkish | Latin, LTR | Dotted and dotless i kept distinct | Supported; accepted limits A9; D4 not tested |
+| id Indonesian | Latin, LTR | — | Supported; accepted limits A9; D4 not tested |
+| hi Hindi | Devanagari, LTR | Largest catalog (763 KB uncompressed, U2) | Supported; accepted limits A9; D4 not tested |
+| ja Japanese | CJK, LTR | A3 and A4 (zero-margin fits) | Supported; accepted limits A3, A4, A9; D4 not tested |
+| ko Korean | Hangul, LTR | `keep-all` word breaking | Supported; accepted limits A9; D4 not tested |
+| zh-Hans Chinese (Simplified) | CJK, LTR | Mainland usage | Supported; accepted limits A9; D4 not tested |
+| zh-Hant Chinese (Traditional) | CJK, LTR | Taiwan usage (A6) | Supported; accepted limits A6, A9; D4 not tested |
+| ar Arabic | Arabic, **RTL** | A1 (plain-text bidi) and A4 (zero-margin dock) | Supported; accepted limits A1, A4, A9; D4 not tested |
 
-**No language is declared production-ready.** U1 blocks any 1.0.14 release regardless of language. D1–D4
-are unqualified, and every translation is AI-only.
+**Activated is not certified.** The 18 are available on the development branch; no language is declared
+release-qualified or native-reviewed. U1 still blocks any 1.0.14 release regardless of language, D4 is
+untested, and every translation is AI-only.
