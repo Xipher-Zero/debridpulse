@@ -142,6 +142,11 @@ _COPY_CHUNK = 1024 * 1024
 #   (cf0ed370), which it extends with the one nullable
 #   ``account_appearance.locale`` column -- NULL, English, for every account
 #   it holds; every theme and presentation stays as recorded -- likewise both
+#   as a fresh installation and as one holding those four retained tables;
+# * the 1.0.14 schema immediately before the setup wizard's lifecycle
+#   (40e567fd), which it extends with the ``installation_setup`` and
+#   ``account_setup_rerun`` tables, empty: an installation from before the
+#   wizard has finished its setup, and no Admin has a rerun -- likewise both
 #   as a fresh installation and as one holding those four retained tables.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
@@ -163,6 +168,8 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:db806f7160ec8c47623d14f0dcb39696a7b7fe7047ff059e8bbe0787b59c0b1b",
     "sha256:d902d0864a8096448f0a750c40c1582c6d45c121c674456c597497bb88ce31a8",
     "sha256:9eed55b2232d8cb01aece7a22d99d06d26088daed5db74deffffa5e4a0736382",
+    "sha256:fbc82a9d04158ac5807eb13ab779000e23a4160dd8273decaad17edc68277a98",
+    "sha256:8d8a254ec9ea1d464aeda25a1744abbd62174e5581694733499fc4cdc05bd8cd",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

@@ -23,6 +23,7 @@ from api.external_routes import router as external_router
 from api.file_selection_routes import router as file_selection_router
 from api.operational_downloads import router as operational_downloads_router
 from api.settings_validation_routes import router as settings_validation_router
+from api.setup_routes import router as setup_router
 from api.storage_health_routes import router as storage_health_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
 from auth.permissions import authorize_request
@@ -530,6 +531,7 @@ app.include_router(operational_downloads_router, prefix="/api")
 app.include_router(executor_work_router, prefix="/api")
 app.include_router(file_selection_router, prefix="/api")
 app.include_router(account_router, prefix="/api")
+app.include_router(setup_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
 app.include_router(arr_sabnzbd_router, prefix="/api")
 app.include_router(arr_qbittorrent_router, prefix="/api")

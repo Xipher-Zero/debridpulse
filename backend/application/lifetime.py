@@ -107,7 +107,12 @@ async def prepare_settings_and_migrate():
 
     if await retire_legacy_api_token(CONFIG_PATH.parent / "api-token.json"):
         logger.warning("The global API token was retired; issue a token for an Integration account")
-    return cfg
+    # A new Server installation's named Administrator whose Username &
+    # Password was interrupted before it was enabled is finished first.
+    from services.setup_lifecycle import settle_interrupted_bootstrap
+
+    await settle_interrupted_bootstrap()
+    return get_settings()
 
 
 async def start_application(application):

@@ -133,6 +133,15 @@ ACTIONS: dict[str, Capability] = {
     # The installation's login appearance: read and published by an Admin.
     "api.account_routes.login_appearance": _A,
     "api.account_routes.publish_login_appearance": _A,
+    # The setup wizard's lifecycle (``api.setup_routes``): an Admin's -- while
+    # no sign-in is enabled, the default Admin every request acts as. The
+    # named Administrator further admits the open principal alone.
+    "api.setup_routes.setup_state": _A,
+    "api.setup_routes.advance_initial_setup": _A,
+    "api.setup_routes.establish_setup_administrator": _A,
+    "api.setup_routes.finish_initial_setup": _A,
+    "api.setup_routes.continue_own_rerun": _A,
+    "api.setup_routes.end_own_rerun": _A,
     # A User's own notification configuration (never the global one).
     "api.account_routes.own_notifications": _NS,
     "api.account_routes.update_own_notifications": _NS,

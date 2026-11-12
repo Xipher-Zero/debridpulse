@@ -156,9 +156,34 @@ SCHEMA = (
         mode TEXT NOT NULL CHECK (mode IN ('dark','light')),
         palette TEXT NOT NULL
     )""",
+    # The installation's initial setup (``services.setup_lifecycle``): one
+    # row, written only when the database bootstrap creates a genuinely new
+    # installation. No row is an installation from before the setup wizard,
+    # whose setup is complete. ``bootstrap_account_id`` is the one named
+    # Administrator a new Server installation's setup created, committed in
+    # that account's own transaction; ``bootstrap_configured_at`` is when
+    # Username & Password was confirmed enabled for it.
+    """CREATE TABLE IF NOT EXISTS installation_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        initial_setup_complete INTEGER NOT NULL DEFAULT 0 CHECK (initial_setup_complete IN (0,1)),
+        initial_phase TEXT,
+        bootstrap_account_id TEXT REFERENCES accounts(id),
+        bootstrap_configured_at TEXT,
+        completed_at TEXT,
+        updated_at TEXT NOT NULL
+    )""",
+    # An Admin's own unfinished setup rerun (``services.setup_lifecycle``),
+    # keyed by the durable account ID. It belongs to exactly that account:
+    # Remove and Merge retire it with the account, and nothing inherits it.
+    """CREATE TABLE IF NOT EXISTS account_setup_rerun (
+        account_id TEXT PRIMARY KEY REFERENCES accounts(id),
+        phase TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""",
 )
 TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens",
-          "account_notifications", "account_appearance", "login_appearance")
+          "account_notifications", "account_appearance", "login_appearance",
+          "installation_setup", "account_setup_rerun")
 TOKEN_PREFIX = "dp_"
 _TOKEN_RANDOM_BYTES = 32
 
@@ -894,6 +919,36 @@ async def create_local_account(username: str, password: str, *, role, display_na
     return await get_account(account_id)
 
 
+def new_password_rule(password: str) -> None:
+    """Refuse a password being set now that is missing or too short."""
+    if not password:
+        raise AccountRefused("A password is required", code="account.password_required")
+    _new_password_rule(password)
+
+
+async def create_initial_admin(username: str, verifier: str, *, settings, claim) -> Account:
+    """A new Server installation's named Administrator: a local Admin account,
+    distinct from the protected default Admin, created with its password in
+    one transaction together with ``claim(db, account_id)`` -- the setup
+    lifecycle's own admission check and record of this account, which raises
+    to refuse. The transaction must leave an Admin usable under ``settings``,
+    the authentication settings that enable Username & Password for it; the
+    caller writes those once this commits (``services.setup_lifecycle``).
+    ``verifier`` is a prepared password verifier. The caller holds the
+    authentication configuration lock."""
+    account_id = str(uuid.uuid4())
+    async with _mutation([], settings) as db:
+        now = _now()
+        await db.execute(
+            "INSERT INTO accounts(id,role,origin,display_name,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (account_id, Role.ADMIN.value, "local", str(username or "").strip()[:256], now, now),
+        )
+        await _set_username(db, account_id, username)
+        await _set_password_row(db, account_id, verifier)
+        await claim(db, account_id)
+    return await get_account(account_id)
+
+
 async def create_integration_account(display_name: str) -> Account:
     account_id = str(uuid.uuid4())
     async with _locked_mutation([]) as db:
@@ -994,6 +1049,7 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
                          (_now(), account.id))
         await db.execute("DELETE FROM account_notifications WHERE account_id=?", (account.id,))
         await db.execute("DELETE FROM account_appearance WHERE account_id=?", (account.id,))
+        await db.execute("DELETE FROM account_setup_rerun WHERE account_id=?", (account.id,))
         return await _withdraw_owned_demand(db, account.id, "account_deleted")
 
 
@@ -1037,10 +1093,12 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
                 await db.execute(
                     "UPDATE account_local_credentials SET account_id=? WHERE account_id=?", (target.id, source_id))
             await db.execute("UPDATE account_oidc_bindings SET account_id=? WHERE account_id=?", (target.id, source_id))
-            # A folded account's notification destinations and appearance are
-            # its own: they are retired, never merged into the survivor's.
+            # A folded account's notification destinations, appearance and
+            # setup rerun are its own: they are retired, never merged into the
+            # survivor's.
             await db.execute("DELETE FROM account_notifications WHERE account_id=?", (source_id,))
             await db.execute("DELETE FROM account_appearance WHERE account_id=?", (source_id,))
+            await db.execute("DELETE FROM account_setup_rerun WHERE account_id=?", (source_id,))
             await db.execute(
                 "UPDATE accounts SET enabled=0, username=NULL, merged_into=?, deleted_at=? WHERE id=?",
                 (target.id, now, source_id))
@@ -1328,15 +1386,23 @@ async def first_password_verifier(account_id: str, new_password: str, *, peer: s
     and in all, fail-fast) and the verifier is generated in the bounded Argon2
     worker slots. The admission is held until that worker finishes, even if
     the request is cancelled meanwhile."""
-    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
-    from auth.passwords import hash_password_async
-
-    if not new_password:
-        raise AccountRefused("A password is required", code="account.password_required")
-    _new_password_rule(new_password)
+    new_password_rule(new_password)
     refusal, code = _first_password_refusal(await get_account(account_id))
     if refusal:
         raise AccountRefused(refusal, code=code)
+    return await admitted_verifier(new_password, peer=peer)
+
+
+async def admitted_verifier(new_password: str, *, peer: str = "unknown") -> str:
+    """The verifier for a password being set now by a request no sign-in
+    admitted the work of (a first password, the initial Administrator's):
+    the request takes the password-attempt admission (per peer and in all,
+    fail-fast) and the verifier is generated in the bounded Argon2 worker
+    slots, the admission held until that worker finishes. The caller has
+    applied the new-password rule."""
+    from auth.manager import PasswordAuthenticationBusy, password_attempt_admission
+    from auth.passwords import hash_password_async
+
     if not password_attempt_admission.acquire(peer):
         raise PasswordAuthenticationBusy
     return await hash_password_async(new_password, finished=lambda: password_attempt_admission.release(peer))

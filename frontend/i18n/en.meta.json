@@ -692,6 +692,60 @@
    "owner": "backend/api/account_routes.py",
    "criticality": "normal"
   },
+  "error.setup.initial_complete": {
+   "category": "error",
+   "context": "Server refusal 'setup.initial_complete' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.initial_incomplete": {
+   "category": "error",
+   "context": "Server refusal 'setup.initial_incomplete' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.phase_unavailable": {
+   "category": "error",
+   "context": "Server refusal 'setup.phase_unavailable' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.administrator_pending": {
+   "category": "error",
+   "context": "Server refusal 'setup.administrator_pending' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.administrator_exists": {
+   "category": "error",
+   "context": "Server refusal 'setup.administrator_exists' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.bootstrap_unavailable": {
+   "category": "error",
+   "context": "Server refusal 'setup.bootstrap_unavailable' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.administrator_not_enabled": {
+   "category": "error",
+   "context": "Server refusal 'setup.administrator_not_enabled' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.finish_needs_password": {
+   "category": "error",
+   "context": "Server refusal 'setup.finish_needs_password' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
+  "error.setup.administrator_not_recorded": {
+   "category": "error",
+   "context": "Server refusal 'setup.administrator_not_recorded' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
   "error.account.password_checks_busy": {
    "category": "error",
    "context": "Server refusal 'account.password_checks_busy' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",

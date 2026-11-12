@@ -892,6 +892,78 @@
     "ai-review"
    ]
   },
+  "error.setup.initial_complete": {
+   "source": "019c4d971d5c3097",
+   "translation": "b5c5f4d1ac49ebec",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.initial_incomplete": {
+   "source": "7bcbb20da095ef35",
+   "translation": "755626cd590b278c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.phase_unavailable": {
+   "source": "29ee148f8f3cf432",
+   "translation": "c5612b83b8254cbf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.administrator_pending": {
+   "source": "65ee27937444b37a",
+   "translation": "073c636c84d321da",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.administrator_exists": {
+   "source": "ac5d610b75d21083",
+   "translation": "ef0e4fbb784b6a8e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.bootstrap_unavailable": {
+   "source": "d2feeb4be1236a03",
+   "translation": "1d91203fd1832a01",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.administrator_not_enabled": {
+   "source": "a22bf5b3da15b8d0",
+   "translation": "d4244289def0da80",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.finish_needs_password": {
+   "source": "95e8e5c7f7f695ba",
+   "translation": "b38ac0e11feb0b18",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.setup.administrator_not_recorded": {
+   "source": "816075c4966f4148",
+   "translation": "f74bd922acbdfae1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "error.account.password_checks_busy": {
    "source": "c75b5f7321bde538",
    "translation": "b3aace2a667e8ee4",

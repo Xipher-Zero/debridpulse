@@ -2591,3 +2591,96 @@ async def test_the_broad_settings_write_cannot_change_the_default_language(serve
         assert written.status_code == 200, written.text
         assert written.json()["default_locale"] == "de" and written.json()["log_level"] == "DEBUG"
         assert config.get_settings().default_locale == "de" and _saved_default() == "de"
+
+
+# ── the setup wizard's lifecycle: two tables, absent from older backups ─────
+
+# Written by the 1.0.14 build immediately before the setup wizard's lifecycle
+# (40e567fd) with its own backup service: the default Admin with a password
+# (operator / pre-setup-secret), an Admin (ann, Easy) and a User (una), with
+# Username & Password enabled -- an installation set up before the wizard.
+PRE_SETUP_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-40e567fd.zip"
+# The same build and backup service on an installation that still holds the
+# four tables a migration from before 1.0.12 keeps (definitions of the
+# cf0ed370 retained-legacy-tables fixture).
+PRE_SETUP_RETAINED_BACKUP = (Path(__file__).parent / "fixtures"
+                             / "backup-1.0.14-40e567fd-retained-legacy-tables.zip")
+
+
+def _setup_rows(path) -> tuple[list, list]:
+    with closing(sqlite3.connect(path)) as conn:
+        return (conn.execute("SELECT initial_setup_complete, initial_phase, bootstrap_account_id "
+                             "FROM installation_setup").fetchall(),
+                conn.execute("SELECT account_id, phase FROM account_setup_rerun ORDER BY account_id").fetchall())
+
+
+@pytest.mark.parametrize("fixture", [PRE_SETUP_BACKUP, PRE_SETUP_RETAINED_BACKUP], ids=["fresh", "retained_legacy_tables"])
+async def test_a_backup_from_before_the_setup_wizard_restores_as_a_finished_setup(served, fixture):
+    """Upgraded on the private staged copy only: both tables arrive empty --
+    the restored installation's setup is finished, it opens no wizard -- and
+    every account and password comes back as recorded."""
+    from auth import accounts
+    from auth.passwords import verify_password
+    from services import account_appearance, setup_lifecycle
+
+    _app, client, _composed, _calls = served
+    if fixture is PRE_SETUP_RETAINED_BACKUP:
+        with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
+            scratch.deserialize(package.read("debridpulse.db"))
+            kept = [row[0] for row in scratch.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
+                RETAINED_LEGACY_TABLES)]
+        assert len(kept) == 4
+        with closing(sqlite3.connect(database.DB_PATH)) as conn:
+            for ddl in kept:
+                conn.execute(ddl)
+            conn.commit()
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=fixture.read_bytes(), headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert not {"installation_setup", "account_setup_rerun"} & tables
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _setup_rows(database.DB_PATH) == ([], [])
+    assert (await setup_lifecycle.initial_setup()).complete is True
+    people = {row["username"]: row["id"] for row in await accounts.list_accounts() if row["username"]}
+    assert {"operator", "ann", "una"} <= set(people)
+    assert await account_appearance.load_presentation(people["ann"]) == "easy"
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-setup-secret")
+
+
+async def test_a_new_backup_brings_back_the_setup_and_each_rerun_and_a_wipe_keeps_them(served):
+    from auth import accounts
+    from services import db_maintenance, setup_lifecycle
+
+    _app, client, _composed, _calls = served
+    ann = (await accounts.create_local_account("ann", "ann-secret", role="admin")).id
+    with closing(sqlite3.connect(database.DB_PATH)) as conn:
+        conn.execute("INSERT OR REPLACE INTO installation_setup(id, initial_setup_complete, initial_phase, "
+                     "updated_at) VALUES(1, 1, NULL, 'synthetic')")
+        conn.commit()
+    await setup_lifecycle.set_rerun(ann, "premium_services")
+    point = await backup.create_restore_point()
+    await setup_lifecycle.end_rerun(ann)
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _setup_rows(database.DB_PATH) == ([(1, None, None)], [(ann, "premium_services")])
+    live = backup.schema_version(database.DB_PATH)
+    rows = _setup_rows(database.DB_PATH)
+    await db_maintenance.wipe_database(verified_quiesced=True)
+    assert backup.schema_version(database.DB_PATH) == live
+    assert _setup_rows(database.DB_PATH) == rows

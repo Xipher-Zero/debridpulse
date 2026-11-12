@@ -83,10 +83,16 @@ TABLES = [
     "account_notifications",
     "account_appearance",
     "login_appearance",
+    # The installation's setup and each Admin's own setup rerun
+    # (``services.setup_lifecycle``) are configuration too: a wipe never
+    # makes an installation new again.
+    "installation_setup",
+    "account_setup_rerun",
 ]
 _KEPT = frozenset({"transfer_controls", "schema_migrations", "event_journal_index",
                    "accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens",
-                   "account_notifications", "account_appearance", "login_appearance"})
+                   "account_notifications", "account_appearance", "login_appearance",
+                   "installation_setup", "account_setup_rerun"})
 
 
 async def wipe_database(*, verified_quiesced: bool = False) -> dict:

@@ -112,7 +112,7 @@ async def _ensure_current_schema(repository: TransferRepository) -> None:
     await repository.initialize()
 
 
-async def _mark_current() -> None:
+async def _mark_current(*, new_installation: bool = False) -> None:
     async with database.get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
         await db.execute(
@@ -120,6 +120,12 @@ async def _mark_current() -> None:
         )
         await db.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES(?)", (_CURRENT_MARKER,))
         await database.record_schema_steps(db)
+        if new_installation:
+            # Durable before anything is served: the new installation's
+            # initial setup is not done (``services.setup_lifecycle``).
+            from services.setup_lifecycle import record_new_installation
+
+            await record_new_installation(db)
         violations = await db.fetchall("PRAGMA foreign_key_check")
         if violations:
             raise RuntimeError("Current schema refused: database contains foreign-key violations")
@@ -190,8 +196,14 @@ async def migrate(*, globally_paused: bool = False) -> dict:
     state = _schema_state()
     repository = TransferRepository()
     if state == "fresh":
+        # A genuinely new installation: no database and no configuration file.
+        # A fresh database beside an existing configuration file is an
+        # installation whose state was lost or moved, never a new one.
+        from core import config
+
+        new_installation = not config.CONFIG_PATH.exists()
         await _ensure_current_schema(repository)
-        await _mark_current()
+        await _mark_current(new_installation=new_installation)
         return {"migrated": False}
     if state == "current":
         await _ensure_current_schema(repository)
