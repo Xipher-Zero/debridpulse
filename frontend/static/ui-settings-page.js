@@ -9185,5 +9185,9 @@
    * changes a settings-document value outside this page (the setup wizard's
    * Download Directory): never a second write path. */
   window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,
-    providerArtwork});
+    providerArtwork,
+    // A card's contextual Help chip, from this page's one emitter, for a surface
+    // that offers the same topic outside Settings (the setup wizard's Premium
+    // Services): `titleKey` names the card it explains.
+    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});
 })();

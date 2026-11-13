@@ -88,7 +88,7 @@ def test_app_does_not_regain_page_specific_owners() -> None:
 def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() -> None:
     source = read(SETTINGS)
     assert "window.loadSettings = load;" in source
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork});" in source
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork,\n    // A card's contextual Help chip, from this page's one emitter, for a surface\n    // that offers the same topic outside Settings (the setup wizard's Premium\n    // Services): `titleKey` names the card it explains.\n    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});" in source
     assert "debridpulse:settings-rendered" in source
     assert "view.innerHTML =" in source
     assert "new MutationObserver" not in source

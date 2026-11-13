@@ -54,7 +54,7 @@ def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
 def test_settings_page_is_authoritative_clean_room_owner() -> None:
     settings = read("ui-settings-page.js")
     picker = read("ui-settings-directory-picker.js")
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork});" in settings
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork,\n    // A card's contextual Help chip, from this page's one emitter, for a surface\n    // that offers the same topic outside Settings (the setup wizard's Premium\n    // Services): `titleKey` names the card it explains.\n    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});" in settings
     # The dialog owner is ui-settings-modal.js; Settings and the picker are direct clients of it.
     assert "window.DPSettingsModal = Object.freeze" not in settings
     assert "window.DPSettingsModal.confirm(" in settings

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Setup wizard, Deployment Type: one workstation branching to several devices. -->
+  <rect x="20" y="40" width="54" height="36" rx="4"/>
+  <path d="M38 88 H56 M47 76 V88"/>
+  <path d="M74 58 H110"/>
+  <path d="M110 58 C134 58 134 20 158 20 M110 58 C134 58 134 46 158 46 M110 58 C134 58 134 72 158 72 M110 58 C134 58 134 98 158 98"/>
+  <g fill="#000" stroke="none"><circle cx="110" cy="58" r="4"/></g>
+  <rect x="160" y="11" width="28" height="18" rx="3"/><rect x="160" y="37" width="28" height="18" rx="3"/>
+  <rect x="160" y="63" width="28" height="18" rx="3"/><rect x="160" y="89" width="28" height="18" rx="3"/>
+  <g opacity=".55"><circle cx="208" cy="20" r="4"/><circle cx="208" cy="46" r="4"/><circle cx="208" cy="72" r="4"/><circle cx="208" cy="98" r="4"/>
+  <path d="M188 20 H204 M188 46 H204 M188 72 H204 M188 98 H204"/></g>
+</svg>

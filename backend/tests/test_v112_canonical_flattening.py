@@ -288,7 +288,7 @@ def test_index_html_has_exactly_one_first_party_stylesheet_entry_point() -> None
     first_party = [
         tag for tag in _STYLESHEET_LINK.findall(index) if _FIRST_PARTY_HREF.search(tag)
     ]
-    assert first_party == ['<link rel="stylesheet" href="/style.css?v=21">'], (
+    assert first_party == ['<link rel="stylesheet" href="/style.css?v=23">'], (
         f"index.html must link exactly one first-party stylesheet (style.css); "
         f"found {first_party}"
     )

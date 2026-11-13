@@ -81,7 +81,7 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "function authenticationPanel(" in module
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork});" in module
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork,\n    // A card's contextual Help chip, from this page's one emitter, for a surface\n    // that offers the same topic outside Settings (the setup wizard's Premium\n    // Services): `titleKey` names the card it explains.\n    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});" in module
     assert "baseRenderSettings" not in module
     assert "removeLegacyAuthenticationControls" not in module
 

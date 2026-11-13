@@ -480,9 +480,8 @@ for (const [deployment, administrator, shown] of [['server', 'created', true], [
         const r = node.getBoundingClientRect();
         const b = body.getBoundingClientRect();
         return {apart: r.top >= steps.bottom + 8, inBody: r.bottom <= b.bottom + 1, aboveFooter: r.bottom <= footer.top + 1,
-          // The page's last content: it ends one separation row above the body's end (.dp-setup-main).
-          atBottom: body.scrollHeight > body.clientHeight || Math.abs(b.bottom - parseFloat(getComputedStyle(body).paddingBottom)
-            - parseFloat(getComputedStyle(node.closest('.dp-setup-main')).marginBottom) - r.bottom) < 2,
+          // The page's last content: the end of its controls group (nothing of the page follows it).
+          atBottom: !node.nextElementSibling,
           rule: getComputedStyle(node).borderTopWidth};
       });
       expect(box, `${width}`).toEqual({apart: true, inBody: true, aboveFooter: true, atBottom: true, rule: '1px'});
@@ -608,7 +607,7 @@ const PAGE_CLASSES = ['.dp-setup-welcome', '.dp-setup-deployment', '.dp-setup-di
   '.dp-setup-premium', '.dp-setup-getting-started'];
 
 for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]]) {
-  test(`R14: at ${width}x${height} every page shares one composition: row, centred explanation, spare room, controls ending a row above the footer`, async ({page}) => {
+  test(`R14: at ${width}x${height} every page shares one composition: row, centred explanation, its controls centred as one group in the rest of the body`, async ({page}) => {
     await load(page, {width, height});
     await preview(page);
     const row = expectedRow(height);
@@ -620,7 +619,8 @@ for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]])
         const style = getComputedStyle(body);
         const r = element => element.getBoundingClientRect();
         const copy = section.querySelector(':scope > .dp-setup-copy');
-        const controls = [...section.children].filter(child => child !== copy && child.getClientRects().length);
+        // The page's own content after its explanation (its motif is the decorative spare room, R22).
+        const controls = [...section.children].filter(child => child !== copy && !child.matches('.dp-setup-motif') && child.getClientRects().length);
         const last = controls[controls.length - 1];
         const bodyBottom = r(body).bottom - parseFloat(style.paddingBottom);
         const scrolls = body.scrollHeight > body.clientHeight + 1;
@@ -630,18 +630,28 @@ for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]])
           controlsLeftAligned: controls.every(child => !child.matches('.dp-setup-steps') || getComputedStyle(child).textAlign !== 'center'),
           gapAfterCopy: r(controls[0]).top - r(copy).bottom,
           lastToSectionEnd: r(section).bottom - r(last).bottom,
-          sectionToBody: bodyBottom - r(section).bottom, scrolls};
+          sectionToBody: bodyBottom - r(section).bottom, scrolls,
+          // The group's room above (from the explanation) and below (to the page's end).
+          above: r(controls[0]).top - parseFloat(getComputedStyle(controls[0]).marginTop) - (copy ? r(copy).bottom : r(section).top),
+          below: r(section).bottom - r(last).bottom,
+          motifLayer: getComputedStyle(section.querySelector('.dp-setup-motif'), '::before').position};
       });
       seen.push(g.page);
       expect(g.mains, g.page).toBe(1);
       expect(Math.abs(g.top - row), g.page).toBeLessThan(0.6);
-      expect(Math.abs(g.bottom - row), g.page).toBeLessThan(0.6);
+      expect(g.bottom, g.page).toBe(0);                     // no bottom row
       expect(g.centred, g.page).toBe(true);
       expect(g.controlsLeftAligned, g.page).toBe(true);
       expect(g.gapAfterCopy, g.page).toBeGreaterThanOrEqual(9.5);
-      // The controls end at the page's end; the page ends one row above the body's end (unless it scrolls).
-      expect(Math.abs(g.lastToSectionEnd), g.page).toBeLessThan(1);
-      if (!g.scrolls) expect(Math.abs(g.sectionToBody - row), g.page).toBeLessThan(1);
+      // The page ends at the body's end; its controls are centred in the room below the explanation
+      // (equal space above and below the group), or simply follow it when the page scrolls.
+      if (!g.scrolls) {
+        expect(Math.abs(g.sectionToBody), g.page).toBeLessThan(1);
+        expect(Math.abs(g.above - g.below), `${g.page} above ${g.above} below ${g.below}`).toBeLessThan(1.5);
+      }
+      else expect(g.above, g.page).toBeLessThan(11);           // the section gap only: no room was made
+      // The drawing is a layer, never a box that sizes the room.
+      expect(g.motifLayer, g.page).toBe('absolute');
       if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
       if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
       await accept(page);
@@ -832,3 +842,257 @@ test('R19: a Standalone installation\'s rerun also starts at Welcome, with its o
   await expect(wizard(page).locator('.dp-setup-administrator')).toHaveCount(0);
   await end(page);
 });
+
+/* The footer by flow, from the wizard's own lifecycle fact (initial and not a
+ * preview = the installation's mandatory first run): the first page has no
+ * Back in any flow; the mandatory first run has no Close on any page (Escape
+ * is inert there) and its phone footer reserves two slots; a rerun and the
+ * preview keep Close. Initial pages are shown from an emulated record. */
+const footer = page => wizard(page).evaluate(node => {
+  const shown = selector => { const control = node.querySelector(selector); return Boolean(control && !control.hidden && control.getClientRects().length); };
+  const box = node.querySelector('.dp-modal-footer').getBoundingClientRect();
+  return {back: shown('[data-modal-action="back"]'), close: shown('[data-modal-cancel]'), accept: shown('[data-modal-accept]'),
+    acceptText: node.querySelector('[data-modal-accept]').textContent.trim(), height: Math.round(box.height)};
+});
+
+for (const deployment of ['standalone', 'server']) {
+  test(`R20: the initial ${deployment} setup is mandatory: Welcome has only Next, later pages Back and Next, the last Back and Finish -- never Close (emulated record)`, async ({page}) => {
+    const total = deployment === 'server' ? 6 : 5;
+    for (const [phase, back, label] of [['welcome', false, 'setup.action.next'], ['download_directory', true, 'setup.action.next'],
+      ['getting_started', true, 'setup.action.finish']]) {
+      await page.unrouteAll({behavior: 'ignoreErrors'});
+      await newInstallation(page, {deployment, phase, administrator: deployment === 'server' && phase === 'getting_started' ? 'created' : 'none'});
+      await load(page, {width: 375, height: 740});
+      await expect(wizard(page).locator('.dp-setup-progress-step')).toHaveCount(total);
+      const f = await footer(page);
+      expect(f, phase).toMatchObject({back, close: false, accept: true, acceptText: await t(page, label)});
+      // Two stacked slots, not three: the first run never shows Close.
+      const slots = await wizard(page).evaluate(node => {
+        const style = getComputedStyle(node.querySelector('.dp-modal-footer'));
+        return parseFloat(style.minBlockSize);
+      });
+      expect(slots, phase).toBeLessThan(2 * 44 + 10 + 14 + 18 + 1 + 1);
+      await page.keyboard.press('Escape');
+      await expect(wizard(page)).toBeVisible();
+    }
+  });
+}
+
+test('R21: a rerun and the preview stay dismissible: Close on every page, no Back on their first page, Back after it', async ({page}) => {
+  await load(page);
+  await rerun(page);
+  expect(await footer(page)).toMatchObject({back: false, close: true, accept: true});
+  await accept(page);
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  expect(await footer(page)).toMatchObject({back: true, close: true, accept: true});
+  await wizard(page).locator('[data-modal-action="back"]').click();
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  await wizard(page).locator('[data-setup-preview]').click();
+  await expect(wizard(page).locator('.dp-setup-preview-note')).toBeVisible();
+  expect(await footer(page)).toMatchObject({back: false, close: true, accept: true});
+  await accept(page);
+  await expect(wizard(page).locator('.dp-setup-deployment')).toBeVisible();
+  expect(await footer(page)).toMatchObject({back: true, close: true, accept: true});
+  await end(page);
+});
+
+test('R22: every page shows its own motif in the room between its explanation and its controls, under nothing interactive; the views show none', async ({page}) => {
+  await load(page);
+  await preview(page);
+  const seen = [];
+  for (let i = 0; i < 6; i += 1) {
+    const g = await wizard(page).evaluate(node => {
+      const r = element => element.getBoundingClientRect();
+      const section = node.querySelector('.dp-setup-main');
+      const motif = section.querySelector(':scope > .dp-setup-motif');
+      const art = getComputedStyle(motif, '::before');
+      const copy = section.querySelector(':scope > .dp-setup-copy');
+      const next = motif.nextElementSibling;
+      const box = r(motif);
+      // Nothing that can be read or used is inside the motif's box.
+      const under = [...section.querySelectorAll('button, input, a, p, li, [role="radio"]')].filter(element => {
+        const e = r(element);
+        return e.width && e.height && e.bottom > box.top + 1 && e.top < box.bottom - 1;
+      }).length;
+      return {motif: motif.dataset.motif, hidden: motif.getAttribute('aria-hidden'), pointer: getComputedStyle(motif).pointerEvents,
+        mask: art.maskImage || art.webkitMaskImage, opacity: Number(art.opacity), afterCopy: !copy || copy.nextElementSibling === motif,
+        between: (!copy || box.top >= r(copy).bottom - 1) && (!next || box.bottom <= r(next).top + 1), under, height: box.height};
+    });
+    seen.push(g.motif);
+    expect(g.hidden, g.motif).toBe('true');
+    expect(g.pointer, g.motif).toBe('none');
+    expect(g.mask, g.motif).toContain('setup-motif-');
+    expect(g.opacity, g.motif).toBeLessThanOrEqual(0.2);
+    expect(g.afterCopy && g.between, g.motif).toBe(true);
+    expect(g.under, g.motif).toBe(0);
+    if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+    if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+    await accept(page);
+  }
+  expect(seen).toEqual(['welcome', 'deployment', 'download_directory', 'administrator', 'premium_services', 'getting_started']);
+  // A page's views draw no motif.
+  await end(page);
+  await preview(page);
+  await wizard(page).locator('[data-setup-language]').click();
+  await expect(wizard(page).locator('.dp-setup-language-view')).toBeVisible();
+  await expect(wizard(page).locator('.dp-setup-motif')).toHaveCount(0);
+  await end(page);
+});
+
+test('R23: on a short phone the motif yields: no room, no drawing, and the controls are where they were', async ({page}) => {
+  await load(page, {width: 375, height: 560});
+  await preview(page);
+  for (let i = 0; i < 6; i += 1) {
+    const g = await wizard(page).evaluate(node => {
+      const section = node.querySelector('.dp-setup-main');
+      const motif = section.querySelector(':scope > .dp-setup-motif');
+      const copy = section.querySelector(':scope > .dp-setup-copy');
+      const next = motif.nextElementSibling;
+      return {height: motif.getBoundingClientRect().height, drawn: getComputedStyle(motif, '::before').display !== 'none',
+        gap: copy && next ? next.getBoundingClientRect().top - copy.getBoundingClientRect().bottom - parseFloat(getComputedStyle(next).marginTop) : 10};
+    });
+    expect(g.height).toBeLessThan(1);
+    expect(g.drawn).toBe(false);
+    expect(Math.abs(g.gap - 10)).toBeLessThan(1.5);
+    if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+    if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+    await accept(page);
+  }
+  await end(page);
+});
+
+test('R24: Getting Started\'s steps: a list of three, each its number in a rail-coloured circle, its title on its own line, its words indented beneath', async ({page}) => {
+  for (const [width, height] of [[1280, 900], [375, 740], [320, 640]]) {
+    await load(page, {width, height});
+    await previewAt(page, '.dp-setup-getting-started');
+    const g = await wizard(page).locator('.dp-setup-steps').evaluate(list => {
+      const r = element => element.getBoundingClientRect();
+      return {role: list.getAttribute('role'), tag: list.tagName, marker: getComputedStyle(list).listStyleType,
+        steps: [...list.children].map((item, index) => {
+          const circle = getComputedStyle(item, '::before');
+          const title = item.querySelector(':scope > b');
+          const range = document.createRange();
+          range.setStartAfter(title);
+          range.setEndAfter(item.lastChild);
+          const body = [...range.getClientRects()].filter(rect => rect.width);
+          return {number: circle.content, round: circle.borderRadius, width: parseFloat(circle.width),
+            rail: circle.backgroundImage.includes('gradient'), titleBlock: getComputedStyle(title).display,
+            bodyBelow: body.every(rect => rect.top >= r(title).bottom - 1),
+            indented: body.every(rect => Math.abs(rect.left - r(title).left) < 2) && r(title).left - r(item).left >= 30,
+            overflow: item.scrollWidth > item.clientWidth + 1, index};
+        })};
+    });
+    expect(g.tag).toBe('OL');
+    expect(g.role).toBe('list');
+    expect(g.marker).toBe('none');
+    expect(g.steps.map(step => step.number)).toEqual(['counter(dp-setup-step)', 'counter(dp-setup-step)', 'counter(dp-setup-step)']);
+    for (const step of g.steps) {
+      expect(step, `${width}`).toMatchObject({round: '50%', rail: true, titleBlock: 'block', bodyBelow: true, indented: true, overflow: false});
+      expect(step.width).toBe(26);
+    }
+    await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.finish'));
+    await end(page);
+  }
+});
+
+test('R25: the header artwork is turned 15deg clockwise and stays behind and inside the header', async ({page}) => {
+  await load(page, {width: 320, height: 640});
+  await rerun(page);
+  const g = await wizard(page).evaluate(node => {
+    const header = node.querySelector('.dp-modal-header');
+    const field = header.querySelector('.dp-signal-field');
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(field).transform);
+    const angle = Math.round(Math.atan2(matrix.b, matrix.a) * 180 / Math.PI);
+    return {angle, overflow: getComputedStyle(header).overflow, page: document.documentElement.scrollWidth,
+      progressOnTop: document.elementFromPoint(...(() => { const b = header.querySelector('.dp-setup-progress-bubble').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })())?.closest('.dp-setup-progress') !== null};
+  });
+  expect(g).toEqual({angle: 15, overflow: 'hidden', page: 320, progressOnTop: true});
+  await end(page);
+});
+
+/* Premium Services' Help: the Settings card's own chip and topic, in the header's lower inline end, on that page alone. */
+async function settingsPremiumHelp(page) {
+  await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
+  const chip = page.locator('#view-settings .dp-settings-debrid-services > .card-header [data-settings-help="premium-services"]').first();
+  await expect(chip).toBeAttached();
+  const label = await chip.getAttribute('aria-label');
+  await chip.evaluate(node => node.click());
+  const dialog = page.locator('.dp-settings-help-dialog');
+  await expect(dialog).toBeVisible();
+  const read = {label, title: await dialog.locator('.dp-modal-title').textContent(), body: (await dialog.locator('.dp-modal-body').textContent()).replace(/\s+/g, ' ').trim()};
+  await dialog.locator('[data-modal-cancel]').click();
+  await expect(dialog).toHaveCount(0);
+  return read;
+}
+const helpChip = page => wizard(page).locator('.dp-modal-header .dp-setup-help [data-settings-help="premium-services"]');
+
+test('R26: Premium Services has the Settings card\'s own Help in its header: the same name, the same topic, keyboard-reachable; no other page or view has it', async ({page}) => {
+  await load(page);
+  const settings = await settingsPremiumHelp(page);
+  await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
+  await previewAt(page, '.dp-setup-premium');
+  await expect(helpChip(page)).toBeVisible();
+  await expect(helpChip(page)).toHaveAttribute('aria-label', settings.label);
+  await helpChip(page).focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.locator('.dp-settings-help-dialog');
+  await expect(dialog).toBeVisible();
+  expect(await dialog.locator('.dp-modal-title').textContent()).toBe(settings.title);
+  expect((await dialog.locator('.dp-modal-body').textContent()).replace(/\s+/g, ' ').trim()).toBe(settings.body);
+  await dialog.locator('[data-modal-cancel]').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();      // the wizard stays where it was
+  // Not in a provider view, nor on any other page.
+  await wizard(page).locator('[data-service="alldebrid"]').click();
+  await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
+  await expect(helpChip(page)).toBeHidden();
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await expect(helpChip(page)).toBeVisible();
+  await accept(page);
+  await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
+  await expect(helpChip(page)).toBeHidden();
+  await end(page);
+  // A rerun's Premium Services has it too.
+  await rerun(page);
+  for (let i = 0; i < 4 && !(await wizard(page).locator('.dp-setup-premium').count()); i += 1) {
+    await accept(page);
+    await page.waitForTimeout(150);
+  }
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  await expect(helpChip(page)).toBeVisible();
+  await end(page);
+});
+
+test('R27: the initial setup\'s Premium Services has the same Help (emulated record)', async ({page}) => {
+  await newInstallation(page, {deployment: 'standalone', phase: 'premium_services'});
+  await load(page);
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  await helpChip(page).click();
+  await expect(page.locator('.dp-settings-help-dialog')).toBeVisible();
+  await page.locator('.dp-settings-help-dialog [data-modal-cancel]').click();
+  await expect(wizard(page)).toBeVisible();
+});
+
+for (const [width, height] of [[1280, 900], [375, 740], [320, 640]]) {
+  test(`R28: at ${width}px the Help sits at the header's lower inline end, clear of the title, reading, badge and indicator`, async ({page}) => {
+    await load(page, {width, height});
+    await previewAt(page, '.dp-setup-premium');
+    const g = await wizard(page).evaluate(node => {
+      const r = element => element.getBoundingClientRect();
+      const header = node.querySelector('.dp-modal-header');
+      const chip = r(header.querySelector('.dp-setup-help button'));
+      const hint = header.querySelector('.dp-modal-title-hint');
+      const range = document.createRange();
+      range.selectNodeContents(hint);
+      const lines = [...range.getClientRects()];
+      const clear = box => chip.right <= box.left || chip.left >= box.right || chip.bottom <= box.top || chip.top >= box.bottom;
+      return {inside: chip.left >= r(header).left && chip.right <= r(header).right && chip.bottom <= r(header).bottom,
+        lowerEnd: chip.right > r(header).right - 40 && chip.bottom > r(header).bottom - 40,
+        clearOfText: lines.every(clear) && clear(r(header.querySelector('.dp-modal-title-line'))),
+        clearOfTop: clear(r(header.querySelector('.dp-setup-progress'))) && clear(r(header.querySelector('.dp-setup-optional'))),
+        page: document.documentElement.scrollWidth};
+    });
+    expect(g).toEqual({inside: true, lowerEnd: true, clearOfText: true, clearOfTop: true, page: width});
+    await end(page);
+  });
+}

@@ -279,7 +279,7 @@ def test_authentication_session_assets_are_packaged_without_settings_or_help_aug
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "sidebar-bottom-stack" in ux_style
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork});" in settings
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork,\n    // A card's contextual Help chip, from this page's one emitter, for a surface\n    // that offers the same topic outside Settings (the setup wizard's Premium\n    // Services): `titleKey` names the card it explains.\n    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});" in settings
 
 
 # ── Open mode: the standalone Admin answers only at this installation's own

@@ -75,7 +75,7 @@ test('W01: My Account offers Rerun Setup Wizard; a rerun opens over it, changes 
   const total = deployment === 'standalone' ? 4 : 5;
   await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeVisible();      // a rerun may be closed
-  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeDisabled();  // in its place, nowhere to go
+  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeHidden();    // the first page has no Back
   expect((await state(page)).rerun).toEqual({phase: 'welcome'});
   // Welcome (language unchanged) and Download Directory (folder unchanged): Next commits nothing new.
   await wizard(page).locator('[data-modal-accept]').click();
@@ -111,7 +111,7 @@ test('W02: a new installation\'s setup opens by itself, cannot be dismissed, and
   const total = deployment === 'standalone' ? 5 : 6;
   await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeHidden();
-  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeDisabled();
+  await expect(wizard(page).locator('[data-modal-action="back"]')).toBeHidden();
   // Welcome's action is Next, as its words ask (it was Get Started).
   await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.next'));
   await page.keyboard.press('Escape');

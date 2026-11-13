@@ -44,6 +44,12 @@
     "statistics": "statistics.svg",
     "testFlask": "test-flask.svg",
     "trash": "trash.svg",
-    "verifiedBadge": "verified-badge.svg"
+    "verifiedBadge": "verified-badge.svg",
+    "setupMotifWelcome": "setup-motif-welcome.svg",
+    "setupMotifDeployment": "setup-motif-deployment.svg",
+    "setupMotifDirectory": "setup-motif-directory.svg",
+    "setupMotifAdministrator": "setup-motif-administrator.svg",
+    "setupMotifPremium": "setup-motif-premium.svg",
+    "setupMotifGettingStarted": "setup-motif-getting-started.svg"
   }
 }

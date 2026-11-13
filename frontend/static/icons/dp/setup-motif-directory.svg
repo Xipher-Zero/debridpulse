@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Setup wizard, Download Directory: files flowing down into a folder. -->
+  <g opacity=".5"><rect x="82" y="6" width="14" height="18" rx="2"/><rect x="144" y="12" width="14" height="18" rx="2"/></g>
+  <g opacity=".75"><rect x="104" y="26" width="14" height="18" rx="2"/><rect x="126" y="34" width="14" height="18" rx="2"/></g>
+  <path d="M120 50 V70 M112 62 L120 70 L128 62"/>
+  <path d="M74 112 V80 a4 4 0 0 1 4 -4 H102 l8 8 H162 a4 4 0 0 1 4 4 V112 Z"/>
+  <path d="M74 92 H166" opacity=".5"/>
+</svg>

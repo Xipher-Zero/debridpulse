@@ -410,6 +410,7 @@
         <p class="dp-setup-hint" data-setup-test-note data-i18n="setup.premium.test_after_save" hidden></p>
       </section>`);
     wizard.provider = {id, section, handle: null};
+    wizard.help.hidden = true;
     wizard.error.hidden = true;
     wizard.body.replaceChildren(section, wizard.error);
     window.DPI18n.render(section);
@@ -472,6 +473,7 @@
    * control that opened it. */
   function showView(wizard, view, {title, hint, accept = null, cancel}) {
     wizard.view = view;
+    wizard.help.hidden = true;
     wizard.error.hidden = true;
     wizard.body.replaceChildren(view.section, wizard.error);
     window.DPI18n.render(view.section);
@@ -579,7 +581,7 @@
           <div class="dp-setup-copy">
             <p data-i18n="setup.getting_started.body"></p>
           </div>
-          <ol class="dp-setup-steps">
+          <ol class="dp-setup-steps" role="list">
             <li data-i18n="setup.getting_started.step.open" data-i18n-rich></li>
             <li data-i18n="setup.getting_started.step.add" data-i18n-rich></li>
             <li data-i18n="setup.getting_started.step.monitor" data-i18n-rich></li>
@@ -640,6 +642,20 @@
     return node;
   }
 
+  /* Premium Services' Help: the Settings card's own contextual Help -- its
+   * chip (DPSettingsPage.helpChip, the one emitter) opening its topic
+   * (DPSettingsHelp.open('premium-services')) -- in the dialog owner's header
+   * end, shown on that page alone. */
+  function premiumHelp() {
+    const node = element('<div class="dp-setup-help" hidden></div>');
+    const markup = window.DPSettingsPage?.helpChip?.('premium-services', 'settings.services.premium');
+    if (!markup) return node;
+    node.innerHTML = markup;
+    window.DPI18n.render(node);
+    node.querySelector('button')?.addEventListener('click', () => window.DPSettingsHelp?.open('premium-services'));
+    return node;
+  }
+
   function paintProgress(node, wizard) {
     const total = wizard.pages.length;
     const done = index => index < wizard.recordedIndex;
@@ -691,8 +707,9 @@
     }
     const progress = progressList();
     const top = headerTop(progress);
+    const help = premiumHelp();
     const wizard = {mode, preview, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
-      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, view: null,
+      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, view: null, help,
       repaint: null,
       // The furthest page the server records: Next moves the record only beyond
       // it, and every page before it is completed.
@@ -714,8 +731,13 @@
     function paint(handle) {
       const section = page().render(wizard);
       // A page (never a view of one): its explanation at the top, its
-      // controls toward the bottom (ui-setup-wizard.css .dp-setup-main).
+      // controls toward the bottom (ui-setup-wizard.css .dp-setup-main), and
+      // between them the page's motif -- decoration only, drawn in whatever
+      // room the body has spare and none where it has none.
       section.classList.add('dp-setup-main');
+      const motif = element(`<div class="dp-setup-motif" data-motif="${pages[wizard.index]}" aria-hidden="true"></div>`);
+      const copy = section.querySelector(':scope > .dp-setup-copy');
+      if (copy) copy.after(motif); else section.prepend(motif);
       const error = element('<p class="dp-setup-error" role="alert" hidden></p>');
       wizard.error = error;
       wizard.body.replaceChildren(section, error);
@@ -730,10 +752,11 @@
       handle.setAcceptHidden(false);
       handle.setAcceptEnabled(true);
       top.querySelector('.dp-setup-optional').hidden = pages[wizard.index] !== 'premium_services';
-      // Back is always in its place -- the footer keeps one shape from page to
-      // page -- and has nowhere to go from the first page.
-      handle.setActionHidden('back', false);
-      handle.setActionEnabled('back', wizard.index > 0);
+      help.hidden = pages[wizard.index] !== 'premium_services';
+      // Back goes back a page: the first page has none, so it has no Back
+      // (the footer keeps its footprint, ui-setup-wizard.css).
+      handle.setActionHidden('back', wizard.index === 0);
+      handle.setActionEnabled('back', true);
       paintProgress(progress, wizard);
       wizard.body.scrollTop = 0;
       // The page's first thing to answer: a field, the chosen option, a control.
@@ -840,9 +863,12 @@
 
     const dialog = window.DPSettingsModal.open({
       title: said(titleKey()),
-      className: 'dp-setup-dialog',
+      // The installation's own first run is mandatory: it has no Close on any
+      // page (setCancelHidden, below) -- a footer of two controls at most.
+      className: mode === 'initial' && !preview ? 'dp-setup-dialog dp-setup-mandatory' : 'dp-setup-dialog',
       bodyClassName: 'dp-setup-body',
       headerTop: top,
+      headerEnd: help,
       titleIcon: mark(),
       titleHint: said(hintKey()),
       // The initial setup is finished, never dismissed (its preview is).
