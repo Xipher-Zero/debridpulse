@@ -296,8 +296,6 @@
             <input class="input" data-setup-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>
           <div class="dp-setup-notes">
             <p class="dp-setup-hint" data-i18n="setup.administrator.sign_in_on"></p>
-            <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
-            <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
           </div>
         </section>`);
       section.querySelectorAll('[data-setup-field]').forEach(input => {
@@ -628,10 +626,12 @@
    * indicator, then one slot of fixed height between it and the heading,
    * reserved on every page so no heading moves. It holds Premium Services'
    * Optional badge, a reading (never a control), shown on that page and its
-   * provider views. */
+   * provider views. Behind the whole header lies the sidebar's own signal
+   * field (<dp-signal-field>, decoration only). */
   function headerTop(progress) {
     const node = element(`
       <div class="dp-setup-header-top">
+        <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
         <p class="dp-setup-badge-slot"><span class="dp-badge dp-badge--caution dp-setup-optional" data-i18n="setup.premium.optional" hidden></span></p>
       </div>`);
     node.prepend(progress);
@@ -712,6 +712,9 @@
 
     function paint(handle) {
       const section = page().render(wizard);
+      // A page (never a view of one): its explanation at the top, its
+      // controls toward the bottom (ui-setup-wizard.css .dp-setup-main).
+      section.classList.add('dp-setup-main');
       const error = element('<p class="dp-setup-error" role="alert" hidden></p>');
       wizard.error = error;
       wizard.body.replaceChildren(section, error);

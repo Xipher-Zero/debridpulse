@@ -29,6 +29,27 @@
 .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body > * {
   flex-shrink: 0;
 }
+
+/* Every page of the wizard (.dp-setup-main, set by paint for the six pages,
+   never for a view of one -- the language list, the folder browser, a
+   provider's configuration stay content-first) shares one composition:
+   one separation row, the page's explanation (centred), the room the body has
+   left, the page's own controls ending near the footer, and one separation
+   row. The page takes the body's whole height and its explanation pushes
+   what follows it to the bottom; when the page is taller than the body it
+   simply scrolls. The row is the body's spare height, not a fixed block: a
+   tenth of the viewport height beyond 560px, up to 20px -- nothing on a
+   short phone (about 375x560), 20px on a desktop. */
+.dp-modal-dialog.dp-setup-dialog {
+  --dp-setup-row: clamp(0px, calc((100dvh - 560px) * .1), 20px);
+}
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body > .dp-setup-main {
+  flex-grow: 1;
+  margin-block: var(--dp-setup-row);
+}
+.dp-setup-main > .dp-setup-copy {
+  margin-block-end: auto;
+}
 @media (max-width: 620px) {
   /* The dialog owner stacks footer controls full-width here, so a footer is as
      tall as its controls. The wizard's footer keeps one footprint -- its
@@ -47,8 +68,8 @@
 
 /* The header: progress above a centred heading, both of one fixed height --
    the hint keeps three lines (four on a phone) whatever it says, and scrolls
-   within them if a language needs more -- so no page moves the body. Theme
-   accents sit behind and beside it (decoration only). */
+   within them if a language needs more -- so no page moves the body. Behind
+   it lies DebridPulse's signal field (decoration only, below). */
 .dp-modal-dialog.dp-setup-dialog > .dp-modal-header {
   position: relative;
   overflow: hidden;
@@ -57,8 +78,9 @@
   gap: 14px;
   padding: 18px 18px 14px;
 }
-.dp-setup-dialog > .dp-modal-header > .dp-modal-header-top,
-.dp-setup-dialog > .dp-modal-header > .dp-modal-heading {
+.dp-setup-dialog > .dp-modal-header > .dp-modal-heading,
+.dp-setup-header-top > .dp-setup-progress,
+.dp-setup-header-top > .dp-setup-badge-slot {
   position: relative;
   z-index: 1;
 }
@@ -124,32 +146,36 @@
     --dp-setup-hint-lines: 4;
   }
 }
-.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before,
-.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
-  content: "";
+/* The header's artwork: the sidebar's own signal field (<dp-signal-field>,
+   icons/dp/sidebar-wave-accent.svg drawn inline by ui-theme-bootstrap.js and
+   coloured by the palette in force, ui-shell-signal-field.css), as the
+   handheld dock reuses it. Here it lies across the header's lower part,
+   behind the title and tagline and beneath the indicator: the artwork's own
+   proportions (320:300) at the header's width, its crossing band under the
+   heading, faded at both ends and toward the top so the indicator stays
+   clear, and faint enough that the title and tagline keep their contrast
+   (fainter still in light). Centred physically (left: 50%), and not
+   mirrored in right-to-left, as the sidebar's is not. The header clips it. */
+.dp-setup-header-top > .dp-signal-field {
   position: absolute;
-  inset-block-end: -34px;
-  inline-size: 128px;
-  block-size: 128px;
-  opacity: .16;
+  left: 50%;
+  bottom: 0;
+  z-index: 0;
+  inline-size: max(100%, 420px);
+  aspect-ratio: 320 / 300;
+  opacity: .34;
+  filter: var(--dp-chrome-signal-filter);
+  transform: translate(-50%, 38%);
   pointer-events: none;
-  -webkit-mask: var(--dp-setup-accent-rings) center / contain no-repeat;
-  mask: var(--dp-setup-accent-rings) center / contain no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%),
+    linear-gradient(180deg, transparent 22%, #000 46%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%),
+    linear-gradient(180deg, transparent 22%, #000 46%);
+  mask-composite: intersect;
 }
-.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before {
-  inset-inline-start: -46px;
-  background: linear-gradient(135deg, var(--accent), var(--dp-state-active));
-}
-.dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
-  inset-inline-end: -46px;
-  background: linear-gradient(225deg, var(--accent), var(--dp-state-connectivity));
-}
-.dp-modal-dialog.dp-setup-dialog {
-  --dp-setup-accent-rings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.5'%3E%3Ccircle cx='64' cy='64' r='62'/%3E%3Ccircle cx='64' cy='64' r='46'/%3E%3Ccircle cx='64' cy='64' r='30' stroke-dasharray='3 5'/%3E%3C/g%3E%3Ccircle cx='64' cy='64' r='6'/%3E%3C/svg%3E");
-}
-body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::before,
-body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
-  opacity: .12;
+body.light .dp-setup-header-top > .dp-signal-field {
+  opacity: .2;
 }
 
 /* The Connected Page Progress Indicator (ui-setup-wizard.js paintProgress):
@@ -264,7 +290,8 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 .dp-setup-error[hidden] {
   display: none;
 }
-/* A page's explanation, at the top of its body. */
+/* A page's explanation, at the top of its body, centred (its controls keep
+   their own alignment). */
 .dp-setup-copy {
   display: flex;
   flex-direction: column;
@@ -272,6 +299,7 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 }
 .dp-setup-copy p {
   margin: 0;
+  text-align: center;
   color: var(--dp-text-secondary);
   font-size: 13px;
   line-height: 1.55;
@@ -369,12 +397,9 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 }
 
 /* Getting Started: the three numbered steps, then -- where Finish signs the
-   Administrator in again -- the sign-in note, apart from the steps at the
-   bottom of the body, just above the footer (after the steps when the body
-   scrolls). */
-.dp-setup-body > .dp-setup-getting-started {
-  flex: 1 0 auto;
-}
+   Administrator in again -- the sign-in note, apart from the steps: both are
+   the page's bottom content (.dp-setup-main), the note last, just above the
+   footer. */
 .dp-setup-steps {
   margin: 0;
   padding-inline-start: 1.4em;
@@ -388,7 +413,7 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
   font-weight: 650;
 }
 .dp-setup-sign-in-note {
-  margin: auto 0 0;
+  margin: 4px 0 0;
   padding-block-start: 12px;
   border-block-start: 1px solid var(--dp-border-default);
   color: var(--dp-text-secondary);

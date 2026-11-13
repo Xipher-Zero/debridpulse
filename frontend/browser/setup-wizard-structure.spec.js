@@ -293,12 +293,12 @@ test('R06: Administrator Setup explains why only where an account is created, wi
   await previewAt(page, '.dp-setup-administrator');
   await expect(wizard(page).locator('.dp-modal-title-hint')).toHaveText(await t(page, 'setup.administrator.tagline'));
   await expect(wizard(page).locator('.dp-setup-administrator .dp-setup-copy p')).toHaveText(await t(page, 'setup.administrator.body'));
+  // Creating the account: only what Next does (the accounts and OIDC pointers were retired here).
   const notes = wizard(page).locator('.dp-setup-administrator .dp-setup-notes p');
-  await expect(notes).toHaveCount(3);
-  for (const [index, key] of ['setup.administrator.sign_in_on', 'setup.administrator.more_accounts', 'setup.administrator.oidc'].entries()) {
-    await expect(notes.nth(index)).toHaveText(await t(page, key));
-    expect(await notes.nth(index).evaluate(node => getComputedStyle(node).textAlign)).toBe('center');
-  }
+  await expect(notes).toHaveCount(1);
+  await expect(notes.first()).toHaveText(await t(page, 'setup.administrator.sign_in_on'));
+  expect(await notes.first().evaluate(node => getComputedStyle(node).textAlign)).toBe('center');
+  await expect(wizard(page).locator('.dp-setup-administrator [data-i18n="setup.administrator.more_accounts"], .dp-setup-administrator [data-i18n="setup.administrator.oidc"]')).toHaveCount(0);
   // The fields come after the explanation, the notes after the fields.
   const [copy, last, firstNote] = [await rect(wizard(page).locator('.dp-setup-administrator .dp-setup-copy')),
     await rect(wizard(page).locator('[data-setup-field="confirm"]')), await rect(notes.first())];
@@ -311,6 +311,9 @@ test('R06: Administrator Setup explains why only where an account is created, wi
     await accept(page); await accept(page);
     await expect(wizard(page).locator('.dp-setup-administrator')).toBeVisible();
     await expect(wizard(page).locator('.dp-setup-administrator .dp-setup-copy')).toHaveCount(0);
+    // Its guidance and its way to Users & Access are intact.
+    await expect(wizard(page).locator('.dp-setup-administrator [data-i18n="setup.administrator.oidc"]')).toBeVisible();
+    await expect(wizard(page).locator('[data-setup-users]')).toBeVisible();
     await end(page);
   }
   // A new Server installation whose Administrator was created but not confirmed (not signed in as it).
@@ -477,7 +480,9 @@ for (const [deployment, administrator, shown] of [['server', 'created', true], [
         const r = node.getBoundingClientRect();
         const b = body.getBoundingClientRect();
         return {apart: r.top >= steps.bottom + 8, inBody: r.bottom <= b.bottom + 1, aboveFooter: r.bottom <= footer.top + 1,
-          atBottom: body.scrollHeight > body.clientHeight || b.bottom - parseFloat(getComputedStyle(body).paddingBottom) - r.bottom < 2,
+          // The page's last content: it ends one separation row above the body's end (.dp-setup-main).
+          atBottom: body.scrollHeight > body.clientHeight || Math.abs(b.bottom - parseFloat(getComputedStyle(body).paddingBottom)
+            - parseFloat(getComputedStyle(node.closest('.dp-setup-main')).marginBottom) - r.bottom) < 2,
           rule: getComputedStyle(node).borderTopWidth};
       });
       expect(box, `${width}`).toEqual({apart: true, inBody: true, aboveFooter: true, atBottom: true, rule: '1px'});
@@ -517,6 +522,8 @@ test('R12: en-XA at 320px: taglines, badge, explanations, cards, service rows an
       const dialog = node.getBoundingClientRect();
       const overflowing = [...node.querySelectorAll('.dp-modal-header *, .dp-modal-body *, .dp-modal-footer *')]
         .filter(child => child.getClientRects().length && !child.closest('.dp-setup-progress')
+          // The header's artwork is wider than the dialog by design and clipped by the header (R16).
+          && !child.closest('.dp-signal-field')
           && (child.getBoundingClientRect().right > dialog.right + 1 || child.getBoundingClientRect().left < dialog.left - 1))
         .map(child => child.className || child.tagName);
       const hint = node.querySelector('.dp-modal-title-hint');
@@ -590,4 +597,118 @@ async function previewAtFrom(page) {
     await accept(page);
   }
   await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+}
+
+/* The one main-page composition (.dp-setup-main): a separation row, the
+ * centred explanation, the spare room, the page's controls ending near the
+ * footer, a separation row. The row is the viewport's spare height: a tenth
+ * of the height beyond 560px, up to 20px. Measured, never read from CSS text. */
+const expectedRow = height => Math.max(0, Math.min(20, (height - 560) * 0.1));
+const PAGE_CLASSES = ['.dp-setup-welcome', '.dp-setup-deployment', '.dp-setup-directory', '.dp-setup-administrator',
+  '.dp-setup-premium', '.dp-setup-getting-started'];
+
+for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]]) {
+  test(`R14: at ${width}x${height} every page shares one composition: row, centred explanation, spare room, controls ending a row above the footer`, async ({page}) => {
+    await load(page, {width, height});
+    await preview(page);
+    const row = expectedRow(height);
+    const seen = [];
+    for (let i = 0; i < 6; i += 1) {
+      const g = await wizard(page).evaluate(node => {
+        const body = node.querySelector('.dp-setup-body');
+        const section = body.querySelector('.dp-setup-main');
+        const style = getComputedStyle(body);
+        const r = element => element.getBoundingClientRect();
+        const copy = section.querySelector(':scope > .dp-setup-copy');
+        const controls = [...section.children].filter(child => child !== copy && child.getClientRects().length);
+        const last = controls[controls.length - 1];
+        const bodyBottom = r(body).bottom - parseFloat(style.paddingBottom);
+        const scrolls = body.scrollHeight > body.clientHeight + 1;
+        return {page: section.className, mains: body.querySelectorAll('.dp-setup-main').length,
+          top: parseFloat(getComputedStyle(section).marginTop), bottom: parseFloat(getComputedStyle(section).marginBottom),
+          centred: [...copy.querySelectorAll('p')].every(p => getComputedStyle(p).textAlign === 'center'),
+          controlsLeftAligned: controls.every(child => !child.matches('.dp-setup-steps') || getComputedStyle(child).textAlign !== 'center'),
+          gapAfterCopy: r(controls[0]).top - r(copy).bottom,
+          lastToSectionEnd: r(section).bottom - r(last).bottom,
+          sectionToBody: bodyBottom - r(section).bottom, scrolls};
+      });
+      seen.push(g.page);
+      expect(g.mains, g.page).toBe(1);
+      expect(Math.abs(g.top - row), g.page).toBeLessThan(0.6);
+      expect(Math.abs(g.bottom - row), g.page).toBeLessThan(0.6);
+      expect(g.centred, g.page).toBe(true);
+      expect(g.controlsLeftAligned, g.page).toBe(true);
+      expect(g.gapAfterCopy, g.page).toBeGreaterThanOrEqual(9.5);
+      // The controls end at the page's end; the page ends one row above the body's end (unless it scrolls).
+      expect(Math.abs(g.lastToSectionEnd), g.page).toBeLessThan(1);
+      if (!g.scrolls) expect(Math.abs(g.sectionToBody - row), g.page).toBeLessThan(1);
+      if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+      if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+      await accept(page);
+    }
+    for (const selector of PAGE_CLASSES) expect(seen.some(name => name.includes(selector.slice(1))), selector).toBe(true);
+    await end(page);
+  });
+}
+
+test('R15: the views of a page stay content-first: no page composition, no rows, starting at the body\'s top', async ({page}) => {
+  await load(page);
+  await preview(page);
+  const check = async label => {
+    const g = await wizard(page).evaluate(node => {
+      const body = node.querySelector('.dp-setup-body');
+      const view = body.querySelector('.dp-setup-language-view, .dp-setup-directory-view, .dp-setup-provider');
+      const note = body.querySelector('.dp-setup-preview-note');
+      return {mains: body.querySelectorAll('.dp-setup-main').length, margin: getComputedStyle(view).marginTop,
+        grow: getComputedStyle(view).flexGrow, top: view.getBoundingClientRect().top - (note ? note.getBoundingClientRect().bottom : body.getBoundingClientRect().top)};
+    });
+    expect(g.mains, label).toBe(0);
+    expect(g.margin, label).toBe('0px');
+    expect(g.grow, label).toBe('0');
+    expect(g.top, label).toBeLessThan(25);
+  };
+  await wizard(page).locator('[data-setup-language]').click();
+  await check('language');
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await accept(page);
+  await wizard(page).locator('[data-deployment="server"]').click();
+  await accept(page);
+  await wizard(page).locator('[data-setup-browse]').click();
+  await expect(wizard(page).locator('.dp-settings-directory-browser')).toBeVisible();
+  await check('directory');
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await accept(page); await accept(page);
+  await wizard(page).locator('[data-service="alldebrid"]').click();
+  await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
+  await check('provider');
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await end(page);
+});
+
+for (const theme of ['dark', 'light']) {
+  test(`R16: the header's artwork is the sidebar's signal field, behind the heading and beneath the indicator, clipped by the header (${theme})`, async ({page}) => {
+    await load(page, {width: 375, height: 740});
+    if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
+    await rerun(page);
+    const g = await wizard(page).evaluate(node => {
+      const header = node.querySelector('.dp-modal-header');
+      const field = header.querySelector('.dp-signal-field');
+      const svg = field?.querySelector('svg');
+      const ids = svg ? [...svg.querySelectorAll('[id]')].map(element => element.id) : [];
+      const z = element => Number(getComputedStyle(element).zIndex) || 0;
+      return {field: Boolean(field), drawn: Boolean(svg), hidden: field?.getAttribute('aria-hidden'),
+        pointer: getComputedStyle(field).pointerEvents, opacity: Number(getComputedStyle(field).opacity),
+        behind: z(field) < z(node.querySelector('.dp-modal-heading')) && z(field) < z(node.querySelector('.dp-setup-progress')),
+        clipped: getComputedStyle(header).overflow, rings: [getComputedStyle(header, '::before').content, getComputedStyle(header, '::after').content],
+        uniqueIds: ids.every(id => document.querySelectorAll(`[id="${id}"]`).length === 1), dialogWidth: node.getBoundingClientRect().width,
+        pageScroll: document.documentElement.scrollWidth};
+    });
+    expect(g).toMatchObject({field: true, drawn: true, hidden: 'true', pointer: 'none', behind: true, clipped: 'hidden',
+      rings: ['none', 'none'], uniqueIds: true});
+    expect(g.opacity).toBeLessThanOrEqual(theme === 'light' ? 0.2 : 0.34);
+    expect(g.pageScroll).toBeLessThanOrEqual(375);
+    // The heading and its controls stay reachable above it.
+    await expect(wizard(page).locator('[data-setup-language]')).toBeVisible();
+    await end(page);
+  });
 }
