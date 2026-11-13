@@ -266,7 +266,8 @@
           // this rerun was opened over (My Account) is asked to step aside
           // first, through its own guard of any unsaved edit; kept, nothing moves.
           if (wizard.opener && !(await wizard.opener.mayLeave())) return;
-          // The rerun is kept: Rerun Setup Wizard resumes it here.
+          // What this rerun committed stays committed; the next Rerun Setup
+          // Wizard starts again at Welcome.
           wizard.dialog.close();
           wizard.opener?.leave();
           window.DPSettingsPage?.openTab('users');
@@ -897,7 +898,7 @@
       // A previewed language that Next never saved is withdrawn.
       if (preview || pages[wizard.index] === 'welcome') void wizard.showOwnLanguage();
       // The preview returns to the rerun it was opened from.
-      if (preview) void rerun({opener: wizard.opener});
+      if (preview) void rerun({opener: wizard.opener, resume: true});
     });
     active = wizard;
     return wizard;
@@ -926,15 +927,23 @@
     open('initial', state, await readData());
   }
 
-  /* My Account's Rerun Setup Wizard: this Admin's own rerun, resumed where it
-   * stopped or started at Welcome; never the installation's setup. `opener`
-   * ({mayLeave, leave}) is the surface it opens over, which a page outside
-   * the wizard asks to step aside before it is shown. */
-  async function rerun({opener = null} = {}) {
+  /* My Account's Rerun Setup Wizard: this Admin's own rerun, never the
+   * installation's setup. Every explicit Rerun starts at Welcome: the rerun's
+   * record (where it stopped last time, if anywhere) is set back to Welcome
+   * through its one owner (PUT /setup/rerun) -- only that navigation record;
+   * every setting, account and provider stays exactly as saved, and each page
+   * reads its values afresh (readData), so no unsaved draft of an earlier
+   * rerun returns. An unfinished initial setup still resumes where its own
+   * record says (open('initial')). `opener` ({mayLeave, leave}) is the
+   * surface it opens over, which a page outside the wizard asks to step aside
+   * before it is shown. ``resume`` is the development preview's own return to
+   * the rerun it was opened from (at Welcome, its record kept): it writes
+   * nothing, as the preview never does. */
+  async function rerun({opener = null, resume = false} = {}) {
     if (active) return;
     const state = await readState();
     if (!state.initial.complete) { open('initial', state, await readData(), opener); return; }
-    const current = state.rerun ? state : await request('PUT', '/setup/rerun', {phase: 'welcome'});
+    const current = resume && state.rerun ? state : await request('PUT', '/setup/rerun', {phase: 'welcome'});
     // TEMPORARY (WS3b): whether this build offers the development-only preview.
     open('rerun', current, {...await readData(), development: state.development_build === true}, opener);
   }

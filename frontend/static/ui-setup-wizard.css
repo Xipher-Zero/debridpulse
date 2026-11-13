@@ -66,10 +66,12 @@
   }
 }
 
-/* The header: progress above a centred heading, both of one fixed height --
-   the hint keeps three lines (four on a phone) whatever it says, and scrolls
-   within them if a language needs more -- so no page moves the body. Behind
-   it lies DebridPulse's signal field (decoration only, below). */
+/* The header: progress above a centred heading. The heading's reading (the
+   page's tagline, or a view's own reading) takes the lines its words need --
+   one for a tagline, more for a longer reading or language, never clipped --
+   and the header's own bottom padding is the one space between its last line
+   and the body. Behind it lies DebridPulse's signal field (decoration only,
+   below). */
 .dp-modal-dialog.dp-setup-dialog > .dp-modal-header {
   position: relative;
   overflow: hidden;
@@ -115,12 +117,13 @@
 
 /* The header's top region: the indicator, then the badge slot -- the one
    shared space between the indicator and the heading, the same height on
-   every page whether a badge is shown or not. */
+   every page whether a badge is shown or not. The badge has the header's own
+   gap on both sides: 14px beneath the indicator, as between it and the title. */
 .dp-setup-header-top {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
 }
 .dp-setup-badge-slot {
   display: flex;
@@ -133,18 +136,10 @@
   display: none;
 }
 .dp-setup-dialog .dp-modal-title-hint {
-  --dp-setup-hint-lines: 3;
-  block-size: calc(var(--dp-setup-hint-lines) * 1.45em);
   max-inline-size: 40ch;
-  overflow-y: auto;
   font-size: 12.5px;
   line-height: 1.45;
   overflow-wrap: break-word;
-}
-@media (max-width: 620px) {
-  .dp-setup-dialog .dp-modal-title-hint {
-    --dp-setup-hint-lines: 4;
-  }
 }
 /* The header's artwork: the sidebar's own signal field (<dp-signal-field>,
    icons/dp/sidebar-wave-accent.svg drawn inline by ui-theme-bootstrap.js and

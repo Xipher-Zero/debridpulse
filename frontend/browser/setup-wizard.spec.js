@@ -221,9 +221,18 @@ test('W04: Open Users & Access reaches the visible Settings tab; an unsaved My A
     return Boolean(hit && node.contains(hit));
   });
   expect(unobscured).toBe(true);
-  // Discarded, not saved; and the rerun is kept to resume from My Account.
+  // Discarded, not saved. The rerun's record still says where it stopped...
   expect((await page.evaluate(() => window.debridPulseAuth.fetch('/api/account').then(r => r.json()))).display_name).toBe(savedName);
   expect((await state(page)).rerun).toEqual({phase: 'administrator'});
+  // ...but an explicit Rerun Setup Wizard starts again at Welcome, page 1 of 5, nothing completed.
+  await openAccount(page);
+  await account(page).locator('[data-account-setup-rerun]').click();
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  await step(page, 1, 5);
+  await expect(wizard(page).locator('.dp-setup-progress-step[data-state="done"]')).toHaveCount(0);
+  expect((await state(page)).rerun).toEqual({phase: 'welcome'});
+  await wizard(page).locator('[data-modal-cancel]').click();
+  await account(page).locator('[data-modal-cancel]').click();
   await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
 
@@ -502,25 +511,35 @@ const rect = locator => locator.evaluate(node => { const box = node.getBoundingC
 const next = page => wizard(page).locator('[data-modal-accept]').click();
 
 for (const [width, height] of [[1280, 900], [375, 667]]) {
-  test(`W12: one shell at ${width}x${height}: the same dialog, header and footer on every page and provider view; only the body scrolls`, async ({page}) => {
+  test(`W12: one shell at ${width}x${height}: the same dialog, footer and indicator on every page and provider view, the header sized by its reading; only the body scrolls`, async ({page}) => {
     await load(page, {width, height});
     await openRerun(page);
     const dialog = wizard(page);
-    const shape = async () => ({dialog: await rect(dialog), header: await rect(dialog.locator('.dp-modal-header')),
-      footer: await rect(dialog.locator('.dp-modal-footer')),
-      progress: await rect(progress(page)), heading: await rect(dialog.locator('.dp-modal-heading'))});
+    // One frame: every rectangle read in the same evaluation.
+    const shape = () => dialog.evaluate(node => {
+      const rect = element => { const box = element.getBoundingClientRect(); return [box.left, box.top, box.width, box.height].map(Math.round); };
+      return {dialog: rect(node), header: rect(node.querySelector('.dp-modal-header')), footer: rect(node.querySelector('.dp-modal-footer')),
+        progress: rect(node.querySelector('.dp-setup-progress')), heading: rect(node.querySelector('.dp-modal-heading')),
+        reading: Math.round(node.querySelector('.dp-modal-title-hint').getBoundingClientRect().height)};
+    });
+    // Next, and the next page shown (its title changed) before it is measured.
+    const advance = async () => {
+      const before = await dialog.locator('.dp-modal-title').textContent();
+      await next(page);
+      await expect(dialog.locator('.dp-modal-title')).not.toHaveText(before);
+    };
     const seen = [await shape()];
     const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
-    for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) { await next(page); seen.push(await shape()); }
+    for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) { await advance(); seen.push(await shape()); }
     await expect(dialog.locator('.dp-setup-premium')).toBeVisible();
     for (const id of ['debridlink', 'torbox', 'usenet']) {
       await dialog.locator(`[data-service="${id}"]`).click();
       await expect(dialog.locator('.dp-setup-provider-surface')).toBeVisible();
-      seen.push(await shape());
+      seen.push({...await shape(), view: true});
       if (id === 'usenet') {
         for (let n = 0; n < 4; n += 1) await dialog.locator('.dp-setup-provider-surface [data-usenet-action="add"]').click();
         await dialog.locator('.dp-setup-provider-surface [data-usenet-advanced-toggle]').first().click();
-        seen.push(await shape());
+        seen.push({...await shape(), view: true});
         // Long content scrolls inside the body; the footer's Save stays reachable.
         const body = await dialog.locator('.dp-modal-body').evaluate(node => ({scrolls: node.scrollHeight > node.clientHeight, overflow: getComputedStyle(node).overflowY}));
         expect(body).toEqual({scrolls: true, overflow: 'auto'});
@@ -532,9 +551,16 @@ for (const [width, height] of [[1280, 900], [375, 667]]) {
     await next(page);
     await expect(dialog.locator('.dp-setup-getting-started')).toBeVisible();
     seen.push(await shape());
-    for (const key of ['dialog', 'header', 'footer', 'progress', 'heading']) {
+    for (const key of ['dialog', 'footer', 'progress']) {
       expect(new Set(seen.map(entry => JSON.stringify(entry[key]))).size, key).toBe(1);
     }
+    // The header keeps its place and width, and everything in it but the
+    // reading keeps its size: the header is its chrome plus its reading's
+    // lines (R17), so the one-line taglines share one header and a longer
+    // reading (the rerun's Administrator guidance, a provider's) is taller.
+    expect(new Set(seen.map(entry => JSON.stringify(entry.header.slice(0, 3)))).size, 'header position').toBe(1);
+    expect(new Set(seen.map(entry => entry.header[3] - entry.reading)).size, 'header chrome').toBe(1);
+    expect(new Set(seen.map(entry => entry.heading[1])).size, 'heading top').toBe(1);
     const [left, top, w, h] = seen[0].dialog;
     expect(left).toBeGreaterThanOrEqual(0); expect(top).toBeGreaterThanOrEqual(0);
     expect(left + w).toBeLessThanOrEqual(width); expect(top + h).toBeLessThanOrEqual(height);

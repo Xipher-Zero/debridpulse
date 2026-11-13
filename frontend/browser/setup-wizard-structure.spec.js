@@ -712,3 +712,123 @@ for (const theme of ['dark', 'light']) {
     await end(page);
   });
 }
+
+/* The header: the badge 14px from the indicator and from the title; the
+ * reading takes only its lines; the header's bottom padding is the only space
+ * between the reading's last line and the body. Measured on every page. */
+for (const [width, height, locale] of [[1280, 900, 'en'], [375, 560, 'en'], [320, 640, 'en-XA']]) {
+  test(`R17: at ${width}x${height} (${locale}) the header holds only what it shows: the badge clear of the indicator, the reading its own lines`, async ({page}) => {
+    await load(page, {width, height});
+    await preview(page);
+    if (locale !== 'en') expect(await setLocale(page, locale)).toBe(locale);
+    for (let i = 0; i < 6; i += 1) {
+      const g = await wizard(page).evaluate(node => {
+        const r = element => element.getBoundingClientRect();
+        const header = node.querySelector('.dp-modal-header');
+        const hint = header.querySelector('.dp-modal-title-hint');
+        const range = document.createRange();
+        range.selectNodeContents(hint);
+        const lines = [...range.getClientRects()];
+        const text = {top: Math.min(...lines.map(x => x.top)), bottom: Math.max(...lines.map(x => x.bottom))};
+        const badge = header.querySelector('.dp-setup-optional');
+        const shown = badge && !badge.hidden;
+        return {premium: Boolean(node.querySelector('.dp-setup-premium')),
+          toBadge: shown ? r(badge).top - r(header.querySelector('.dp-setup-progress')).bottom : null,
+          badgeToTitle: shown ? r(header.querySelector('.dp-modal-title-line')).top - r(badge).bottom : null,
+          spare: r(hint).height - (text.bottom - text.top), clipped: hint.scrollHeight > hint.clientHeight + 1,
+          toEnd: r(header).bottom - text.bottom, padding: parseFloat(getComputedStyle(header).paddingBottom),
+          page: document.documentElement.scrollWidth};
+      });
+      expect(g.spare, `page ${i + 1}`).toBeLessThan(3);
+      expect(g.clipped, `page ${i + 1}`).toBe(false);
+      expect(Math.abs(g.toEnd - g.padding), `page ${i + 1}`).toBeLessThan(3);
+      expect(g.page, `page ${i + 1}`).toBeLessThanOrEqual(width);
+      if (g.premium) {
+        expect(g.toBadge).toBeGreaterThanOrEqual(13);
+        expect(Math.abs(g.toBadge - g.badgeToTitle)).toBeLessThan(1.5);
+      }
+      if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+      if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+      await accept(page);
+    }
+    await end(page);
+    if (locale !== 'en') expect(await setLocale(page, 'en')).toBe('en');
+  });
+}
+
+/* Rerun Setup Wizard (My Account) always starts at Welcome. Only the rerun's
+ * navigation record is reset; every saved setting stays, and no unsaved draft
+ * of an earlier rerun returns. */
+async function rerunFromAccount(page) {
+  if ((page.viewportSize()?.width || 1440) < 780) await page.locator('#topbar-account-button').click();
+  else await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
+  await page.locator('.dp-account-dialog [data-account-setup-rerun]').click();
+  await expect(wizard(page)).toBeVisible();
+}
+const saved = async page => {
+  const settings = (await call(page, 'GET', '/api/settings')).body;
+  const integrations = Object.fromEntries(['usenet', 'alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox'].map(id =>
+    [id, {enabled: settings.integrations?.[id]?.enabled ?? null, configured: Boolean(settings.integrations?.[id]?.configured)}]));
+  return {folder: settings.download_folder, locale: (await call(page, 'GET', '/api/settings/default-locale')).body,
+    own: (await call(page, 'GET', '/api/account/locale')).body, integrations,
+    deployment: await page.evaluate(() => window.debridPulseAuth.authority.deployment_type),
+    initial: (await call(page, 'GET', '/api/setup/state')).body.initial};
+};
+
+for (const stop of ['premium', 'getting-started']) {
+  test(`R18: a rerun left at ${stop === 'premium' ? 'Premium Services' : 'Getting Started (not finished)'} is not resumed: Rerun Setup Wizard opens at Welcome with every setting as saved and no earlier draft`, async ({page}) => {
+    await load(page);
+    await call(page, 'DELETE', '/api/setup/rerun');
+    const before = await saved(page);
+    await rerunFromAccount(page);
+    const walk = ['.dp-setup-directory', ...(before.deployment === 'server' ? ['.dp-setup-administrator'] : []),
+      '.dp-setup-premium', ...(stop === 'premium' ? [] : ['.dp-setup-getting-started'])];
+    for (const next of walk) {
+      await accept(page);
+      await expect(wizard(page).locator(next)).toBeVisible();
+    }
+    // Back (which commits nothing) to leave unsaved drafts: a folder typed, a language chosen.
+    while (!(await wizard(page).locator('.dp-setup-directory').count())) await wizard(page).locator('[data-modal-action="back"]').click();
+    await wizard(page).locator('#dp-setup-download-folder').fill('/synthetic/unsaved-draft');
+    await wizard(page).locator('[data-modal-action="back"]').click();
+    await wizard(page).locator('[data-setup-language]').click();
+    await wizard(page).locator('.dp-language-option[data-value="de"]').click();
+    await expect(wizard(page).locator('[data-setup-language]')).toHaveAttribute('data-language', 'de');
+    // Left without Close (the page reloaded): the record holds the furthest page reached.
+    expect((await call(page, 'GET', '/api/setup/state')).body.rerun.phase).toBe(stop === 'premium' ? 'premium_services' : 'getting_started');
+    await load(page);
+    const sent = writes(page);
+    await rerunFromAccount(page);
+    await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+    const total = before.deployment === 'standalone' ? 4 : 5;
+    await expect(wizard(page).locator('.dp-setup-progress-step')).toHaveCount(total);
+    await expect(wizard(page).locator('.dp-setup-progress-step').first()).toHaveAttribute('aria-current', 'step');
+    await expect(wizard(page).locator('.dp-setup-progress-step[data-state="done"]')).toHaveCount(0);
+    expect((await call(page, 'GET', '/api/setup/state')).body.rerun).toEqual({phase: 'welcome'});
+    // The only write: the rerun's own navigation record. Nothing else changed.
+    expect(sent).toEqual(['PUT /api/setup/rerun']);
+    expect(await saved(page)).toEqual(before);
+    await expect(wizard(page).locator('[data-setup-language]')).toHaveAttribute('data-language', before.locale.configured || before.locale.locale);
+    await accept(page);
+    await expect(wizard(page).locator('#dp-setup-download-folder')).toHaveValue(before.folder);
+    await end(page);
+  });
+}
+
+test('R19: a Standalone installation\'s rerun also starts at Welcome, with its own four pages and no Administrator page (emulated deployment type)', async ({page}) => {
+  await page.route(url => url.pathname === '/app.js', async route => {
+    const body = (await (await route.fetch()).text()).replace(/^window\.debridPulseAuthority=Object\.freeze\((.*)\);$/m,
+      (_, json) => `window.debridPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: 'standalone'})});`);
+    await route.fulfill({status: 200, contentType: 'application/javascript', body});
+  });
+  await load(page);
+  await call(page, 'PUT', '/api/setup/rerun', {phase: 'premium_services'});
+  await page.evaluate(() => window.DPSetupWizard.rerun());
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  await expect(wizard(page).locator('.dp-setup-progress-step')).toHaveCount(4);
+  await expect(wizard(page).locator('.dp-setup-progress-step[data-state="done"]')).toHaveCount(0);
+  for (let i = 0; i < 3; i += 1) await accept(page);
+  await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
+  await expect(wizard(page).locator('.dp-setup-administrator')).toHaveCount(0);
+  await end(page);
+});
