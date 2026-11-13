@@ -29466,6 +29466,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "9d5775ce7002897e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "92e24ec5190f82cc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "979e8159b19b8b36",
@@ -29542,6 +29558,86 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "3be496756c0427fb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "5f572d24da09e8e1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "c90229207589c35b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "832ecf658ae9d404",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: 'configurazione … nella configurazione guidata' repeats the same word for two different things (the service's settings and the wizard); use 'impostazioni' for the service's configuration.",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "b758e1895864c339",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "995066279cd16ece",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "d155831785a1f83b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "7a86cb3e085efa59",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "67ded049cdee0571",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "e3ac573885335eee",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29849,6 +29945,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "76a37f869859b644",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "5c5d1fae1e933e81",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste into «API Key» the API key of your {provider} account, then select «Save». The key is stored on the server and is never shown again. «Remove» immediately deletes the stored API key."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "a470d954f189a9ac",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -33042,18 +33156,34 @@
   },
   "setup.deployment.standalone.text": {
    "source": "d4af6261460d538e",
-   "translation": "5180c3a8300af31d",
+   "translation": "95f38fd89365862c",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Uses 'Admin' while every other wizard string renders 'built-in Administrator' as 'Amministratore integrato'; inconsistent role term.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.deployment.server.text": {
    "source": "b600a59e57f221a7",
-   "translation": "ca439e8431a877e3",
+   "translation": "b1d8d1179829b6ae",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: 'il proprio account' wrongly refers to the subject (the steps); English says 'your Administrator account'.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.deployment.locked": {
@@ -33340,18 +33470,34 @@
   },
   "setup.premium.test_after_save": {
    "source": "f7554168beaf37e7",
-   "translation": "3b818e5a51629594",
+   "translation": "4633229ae40291a6",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: 'Salva' is an informal tu imperative; the register requires the impersonal infinitive.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.immediate": {
    "source": "a19a0cbcc0d3dc10",
-   "translation": "60e68b58bfa520eb",
+   "translation": "69dae1a35cfe7336",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Informal 'tu' form ('digiti') breaks the impersonal/Lei register.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.immediate_account": {
@@ -33364,10 +33510,18 @@
   },
   "setup.premium.immediate_usenet": {
    "source": "88350ee4105373ab",
-   "translation": "9bf9cdf635f4cb2f",
+   "translation": "0050d45e3a1914cb",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Informal 'tu' form ('digiti') breaks the impersonal/Lei register.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.progress.label": {

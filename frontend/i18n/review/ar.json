@@ -28676,6 +28676,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "54c86d3f6d3f6ec7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "04edeb961583cf80",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "28b3df689cb0a251",
@@ -28760,6 +28776,94 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "e001eab738b428ab",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "51cc4843945bf9dd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "f09e9202f0bb996e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: 'لا تلزم أي منها' has wrong agreement with أي; corrected to 'لا يلزم أي منها'.",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "1132b9c81fd28475",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "77ed2d8236936c48",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "4ab0e5b38d5f3f95",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "173b61ee8ea3389c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "8e9745d3d8155d7d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: 'يفحص ... مقابل الخدمة' is a literal calque of 'against'; rephrased naturally (checks what is saved via the service).",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "0bf681d6b5ebc2f0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "e50df58fd92c65f0",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29065,6 +29169,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "e842f90d76db4b03",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "9e759495aecceb4d",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste the API key from your account on {provider} into the “API key” field, then select “Save”. The key is stored on the server and is never displayed again. And the command “Remove API key” leads to deleting the stored key immediately."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "9716881d62a4477b",
    "provenance": [
     "ai-generated",
     "ai-review"

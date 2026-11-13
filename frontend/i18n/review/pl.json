@@ -29658,6 +29658,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "b3556d0ded5db4c4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "3ba69d3d282e375f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "4de768594f3e0711",
@@ -29742,6 +29758,78 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "a59785228f1dd008",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "6c41f0abbded7a20",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "39e410c07b2d5819",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "34ed7a6dfad3b909",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "c5f0a1ad6840408e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "c3265fbb571ffb09",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "c84368645b01153b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "f64be18092acd35e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "bf9ced71caeeb09a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "23dc95177a0945d3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30068,6 +30156,24 @@
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "5e1cb658c84948ef",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "The API key from the {provider} account should be pasted into the “API Key” field, and then “Save” selected. The key is stored on the server and is never displayed again. The “Remove” button next to the API key immediately deletes the saved key."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "5c3859bd0858238d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
    ]
   },
   "help.topic.debridlink.title": {
@@ -32662,18 +32768,34 @@
   },
   "setup.deployment.server.text": {
    "source": "b600a59e57f221a7",
-   "translation": "2e50f0a351c8aa0c",
+   "translation": "9fd39e1290478d65",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Register: 'Twoje' addresses the reader as 'ty'; Polish register requires impersonal phrasing.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.deployment.locked": {
    "source": "30e697d449674411",
-   "translation": "5cb111b71f83e7d7",
+   "translation": "a5faeaa4e1f16ef4",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Register: 'Twoje' addresses the reader as 'ty'; Polish register requires impersonal phrasing.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.directory.title": {
@@ -32742,10 +32864,18 @@
   },
   "setup.administrator.created": {
    "source": "6e8ea7ec729022b5",
-   "translation": "ab427d215a31b465",
+   "translation": "ff2588da1e6fbb0d",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Register: 'Twoje' addresses the reader as 'ty'; Polish register requires impersonal phrasing.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.administrator.resubmit": {
@@ -32961,10 +33091,18 @@
   },
   "setup.premium.immediate": {
    "source": "a19a0cbcc0d3dc10",
-   "translation": "88d159ad945a011b",
+   "translation": "0891fbc481244bf9",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Register: 'wpiszesz' addresses the reader as 'ty'; rephrased impersonally.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.immediate_account": {
@@ -32977,10 +33115,18 @@
   },
   "setup.premium.immediate_usenet": {
    "source": "88350ee4105373ab",
-   "translation": "d7720459f6f7431a",
+   "translation": "e7dab49425e40810",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "Wizard reconciliation review: Register: 'wpiszesz' addresses the reader as 'ty'; rephrased impersonally.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.progress.label": {

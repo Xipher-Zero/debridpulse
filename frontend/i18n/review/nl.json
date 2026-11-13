@@ -28674,6 +28674,23 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "0674270a938a48f7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "73b6e48a1b552d11",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "identical": "'Later' is the standard Dutch word for 'later'; same spelling as English."
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "fdac0e7f89e22052",
@@ -28761,6 +28778,94 @@
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "f00a59ce779f2ef4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "8b235fabe2dfefa3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "f89d4f355242d563",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "00e8033c2797dcb1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "7be2e9f6f7e8f724",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "40fce463a942cc9f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: 'draait ze niet terug' is colloquial; standard Dutch software usage is 'maakt ze niet ongedaan'.",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "8046b1a342960796",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: 'wat er is opgeslagen bij de dienst' reads as 'what is stored at the service'; the check is made with the service against what DebridPulse has saved.",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "69148e4a8adb2182",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "2683c9f3075f23e3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
    ]
   },
   "help.topic.usenet.intro.usenet_downloads_nzb": {
@@ -29057,6 +29162,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "e96d6a0203e46195",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "7901079496b19d5e",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste the API key from your {provider} account into API Key and then select Save. It is kept on the server and is never shown again. Remove API key deletes the saved key immediately."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "e9bdeb70e7300835",
    "provenance": [
     "ai-generated",
     "ai-review"

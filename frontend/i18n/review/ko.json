@@ -28412,6 +28412,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "917749a4d51f1c70",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "a12252500035668f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "9c6b3d0bba82266f",
@@ -28504,6 +28520,78 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "20ef9cde976b8efb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "11526ff6f125b233",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "9c38df30f2adbbeb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "856a53e42338ea9c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "6d102b816cf29f03",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "1a667fd8cf4ef8c2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "785842f61553a277",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "bf06bfce2ca68687",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "494e63d87e1ad95e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "7463ae85ad332ec6",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28787,6 +28875,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "7781a92795cc9b48",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "0a14362c66a4a746",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste the API key of your {provider} account into ‘API Key’ and then select ‘Save’. The key is kept on the server and is never displayed again. ‘Remove API Key’ deletes the saved key immediately."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "ede8430e86625504",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31780,10 +31886,18 @@
   },
   "setup.directory.tagline": {
    "source": "35638422e84cc5ad",
-   "translation": "09f71ecdabfe1819",
+   "translation": "41b0376d5ce8f73f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "meaning",
+     "note": "Wizard reconciliation review: '돌아올 곳' means a place to return to; the English means a place to land/arrive.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.directory.body.purpose": {
@@ -31836,18 +31950,34 @@
   },
   "setup.premium.optional": {
    "source": "59be71333c960fd0",
-   "translation": "8d1a750c9351d1b8",
+   "translation": "c5b155fae6d6b447",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "meaning",
+     "note": "Gate 9 correction: 선택 reads as 'selection'/'choose' rather than optionality; the Optional badge now reads 선택 사항, matching the catalog's other optional wording (e.g. settings.extraction.passwords_optional).",
+     "status": "resolved",
+     "resolution": "Corrected to 선택 사항 at the operator's Gate 9 review."
+    }
    ]
   },
   "setup.premium.body.what": {
    "source": "d3c512907c62a0a5",
-   "translation": "4b3d9e1f355ce5ef",
+   "translation": "77a84636e7d477e7",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Uses the termbase term 제공자 for provider (not 제공업체) and the catalog's established spelling 디브리드 (not 데브리드).",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.body.optional": {

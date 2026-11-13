@@ -29964,6 +29964,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "9b55a61dc72d282b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "c47401bce409a92a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "528db8e11d43107a",
@@ -30048,6 +30064,78 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "d0cbcf8c5bd06a8d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "9b03b59f8ee69cac",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "07d94bea374e8d35",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "487701a157cf917a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "48242ed71a4e27cc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "93ee80269f18674c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "0ed74f33a882f20d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "04dc8ba074961ae1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "43b216dd851e98c7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "47679145aee71506",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30371,6 +30459,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "f0c3aad3f98e926a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "5739a5e28b5c36ca",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste the API key from your {provider} account into “API Key” and then choose “Save”. It is stored on the server and never shown again afterwards. “Remove API key” deletes the saved key immediately."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "08240084c97265c3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -33724,18 +33830,34 @@
   },
   "setup.deployment.body.types": {
    "source": "e1771ec33b8c2d34",
-   "translation": "52d451c677f5e48c",
+   "translation": "87fe3e8f4cbd59f0",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Inconsistent term: 'Bereitstellungsarten' while the page title and locked notice say 'Bereitstellungstyp'.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.deployment.body.choose": {
    "source": "3dc8787f44cce18c",
-   "translation": "24cf55505fa622f5",
+   "translation": "207f88aa35ea480f",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Inconsistent term: 'Bereitstellungsart' while the page title and locked notice say 'Bereitstellungstyp'.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.directory.tagline": {

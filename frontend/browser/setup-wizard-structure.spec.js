@@ -19,7 +19,10 @@ const { test, expect } = require('@playwright/test');
  * and a not-selectable folder is one synthetic listing. Every change a case
  * makes is put back. Locators are roles, data hooks and catalog keys. */
 
-async function load(page, {width = 1280, height = 900} = {}) {
+/* Page turns slide (ui-motion.js); these cases read each page as it stands, so they run with reduced motion,
+ * where a turn is immediate -- the motion itself is R30 and R32's (setup-wizard-structure.spec.js). */
+async function load(page, {width = 1280, height = 900, motion = false} = {}) {
+  await page.emulateMedia({reducedMotion: motion ? 'no-preference' : 'reduce'});
   await page.setViewportSize({width, height});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.goto('/');
@@ -33,7 +36,12 @@ const setLocale = (page, locale) => page.evaluate(locale => window.DPI18n.setLoc
 const call = (page, method, path, body) => page.evaluate(([method, path, body]) => window.debridPulseAuth.fetch(path, {
   method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined,
 }).then(async response => ({status: response.status, body: await response.json().catch(() => null)})), [method, path, body]);
-const accept = page => wizard(page).locator('[data-modal-accept]').click();
+// Next (or Save, or Finish), and its answer: while an accept is pending the dialog is busy
+// (ui-settings-modal.js), and a second one then is ignored by design.
+const accept = async page => {
+  await wizard(page).locator('[data-modal-accept]').click();
+  await page.waitForFunction(() => !document.querySelector('.dp-setup-dialog[aria-busy="true"]')).catch(() => {});
+};
 const title = async (page, key) => expect(wizard(page).locator('.dp-modal-title')).toHaveText(await t(page, key));
 
 /* Every write the page sends, except the page's own aria2 reachability probe. */
@@ -331,6 +339,9 @@ test('R07: Premium Services: the Optional badge between the progress and the tit
   const badge = wizard(page).locator('.dp-setup-optional');
   await expect(badge).toBeVisible();
   await expect(badge).toHaveText(await t(page, 'setup.premium.optional'));
+  // Korean says optional (선택 사항), not \"selection\" (선택).
+  const ko = await page.evaluate(() => fetch('/i18n/ko.json').then(response => response.json()));
+  expect((ko.messages || ko)['setup.premium.optional']).toBe('선택 사항');
   const [progress, badgeBox, titleLine] = [await rect(wizard(page).locator('.dp-setup-progress')), await rect(badge),
     await rect(wizard(page).locator('.dp-modal-title-line'))];
   expect(badgeBox.top).toBeGreaterThanOrEqual(progress.bottom);
@@ -489,16 +500,20 @@ for (const [deployment, administrator, shown] of [['server', 'created', true], [
   });
 }
 
-test('R11: the header: the same space between the progress and the heading on every page, the badge never over a bubble or the title', async ({page}) => {
+test('R11: the header: the heading the header\'s one gap beneath the progress where no badge shows; Premium Services alone reserves the badge\'s room', async ({page}) => {
   await load(page);
   await preview(page);
   const gaps = [];
   for (let i = 0; i < 6; i += 1) {
     const geometry = await wizard(page).evaluate(node => {
+      const header = node.querySelector('.dp-modal-header');
       const progress = node.querySelector('.dp-setup-progress').getBoundingClientRect();
       const line = node.querySelector('.dp-modal-title-line').getBoundingClientRect();
       const body = node.querySelector('.dp-setup-body').getBoundingClientRect();
-      return {gap: Math.round(line.top - progress.bottom), bodyTop: Math.round(body.top)};
+      const slot = node.querySelector('.dp-setup-badge-slot');
+      return {premium: Boolean(node.querySelector('.dp-setup-premium')), gap: Math.round(line.top - progress.bottom),
+        headerGap: parseFloat(getComputedStyle(header).rowGap), slot: Math.round(slot.getBoundingClientRect().height),
+        bodyTop: Math.round(body.top), dialog: Math.round(node.getBoundingClientRect().height)};
     });
     gaps.push(geometry);
     if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
@@ -506,9 +521,18 @@ test('R11: the header: the same space between the progress and the heading on ev
     await accept(page);
   }
   expect(gaps.length).toBe(6);
-  expect(new Set(gaps.map(entry => entry.gap)).size).toBe(1);
-  expect(new Set(gaps.map(entry => entry.bodyTop)).size).toBe(1);
-  expect(gaps[0].gap).toBeGreaterThanOrEqual(40);
+  const plain = gaps.filter(entry => !entry.premium);
+  const [premium] = gaps.filter(entry => entry.premium);
+  expect(plain.length).toBe(5);
+  // No phantom slot: the five pages without a badge keep no room for it.
+  for (const entry of plain) expect(entry, 'no badge slot room').toMatchObject({slot: 0, gap: entry.headerGap});
+  expect(new Set(plain.map(entry => entry.bodyTop)).size).toBe(1);
+  // Premium Services: progress, badge, title, each one header gap apart, the body lower by exactly the badge and one gap.
+  expect(premium.slot).toBeGreaterThan(0);
+  expect(premium.gap).toBe(plain[0].gap + premium.slot + premium.headerGap);
+  expect(premium.bodyTop - plain[0].bodyTop).toBe(premium.slot + premium.headerGap);
+  // The dialog's own size never changes: the body receives what the header does not take.
+  expect(new Set(gaps.map(entry => entry.dialog)).size).toBe(1);
   await end(page);
 });
 
@@ -521,8 +545,6 @@ test('R12: en-XA at 320px: taglines, badge, explanations, cards, service rows an
       const dialog = node.getBoundingClientRect();
       const overflowing = [...node.querySelectorAll('.dp-modal-header *, .dp-modal-body *, .dp-modal-footer *')]
         .filter(child => child.getClientRects().length && !child.closest('.dp-setup-progress')
-          // The header's artwork is wider than the dialog by design and clipped by the header (R16).
-          && !child.closest('.dp-signal-field')
           && (child.getBoundingClientRect().right > dialog.right + 1 || child.getBoundingClientRect().left < dialog.left - 1))
         .map(child => child.className || child.tagName);
       const hint = node.querySelector('.dp-modal-title-hint');
@@ -696,29 +718,42 @@ test('R15: the views of a page stay content-first: no page composition, no rows,
 });
 
 for (const theme of ['dark', 'light']) {
-  test(`R16: the header's artwork is the sidebar's signal field, behind the heading and beneath the indicator, clipped by the header (${theme})`, async ({page}) => {
+  test(`R16: the header's artwork is a still, hazy starfield behind everything the header holds, quietest beneath each of its contents, clipped by the header (${theme})`, async ({page}) => {
     await load(page, {width: 375, height: 740});
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
-    await rerun(page);
-    const g = await wizard(page).evaluate(node => {
+    // Premium Services: the indicator, the badge, the title, the reading and Help all shown.
+    await previewAt(page, '.dp-setup-premium');
+    const read = () => wizard(page).evaluate(node => {
       const header = node.querySelector('.dp-modal-header');
-      const field = header.querySelector('.dp-signal-field');
-      const svg = field?.querySelector('svg');
-      const ids = svg ? [...svg.querySelectorAll('[id]')].map(element => element.id) : [];
+      const stars = header.querySelector('.dp-setup-stars');
+      const style = getComputedStyle(stars);
       const z = element => Number(getComputedStyle(element).zIndex) || 0;
-      return {field: Boolean(field), drawn: Boolean(svg), hidden: field?.getAttribute('aria-hidden'),
-        pointer: getComputedStyle(field).pointerEvents, opacity: Number(getComputedStyle(field).opacity),
-        behind: z(field) < z(node.querySelector('.dp-modal-heading')) && z(field) < z(node.querySelector('.dp-setup-progress')),
-        clipped: getComputedStyle(header).overflow, rings: [getComputedStyle(header, '::before').content, getComputedStyle(header, '::after').content],
-        uniqueIds: ids.every(id => document.querySelectorAll(`[id="${id}"]`).length === 1), dialogWidth: node.getBoundingClientRect().width,
+      // A halo: the content's own ::before, a feathered radial of the surface colour, never hit.
+      const halo = selector => {
+        const before = getComputedStyle(header.querySelector(selector), '::before');
+        return before.content !== 'none' && before.backgroundImage.startsWith('radial-gradient') && before.pointerEvents === 'none';
+      };
+      const s = stars.getBoundingClientRect();
+      const h = header.getBoundingClientRect();
+      return {signal: header.querySelectorAll('dp-signal-field, .dp-signal-field').length, hidden: stars.getAttribute('aria-hidden'),
+        pointer: style.pointerEvents, mask: `${style.maskImage} ${style.webkitMaskImage}`.includes('/icons/dp/setup-stars.svg'),
+        still: stars.getAnimations().length === 0 && style.animationName === 'none' && style.transform === 'none',
+        opacity: Number(style.opacity),
+        behind: z(stars) < z(node.querySelector('.dp-modal-heading')) && z(stars) < z(node.querySelector('.dp-setup-progress')),
+        covers: [s.left - h.left, s.right - h.right, s.top - h.top, s.bottom - h.bottom].every(d => Math.abs(d) <= 1.5),
+        clipped: getComputedStyle(header).overflow,
+        halos: ['.dp-setup-progress', '.dp-setup-badge-slot', '.dp-modal-title-line', '.dp-modal-title-hint', '.dp-modal-header-end'].map(halo),
         pageScroll: document.documentElement.scrollWidth};
     });
-    expect(g).toMatchObject({field: true, drawn: true, hidden: 'true', pointer: 'none', behind: true, clipped: 'hidden',
-      rings: ['none', 'none'], uniqueIds: true});
-    expect(g.opacity).toBeLessThanOrEqual(theme === 'light' ? 0.2 : 0.34);
+    const g = await read();
+    expect(g).toMatchObject({signal: 0, hidden: 'true', pointer: 'none', mask: true, still: true, behind: true, covers: true,
+      clipped: 'hidden', halos: [true, true, true, true, true]});
+    expect(g.opacity).toBeLessThanOrEqual(theme === 'light' ? 0.5 : 0.62);
     expect(g.pageScroll).toBeLessThanOrEqual(375);
-    // The heading and its controls stay reachable above it.
-    await expect(wizard(page).locator('[data-setup-language]')).toBeVisible();
+    // Where no badge or Help shows, nothing quiets the stars there.
+    await accept(page);
+    await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
+    expect((await read()).halos).toEqual([true, false, true, true, false]);
     await end(page);
   });
 }
@@ -745,7 +780,12 @@ for (const [width, height, locale] of [[1280, 900, 'en'], [375, 560, 'en'], [320
         return {premium: Boolean(node.querySelector('.dp-setup-premium')),
           toBadge: shown ? r(badge).top - r(header.querySelector('.dp-setup-progress')).bottom : null,
           badgeToTitle: shown ? r(header.querySelector('.dp-modal-title-line')).top - r(badge).bottom : null,
-          spare: r(hint).height - (text.bottom - text.top), clipped: hint.scrollHeight > hint.clientHeight + 1,
+          toTitle: r(header.querySelector('.dp-modal-title-line')).top - r(header.querySelector('.dp-setup-progress')).bottom,
+          slot: r(header.querySelector('.dp-setup-badge-slot')).height, headerGap: parseFloat(getComputedStyle(header).rowGap),
+          spare: r(hint).height - (text.bottom - text.top),
+          // Every line of the reading lies inside its box (its feathered halo, an absolutely placed ::before,
+          // reaches past the box by design and is not text).
+          clipped: text.top < r(hint).top - 1 || text.bottom > r(hint).bottom + 1,
           toEnd: r(header).bottom - text.bottom, padding: parseFloat(getComputedStyle(header).paddingBottom),
           page: document.documentElement.scrollWidth};
       });
@@ -756,6 +796,10 @@ for (const [width, height, locale] of [[1280, 900, 'en'], [375, 560, 'en'], [320
       if (g.premium) {
         expect(g.toBadge).toBeGreaterThanOrEqual(13);
         expect(Math.abs(g.toBadge - g.badgeToTitle)).toBeLessThan(1.5);
+      } else {
+        // No badge, no room kept for one: the title the header's one gap beneath the indicator.
+        expect(g.slot, `page ${i + 1}`).toBe(0);
+        expect(Math.abs(g.toTitle - g.headerGap), `page ${i + 1}`).toBeLessThan(1.5);
       }
       if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
       if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
@@ -927,7 +971,7 @@ test('R22: every page draws its own full-area line art behind its content -- one
       expect(g, g.page).toMatchObject({count: 1, hidden: 'true', pointer: 'none', position: 'absolute', z: '-1', display: 'block',
         isolated: 'isolate', spans: true, diffusion: 2, roomDraws: 'none'});
       expect(g.mask, g.page).toContain(`setup-art-${FILES[g.page]}.svg`);
-      expect(g.opacity, g.page).toBeLessThanOrEqual(0.62);
+      expect(g.opacity, g.page).toBeCloseTo(0.342, 3);
       expect(g.halo, g.page).toContain('radial-gradient');      // the page's content quiets the art beneath it
       if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
       if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
@@ -1040,8 +1084,9 @@ test('R25: the header artwork is unrotated and stays behind and inside the heade
   await rerun(page);
   const g = await wizard(page).evaluate(node => {
     const header = node.querySelector('.dp-modal-header');
-    const field = header.querySelector('.dp-signal-field');
-    const matrix = new DOMMatrixReadOnly(getComputedStyle(field).transform);
+    const stars = header.querySelector('.dp-setup-stars');
+    const transform = getComputedStyle(stars).transform;
+    const matrix = new DOMMatrixReadOnly(transform === 'none' ? undefined : transform);
     const angle = Math.round(Math.atan2(matrix.b, matrix.a) * 180 / Math.PI);
     return {angle, overflow: getComputedStyle(header).overflow, page: document.documentElement.scrollWidth,
       progressOnTop: document.elementFromPoint(...(() => { const b = header.querySelector('.dp-setup-progress-bubble').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })())?.closest('.dp-setup-progress') !== null};
@@ -1059,16 +1104,28 @@ async function settingsPremiumHelp(page) {
   await chip.evaluate(node => node.click());
   const dialog = page.locator('.dp-settings-help-dialog');
   await expect(dialog).toBeVisible();
-  const read = {label, title: await dialog.locator('.dp-modal-title').textContent(), body: (await dialog.locator('.dp-modal-body').textContent()).replace(/\s+/g, ' ').trim()};
+  const read = {label, title: await dialog.locator('.dp-modal-title').textContent(), keys: await helpKeys(page)};
   await dialog.locator('[data-modal-cancel]').click();
   await expect(dialog).toHaveCount(0);
   return read;
 }
 const helpChip = page => wizard(page).locator('.dp-modal-header .dp-setup-help [data-settings-help="premium-services"]');
+// The catalog keys an open Help topic says (each part keeps its key).
+const helpKeys = page => page.locator('.dp-settings-help-dialog .dp-modal-body [data-i18n]').evaluateAll(nodes => nodes.map(node => node.dataset.i18n));
+// Read in the wizard, Premium Services' Help explains the wizard; on Settings, its cards.
+const WIZARD_PREMIUM = ['help.topic.premium_services.wizard.intro', 'help.topic.premium_services.wizard.optional',
+  'help.topic.heading.setting_up_service', 'help.topic.premium_services.wizard.open_service', 'help.topic.premium_services.wizard.connect_ways',
+  'help.topic.premium_services.wizard.save_cancel', 'help.topic.premium_services.wizard.immediate', 'help.topic.premium_services.wizard.test',
+  'help.topic.premium_services.wizard.service_help', 'help.topic.heading.later', 'help.topic.premium_services.wizard.later'];
+// What a topic read in the wizard never says: a Settings card's or another Settings page's controls.
+const SETTINGS_ONLY = /^help\.topic\.(premium_services\.(intro|each_card|usenet|related)\.|shared\.(behavior_shared_every|maximum_concurrent_downloads)$|[a-z]+\.additional_settings\.|usenet\.downloads_recovery\.behavior_shared_every$|usenet\.nzbs_premium_services\.torbox_premiumize_can\.provider_additional_settings_shown$|(alldebrid|debridlink|premiumize)\.connecting\.)|^help\.topic\.heading\.(each_card|shared_settings|additional_settings|related)$/;
 
-test('R26: Premium Services has the Settings card\'s own Help in its header: the same name, the same topic, keyboard-reachable; no other page or view has it', async ({page}) => {
+test('R26: Premium Services has the Settings card\'s own Help in its header, read in the wizard: the wizard\'s guidance there and the cards\' on Settings; keyboard-reachable; on that page and each service\'s view only', async ({page}) => {
   await load(page);
   const settings = await settingsPremiumHelp(page);
+  // On Settings: the cards' guidance, unchanged, and none of the wizard's.
+  expect(settings.keys).toEqual(expect.arrayContaining(['help.topic.premium_services.intro.premium_services', 'help.topic.premium_services.each_card.enable_decides_whether']));
+  expect(settings.keys.filter(key => WIZARD_PREMIUM.includes(key))).toEqual([]);
   await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
   await previewAt(page, '.dp-setup-premium');
   await expect(helpChip(page)).toBeVisible();
@@ -1078,19 +1135,22 @@ test('R26: Premium Services has the Settings card\'s own Help in its header: the
   const dialog = page.locator('.dp-settings-help-dialog');
   await expect(dialog).toBeVisible();
   expect(await dialog.locator('.dp-modal-title').textContent()).toBe(settings.title);
-  expect((await dialog.locator('.dp-modal-body').textContent()).replace(/\s+/g, ' ').trim()).toBe(settings.body);
-  await dialog.locator('[data-modal-cancel]').click();
+  // In the wizard: exactly the wizard's guidance, in order, and nothing of a Settings card.
+  expect(await helpKeys(page)).toEqual(WIZARD_PREMIUM);
+  await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+  await expect(helpChip(page)).toBeFocused();
   await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();      // the wizard stays where it was
-  // Not in a provider view, nor on any other page.
+  // A service's view has that service's own Help instead (R31); the list's returns with the list.
   await wizard(page).locator('[data-service="alldebrid"]').click();
   await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
-  await expect(helpChip(page)).toBeHidden();
+  await expect(helpChip(page)).toHaveCount(0);
+  await expect(wizard(page).locator('.dp-modal-header .dp-setup-help [data-settings-help="alldebrid"]')).toBeVisible();
   await wizard(page).locator('[data-modal-cancel]').click();
   await expect(helpChip(page)).toBeVisible();
   await accept(page);
   await expect(wizard(page).locator('.dp-setup-getting-started')).toBeVisible();
-  await expect(helpChip(page)).toBeHidden();
+  await expect(wizard(page).locator('.dp-modal-header .dp-setup-help')).toBeHidden();
   await end(page);
   // A rerun's Premium Services has it too.
   await rerun(page);
@@ -1100,6 +1160,64 @@ test('R26: Premium Services has the Settings card\'s own Help in its header: the
   }
   await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
   await expect(helpChip(page)).toBeVisible();
+  // An open topic is re-said in place when the language changes.
+  await helpChip(page).click();
+  await expect(dialog).toBeVisible();
+  expect(await setLocale(page, 'en-XA')).toBe('en-XA');
+  const said = dialog.locator('[data-i18n="help.topic.premium_services.wizard.optional"]');
+  await expect(said).toHaveText(await t(page, 'help.topic.premium_services.wizard.optional'));
+  expect(await setLocale(page, 'en')).toBe('en');
+  await page.keyboard.press('Escape');
+  await end(page);
+});
+
+/* Each service's view: its own Settings topic, read in the wizard, in the header's end -- opening and
+ * closing it changes nothing: the view, its unsaved field, no write. */
+const SERVICES = [['usenet', 'Usenet', 'help.topic.heading.usenet'], ['alldebrid', 'AllDebrid', 'help.topic.alldebrid.title'],
+  ['debridlink', 'Debrid-Link', 'help.topic.debridlink.title'], ['premiumize', 'Premiumize', 'help.topic.premiumize.title'],
+  ['realdebrid', 'Real-Debrid', 'help.topic.realdebrid.title'], ['torbox', 'TorBox', 'help.topic.torbox.title']];
+const KEYED = ['alldebrid', 'debridlink', 'premiumize'];
+
+test('R31: each service\'s view has that service\'s own Help: its Settings topic, saying only what the wizard offers; opening it keeps the view, its unsaved key and every setting', async ({page}) => {
+  await load(page);
+  await previewAt(page, '.dp-setup-premium');
+  const sent = writes(page);
+  const dialog = page.locator('.dp-settings-help-dialog');
+  for (const [id, name, titleKey] of SERVICES) {
+    await wizard(page).locator(`[data-service="${id}"]`).click();
+    await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
+    const chip = wizard(page).locator(`.dp-modal-header .dp-setup-help [data-settings-help="${id}"]`);
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute('aria-label', await t(page, 'settings.help_chip', {subject: name}));
+    const field = wizard(page).locator('.dp-setup-provider input[type="password"]').first();
+    if (KEYED.includes(id)) await field.fill('unsaved-draft-key');
+    const before = sent.length;
+    await chip.focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.dp-modal-title')).toHaveText(await t(page, titleKey));
+    const keys = await helpKeys(page);
+    expect(keys.filter(key => SETTINGS_ONLY.test(key)), id).toEqual([]);
+    if (KEYED.includes(id)) expect(keys, id).toEqual(expect.arrayContaining(['help.topic.shared.wizard.paste_api_key', 'help.topic.shared.wizard.test_saved_key']));
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(chip).toBeFocused();
+    await expect(wizard(page).locator(`.dp-setup-provider[data-provider="${id}"]`)).toBeVisible();
+    if (KEYED.includes(id)) await expect(field).toHaveValue('unsaved-draft-key');
+    expect(sent.slice(before), id).toEqual([]);
+    await wizard(page).locator('[data-modal-cancel]').click();
+    await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  }
+  // On Settings the same topics still explain the cards: a card's key is saved on leaving the field.
+  const settingsKeys = await page.evaluate(() => {
+    const handle = window.DPSettingsHelp.open('alldebrid');
+    const keys = [...document.querySelectorAll('.dp-settings-help-dialog .dp-modal-body [data-i18n]')].map(node => node.dataset.i18n);
+    handle?.close?.();
+    return keys;
+  });
+  expect(settingsKeys).toEqual(expect.arrayContaining(['help.topic.alldebrid.connecting.paste_api_key', 'help.topic.alldebrid.connecting.test_checks_key']));
+  expect(settingsKeys).not.toContain('help.topic.shared.wizard.paste_api_key');
+  await page.keyboard.press('Escape');
   await end(page);
 });
 
@@ -1136,3 +1254,86 @@ for (const [width, height] of [[1280, 900], [375, 740], [320, 640]]) {
     await end(page);
   });
 }
+
+/* A turn of the body, read while it moves: the slide's direction, its still copy (inert, hidden, carrying none of
+ * the body's environment), and that every sliding animation's target is the body's content or that copy -- never
+ * the header, the indicator or the footer. Then it settles: no copy left. */
+async function turn(page, act) {
+  await act();
+  const handle = await page.waitForFunction(() => {
+    const body = document.querySelector('.dp-setup-dialog .dp-setup-body.dp-motion-surface');
+    const still = document.querySelector('.dp-setup-dialog .dp-motion-still');
+    if (!body || !still) return null;
+    const sliding = document.getAnimations().filter(animation => animation.effect?.getKeyframes?.().some(frame => String(frame.transform || '').includes('translateX')));
+    const leave = still.firstElementChild?.getAnimations()[0]?.effect.getKeyframes().at(-1).transform || '';
+    return {direction: body.dataset.dpMotionDirection, background: getComputedStyle(still).backgroundImage,
+      hidden: still.getAttribute('aria-hidden'), inert: still.inert,
+      onlyBody: sliding.length > 0 && sliding.every(animation => body.contains(animation.effect.target) || still.contains(animation.effect.target)),
+      leaves: Math.sign(parseFloat((leave.match(/translateX\((-?[\d.]+)px\)/) || [0, 0])[1])),
+      page: document.documentElement.scrollWidth <= window.innerWidth};
+  }, null, {polling: 'raf'});
+  const read = await handle.jsonValue();
+  await expect(wizard(page).locator('.dp-motion-still')).toHaveCount(0);
+  await expect(page.locator('.dp-setup-dialog .dp-setup-body.dp-motion-surface')).toHaveCount(0);
+  return read;
+}
+const forward = {direction: 'forward', background: 'none', hidden: 'true', inert: true, onlyBody: true, leaves: -1, page: true};
+const backward = {...forward, direction: 'backward', leaves: 1};
+
+test('R30: page turns slide the body only: Next forward, Back backward, a view or a service in forward and out backward; focus returns; a quick second turn ends the first', async ({page}) => {
+  await load(page, {motion: true});
+  await preview(page);
+  expect(await turn(page, () => accept(page))).toEqual(forward);
+  await expect(wizard(page).locator('.dp-setup-deployment')).toBeVisible();
+  expect(await turn(page, () => wizard(page).locator('[data-modal-action="back"]').click())).toEqual(backward);
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  // Welcome's language list: a view in, then out, with focus back on its opener.
+  expect(await turn(page, () => wizard(page).locator('[data-setup-language]').click())).toEqual(forward);
+  await expect(wizard(page).locator('.dp-setup-language-view')).toBeVisible();
+  expect(await turn(page, () => wizard(page).locator('[data-modal-cancel]').click())).toEqual(backward);
+  await expect(wizard(page).locator('[data-setup-language]')).toBeFocused();
+  // Two turns at once: the second ends the first, and one page is left, with no copy.
+  await turn(page, () => accept(page));
+  await turn(page, () => accept(page));
+  await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
+  await page.evaluate(() => { const back = document.querySelector('.dp-setup-dialog [data-modal-action="back"]'); back.click(); back.click(); });
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  await expect(wizard(page).locator('.dp-motion-still')).toHaveCount(0);
+  await expect(wizard(page).locator('.dp-setup-body > .dp-setup-main')).toHaveCount(1);
+  // A service's view: in forward, Cancel out backward (walked there without motion).
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await previewAtFrom(page);
+  await page.emulateMedia({reducedMotion: 'no-preference'});
+  expect(await turn(page, () => wizard(page).locator('[data-service="alldebrid"]').click())).toEqual(forward);
+  await expect(wizard(page).locator('.dp-setup-provider-surface')).toBeVisible();
+  expect(await turn(page, () => wizard(page).locator('[data-modal-cancel]').click())).toEqual(backward);
+  await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
+  await end(page);
+});
+
+test('R32: right to left, the turns mirror (forward leaves toward the right); with reduced motion a turn is immediate, with no slide', async ({page}) => {
+  await load(page, {width: 375, height: 740});
+  const own = (await call(page, 'GET', '/api/account/locale')).body;
+  expect((await call(page, 'PUT', '/api/account/locale', {locale: 'ar'})).status).toBe(200);
+  await load(page, {width: 375, height: 740, motion: true});
+  await preview(page);
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  expect(await turn(page, () => accept(page))).toEqual({...forward, leaves: 1});
+  expect(await turn(page, () => wizard(page).locator('[data-modal-action="back"]').click())).toEqual({...backward, leaves: -1});
+  await end(page);
+  await call(page, 'PUT', '/api/account/locale', {locale: own.preference ?? null});
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await load(page, {width: 375, height: 740});
+  await preview(page);
+  await page.evaluate(() => {
+    window.__dpSlid = false;
+    new MutationObserver(() => { if (document.querySelector('.dp-setup-dialog .dp-motion-still, .dp-setup-dialog .dp-motion-surface')) window.__dpSlid = true; })
+      .observe(document.querySelector('.dp-setup-dialog'), {subtree: true, childList: true, attributes: true});
+  });
+  await accept(page);
+  await expect(wizard(page).locator('.dp-setup-deployment')).toBeVisible();
+  await wizard(page).locator('[data-modal-action="back"]').click();
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  expect(await page.evaluate(() => window.__dpSlid)).toBe(false);
+  await end(page);
+});

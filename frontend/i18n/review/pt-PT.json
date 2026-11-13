@@ -28041,6 +28041,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "82b9f91cc793e32d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "16a52694ff71277a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "de0d2218756bb31c",
@@ -28117,6 +28133,78 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "b63037ae74000366",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "ed12ae49971c55ac",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "ec063a50a6f86aa1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "089781f9e2e1c12d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "f99af319a8979ce7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "a8dbdb9dc60cb117",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "bd99a42f6797e8a2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "41d3aa0a80498954",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "e9ece2984b9a85e4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "b62b82b0791b79ee",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28416,6 +28504,24 @@
   "help.topic.shared.maximum_concurrent_downloads": {
    "source": "d215874e1d37af9f",
    "translation": "1c9a53e55d23cab0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "652b94bcd15d1a05",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Paste the API key of your {provider} account into API Key and then select Save. The key stays stored on the server and is never again shown. Remove, next to the API Key, deletes the stored key immediately."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "8bd7f6df9b5438f1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31430,10 +31536,18 @@
   },
   "setup.premium.body.what": {
    "source": "d3c512907c62a0a5",
-   "translation": "b47c998d94d4cb79",
+   "translation": "42ffac72af30fe01",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Termbase: 'source' is 'Origem' in pt-PT (not 'fonte').",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.body.optional": {

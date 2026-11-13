@@ -17,7 +17,10 @@ const { test, expect } = require('@playwright/test');
  * English and en-XA. Locators are roles, stable data hooks and catalog keys,
  * never incidental English. Synthetic values only. */
 
-async function load(page, {width = 1280, height = 900} = {}) {
+/* Page turns slide (ui-motion.js); these cases read each page as it stands, so they run with reduced motion,
+ * where a turn is immediate -- the motion itself is R30 and R32's (setup-wizard-structure.spec.js). */
+async function load(page, {width = 1280, height = 900, motion = false} = {}) {
+  await page.emulateMedia({reducedMotion: motion ? 'no-preference' : 'reduce'});
   await page.setViewportSize({width, height});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.goto('/');

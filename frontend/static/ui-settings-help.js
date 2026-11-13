@@ -26,7 +26,11 @@
  * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
  * the role's capabilities, the deployment type, Easy or Advanced and the
  * Easy list's omissions), plus any facts the opener states about its own
- * subject (My Account's profile). A section, a paragraph or a list item may
+ * subject (My Account's profile) or about where it is read: the setup
+ * wizard opens a topic with `{wizard: true}` (its Premium Services and each
+ * service's view there), and a topic read there explains what the wizard
+ * offers -- its Save and Cancel, never a Settings card's controls or another
+ * Settings page. A section, a paragraph or a list item may
  * carry `when(c)`: it is shown only where that holds, so a part the reader's
  * interface does not show is never explained as if it were there. Without a
  * context the reader is treated as having no Admin or personal page: never
@@ -78,17 +82,37 @@
   const omitted = part => c => !c.shows(part);
   const onServer = c => c.server;
   const onStandalone = c => c.standalone;
+  // Read in the setup wizard, or on Settings (and anywhere else).
+  const inWizard = c => c.wizard === true;
+  const inSettings = c => c.wizard !== true;
 
   const TOPICS = Object.freeze({
     /* ── Services ─────────────────────────────────────────────────────── */
     'premium-services': {
       title: 'settings.services.premium',
       sections: [
-        {text: [
+        // Read in the wizard: its own list, views, Save and Cancel.
+        {when: inWizard, text: [
+          'help.topic.premium_services.wizard.intro',
+          'help.topic.premium_services.wizard.optional',
+        ]},
+        {heading: 'help.topic.heading.setting_up_service', when: inWizard, list: [
+          'help.topic.premium_services.wizard.open_service',
+          'help.topic.premium_services.wizard.connect_ways',
+          'help.topic.premium_services.wizard.save_cancel',
+          'help.topic.premium_services.wizard.immediate',
+          'help.topic.premium_services.wizard.test',
+          'help.topic.premium_services.wizard.service_help',
+        ]},
+        {heading: 'help.topic.heading.later', when: inWizard, text: [
+          'help.topic.premium_services.wizard.later',
+        ]},
+        // Read on Settings: its cards.
+        {when: inSettings, text: [
           'help.topic.premium_services.intro.premium_services',
           'help.topic.premium_services.intro.every_premium_service',
         ]},
-        {heading: 'help.topic.heading.each_card', list: [
+        {heading: 'help.topic.heading.each_card', when: inSettings, list: [
           'help.topic.premium_services.each_card.enable_decides_whether',
           'help.topic.premium_services.each_card.help_each_card',
           'help.topic.premium_services.each_card.credentials',
@@ -98,10 +122,10 @@
           {text: 'help.topic.premium_services.each_card.each_service_own',
             when: omitted('provider-additional-settings')},
         ]},
-        {heading: 'help.topic.heading.usenet', text: [
+        {heading: 'help.topic.heading.usenet', when: inSettings, text: [
           'help.topic.premium_services.usenet.usenet_uses_configured',
         ]},
-        {heading: 'help.topic.heading.related', text: [
+        {heading: 'help.topic.heading.related', when: inSettings, text: [
           'help.topic.premium_services.related.direct_sources_need',
         ]},
       ],
@@ -126,7 +150,7 @@
           'help.topic.usenet.downloads_recovery.usenet_download',
           'help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs',
           {text: 'help.topic.usenet.downloads_recovery.behavior_shared_every',
-            when: shown('transfer-method-settings')},
+            when: c => inSettings(c) && c.shows('transfer-method-settings')},
         ]},
         {heading: 'help.topic.heading.nzbs_premium_services', list: [
           {text: 'help.topic.usenet.nzbs_premium_services.torbox_premiumize_can.provider_additional_settings_shown',
@@ -144,8 +168,10 @@
           say('help.topic.alldebrid.intro.alldebrid', {file_type: '.torrent'}),
         ]},
         {heading: 'help.topic.heading.connecting', list: [
-          'help.topic.alldebrid.connecting.paste_api_key',
-          'help.topic.alldebrid.connecting.test_checks_key',
+          {text: 'help.topic.alldebrid.connecting.paste_api_key', when: inSettings},
+          {text: 'help.topic.alldebrid.connecting.test_checks_key', when: inSettings},
+          {text: say('help.topic.shared.wizard.paste_api_key', {provider: said('help.topic.alldebrid.title')}), when: inWizard},
+          {text: say('help.topic.shared.wizard.test_saved_key', {provider: said('help.topic.alldebrid.title')}), when: inWizard},
         ]},
         {heading: 'help.topic.heading.what_account_can', list: [
           say('help.topic.alldebrid.what_account_can.per_alldebrid_documentation', {file_type: '.torrent'}),
@@ -156,7 +182,7 @@
           'help.topic.alldebrid.additional_settings.maximum_active_torrents',
           'help.topic.alldebrid.additional_settings.api_calls_per',
         ]},
-        {heading: 'help.topic.heading.shared_settings', text: [
+        {heading: 'help.topic.heading.shared_settings', when: inSettings, text: [
           {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
           {text: 'help.topic.shared.maximum_concurrent_downloads',
@@ -171,8 +197,10 @@
           say('help.topic.debridlink.intro.debrid_link', {file_type: '.torrent'}),
         ]},
         {heading: 'help.topic.heading.connecting', list: [
-          'help.topic.debridlink.connecting.paste_api_key',
-          'help.topic.debridlink.connecting.test_checks_key',
+          {text: 'help.topic.debridlink.connecting.paste_api_key', when: inSettings},
+          {text: 'help.topic.debridlink.connecting.test_checks_key', when: inSettings},
+          {text: say('help.topic.shared.wizard.paste_api_key', {provider: said('help.topic.debridlink.title')}), when: inWizard},
+          {text: say('help.topic.shared.wizard.test_saved_key', {provider: said('help.topic.debridlink.title')}), when: inWizard},
         ]},
         {heading: 'help.topic.heading.what_account_can', list: [
           say('help.topic.debridlink.what_account_can.premium_debrid_link', {file_type: '.torrent'}),
@@ -183,7 +211,7 @@
           'help.topic.debridlink.additional_settings.prepare_backup_torrents',
           'help.topic.debridlink.additional_settings.request_timeout',
         ]},
-        {heading: 'help.topic.heading.shared_settings', text: [
+        {heading: 'help.topic.heading.shared_settings', when: inSettings, text: [
           {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
           {text: 'help.topic.shared.maximum_concurrent_downloads',
@@ -198,8 +226,10 @@
           say('help.topic.premiumize.intro.premiumize', {file_type: '.torrent'}),
         ]},
         {heading: 'help.topic.heading.connecting', list: [
-          'help.topic.premiumize.connecting.paste_api_key',
-          'help.topic.premiumize.connecting.test_checks_key',
+          {text: 'help.topic.premiumize.connecting.paste_api_key', when: inSettings},
+          {text: 'help.topic.premiumize.connecting.test_checks_key', when: inSettings},
+          {text: say('help.topic.shared.wizard.paste_api_key', {provider: said('help.topic.premiumize.title')}), when: inWizard},
+          {text: say('help.topic.shared.wizard.test_saved_key', {provider: said('help.topic.premiumize.title')}), when: inWizard},
         ]},
         {heading: 'help.topic.heading.what_account_can', list: [
           say('help.topic.premiumize.what_account_can.while_premiumize_premium', {file_type: '.torrent'}),
@@ -211,7 +241,7 @@
           'help.topic.premiumize.additional_settings.prepare_backup_torrents',
           'help.topic.premiumize.additional_settings.request_timeout',
         ]},
-        {heading: 'help.topic.heading.shared_settings', text: [
+        {heading: 'help.topic.heading.shared_settings', when: inSettings, text: [
           {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
           {text: 'help.topic.shared.maximum_concurrent_downloads',
@@ -240,7 +270,7 @@
           'help.topic.realdebrid.additional_settings.api_calls_per',
           'help.topic.realdebrid.additional_settings.request_timeout',
         ]},
-        {heading: 'help.topic.heading.shared_settings', text: [
+        {heading: 'help.topic.heading.shared_settings', when: inSettings, text: [
           {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
           {text: 'help.topic.shared.maximum_concurrent_downloads',
@@ -271,7 +301,7 @@
           'help.topic.torbox.additional_settings.use_torbox_before',
           'help.topic.torbox.additional_settings.api_calls_per',
         ]},
-        {heading: 'help.topic.heading.shared_settings', text: [
+        {heading: 'help.topic.heading.shared_settings', when: inSettings, text: [
           {text: 'help.topic.shared.behavior_shared_every',
             when: shown('download-behavior-advanced')},
           {text: 'help.topic.shared.maximum_concurrent_downloads',
@@ -949,7 +979,13 @@
     easy: false, advanced: true, shows: () => true});
 
   function context(facts = {}) {
-    return {...(window.debridPulseAuth?.presentation?.context?.() || UNREAD), ...facts};
+    const c = {...(window.debridPulseAuth?.presentation?.context?.() || UNREAD), ...facts};
+    // The wizard draws every service as Easy does, with no Additional
+    // Settings (ui-settings-page.js, the wizard surface), whatever the
+    // reader's presentation.
+    if (!c.wizard) return c;
+    const shows = c.shows;
+    return {...c, shows: part => part !== 'provider-additional-settings' && shows(part)};
   }
 
   // A part applies unless its own condition says otherwise.

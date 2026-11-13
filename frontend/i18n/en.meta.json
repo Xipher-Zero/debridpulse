@@ -20887,6 +20887,18 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
+  "help.topic.heading.setting_up_service": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a help dialog (the Premium Services help read in the setup wizard).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.heading.later": {
+   "category": "long-form-help",
+   "context": "Settings Help: a short heading over part of a help dialog (the Premium Services help read in the setup wizard).",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
@@ -20944,6 +20956,60 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Premium Services), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.test": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.premium_services.wizard.later": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a paragraph or list item of the Premium Services help dialog opened from the wizard's Premium Services page (the wizard lists the six services; selecting one opens its configuration in the same window, with Save and Cancel in the footer). It explains the wizard, never a Settings card. Interface labels it names are the interface's own words (Next, Save, Cancel, Enable, Test, Remove, Connect, Disconnect, Settings, Services): use the same words as those controls.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
@@ -21144,6 +21210,24 @@
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog, shared by several topics (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a list item of a service's help dialog (AllDebrid, Debrid-Link or Premiumize) opened from that service's configuration view in the wizard, where typed fields are stored only by the footer's Save and the Test button is offered only while nothing is unsaved. Interface labels it names are the interface's own words (API Key, Save, Remove API Key, Test, Verified). {provider} is the service's name (AllDebrid, Debrid-Link or Premiumize), shown exactly.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "critical-warning",
+   "args": {
+    "provider": "string: the service's own name, shown exactly (AllDebrid, Debrid-Link or Premiumize)"
+   }
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "category": "long-form-help",
+   "context": "Settings Help, read in the setup wizard: a list item of a service's help dialog (AllDebrid, Debrid-Link or Premiumize) opened from that service's configuration view in the wizard, where typed fields are stored only by the footer's Save and the Test button is offered only while nothing is unsaved. Interface labels it names are the interface's own words (API Key, Save, Remove API Key, Test, Verified). {provider} is the service's name (AllDebrid, Debrid-Link or Premiumize), shown exactly.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal",
+   "args": {
+    "provider": "string: the service's own name, shown exactly (AllDebrid, Debrid-Link or Premiumize)"
+   }
   },
   "help.topic.debridlink.title": {
    "category": "modal-title",

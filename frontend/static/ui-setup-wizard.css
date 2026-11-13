@@ -83,6 +83,13 @@ body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
     radial-gradient(ellipse 90% 75% at 95% 100%, color-mix(in srgb, var(--dp-chrome-signal-blue) 6%, transparent), transparent 74%);
 }
 
+/* A turn of the body (ui-setup-wizard.js move, DPMotion.slide): what moves
+   is the content, and its still copy (.dp-motion-still) carries none of
+   the body's environment -- the blooms stay where they are, under both. */
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body.dp-motion-still {
+  background: none;
+}
+
 /* Each page's own line art (paint: .dp-setup-art, data-art = the page):
    one non-repeating composition (icons/dp/setup-art-<page>.svg) drawn
    across the page's whole area, to the body's padding edges, and scrolling
@@ -106,7 +113,7 @@ body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
   inset: calc(-1 * (var(--dp-setup-row) + 20px)) -20px -18px;
   z-index: -1;
   pointer-events: none;
-  opacity: .62;
+  opacity: .342;
   background: linear-gradient(160deg, var(--dp-chrome-signal-purple-bright), var(--dp-chrome-signal-blue-bright) 70%, var(--dp-chrome-signal-blue));
   -webkit-mask-image: var(--dp-setup-art), radial-gradient(ellipse 72% 62% at 50% 48%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .75) 45%, #000 100%),
     linear-gradient(180deg, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .8) 28%, #000 52%);
@@ -122,7 +129,7 @@ body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
   mask-composite: intersect;
 }
 body.light .dp-setup-main > .dp-setup-art {
-  opacity: .48;
+  opacity: .27;
 }
 .dp-setup-main > :not(.dp-setup-art, .dp-setup-room) {
   background-image: radial-gradient(closest-side, color-mix(in srgb, var(--dp-panel-end) 94%, transparent) 62%,
@@ -163,8 +170,7 @@ body.light .dp-setup-main > .dp-setup-art {
    page's tagline, or a view's own reading) takes the lines its words need --
    one for a tagline, more for a longer reading or language, never clipped --
    and the header's own bottom padding is the one space between its last line
-   and the body. Behind it lies DebridPulse's signal field (decoration only,
-   below). */
+   and the body. Behind it lies a hazy starfield (decoration only, below). */
 .dp-modal-dialog.dp-setup-dialog > .dp-modal-header {
   position: relative;
   overflow: hidden;
@@ -208,10 +214,12 @@ body.light .dp-setup-main > .dp-setup-art {
   height: 100%;
 }
 
-/* The header's top region: the indicator, then the badge slot -- the one
-   shared space between the indicator and the heading, the same height on
-   every page whether a badge is shown or not. The badge has the header's own
-   gap on both sides: 14px beneath the indicator, as between it and the title. */
+/* The header's top region: the indicator, then the badge slot, which takes
+   room only while its badge shows (Premium Services' Optional). The badge
+   has the header's own gap on both sides: 14px beneath the indicator, as
+   between it and the title. Without a badge the slot is absent, so the
+   heading stands the header's one gap beneath the indicator and the body
+   keeps the height recovered. */
 .dp-setup-header-top {
   display: flex;
   flex-direction: column;
@@ -225,6 +233,7 @@ body.light .dp-setup-main > .dp-setup-art {
   block-size: 22px;
   margin: 0;
 }
+.dp-setup-badge-slot:not(:has(> .dp-setup-optional:not([hidden]))),
 .dp-setup-optional[hidden] {
   display: none;
 }
@@ -254,36 +263,61 @@ body.light .dp-setup-main > .dp-setup-art {
   max-inline-size: min(40ch, 100% - 84px);
 }
 
-/* The header's artwork: the sidebar's own signal field (<dp-signal-field>,
-   icons/dp/sidebar-wave-accent.svg drawn inline by ui-theme-bootstrap.js and
-   coloured by the palette in force, ui-shell-signal-field.css), as the
-   handheld dock reuses it. Here it lies across the header's lower part,
-   behind the title and tagline and beneath the indicator: the artwork's own
-   proportions (320:300) at the header's width, its crossing band under the
-   heading, faded at both ends and toward the top so the indicator stays
-   clear, and faint enough that the title and tagline keep their contrast
-   (fainter still in light). Centred physically (left: 50%), and not mirrored in
-   right-to-left, as the sidebar's is not. The header clips it. */
-.dp-setup-header-top > .dp-signal-field {
+/* The header's artwork: a quiet, hazy starfield (.dp-setup-stars,
+   icons/dp/setup-stars.svg), drawn as the body's line art is -- a mask over
+   the signal field's palette tokens, so it takes the theme and palette in
+   force -- across the whole header, behind the indicator, the badge, the
+   heading and Help, and fading into the body at its foot. Still: nothing
+   in it moves. Decoration only: hidden from assistive technology, never
+   under the pointer, clipped by the header. As on the body, it is
+   quietest exactly beneath what is read and used: each of the header's
+   contents (the indicator, a shown badge, the title line, the reading and
+   Help) carries a feathered halo of the dialog's own surface colour at the
+   header's height (--dp-panel-start), easing to nothing past its edges,
+   with no edge or box of its own. The halos are each content's own
+   ::before, behind that content inside its own stacking layer, so they
+   follow it wherever it stands and however many lines it takes, and take
+   no part in the layout. */
+.dp-setup-header-top > .dp-setup-stars {
   position: absolute;
-  left: 50%;
-  bottom: 0;
+  inset: 0;
   z-index: 0;
-  inline-size: max(100%, 420px);
-  aspect-ratio: 320 / 300;
-  opacity: .34;
-  filter: var(--dp-chrome-signal-filter);
-  transform: translate(-50%, 38%);
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%),
-    linear-gradient(180deg, transparent 22%, #000 46%);
+  opacity: .62;
+  background: linear-gradient(160deg, var(--dp-chrome-signal-purple-bright), var(--dp-chrome-signal-blue-bright) 70%, var(--dp-chrome-signal-blue));
+  -webkit-mask-image: url("/icons/dp/setup-stars.svg?v=1"), linear-gradient(180deg, #000 72%, transparent 100%);
+  -webkit-mask-size: cover, 100% 100%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
   -webkit-mask-composite: source-in;
-  mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%),
-    linear-gradient(180deg, transparent 22%, #000 46%);
+  mask-image: url("/icons/dp/setup-stars.svg?v=1"), linear-gradient(180deg, #000 72%, transparent 100%);
+  mask-size: cover, 100% 100%;
+  mask-position: center;
+  mask-repeat: no-repeat;
   mask-composite: intersect;
 }
-body.light .dp-setup-header-top > .dp-signal-field {
-  opacity: .2;
+body.light .dp-setup-header-top > .dp-setup-stars {
+  opacity: .5;
+}
+.dp-setup-dialog .dp-modal-title-line,
+.dp-setup-dialog .dp-modal-title-hint {
+  position: relative;
+}
+.dp-setup-header-top > .dp-setup-progress::before,
+.dp-setup-header-top > .dp-setup-badge-slot:has(> .dp-setup-optional:not([hidden]))::before,
+.dp-setup-dialog .dp-modal-title-line::before,
+.dp-setup-dialog .dp-modal-title-hint:not(:empty)::before,
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header > .dp-modal-header-end:has(> .dp-setup-help:not([hidden]))::before {
+  content: "";
+  position: absolute;
+  inset: -12px -30px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--dp-panel-start) 94%, transparent) 50%,
+    color-mix(in srgb, var(--dp-panel-start) 60%, transparent) 78%, transparent 100%);
+}
+.dp-modal-dialog.dp-setup-dialog > .dp-modal-header > .dp-modal-header-end:has(> .dp-setup-help:not([hidden]))::before {
+  inset: -14px;
 }
 
 /* The Connected Page Progress Indicator (ui-setup-wizard.js paintProgress):

@@ -9188,6 +9188,7 @@
     providerArtwork,
     // A card's contextual Help chip, from this page's one emitter, for a surface
     // that offers the same topic outside Settings (the setup wizard's Premium
-    // Services): `titleKey` names the card it explains.
-    helpChip: (topic, titleKey) => helpChip(topic, say(titleKey))});
+    // Services and each service's view there): `title` names the card it
+    // explains -- its title key, or {name}, a service's own name.
+    helpChip: (topic, title) => helpChip(topic, typeof title === 'string' ? say(title) : String(title?.name || ''))});
 })();

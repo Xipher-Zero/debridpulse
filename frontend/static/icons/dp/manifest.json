@@ -50,6 +50,7 @@
     "setupArtDirectory": "setup-art-directory.svg",
     "setupArtAdministrator": "setup-art-administrator.svg",
     "setupArtPremium": "setup-art-premium.svg",
-    "setupArtGettingStarted": "setup-art-getting-started.svg"
+    "setupArtGettingStarted": "setup-art-getting-started.svg",
+    "setupStars": "setup-stars.svg"
   }
 }

@@ -401,6 +401,19 @@
    * undo them. A provider's own Test (its header's) is offered only while
    * nothing is unsaved, so it proves what is saved; a Usenet server's Test
    * checks what that server shows, as it does on Services. */
+  /* A turn of the wizard's body: what it showed leaves and what ``commit``
+   * puts there arrives -- forward (Next, opening a view or a service) from
+   * the reading end, backward (Back, leaving a view) from its start -- by
+   * the one motion owner (ui-motion.js DPMotion.slide), which mirrors it in
+   * right-to-left, runs the commit at once under reduced motion, and ends a
+   * turn still running when another begins. Only the body moves: the header,
+   * the indicator and the footer stay where they are. Presentation only:
+   * ``commit`` is the turn, and the motion decides nothing. */
+  function move(wizard, direction, commit) {
+    if (!window.DPMotion || !wizard.body) { commit(); return; }
+    window.DPMotion.slide({element: wizard.body, axis: 'x', direction, distance: 1}, commit);
+  }
+
   async function openProvider(wizard, id) {
     if (wizard.provider) return;
     const name = SERVICES.find(([service]) => service === id)[1];
@@ -410,20 +423,23 @@
         <p class="dp-setup-hint" data-setup-test-note data-i18n="setup.premium.test_after_save" hidden></p>
       </section>`);
     wizard.provider = {id, section, handle: null};
-    wizard.help.hidden = true;
-    wizard.error.hidden = true;
-    wizard.body.replaceChildren(section, wizard.error);
-    window.DPI18n.render(section);
     const handle = wizard.dialog;
-    // A view of Premium Services, not a page of its own: its heading names the
-    // service under the page's mark, and the progress stays where it is.
-    handle.setTitle(name);
-    // Its reading: what acts at once there, and what Save and Cancel do.
-    handle.setTitleHint(said(IMMEDIATE_NOTES[id] || 'setup.premium.immediate'));
-    handle.setAcceptLabel(said('common.save'));
-    handle.setCancelLabel(said('common.cancel'));
-    handle.setCancelHidden(false);
-    handle.setActionHidden('back', true);
+    move(wizard, 1, () => {
+      wizard.error.hidden = true;
+      wizard.body.replaceChildren(section, wizard.error);
+      window.DPI18n.render(section);
+      // Its Help: the service's own Settings topic, read in the wizard.
+      showHelp(wizard, id, name);
+      // A view of Premium Services, not a page of its own: its heading names the
+      // service under the page's mark, and the progress stays where it is.
+      handle.setTitle(name);
+      // Its reading: what acts at once there, and what Save and Cancel do.
+      handle.setTitleHint(said(IMMEDIATE_NOTES[id] || 'setup.premium.immediate'));
+      handle.setAcceptLabel(said('common.save'));
+      handle.setCancelLabel(said('common.cancel'));
+      handle.setCancelHidden(false);
+      handle.setActionHidden('back', true);
+    });
     try {
       wizard.provider.handle = await window.DPSettingsPage.mountProvider(id, section.querySelector('.dp-setup-provider-slot'));
     } catch (error) {
@@ -446,7 +462,7 @@
   function closeProvider(wizard) {
     if (!wizard.provider) return;
     wizard.provider = null;
-    wizard.repaint();
+    move(wizard, -1, wizard.repaint);
   }
 
   async function saveProvider(wizard) {
@@ -473,19 +489,21 @@
    * control that opened it. */
   function showView(wizard, view, {title, hint, accept = null, cancel}) {
     wizard.view = view;
-    wizard.help.hidden = true;
-    wizard.error.hidden = true;
-    wizard.body.replaceChildren(view.section, wizard.error);
-    window.DPI18n.render(view.section);
-    const handle = wizard.dialog;
-    handle.setTitle(said(title));
-    handle.setTitleHint(said(hint));
-    handle.setAcceptHidden(!accept);
-    if (accept) handle.setAcceptLabel(said(accept));
-    handle.setCancelLabel(said(cancel));
-    handle.setCancelHidden(false);
-    handle.setActionHidden('back', true);
-    wizard.body.scrollTop = 0;
+    move(wizard, 1, () => {
+      showHelp(wizard, null);
+      wizard.error.hidden = true;
+      wizard.body.replaceChildren(view.section, wizard.error);
+      window.DPI18n.render(view.section);
+      const handle = wizard.dialog;
+      handle.setTitle(said(title));
+      handle.setTitleHint(said(hint));
+      handle.setAcceptHidden(!accept);
+      if (accept) handle.setAcceptLabel(said(accept));
+      handle.setCancelLabel(said(cancel));
+      handle.setCancelHidden(false);
+      handle.setActionHidden('back', true);
+      wizard.body.scrollTop = 0;
+    });
   }
 
   function closeView(wizard) {
@@ -493,7 +511,7 @@
     if (!view) return;
     wizard.view = null;
     view.release();
-    wizard.repaint();
+    move(wizard, -1, wizard.repaint);
     wizard.body.querySelector(view.opener)?.focus({preventScroll: true});
   }
 
@@ -629,12 +647,12 @@
    * indicator, then one slot of fixed height between it and the heading,
    * reserved on every page so no heading moves. It holds Premium Services'
    * Optional badge, a reading (never a control), shown on that page and its
-   * provider views. Behind the whole header lies the sidebar's own signal
-   * field (<dp-signal-field>, decoration only). */
+   * provider views. Behind the whole header lies its hazy starfield
+   * (.dp-setup-stars, ui-setup-wizard.css: decoration only, still). */
   function headerTop(progress) {
     const node = element(`
       <div class="dp-setup-header-top">
-        <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
+        <div class="dp-setup-stars" aria-hidden="true"></div>
         <p class="dp-setup-badge-slot"><span class="dp-badge dp-badge--caution dp-setup-optional" data-i18n="setup.premium.optional" hidden></span></p>
       </div>`);
     node.prepend(progress);
@@ -642,18 +660,34 @@
     return node;
   }
 
-  /* Premium Services' Help: the Settings card's own contextual Help -- its
-   * chip (DPSettingsPage.helpChip, the one emitter) opening its topic
-   * (DPSettingsHelp.open('premium-services')) -- in the dialog owner's header
-   * end, shown on that page alone. */
-  function premiumHelp() {
+  /* The wizard's contextual Help, in the dialog owner's header end: the
+   * Settings card's own -- its chip (DPSettingsPage.helpChip, the one emitter)
+   * and its topic (DPSettingsHelp.open) -- on Premium Services and on each
+   * service's view, nowhere else. The topic is read in the wizard
+   * ({wizard: true}), so it explains what the wizard offers there (the one
+   * Help owner, ui-settings-help.js, holds that wording). Opening it reads
+   * and changes nothing: it stands over the wizard, which keeps its view,
+   * its unsaved fields and its place. */
+  function helpSlot() {
     const node = element('<div class="dp-setup-help" hidden></div>');
-    const markup = window.DPSettingsPage?.helpChip?.('premium-services', 'settings.services.premium');
-    if (!markup) return node;
-    node.innerHTML = markup;
-    window.DPI18n.render(node);
-    node.querySelector('button')?.addEventListener('click', () => window.DPSettingsHelp?.open('premium-services'));
+    node.addEventListener('click', event => {
+      const topic = event.target.closest('[data-settings-help]')?.dataset.settingsHelp;
+      if (topic) window.DPSettingsHelp?.open(topic, {wizard: true});
+    });
     return node;
+  }
+
+  // ``topic`` (null: none here) and the card it explains: a title key, or a
+  // service's own name.
+  function showHelp(wizard, topic, name = null) {
+    const node = wizard.help;
+    if (topic && node.dataset.topic !== topic) {
+      const markup = window.DPSettingsPage?.helpChip?.(topic, name ? {name} : 'settings.services.premium');
+      node.innerHTML = markup || '';
+      window.DPI18n.render(node);
+      node.dataset.topic = topic;
+    }
+    node.hidden = !topic || !node.firstElementChild;
   }
 
   function paintProgress(node, wizard) {
@@ -707,7 +741,7 @@
     }
     const progress = progressList();
     const top = headerTop(progress);
-    const help = premiumHelp();
+    const help = helpSlot();
     const wizard = {mode, preview, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
       phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, view: null, help,
       repaint: null,
@@ -753,7 +787,7 @@
       handle.setAcceptHidden(false);
       handle.setAcceptEnabled(true);
       top.querySelector('.dp-setup-optional').hidden = pages[wizard.index] !== 'premium_services';
-      help.hidden = pages[wizard.index] !== 'premium_services';
+      showHelp(wizard, pages[wizard.index] === 'premium_services' ? 'premium-services' : null);
       // Back goes back a page: the first page has none, so it has no Back
       // (the footer keeps its footprint, ui-setup-wizard.css).
       handle.setActionHidden('back', wizard.index === 0);
@@ -791,7 +825,7 @@
       wizard.index = pages.indexOf(current) + 1;
       // The preview's own record: this page's Next succeeded (nothing is written).
       wizard.recordedIndex = Math.max(wizard.recordedIndex, wizard.index);
-      paint(handle);
+      move(wizard, 1, () => paint(handle));
       return false;
     }
 
@@ -822,7 +856,7 @@
           return false;
         }
         wizard.index = target;
-        paint(handle);
+        move(wizard, 1, () => paint(handle));
         return false;
       } catch (error) {
         fail(error);
@@ -887,7 +921,7 @@
         if (id !== 'back' || wizard.index === 0 || wizard.provider || wizard.view) return;
         wizard.error.hidden = true;
         wizard.index -= 1;
-        paint(wizard.dialog);
+        move(wizard, -1, () => paint(wizard.dialog));
       },
       onAccept: handle => next(handle),
       async onCancel() {

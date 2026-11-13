@@ -28721,6 +28721,22 @@
     "ai-review"
    ]
   },
+  "help.topic.heading.setting_up_service": {
+   "source": "1cc603160f955275",
+   "translation": "5695086ced4ec36c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.later": {
+   "source": "73b6e48a1b552d11",
+   "translation": "b67b4254dd027a83",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "help.topic.premium_services.each_card.enable_decides_whether": {
    "source": "bc39b2122042fc81",
    "translation": "a80d0f7e7f4697bb",
@@ -28797,6 +28813,78 @@
   "help.topic.premium_services.related.direct_sources_need": {
    "source": "3e7a39ee365197f3",
    "translation": "5f2ad180b35df67b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.intro": {
+   "source": "171a5b576dabfa7a",
+   "translation": "4c53dfac8dda9799",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.optional": {
+   "source": "30062070b00bf461",
+   "translation": "860b470c9e064bf0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.open_service": {
+   "source": "b54c0ddd5f9b1af5",
+   "translation": "f0cec88c7bf0cca7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.connect_ways": {
+   "source": "26dedc4bfde45c0c",
+   "translation": "b79070fe90045ca6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.save_cancel": {
+   "source": "f78638cd6c946712",
+   "translation": "b1b69e9f5ee28a65",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.immediate": {
+   "source": "3d40fae402728b85",
+   "translation": "36d12821fc0afcb8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.test": {
+   "source": "a2fcf877dc2af259",
+   "translation": "306479c1c60c738b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.service_help": {
+   "source": "7fd7c06061829f7b",
+   "translation": "05a0c9263857bf8c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.premium_services.wizard.later": {
+   "source": "346c4aa211f8ed20",
+   "translation": "68e620fe5d3414fe",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29083,6 +29171,32 @@
    "provenance": [
     "ai-generated",
     "ai-review"
+   ]
+  },
+  "help.topic.shared.wizard.paste_api_key": {
+   "source": "6d1ad6c64f11546f",
+   "translation": "af32c33f798e7d6c",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Please paste the API key from your {provider} account into “API Key”, then select “Save”. The key is kept on the server and will never be shown again. “Remove API Key” immediately deletes the stored key."
+  },
+  "help.topic.shared.wizard.test_saved_key": {
+   "source": "4bd518721b78cacf",
+   "translation": "b6d774e1abadd323",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "style",
+     "note": "AI review: “任何設定” narrows “changes nothing on {provider}” to settings only; use “任何內容” (anything).",
+     "status": "resolved",
+     "resolution": "Corrected in the AI review pass."
+    }
    ]
   },
   "help.topic.debridlink.title": {
@@ -32125,10 +32239,18 @@
   },
   "setup.premium.body.what": {
    "source": "d3c512907c62a0a5",
-   "translation": "30509f2640aa6751",
+   "translation": "02a991f1e3df6eab",
    "provenance": [
     "ai-generated",
     "ai-review"
+   ],
+   "findings": [
+    {
+     "kind": "terminology",
+     "note": "Wizard reconciliation review: Uses the termbase term 提供者 for provider (not 供應商), as everywhere else in the catalog.",
+     "status": "resolved",
+     "resolution": "Corrected in the wizard reconciliation pass."
+    }
    ]
   },
   "setup.premium.body.optional": {
