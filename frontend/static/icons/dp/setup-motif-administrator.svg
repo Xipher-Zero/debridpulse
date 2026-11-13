@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Setup wizard, Administrator Setup: a shield with a person, and a key. -->
-  <path d="M108 10 L138 20 V56 C138 80 124 96 108 106 C92 96 78 80 78 56 V20 Z"/>
-  <circle cx="108" cy="46" r="10"/>
-  <path d="M90 82 C92 70 100 64 108 64 C116 64 124 70 126 82"/>
-  <g opacity=".7"><circle cx="164" cy="66" r="10"/><path d="M174 66 H204 M196 66 V76 M204 66 V74"/></g>
-</svg>

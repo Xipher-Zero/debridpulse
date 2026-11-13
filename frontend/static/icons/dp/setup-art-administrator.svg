@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 600" preserveAspectRatio="xMidYMid slice" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Setup wizard body scene, Administrator Setup: the Administrator's shield, credentials, gates, locks and keys. Line art; a mask that the theme colours. -->
+  <path d="M390 30 L460 56.9 V114 C460 161 425 184.6 390 198 C355 184.6 320 161 320 114 V56.9 Z" stroke-width="2"/>
+  <path d="M390 39 L451 62.3 V114 C451 154.3 420.8 174.5 390 189 C359.2 174.5 329 154.3 329 114 V62.3 Z" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M390 52 L442 72 V114.4 C442 149.3 416 166.8 390 176.8 C364 166.8 338 149.3 338 114.4 V72 Z" stroke-width="2"/>
+  <path d="M390 61 L433 77.4 V114.4 C433 144.4 412.9 159.3 390 167.8 C367.1 159.3 347 144.4 347 114.4 V77.4 Z" stroke-width="1" stroke-opacity="0.6"/>
+  <circle cx="390" cy="112" r="15" stroke-width="1.5"/>
+  <path d="M364.5 160 C364.5 133 415.5 133 415.5 160" stroke-width="1.5"/>
+  <circle cx="459.5" cy="78.6" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="437.8" cy="52.4" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="407" cy="37.9" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="373" cy="37.9" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="342.2" cy="52.4" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="320.5" cy="78.6" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="390" cy="124" r="104" stroke-width="0.9" stroke-opacity="0.3"/>
+  <circle cx="390" cy="124" r="120" stroke-width="0.9" stroke-opacity="0.2"/>
+  <circle cx="390" cy="124" r="136" stroke-width="0.9" stroke-opacity="0.2"/>
+  <circle cx="390" cy="124" r="152" stroke-width="0.9" stroke-opacity="0.1"/>
+  <rect x="14" y="40" width="66" height="40.9" rx="4" stroke-width="1.4"/>
+  <circle cx="27" cy="50" r="5" stroke-width="1.5"/>
+  <path d="M18.5 66 C18.5 57 35.5 57 35.5 66" stroke-width="1.5"/>
+  <path d="M40 50 L74 50" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M40 57 L68 57" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M40 64 L62 64" stroke-width="1" stroke-opacity="0.7"/>
+  <rect x="20" y="108" width="66" height="40.9" rx="4" stroke-width="1.4"/>
+  <circle cx="33" cy="118" r="5" stroke-width="1.5"/>
+  <path d="M24.5 134 C24.5 125 41.5 125 41.5 134" stroke-width="1.5"/>
+  <path d="M46 118 L80 118" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M46 125 L74 125" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M46 132 L68 132" stroke-width="1" stroke-opacity="0.7"/>
+  <rect x="16" y="182" width="44" height="24.2" rx="5" stroke-width="1.4"/>
+  <circle cx="28.3" cy="194.1" r="5.3" stroke-width="1.1"/>
+  <path d="M33.6 194.1 L52.1 194.1" stroke-width="1.1"/>
+  <path d="M46.8 194.1 L46.8 199.6" stroke-width="1.1"/>
+  <path d="M24 268.6 A22 24.2 0 0 1 68 268.6" stroke-width="1" stroke-opacity="0.8"/>
+  <path d="M28 267.4 A18 19.8 0 0 1 64 267.4" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M31.9 266.2 A14.1 15.5 0 0 1 60.1 266.2" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M35.9 265 A10.1 11.1 0 0 1 56.1 265" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M39.8 263.8 A6.2 6.8 0 0 1 52.2 263.8" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M80 60 L224 60 Q230 60 230 60 L230 60 Q230 60 236 60 L320 60" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="80" cy="60" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="320" cy="60" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <rect x="170" y="40" width="10" height="40" rx="2" stroke-width="1.4"/>
+  <rect x="204" y="40" width="10" height="40" rx="2" stroke-width="1.4"/>
+  <path d="M180 56 L204 56" stroke-width="1.6" stroke-opacity="0.8"/>
+  <circle cx="175" cy="48" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="209" cy="48" r="1.6" fill="#000" stroke="none"/>
+  <path d="M86 128 L224 128 Q230 128 230 128 L230 128 Q230 128 236 128 L320 128" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="86" cy="128" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="320" cy="128" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <rect x="196" y="118" width="16" height="20" rx="3" stroke-width="1.3"/>
+  <path d="M60 192 L224 192 Q230 192 230 192 L230 192 Q230 192 236 192 L320 192" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="60" cy="192" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="320" cy="192" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <rect x="170" y="172" width="10" height="40" rx="2" stroke-width="1.4"/>
+  <rect x="204" y="172" width="10" height="40" rx="2" stroke-width="1.4"/>
+  <path d="M180 188 L204 188" stroke-width="1.6" stroke-opacity="0.8"/>
+  <circle cx="175" cy="180" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="209" cy="180" r="1.6" fill="#000" stroke="none"/>
+  <path d="M70 262 L224 262 Q230 262 230 262 L230 262 Q230 262 236 256 L320 200" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="70" cy="262" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <circle cx="320" cy="200" r="2.6" stroke-width="1.1" stroke-opacity="0.8"/>
+  <rect x="196" y="252" width="16" height="20" rx="3" stroke-width="1.3"/>
+  <rect x="250" y="220" width="44" height="30" rx="2" stroke-width="1.3" stroke-opacity="0.8"/>
+  <path d="M258.8 215 L258.8 220" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M258.8 250 L258.8 255" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M245 226 L250 226" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M294 226 L299 226" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M267.6 215 L267.6 220" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M267.6 250 L267.6 255" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M245 232 L250 232" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M294 232 L299 232" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M276.4 215 L276.4 220" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M276.4 250 L276.4 255" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M245 238 L250 238" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M294 238 L299 238" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M285.2 215 L285.2 220" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M285.2 250 L285.2 255" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M245 244 L250 244" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M294 244 L299 244" stroke-width="1" stroke-opacity="0.6"/>
+  <circle cx="255" cy="225" r="1.4" fill="#000" stroke="none"/>
+  <rect x="261" y="227.5" width="22" height="15" rx="1.5" stroke-width="0.8" stroke-opacity="0.4"/>
+  <path d="M294 235 L334 235 Q340 235 340 229 L340 196" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="294" cy="235" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="340" cy="196" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M35 457.5 V446 A14 14 0 0 1 63 446 V457.5" stroke-width="1.7"/>
+  <rect x="24" y="457.5" width="50" height="36" rx="4" stroke-width="1.7"/>
+  <circle cx="49" cy="472.5" r="3" stroke-width="1.4"/>
+  <path d="M49 474 L49 483" stroke-width="1.4"/>
+  <path d="M417.2 461.1 V451.4 A11.8 11.8 0 0 1 440.8 451.4 V461.1" stroke-width="1.7"/>
+  <rect x="408" y="461.1" width="42" height="30.2" rx="4" stroke-width="1.7"/>
+  <circle cx="429" cy="473.7" r="3" stroke-width="1.4"/>
+  <path d="M429 475 L429 482.5" stroke-width="1.4"/>
+  <circle cx="100" cy="474" r="10.3" stroke-width="1.6"/>
+  <circle cx="100" cy="474" r="4" stroke-width="1.1"/>
+  <path d="M110.3 474 L152.9 474" stroke-width="1.6"/>
+  <path d="M141.4 474 L141.4 483.2" stroke-width="1.6"/>
+  <path d="M150.6 474 L150.6 480.9" stroke-width="1.6"/>
+  <circle cx="118" cy="498" r="8.1" stroke-width="1.6"/>
+  <circle cx="118" cy="498" r="3.1" stroke-width="1.1"/>
+  <path d="M126.1 498 L159.4 498" stroke-width="1.6"/>
+  <path d="M150.4 498 L150.4 505.2" stroke-width="1.6"/>
+  <path d="M157.6 498 L157.6 503.4" stroke-width="1.6"/>
+  <circle cx="106" cy="474" r="18" stroke-width="1.1" stroke-opacity="0.7"/>
+  <rect x="330" y="470" width="50" height="76" rx="4" stroke-width="1.5"/>
+  <rect x="338" y="480" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="351" y="480" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="364" y="480" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="338" y="494" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="351" y="494" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="364" y="494" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="338" y="508" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="351" y="508" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="364" y="508" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="338" y="522" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="351" y="522" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <rect x="364" y="522" width="9" height="9" rx="2" stroke-width="1" stroke-opacity="0.8"/>
+  <circle cx="200" cy="540" r="26" stroke-width="1.5"/>
+  <circle cx="200" cy="540" r="18" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M222 540 L226 540" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M219.1 551 L222.5 553" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M211 559.1 L213 562.5" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M200 562 L200 566" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M189 559.1 L187 562.5" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M180.9 551 L177.5 553" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M178 540 L174 540" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M180.9 529 L177.5 527" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M189 520.9 L187 517.5" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M200 518 L200 514" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M211 520.9 L213 517.5" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M219.1 529 L222.5 527" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M49 430 L49 336 Q49 330 55 330 L144 330 Q150 330 150 336 L150 494 Q150 500 144 500 L110 500" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="49" cy="430" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="110" cy="500" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M429 438 L429 296 Q429 290 435 290 L440 290" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="429" cy="438" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="440" cy="290" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M226 535 L289 535 Q295 535 295 529 L295 509 Q295 503 301 503 L330 503" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M226 540 L294 540 Q300 540 300 534 L300 514 Q300 508 306 508 L330 508" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M226 545 L299 545 Q305 545 305 539 L305 519 Q305 513 311 513 L330 513" stroke-width="0.9" stroke-opacity="0.6"/>
+  <circle cx="251" cy="330" r="7" stroke-width="1.5"/>
+  <path d="M239.1 352.4 C239.1 339.8 262.9 339.8 262.9 352.4" stroke-width="1.5"/>
+  <path d="M251 354 L251 364" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M212.5 364 L289.5 364" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M212.5 364 L212.5 372" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="212.5" cy="380" r="6" stroke-width="1.5"/>
+  <path d="M202.3 399.2 C202.3 388.4 222.7 388.4 222.7 399.2" stroke-width="1.5"/>
+  <path d="M251 364 L251 372" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="251" cy="380" r="6" stroke-width="1.5"/>
+  <path d="M240.8 399.2 C240.8 388.4 261.2 388.4 261.2 399.2" stroke-width="1.5"/>
+  <path d="M289.5 364 L289.5 372" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="289.5" cy="380" r="6" stroke-width="1.5"/>
+  <path d="M279.3 399.2 C279.3 388.4 299.7 388.4 299.7 399.2" stroke-width="1.5"/>
+  <rect x="240" y="420" width="64" height="48" rx="3" stroke-width="1.4"/>
+  <rect x="244" y="424" width="56" height="40" rx="2" stroke-width="0.8" stroke-opacity="0.6"/>
+  <path d="M250 432 L282 432" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M250 439 L282 439" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M250 446 L282 446" stroke-width="0.9" stroke-opacity="0.6"/>
+  <circle cx="290" cy="454" r="7" stroke-width="1.3"/>
+  <path d="M286 460 L284 472" stroke-width="1.2"/>
+  <path d="M294 460 L296 472" stroke-width="1.2"/>
+  <rect x="420" y="330" width="34" height="16" rx="4" stroke-width="1.4"/>
+  <circle cx="454" cy="338" r="6" stroke-width="1.3"/>
+  <circle cx="454" cy="338" r="2.4" stroke-width="1"/>
+  <path d="M428 346 L424 360 L414 360" stroke-width="1.3"/>
+  <rect x="400" y="380" width="72" height="46" rx="3" stroke-width="1.3"/>
+  <path d="M400 389 L472 389" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="406" cy="384.5" r="1.6" stroke-width="0.9"/>
+  <circle cx="412" cy="384.5" r="1.6" stroke-width="0.9"/>
+  <circle cx="418" cy="384.5" r="1.6" stroke-width="0.9"/>
+  <path d="M406 396 L461.2 396" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M406 405 L450.4 405" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M406 414 L439.6 414" stroke-width="0.9" stroke-opacity="0.6"/>
+  <path d="M251 392 L251 404 Q251 410 257 410 L294 410 Q300 410 300 416 L300 420" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="251" cy="392" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="300" cy="420" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M304 466 L324 466 Q330 466 330 470 L330 470" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="304" cy="466" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="330" cy="470" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M436 360 L436 380" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="436" cy="360" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="436" cy="380" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <rect x="110" y="380" width="40" height="26" rx="2" stroke-width="1.3" stroke-opacity="0.7"/>
+  <path d="M118 375 L118 380" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M118 406 L118 411" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M105 385.2 L110 385.2" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M150 385.2 L155 385.2" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M126 375 L126 380" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M126 406 L126 411" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M105 390.4 L110 390.4" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M150 390.4 L155 390.4" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M134 375 L134 380" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M134 406 L134 411" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M105 395.6 L110 395.6" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M150 395.6 L155 395.6" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M142 375 L142 380" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M142 406 L142 411" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M105 400.8 L110 400.8" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M150 400.8 L155 400.8" stroke-width="1" stroke-opacity="0.5"/>
+  <circle cx="115" cy="385" r="1.4" fill="#000" stroke="none"/>
+  <rect x="120" y="386.5" width="20" height="13" rx="1.5" stroke-width="0.8" stroke-opacity="0.3"/>
+  <path d="M130 406 L130 424 Q130 430 136 430 L144 430 Q150 430 150 436 L150 470" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="130" cy="406" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <circle cx="150" cy="470" r="2.6" stroke-width="1.1" stroke-opacity="0.7"/>
+  <path d="M256 34.2 A14 15.4 0 0 1 284 34.2" stroke-width="1" stroke-opacity="0.8"/>
+  <path d="M258.5 33.4 A11.5 12.6 0 0 1 281.5 33.4" stroke-width="1" stroke-opacity="0.7"/>
+  <path d="M261 32.7 A9 9.9 0 0 1 279 32.7" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M263.6 31.9 A6.4 7.1 0 0 1 276.4 31.9" stroke-width="1" stroke-opacity="0.6"/>
+  <path d="M266.1 31.2 A3.9 4.3 0 0 1 273.9 31.2" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="M270 36 L270 60" stroke-width="0.9" stroke-opacity="0.6"/>
+</svg>

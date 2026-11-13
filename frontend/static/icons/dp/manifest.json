@@ -45,11 +45,11 @@
     "testFlask": "test-flask.svg",
     "trash": "trash.svg",
     "verifiedBadge": "verified-badge.svg",
-    "setupMotifWelcome": "setup-motif-welcome.svg",
-    "setupMotifDeployment": "setup-motif-deployment.svg",
-    "setupMotifDirectory": "setup-motif-directory.svg",
-    "setupMotifAdministrator": "setup-motif-administrator.svg",
-    "setupMotifPremium": "setup-motif-premium.svg",
-    "setupMotifGettingStarted": "setup-motif-getting-started.svg"
+    "setupArtWelcome": "setup-art-welcome.svg",
+    "setupArtDeployment": "setup-art-deployment.svg",
+    "setupArtDirectory": "setup-art-directory.svg",
+    "setupArtAdministrator": "setup-art-administrator.svg",
+    "setupArtPremium": "setup-art-premium.svg",
+    "setupArtGettingStarted": "setup-art-getting-started.svg"
   }
 }

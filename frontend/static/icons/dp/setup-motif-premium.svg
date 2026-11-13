@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Setup wizard, Premium Services: one hub joined to outside services. -->
-  <circle cx="120" cy="60" r="16"/><circle cx="120" cy="60" r="6" fill="#000" stroke="none"/>
-  <path d="M104 56 L52 28 M104 64 L48 92 M136 56 L188 28 M136 64 L192 92 M120 44 V12"/>
-  <g opacity=".7"><circle cx="46" cy="24" r="8"/><circle cx="42" cy="96" r="8"/><circle cx="194" cy="24" r="8"/>
-  <circle cx="198" cy="96" r="8"/><circle cx="120" cy="8" r="6"/></g>
-</svg>

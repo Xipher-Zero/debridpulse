@@ -731,13 +731,14 @@
     function paint(handle) {
       const section = page().render(wizard);
       // A page (never a view of one): its explanation at the top, its
-      // controls toward the bottom (ui-setup-wizard.css .dp-setup-main), and
-      // between them the page's motif -- decoration only, drawn in whatever
-      // room the body has spare and none where it has none.
+      // controls centred below it between two equal rooms (ui-setup-wizard.css
+      // .dp-setup-main), and behind it all the page's own line art -- one
+      // background layer, decoration only, that takes no part in the layout.
       section.classList.add('dp-setup-main');
-      const motif = element(`<div class="dp-setup-motif" data-motif="${pages[wizard.index]}" aria-hidden="true"></div>`);
+      const room = element('<div class="dp-setup-room" aria-hidden="true"></div>');
       const copy = section.querySelector(':scope > .dp-setup-copy');
-      if (copy) copy.after(motif); else section.prepend(motif);
+      if (copy) copy.after(room); else section.prepend(room);
+      section.prepend(element(`<div class="dp-setup-art" data-art="${pages[wizard.index]}" aria-hidden="true"></div>`));
       const error = element('<p class="dp-setup-error" role="alert" hidden></p>');
       wizard.error = error;
       wizard.body.replaceChildren(section, error);

@@ -36,7 +36,7 @@
    separation row, the page's explanation (centred) at the top, and the
    page's own controls as one group, centred vertically in the rest of the
    body. The page takes the body's whole height; the room above the group
-   (.dp-setup-motif) and the room below it (the page's ::after) are equal
+   (.dp-setup-room) and the room below it (the page's ::after) are equal
    flexible spaces, so the group sits midway between the explanation and the
    body's end, its own layout untouched. With no room to spare both are
    nothing: the page simply scrolls, never clipped. The row is the body's
@@ -56,51 +56,88 @@
   min-block-size: 0;
 }
 
-/* The room above the page's controls (paint: .dp-setup-motif, after the
+/* The room above the page's controls (paint: .dp-setup-room, after the
    explanation), as tall as the room below them: nothing when there is no
    room to spare (its negative margins return the gap it would otherwise
-   add). Inside it, and only there, lies the page's motif, a quiet drawing of
-   what the page is about: an absolutely placed layer that never sizes the
-   room, so it takes no part in where the controls sit, and never lies behind
-   a control or text. Its drawing (icons/dp/setup-motif-<page>.svg) is a mask over the
-   signal field's own palette tokens, so it takes the theme in force; faint,
-   decoration only, never under the pointer, and gone where the room is too
-   small to show it whole. */
-.dp-setup-main > .dp-setup-motif {
-  position: relative;
+   add). A room only: it holds nothing and draws nothing. */
+.dp-setup-main > .dp-setup-room {
   flex: 1 1 0;
   min-block-size: 0;
   margin-block: -5px;
-  container-type: size;
   pointer-events: none;
 }
-.dp-setup-motif::before {
-  content: "";
+
+/* The wizard body's environment, behind everything it holds.
+   Its diffusion is the application canvas's own (--dp-chrome-canvas,
+   ui-language-tokens.css): two broad, soft blooms -- the palette's purple
+   high at the start, its blue low at the end -- over the dialog's surface,
+   in the palette and theme in force. */
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
+  background:
+    radial-gradient(ellipse 95% 70% at 12% 0%, color-mix(in srgb, var(--dp-chrome-signal-purple) 10%, transparent), transparent 72%),
+    radial-gradient(ellipse 90% 75% at 95% 100%, color-mix(in srgb, var(--dp-chrome-signal-blue) 8%, transparent), transparent 74%);
+}
+body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
+  background:
+    radial-gradient(ellipse 95% 70% at 12% 0%, color-mix(in srgb, var(--dp-chrome-signal-purple) 7%, transparent), transparent 72%),
+    radial-gradient(ellipse 90% 75% at 95% 100%, color-mix(in srgb, var(--dp-chrome-signal-blue) 6%, transparent), transparent 74%);
+}
+
+/* Each page's own line art (paint: .dp-setup-art, data-art = the page):
+   one non-repeating composition (icons/dp/setup-art-<page>.svg) drawn
+   across the page's whole area, to the body's padding edges, and scrolling
+   with the page. It is a mask over the signal field's palette tokens, so it
+   takes the theme in force, and an absolutely placed layer beneath the
+   page's content (the page is its own stacking context): it takes no part
+   in the layout, is never under the pointer and is never focused. A second,
+   soft mask eases it gently toward the page's middle and upper part, and
+   every block of the page's own content (its explanation, each control and
+   group) carries a feathered halo of the dialog's own surface colour
+   (--dp-panel-end): the art is quietest exactly beneath the words and
+   controls -- wherever a page puts them -- and fully drawn in the gaps,
+   edges and corners, with no edge or box of its own anywhere. Background
+   only: the halo takes no part in the layout. */
+.dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body > .dp-setup-main {
+  position: relative;
+  isolation: isolate;
+}
+.dp-setup-main > .dp-setup-art {
   position: absolute;
-  inset: 10px 0;
-  opacity: .2;
-  background: linear-gradient(120deg, var(--dp-chrome-signal-purple-bright), var(--dp-chrome-signal-blue-bright));
-  -webkit-mask: var(--dp-setup-motif) center / contain no-repeat;
-  mask: var(--dp-setup-motif) center / contain no-repeat;
+  inset: calc(-1 * (var(--dp-setup-row) + 20px)) -20px -18px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .62;
+  background: linear-gradient(160deg, var(--dp-chrome-signal-purple-bright), var(--dp-chrome-signal-blue-bright) 70%, var(--dp-chrome-signal-blue));
+  -webkit-mask-image: var(--dp-setup-art), radial-gradient(ellipse 72% 62% at 50% 48%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .75) 45%, #000 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .8) 28%, #000 52%);
+  -webkit-mask-size: cover, 100% 100%, 100% 100%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-composite: source-in;
+  mask-image: var(--dp-setup-art), radial-gradient(ellipse 72% 62% at 50% 48%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .75) 45%, #000 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .8) 28%, #000 52%);
+  mask-size: cover, 100% 100%, 100% 100%;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-composite: intersect;
 }
-body.light .dp-setup-motif::before {
-  opacity: .16;
+body.light .dp-setup-main > .dp-setup-art {
+  opacity: .48;
 }
-/* The denser pages carry it lighter. */
-.dp-setup-motif:is([data-motif="administrator"], [data-motif="premium_services"])::before {
-  opacity: .13;
+.dp-setup-main > :not(.dp-setup-art, .dp-setup-room) {
+  background-image: radial-gradient(closest-side, color-mix(in srgb, var(--dp-panel-end) 94%, transparent) 62%,
+    color-mix(in srgb, var(--dp-panel-end) 62%, transparent) 84%, transparent 100%);
+  background-size: calc(100% + 48px) calc(100% + 40px);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-origin: border-box;
 }
-@container (max-height: 48px) {
-  .dp-setup-motif::before {
-    display: none;
-  }
-}
-.dp-setup-motif[data-motif="welcome"] { --dp-setup-motif: url("/icons/dp/setup-motif-welcome.svg"); }
-.dp-setup-motif[data-motif="deployment"] { --dp-setup-motif: url("/icons/dp/setup-motif-deployment.svg"); }
-.dp-setup-motif[data-motif="download_directory"] { --dp-setup-motif: url("/icons/dp/setup-motif-directory.svg"); }
-.dp-setup-motif[data-motif="administrator"] { --dp-setup-motif: url("/icons/dp/setup-motif-administrator.svg"); }
-.dp-setup-motif[data-motif="premium_services"] { --dp-setup-motif: url("/icons/dp/setup-motif-premium.svg"); }
-.dp-setup-motif[data-motif="getting_started"] { --dp-setup-motif: url("/icons/dp/setup-motif-getting-started.svg"); }
+.dp-setup-art[data-art="welcome"] { --dp-setup-art: url("/icons/dp/setup-art-welcome.svg?v=3"); }
+.dp-setup-art[data-art="deployment"] { --dp-setup-art: url("/icons/dp/setup-art-deployment.svg?v=3"); }
+.dp-setup-art[data-art="download_directory"] { --dp-setup-art: url("/icons/dp/setup-art-directory.svg?v=3"); }
+.dp-setup-art[data-art="administrator"] { --dp-setup-art: url("/icons/dp/setup-art-administrator.svg?v=3"); }
+.dp-setup-art[data-art="premium_services"] { --dp-setup-art: url("/icons/dp/setup-art-premium.svg?v=3"); }
+.dp-setup-art[data-art="getting_started"] { --dp-setup-art: url("/icons/dp/setup-art-getting-started.svg?v=3"); }
 @media (max-width: 620px) {
   /* The dialog owner stacks footer controls full-width here, so a footer is as
      tall as its controls. The wizard's footer keeps one footprint -- its
@@ -225,22 +262,18 @@ body.light .dp-setup-motif::before {
    proportions (320:300) at the header's width, its crossing band under the
    heading, faded at both ends and toward the top so the indicator stays
    clear, and faint enough that the title and tagline keep their contrast
-   (fainter still in light), and turned 15deg clockwise, so its paths rise
-   across the header (wider than the header, so the turn leaves no bare
-   corner). Centred physically (left: 50%), and not mirrored in
+   (fainter still in light). Centred physically (left: 50%), and not mirrored in
    right-to-left, as the sidebar's is not. The header clips it. */
 .dp-setup-header-top > .dp-signal-field {
   position: absolute;
   left: 50%;
   bottom: 0;
   z-index: 0;
-  inline-size: max(118%, 480px);
+  inline-size: max(100%, 420px);
   aspect-ratio: 320 / 300;
   opacity: .34;
   filter: var(--dp-chrome-signal-filter);
-  /* Turned 15deg clockwise about its crossing band, as the dock turns it. */
-  transform: translate(-50%, 38%) rotate(15deg);
-  transform-origin: 50% 62%;
+  transform: translate(-50%, 38%);
   pointer-events: none;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 82%, transparent 100%),
     linear-gradient(180deg, transparent 22%, #000 46%);
@@ -461,6 +494,12 @@ body.light .dp-setup-header-top > .dp-signal-field {
 .dp-setup-directory-row > .input {
   flex: 1 1 14rem;
   min-inline-size: 0;
+}
+
+/* Administrator Setup (a rerun's guidance): its reading above Open Users &
+   Access, centred like the page and its full-width button. */
+.dp-setup-administrator > .dp-setup-hint {
+  text-align: center;
 }
 
 /* Administrator Setup: the notes beneath the fields, centred. */

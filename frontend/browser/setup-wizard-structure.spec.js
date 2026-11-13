@@ -619,8 +619,8 @@ for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]])
         const style = getComputedStyle(body);
         const r = element => element.getBoundingClientRect();
         const copy = section.querySelector(':scope > .dp-setup-copy');
-        // The page's own content after its explanation (its motif is the decorative spare room, R22).
-        const controls = [...section.children].filter(child => child !== copy && !child.matches('.dp-setup-motif') && child.getClientRects().length);
+        // The page's own content after its explanation (not its room above the group, nor its art layer, R22).
+        const controls = [...section.children].filter(child => child !== copy && !child.matches('.dp-setup-room, .dp-setup-art') && child.getClientRects().length);
         const last = controls[controls.length - 1];
         const bodyBottom = r(body).bottom - parseFloat(style.paddingBottom);
         const scrolls = body.scrollHeight > body.clientHeight + 1;
@@ -634,7 +634,7 @@ for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]])
           // The group's room above (from the explanation) and below (to the page's end).
           above: r(controls[0]).top - parseFloat(getComputedStyle(controls[0]).marginTop) - (copy ? r(copy).bottom : r(section).top),
           below: r(section).bottom - r(last).bottom,
-          motifLayer: getComputedStyle(section.querySelector('.dp-setup-motif'), '::before').position};
+          artLayer: getComputedStyle(section.querySelector('.dp-setup-art')).position};
       });
       seen.push(g.page);
       expect(g.mains, g.page).toBe(1);
@@ -650,8 +650,8 @@ for (const [width, height] of [[1280, 900], [375, 740], [375, 560], [320, 640]])
         expect(Math.abs(g.above - g.below), `${g.page} above ${g.above} below ${g.below}`).toBeLessThan(1.5);
       }
       else expect(g.above, g.page).toBeLessThan(11);           // the section gap only: no room was made
-      // The drawing is a layer, never a box that sizes the room.
-      expect(g.motifLayer, g.page).toBe('absolute');
+      // The art is a layer, never a box that takes part in the layout.
+      expect(g.artLayer, g.page).toBe('absolute');
       if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
       if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
       await accept(page);
@@ -896,68 +896,108 @@ test('R21: a rerun and the preview stay dismissible: Close on every page, no Bac
   await end(page);
 });
 
-test('R22: every page shows its own motif in the room between its explanation and its controls, under nothing interactive; the views show none', async ({page}) => {
-  await load(page);
-  await preview(page);
-  const seen = [];
-  for (let i = 0; i < 6; i += 1) {
-    const g = await wizard(page).evaluate(node => {
-      const r = element => element.getBoundingClientRect();
-      const section = node.querySelector('.dp-setup-main');
-      const motif = section.querySelector(':scope > .dp-setup-motif');
-      const art = getComputedStyle(motif, '::before');
-      const copy = section.querySelector(':scope > .dp-setup-copy');
-      const next = motif.nextElementSibling;
-      const box = r(motif);
-      // Nothing that can be read or used is inside the motif's box.
-      const under = [...section.querySelectorAll('button, input, a, p, li, [role="radio"]')].filter(element => {
-        const e = r(element);
-        return e.width && e.height && e.bottom > box.top + 1 && e.top < box.bottom - 1;
-      }).length;
-      return {motif: motif.dataset.motif, hidden: motif.getAttribute('aria-hidden'), pointer: getComputedStyle(motif).pointerEvents,
-        mask: art.maskImage || art.webkitMaskImage, opacity: Number(art.opacity), afterCopy: !copy || copy.nextElementSibling === motif,
-        between: (!copy || box.top >= r(copy).bottom - 1) && (!next || box.bottom <= r(next).top + 1), under, height: box.height};
-    });
-    seen.push(g.motif);
-    expect(g.hidden, g.motif).toBe('true');
-    expect(g.pointer, g.motif).toBe('none');
-    expect(g.mask, g.motif).toContain('setup-motif-');
-    expect(g.opacity, g.motif).toBeLessThanOrEqual(0.2);
-    expect(g.afterCopy && g.between, g.motif).toBe(true);
-    expect(g.under, g.motif).toBe(0);
-    if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
-    if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
-    await accept(page);
+test('R22: every page draws its own full-area line art behind its content -- one layer, decoration only -- and the views draw none', async ({page}) => {
+  const FILES = {welcome: 'welcome', deployment: 'deployment', download_directory: 'directory', administrator: 'administrator',
+    premium_services: 'premium', getting_started: 'getting-started'};
+  for (const [width, height] of [[1280, 900], [375, 560]]) {
+    await load(page, {width, height});
+    await preview(page);
+    const seen = [];
+    for (let i = 0; i < 6; i += 1) {
+      const g = await wizard(page).evaluate(node => {
+        const r = element => element.getBoundingClientRect();
+        const body = node.querySelector('.dp-setup-body');
+        const section = body.querySelector('.dp-setup-main');
+        const arts = section.querySelectorAll(':scope > .dp-setup-art');
+        const art = arts[0];
+        const style = getComputedStyle(art);
+        const room = section.querySelector(':scope > .dp-setup-room');
+        return {count: arts.length, page: art.dataset.art, hidden: art.getAttribute('aria-hidden'), pointer: style.pointerEvents,
+          position: style.position, z: style.zIndex, display: style.display, mask: style.maskImage || style.webkitMaskImage,
+          isolated: getComputedStyle(section).isolation, opacity: Number(style.opacity),
+          // It spans the body's full width and reaches the body's padding edge above the page (in the
+          // preview its development note stands above that; a real flow is measured below).
+          spans: Math.abs(r(art).width - r(body).width) < 1.5
+            && Math.abs(r(art).top - (r(section).top - parseFloat(getComputedStyle(section).marginTop) - parseFloat(getComputedStyle(body).paddingTop))) < 1.5,
+          diffusion: getComputedStyle(body).backgroundImage.split('radial-gradient').length - 1,
+          roomDraws: getComputedStyle(room, '::before').content,
+          halo: getComputedStyle(section.querySelector(':scope > .dp-setup-copy') || room.nextElementSibling).backgroundImage};
+      });
+      seen.push(g.page);
+      expect(g, g.page).toMatchObject({count: 1, hidden: 'true', pointer: 'none', position: 'absolute', z: '-1', display: 'block',
+        isolated: 'isolate', spans: true, diffusion: 2, roomDraws: 'none'});
+      expect(g.mask, g.page).toContain(`setup-art-${FILES[g.page]}.svg`);
+      expect(g.opacity, g.page).toBeLessThanOrEqual(0.62);
+      expect(g.halo, g.page).toContain('radial-gradient');      // the page's content quiets the art beneath it
+      if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+      if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+      await accept(page);
+    }
+    expect(seen).toEqual(['welcome', 'deployment', 'download_directory', 'administrator', 'premium_services', 'getting_started']);
+    await end(page);
   }
-  expect(seen).toEqual(['welcome', 'deployment', 'download_directory', 'administrator', 'premium_services', 'getting_started']);
-  // A page's views draw no motif.
+  // In a real flow (a rerun) the art is the body's own box.
+  await load(page);
+  await rerun(page);
+  const box = await wizard(page).evaluate(node => {
+    const r = element => { const b = element.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round); };
+    return {art: r(node.querySelector('.dp-setup-art')), body: r(node.querySelector('.dp-setup-body'))};
+  });
+  expect(box.art).toEqual(box.body);
   await end(page);
+  // A page's views draw none.
   await preview(page);
   await wizard(page).locator('[data-setup-language]').click();
   await expect(wizard(page).locator('.dp-setup-language-view')).toBeVisible();
-  await expect(wizard(page).locator('.dp-setup-motif')).toHaveCount(0);
+  await expect(wizard(page).locator('.dp-setup-art')).toHaveCount(0);
   await end(page);
 });
 
-test('R23: on a short phone the motif yields: no room, no drawing, and the controls are where they were', async ({page}) => {
-  await load(page, {width: 375, height: 560});
-  await preview(page);
-  for (let i = 0; i < 6; i += 1) {
-    const g = await wizard(page).evaluate(node => {
-      const section = node.querySelector('.dp-setup-main');
-      const motif = section.querySelector(':scope > .dp-setup-motif');
-      const copy = section.querySelector(':scope > .dp-setup-copy');
-      const next = motif.nextElementSibling;
-      return {height: motif.getBoundingClientRect().height, drawn: getComputedStyle(motif, '::before').display !== 'none',
-        gap: copy && next ? next.getBoundingClientRect().top - copy.getBoundingClientRect().bottom - parseFloat(getComputedStyle(next).marginTop) : 10};
-    });
-    expect(g.height).toBeLessThan(1);
-    expect(g.drawn).toBe(false);
-    expect(Math.abs(g.gap - 10)).toBeLessThan(1.5);
-    if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
-    if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
-    await accept(page);
+test('R23: the art takes no part in the layout: without it every control is where it was and nothing scrolls differently', async ({page}) => {
+  for (const [width, height] of [[1280, 900], [375, 560]]) {
+    await load(page, {width, height});
+    await preview(page);
+    for (let i = 0; i < 6; i += 1) {
+      const same = await wizard(page).evaluate(node => {
+        const body = node.querySelector('.dp-setup-body');
+        const read = () => ({scroll: body.scrollHeight, boxes: [...body.querySelectorAll('.dp-setup-main *')].filter(element => !element.closest('.dp-setup-art'))
+          .map(element => { const b = element.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); })});
+        const art = body.querySelector('.dp-setup-art');
+        const before = read();
+        art.remove();
+        const after = read();
+        body.querySelector('.dp-setup-main').prepend(art);
+        return JSON.stringify(before) === JSON.stringify(after);
+      });
+      expect(same, `page ${i + 1}`).toBe(true);
+      if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
+      if (await wizard(page).locator('.dp-setup-getting-started').count()) break;
+      await accept(page);
+    }
+    await end(page);
   }
+});
+
+test('R29: a rerun\'s Administrator guidance reads centred above Open Users & Access', async ({page}) => {
+  await load(page);
+  if (await page.evaluate(() => window.debridPulseAuth.authority.deployment_type) !== 'server') return;
+  await rerun(page);
+  await accept(page); await accept(page);
+  await expect(wizard(page).locator('[data-setup-users]')).toBeVisible();
+  const g = await wizard(page).evaluate(node => {
+    const hint = node.querySelector('.dp-setup-administrator > .dp-setup-hint');
+    const button = node.querySelector('[data-setup-users]').getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(hint);
+    const lines = [...range.getClientRects()];
+    const centre = rect => (rect.left + rect.right) / 2;
+    return {align: getComputedStyle(hint).textAlign, key: hint.dataset.i18n,
+      offsets: lines.map(line => Math.abs(centre(line) - centre(button))), above: hint.getBoundingClientRect().bottom <= button.top + 1};
+  });
+  expect(g.align).toBe('center');
+  expect(g.key).toBe('setup.administrator.oidc');
+  expect(g.above).toBe(true);
+  for (const offset of g.offsets) expect(offset).toBeLessThan(2);
   await end(page);
 });
 
@@ -995,7 +1035,7 @@ test('R24: Getting Started\'s steps: a list of three, each its number in a rail-
   }
 });
 
-test('R25: the header artwork is turned 15deg clockwise and stays behind and inside the header', async ({page}) => {
+test('R25: the header artwork is unrotated and stays behind and inside the header', async ({page}) => {
   await load(page, {width: 320, height: 640});
   await rerun(page);
   const g = await wizard(page).evaluate(node => {
@@ -1006,7 +1046,7 @@ test('R25: the header artwork is turned 15deg clockwise and stays behind and ins
     return {angle, overflow: getComputedStyle(header).overflow, page: document.documentElement.scrollWidth,
       progressOnTop: document.elementFromPoint(...(() => { const b = header.querySelector('.dp-setup-progress-bubble').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })())?.closest('.dp-setup-progress') !== null};
   });
-  expect(g).toEqual({angle: 15, overflow: 'hidden', page: 320, progressOnTop: true});
+  expect(g).toEqual({angle: 0, overflow: 'hidden', page: 320, progressOnTop: true});
   await end(page);
 });
 
