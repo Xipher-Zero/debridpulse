@@ -1371,10 +1371,10 @@ def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
     datum = rule(icons, "#view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {")
     assert "var(--dp-identity-general_http)" in datum
     assert "--dp-identity-general_http: #3B82F6;" in read("design-tokens.css")
-    chip = rule(icons, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip {")
+    chip = rule(icons, ":is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip {")
     for kept in ("width: 38px", "height: 38px", "border-radius: 9px", "inset 0 1px 0"):
         assert kept in chip, kept
-    glyph = rule(icons, ":is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip img {")
+    glyph = rule(icons, ":is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip img {")
     assert "drop-shadow" in glyph, "the internal glyph glow was removed"
 
 

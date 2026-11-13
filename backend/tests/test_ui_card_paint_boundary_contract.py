@@ -107,11 +107,11 @@ def test_help_downloads_and_settings_corrections_do_not_redefine_card_material()
 def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
     overlay = read_static("style.css")
 
-    universal = overlay.index("/ui-universal-language.css?v=21")
+    universal = overlay.index("/ui-universal-language.css?v=22")
     stats = overlay.index("/ui-statistics-page.css?v=23")
     activity = overlay.index("/ui-activity-log-page.css?v=32")
     downloads = overlay.index("/ui-downloads-page.css?v=30")
-    settings = overlay.index("/ui-settings-page.css?v=3")
+    settings = overlay.index("/ui-settings-page.css?v=5")
     help_page = overlay.index("/ui-help-page.css?v=23")
 
     assert universal < stats < activity < downloads < settings < help_page

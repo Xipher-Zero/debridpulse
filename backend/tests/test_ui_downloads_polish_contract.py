@@ -24,7 +24,7 @@ MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     tokens = "/ui-language-tokens.css?v=21"
-    universal = "/ui-universal-language.css?v=21"
+    universal = "/ui-universal-language.css?v=22"
     dashboard = "/ui-dashboard.css?v=22"
     statistics = "/ui-statistics-page.css?v=23"
     downloads = "/ui-downloads-page.css?v=30"

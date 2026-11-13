@@ -424,6 +424,27 @@
   line-height: 1.5;
 }
 
+/* The setup wizard's provider surface (DPSettingsPage.mountProvider) is a
+   narrow portrait dialog at every viewport width, so its credential and
+   account islands always take the stacked, full-width form the narrow
+   Settings page uses -- the field gets the dialog's width -- while Settings
+   keeps its deliberately content-bounded islands from 780px; and a blank
+   provider status reserves no row above the account island, so that island
+   sits evenly in its card body like every other provider's. These are the
+   islands' own layout variables (their rules below read them, defaulting to
+   Settings' form). */
+.dp-setup-provider-surface {
+  --dp-credential-island-direction: column;
+  --dp-credential-island-align: stretch;
+  --dp-credential-island-gap: 10px;
+  --dp-credential-island-width: 100%;
+  --dp-credential-island-info-max: none;
+  --dp-account-island-width: 100%;
+  --dp-account-island-copy-max: none;
+  --dp-provider-status-reserve: 0;
+  --dp-provider-status-reserve-gap: 0;
+}
+
 /* A premium provider's account connection (Real-Debrid, TorBox): one compact
    Account Connection island
    in the card body, the same island the Extraction behaviour group is --
@@ -443,7 +464,7 @@
   align-items: center;
   justify-content: center;
   gap: 18px 44px;
-  width: max-content;
+  width: var(--dp-account-island-width, max-content);
   max-width: min(100%, 880px);
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
@@ -457,7 +478,7 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  max-width: 300px;
+  max-width: var(--dp-account-island-copy-max, 300px);
 }
 
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-account-island-copy > .dp-settings-copy {
@@ -513,6 +534,16 @@
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
+}
+
+/* The row while it says nothing: Settings keeps its line and its gap reserved
+   (the card never moves when a status arrives). The setup wizard's provider
+   view reserves nothing for a blank status (--dp-provider-status-reserve: 0),
+   so the account island sits evenly in its card body, as every other
+   provider's island does; a status, when there is one, takes its row. */
+:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-status-line:empty {
+  height: var(--dp-provider-status-reserve, 1.5em);
+  margin-bottom: var(--dp-provider-status-reserve-gap, 14px);
 }
 
 /* The premium expiry is ordinary card copy -- the size and colour of the
@@ -945,8 +976,9 @@
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row {
   box-sizing: border-box;
   justify-content: center;
-  gap: 18px;
-  width: 65%;
+  flex-direction: var(--dp-credential-island-direction, row);
+  gap: var(--dp-credential-island-gap, 18px);
+  width: var(--dp-credential-island-width, 65%);
   max-width: 100%;
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
@@ -956,10 +988,12 @@
 
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
-  max-width: 240px;
+  align-self: var(--dp-credential-island-align, auto);
+  max-width: var(--dp-credential-island-info-max, 240px);
 }
 
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
+  align-self: var(--dp-credential-island-align, auto);
   /* The field is what absorbs the row's spare width. */
   flex: 1 1 auto;
 }
@@ -977,8 +1011,9 @@
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row {
   box-sizing: border-box;
   justify-content: center;
-  gap: 18px;
-  width: 65%;
+  flex-direction: var(--dp-credential-island-direction, row);
+  gap: var(--dp-credential-island-gap, 18px);
+  width: var(--dp-credential-island-width, 65%);
   max-width: 100%;
   margin-inline: auto;
   border: 1px solid var(--dp-divider);
@@ -989,11 +1024,13 @@
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
-  max-width: 240px;
+  align-self: var(--dp-credential-island-align, auto);
+  max-width: var(--dp-credential-island-info-max, 240px);
 }
 
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-debridlink-key-row > .dp-settings-inline-field-control,
 :is(#view-settings, .dp-setup-provider-surface) .dp-settings-premiumize-key-row > .dp-settings-inline-field-control {
+  align-self: var(--dp-credential-island-align, auto);
   flex: 1 1 auto;
 }
 

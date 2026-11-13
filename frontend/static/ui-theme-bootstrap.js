@@ -223,11 +223,18 @@
   if (light) document.body.classList.add('light');
   paint();
 
+  // The product logo, drawn inline wherever <dp-logo> stands (the sidebar's
+  // mark, the setup wizard's Welcome heading). The first copy keeps the
+  // logo's own ids; every later copy renames them, so no copy draws with
+  // another's gradients or glow (one hidden with its sidebar included).
   const LOGO = typeof window.debridPulseLogo === 'string' ? window.debridPulseLogo : '';
   if (LOGO && window.customElements && !customElements.get('dp-logo')) {
+    let logos = 0;
     customElements.define('dp-logo', class extends HTMLElement {
       connectedCallback() {
-        if (!this.firstElementChild) this.innerHTML = LOGO;
+        if (this.firstElementChild) return;
+        logos += 1;
+        this.innerHTML = logos === 1 ? LOGO : LOGO.replace(/(id="|url\(#)dp-app-logo-/g, `$1dp-app-logo-${logos}-`);
       }
     });
   }

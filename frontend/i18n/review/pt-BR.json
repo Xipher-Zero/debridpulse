@@ -31982,14 +31982,6 @@
     "ai-review"
    ]
   },
-  "setup.action.get_started": {
-   "source": "983f311018642b0a",
-   "translation": "ce606fe867debb10",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
   "setup.action.finish": {
    "source": "0015e9341cee0eb3",
    "translation": "33b8bced37f3a521",
@@ -32006,41 +31998,9 @@
     "ai-review"
    ]
   },
-  "setup.welcome.intro": {
-   "source": "b37161c2cba569f6",
-   "translation": "f89ec9c6269bf014",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.welcome.language": {
-   "source": "a4fe65264ef7dbb3",
-   "translation": "7ae9d418353b399f",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.welcome.language_hint": {
-   "source": "b945f984b010510e",
-   "translation": "8f7a6d6707a320f2",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
   "setup.deployment.title": {
-   "source": "5240b921765a0d88",
-   "translation": "2b3af700b0c9ddeb",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.deployment.intro": {
-   "source": "752985a879ef057c",
-   "translation": "bb2e760e261ceb34",
+   "source": "b4b5d250c00617a3",
+   "translation": "2f00bca01e653e80",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32078,14 +32038,6 @@
     "ai-review"
    ]
   },
-  "setup.directory.intro": {
-   "source": "d2885bb9f7d5da65",
-   "translation": "9e90b9e0f6de009a",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
   "setup.directory.hint": {
    "source": "f79436d71ccf9c91",
    "translation": "76911234a1c7aed2",
@@ -32105,14 +32057,6 @@
   "setup.administrator.title": {
    "source": "66d4042c5cffcd89",
    "translation": "8466b671e9cd8a07",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.administrator.intro": {
-   "source": "bf181da4d0832e21",
-   "translation": "073ffda2afa4075f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32214,57 +32158,9 @@
     "ai-review"
    ]
   },
-  "setup.premium.hint": {
-   "source": "bf82ea495fa6bac5",
-   "translation": "79d3205bb0872eaa",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
   "setup.getting_started.title": {
    "source": "d00eca1bae674280",
    "translation": "6254a4354624a855",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.getting_started.intro": {
-   "source": "255683bf857246fa",
-   "translation": "dc568b42c8f8f10a",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.getting_started.step_paste": {
-   "source": "770fb000362bdba8",
-   "translation": "32b2a9f5da4dbc08",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.getting_started.step_add": {
-   "source": "43f6502a99d04cd1",
-   "translation": "47e0c1154f0c54a2",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.getting_started.step_watch": {
-   "source": "442a78e341c0571a",
-   "translation": "a9bc322d1e649554",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "setup.getting_started.sign_in": {
-   "source": "8059e1fcdc516327",
-   "translation": "0e94bb1b88d5c402",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32451,6 +32347,214 @@
   "setup.progress.step_done": {
    "source": "b6b38cb19c4fdca0",
    "translation": "e643cf42885c587b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.sign_in": {
+   "source": "8d7cd5150d1aa69a",
+   "translation": "39755f143b97f621",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.tagline": {
+   "source": "118739a37e29101c",
+   "translation": "202a340acbdf7370",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.body.thanks": {
+   "source": "27770b2cb0d433e3",
+   "translation": "87687395bf97eb11",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.body.guide": {
+   "source": "b6774cd8e77872fd",
+   "translation": "36baceba096284f6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.body.next": {
+   "source": "ff525471c0a41421",
+   "translation": "9aee487fc8f64508",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.change_language": {
+   "source": "909a0a36a8eff900",
+   "translation": "65c16dee117ba86b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.change_language_hint": {
+   "source": "e8dd514d01e04c22",
+   "translation": "4047383e068df911",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.welcome.language_button": {
+   "source": "b7278108df437ec0",
+   "translation": "126d28e43e33b607",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.tagline": {
+   "source": "a4c6e4c8eeddc895",
+   "translation": "7b013d28277097f6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.body.types": {
+   "source": "e1771ec33b8c2d34",
+   "translation": "71661b3a776b719a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.deployment.body.choose": {
+   "source": "3dc8787f44cce18c",
+   "translation": "ca66b23c08651aa7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.tagline": {
+   "source": "35638422e84cc5ad",
+   "translation": "ab9411c97b7b5a1b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.body.purpose": {
+   "source": "abdda6335ab5d827",
+   "translation": "9063eeb69026c902",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.body.choose": {
+   "source": "2e5b96c7722596bc",
+   "translation": "8a16091a42eda16d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.directory.browse_hint": {
+   "source": "7de0a70eadc51447",
+   "translation": "69706cbe7fd335e1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.tagline": {
+   "source": "cbcb7eb95c8c6123",
+   "translation": "299c33f4efbbc17d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.administrator.body": {
+   "source": "e5a587bf86176b3e",
+   "translation": "f3c937dc279beda0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.tagline": {
+   "source": "f3167e52d4b112f0",
+   "translation": "ec0f2d4eb51c4d2c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.optional": {
+   "source": "59be71333c960fd0",
+   "translation": "a6e63474985fa190",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.body.what": {
+   "source": "d3c512907c62a0a5",
+   "translation": "d7defc91afe64c56",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.premium.body.optional": {
+   "source": "a27c6f036a51098d",
+   "translation": "b0b6c74114772e12",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.tagline": {
+   "source": "78eb299238a8a36b",
+   "translation": "024d81470d9b4d1f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.body": {
+   "source": "ede5292e8731a827",
+   "translation": "3e6bb064781f890d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step.open": {
+   "source": "48ab559c629f8121",
+   "translation": "8eaf317546715b09",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step.add": {
+   "source": "439f30650a7083fc",
+   "translation": "fb02340de6ae4faa",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "setup.getting_started.step.monitor": {
+   "source": "9d9c140f9981abfa",
+   "translation": "1aee9a9af22bf3e2",
    "provenance": [
     "ai-generated",
     "ai-review"

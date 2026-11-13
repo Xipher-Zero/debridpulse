@@ -449,7 +449,7 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = source(STYLE_V11)
-    assert "@import url('/ui-settings-page.css?v=3');" in styles
+    assert "@import url('/ui-settings-page.css?v=5');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_dynamic_frontend_syntax_gate():
@@ -559,11 +559,17 @@ def test_directory_picker_is_a_first_class_client_not_a_post_render_mutator():
         "classList.add('dp-settings-directory-dialog')", "keydown",
     ):
         assert forbidden not in picker, forbidden
-    # The body slot is only ever the parameter the owner hands to this client's own mount callback: it is
-    # filled once, at creation, and never obtained by querying (and rewriting) a rendered dialog.
-    mount = picker.index("mount(body)")
+    # The body slot is only ever a container handed to the one browser (browse): the parameter the owner
+    # hands to this client's own mount callback, or a host's own view (DPSettingsDirectoryPicker.mount, the
+    # setup wizard's). It is filled once, by browse, and never obtained by querying (and rewriting) a
+    # rendered dialog.
+    browse = picker.index("function browse(config, body, startPath, host)")
     assert picker.count("body.innerHTML") == 1
-    assert mount < picker.index("body.innerHTML") < picker.index("view.up.addEventListener('click'")
+    assert browse < picker.index("body.innerHTML") < picker.index("view.up.addEventListener('click'")
+    own = picker[picker.index("function openDirectoryPicker("):]
+    assert "mount(body, handle) {\n        browser = browse(config, body, originalValue, {" in own
+    embedded = picker[picker.index("    mount(purpose, container, {path = '', host}) {"):]
+    assert "return browse(config, container, String(path ?? ''), host);" in embedded
     # The picker asks the shell for state; it never reaches into the shell DOM.
     assert not re.search(r"document\.querySelector(All)?\(\s*['\"][^'\"]*(dialog|modal|overlay|confirm)", picker)
 

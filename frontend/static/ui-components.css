@@ -276,7 +276,8 @@ textarea.dp-field {
 .dp-status--active,
 .dp-badge--active { --dp-badge-color: var(--dp-state-active); --dp-badge-bg: var(--dp-state-active-bg); }
 .dp-status--processing { --dp-badge-color: var(--dp-state-processing); --dp-badge-bg: var(--dp-state-processing-bg); }
-.dp-status--caution { --dp-badge-color: var(--dp-state-caution); --dp-badge-bg: var(--dp-state-caution-bg); }
+.dp-status--caution,
+.dp-badge--caution { --dp-badge-color: var(--dp-state-caution); --dp-badge-bg: var(--dp-state-caution-bg); }
 .dp-status--error,
 .dp-badge--error { --dp-badge-color: var(--dp-state-error); --dp-badge-bg: var(--dp-state-error-bg); }
 .dp-status--paused { --dp-badge-color: var(--dp-state-paused); }

@@ -166,7 +166,7 @@ body.light #view-settings .dp-settings-tab-glyph {
  * border, surface and glow derive from ONE per-provider datum,
  * --dp-provider-color; each provider contributes that colour and its own
  * shipped mark, nothing else. */
-:is(#view-settings, .dp-setup-provider-surface) :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
                    .dp-settings-provider-chip--premiumize, .dp-settings-provider-chip--realdebrid,
                    .dp-settings-provider-chip--torbox) {
   width: 38px;
@@ -187,7 +187,7 @@ body.light #view-settings .dp-settings-tab-glyph {
     0 1px 3px rgba(0,0,0,.18);
 }
 
-body.light :is(#view-settings, .dp-setup-provider-surface) :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
+body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
                               .dp-settings-provider-chip--premiumize, .dp-settings-provider-chip--realdebrid,
                               .dp-settings-provider-chip--torbox) {
   border-color: color-mix(in srgb, var(--dp-provider-color) 58%, #000);
@@ -203,8 +203,8 @@ body.light :is(#view-settings, .dp-setup-provider-surface) :is(.dp-settings-prov
 
 /* Debrid-Link's mark is a single deep navy, so its chip keeps a light face of
    its colour in both themes for the mark to stay legible. */
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--debridlink,
-body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--debridlink {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--debridlink,
+body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--debridlink {
   border-color: var(--dp-provider-color);
   background: linear-gradient(145deg,
     color-mix(in srgb, var(--dp-provider-color) 14%, #fff) 0%,
@@ -212,13 +212,13 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
     color-mix(in srgb, var(--dp-provider-color) 48%, #fff) 100%);
 }
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--debridlink { --dp-provider-color: var(--dp-identity-debridlink); }
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--premiumize { --dp-provider-color: var(--dp-identity-premiumize); }
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--realdebrid { --dp-provider-color: var(--dp-identity-realdebrid); }
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--torbox { --dp-provider-color: var(--dp-identity-torbox); }
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--debridlink { --dp-provider-color: var(--dp-identity-debridlink); }
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--premiumize { --dp-provider-color: var(--dp-identity-premiumize); }
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--realdebrid { --dp-provider-color: var(--dp-identity-realdebrid); }
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--torbox { --dp-provider-color: var(--dp-identity-torbox); }
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--alldebrid {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--alldebrid {
   width: 34px;
   height: 34px;
   display: block;
@@ -230,7 +230,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
     drop-shadow(0 0 7px color-mix(in srgb, var(--dp-provider-color) 52%, transparent));
 }
 
-body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--alldebrid {
+body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--alldebrid {
   filter:
     saturate(1.12)
     contrast(1.06)
@@ -240,7 +240,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
 
 
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--realdebrid {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--realdebrid {
   width: 28px;
   height: 28px;
   display: block;
@@ -249,7 +249,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
 
 
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--torbox {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--torbox {
   width: 26px;
   height: 26px;
   display: block;
@@ -258,7 +258,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
 
 
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--debridlink {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--debridlink {
   width: 28px;
   height: 28px;
   display: block;
@@ -267,7 +267,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider
 
 
 
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--premiumize {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--premiumize {
   width: 28px;
   height: 28px;
   display: block;

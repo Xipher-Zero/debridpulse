@@ -7,9 +7,10 @@
  * the Settings markup emitted by ui-settings-page.js, which calls
  * DPSettingsDirectoryPicker.open(purpose) from the button; this module reads the
  * field's current value and writes the chosen one back, and touches no other
- * Settings markup; a caller may name its own field instead
- * (DPSettingsDirectoryPicker.open(purpose, {field})), whose value it sets and
- * whose commit stays that caller's. Backup purpose is directory navigation only (see backend
+ * Settings markup. The same browser is also shown as a view of a host dialog
+ * (DPSettingsDirectoryPicker.mount: the setup wizard's Download Directory),
+ * which sets nothing and commits nothing: its host takes the folder chosen and
+ * commits it as it commits. Backup purpose is directory navigation only (see backend
  * GET /settings/directories?purpose=backup); it never calls Download Storage
  * validation, so its selectable wording does not reuse "Selectable as Download
  * Storage".
@@ -72,71 +73,66 @@
     return t(`format.size.${units[unit].toLowerCase()}`, {value: window.DPI18n.number(scaled, 1)});
   }
 
-  function openDirectoryPicker(config, own = null) {
-    // The field it chooses for: the Settings field, or one its caller owns
-    // (the setup wizard's Download Directory), which it commits nothing for.
-    const field = own instanceof HTMLInputElement ? own : root()?.querySelector(config.fieldSelector);
-    if (!field || typeof api !== 'function') return;
-
-    const originalValue = String(field.value ?? '');
+  /* The browser itself -- current folder, its state and capacity, Up, the
+   * folders inside, loading, errors -- drawn into ``body`` for whichever host
+   * shows it: this module's own dialog (openDirectoryPicker), or a view of a
+   * host dialog that embeds it (mount: the setup wizard's Download
+   * Directory). ``host`` ({setAcceptEnabled, setBusy}) is told whether the
+   * folder shown may be chosen and whether a load is in flight; the browser
+   * chooses nothing itself. Returns {selected(), release()}: ``selected`` is
+   * the folder shown when it may be chosen (else null); ``release`` ends it
+   * (no answer arriving later is drawn). */
+  function browse(config, body, startPath, host) {
     let currentResponse = null;
     let generation = 0;
     let controller = null;
-    let view = null;
+    let live = true;
 
     const words = key => t(`directory_picker.${config.purpose}.${key}`);
     let lastPayload = null;   // said again on a language change
     let errorWords = null;    // {key} or {text}: the error shown, if any
     let noticeShown = false;
-    const dialog = window.DPSettingsModal.open({
-      title: words('title'),
-      acceptLabel: t('directory_picker.accept'),
-      keys: {title: `directory_picker.${config.purpose}.title`, accept: 'directory_picker.accept', cancel: 'common.cancel'},
-      acceptDisabled: true,
-      className: 'dp-settings-directory-dialog',
-      bodyClassName: 'dp-settings-directory-body',
-      mount(body) {
-        body.innerHTML = `
-          <div class="dp-settings-directory-browser">
-            <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
-            <div class="dp-settings-directory-current">
-              <span class="dp-settings-directory-current-label" data-i18n="directory_picker.current">${esc(t('directory_picker.current'))}</span>
-              <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
-              <div class="dp-settings-directory-current-meta">
-                <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">${esc(t('directory_picker.not_validated'))}</span>
-                <span data-directory-capacity>${esc(t('directory_picker.reason.stat_failed'))}</span>
-              </div>
-            </div>
-            <div class="dp-settings-directory-toolbar">
-              <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled data-i18n="directory_picker.up">${esc(t('directory_picker.up'))}</button>
-              <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
-            </div>
-            <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
-            <div class="dp-settings-directory-list" data-directory-list aria-label="${esc(t('directory_picker.list_label'))}" data-i18n-attr="aria-label:directory_picker.list_label"></div>
-          </div>`;
-        view = {
-          notice: body.querySelector('[data-directory-notice]'),
-          currentPath: body.querySelector('[data-directory-current-path]'),
-          currentState: body.querySelector('[data-directory-current-state]'),
-          capacity: body.querySelector('[data-directory-capacity]'),
-          up: body.querySelector('[data-directory-up]'),
-          loading: body.querySelector('[data-directory-loading]'),
-          errorBox: body.querySelector('[data-directory-error]'),
-          list: body.querySelector('[data-directory-list]'),
-        };
-        view.up.addEventListener('click', () => {
-          if (currentResponse?.parent == null) return;
-          void loadDirectory(currentResponse.parent);
-        });
-      },
+    body.innerHTML = `
+      <div class="dp-settings-directory-browser">
+        <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
+        <div class="dp-settings-directory-current">
+          <span class="dp-settings-directory-current-label" data-i18n="directory_picker.current">${esc(t('directory_picker.current'))}</span>
+          <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
+          <div class="dp-settings-directory-current-meta">
+            <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">${esc(t('directory_picker.not_validated'))}</span>
+            <span data-directory-capacity>${esc(t('directory_picker.reason.stat_failed'))}</span>
+          </div>
+        </div>
+        <div class="dp-settings-directory-toolbar">
+          <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled data-i18n="directory_picker.up">${esc(t('directory_picker.up'))}</button>
+          <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
+        </div>
+        <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
+        <div class="dp-settings-directory-list" data-directory-list aria-label="${esc(t('directory_picker.list_label'))}" data-i18n-attr="aria-label:directory_picker.list_label"></div>
+      </div>`;
+    const view = {
+      root: body.querySelector('.dp-settings-directory-browser'),
+      notice: body.querySelector('[data-directory-notice]'),
+      currentPath: body.querySelector('[data-directory-current-path]'),
+      currentState: body.querySelector('[data-directory-current-state]'),
+      capacity: body.querySelector('[data-directory-capacity]'),
+      up: body.querySelector('[data-directory-up]'),
+      loading: body.querySelector('[data-directory-loading]'),
+      errorBox: body.querySelector('[data-directory-error]'),
+      list: body.querySelector('[data-directory-list]'),
+    };
+    view.up.addEventListener('click', () => {
+      if (currentResponse?.parent == null) return;
+      void loadDirectory(currentResponse.parent);
     });
 
     let loadingNow = false;
     const setLoading = busy => {
       loadingNow = busy;
-      dialog.setBusy(busy);
+      host.setBusy(busy);
+      view.root.setAttribute('aria-busy', busy ? 'true' : 'false');
       view.loading.textContent = busy ? t('common.loading') : '';
-      dialog.setAcceptEnabled(!busy && currentResponse?.current?.selectable === true);
+      host.setAcceptEnabled(!busy && currentResponse?.current?.selectable === true);
       view.up.disabled = busy || currentResponse?.parent == null;
       view.list.querySelectorAll('[data-directory-row]').forEach(row => {
         row.disabled = busy || row.dataset.accessible !== 'true';
@@ -162,7 +158,7 @@
         view.currentState.textContent = t('directory_picker.not_validated');
         view.currentState.dataset.selectable = 'false';
         view.capacity.textContent = t('directory_picker.reason.stat_failed');
-        dialog.setAcceptEnabled(false);
+        host.setAcceptEnabled(false);
         view.up.disabled = true;
         return;
       }
@@ -219,7 +215,7 @@
         });
       }
 
-      dialog.setAcceptEnabled(selectable);
+      host.setAcceptEnabled(selectable);
     };
 
     // A new answer: its listing, and no error.
@@ -242,11 +238,11 @@
       const query = `?${new URLSearchParams(queryParams).toString()}`;
       try {
         const payload = await api('GET', `/settings/directories${query}`, undefined, 10000, {signal: controller.signal});
-        if (requestGeneration !== generation || !dialog.isOpen) return;
+        if (requestGeneration !== generation || !live) return;
         render(payload);
         setLoading(false);
       } catch (error) {
-        if (requestGeneration !== generation || error?.name === 'AbortError' || !dialog.isOpen) return;
+        if (requestGeneration !== generation || error?.name === 'AbortError' || !live) return;
         if (fallbackOnFailure) {
           view.notice.hidden = false;
           noticeShown = true;
@@ -260,10 +256,10 @@
       }
     };
 
-    // A language change while it is open: everything it shows, said again from
+    // A language change while it is shown: everything it shows, said again from
     // what it already holds (no request); a focused folder keeps focus by its path.
     const relabel = () => {
-      if (!dialog.isOpen || !view) return;
+      if (!live) return;
       const focusedPath = document.activeElement?.matches?.('[data-directory-row]') ? document.activeElement.dataset.path : null;
       const upFocused = document.activeElement === view.up;
       if (lastPayload) paintListing(lastPayload);   // the error shown stays shown
@@ -275,16 +271,50 @@
     };
     document.addEventListener('debridpulse:locale-changed', relabel);
 
+    if (startPath.length) void loadDirectory(startPath, {fallbackOnFailure: true});
+    else void loadDirectory(null);
+
+    return {
+      selected: () => (live && currentResponse?.current?.selectable === true ? String(currentResponse.current.path ?? '') : null),
+      release() {
+        if (!live) return;
+        live = false;
+        document.removeEventListener('debridpulse:locale-changed', relabel);
+        generation += 1;
+        if (controller) controller.abort();
+        controller = null;
+      },
+    };
+  }
+
+  function openDirectoryPicker(config) {
+    const field = root()?.querySelector(config.fieldSelector);
+    if (!field || typeof api !== 'function') return;
+
+    const originalValue = String(field.value ?? '');
+    let browser = null;
+    const dialog = window.DPSettingsModal.open({
+      title: t(`directory_picker.${config.purpose}.title`),
+      acceptLabel: t('directory_picker.accept'),
+      keys: {title: `directory_picker.${config.purpose}.title`, accept: 'directory_picker.accept', cancel: 'common.cancel'},
+      acceptDisabled: true,
+      className: 'dp-settings-directory-dialog',
+      bodyClassName: 'dp-settings-directory-body',
+      mount(body, handle) {
+        browser = browse(config, body, originalValue, {
+          setAcceptEnabled: enabled => handle.setAcceptEnabled(enabled),
+          setBusy: busy => handle.setBusy(busy),
+        });
+      },
+    });
+
     void dialog.closed.then(({accepted}) => {
-      document.removeEventListener('debridpulse:locale-changed', relabel);
-      generation += 1;
-      if (controller) controller.abort();
-      controller = null;
-      if (!accepted || currentResponse?.current?.selectable !== true) return;
-      const liveField = own ? (field.isConnected ? field : null) : document.getElementById(field.id);
+      const chosen = browser.selected();
+      browser.release();
+      if (!accepted || chosen === null) return;
+      const liveField = document.getElementById(field.id);
       if (!liveField) return;
-      const canonicalPath = String(currentResponse.current.path ?? '');
-      liveField.value = canonicalPath;
+      liveField.value = chosen;
       liveField.dispatchEvent(new Event('input', {bubbles: true}));
       liveField.dispatchEvent(new Event('change', {bubbles: true}));
       /* Browse is a non-destructive VALUE-SELECTION action: it chooses what the
@@ -297,15 +327,21 @@
        * nothing at all. */
       if (liveField.dataset?.commitKey) window.DPSettingsPersistence?.commit(liveField);
     });
-
-    if (originalValue.length) void loadDirectory(originalValue, {fallbackOnFailure: true});
-    else void loadDirectory(null);
   }
 
   window.DPSettingsDirectoryPicker = Object.freeze({
-    open(purpose, {field = null} = {}) {
+    open(purpose) {
       const config = PICKERS[purpose];
-      if (config) openDirectoryPicker(config, field);
+      if (config) openDirectoryPicker(config);
+    },
+    /* The same browser as a view of a host dialog (the setup wizard's
+     * Download Directory), starting at ``path``: ``host`` ({setAcceptEnabled,
+     * setBusy}) is the host's accept and busy state. Choosing writes nothing;
+     * the host takes ``selected()`` and commits it however it commits. */
+    mount(purpose, container, {path = '', host}) {
+      const config = PICKERS[purpose];
+      if (!config || typeof api !== 'function') return null;
+      return browse(config, container, String(path ?? ''), host);
     },
   });
 })();

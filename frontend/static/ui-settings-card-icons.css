@@ -13,7 +13,7 @@
  * declarations, so the whole treatment is derived from ONE per-instance
  * datum -- --dp-protocol-color -- and every protocol contributes nothing but
  * that colour. */
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip {
   --dp-protocol-color: #b866f5;
   width: 38px;
   height: 38px;
@@ -36,7 +36,7 @@
 /* Light theme: the glyph is drawn in the identity colour itself, so the chip
    takes a pale face of that colour (as Debrid-Link's does) instead of a
    saturated one the glyph would vanish into. */
-body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip {
+body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip {
   border-color: color-mix(in srgb, var(--dp-protocol-color) 78%, #000);
   background: linear-gradient(145deg,
     color-mix(in srgb, var(--dp-protocol-color) 8%, #fff) 0%,
@@ -99,14 +99,14 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol
 #view-settings .dp-settings-protocol-chip[data-protocol='media'] {
   --dp-protocol-color: var(--dp-identity-media);
 }
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip[data-protocol='usenet'] {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: var(--dp-identity-usenet);
 }
 
 /* The glyph sits INSIDE the chip, so it is sized to leave the container
    visible rather than filling it. The glow is the same colour-derived pair
    the inner-card icons use, from the same datum. */
-:is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip img {
+:is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip img {
   width: var(--dp-protocol-glyph-size, 22px);
   height: var(--dp-protocol-glyph-size, 22px);
   display: block;
@@ -116,7 +116,7 @@ body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol
     drop-shadow(0 0 7px color-mix(in srgb, var(--dp-protocol-color) 34%, transparent));
 }
 
-body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-protocol-chip img {
+body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-protocol-chip img {
   filter:
     saturate(1.08)
     contrast(1.04)

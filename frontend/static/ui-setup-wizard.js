@@ -43,14 +43,17 @@
   // The pages after a Server installation's Administrator exists.
   const AFTER_ADMINISTRATOR = new Set(['premium_services', 'getting_started']);
   // Each page's heading: its mark and the reading beneath its title (the
-  // dialog owner's title icon and hint). Administrator says what it is now.
+  // dialog owner's title icon and hint). Welcome's mark is DebridPulse's own
+  // logo, drawn inline in the theme in force (<dp-logo>, ui-logo.css). The
+  // reading is the page's short tagline -- personality, never instruction:
+  // the body says what the page asks. Administrator says what it is now.
   const ICONS = Object.freeze({
-    welcome: 'globe', deployment: 'network', download_directory: 'folder-sync', administrator: 'shield-user',
+    deployment: 'network', download_directory: 'folder-sync', administrator: 'shield-user',
     premium_services: 'crown', getting_started: 'rocket',
   });
   const HINTS = Object.freeze({
-    welcome: 'setup.welcome.intro', deployment: 'setup.deployment.intro', download_directory: 'setup.directory.intro',
-    premium_services: 'setup.premium.hint', getting_started: 'setup.getting_started.intro',
+    welcome: 'setup.welcome.tagline', deployment: 'setup.deployment.tagline', download_directory: 'setup.directory.tagline',
+    premium_services: 'setup.premium.tagline', getting_started: 'setup.getting_started.tagline',
   });
   const TITLES = Object.freeze({
     welcome: 'setup.welcome.title', deployment: 'setup.deployment.title',
@@ -77,11 +80,24 @@
 
   const welcome = {
     render(wizard) {
+      const picker = window.DPLanguagePicker;
+      const offered = Boolean(wizard.data.locale && wizard.data.choices && picker);
       const section = element(`
         <section class="dp-setup-page dp-setup-welcome">
-          <p class="dp-setup-label" id="dp-setup-language-label" data-i18n="setup.welcome.language"></p>
-          <p class="dp-setup-hint" data-i18n="setup.welcome.language_hint"></p>
-          <div class="dp-language-slot dp-setup-language" data-setup-language></div>
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.welcome.body.thanks"></p>
+            <p data-i18n="setup.welcome.body.guide"></p>
+            <p data-i18n="setup.welcome.body.next"></p>
+          </div>
+          ${offered ? `
+          <div class="dp-setup-language-row">
+            <div class="dp-setup-language-copy">
+              <p class="dp-setup-label" id="dp-setup-language-label" data-i18n="setup.welcome.change_language"></p>
+              <p class="dp-setup-hint" id="dp-setup-language-hint" data-i18n="setup.welcome.change_language_hint"></p>
+            </div>
+            <button type="button" class="btn dp-language-button dp-setup-language-button" data-setup-language
+              aria-describedby="dp-setup-language-hint"></button>
+          </div>` : ''}
         </section>`);
       // TEMPORARY, development only (WS3b): a preview of the first-run setup
       // from an Admin's rerun, for refining its pages -- offered only where the
@@ -95,19 +111,11 @@
         entry.querySelector('[data-setup-preview]').addEventListener('click', () => { void previewInitial(wizard); });
         section.append(entry);
       }
-      const slot = section.querySelector('[data-setup-language]');
-      const picker = window.DPLanguagePicker;
-      if (wizard.data.locale && wizard.data.choices && picker) {
+      if (offered) {
         wizard.data.pending = wizard.data.pending || wizard.data.locale.configured || wizard.data.locale.locale;
-        const rows = picker.list(slot, {
-          languages: wizard.data.choices, selected: wizard.data.pending, label: t('setup.welcome.language'),
-          onChoose: value => {
-            wizard.data.pending = value;
-            rows.setSelected(value);
-            // A preview only: the page shows the language now; Next saves it.
-            void picker.language(value).then(picker.apply);
-          },
-        });
+        const button = section.querySelector('[data-setup-language]');
+        void paintLanguageButton(wizard, button);
+        button.addEventListener('click', () => openLanguage(wizard));
       }
       return section;
     },
@@ -124,16 +132,36 @@
     },
   };
 
+  /* Welcome's language button: the language chosen on this page (not saved
+   * until Next), as My Account's button shows one -- its flag and own name;
+   * its accessible name says what it does and which language it holds. */
+  async function paintLanguageButton(wizard, button) {
+    const picker = window.DPLanguagePicker;
+    if (!button || !picker) return;
+    const shown = await picker.language(wizard.data.pending);
+    if (!button.isConnected) return;
+    picker.paintButton(button, shown, t('setup.welcome.language_button', {language: shown.native}));
+  }
+
+  // Each deployment type's generic mark (a Lucide glyph, DPIcons): one
+  // person's workstation; a shared server.
+  const DEPLOYMENT_GLYPHS = Object.freeze({standalone: 'monitor', server: 'server'});
+
   const deployment = {
     render(wizard) {
       const locked = wizard.state.initial.administrator !== 'none';
       wizard.data.deployment = wizard.data.deployment || deploymentType();
       const section = element(`
         <section class="dp-setup-page dp-setup-deployment">
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.deployment.body.types" data-i18n-rich></p>
+            <p data-i18n="setup.deployment.body.choose"></p>
+          </div>
           <div class="dp-setup-choices" role="radiogroup" data-i18n-attr="aria-label:setup.deployment.title">
             ${['standalone', 'server'].map(type => `
               <button type="button" class="dp-setup-choice" role="radio" data-deployment="${type}" ${locked ? 'disabled' : ''}>
                 <span class="dp-setup-choice-name" data-i18n="settings.deployment.${type}"></span>
+                <span class="dp-setup-choice-glyph" aria-hidden="true">${window.DPIcons.svg(DEPLOYMENT_GLYPHS[type])}</span>
                 <span class="dp-setup-choice-text" data-i18n="setup.deployment.${type}.text"></span>
               </button>`).join('')}
           </div>
@@ -177,6 +205,10 @@
     render(wizard) {
       const section = element(`
         <section class="dp-setup-page dp-setup-directory">
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.directory.body.purpose"></p>
+            <p data-i18n="setup.directory.body.choose"></p>
+          </div>
           <label class="dp-modal-field" for="dp-setup-download-folder">
             <span class="form-label" data-i18n="settings.downloads.folder"></span>
           </label>
@@ -189,10 +221,9 @@
       const field = section.querySelector('input');
       field.value = wizard.data.folderDraft ?? wizard.data.folder ?? '';
       field.addEventListener('input', () => { wizard.data.folderDraft = field.value; });
-      section.querySelector('[data-setup-browse]').addEventListener('click', () => {
-        // The server's own folder browser; it sets this field and saves nothing.
-        window.DPSettingsDirectoryPicker?.open('download', {field});
-      });
+      // The server's own folder browser, as a view of this dialog: choosing
+      // only fills this page's field; Next still saves it.
+      section.querySelector('[data-setup-browse]').addEventListener('click', () => openDirectory(wizard));
       return section;
     },
     async commit(wizard) {
@@ -209,9 +240,13 @@
     title(wizard) {
       return wizard.mode === 'rerun' ? 'setup.administrator.guidance.title' : 'setup.administrator.title';
     },
+    // The tagline only while an account is being created; otherwise what is
+    // true now: guidance (a rerun), created, or an unfinished creation to
+    // finish -- never a playful reading over a recovery.
     hint(wizard) {
       if (wizard.mode === 'rerun') return 'setup.administrator.guidance.text';
-      return this.creating(wizard) ? 'setup.administrator.intro' : 'setup.administrator.created';
+      if (!this.creating(wizard)) return 'setup.administrator.created';
+      return wizard.state.initial.administrator === 'pending' ? 'setup.administrator.resubmit' : 'setup.administrator.tagline';
     },
     // The initial setup creates the Administrator here, once; afterwards --
     // and in every rerun -- this page only points to where accounts are kept.
@@ -241,22 +276,29 @@
       if (!this.creating(wizard)) {
         return element(`
           <section class="dp-setup-page dp-setup-administrator">
-            <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
-            <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
+            <div class="dp-setup-notes">
+              <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
+              <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
+            </div>
           </section>`);
       }
       const section = element(`
         <section class="dp-setup-page dp-setup-administrator">
-          ${wizard.state.initial.administrator === 'pending' ? '<p class="dp-setup-hint" data-i18n="setup.administrator.resubmit"></p>' : ''}
+          ${wizard.state.initial.administrator === 'pending' ? '' : `
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.administrator.body"></p>
+          </div>`}
           <label class="dp-modal-field"><span class="form-label" data-i18n="settings.users.field.username"></span>
             <input class="input" data-setup-field="username" type="text" maxlength="256" autocomplete="username" spellcheck="false"></label>
           <label class="dp-modal-field"><span class="form-label" data-i18n="settings.users.field.password"></span>
             <input class="input" data-setup-field="password" type="password" maxlength="4096" autocomplete="new-password"></label>
           <label class="dp-modal-field"><span class="form-label" data-i18n="setup.administrator.confirm"></span>
             <input class="input" data-setup-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>
-          <p class="dp-setup-hint" data-i18n="setup.administrator.sign_in_on"></p>
-          <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
-          <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
+          <div class="dp-setup-notes">
+            <p class="dp-setup-hint" data-i18n="setup.administrator.sign_in_on"></p>
+            <p class="dp-setup-hint" data-i18n="setup.administrator.more_accounts"></p>
+            <p class="dp-setup-hint" data-i18n="setup.administrator.oidc"></p>
+          </div>
         </section>`);
       section.querySelectorAll('[data-setup-field]').forEach(input => {
         const name = input.dataset.setupField;
@@ -288,8 +330,9 @@
    * showing what the server says it is: configured or not, verified or not,
    * and disabled when it is off (three facts, never merged). Choosing one
    * shows its configuration, as Easy shows it, in this same dialog
-   * (DPSettingsPage.mountProvider). None is required: Next is the ordinary
-   * Next however many are configured. */
+   * (DPSettingsPage.mountProvider). Each button wears the service's own
+   * artwork, the mark its Settings card wears (DPSettingsPage.providerArtwork).
+   * None is required: Next is the ordinary Next however many are configured. */
   const SERVICES = Object.freeze([
     ['usenet', 'Usenet'], ['alldebrid', 'AllDebrid'], ['debridlink', 'Debrid-Link'],
     ['premiumize', 'Premiumize'], ['realdebrid', 'Real-Debrid'], ['torbox', 'TorBox'],
@@ -314,11 +357,18 @@
     render(wizard) {
       const section = element(`
         <section class="dp-setup-page dp-setup-premium">
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.premium.body.what"></p>
+            <p data-i18n="setup.premium.body.optional" data-i18n-rich></p>
+          </div>
           <div class="dp-setup-services">
             ${SERVICES.map(([id, name]) => `
               <button type="button" class="dp-setup-service" data-service="${id}">
-                <span class="dp-setup-service-name">${name}</span>
-                <span class="dp-setup-service-state">${serviceState(wizard.data.services?.[id])}</span>
+                <span class="dp-setup-service-art">${window.DPSettingsPage.providerArtwork(id)}</span>
+                <span class="dp-setup-service-copy">
+                  <span class="dp-setup-service-name">${name}</span>
+                  <span class="dp-setup-service-state">${serviceState(wizard.data.services?.[id])}</span>
+                </span>
               </button>`).join('')}
           </div>
         </section>`);
@@ -414,18 +464,129 @@
     wizard.error.hidden = false;
   }
 
+  /* A view of the current page in place of its body, in this same dialog:
+   * Welcome's language list and Download Directory's folder browser. The
+   * header names the view and the footer answers it (``accept``; Cancel or
+   * Back, and Escape, leave it); the progress stays on its page. A view
+   * commits nothing and records nothing: what it chooses is the page's draft,
+   * which only the page's own Next saves. Leaving returns focus to the
+   * control that opened it. */
+  function showView(wizard, view, {title, hint, accept = null, cancel}) {
+    wizard.view = view;
+    wizard.error.hidden = true;
+    wizard.body.replaceChildren(view.section, wizard.error);
+    window.DPI18n.render(view.section);
+    const handle = wizard.dialog;
+    handle.setTitle(said(title));
+    handle.setTitleHint(said(hint));
+    handle.setAcceptHidden(!accept);
+    if (accept) handle.setAcceptLabel(said(accept));
+    handle.setCancelLabel(said(cancel));
+    handle.setCancelHidden(false);
+    handle.setActionHidden('back', true);
+    wizard.body.scrollTop = 0;
+  }
+
+  function closeView(wizard) {
+    const view = wizard.view;
+    if (!view) return;
+    wizard.view = null;
+    view.release();
+    wizard.repaint();
+    wizard.body.querySelector(view.opener)?.focus({preventScroll: true});
+  }
+
+  /* Welcome's language list (DPLanguagePicker, the one list): a row is the
+   * page's language at once -- shown now, saved only by Welcome's Next -- and
+   * returns to Welcome; Back returns with nothing changed. */
+  function openLanguage(wizard) {
+    const picker = window.DPLanguagePicker;
+    if (wizard.view || !picker || !wizard.data.choices) return;
+    const section = element(`
+      <section class="dp-setup-page dp-setup-language-view">
+        <div class="dp-language-slot" data-setup-language-list></div>
+      </section>`);
+    let choosing = false;
+    const view = {kind: 'language', section, opener: '[data-setup-language]', rows: null, release() {}};
+    showView(wizard, view, {title: 'setup.welcome.change_language', hint: 'setup.welcome.change_language_hint',
+      cancel: 'settings.common.back'});
+    view.rows = picker.list(section.querySelector('[data-setup-language-list]'), {
+      languages: wizard.data.choices, selected: wizard.data.pending, label: t('setup.welcome.change_language'),
+      onChoose: value => {
+        if (choosing || wizard.view !== view) return;
+        choosing = true;
+        wizard.data.pending = value;
+        view.rows.setSelected(value);
+        view.rows.setBusy(true);
+        // A preview only: the page shows the language now; Next saves it.
+        void picker.language(value).then(picker.apply).finally(() => { if (wizard.view === view) closeView(wizard); });
+      },
+    });
+    view.rows.focus();
+  }
+
+  /* Download Directory's folder browser: the server's own
+   * (DPSettingsDirectoryPicker.mount, the browser Settings' Browse shows),
+   * starting at the folder this page holds. Use This Folder is offered only
+   * where the server says the folder shown may be chosen; it fills this
+   * page's field and returns. Cancel returns with the field as it was.
+   * Nothing is saved here. */
+  function openDirectory(wizard) {
+    const pickerOwner = window.DPSettingsDirectoryPicker;
+    if (wizard.view || !pickerOwner) return;
+    const handle = wizard.dialog;
+    const section = element('<section class="dp-setup-page dp-setup-directory-view"></section>');
+    const view = {
+      kind: 'directory', section, opener: '[data-setup-browse]', browser: null,
+      accept() {
+        const chosen = view.browser?.selected();
+        if (chosen == null) return false;
+        wizard.data.folderDraft = chosen;
+        closeView(wizard);
+        return false;
+      },
+      release() {
+        view.browser?.release();
+        handle.setBusy(false);
+      },
+    };
+    showView(wizard, view, {title: 'directory_picker.download.title', hint: 'setup.directory.browse_hint',
+      accept: 'directory_picker.accept', cancel: 'common.cancel'});
+    handle.setAcceptEnabled(false);
+    view.browser = pickerOwner.mount('download', section, {
+      path: String(wizard.data.folderDraft ?? wizard.data.folder ?? ''),
+      host: {
+        setAcceptEnabled: enabled => { if (wizard.view === view) handle.setAcceptEnabled(enabled); },
+        setBusy: busy => { if (wizard.view === view) handle.setBusy(busy); },
+      },
+    });
+    section.querySelector('[data-directory-up]')?.focus({preventScroll: true});
+  }
+
   const gettingStarted = {
+    // The sign-in note is a fact of this flow, never of the deployment alone:
+    // only the initial setup of a Server installation whose Administrator
+    // exists ends its session at Finish (/setup/initial/finish answers
+    // ``sign_in_required`` for exactly that); a rerun and a Standalone
+    // installation go straight to the Dashboard, and the preview creates no
+    // Administrator, so its Finish signs nobody in.
+    signsIn(wizard) {
+      return wizard.mode === 'initial' && !wizard.preview && wizard.deployment === 'server'
+        && wizard.state.initial.administrator === 'created';
+    },
     render(wizard) {
-      const signIn = wizard.mode === 'initial' && wizard.deployment === 'server';
       return element(`
         <section class="dp-setup-page dp-setup-getting-started">
-          <figure class="dp-setup-illustration" aria-hidden="true"></figure>
+          <div class="dp-setup-copy">
+            <p data-i18n="setup.getting_started.body"></p>
+          </div>
           <ol class="dp-setup-steps">
-            <li data-i18n="setup.getting_started.step_paste"></li>
-            <li data-i18n="setup.getting_started.step_add"></li>
-            <li data-i18n="setup.getting_started.step_watch"></li>
+            <li data-i18n="setup.getting_started.step.open" data-i18n-rich></li>
+            <li data-i18n="setup.getting_started.step.add" data-i18n-rich></li>
+            <li data-i18n="setup.getting_started.step.monitor" data-i18n-rich></li>
           </ol>
-          ${signIn ? '<p class="dp-setup-hint" data-i18n="setup.getting_started.sign_in"></p>' : ''}
+          ${this.signsIn(wizard) ? `
+          <p class="dp-setup-sign-in-note" data-i18n="setup.getting_started.sign_in"></p>` : ''}
         </section>`);
     },
     async commit() {},
@@ -460,6 +621,21 @@
     node.className = 'dp-setup-progress';
     node.dataset.i18nAttr = 'aria-label:setup.progress.label';
     node.setAttribute('aria-label', t('setup.progress.label'));
+    return node;
+  }
+
+  /* The header's top region (the dialog owner's ``headerTop``): the
+   * indicator, then one slot of fixed height between it and the heading,
+   * reserved on every page so no heading moves. It holds Premium Services'
+   * Optional badge, a reading (never a control), shown on that page and its
+   * provider views. */
+  function headerTop(progress) {
+    const node = element(`
+      <div class="dp-setup-header-top">
+        <p class="dp-setup-badge-slot"><span class="dp-badge dp-badge--caution dp-setup-optional" data-i18n="setup.premium.optional" hidden></span></p>
+      </div>`);
+    node.prepend(progress);
+    window.DPI18n.render(node);
     return node;
   }
 
@@ -513,8 +689,10 @@
       index = pages.indexOf('administrator');
     }
     const progress = progressList();
+    const top = headerTop(progress);
     const wizard = {mode, preview, state, data, deployment: deploymentNow, pages, index, reloadAfter: false,
-      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, repaint: null,
+      phaseRecorded: false, resumeAt: null, dialog: null, body: null, error: null, opener, provider: null, view: null,
+      repaint: null,
       // The furthest page the server records: Next moves the record only beyond
       // it, and every page before it is completed.
       recordedIndex: Math.max(0, pages.indexOf(recorded)),
@@ -528,8 +706,9 @@
     const page = () => PAGES[pages[wizard.index]];
     const titleKey = () => (page().title ? page().title(wizard) : TITLES[pages[wizard.index]]);
     const hintKey = () => (page().hint ? page().hint(wizard) : HINTS[pages[wizard.index]]);
-    const acceptKey = () => (wizard.index === pages.length - 1 ? 'setup.action.finish'
-      : wizard.index === 0 && mode === 'initial' ? 'setup.action.get_started' : 'setup.action.next');
+    const acceptKey = () => (wizard.index === pages.length - 1 ? 'setup.action.finish' : 'setup.action.next');
+    // The page's mark: Welcome's is the product logo, drawn inline each time.
+    const mark = () => (pages[wizard.index] === 'welcome' ? document.createElement('dp-logo') : iconUrl(ICONS[pages[wizard.index]]));
 
     function paint(handle) {
       const section = page().render(wizard);
@@ -537,13 +716,16 @@
       wizard.error = error;
       wizard.body.replaceChildren(section, error);
       if (preview) {
-        wizard.body.prepend(element('<p class="dp-setup-preview-note">Preview: nothing on these pages is saved, except a provider\'s own Save.</p>'));
+        wizard.body.prepend(element('<p class="dp-setup-preview-note">Preview: nothing on these pages is saved. A provider\'s own Save, and its immediate actions such as Connect, Test and Enable, still take effect.</p>'));
       }
       window.DPI18n.render(wizard.body);
       handle.setTitle(said(titleKey()));
-      handle.setTitleIcon(iconUrl(ICONS[pages[wizard.index]]));
+      handle.setTitleIcon(mark());
       handle.setTitleHint(said(hintKey()));
       handle.setAcceptLabel(said(acceptKey()));
+      handle.setAcceptHidden(false);
+      handle.setAcceptEnabled(true);
+      top.querySelector('.dp-setup-optional').hidden = pages[wizard.index] !== 'premium_services';
       // Back is always in its place -- the footer keeps one shape from page to
       // page -- and has nowhere to go from the first page.
       handle.setActionHidden('back', false);
@@ -586,8 +768,9 @@
     }
 
     async function next(handle) {
-      // A provider's view: its Save.
+      // A provider's view: its Save. A page's own view: its choice.
       if (wizard.provider) return saveProvider(wizard);
+      if (wizard.view) return wizard.view.accept?.() ?? false;
       if (preview) return previewNext(handle);
       wizard.error.hidden = true;
       handle.setActionEnabled('back', false);
@@ -644,18 +827,19 @@
     }
 
     const relabel = () => {
-      // Said words are re-said by the runtime; the language list's own name too.
-      if (pages[wizard.index] === 'welcome') {
-        wizard.body.querySelector('.dp-language-list')?.setAttribute('aria-label', t('setup.welcome.language'));
-      }
+      // Said words are re-said by the runtime; the language list's own name
+      // and the language button's too.
+      if (pages[wizard.index] !== 'welcome') return;
+      wizard.body.querySelector('.dp-language-list')?.setAttribute('aria-label', t('setup.welcome.change_language'));
+      void paintLanguageButton(wizard, wizard.body.querySelector('[data-setup-language]'));
     };
 
     const dialog = window.DPSettingsModal.open({
       title: said(titleKey()),
       className: 'dp-setup-dialog',
       bodyClassName: 'dp-setup-body',
-      headerTop: progress,
-      titleIcon: iconUrl(ICONS[pages[wizard.index]]),
+      headerTop: top,
+      titleIcon: mark(),
       titleHint: said(hintKey()),
       // The initial setup is finished, never dismissed (its preview is).
       blocking: mode === 'initial' && !preview,
@@ -669,7 +853,7 @@
         return null;
       },
       onAction(id) {
-        if (id !== 'back' || wizard.index === 0 || wizard.provider) return;
+        if (id !== 'back' || wizard.index === 0 || wizard.provider || wizard.view) return;
         wizard.error.hidden = true;
         wizard.index -= 1;
         paint(wizard.dialog);
@@ -679,6 +863,9 @@
         // A provider's view: Cancel (and Escape) return to the list; what was
         // not saved is discarded.
         if (wizard.provider) { closeProvider(wizard); return false; }
+        // A page's own view: Back or Cancel (and Escape) return to the page,
+        // its draft as it was.
+        if (wizard.view) { closeView(wizard); return false; }
         if (preview) return true;
         if (mode === 'initial') return false;
         // Dismissed: the rerun ends; nothing it committed is undone.

@@ -2518,14 +2518,26 @@
       </details>`;
   }
 
+  /* A premium service's own artwork, the one emitter: a debrid provider's
+   * supplied logo on its identity chip, Usenet's protocol chip. Its card
+   * header wears it, and so does the setup wizard's button for that service
+   * (providerArtwork, exported), so each service has one mark wherever it is
+   * chosen. */
+  const PROVIDER_ARTWORK = Object.freeze({
+    alldebrid: '<span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true"><img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt=""></span>',
+    debridlink: '<span class="dp-settings-provider-chip dp-settings-provider-chip--debridlink" aria-hidden="true"><img class="dp-settings-provider-logo dp-settings-provider-logo--debridlink" src="/icons/providers/debrid-link.svg" alt=""></span>',
+    premiumize: '<span class="dp-settings-provider-chip dp-settings-provider-chip--premiumize" aria-hidden="true"><img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt=""></span>',
+    realdebrid: '<span class="dp-settings-provider-chip dp-settings-provider-chip--realdebrid" aria-hidden="true"><img class="dp-settings-provider-logo dp-settings-provider-logo--realdebrid" src="/icons/providers/real-debrid.svg" alt=""></span>',
+    torbox: '<span class="dp-settings-provider-chip dp-settings-provider-chip--torbox" aria-hidden="true"><img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt=""></span>',
+  });
+  function providerArtwork(identity) {
+    return identity === 'usenet' ? protocolIcon('usenet') : PROVIDER_ARTWORK[identity] || '';
+  }
+
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
     const generalHttp = integrations.general_http || {};
-    const providerIdentity = `
-      <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
-        <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
-      </span>`;
     const providerTest = providerTestAction('test-alldebrid');
     const provider = providerCard('alldebrid', 'AllDebrid', `
       <div data-alldebrid-account>${apiKeyAccountLine('alldebrid')}</div>
@@ -2547,7 +2559,7 @@
           ))}
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
-      titlePrefix: providerIdentity,
+      titlePrefix: providerArtwork('alldebrid'),
       displayName: 'AllDebrid',
       headerCopy: say('settings.provider.header_copy', {provider: 'AllDebrid'}),
       headerAction: providerTest,
@@ -2588,10 +2600,7 @@
           ))}
 `, realDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--realdebrid',
-      titlePrefix: `
-      <span class="dp-settings-provider-chip dp-settings-provider-chip--realdebrid" aria-hidden="true">
-        <img class="dp-settings-provider-logo dp-settings-provider-logo--realdebrid" src="/icons/providers/real-debrid.svg" alt="">
-      </span>`,
+      titlePrefix: providerArtwork('realdebrid'),
       displayName: 'Real-Debrid',
       headerCopy: say('settings.provider.header_copy', {provider: 'Real-Debrid'}),
       headerAction: providerTestAction('test-realdebrid'),
@@ -2635,10 +2644,7 @@
           ))}
 `, torBox, {
       className: 'dp-settings-provider-card dp-settings-provider-card--torbox',
-      titlePrefix: `
-      <span class="dp-settings-provider-chip dp-settings-provider-chip--torbox" aria-hidden="true">
-        <img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt="">
-      </span>`,
+      titlePrefix: providerArtwork('torbox'),
       displayName: 'TorBox',
       headerCopy: say('settings.provider.header_copy_nzb', {provider: 'TorBox'}),
       headerAction: providerTestAction('test-torbox'),
@@ -2651,7 +2657,7 @@
     const usenet = integrations.usenet || {enabled: false};
     const usenetCard = providerCard('usenet', 'Usenet', usenetBody(s, usenet), usenet, {
       className: 'dp-settings-provider-card dp-settings-provider-card--usenet',
-      titlePrefix: protocolIcon('usenet'),
+      titlePrefix: providerArtwork('usenet'),
       displayName: 'Usenet',
       headerCopy: say('settings.provider.usenet.header_copy'),
       headerAction: providerTestAction('test-usenet'),
@@ -2683,10 +2689,7 @@
           ))}
 `, debridLink, {
       className: 'dp-settings-provider-card dp-settings-provider-card--debridlink',
-      titlePrefix: `
-      <span class="dp-settings-provider-chip dp-settings-provider-chip--debridlink" aria-hidden="true">
-        <img class="dp-settings-provider-logo dp-settings-provider-logo--debridlink" src="/icons/providers/debrid-link.svg" alt="">
-      </span>`,
+      titlePrefix: providerArtwork('debridlink'),
       displayName: 'Debrid-Link',
       headerCopy: say('settings.provider.header_copy', {provider: 'Debrid-Link'}),
       headerAction: providerTestAction('test-debridlink'),
@@ -2721,10 +2724,7 @@
           ))}
 `, premiumize, {
       className: 'dp-settings-provider-card dp-settings-provider-card--premiumize',
-      titlePrefix: `
-      <span class="dp-settings-provider-chip dp-settings-provider-chip--premiumize" aria-hidden="true">
-        <img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt="">
-      </span>`,
+      titlePrefix: providerArtwork('premiumize'),
       displayName: 'Premiumize',
       headerCopy: say('settings.provider.header_copy_nzb', {provider: 'Premiumize'}),
       headerAction: providerTestAction('test-premiumize'),
@@ -9184,5 +9184,6 @@
   /* The ONE whole-settings write (writeSettingsDocument), for a surface that
    * changes a settings-document value outside this page (the setup wizard's
    * Download Directory): never a second write path. */
-  window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider});
+  window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,
+    providerArtwork});
 })();

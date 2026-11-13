@@ -46,10 +46,12 @@
  * save -- and while an `onAccept` is pending the accept slot is busy.
  * `titleHint` is one short line of plain text directly beneath the title, in
  * the header: a reading of what the title names, never a control.
- * `titleIcon` (an image URL) is the title's own mark, beside it in the header,
- * never a control. A dialog that declares either keeps the hint slot, so a view
- * changes both through `handle.setTitleHint(hint)` / `setTitleIcon(url)` (said
- * words, or '' to withdraw one).
+ * `titleIcon` is the title's own mark, beside it in the header, never a
+ * control: an image URL, or an element its client owns (a mark drawn inline,
+ * such as the theme-aware product logo, <dp-logo>). A dialog that declares
+ * either keeps the hint slot, so a view changes both through
+ * `handle.setTitleHint(hint)` / `setTitleIcon(mark)` (said words or a mark, or
+ * '' to withdraw one).
  * `headerTop` (an element its client owns) leads the header, above the title:
  * a reading about the whole dialog (a multi-page client's progress), never a
  * control.
@@ -263,11 +265,11 @@
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
     const titleHint = progress ? '' : String(spec.titleHint || '');
-    const titleIcon = progress ? '' : String(spec.titleIcon || '');
+    const titleIcon = progress ? '' : spec.titleIcon instanceof HTMLElement ? spec.titleIcon : String(spec.titleIcon || '');
     const titleSlot = `<div class="dp-modal-title" id="${dialogId}-title"></div>`;
     // A title with its own mark: the icon and the title are one line, the hint beneath.
     const heading = titleIcon
-      ? `<div class="dp-modal-heading"><div class="dp-modal-title-line"><img class="dp-modal-title-icon" alt="" aria-hidden="true">${titleSlot}</div><p class="dp-modal-title-hint"></p></div>`
+      ? `<div class="dp-modal-heading"><div class="dp-modal-title-line"><span class="dp-modal-title-icon" aria-hidden="true"></span>${titleSlot}</div><p class="dp-modal-title-hint"></p></div>`
       : titleHint ? `<div class="dp-modal-heading">${titleSlot}<p class="dp-modal-title-hint"></p></div>` : titleSlot;
 
     const overlay = document.createElement('div');
@@ -335,7 +337,15 @@
     const hintSlot = overlay.querySelector('.dp-modal-title-hint');
     if (hintSlot) hintSlot.hidden = !titleHint;
     const iconSlot = overlay.querySelector('.dp-modal-title-icon');
-    if (iconSlot) iconSlot.src = titleIcon;
+    // The mark in its slot: the client's own element, or an image of a URL.
+    const markInto = mark => {
+      if (mark instanceof HTMLElement) { iconSlot.replaceChildren(mark); return; }
+      const image = document.createElement('img');
+      image.alt = '';
+      image.src = String(mark || '');
+      iconSlot.replaceChildren(image);
+    };
+    if (iconSlot) markInto(titleIcon);
     overlay.querySelector('.dp-modal-header-top')?.append(spec.headerTop);
     overlay.querySelector('.dp-modal-header-end')?.append(spec.headerEnd);
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
@@ -450,10 +460,10 @@
         sayInto(hintSlot, hint || '');
         hintSlot.hidden = !String(hint || '');
       },
-      setTitleIcon(url) {
+      setTitleIcon(mark) {
         if (!iconSlot) return;
-        iconSlot.src = String(url || '');
-        iconSlot.hidden = !url;
+        markInto(mark);
+        iconSlot.hidden = !mark;
       },
       setTone(next, acceptTone) {
         const value = toneOf(next);

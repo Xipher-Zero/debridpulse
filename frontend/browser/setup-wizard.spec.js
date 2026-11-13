@@ -112,24 +112,32 @@ test('W02: a new installation\'s setup opens by itself, cannot be dismissed, and
   await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeHidden();
   await expect(wizard(page).locator('[data-modal-action="back"]')).toBeDisabled();
-  await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.get_started'));
+  // Welcome's action is Next, as its words ask (it was Get Started).
+  await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.next'));
   await page.keyboard.press('Escape');
   await expect(wizard(page)).toBeVisible();
 
   // A language switch while it is open: words change in place, the dialog and focus stay.
-  const row = wizard(page).locator('.dp-language-option[aria-checked="true"]');
-  await row.focus();
+  const button = wizard(page).locator('[data-setup-language]');
+  await button.focus();
   const englishTitle = await wizard(page).locator('.dp-modal-title').textContent();
   expect(await setLocale(page, 'en-XA')).toBe('en-XA');
   await expect(wizard(page).locator('.dp-modal-title')).toHaveText(await t(page, 'setup.welcome.title'));
   expect(await wizard(page).locator('.dp-modal-title').textContent()).not.toBe(englishTitle);
-  await expect(row).toBeFocused();
-  // Arabic through the wizard's own preview (a row of its language list): right to left, nothing saved.
+  await expect(button).toBeFocused();
+  // Arabic through the wizard's own language view (one row of the one list, in
+  // this same dialog): right to left, back on Welcome, nothing saved.
+  const overlays = await page.locator('.dp-modal-overlay').count();
+  await button.click();
+  await expect(wizard(page).locator('.dp-setup-language-view .dp-language-list')).toBeVisible();
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(overlays);
   await wizard(page).locator('.dp-language-option[data-value="ar"]').click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  await expect(wizard(page).locator('.dp-language-option[data-value="ar"]')).toHaveAttribute('aria-checked', 'true');
-  await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.get_started'));
+  await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+  await expect(button).toHaveAttribute('data-language', 'ar');
+  await expect(button).toBeFocused();
+  await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.next'));
   await expect(wizard(page)).toBeVisible();
   expect(await setLocale(page, 'en')).toBe('en');
   // Nothing the wizard could write was sent (the page's own engine probe is not the wizard's).
@@ -414,7 +422,8 @@ test('W10: Test First-Run Wizard previews the first-run pages of Standalone and 
     await step(page, total - 1, total);
     await accept();
     await title('setup.getting_started.title');
-    await expect(wizard(page).locator('[data-i18n="setup.getting_started.sign_in"]')).toHaveCount(type === 'server' ? 1 : 0);
+    // The preview creates no Administrator, so its Finish signs nobody in: no note (initial Server's own: R10).
+    await expect(wizard(page).locator('[data-i18n="setup.getting_started.sign_in"]')).toHaveCount(0);
     await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.finish'));
   }
 

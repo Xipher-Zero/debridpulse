@@ -238,7 +238,7 @@
   color: var(--dp-state-caution);
 }
 
-.dp-settings-directory-dialog[aria-busy="true"] .dp-settings-directory-list {
+.dp-settings-directory-browser[aria-busy="true"] .dp-settings-directory-list {
   opacity: .65;
 }
 

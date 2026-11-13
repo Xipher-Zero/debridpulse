@@ -88,7 +88,7 @@ def test_app_does_not_regain_page_specific_owners() -> None:
 def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() -> None:
     source = read(SETTINGS)
     assert "window.loadSettings = load;" in source
-    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider});" in source
+    assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork});" in source
     assert "debridpulse:settings-rendered" in source
     assert "view.innerHTML =" in source
     assert "new MutationObserver" not in source

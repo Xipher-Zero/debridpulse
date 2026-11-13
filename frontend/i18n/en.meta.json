@@ -22850,13 +22850,6 @@
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
-  "setup.action.get_started": {
-   "category": "action",
-   "context": "Setup wizard footer button on the first (Welcome) page of a new installation's setup; saves the language and goes on.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal",
-   "geometry": "Must fit at 320px: the step beside the wizard title, the buttons in the dialog footer; keep it short."
-  },
   "setup.action.finish": {
    "category": "action",
    "context": "Setup wizard footer button on the last page: finishes setup and opens the Dashboard (on a Server, the sign-in page first).",
@@ -22870,33 +22863,9 @@
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
-  "setup.welcome.intro": {
-   "category": "hint",
-   "context": "Setup wizard Welcome page introduction.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.welcome.language": {
-   "category": "label",
-   "context": "Setup wizard Welcome page: heading of the language list (the installation's default language).",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.welcome.language_hint": {
-   "category": "hint",
-   "context": "Setup wizard Welcome page: what the chosen language is. My Account is the account dialog's name.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
   "setup.deployment.title": {
    "category": "modal-title",
-   "context": "Setup wizard: title of the page that chooses Standalone or Server.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.deployment.intro": {
-   "category": "hint",
-   "context": "Setup wizard Deployment Mode page introduction.",
+   "context": "Setup wizard: title of the Deployment Type page (choose Standalone or Server), also the name of its choice group for screen readers. Use the same term as the installation's deployment type elsewhere (settings.deployment.current).",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -22924,12 +22893,6 @@
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
-  "setup.directory.intro": {
-   "category": "hint",
-   "context": "Setup wizard Download Directory page introduction.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
   "setup.directory.hint": {
    "category": "hint",
    "context": "Setup wizard Download Directory page hint. Browse and Next are button names.",
@@ -22945,12 +22908,6 @@
   "setup.administrator.title": {
    "category": "modal-title",
    "context": "Setup wizard: title of the page that creates a Server installation's own Administrator account.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.administrator.intro": {
-   "category": "hint",
-   "context": "Setup wizard Administrator Setup page introduction.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -23026,45 +22983,15 @@
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
-  "setup.premium.hint": {
-   "category": "hint",
-   "context": "Setup wizard Premium Services page hint: a positive statement that zero services is fine.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
   "setup.getting_started.title": {
    "category": "modal-title",
    "context": "Setup wizard: title of the last page.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
-  "setup.getting_started.intro": {
-   "category": "hint",
-   "context": "Setup wizard Getting Started introduction.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.getting_started.step_paste": {
-   "category": "hint",
-   "context": "Setup wizard Getting Started, step 1. Quick Add is the Dashboard input's name.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.getting_started.step_add": {
-   "category": "hint",
-   "context": "Setup wizard Getting Started, step 2. Add is the Quick Add button's name.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
-  "setup.getting_started.step_watch": {
-   "category": "hint",
-   "context": "Setup wizard Getting Started, step 3. Dashboard and Downloads are page names.",
-   "owner": "frontend/static/ui-setup-wizard.js",
-   "criticality": "normal"
-  },
   "setup.getting_started.sign_in": {
    "category": "hint",
-   "context": "Setup wizard Getting Started, Server: sign-in is required after finishing.",
+   "context": "Setup wizard Getting Started: note at the bottom of the page, shown only when the initial setup of a Server installation ends by signing its new Administrator in again. Finish & Open Dashboard is the footer button's name (setup.action.finish); use the same words.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -23210,6 +23137,159 @@
     "total": "number: how many pages this setup has"
    },
    "context": "Setup wizard: the screen-reader name of one progress bubble whose page has been completed, e.g. Step 2 of 5, completed. Not visible text; reuse the exact wording of setup.step and add the completed state."
+  },
+  "setup.welcome.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Welcome page. Meaning: let's get started, cheerfully. An idiom: adapt it to your language's equivalent of 'let's get going!'.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.body.thanks": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page body, paragraph 1 of 3: a warm welcome and thanks for trying the app. DebridPulse is the product name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.body.guide": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page body, paragraph 2 of 3: what the setup covers.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.body.next": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page body, paragraph 3 of 3. Next is the footer button's name (setup.action.next); use the same word.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.change_language": {
+   "category": "label",
+   "context": "Setup wizard Welcome page: title of the language row, and the title of the language list view it opens. The language chosen becomes the installation's default when Next is selected.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.change_language_hint": {
+   "category": "hint",
+   "context": "Setup wizard Welcome page: hint beneath Change Language, and the reading under the language list view's title.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.welcome.language_button": {
+   "category": "tooltip/aria",
+   "context": "Setup wizard Welcome page: screen-reader name of the button that opens the language list. The button shows only a flag and the language's own name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal",
+   "args": {
+    "language": "string: the chosen language's own (native) name, e.g. Deutsch"
+   }
+  },
+  "setup.deployment.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Deployment Type page. Meaning: will you use DebridPulse alone, or with a group of people? 'Flying solo' = alone; 'the whole crew' = your team, family or friends. Keep it a light question.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.body.types": {
+   "category": "hint",
+   "context": "Setup wizard Deployment Type page body, paragraph 1 of 2. Standalone and Server are the names of the two deployment types (settings.deployment.standalone / settings.deployment.server); use the same words, bold.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.deployment.body.choose": {
+   "category": "hint",
+   "context": "Setup wizard Deployment Type page body, paragraph 2 of 2, above the two choice cards.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Download Directory page. Meaning: downloads need somewhere to be stored; 'land' as a plane lands. Any light image of arriving home works.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.body.purpose": {
+   "category": "hint",
+   "context": "Setup wizard Download Directory page body, paragraph 1 of 2: why a default download folder is needed.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.body.choose": {
+   "category": "hint",
+   "context": "Setup wizard Download Directory page body, paragraph 2 of 2, above the Download Folder field.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.directory.browse_hint": {
+   "category": "hint",
+   "context": "Setup wizard: reading under the title of the folder browser view (opened by Browse on the Download Directory page). Use This Folder is the view's button (directory_picker.accept) and Next the wizard's footer button (setup.action.next); use the same words. Choosing a folder only fills the field; the page's Next saves it.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Administrator Setup page, shown while the person creates their own Administrator account. Meaning: somebody has to be in charge (hold the keys to the place). Informal and friendly.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.administrator.body": {
+   "category": "hint",
+   "context": "Setup wizard Administrator Setup page body, above the Username, Password and Confirm Password fields: why a personal Administrator account is created. Administrator is the role name; built-in Administrator is the account every installation has.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Premium Services page. Meaning: you can connect the services you already like and use. Friendly invitation, not a requirement.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.optional": {
+   "category": "status-chip",
+   "context": "Setup wizard Premium Services page: a small badge above the title saying the page is optional (nothing on it is required). One short word.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.body.what": {
+   "category": "hint",
+   "context": "Setup wizard Premium Services page body, paragraph 1 of 2: what premium services are. Usenet and BitTorrent are protocol names; file lockers are file-hosting sites.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.premium.body.optional": {
+   "category": "hint",
+   "context": "Setup wizard Premium Services page body, paragraph 2 of 2, above the six service buttons. 'not required' is bold for emphasis. Media Downloads is a DebridPulse feature name.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.tagline": {
+   "category": "hint",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Getting Started (last) page. Meaning: setup is done, now start using DebridPulse. Upbeat.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.body": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started page body, above the three numbered steps.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step.open": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, numbered step 1; the first sentence is bold. Dashboard is the page name and Quick Add the name of its input card; use the same words as the interface.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step.add": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, numbered step 2; the first sentence is bold. Add is Quick Add's button name; use the same word.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "setup.getting_started.step.monitor": {
+   "category": "hint",
+   "context": "Setup wizard Getting Started, numbered step 3; the first sentence is bold. Dashboard and Downloads are page names; use the same words as the navigation.",
+   "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
   }
  }
 }

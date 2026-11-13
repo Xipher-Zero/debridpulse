@@ -32,8 +32,8 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     overlay = read(STYLE)
     chrome = read(CHROME)
 
-    settings = overlay.index("/ui-settings-page.css?v=3")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=4")
+    settings = overlay.index("/ui-settings-page.css?v=5")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=5")
     help_page = overlay.index("/ui-help-page.css?v=23")
     feature = overlay.index("/ui-feature-icon-contract.css?v=5")
     assert settings < settings_chrome < help_page < feature
@@ -409,8 +409,8 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_identity_chip_and_la
     assert "dp-settings-provider-logo--alldebrid" in runtime
     assert 'src="/icons/providers/alldebrid.svg"' in runtime
     # The locked AllDebrid colour is the chip's one datum.
-    assert (":is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }"
-            in chrome)
+    assert (":is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-chip--alldebrid"
+            " { --dp-provider-color: var(--dp-identity-alldebrid); }" in chrome)
     assert "--dp-identity-alldebrid: #FFA34E;" in read(STATIC / "design-tokens.css")
 
     logo = chrome.split(".dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
@@ -420,7 +420,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_identity_chip_and_la
     assert "drop-shadow(0 0 3px color-mix(in srgb, var(--dp-provider-color) 92%, transparent))" in logo
     assert "drop-shadow(0 0 7px color-mix(in srgb, var(--dp-provider-color) 52%, transparent))" in logo
 
-    light_logo = chrome.split("body.light :is(#view-settings, .dp-setup-provider-surface) .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
+    light_logo = chrome.split("body.light :is(#view-settings, .dp-setup-provider-surface, .dp-setup-services) .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "drop-shadow(0 0 8px color-mix(in srgb, var(--dp-provider-color) 62%, transparent))" in light_logo
 
     assert root.tag.endswith("svg")

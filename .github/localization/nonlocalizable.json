@@ -3849,7 +3849,7 @@
   },
   {
    "owner": "frontend/static/ui-setup-wizard.js",
-   "english": "Preview: nothing on these pages is saved, except a provider's own Save.",
+   "english": "Preview: nothing on these pages is saved. A provider's own Save, and its immediate actions such as Connect, Test and Enable, still take effect.",
    "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
   }
  ]

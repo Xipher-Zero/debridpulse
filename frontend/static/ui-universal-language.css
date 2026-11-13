@@ -656,7 +656,11 @@ td { padding: 11px 16px; vertical-align: middle; }
    bridge above has no mobile treatment of its own), migrated from the
    retired ui-legacy-foundation.css. */
 @media (max-width: 779px) {
-  .card { border-radius: 8px !important; margin-bottom: 10px !important; }
+  .card { border-radius: 8px !important; }
+  /* The gap between a page's stacked cards; not below a Settings card the
+     setup wizard mounts alone in its dialog body (DPSettingsPage.mountProvider),
+     whose space above and below is the body's own padding. */
+  .card:not(.dp-setup-provider-surface .card) { margin-bottom: 10px !important; }
   .card-header { padding: 8px 12px !important; }
   .card-body   { padding: 8px 12px !important; }
   .scard-body  { padding: 10px !important; gap: 8px !important; }

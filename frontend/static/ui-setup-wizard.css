@@ -1,8 +1,6 @@
 /* The setup wizard (ui-setup-wizard.js): its pages inside the canonical
-   dialog shell (ui-modal-contract.css). Layout only; the artwork of Welcome
-   and Getting Started is provisional and replaced later without changing
-   these pages. Logical properties throughout, so right-to-left languages
-   mirror without a rule of their own. */
+   dialog shell (ui-modal-contract.css). Layout only. Logical properties
+   throughout, so right-to-left languages mirror without a rule of their own. */
 /* One shell for every page and every provider view: a portrait dialog whose
    outer size is fixed for the viewport -- the same on a short page as on a
    Usenet configuration with several servers -- bounded by what the overlay
@@ -78,6 +76,39 @@
 .dp-setup-dialog .dp-modal-title-icon {
   width: 22px;
   height: 22px;
+}
+/* Welcome's mark, the product logo (<dp-logo>, coloured by ui-logo.css): a
+   little larger than a glyph, as its square leaves a margin, without making
+   the title line taller than any other page's. */
+.dp-setup-dialog .dp-modal-title-icon:has(> dp-logo) {
+  width: 28px;
+  height: 28px;
+  margin-block: -3px;
+}
+.dp-setup-dialog .dp-modal-title-icon > dp-logo > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The header's top region: the indicator, then the badge slot -- the one
+   shared space between the indicator and the heading, the same height on
+   every page whether a badge is shown or not. */
+.dp-setup-header-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.dp-setup-badge-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  block-size: 22px;
+  margin: 0;
+}
+.dp-setup-optional[hidden] {
+  display: none;
 }
 .dp-setup-dialog .dp-modal-title-hint {
   --dp-setup-hint-lines: 3;
@@ -233,27 +264,61 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 .dp-setup-error[hidden] {
   display: none;
 }
-.dp-setup-language {
-  max-block-size: 260px;
+/* A page's explanation, at the top of its body. */
+.dp-setup-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dp-setup-copy p {
+  margin: 0;
+  color: var(--dp-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: break-word;
 }
 
-/* Deployment: two described choices, one radio group. */
+/* Welcome: the language row beneath the explanation -- one rule above it,
+   none beneath -- its title and hint at the start, the language button at
+   the end, the button beneath them where the row is too narrow for both. */
+.dp-setup-language-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  margin-block-start: 6px;
+  padding-block-start: 14px;
+  border-block-start: 1px solid var(--dp-border-default);
+}
+.dp-setup-language-copy {
+  flex: 1 1 13rem;
+  min-inline-size: 0;
+}
+.dp-setup-language-button {
+  flex: 0 0 auto;
+}
+
+/* Deployment: two described choices, one radio group -- each its name, its
+   mark, then what it means, centred; side by side where both fit, stacked
+   where they would be too narrow. */
 .dp-setup-choices {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 10px;
 }
 .dp-setup-choice {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 16px;
   border: 1px solid var(--dp-border-default);
   border-radius: 8px;
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: start;
+  text-align: center;
   cursor: pointer;
 }
 .dp-setup-choice[aria-checked="true"] {
@@ -266,6 +331,16 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 }
 .dp-setup-choice-name {
   font-weight: 650;
+}
+.dp-setup-choice-glyph {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+.dp-setup-choice-glyph svg {
+  inline-size: 34px;
+  block-size: 34px;
+  stroke-width: 1.6;
 }
 .dp-setup-choice-text {
   color: var(--dp-text-muted);
@@ -285,35 +360,56 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
   min-inline-size: 0;
 }
 
-/* Getting Started: the place the Dashboard illustration takes later, and the
-   three numbered steps. */
-.dp-setup-illustration {
-  margin: 0;
-  block-size: 96px;
-  border: 1px dashed var(--dp-border-default);
-  border-radius: 8px;
+/* Administrator Setup: the notes beneath the fields, centred. */
+.dp-setup-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+
+/* Getting Started: the three numbered steps, then -- where Finish signs the
+   Administrator in again -- the sign-in note, apart from the steps at the
+   bottom of the body, just above the footer (after the steps when the body
+   scrolls). */
+.dp-setup-body > .dp-setup-getting-started {
+  flex: 1 0 auto;
 }
 .dp-setup-steps {
   margin: 0;
   padding-inline-start: 1.4em;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.dp-setup-steps b {
+  font-weight: 650;
+}
+.dp-setup-sign-in-note {
+  margin: auto 0 0;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--dp-border-default);
+  color: var(--dp-text-secondary);
+  font-size: 12.5px;
   line-height: 1.5;
+  text-align: center;
+  overflow-wrap: break-word;
 }
 
-/* Premium Services: the six services, one button each, with what the server
-   says each is (configured, verified, disabled) beneath its name. */
+/* Premium Services: the six services, one row each -- the service's own
+   artwork, then its name over what the server says it is (configured,
+   verified, disabled), on one line wherever the row is wide enough. */
 .dp-setup-services {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 .dp-setup-service {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   min-inline-size: 0;
   padding: 10px 12px;
   border: 1px solid var(--dp-border-default);
@@ -327,6 +423,16 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 .dp-setup-service:disabled {
   cursor: default;
   opacity: .55;
+}
+.dp-setup-service-art {
+  display: grid;
+  flex: 0 0 auto;
+}
+.dp-setup-service-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-inline-size: 0;
 }
 .dp-setup-service-name {
   font-weight: 650;
@@ -342,7 +448,10 @@ body.light .dp-modal-dialog.dp-setup-dialog > .dp-modal-header::after {
 .dp-setup-service-fact[data-fact="unverified"] { color: var(--amber, var(--dp-state-caution)); }
 
 /* A provider's configuration in place of the list: its Settings card, drawn
-   by its Settings owner (DPSettingsPage.mountProvider). */
+   by its Settings owner (DPSettingsPage.mountProvider), across the body's
+   whole width (its islands take the narrow, full-width form there:
+   ui-settings-page.css). The body's own padding is the only space above and
+   below it, the same for every service. */
 .dp-setup-provider-slot {
   min-inline-size: 0;
 }
