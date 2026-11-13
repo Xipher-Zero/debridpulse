@@ -9,6 +9,7 @@ Finish, and an Admin's own rerun.
 """
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from fastapi import APIRouter, Request
@@ -54,13 +55,26 @@ def _no_store(body: dict) -> JSONResponse:
     return response
 
 
+# The setup wizard's development-only preview (Test First-Run Wizard) is
+# offered only on explicit opt-in: a development build (its own release
+# identity) started with DEBRIDPULSE_SETUP_PREVIEW=1. A released build never
+# offers it, whatever its environment. The preview itself commits nothing of
+# its own and has no endpoint; this only says whether to offer its entry.
+SETUP_PREVIEW_ENV = "DEBRIDPULSE_SETUP_PREVIEW"
+
+
+def setup_preview_offered() -> bool:
+    return is_development_build() and os.environ.get(SETUP_PREVIEW_ENV, "").strip() == "1"
+
+
 @router.get("/setup/state")
 async def setup_state(request: Request):
     # ``development_build``: whether this build is a development build by its
-    # release identity (core.version.is_development_build), for the setup
-    # wizard's TEMPORARY development-only preview; a released build says false.
+    # release identity (core.version.is_development_build); a released build
+    # says false. ``setup_preview``: whether the rerun offers the TEMPORARY
+    # development-only preview (setup_preview_offered).
     state = await setup_lifecycle.state(request.state.principal.account_id)
-    return _no_store({**state, "development_build": is_development_build()})
+    return _no_store({**state, "development_build": is_development_build(), "setup_preview": setup_preview_offered()})
 
 
 @router.put("/setup/initial/phase")

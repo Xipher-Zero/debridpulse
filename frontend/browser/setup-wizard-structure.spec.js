@@ -19,12 +19,35 @@ const { test, expect } = require('@playwright/test');
  * and a not-selectable folder is one synthetic listing. Every change a case
  * makes is put back. Locators are roles, data hooks and catalog keys. */
 
+/* The development preview (Test First-Run Wizard) is hidden unless the server
+ * offers it (`setup_preview`: a development build started with
+ * DEBRIDPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
+ * These cases use the preview to reach the first-run pages, so the page reads
+ * `setup_preview: true` in the one setup-state answer -- a labelled mock of
+ * that one server fact, standing for the opt-in; W11 reads the real default. */
+async function offerPreview(page) {
+  // In the page, after every route a case installs (an emulated record stays the case's own): only
+  // `setup_preview` is added to the answer, whatever else it says.
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (url.pathname !== '/api/setup/state' || !response.ok) return response;
+      const body = await response.clone().json().catch(() => null);
+      if (!body || typeof body !== 'object') return response;
+      return new Response(JSON.stringify({...body, setup_preview: true}), {status: response.status, statusText: response.statusText, headers: response.headers});
+    };
+  });
+}
+
 /* Page turns slide (ui-motion.js); these cases read each page as it stands, so they run with reduced motion,
  * where a turn is immediate -- the motion itself is R30 and R32's (setup-wizard-structure.spec.js). */
-async function load(page, {width = 1280, height = 900, motion = false} = {}) {
+async function load(page, {width = 1280, height = 900, motion = false, preview = true} = {}) {
   await page.emulateMedia({reducedMotion: motion ? 'no-preference' : 'reduce'});
   await page.setViewportSize({width, height});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  if (preview) await offerPreview(page);
   await page.goto('/');
   await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeAttached();
   await page.evaluate(() => window.DPI18n.ready);
@@ -1045,37 +1068,70 @@ test('R29: a rerun\'s Administrator guidance reads centred above Open Users & Ac
   await end(page);
 });
 
-test('R24: Getting Started\'s steps: a list of three, each its number in a rail-coloured circle, its title on its own line, its words indented beneath', async ({page}) => {
-  for (const [width, height] of [[1280, 900], [375, 740], [320, 640]]) {
-    await load(page, {width, height});
-    await previewAt(page, '.dp-setup-getting-started');
-    const g = await wizard(page).locator('.dp-setup-steps').evaluate(list => {
-      const r = element => element.getBoundingClientRect();
-      return {role: list.getAttribute('role'), tag: list.tagName, marker: getComputedStyle(list).listStyleType,
-        steps: [...list.children].map((item, index) => {
-          const circle = getComputedStyle(item, '::before');
-          const title = item.querySelector(':scope > b');
-          const range = document.createRange();
-          range.setStartAfter(title);
-          range.setEndAfter(item.lastChild);
-          const body = [...range.getClientRects()].filter(rect => rect.width);
-          return {number: circle.content, round: circle.borderRadius, width: parseFloat(circle.width),
-            rail: circle.backgroundImage.includes('gradient'), titleBlock: getComputedStyle(title).display,
-            bodyBelow: body.every(rect => rect.top >= r(title).bottom - 1),
-            indented: body.every(rect => Math.abs(rect.left - r(title).left) < 2) && r(title).left - r(item).left >= 30,
-            overflow: item.scrollWidth > item.clientWidth + 1, index};
-        })};
-    });
+test('R24: Getting Started\'s steps: a list of three, each its number in a rail-coloured circle, its title on its own line, its words beneath, indented farther than the title on every line, in the reading direction', async ({page}) => {
+  const read = () => wizard(page).locator('.dp-setup-steps').evaluate(list => {
+    const r = element => element.getBoundingClientRect();
+    const rtl = getComputedStyle(list).direction === 'rtl';
+    // A distance from the step's start edge (left, or right when right to left).
+    const from = (edge, rect) => rtl ? edge.right - rect.right : rect.left - edge.left;
+    return {role: list.getAttribute('role'), tag: list.tagName, marker: getComputedStyle(list).listStyleType, rtl,
+      steps: [...list.children].map((item, index) => {
+        const circle = getComputedStyle(item, '::before');
+        const title = item.querySelector(':scope > b');
+        const range = document.createRange();
+        range.setStartAfter(title);
+        range.setEndAfter(item.lastChild);
+        // Each line of the words: its start (a line of mixed directions has several fragments).
+        const lines = {};
+        for (const rect of [...range.getClientRects()].filter(rect => rect.width)) {
+          const key = Math.round(rect.top);
+          lines[key] = Math.min(lines[key] ?? Infinity, from(r(item), rect));
+        }
+        const starts = Object.values(lines);
+        return {number: circle.content, round: circle.borderRadius, width: parseFloat(circle.width),
+          circleAt: circle.insetInlineStart, rail: circle.backgroundImage.includes('gradient'),
+          titleBlock: getComputedStyle(title).display, titleAt: Math.round(from(r(item), r(title))),
+          bodyBelow: [...range.getClientRects()].filter(rect => rect.width).every(rect => rect.top >= r(title).bottom - 1),
+          lines: starts.length, indents: [...new Set(starts.map(start => Math.round(start - from(r(item), r(title)))))],
+          overflow: item.scrollWidth > item.clientWidth + 1, index};
+      }),
+      gaps: [...list.children].slice(1).map((item, index) => Math.round(r(item).top - r(list.children[index]).bottom))};
+  });
+  const check = (g, label) => {
     expect(g.tag).toBe('OL');
     expect(g.role).toBe('list');
     expect(g.marker).toBe('none');
+    expect(g.gaps, label).toEqual([14, 14]);
     expect(g.steps.map(step => step.number)).toEqual(['counter(dp-setup-step)', 'counter(dp-setup-step)', 'counter(dp-setup-step)']);
     for (const step of g.steps) {
-      expect(step, `${width}`).toMatchObject({round: '50%', rail: true, titleBlock: 'block', bodyBelow: true, indented: true, overflow: false});
+      // The circle at the step's start, the title 40px in, every line of the words 16px farther.
+      expect(step, label).toMatchObject({round: '50%', rail: true, circleAt: '0px', titleBlock: 'block', titleAt: 40,
+        bodyBelow: true, indents: [16], overflow: false});
+      expect(step.lines, label).toBeGreaterThan(1);
       expect(step.width).toBe(26);
     }
+  };
+  for (const [width, height] of [[1280, 900], [375, 740], [320, 640]]) {
+    await load(page, {width, height});
+    await previewAt(page, '.dp-setup-getting-started');
+    const g = await read();
+    expect(g.rtl).toBe(false);
+    check(g, `${width}`);
     await expect(wizard(page).locator('[data-modal-accept]')).toHaveText(await t(page, 'setup.action.finish'));
     await end(page);
+  }
+  // Right to left: the same indent, from the right.
+  const own = (await call(page, 'GET', '/api/account/locale')).body;
+  expect((await call(page, 'PUT', '/api/account/locale', {locale: 'ar'})).status).toBe(200);
+  try {
+    await load(page, {width: 375, height: 740});
+    await previewAt(page, '.dp-setup-getting-started');
+    const g = await read();
+    expect(g.rtl).toBe(true);
+    check(g, 'ar 375');
+    await end(page);
+  } finally {
+    await call(page, 'PUT', '/api/account/locale', {locale: own.preference ?? null});
   }
 });
 

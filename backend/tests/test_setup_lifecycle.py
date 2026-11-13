@@ -581,3 +581,22 @@ async def test_the_setup_state_says_whether_this_is_a_development_build(live, mo
         monkeypatch.setattr(routes, "is_development_build", lambda value=development: value)
         state = (await live.client.get("/api/setup/state")).json()
         assert state["development_build"] is development and "initial" in state
+
+
+async def test_the_preview_is_offered_only_to_a_development_build_that_opts_in(live, monkeypatch):
+    # Test First-Run Wizard: hidden by default even in development; shown only
+    # where a development build runs with DEBRIDPULSE_SETUP_PREVIEW=1; never
+    # in a released build, whatever its environment.
+    import api.setup_routes as routes
+
+    for development, env, offered in ((True, None, False), (True, "0", False), (True, "true", False),
+                                      (True, "1", True), (True, " 1 ", True),
+                                      (False, "1", False), (False, None, False)):
+        monkeypatch.setattr(routes, "is_development_build", lambda value=development: value)
+        if env is None:
+            monkeypatch.delenv(routes.SETUP_PREVIEW_ENV, raising=False)
+        else:
+            monkeypatch.setenv(routes.SETUP_PREVIEW_ENV, env)
+        state = (await live.client.get("/api/setup/state")).json()
+        assert state["setup_preview"] is offered, (development, env)
+        assert state["development_build"] is development

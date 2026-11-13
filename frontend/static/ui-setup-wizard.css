@@ -558,16 +558,20 @@ body.light .dp-setup-header-top > .dp-setup-stars {
   gap: 14px;
   font-size: 13px;
   line-height: 1.55;
+  overflow-wrap: break-word;
 }
 /* One step: its number in a circle -- the sidebar's active rail (its
    gradient and glow, --dp-chrome-nav-rail) -- then its title (the message's
-   bold lead sentence) on its own line, and the rest of the step beneath it,
-   indented under the title. The list stays a list (role="list"), and the
-   number is said once, before the step's words. */
+   bold lead sentence) on its own line, 40px from the step's start, and the
+   rest of the step beneath it, indented 16px farther than the title on every
+   line it takes: the step's content column starts at the description, and
+   the title alone reaches back to 40px. Logical properties, so the indent
+   follows the reading direction. The list stays a list (role="list"), and
+   the number is said once, before the step's words. */
 .dp-setup-steps > li {
   counter-increment: dp-setup-step;
   position: relative;
-  padding-inline-start: 40px;
+  padding-inline-start: 56px;
   color: var(--dp-text-secondary);
 }
 .dp-setup-steps > li::before {
@@ -591,6 +595,7 @@ body.light .dp-setup-header-top > .dp-setup-stars {
 .dp-setup-steps > li > b {
   display: block;
   margin-block: 3px 3px;
+  margin-inline-start: -16px;
   color: var(--dp-text-primary);
   font-weight: 650;
 }

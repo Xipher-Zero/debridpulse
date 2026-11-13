@@ -101,9 +101,9 @@
         </section>`);
       // TEMPORARY, development only (WS3b): a preview of the first-run setup
       // from an Admin's rerun, for refining its pages -- offered only where the
-      // server says this is a development build (its release identity,
-      // ``development_build``). Removed with the final wizard cleanup.
-      if (wizard.mode === 'rerun' && !wizard.preview && wizard.data.development === true) {
+      // server offers it (``setup_preview``: a development build started with
+      // DEBRIDPULSE_SETUP_PREVIEW=1; never a released build). Hidden by default.
+      if (wizard.mode === 'rerun' && !wizard.preview && wizard.data.previewOffered === true) {
         const entry = element(`
           <div class="dp-setup-preview-entry">
             <button type="button" class="btn btn-ghost btn-sm" data-setup-preview>Test First-Run Wizard</button>
@@ -1005,8 +1005,8 @@
     const state = await readState();
     if (!state.initial.complete) { open('initial', state, await readData(), opener); return; }
     const current = resume && state.rerun ? state : await request('PUT', '/setup/rerun', {phase: 'welcome'});
-    // TEMPORARY (WS3b): whether this build offers the development-only preview.
-    open('rerun', current, {...await readData(), development: state.development_build === true}, opener);
+    // TEMPORARY (WS3b): whether the server offers the development-only preview.
+    open('rerun', current, {...await readData(), previewOffered: state.setup_preview === true}, opener);
   }
 
   window.DPSetupWizard = Object.freeze({rerun});

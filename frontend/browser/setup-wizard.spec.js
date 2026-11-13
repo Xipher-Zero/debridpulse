@@ -17,12 +17,35 @@ const { test, expect } = require('@playwright/test');
  * English and en-XA. Locators are roles, stable data hooks and catalog keys,
  * never incidental English. Synthetic values only. */
 
+/* The development preview (Test First-Run Wizard) is hidden unless the server
+ * offers it (`setup_preview`: a development build started with
+ * DEBRIDPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
+ * These cases use the preview to reach the first-run pages, so the page reads
+ * `setup_preview: true` in the one setup-state answer -- a labelled mock of
+ * that one server fact, standing for the opt-in; W11 reads the real default. */
+async function offerPreview(page) {
+  // In the page, after every route a case installs (an emulated record stays the case's own): only
+  // `setup_preview` is added to the answer, whatever else it says.
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (url.pathname !== '/api/setup/state' || !response.ok) return response;
+      const body = await response.clone().json().catch(() => null);
+      if (!body || typeof body !== 'object') return response;
+      return new Response(JSON.stringify({...body, setup_preview: true}), {status: response.status, statusText: response.statusText, headers: response.headers});
+    };
+  });
+}
+
 /* Page turns slide (ui-motion.js); these cases read each page as it stands, so they run with reduced motion,
  * where a turn is immediate -- the motion itself is R30 and R32's (setup-wizard-structure.spec.js). */
-async function load(page, {width = 1280, height = 900, motion = false} = {}) {
+async function load(page, {width = 1280, height = 900, motion = false, preview = true} = {}) {
   await page.emulateMedia({reducedMotion: motion ? 'no-preference' : 'reduce'});
   await page.setViewportSize({width, height});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  if (preview) await offerPreview(page);
   await page.goto('/');
   await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeAttached();
   await page.evaluate(() => window.DPI18n.ready);
@@ -456,32 +479,49 @@ test('W10: Test First-Run Wizard previews the first-run pages of Standalone and 
   await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
 
-/* TEMPORARY (WS3b): the preview is offered only where the server says this is
- * a development build -- its own release identity, the running VERSION's
- * CHANGELOG entry titled Development (core.version.is_development_build,
- * proven in backend/tests/test_setup_lifecycle.py). A released build is shown
- * here by answering the one setup-state read with `development_build: false`
- * (a labelled mock of that one server fact). */
-test('W11: Test First-Run Wizard is offered only to a development build', async ({page}) => {
-  await load(page);
+/* TEMPORARY (WS3b): Test First-Run Wizard is hidden by default, even in a
+ * development build. The server offers it (`setup_preview`) only where a
+ * development build -- its own release identity, the running VERSION's
+ * CHANGELOG entry titled Development -- is started with
+ * DEBRIDPULSE_SETUP_PREVIEW=1, and never in a released build, whatever its
+ * environment (backend/tests/test_setup_lifecycle.py proves that matrix). This
+ * reads the real default of a development instance started without the
+ * opt-in, then the entry for each server answer: the opt-in (a labelled mock of
+ * `setup_preview: true`) and a released build (`development_build: false`,
+ * `setup_preview: false`). The button is drawn only from the server's answer,
+ * never merely hidden by style. */
+test('W11: Test First-Run Wizard is hidden by default and offered only on a development build\'s explicit opt-in', async ({page}) => {
+  await load(page, {preview: false});
   await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
-  // This source tree is a development build: the server says so itself.
-  expect((await state(page)).development_build).toBe(true);
-  let released = true;
+  // This source tree is a development build, started without the opt-in: the server offers no preview.
+  expect(await state(page)).toMatchObject({development_build: true, setup_preview: false});
+  let answer = null;
   await page.route(url => url.pathname === '/api/setup/state', async route => {
     const response = await route.fetch();
     const body = await response.json();
-    return route.fulfill({response, json: released ? {...body, development_build: false} : body});
+    return route.fulfill({response, json: answer ? {...body, ...answer} : body});
   });
-  for (const expected of [0, 1]) {
+  for (const [label, served, expected] of [['default', null, 0], ['opt-in', {setup_preview: true}, 1],
+    ['released', {development_build: false, setup_preview: false}, 0]]) {
+    answer = served;
     await openAccount(page);
     await account(page).locator('[data-account-setup-rerun]').click();
     await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
-    await expect(wizard(page).locator('[data-setup-preview]')).toHaveCount(expected);
+    await expect(wizard(page).locator('[data-setup-preview]'), label).toHaveCount(expected);
+    if (expected) {
+      // The opt-in's entry opens the existing first-run preview, which stays dismissible.
+      await wizard(page).locator('[data-setup-preview]').click();
+      await expect(wizard(page).locator('.dp-setup-preview-note')).toBeVisible();
+      await expect(wizard(page).locator('[data-modal-cancel]')).toBeVisible();
+    }
     await wizard(page).locator('[data-modal-cancel]').click();
+    if (expected) {
+      // Closing the preview returns to the rerun it was opened from.
+      await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
+      await wizard(page).locator('[data-modal-cancel]').click();
+    }
     await expect(wizard(page)).toHaveCount(0);
     await account(page).locator('[data-modal-cancel]').click();
-    released = false;
   }
   await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
@@ -523,7 +563,12 @@ for (const [width, height] of [[1280, 900], [375, 667]]) {
       const rect = element => { const box = element.getBoundingClientRect(); return [box.left, box.top, box.width, box.height].map(Math.round); };
       return {dialog: rect(node), header: rect(node.querySelector('.dp-modal-header')), footer: rect(node.querySelector('.dp-modal-footer')),
         progress: rect(node.querySelector('.dp-setup-progress')), heading: rect(node.querySelector('.dp-modal-heading')),
-        reading: Math.round(node.querySelector('.dp-modal-title-hint').getBoundingClientRect().height)};
+        reading: Math.round(node.querySelector('.dp-modal-title-hint').getBoundingClientRect().height),
+        premium: Boolean(node.querySelector('.dp-setup-premium')),
+        // The Optional badge's room: its slot and the one gap after it, only while it shows (Premium
+        // Services and its provider views); a page without it keeps no room for it.
+        badge: (slot => { const height = slot.getBoundingClientRect().height;
+          return height ? Math.round(height + parseFloat(getComputedStyle(slot.parentElement).rowGap)) : 0; })(node.querySelector('.dp-setup-badge-slot'))};
     });
     // Next, and the next page shown (its title changed) before it is measured.
     const advance = async () => {
@@ -558,12 +603,18 @@ for (const [width, height] of [[1280, 900], [375, 667]]) {
       expect(new Set(seen.map(entry => JSON.stringify(entry[key]))).size, key).toBe(1);
     }
     // The header keeps its place and width, and everything in it but the
-    // reading keeps its size: the header is its chrome plus its reading's
-    // lines (R17), so the one-line taglines share one header and a longer
-    // reading (the rerun's Administrator guidance, a provider's) is taller.
+    // reading and the badge keeps its size: the header is its chrome plus its
+    // reading's lines (R17) plus the badge's room where the badge shows, so the
+    // one-line taglines share one header, a longer reading (the rerun's
+    // Administrator guidance, a provider's) is taller, and Premium Services and
+    // its provider views (badged) are taller by exactly the badge's room.
+    const badged = seen.filter(entry => entry.premium || entry.view);
+    expect(badged.length, 'Premium Services and its views').toBeGreaterThan(1);
+    expect(badged.every(entry => entry.badge > 0), 'badge room on Premium Services and its views').toBe(true);
+    expect(seen.filter(entry => !(entry.premium || entry.view)).every(entry => entry.badge === 0), 'no badge room on the other pages').toBe(true);
     expect(new Set(seen.map(entry => JSON.stringify(entry.header.slice(0, 3)))).size, 'header position').toBe(1);
-    expect(new Set(seen.map(entry => entry.header[3] - entry.reading)).size, 'header chrome').toBe(1);
-    expect(new Set(seen.map(entry => entry.heading[1])).size, 'heading top').toBe(1);
+    expect(new Set(seen.map(entry => entry.header[3] - entry.reading - entry.badge)).size, 'header chrome').toBe(1);
+    expect(new Set(seen.map(entry => entry.heading[1] - entry.badge)).size, 'heading top').toBe(1);
     const [left, top, w, h] = seen[0].dialog;
     expect(left).toBeGreaterThanOrEqual(0); expect(top).toBeGreaterThanOrEqual(0);
     expect(left + w).toBeLessThanOrEqual(width); expect(top + h).toBeLessThanOrEqual(height);
