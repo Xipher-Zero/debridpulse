@@ -213,6 +213,9 @@ class MediaExecutor:
         for attempt_id in [key for key, run in self._runs.items() if run.terminal is not None]:
             del self._runs[attempt_id]
             self._finished.pop(attempt_id, None)
+        # The process owner is this executor's application-lifecycle part: a
+        # graceful application stop ends every live group (never a pause).
+        self.lifecycle = self.processes
 
     # ── claim, identity, footprint ─────────────────────────────────────────
 

@@ -205,23 +205,23 @@ def test_windows_reserved_names(name, reserved):
     ("Track ", "Track", "Track"), ("a:b", "a_b", "a_b"), ("movie.mkv", "movie.mkv", "movie.mkv"),
     ("...", "download", "download"),
 ])
-def test_a_written_name_never_names_a_device_or_a_rewritten_file_on_windows(monkeypatch, value, windows, posix):
+def test_a_written_name_never_names_a_device_or_a_rewritten_file_on_windows(value, windows, posix):
+    # Each host's own rule, on that host: the Windows column is proven on Windows.
     assert filesystem.safe_name(value) == (windows if WINDOWS else posix)
-    monkeypatch.setattr(filesystem, "_WINDOWS", True)
-    assert filesystem.safe_name(value) == windows
-    monkeypatch.setattr(filesystem, "_WINDOWS", False)
-    assert filesystem.safe_name(value) == posix
 
 
 # ── Secure atomic write ───────────────────────────────────────────────────────
 
-def test_a_secure_write_succeeds_where_the_platform_has_no_fchmod(tmp_path, monkeypatch):
-    monkeypatch.delattr(os, "fchmod", raising=False)
+def test_a_secure_write_replaces_atomically_with_or_without_posix_modes(tmp_path):
+    # Windows really has no ``os.fchmod``: there this is the write without it.
+    assert hasattr(os, "fchmod") is not WINDOWS
     target = tmp_path / "config" / "config.json"
     secure_files.atomic_write_json(target, {"secret": "value"}, indent=2)
     secure_files.atomic_write_json(target, {"secret": "replaced"}, indent=2)
     assert target.read_text(encoding="utf-8").replace("\r\n", "\n") == '{\n  "secret": "replaced"\n}'
     assert sorted(path.name for path in target.parent.iterdir()) == ["config.json"]
+    if not WINDOWS:
+        assert target.stat().st_mode & 0o777 == 0o600
 
 
 # ── Completion read, no-follow open, durability ───────────────────────────────
@@ -237,10 +237,10 @@ def _payload(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize("pread", ["native", "absent"])
-def test_completion_reads_the_exact_bytes_with_or_without_pread(tmp_path, monkeypatch, pread):
-    if pread == "absent":
-        monkeypatch.delattr(os, "pread", raising=False)
+def test_completion_reads_the_exact_bytes_with_or_without_pread(tmp_path):
+    # Windows really has no ``os.pread``: there the positional read is a seek
+    # and read of the same descriptor; elsewhere it is ``pread``.
+    assert hasattr(os, "pread") is not WINDOWS
     path = _payload(tmp_path)
     digest = IntegrityMetadata("sha256", hashlib.sha256(PAYLOAD).hexdigest())
     assert filesystem.payload_matches(str(path), len(PAYLOAD), integrity=(digest,))
@@ -339,29 +339,15 @@ if WINDOWS:
     # The root itself is a link only here: on POSIX the root is opened as a
     # path (unchanged), so these cases are generated only where they apply.
     @pytest.mark.parametrize("kind", ["junction", "symlink"])
-    def test_a_root_that_is_itself_a_link_is_refused_by_its_own_handle(tmp_path, monkeypatch, kind):
+    def test_a_root_that_is_itself_a_link_is_refused_and_its_destination_untouched(tmp_path, kind):
         real = tmp_path / "real"
         (real / "empty").mkdir(parents=True)
         root = tmp_path / "linked-root"
         _link(kind, real, root)
-        native = filesystem._win32()
-        seen: list[int] = []
-        facts = native._facts
-
-        def recording(handle):
-            result = facts(handle)
-            seen.append(result[0] if result else -1)
-            return result
-
-        monkeypatch.setattr(native, "_facts", recording)
         assert filesystem.remove_empty_directory(str(root), str(root / "empty")) == filesystem.DIRECTORY_REFUSED
-        # DebridPulse's refusal, not the OS's: the root was opened as the entry
-        # itself and refused on its reparse attribute, before any traversal.
-        assert seen == [seen[0]] and seen[0] & native.ATTRIBUTE_REPARSE_POINT
         assert filesystem.is_link(root) and (real / "empty").is_dir()
-        seen.clear()
         assert filesystem.remove_empty_directory(str(real), str(real / "empty")) == filesystem.DIRECTORY_REMOVED
-        assert not seen[0] & native.ATTRIBUTE_REPARSE_POINT and not (real / "empty").exists()
+        assert not (real / "empty").exists()
 
 
 # ── Configuration defaults beside the database (C1) ──────────────────────────

@@ -134,11 +134,16 @@ async def start_application(application):
 
 
 async def stop_application(application):
+    from application.service import IntegrationStopFailed
+
     try:
         await scheduler.stop_scheduler()
     finally:
         try:
             await application.stop_integrations()
+        except IntegrationStopFailed as exc:
+            for failure in exc.failures:
+                logger.warning("Integration shutdown failed: %s", sanitize_exception(failure))
         except Exception as exc:
             logger.warning("Integration shutdown failed: %s", sanitize_exception(exc))
 
@@ -262,8 +267,9 @@ async def restore_backup(state, point_id: str) -> dict:
                     stopped_integrations = await current.stop_integrations()
                 except IntegrationStopFailed as exc:
                     stopped_integrations = exc.stopped
-                    logger.warning("Restore refused: an integration could not be stopped: %s",
-                                   sanitize_exception(exc.__cause__ or exc))
+                    for failure in exc.failures or (exc,):
+                        logger.warning("Restore refused: an integration could not be stopped: %s",
+                                       sanitize_exception(failure))
                     refused = RestoreFailed(409, "Active transfers could not be stopped safely.",
                                         reason_said={"$t": "error.restore.reason.transfers_not_stopped", "$v": {}})
             if refused is None:

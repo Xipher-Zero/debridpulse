@@ -737,7 +737,9 @@ async def test_a_partial_integration_stop_restarts_only_what_was_stopped(served)
     later = await _submit(app, client, "later")
     service = app.state.application
     a, b, c = service.lifecycle
-    b.fail_stop = True  # stops run c, b, a: c stops, b fails, a is never reached
+    # Stops run c, b, a: c stops, b fails, and a is still asked to stop (every
+    # integration gets its stop attempt); the refusal restarts c and a, never b.
+    b.fail_stop = True
     calls.clear()
     points = [item.id for item in backup.list_restore_points()]
 
@@ -745,7 +747,7 @@ async def test_a_partial_integration_stop_restarts_only_what_was_stopped(served)
 
     assert response.status_code == 409
     assert "left unchanged" in response.json()["detail"]
-    assert _counts(service) == {"a": (0, 0), "b": (1, 0), "c": (1, 1)}
+    assert _counts(service) == {"a": (1, 1), "b": (1, 0), "c": (1, 1)}
     assert calls == [("stop", None), ("start", service)]
     assert app.state.application is service
     assert await _ids(app) == sorted([kept, later])

@@ -154,9 +154,9 @@ class AvatarUrl(_WriteRule):
 # host's own path module (``os.path``: ``posixpath`` on Linux and macOS,
 # ``ntpath`` on Windows). Every folder rule and every lexical containment test
 # of stored paths asks these two functions, so a value is judged by the same
-# rules where it is written and where it is compared. ``flavor`` exists so the
-# Windows rules can be exercised on any host (``ntpath`` is importable
-# everywhere); production callers never pass it.
+# rules where it is written and where it is compared. ``flavor`` names a
+# namespace that is not this host's: an external client's import root is
+# judged by the client's rules (``external.profiles.client_flavor``).
 _WINDOWS_RESERVED = frozenset({
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
     *(f"{device}{index}" for device in ("COM", "LPT") for index in "123456789\u00b9\u00b2\u00b3"),

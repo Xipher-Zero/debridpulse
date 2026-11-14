@@ -291,6 +291,9 @@ class RsyncExecutor:
         self._runs: dict[str, _Run]
         self._finished: OrderedDict[str, None]
         self._runs, self._finished = _LIVE.setdefault(self.binding, ({}, OrderedDict()))
+        # The process owner is this executor's application-lifecycle part: a
+        # graceful application stop ends every live group (never a pause).
+        self.lifecycle = self.processes
         if not configuration.partial_transfers:
             # Partial Transfers off: nothing partial ever reaches the target, so
             # nothing can be continued -- core plans restarts for rsync.

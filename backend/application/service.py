@@ -100,10 +100,13 @@ class AcquisitionScopeRequired(Exception):
 
 
 class IntegrationStopFailed(RuntimeError):
-    """An integration failed to stop; ``stopped`` were stopped before it."""
+    """At least one integration failed to stop. Every integration was asked to
+    stop; ``stopped`` are those that did, ``failures`` the exception of each
+    one that did not, in stop order."""
 
-    def __init__(self, stopped):
-        super().__init__("an integration failed to stop")
+    def __init__(self, stopped, failures=()):
+        self.failures = tuple(failures)
+        super().__init__(f"{len(self.failures) or 1} integration(s) failed to stop")
         self.stopped = tuple(stopped)
 
 
@@ -1284,9 +1287,10 @@ class ApplicationService:
             await asyncio.wait((startup,))
 
     async def stop_integrations(self):
-        """Stop integrations in reverse order and return the ones stopped. A
-        stop that fails ends the sequence with ``IntegrationStopFailed``,
-        which names the integrations that were stopped before it. A startup
+        """Stop integrations in reverse order and return the ones stopped.
+        Every integration is asked to stop, whatever another's stop did; if
+        any failed, ``IntegrationStopFailed`` is raised once all were asked,
+        naming those stopped and every failure. A startup
         still in flight is cancelled and drained first, so no start races the
         stops or outlives this application."""
         startup = self._integration_startup
@@ -1299,13 +1303,16 @@ class ApplicationService:
             await self.engine.checkpoint_live_material("executor_shutdown")
         except Exception as exc:
             logger.warning("Material checkpoint before shutdown failed: %s", type(exc).__name__)
-        stopped = []
+        stopped, failures = [], []
         for integration in reversed(self.lifecycle):
             try:
                 await integration.stop()
             except Exception as exc:
-                raise IntegrationStopFailed(stopped) from exc
+                failures.append(exc)
+                continue
             stopped.append(integration)
+        if failures:
+            raise IntegrationStopFailed(stopped, failures) from failures[0]
         return tuple(stopped)
 
     async def maintain_integrations(self):
