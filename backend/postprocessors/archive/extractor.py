@@ -48,6 +48,7 @@ from services.extraction_safety import (
     validate_tar_members,
     validate_zip_members,
 )
+from transfers.filesystem import is_link, open_no_follow
 
 # The most of an external tool's own output kept for a diagnostic.
 _TOOL_OUTPUT_TAIL_BYTES = 4096
@@ -204,7 +205,6 @@ def _run_tool(
 
 def _extract_zip(archive: Path, dest: Path) -> None:
     root = dest.resolve()
-    no_follow = getattr(os, "O_NOFOLLOW", 0)
 
     with zipfile.ZipFile(archive, "r") as zf:
         members = zf.infolist()
@@ -234,23 +234,23 @@ def _extract_zip(archive: Path, dest: Path) -> None:
             current = root
             for part in parts[:-1]:
                 current = current / part
-                if current.is_symlink():
+                if is_link(current):
                     raise ValueError(f"ZIP member traverses a symlink: {member.filename!r}")
                 current.mkdir(exist_ok=True)
 
             if member.is_dir():
-                if target.is_symlink():
+                if is_link(target):
                     raise ValueError(f"ZIP directory replaces a symlink: {member.filename!r}")
                 target.mkdir(exist_ok=True)
                 continue
 
-            if target.is_symlink():
+            if is_link(target):
                 raise ValueError(f"ZIP file replaces a symlink: {member.filename!r}")
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | no_follow
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             # Create regular extracted files with standard non-writable group/
             # other permissions.  Do not rely on the process umask to remove
             # potentially dangerous write bits from a permissive mode.
-            fd = os.open(target, flags, 0o644)
+            fd = open_no_follow(target, flags, 0o644)
             with zf.open(member, "r") as source, os.fdopen(fd, "wb") as output:
                 shutil.copyfileobj(source, output)
 

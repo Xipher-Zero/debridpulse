@@ -1,13 +1,15 @@
 """aria2 registration and executor-owned settings schema."""
 import logging
-import posixpath
+import os
 import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from db.database import DB_PATH
 from integrations.definition import IntegrationDefinition
 from core.localization import CodedValueError, fact
+from core.settings_constraints import native_absolute
 
 logger = logging.getLogger("debridpulse.config")
 
@@ -87,10 +89,13 @@ class Aria2Options(BaseModel):
     # upload limit: DebridPulse's aria2 is compiled without BitTorrent, so it
     # never uploads; a stored ``max_upload_limit`` is an unknown key and ignored.)
     auto_start: bool = True
-    log_file: str = "/app/data/aria2/aria2.log"
+    # Beside the database (``DB_PATH``'s directory, the persistent data root):
+    # ``/app/data/aria2/...`` in the container, the per-user data directory
+    # on a desktop.
+    log_file: str = str(DB_PATH.parent / "aria2" / "aria2.log")
     log_max_mb: int = Field(default=25, ge=1, le=1024)
     log_backups: int = Field(default=3, ge=0, le=20)
-    session_file: str = "/app/data/aria2/aria2.session"
+    session_file: str = str(DB_PATH.parent / "aria2" / "aria2.session")
     purge_interval_minutes: int = Field(default=5, ge=0, le=1440)
     max_download_result: int = Field(default=20, ge=10, le=5000)
     keep_unfinished_download_result: bool = False
@@ -115,8 +120,8 @@ class Aria2Options(BaseModel):
     @field_validator("log_file", "session_file")
     @classmethod
     def _runtime_path(cls, value: str) -> str:
-        if (not value.startswith("/") or len(value) > 1024 or any(ord(char) < 32 for char in value)
-                or posixpath.normpath(value) != value):
+        if (not native_absolute(value) or len(value) > 1024 or any(ord(char) < 32 for char in value)
+                or os.path.normpath(value) != value):
             raise ValueError("aria2 log and session files are normalized absolute paths")
         return value
 

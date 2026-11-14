@@ -27,6 +27,8 @@ the refused value is never part of the message.
 from __future__ import annotations
 
 import math
+import ntpath
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -148,15 +150,83 @@ class AvatarUrl(_WriteRule):
                 "setting_avatar", "Input should be an http:// or https:// image address that is not an SVG")
 
 
+# What a path a folder setting names IS on this host: its rules come from the
+# host's own path module (``os.path``: ``posixpath`` on Linux and macOS,
+# ``ntpath`` on Windows). Every folder rule and every lexical containment test
+# of stored paths asks these two functions, so a value is judged by the same
+# rules where it is written and where it is compared. ``flavor`` exists so the
+# Windows rules can be exercised on any host (``ntpath`` is importable
+# everywhere); production callers never pass it.
+_WINDOWS_RESERVED = frozenset({
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+    *(f"{device}{index}" for device in ("COM", "LPT") for index in "123456789\u00b9\u00b2\u00b3"),
+})
+_WINDOWS_FORBIDDEN = re.compile(r'[<>:"/|?*\x00-\x1f]')
+
+
+def windows_reserved_name(component: str) -> bool:
+    """Whether Windows would treat a file name as a device (``NUL``,
+    ``con.txt``, ``COM1 .log`` ...) or silently rewrite it (a trailing dot or
+    space is dropped): a name that does not name the file it says."""
+    return (component.endswith((".", " "))
+            or component.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_RESERVED)
+
+
+def _windows_fully_qualified(value: str) -> bool:
+    """A canonical Windows path DebridPulse can own: drive-absolute
+    (``C:\\...``) or UNC (``\\\\server\\share\\...``), already normal (no
+    ``.``/``..``, ``/``, doubled or trailing separator), never drive-relative
+    (``C:x``), rooted without a drive (``\\x``), a device or extended-length
+    namespace (``\\\\.\\``, ``\\\\?\\``), a reserved device name, a stream
+    (``:``) or a component Windows would silently rewrite."""
+    if ntpath.normpath(value) != value:
+        return False
+    drive, rest = ntpath.splitdrive(value)
+    if value.startswith("\\\\"):
+        server_share = drive[2:].split("\\")
+        if value[2:3] in {"?", "."} or len(server_share) != 2 or not all(server_share):
+            return False
+        components = [*server_share, *rest.split("\\")]
+    elif len(drive) == 2 and drive[0].isascii() and drive[0].isalpha() and rest.startswith("\\"):
+        components = rest.split("\\")
+    else:
+        return False
+    return all(not _WINDOWS_FORBIDDEN.search(part) and not windows_reserved_name(part)
+               for part in components if part)
+
+
+def native_absolute(value: str, flavor=None) -> bool:
+    """Whether ``value`` is a fully qualified path on this host: on POSIX one
+    that starts at ``/`` (exactly the rule every folder setting has always
+    had), on Windows a canonical drive or UNC path."""
+    flavor = flavor or os.path
+    if flavor.sep == "/":
+        return value.startswith("/")
+    return _windows_fully_qualified(value)
+
+
+def path_within(base: str, path: str, flavor=None) -> bool:
+    """Whether ``path`` is ``base`` or lexically beneath it, compared with the
+    host's own component and case rules (``normpath`` + ``normcase``: on
+    Windows ``/`` and ``\\`` are one separator, ``..`` is resolved before the
+    comparison and case does not matter; on POSIX nothing changes). Lexical:
+    it never touches the filesystem, so links are the caller's concern."""
+    flavor = flavor or os.path
+    root = flavor.normcase(flavor.normpath(base))
+    candidate = flavor.normcase(flavor.normpath(path))
+    return candidate == root or candidate.startswith(root.rstrip(flavor.sep) + flavor.sep)
+
+
 @dataclass(frozen=True)
 class AbsolutePath(_WriteRule):
-    """A written folder is an absolute path without control characters, at
-    most ``max_length`` characters. (A relative one would resolve against the
-    server process's working directory -- not a folder anyone chose.)"""
+    """A written folder is a fully qualified path on this host
+    (``native_absolute``) without control characters, at most ``max_length``
+    characters. (A relative one would resolve against the server process's
+    working directory -- not a folder anyone chose.)"""
     max_length: int = 4096
 
     def check(self, value: str) -> None:
-        if not value.startswith("/") or len(value) > self.max_length or _CONTROL.search(value):
+        if not native_absolute(value) or len(value) > self.max_length or _CONTROL.search(value):
             raise PydanticCustomError("setting_path", "Input should be an absolute folder path")
 
 

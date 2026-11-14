@@ -246,9 +246,11 @@ class Aria2Runtime:
         return self._process is not None and self._process.returncode is None
 
     def _runtime_paths(self) -> tuple[Path, Path]:
+        from executors.aria2.definition import Aria2Options
         aria2 = self._config.options
-        log_file = Path(aria2.log_file or "/app/data/aria2/aria2.log")
-        session_file = Path(aria2.session_file or "/app/data/aria2/aria2.session")
+        defaults = Aria2Options.model_fields
+        log_file = Path(aria2.log_file or defaults["log_file"].default)
+        session_file = Path(aria2.session_file or defaults["session_file"].default)
         # The session aria2 saves holds its jobs' credentials (download and
         # proxy passwords, signed addresses), and aria2 replaces that file with
         # its own file mode on every save: a folder created here is private to

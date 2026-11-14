@@ -288,8 +288,10 @@ def _cfg():
 
 
 def _folder() -> Path:
+    from db.database import DB_PATH
     cfg = _cfg()
-    return Path(getattr(cfg, "backup_folder", "/app/data/backups") or "/app/data/backups")
+    default = DB_PATH.parent / "backups"     # AppSettings.backup_folder's default
+    return Path(getattr(cfg, "backup_folder", default) or default)
 
 
 # ── schema identity ─────────────────────────────────────────────────────────

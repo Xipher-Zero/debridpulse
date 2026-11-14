@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import errno
+import functools
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
@@ -19,6 +20,7 @@ import re
 import shutil
 import stat
 
+from core.settings_constraints import native_absolute, path_within, windows_reserved_name
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import (
     ExecutionFootprint, IntegrityMetadata, MaterializationKind, MaterializationPlan, MaterializationResult,
@@ -26,16 +28,67 @@ from transfers.models import (
 )
 from transfers.size_evidence import SizeEvidenceKind, classify_size_evidence
 
+# Windows has neither ``O_NOFOLLOW`` nor descriptor-relative operations, and
+# ``is_symlink`` is False for a junction there. The link and no-follow
+# guarantees of this module hold on Windows through its native equivalents
+# (``_Win32``: a reparse-point-refusing open, handle-relative removal). On
+# every other platform this is False and none of that code runs.
+_WINDOWS = os.name == "nt"
+# ``st_reparse_tag`` of a junction (or volume mount point), which ``lstat``
+# reports as a plain directory on Windows. ``stat`` names it only on Windows.
+_IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+
 
 def safe_name(value: str) -> str:
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value))[:200].strip().lstrip(".") or "download"
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value))[:200].strip().lstrip(".") or "download"
+    if _WINDOWS:
+        # Windows drops a trailing dot or space and opens ``NUL``, ``con.txt``
+        # ... as devices: the bytes would land in another file or nowhere.
+        name = name.rstrip(". ") or "download"
+        if windows_reserved_name(name):
+            name = f"_{name}"
+    return name
+
+
+def is_link(path: Path) -> bool:
+    """A symlink, or on Windows also a junction (``is_symlink`` is False for
+    one): an entry that is never followed, traversed or removed as what it
+    points at. On POSIX exactly ``is_symlink``."""
+    return path.is_symlink() or path.is_junction()
+
+
+def _is_link_info(info: os.stat_result) -> bool:
+    """``is_link`` for an ``lstat`` result already in hand."""
+    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) == _IO_REPARSE_TAG_MOUNT_POINT
+
+
+def open_no_follow(path, flags: int, mode: int = 0o777) -> int:
+    """``os.open`` that never follows a link at the final component and fails
+    with ``ELOOP`` instead (``O_NOFOLLOW``). On Windows a native open of the
+    entry itself, refused when it is a reparse point (symlink, junction or
+    any other) before anything is read, written or truncated, always binary,
+    never inherited by a child process, and sharing read, write and delete
+    with every other opener as a POSIX descriptor does."""
+    if not _WINDOWS:
+        return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), mode)
+    return _win32().open_no_follow(os.fspath(path), flags)
+
+
+def _read_at(fd: int, size: int, offset: int) -> bytes:
+    """``os.pread`` where the platform has one; otherwise seek and read the
+    same descriptor, which is equivalent because nothing else uses it."""
+    pread = getattr(os, "pread", None)
+    if pread is not None:
+        return pread(fd, size, offset)
+    os.lseek(fd, offset, os.SEEK_SET)
+    return os.read(fd, size)
 
 
 def validate_target(root: str, target: str) -> Path:
     path = Path(target)
     try:
         base, resolved = Path(root).resolve(), path.resolve()
-        valid = path.is_absolute() and not path.is_symlink() and resolved != base and resolved.is_relative_to(base)
+        valid = path.is_absolute() and not is_link(path) and resolved != base and resolved.is_relative_to(base)
     except (OSError, RuntimeError):
         valid = False
     if not valid:
@@ -117,11 +170,11 @@ def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple
         return False
     descriptor = None
     try:
-        descriptor = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        descriptor = open_no_follow(target, os.O_RDONLY)
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_size != expected_size:
             return False
-        if expected_size and (len(os.pread(descriptor, 1, 0)) != 1 or len(os.pread(descriptor, 1, expected_size - 1)) != 1):
+        if expected_size and (len(_read_at(descriptor, 1, 0)) != 1 or len(_read_at(descriptor, 1, expected_size - 1)) != 1):
             return False
         for checksum in integrity:
             if checksum.algorithm not in {"sha256", "sha512", "sha1", "md5"}:
@@ -129,7 +182,7 @@ def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple
             digest = hashlib.new(checksum.algorithm, usedforsecurity=False)
             offset = 0
             while offset < expected_size:
-                block = os.pread(descriptor, min(1024 * 1024, expected_size - offset), offset)
+                block = _read_at(descriptor, min(1024 * 1024, expected_size - offset), offset)
                 if not block:
                     return False
                 digest.update(block)
@@ -189,7 +242,7 @@ def retire_partial(root: str, target: str, sidecars=()) -> None:
     paths = (target, *sidecars)
     for item in paths:
         path = Path(item)
-        if path.is_symlink() or not path.resolve().is_relative_to(base):
+        if is_link(path) or not path.resolve().is_relative_to(base):
             raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.CLEANUP))
     try:
         for item in paths:
@@ -276,7 +329,7 @@ def _regular_beneath(root: Path, relative: PurePosixPath) -> os.stat_result | No
         for index, part in enumerate(relative.parts):
             current = current / part
             info = os.lstat(current)
-            if stat.S_ISLNK(info.st_mode):
+            if _is_link_info(info):
                 return None
             if index < len(relative.parts) - 1 and not stat.S_ISDIR(info.st_mode):
                 return None
@@ -359,7 +412,7 @@ def _holes(fd: int, size: int, probe) -> tuple[tuple[int, int], ...]:
 def payload_facts(path: str, probe=()) -> PayloadFacts:
     """Observe a FILE payload without following a link or changing it."""
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = open_no_follow(path, os.O_RDONLY)
     except (FileNotFoundError, NotADirectoryError):
         return PayloadFacts(True, False)
     except OSError as exc:
@@ -383,9 +436,11 @@ def flush_payload(path: str) -> PayloadFacts | None:
     """The durability boundary of a checkpoint: flush everything already
     written to ``path`` to stable storage (``fsync`` covers the file's dirty
     data whichever descriptor wrote it) and report its facts. ``None`` when
-    durability could not be established -- the caller then commits nothing."""
+    durability could not be established -- the caller then commits nothing.
+    (Windows flushes only through a handle with write access, so there the
+    payload is opened read-write; it is never written.)"""
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = open_no_follow(path, os.O_RDWR if _WINDOWS else os.O_RDONLY)
     except OSError:
         return None
     try:
@@ -591,7 +646,7 @@ def _prune_empty_parents(base: Path, target: Path) -> None:
     ancestors = []
     current = target.parent
     while current != base:
-        if not current.is_relative_to(base) or current == current.parent or current.is_symlink():
+        if not current.is_relative_to(base) or current == current.parent or is_link(current):
             return
         ancestors.append(current)
         current = current.parent
@@ -612,7 +667,7 @@ def retire_native_state(root: str, plan: MaterializationPlan, footprint: Executi
     trees = tuple(str(item) for item in footprint.transient_trees)
     for item in (*transient, *trees):
         path = Path(item)
-        if path.is_symlink() or not path.resolve().is_relative_to(base) or path.resolve() == base:
+        if is_link(path) or not path.resolve().is_relative_to(base) or path.resolve() == base:
             raise _policy_violation(Stage.CLEANUP)
     try:
         for item in transient:
@@ -646,7 +701,7 @@ def retire_materialization(root: str, plan: MaterializationPlan, footprint: Exec
     boundary = _boundary(plan)
     for item in (boundary, *transient, *trees):
         path = Path(item)
-        if path.is_symlink() or not path.resolve().is_relative_to(base) or path.resolve() == base:
+        if is_link(path) or not path.resolve().is_relative_to(base) or path.resolve() == base:
             raise _policy_violation(Stage.CLEANUP)
     try:
         for item in transient:
@@ -690,7 +745,17 @@ def remove_empty_directory(root: str, target: str) -> str:
     itself, a symlink or non-directory anywhere, another owner or device,
     a permission error, or a platform without descriptor-relative
     ``rmdir``/``O_NOFOLLOW``). Never raises for any of those.
+
+    On Windows the same walk uses handles: the root and each component below
+    it are opened as the entry itself, never following a reparse point (a
+    root that is one is refused), each component relative to its parent's
+    open handle (``NtCreateFile`` with a root directory); the final directory
+    must be a real directory on the root's volume owned by this process's
+    user, and is deleted through that very handle, which Windows refuses for
+    a non-empty directory (``_Win32.remove_empty_directory``).
     """
+    if _WINDOWS:
+        return _remove_empty_directory_windows(root, target)
     if (not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY")
             or os.rmdir not in os.supports_dir_fd or os.stat not in os.supports_dir_fd
             or os.open not in os.supports_dir_fd):
@@ -741,3 +806,240 @@ def remove_empty_directory(root: str, target: str) -> str:
         return DIRECTORY_REMOVED
     finally:
         os.close(parent)
+
+
+def _remove_empty_directory_windows(root: str, target: str) -> str:
+    base = os.path.normpath(str(root))
+    path = str(target)
+    # Only an exact, already-normal, fully qualified path strictly beneath
+    # the root (``native_absolute`` also refuses streams, devices and names
+    # Windows would rewrite); the case-insensitive containment is Windows'.
+    if (not native_absolute(base) or not native_absolute(path) or not path_within(base, path)
+            or path_within(path, base)):
+        return DIRECTORY_REFUSED
+    parts = path[len(base.rstrip(os.sep)) + 1:].split(os.sep)
+    if any(part in {"", ".", ".."} for part in parts):
+        return DIRECTORY_REFUSED
+    try:
+        native = _win32()
+    except OSError:
+        return DIRECTORY_REFUSED
+    return native.remove_empty_directory(base, parts)
+
+
+@functools.cache
+def _win32() -> "_Win32":
+    return _Win32()
+
+
+class _Win32:
+    """The Windows primitives behind ``open_no_follow`` and
+    ``remove_empty_directory``: documented kernel32/ntdll/advapi32 calls,
+    loaded only on Windows."""
+
+    GENERIC_READ, GENERIC_WRITE = 0x80000000, 0x40000000
+    DELETE, READ_CONTROL, SYNCHRONIZE = 0x00010000, 0x00020000, 0x00100000
+    FILE_LIST_DIRECTORY, FILE_TRAVERSE, FILE_READ_ATTRIBUTES = 0x0001, 0x0020, 0x0080
+    SHARE_ALL = 0x7                                   # read | write | delete
+    CREATE_NEW, OPEN_EXISTING, OPEN_ALWAYS = 1, 3, 4
+    FLAG_OPEN_REPARSE_POINT, FLAG_BACKUP_SEMANTICS = 0x00200000, 0x02000000
+    ATTRIBUTE_DIRECTORY, ATTRIBUTE_REPARSE_POINT = 0x10, 0x400
+    # NtCreateFile: open (never create) a directory, as the entry itself.
+    NT_FILE_OPEN, NT_DIRECTORY_FILE, NT_SYNCHRONOUS_IO_NONALERT, NT_OPEN_REPARSE_POINT = 1, 0x1, 0x20, 0x00200000
+    OBJ_CASE_INSENSITIVE = 0x40
+    STATUS_MISSING = {0xC0000034, 0xC000003A}         # object name / path not found
+    FILE_DISPOSITION_INFO = 4
+    ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_DIR_NOT_EMPTY = 2, 3, 145
+
+    def __init__(self):
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        self.ctypes, self.msvcrt = ctypes, msvcrt
+        handle, dword, ulong = wintypes.HANDLE, wintypes.DWORD, wintypes.ULONG
+
+        class UnicodeString(ctypes.Structure):
+            _fields_ = [("Length", wintypes.USHORT), ("MaximumLength", wintypes.USHORT), ("Buffer", wintypes.LPWSTR)]
+
+        class ObjectAttributes(ctypes.Structure):
+            _fields_ = [("Length", ulong), ("RootDirectory", handle), ("ObjectName", ctypes.POINTER(UnicodeString)),
+                        ("Attributes", ulong), ("SecurityDescriptor", ctypes.c_void_p),
+                        ("SecurityQualityOfService", ctypes.c_void_p)]
+
+        class IoStatusBlock(ctypes.Structure):
+            _fields_ = [("Status", ctypes.c_void_p), ("Information", ctypes.c_void_p)]
+
+        class FileInformation(ctypes.Structure):          # BY_HANDLE_FILE_INFORMATION
+            _fields_ = [("dwFileAttributes", dword), ("ftCreationTime", wintypes.FILETIME),
+                        ("ftLastAccessTime", wintypes.FILETIME), ("ftLastWriteTime", wintypes.FILETIME),
+                        ("dwVolumeSerialNumber", dword), ("nFileSizeHigh", dword), ("nFileSizeLow", dword),
+                        ("nNumberOfLinks", dword), ("nFileIndexHigh", dword), ("nFileIndexLow", dword)]
+
+        self.UnicodeString, self.ObjectAttributes = UnicodeString, ObjectAttributes
+        self.IoStatusBlock, self.FileInformation = IoStatusBlock, FileInformation
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        ntdll = ctypes.WinDLL("ntdll")
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+        self.CreateFileW = kernel32.CreateFileW
+        self.CreateFileW.argtypes = [wintypes.LPCWSTR, dword, dword, ctypes.c_void_p, dword, dword, handle]
+        self.CreateFileW.restype = handle
+        self.CloseHandle = kernel32.CloseHandle
+        self.CloseHandle.argtypes = [handle]
+        self.GetFileInformationByHandle = kernel32.GetFileInformationByHandle
+        self.GetFileInformationByHandle.argtypes = [handle, ctypes.POINTER(FileInformation)]
+        self.GetFileInformationByHandle.restype = wintypes.BOOL
+        self.SetFileInformationByHandle = kernel32.SetFileInformationByHandle
+        self.SetFileInformationByHandle.argtypes = [handle, ctypes.c_int, ctypes.c_void_p, dword]
+        self.SetFileInformationByHandle.restype = wintypes.BOOL
+        self.LocalFree = kernel32.LocalFree
+        self.LocalFree.argtypes = [ctypes.c_void_p]
+        self.NtCreateFile = ntdll.NtCreateFile
+        self.NtCreateFile.argtypes = [ctypes.POINTER(handle), ulong, ctypes.POINTER(ObjectAttributes),
+                                      ctypes.POINTER(IoStatusBlock), ctypes.c_void_p, ulong, ulong, ulong, ulong,
+                                      ctypes.c_void_p, ulong]
+        self.NtCreateFile.restype = ctypes.c_long
+        self.GetSecurityInfo = advapi32.GetSecurityInfo
+        self.GetSecurityInfo.argtypes = [handle, ctypes.c_int, dword, ctypes.POINTER(ctypes.c_void_p),
+                                         ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                                         ctypes.POINTER(ctypes.c_void_p)]
+        self.GetSecurityInfo.restype = dword
+        self.EqualSid = advapi32.EqualSid
+        self.EqualSid.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.EqualSid.restype = wintypes.BOOL
+        self.INVALID_HANDLE = ctypes.c_void_p(-1).value
+        self._user = self._process_user(kernel32, advapi32, wintypes)
+
+    def _process_user(self, kernel32, advapi32, wintypes):
+        """This process's user SID (the token's ``TokenUser``), kept alive in
+        its buffer for ``EqualSid``."""
+        ctypes = self.ctypes
+        token = wintypes.HANDLE()
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+                                                 ctypes.POINTER(wintypes.DWORD)]
+        if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), 0x0008, ctypes.byref(token)):  # TOKEN_QUERY
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            needed = wintypes.DWORD()
+            advapi32.GetTokenInformation(token, 1, None, 0, ctypes.byref(needed))           # TokenUser
+            buffer = ctypes.create_string_buffer(needed.value)
+            if not advapi32.GetTokenInformation(token, 1, buffer, needed, ctypes.byref(needed)):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            self.CloseHandle(token)
+        self._user_buffer = buffer
+        return ctypes.cast(buffer, ctypes.POINTER(ctypes.c_void_p))[0]  # TOKEN_USER.User.Sid
+
+    def _error(self, path: str) -> OSError:
+        code = self.ctypes.get_last_error()
+        return OSError(0, self.ctypes.FormatError(code).strip(), path, code)
+
+    def open_no_follow(self, path: str, flags: int) -> int:
+        access_mode = flags & (os.O_RDONLY | os.O_WRONLY | os.O_RDWR)
+        access = {os.O_RDONLY: self.GENERIC_READ, os.O_WRONLY: self.GENERIC_WRITE}.get(
+            access_mode, self.GENERIC_READ | self.GENERIC_WRITE)
+        if flags & os.O_CREAT:
+            disposition = self.CREATE_NEW if flags & os.O_EXCL else self.OPEN_ALWAYS
+        else:
+            disposition = self.OPEN_EXISTING
+        # The entry itself (never a reparse point's target), directories too
+        # (as ``os.open`` opens one on POSIX); not inheritable by children.
+        handle = self.CreateFileW(path, access, self.SHARE_ALL, None, disposition,
+                                  self.FLAG_OPEN_REPARSE_POINT | self.FLAG_BACKUP_SEMANTICS, None)
+        if handle is None or handle == self.INVALID_HANDLE:
+            raise self._error(path)
+        try:
+            fd = self.msvcrt.open_osfhandle(handle, access_mode | (flags & os.O_APPEND))
+        except BaseException:
+            self.CloseHandle(handle)
+            raise
+        try:
+            info = os.fstat(fd)
+            if info.st_file_attributes & self.ATTRIBUTE_REPARSE_POINT:
+                raise OSError(errno.ELOOP, "A link is never followed", path)
+            if flags & os.O_TRUNC and stat.S_ISREG(info.st_mode):
+                os.ftruncate(fd, 0)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def _facts(self, handle) -> tuple[int, int] | None:
+        """``(attributes, volume serial)`` of an open handle."""
+        info = self.FileInformation()
+        if not self.GetFileInformationByHandle(handle, self.ctypes.byref(info)):
+            return None
+        return info.dwFileAttributes, info.dwVolumeSerialNumber
+
+    def _open_relative(self, parent, name: str, access: int):
+        """Open directory ``name`` relative to the open ``parent`` handle, as
+        the entry itself. ``(handle, missing)``; ``handle`` is None on failure."""
+        ctypes = self.ctypes
+        size = len(name) * 2
+        object_name = self.UnicodeString(size, size, name)
+        attributes = self.ObjectAttributes(ctypes.sizeof(self.ObjectAttributes), parent, ctypes.pointer(object_name),
+                                           self.OBJ_CASE_INSENSITIVE, None, None)
+        handle, status_block = self.ctypes.c_void_p(), self.IoStatusBlock()
+        status = self.NtCreateFile(ctypes.byref(handle), access | self.SYNCHRONIZE, ctypes.byref(attributes),
+                                   ctypes.byref(status_block), None, 0, self.SHARE_ALL, self.NT_FILE_OPEN,
+                                   self.NT_DIRECTORY_FILE | self.NT_SYNCHRONOUS_IO_NONALERT | self.NT_OPEN_REPARSE_POINT,
+                                   None, 0)
+        if status < 0:
+            return None, (status & 0xFFFFFFFF) in self.STATUS_MISSING
+        return handle.value, False
+
+    def _owned_by_this_user(self, handle) -> bool:
+        ctypes = self.ctypes
+        owner, descriptor = ctypes.c_void_p(), ctypes.c_void_p()
+        if self.GetSecurityInfo(handle, 1, 0x1, ctypes.byref(owner), None, None, None,   # SE_FILE_OBJECT, OWNER
+                                ctypes.byref(descriptor)) != 0:
+            return False
+        try:
+            return bool(self.EqualSid(owner, self._user))
+        finally:
+            self.LocalFree(descriptor)
+
+    def remove_empty_directory(self, base: str, parts: list[str]) -> str:
+        # The root is opened as the entry itself too, so a root that is a
+        # junction, directory symlink or other reparse point is refused by
+        # its handle's own attributes, never followed to wherever it points.
+        root = self.CreateFileW(base, self.FILE_LIST_DIRECTORY | self.FILE_TRAVERSE | self.FILE_READ_ATTRIBUTES,
+                                self.SHARE_ALL, None, self.OPEN_EXISTING,
+                                self.FLAG_OPEN_REPARSE_POINT | self.FLAG_BACKUP_SEMANTICS, None)
+        if root is None or root == self.INVALID_HANDLE:
+            return DIRECTORY_REFUSED
+        handles = [root]
+        try:
+            facts = self._facts(root)
+            if facts is None or facts[0] & self.ATTRIBUTE_REPARSE_POINT or not facts[0] & self.ATTRIBUTE_DIRECTORY:
+                return DIRECTORY_REFUSED
+            volume, current = facts[1], root
+            for index, part in enumerate(parts):
+                final = index == len(parts) - 1
+                access = self.FILE_READ_ATTRIBUTES | (
+                    self.DELETE | self.READ_CONTROL if final else self.FILE_LIST_DIRECTORY | self.FILE_TRAVERSE)
+                child, missing = self._open_relative(current, part, access)
+                if child is None:
+                    return DIRECTORY_ABSENT if missing else DIRECTORY_REFUSED
+                handles.append(child)
+                facts = self._facts(child)
+                # A reparse point (symlink, junction, mount point), a
+                # non-directory or another volume: never traversed or removed.
+                if (facts is None or facts[0] & self.ATTRIBUTE_REPARSE_POINT
+                        or not facts[0] & self.ATTRIBUTE_DIRECTORY or facts[1] != volume):
+                    return DIRECTORY_REFUSED
+                current = child
+            if not self._owned_by_this_user(current):
+                return DIRECTORY_REFUSED
+            delete = self.ctypes.c_ubyte(1)               # FILE_DISPOSITION_INFO.DeleteFile
+            if self.SetFileInformationByHandle(current, self.FILE_DISPOSITION_INFO, self.ctypes.byref(delete), 1):
+                return DIRECTORY_REMOVED                  # removed as this handle closes
+            code = self.ctypes.get_last_error()
+            if code == self.ERROR_DIR_NOT_EMPTY:
+                return DIRECTORY_NOT_EMPTY
+            return DIRECTORY_ABSENT if code in {self.ERROR_FILE_NOT_FOUND, self.ERROR_PATH_NOT_FOUND} else DIRECTORY_REFUSED
+        finally:
+            for handle in reversed(handles):
+                self.CloseHandle(handle)

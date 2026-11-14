@@ -8,10 +8,11 @@ deletes or owns anything: no table, no queue, no worker.
 """
 from __future__ import annotations
 
-import posixpath
 import re
 
+from core.settings_constraints import path_within
 from external.intake import MAX_NZB_BYTES, MAX_TORRENT_BYTES
+from external.profiles import client_flavor
 from external.service import ExternalClients, ExternalRefused
 
 # Each dialect answers at its protocol's own default path -- what Sonarr and
@@ -139,9 +140,11 @@ def output_location(delivery: dict) -> tuple[str, int] | None:
     size = int(delivery.get("total_bytes") or 0)
     if len(paths) == 1:
         return paths[0], size
-    folder = posixpath.commonpath(paths)
-    root = posixpath.normpath(str(delivery.get("import_root") or "/"))
-    if folder == root or not folder.startswith(root.rstrip("/") + "/"):
+    import_root = str(delivery.get("import_root") or "/")
+    flavor = client_flavor(import_root)
+    folder = flavor.commonpath(paths)
+    strictly_beneath = path_within(import_root, folder, flavor) and not path_within(folder, import_root, flavor)
+    if not strictly_beneath:
         return None
     return folder, size
 

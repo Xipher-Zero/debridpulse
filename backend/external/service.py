@@ -28,7 +28,6 @@ import hashlib
 import json
 import logging
 import os
-import posixpath
 import time
 import uuid
 import weakref
@@ -41,7 +40,8 @@ from core.logging_utils import sanitize_exception
 from db.database import get_db
 from db.event_journal import JournalEvent, record
 from external import intake as intake_owner
-from external.profiles import DeliveryProfile, category_key, confined_to
+from core.settings_constraints import path_within
+from external.profiles import DeliveryProfile, category_key, client_flavor, confined_to
 from transfers.filesystem import member_payload
 from transfers.models import SubmissionDemand
 
@@ -1483,7 +1483,9 @@ class ExternalClients:
         a recorded post-processing output by its own lstat (a regular file,
         no link anywhere beneath the root)."""
         engine = self.application.engine
-        root = posixpath.normpath(profile.local_root)
+        root = os.path.normpath(profile.local_root)
+        export = profile.effective_import_root
+        export_flavor = client_flavor(export)
         files: dict[str, dict] = {}
         for row, recorded in sorted(entries, key=lambda item: (int(item[0]["id"]) if item[0] else 0,
                                                                 item[1] or "")):
@@ -1495,10 +1497,10 @@ class ExternalClients:
             else:
                 paths = (recorded,)
             for path in paths:
-                normalized = posixpath.normpath(str(path))
-                if normalized == root or not normalized.startswith(root.rstrip("/") + "/"):
+                normalized = os.path.normpath(str(path))
+                if not path_within(root, normalized) or path_within(normalized, root):
                     return "outside_export_root"
-                relative = normalized[len(root.rstrip("/")) + 1:]
+                relative = normalized[len(root.rstrip(os.sep)) + 1:]
                 if member_payload(root, relative) is None:
                     return "material_missing"
                 try:
@@ -1507,9 +1509,9 @@ class ExternalClients:
                     return "material_missing"
                 files[relative] = {"artifact_id": int(row["id"]) if row is not None else None,
                                    "material_generation": generations.get(int(row["id"]), 0) if row is not None else 0,
-                                   "relative_path": relative, "name": posixpath.basename(relative),
+                                   "relative_path": relative, "name": os.path.basename(relative),
                                    "size": info.st_size,
-                                   "import_path": posixpath.join(profile.effective_import_root, relative)}
+                                   "import_path": export_flavor.join(export, relative.replace(os.sep, export_flavor.sep))}
                 if row is None:
                     files[relative]["modified_ns"] = info.st_mtime_ns
         if not files:

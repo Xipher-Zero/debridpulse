@@ -13,12 +13,14 @@ settings ``PUT /api/settings`` carries it forward unchanged.
 """
 from __future__ import annotations
 
+import os
 import posixpath
 import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from core.localization import CodedValueError, fact
+from core.settings_constraints import native_absolute, path_within
 
 # Every source kind the native submit operation accepts (``external.intake``).
 SOURCE_KINDS = ("links", "magnet", "nzb_link", "nzb", "torrent")
@@ -28,12 +30,29 @@ MAX_CLIENTS = 256
 _IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
 
 
-def _absolute(value: str, field: str) -> str:
+def client_flavor(root: str):
+    """The path rules of the namespace an ``import_root`` is written in: the
+    external client's. A ``/``-rooted root is a POSIX path (a client on Linux
+    or in a container, whatever this host is); anything else can only be a
+    path on this host."""
+    return posixpath if str(root).startswith("/") else os.path
+
+
+def _absolute(value: str, field: str, flavor=None) -> str:
+    """A normalized fully qualified path: DebridPulse's own (``local_root``,
+    this host's rules) or the client's (``import_root``, ``client_flavor``)."""
     text = str(value or "").strip()
-    if not text.startswith("/") or "\x00" in text or len(text) > 1024:
+    flavor = flavor or os.path
+    if "\x00" in text or len(text) > 1024 or not native_absolute(text, flavor):
+        if "\x00" not in text and len(text) <= 1024 and native_absolute(flavor.normpath(text), flavor):
+            raise CodedValueError(f"{field} must be a normalized absolute path", code="profiles.path_not_normalized", params={"field": fact(field)})
         raise CodedValueError(f"{field} must be an absolute path", code="profiles.path_not_absolute", params={"field": fact(field)})
-    normalized = posixpath.normpath(text)
-    if normalized != text.rstrip("/") and not (text == "/" and normalized == "/"):
+    normalized = flavor.normpath(text)
+    if flavor.sep == "/":
+        unnormalized = normalized != text.rstrip("/") and not (text == "/" and normalized == "/")
+    else:
+        unnormalized = normalized != text      # a drive or share root keeps its separator
+    if unnormalized:
         raise CodedValueError(f"{field} must be a normalized absolute path", code="profiles.path_not_normalized", params={"field": fact(field)})
     return normalized
 
@@ -104,7 +123,8 @@ class DeliveryProfile(BaseModel):
     @field_validator("import_root")
     @classmethod
     def _import_root(cls, value: str) -> str:
-        return _absolute(value, "import_root") if str(value or "").strip() else ""
+        text = str(value or "").strip()
+        return _absolute(text, "import_root", client_flavor(text)) if text else ""
 
     @property
     def effective_import_root(self) -> str:
@@ -154,7 +174,6 @@ class ExternalDeliverySettings(BaseModel):
 
 
 def confined_to(download_folder: str, local_root: str) -> bool:
-    """Whether a profile's ``local_root`` is the download folder or beneath it."""
-    base = posixpath.normpath(str(download_folder or "/download"))
-    root = posixpath.normpath(str(local_root or ""))
-    return root == base or root.startswith(base.rstrip("/") + "/")
+    """Whether a profile's ``local_root`` is the download folder or beneath it
+    (``path_within``: this host's separator, ``..`` and case rules)."""
+    return path_within(str(download_folder or "/download"), str(local_root or ""))

@@ -12,6 +12,7 @@ from core.secure_files import atomic_write_json
 from core.settings_constraints import (
     MAX_SAFE_INTEGER, AbsolutePath, AvatarUrl, Choice, HttpUrl, MaxLength, Range,
 )
+from db.database import DB_PATH
 from integrations.configuration import clamp_persisted_namespaces, migrate_legacy_settings, normalize_settings
 from external.profiles import ExternalDeliverySettings
 from integrations.definition import IntegrationGroupSettings, IntegrationSettings
@@ -99,9 +100,11 @@ class AppSettings(BaseModel):
 
     full_sync_interval_minutes: Annotated[int, Range(0, 1440, clamp_at_load=True)] = 5
 
-    # Backups
+    # Backups. Both folders default to beside the database (``DB_PATH``'s
+    # directory, the persistent data root): ``/app/data/...`` in the
+    # container, the per-user data directory on a desktop.
     backup_enabled: bool = True
-    backup_folder: Annotated[str, AbsolutePath()] = "/app/data/backups"
+    backup_folder: Annotated[str, AbsolutePath()] = str(DB_PATH.parent / "backups")
     backup_keep_days: Annotated[int, Range(1, 365, clamp_at_load=True)] = 7
     backup_interval_hours: Annotated[int, Range(1, 168, clamp_at_load=True)] = 24
     # Count retention, independent of age: at most this many restore points.
@@ -109,7 +112,7 @@ class AppSettings(BaseModel):
 
     # Database maintenance
     db_backup_enabled: bool = True
-    db_backup_folder: Annotated[str, AbsolutePath()] = "/app/data/db-backups"
+    db_backup_folder: Annotated[str, AbsolutePath()] = str(DB_PATH.parent / "db-backups")
     db_backup_keep_days: Annotated[int, Range(1, 365, clamp_at_load=True)] = 7
     db_wipe_enabled: bool = False
     db_backup_before_wipe: bool = True

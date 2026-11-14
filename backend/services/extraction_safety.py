@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Callable, Iterable, Iterator
 
 from core.config import get_settings
+from transfers.filesystem import is_link, open_no_follow
 
 # The longest path the filesystem can create (Linux ``PATH_MAX``): a member
 # name past it can never be materialized, so it is refused before anything is.
@@ -384,7 +385,7 @@ def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int, int]:
     expanded = 0
     directories = 0
     for current in root.rglob("*"):
-        if current.is_symlink():
+        if is_link(current):
             raise ValueError(f"Extracted archive created a symlink: {current.name!r}")
         resolved = current.resolve(strict=False)
         if resolved != root and root not in resolved.parents:
@@ -412,7 +413,7 @@ def _ensure_safe_destination(root: Path, target: Path) -> None:
     current = root
     for part in target.relative_to(root).parts[:-1]:
         current = current / part
-        if current.is_symlink():
+        if is_link(current):
             raise ValueError(f"Extraction target traverses symlink: {current!s}")
 
 
@@ -439,7 +440,7 @@ def _already_satisfied(source: Path, target: Path) -> bool:
         # below, so a target swapped after this observation still fails.
         if not stat.S_ISREG(target.lstat().st_mode):
             return False
-        fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        fd = open_no_follow(target, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError:
         return False
     with os.fdopen(fd, "rb") as existing:
@@ -485,11 +486,11 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
         target = root.joinpath(*relative.parts)
         _ensure_safe_destination(root, target)
         if source.is_dir():
-            if target.is_symlink() or (target.exists() and not target.is_dir()):
+            if is_link(target) or (target.exists() and not target.is_dir()):
                 raise ValueError(f"Extraction directory collides with unsafe target: {target!s}")
             directory_targets.append(target)
             continue
-        if target.exists() or target.is_symlink():
+        if target.exists() or is_link(target):
             if _already_satisfied(source, target):
                 satisfied.append(target)
                 continue
@@ -510,7 +511,7 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
                 target.mkdir(exist_ok=False)
                 created_dirs.append(target)
             except FileExistsError:
-                if target.is_symlink() or not target.is_dir():
+                if is_link(target) or not target.is_dir():
                     raise
         for source, target in file_moves:
             _ensure_safe_destination(root, target)

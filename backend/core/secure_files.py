@@ -43,8 +43,14 @@ def atomic_write_json(
     )
     tmp = Path(raw_tmp)
     try:
+        # ``mkstemp`` already creates the file 0600 on POSIX; this re-asserts
+        # it whatever the umask. Windows has no ``os.fchmod`` and no POSIX
+        # modes: there the file is protected only by the ACL it inherits from
+        # its directory (the per-user data root), which this function neither
+        # sets nor claims.
         try:
-            os.fchmod(fd, 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, 0o600)
         except OSError:
             pass
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
