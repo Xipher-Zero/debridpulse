@@ -1,37 +1,65 @@
-# Desktop builds (WS6), on native hosted runners, from the pushed revision:
-#   macos-arm64  the application layout (packaging/desktop/assemble.py) WITH the
-#                native executors built here by the WS3/WS4 macOS recipes
-#                (aria2, FFmpeg/ffprobe, par2, zstd, rsync, 7-Zip, UnRAR) and the
-#                Usenet service at the image's pin (--usenet), on the macOS lock,
-#                the desktop tests
-#                on its runtime, and the ad hoc .app + DMG
-#                (packaging/desktop/macos/build-app.sh), whose bundled tools
-#                are then run, and whose Usenet service is started by the
-#                existing executor, from the mounted image (health, then the
-#                stop's exit code, which must be 0);
-#   windows-x64  a RUNTIME LAYOUT ONLY (CPython, the Windows lock with the
-#                WS3 sabctools wheel, the application, the shell; no native
-#                executors, no Usenet service, no installer) and the desktop
-#                tests on its runtime;
-#   linux-x64    a RUNTIME LAYOUT ONLY (no native executors, no Usenet service,
-#                no Flatpak) and
-#                the desktop tests on its runtime.
+# Desktop installers (WS6), built on native hosted runners from the pushed
+# revision, with the established recipes only:
+#   macos-arm64  the application layout (packaging/desktop/assemble.py) on the
+#                macOS lock, WITH the native executors built here by the
+#                WS3/WS4 macOS recipes (aria2, FFmpeg/ffprobe, par2, zstd,
+#                rsync, 7-Zip, UnRAR) and the Usenet service (SABnzbd at the
+#                image's pin, DebridPulse's one recorded headless patch), the
+#                desktop tests on its runtime, and the ad hoc .app in a DMG
+#                (packaging/desktop/macos/build-app.sh), whose signature,
+#                bundled tools and Usenet service (health, then exit 0 on
+#                stop) are checked from the mounted image;
+#   windows-x64  the layout on the Windows lock WITH the native executors of
+#                the WS3/WS4 Windows recipes (aria2, FFmpeg/ffprobe, par2,
+#                zstd, 7-Zip, UnRAR and the netless launcher built in the
+#                pinned Debian base; rsync in its pinned MSYS2 base) and the
+#                Usenet service with its Windows helpers, the desktop tests and
+#                the Usenet check on its runtime; then, ON THE SAME RUNNER, the
+#                per-user NSIS installer (packaging/desktop/windows/
+#                build-installer.sh with upstream's NSIS 3.11 for Windows,
+#                pinned in packaging/desktop/windows/official.sha256; it
+#                carries Microsoft's WebView2 bootstrapper and REQUIRES, never
+#                carries, the VC++ x64 Redistributable 14.51+), whose silent
+#                refusal without it is checked when the runner lacks it; the
+#                runner then gets the Redistributable from Microsoft and
+#                installs, checks (Usenet included) and uninstalls that EXE;
+#   linux-x64    the layout WITH the Usenet service, the desktop tests and the
+#                Usenet check on its runtime; then the Flatpak
+#                (packaging/desktop/flatpak, whose own module builds the native
+#                helpers against the runtime) on the GNOME 49 runtime and SDK
+#                from Flathub, exported as a single-file bundle, installed, and
+#                its helpers, Usenet service and first launch run in its sandbox.
 # A result here is [T-CI] evidence for that hosted runner's OS and
-# architecture: not a GUI, tray, Gatekeeper, signing, notarization or
-# physical-hardware qualification.
+# architecture: not a GUI, tray, Gatekeeper, SmartScreen, signing,
+# notarization or physical-hardware qualification. Nothing is signed (the DMG
+# is ad hoc signed only) and no secret is used.
 #
-# Runs on a push to 1.0.14 that touches the desktop or its recipes. It signs
-# nothing, uses no secret and, on a push, uploads nothing: this repository is
-# public, and a workflow artifact can be downloaded by anyone who can read it,
-# so the builds' hashes go to the job summary and the builds stay on the
-# runner. The inputs the build jobs share (the macOS recipes' prepared
-# sources, the sabctools wheel, the derived icons) pass between jobs through
-# the Actions cache, which GitHub offers no download of; a workflow run
-# allowed to restore this branch's caches could still read them.
+# Runs on every push to 1.0.14 that touches the desktop, its recipes or its
+# legal files. Each platform builds and smoke-tests its own final installer on
+# its own runner and reports the build identity, hashes and results in its job
+# summary. The Actions cache carries only shareable build inputs
+# (desktop-inputs-*: icons, the recipes' sources without RAR's package, the
+# sabctools wheel and source, the Windows recipe outputs) -- caches that jobs of
+# eligible pull requests into this branch can restore.
 #
-# Uploading the builds as artifacts (publish_artifacts) is publication: it
-# exists only on a manual dispatch, which GitHub offers only for a workflow
-# that is on the default branch, and needs the publication authorization.
+# PUBLICATION needs one explicit approval per commit: the repository variable
+# DESKTOP_INSTALLERS_UPLOAD_SHA set to exactly this run's full commit SHA.
+# Unset or different: no installer or app layout leaves its build runner, no
+# artifact is made. Equal: each platform job, once all its steps passed, hands
+# its smoke-tested outputs to the combined handover as an intermediate artifact
+# of this run (desktop-intermediate-<platform>-<sha>, 1 day); the handover runs
+# only when every platform and smoke check passed, requires exactly one EXE,
+# DMG and Flatpak stamped with this commit and run and matching their builders'
+# SHA256SUMS, assembles their corresponding source
+# (DebridPulse-<version>-desktop-sources-*.tar: the recipes' source archives,
+# patches and recipes -- sources only, never RAR's package --, the MSYS2
+# runtime's and NSIS's sources, the copyleft Python packages, SABnzbd and
+# DebridPulse itself), then MANIFEST.md and SHA256SUMS over all of it, and
+# uploads the ONE user-facing artifact, desktop-installers-<sha>, kept 14 days;
+# the intermediates job then deletes this run's intermediate artifacts,
+# whatever the handover's outcome. This repository is public: anyone signed in
+# to GitHub can download its workflow artifacts, the intermediates too while
+# they exist. These are unsigned TEST installers, not a release.
 name: Desktop Artifacts
 
 on:
@@ -45,20 +73,24 @@ on:
       - 'packaging/ffmpeg/**'
       - 'packaging/macos-tools/**'
       - 'packaging/sabctools/**'
+      - 'packaging/windows-tools/**'
+      - 'packaging/rsync/**'
       - 'backend/requirements.txt'
+      - 'backend/executors/sabnzbd/**'
       - 'Dockerfile'
       - 'backend/application/desktop_control.py'
       - 'backend/tests/test_v114_desktop_control.py'
       - 'backend/tests/test_v114_desktop_supervisor.py'
       - 'frontend/static/logo.svg'
       - 'frontend/static/favicon.svg'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'SOURCE_OFFER.md'
+      - 'docs/DEPENDENCY_LICENSES.md'
+      - 'licenses/**'
+      - 'LICENSES/**'
       - '.github/workflows/desktop-artifacts.yml'
   workflow_dispatch:
-    inputs:
-      publish_artifacts:
-        description: "Upload the builds as workflow artifacts, readable by anyone who can read this repository (publication: needs its own authorization)"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -67,12 +99,14 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # The packaging recipes' pinned Debian base.
   DEBIAN_BASE: docker.io/library/python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+  # One run's caches; without the attempt, so re-running a failed job finds them.
+  RUN_KEY: ${{ github.sha }}-${{ github.run_id }}
 
 jobs:
   inputs:
-    name: Shared inputs (icons, macOS sources, sabctools wheel)
+    name: Shared inputs (icons, macOS sources, Windows tools, sabctools wheel)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -83,7 +117,7 @@ jobs:
           python3 -c "import sys, pathlib; sys.path.insert(0, 'packaging/desktop'); import assemble; \
             assemble.icons(pathlib.Path('desktop-inputs/icons-shell'))"
           mv desktop-inputs/icons-shell/resources/icons desktop-inputs/icons && rm -r desktop-inputs/icons-shell
-      - name: The macOS recipes' sources (packaging/macos-tools/prepare-sources.sh, in the pinned Debian base)
+      - name: The macOS and Flatpak recipes' sources (packaging/macos-tools/prepare-sources.sh, in the pinned Debian base)
         run: |
           mkdir -p desktop-inputs/macos-sources
           docker run --rm -v "$PWD/packaging:/dp:ro" -v "$PWD/desktop-inputs/macos-sources:/out" "$DEBIAN_BASE" \
@@ -93,17 +127,29 @@ jobs:
         run: |
           docker build -f packaging/sabctools/Dockerfile.windows -o desktop-inputs/wheels-out .
           mkdir -p desktop-inputs/wheels && cp desktop-inputs/wheels-out/*.whl desktop-inputs/wheels/
+          # Its corresponding source (the sdist, windows-mingw.patch and the recipe), for the handover.
+          mkdir -p desktop-inputs/sabctools-source && cp -r desktop-inputs/wheels-out/source/. desktop-inputs/sabctools-source/
           cat desktop-inputs/wheels-out/SHA256SUMS desktop-inputs/wheels-out/imports.txt
+      - name: The Windows native tools (packaging/aria2, packaging/ffmpeg, packaging/windows-tools, the WS3/WS4 recipes)
+        run: |
+          for recipe in aria2 ffmpeg windows-tools; do
+            docker build -f "packaging/$recipe/Dockerfile.windows" -o "desktop-inputs/windows-tools/$recipe" .
+            cat "desktop-inputs/windows-tools/$recipe/SHA256SUMS"
+          done
       - name: Record
         run: |
-          { echo "### Shared inputs ($GITHUB_SHA)"; echo '```'; (cd desktop-inputs && find icons macos-sources wheels -type f | sort | xargs sha256sum); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Shared inputs ($GITHUB_SHA)"; echo '```'
+            (cd desktop-inputs && find icons macos-sources wheels windows-tools -path '*/source' -prune -o -type f -print | sort | xargs sha256sum)
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             desktop-inputs/icons
             desktop-inputs/macos-sources
             desktop-inputs/wheels
-          key: desktop-inputs-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+            desktop-inputs/windows-tools
+            desktop-inputs/sabctools-source
+          key: desktop-inputs-${{ env.RUN_KEY }}
           enableCrossOsArchive: true
 
   desktop:
@@ -120,21 +166,25 @@ jobs:
           - name: linux-x64
             os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      # Any CPython 3.12 runs assemble.py; the application's own runtime is the
+      # pinned python-build-standalone 3.12.14 it fetches.
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.12.14"
+          python-version: "3.12"
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             desktop-inputs/icons
             desktop-inputs/macos-sources
             desktop-inputs/wheels
-          key: desktop-inputs-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+            desktop-inputs/windows-tools
+            desktop-inputs/sabctools-source
+          key: desktop-inputs-${{ env.RUN_KEY }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Record the runner
@@ -153,12 +203,62 @@ jobs:
           mkdir -p "$tools/copyright"
           cp "$work"/out-aria2/bin/* "$work"/out-ffmpeg/bin/* "$work"/out-tools/bin/* "$tools/"
           cp "$work"/out-tools/copyright/* "$tools/copyright/"
+          # The notices of aria2 and what it builds in statically, and of FFmpeg, from the sources they were built from.
+          cp "$work"/aria2/aria2-*/debian/copyright "$tools/copyright/aria2"
+          cp "$work"/aria2/openssl-*/debian/copyright "$tools/copyright/openssl"
+          cp "$work/aria2/c-ares-1.34.9/debian/copyright" "$tools/copyright/c-ares"
+          cp "$work/aria2/libssh2-1.11.1/debian/copyright" "$tools/copyright/libssh2"
+          cp "$work/ffmpeg/ffmpeg-7.1.5/debian/copyright" "$tools/copyright/ffmpeg"
           (cd "$tools" && shasum -a 256 aria2c ffmpeg ffprobe par2 zstd rsync 7zz unrar) | tee "$RUNNER_TEMP/tools-SHA256SUMS"
-      - name: Assemble the desktop layout (pinned CPython 3.12.14, hash locks, pinned Neutralino)
+      - name: The Windows rsync helper (packaging/rsync, the WS3 recipe, in its pinned MSYS2 base)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $s = "$env:RUNNER_TEMP\rsync"; $m = "$s\msys64"
+          New-Item -ItemType Directory -Force "$s\recipe" | Out-Null
+          foreach ($line in Get-Content packaging\rsync\official.sha256) {
+            if ($line -match '^\s*(#|$)') { continue }
+            $digest, $name, $url = $line -split '\s+'
+            $dest = if ($name -like '*.tar.xz') { "$s\$name" } else { "$s\recipe\$name" }
+            Invoke-WebRequest -Uri $url -OutFile $dest
+            if ((Get-FileHash $dest -Algorithm SHA256).Hash.ToLower() -ne $digest) { throw "$name does not match official.sha256" }
+          }
+          & tar.exe -xf "$s\msys2-base-x86_64-20260927.tar.xz" -C $s
+          # HOME inside this MSYS2 root before its first start (the recipe requires it).
+          $env:HOME = "$m\home\runner"; $env:MSYSTEM = 'MSYS'; $env:CHERE_INVOKING = '1'; $env:MSYS2_PATH_TYPE = 'minimal'
+          New-Item -ItemType Directory -Force $env:HOME | Out-Null
+          $bash = "$m\usr\bin\bash.exe"
+          & $bash -lc 'pacman -Syuu --noconfirm --disable-download-timeout > /tmp/pacman-1.log 2>&1; echo "core update rc=$?"'
+          & $bash -lc 'pacman -Syuu --noconfirm --disable-download-timeout > /tmp/pacman-2.log 2>&1; echo "full update rc=$?"'
+          & $bash -lc 'pacman -S --noconfirm --needed --disable-download-timeout base-devel gcc autotools libiconv-devel libidn2-devel liblz4-devel libxxhash-devel libzstd-devel openssl-devel popt-devel'
+          if ($LASTEXITCODE -ne 0) { throw "pacman could not install the recipe's build dependencies" }
+          $recipe = & "$m\usr\bin\cygpath.exe" -u "$s\recipe"; $out = & "$m\usr\bin\cygpath.exe" -u "$s\out"
+          $sources = & "$m\usr\bin\cygpath.exe" -u "$s\sources"
+          $script = & "$m\usr\bin\cygpath.exe" -u "$env:GITHUB_WORKSPACE\packaging\rsync\build-windows.sh"
+          & $bash -l $script $recipe $out $sources
+          if ($LASTEXITCODE -ne 0) { throw "packaging/rsync/build-windows.sh failed" }
+          Get-Content "$s\out\SHA256SUMS"; Get-Content "$s\out\PACKAGES"; Get-Content "$s\out\SOURCES"
+      - name: The Windows tools directory (the recipes' outputs as built)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
-          extra=()
-          if [ "$RUNNER_OS" = "macOS" ]; then extra+=(--tools "$RUNNER_TEMP/tools" --usenet); fi
+          w=desktop-inputs/windows-tools; tools="$RUNNER_TEMP/tools"; mkdir -p "$tools/copyright"
+          cp "$w"/aria2/bin/aria2c.exe "$w"/ffmpeg/bin/ffmpeg.exe "$w"/ffmpeg/bin/ffprobe.exe "$w"/windows-tools/bin/* "$tools/"
+          cp "$w"/aria2/copyright/* "$w"/windows-tools/copyright/* "$tools/copyright/"
+          cp "$w"/ffmpeg/copyright "$tools/copyright/ffmpeg"
+          mkdir -p "$tools/rsync" && cp -r "$RUNNER_TEMP"/rsync/out/. "$tools/rsync/"
+          # The rsync helper's corresponding source, for the handover: the recipe's pinned
+          # inputs and the MSYS2 source package of every runtime DLL beside it.
+          mkdir -p desktop-build/windows-sources/rsync desktop-build/windows-sources/msys2
+          cp "$RUNNER_TEMP"/rsync/recipe/* desktop-build/windows-sources/rsync/
+          cp "$RUNNER_TEMP"/rsync/sources/* desktop-build/windows-sources/msys2/
+          cp "$RUNNER_TEMP"/rsync/out/SOURCES "$RUNNER_TEMP"/rsync/out/PACKAGES desktop-build/windows-sources/
+          (cd "$tools" && sha256sum ./*.exe ./*.dll rsync/usr/bin/rsync.exe) | tee "$RUNNER_TEMP/tools-SHA256SUMS"
+      - name: Assemble the desktop layout (pinned CPython 3.12.14, hash locks, pinned Neutralino, the Usenet service)
+        shell: bash
+        run: |
+          extra=(--usenet)
+          if [ "$RUNNER_OS" != "Linux" ]; then extra+=(--tools "$RUNNER_TEMP/tools"); fi
           if [ "$RUNNER_OS" = "Windows" ]; then extra+=(--wheels desktop-inputs/wheels); fi
           python packaging/desktop/assemble.py --out "$RUNNER_TEMP/layout" --cache "$RUNNER_TEMP/cache" \
             --icons desktop-inputs/icons "${extra[@]}" 2>&1 | tee "$RUNNER_TEMP/assemble.log"
@@ -169,33 +269,14 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/layout/runtime/python/python.exe"; else PY="$RUNNER_TEMP/layout/runtime/python/bin/python3"; fi
           # The test runner beside the layout, never inside it (the layout is what ships).
           "$PY" -m pip install --no-cache-dir --target "$RUNNER_TEMP/testdeps" pytest==9.1.1 pytest-asyncio==1.4.0
-          PYTHONPATH="$RUNNER_TEMP/testdeps" "$PY" -m pytest tests/test_v114_desktop_control.py tests/test_v114_desktop_supervisor.py \
+          PYTHONPATH="$RUNNER_TEMP/testdeps" "$PY" -B -m pytest tests/test_v114_desktop_control.py tests/test_v114_desktop_supervisor.py \
             -p no:cacheprovider -rs --junitxml "$RUNNER_TEMP/desktop-junit.xml"
-      - name: macOS application and DMG (ad hoc; not signed or notarized), its bundled tools run from the image
-        if: runner.os == 'macOS'
+      - name: The Usenet check (the existing executor starts the bundled service; health; exit 0 on stop)
         shell: bash
         run: |
-          bash packaging/desktop/macos/build-app.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/app"
-          dmg="$(ls "$RUNNER_TEMP"/app/*.dmg)"; mnt="$RUNNER_TEMP/mnt"; mkdir -p "$mnt"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
-          codesign --verify --deep --strict "$mnt/DebridPulse.app"
-          tools="$mnt/DebridPulse.app/Contents/Resources/app/tools"
-          check() { name="$1"; banner="$2"; shift 2
-            "$tools/$name" "$@" > "$RUNNER_TEMP/banner.txt" 2>&1 || true
-            grep -m1 -E "$banner" "$RUNNER_TEMP/banner.txt" || { echo "$name: no '$banner'"; cat "$RUNNER_TEMP/banner.txt"; exit 1; }; }
-          check aria2c '^aria2 version 1\.37\.0' --version
-          check ffmpeg '^ffmpeg version 7\.1\.5' -hide_banner -version
-          check ffprobe '^ffprobe version 7\.1\.5' -hide_banner -version
-          check rsync 'rsync +version 3\.5\.2' --version
-          check zstd 'Zstandard CLI' --version
-          check par2 'par2cmdline version 0\.8\.1' --version
-          check 7zz '7-Zip' i
-          check unrar '^UNRAR 7\.23'
-          # The Usenet service, started by the existing executor (executors.sabnzbd.runtime)
-          # from the mounted image, on the bundled interpreter, with the bundled tools.
           cat > "$RUNNER_TEMP/usenet-start.py" <<'PY'
           # The bundled Usenet service started by the existing executor, from the bundle.
-          import asyncio, sys
+          import asyncio, os, sys
           backend = sys.argv[1]
           sys.path.insert(0, backend)
           from executors.sabnzbd import runtime
@@ -206,7 +287,8 @@ jobs:
               usenet.configure(runtime.UsenetRuntimeConfiguration(download_root=sys.argv[2], enabled=True))
               binary = usenet._binary()
               print("resolved service:", binary, "| interpreter:", sys.executable)
-              if not binary or not binary.startswith(backend):
+              inside = os.path.normcase(os.path.realpath(backend)) + os.sep
+              if not binary or not os.path.normcase(os.path.realpath(binary)).startswith(inside):
                   print("the service is not resolved inside the bundle")
                   return 1
               started = await usenet.start()
@@ -221,38 +303,322 @@ jobs:
 
           sys.exit(asyncio.run(main()))
           PY
-          sabcheck="$RUNNER_TEMP/usenet-check"; mkdir -p "$sabcheck/data" "$sabcheck/downloads"
-          PATH="$tools:/usr/bin:/bin" DB_PATH="$sabcheck/data/debridpulse.db" USENET_CONFIG_DIR="$sabcheck/usenet" \
+          # Windows and Linux: from the layout (macOS: from the mounted image, below).
+          # -B: the check writes no bytecode into what ships.
+          if [ "$RUNNER_OS" = "macOS" ]; then exit 0; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/layout/runtime/python/python.exe"; else PY="$RUNNER_TEMP/layout/runtime/python/bin/python3"; fi
+          c="$RUNNER_TEMP/usenet-check"; mkdir -p "$c/data" "$c/downloads"
+          DB_PATH="$c/data/debridpulse.db" USENET_CONFIG_DIR="$c/usenet" \
+            "$PY" -B -I "$RUNNER_TEMP/usenet-start.py" "$RUNNER_TEMP/layout/backend" "$c/downloads"
+      - name: macOS application and DMG (ad hoc; not signed or notarized), its bundled tools and Usenet service run from the image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p desktop-build/macos; exec > >(tee desktop-build/macos/RESULTS.txt) 2>&1
+          bash packaging/desktop/macos/build-app.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/app"
+          dmg="$(ls "$RUNNER_TEMP"/app/*.dmg)"; mnt="$RUNNER_TEMP/mnt"; mkdir -p "$mnt"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+          codesign --verify --deep --strict "$mnt/DebridPulse.app"
+          codesign -dv "$mnt/DebridPulse.app" 2>&1 | grep -E '^(Identifier|Signature|CodeDirectory)'
+          tools="$mnt/DebridPulse.app/Contents/Resources/app/tools"
+          check() { name="$1"; banner="$2"; shift 2
+            "$tools/$name" "$@" > "$RUNNER_TEMP/banner.txt" 2>&1 || true
+            grep -m1 -E "$banner" "$RUNNER_TEMP/banner.txt" || { echo "$name: no '$banner'"; cat "$RUNNER_TEMP/banner.txt"; exit 1; }; }
+          check aria2c '^aria2 version 1\.37\.0' --version
+          check ffmpeg '^ffmpeg version 7\.1\.5' -hide_banner -version
+          check ffprobe '^ffprobe version 7\.1\.5' -hide_banner -version
+          check rsync 'rsync +version 3\.5\.2' --version
+          check zstd 'Zstandard CLI' --version
+          check par2 'par2cmdline version 0\.8\.1' --version
+          check 7zz '7-Zip' i
+          check unrar '^UNRAR 7\.23'
+          c="$RUNNER_TEMP/usenet-check"; mkdir -p "$c/data" "$c/downloads"
+          PATH="$tools:/usr/bin:/bin" DB_PATH="$c/data/debridpulse.db" USENET_CONFIG_DIR="$c/usenet" \
             "$mnt/DebridPulse.app/Contents/Resources/app/runtime/python/bin/python3" -I "$RUNNER_TEMP/usenet-start.py" \
-            "$mnt/DebridPulse.app/Contents/Resources/app/backend" "$sabcheck/downloads"
+            "$mnt/DebridPulse.app/Contents/Resources/app/backend" "$c/downloads"
           hdiutil detach "$mnt" >/dev/null
-      - name: Record
+          cp "$dmg" "$RUNNER_TEMP/app/SHA256SUMS" "$RUNNER_TEMP/layout/BUILD-INFO.json" desktop-build/macos/
+          echo "$GITHUB_SHA" > desktop-build/macos/COMMIT; echo "$GITHUB_RUN_ID" > desktop-build/macos/RUN
+      - name: Linux Flatpak (flatpak-builder in the pinned Debian base; GNOME 49 runtime and SDK from Flathub), installed and run in its sandbox
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          mkdir -p build/flatpak-sources build/out
+          cp desktop-inputs/macos-sources/*.tar.gz build/flatpak-sources/
+          cp -a "$RUNNER_TEMP/layout" build/layout && tar -C build -czf build/layout.tar.gz layout
+          cp "$RUNNER_TEMP/usenet-start.py" build/usenet-start.py
+          docker run --rm --privileged -v "$PWD:/src" -w /src -e VERSION="$version" "$DEBIAN_BASE" \
+            bash packaging/desktop/flatpak/ci-build.sh
+          cp build/layout/BUILD-INFO.json build/out/
+          mkdir -p desktop-build/linux && cp build/out/* desktop-build/linux/
+          echo "$GITHUB_SHA" > desktop-build/linux/COMMIT; echo "$GITHUB_RUN_ID" > desktop-build/linux/RUN
+      - name: The Windows installer, on this runner (packaging/desktop/windows/build-installer.sh; upstream NSIS 3.11 for Windows, pinned)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          read -r digest name url < <(grep -E '^[0-9a-f]{64}  nsis-3\.11\.zip ' packaging/desktop/windows/official.sha256)
+          curl -sSfL -o "$RUNNER_TEMP/$name" "$url"; echo "$digest  $RUNNER_TEMP/$name" | sha256sum -c -
+          python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/$name" "$RUNNER_TEMP/nsis"
+          export MAKENSIS="$RUNNER_TEMP/nsis/nsis-3.11/makensis.exe"
+          mkdir -p "$RUNNER_TEMP/prerequisites" desktop-build/windows
+          curl -sSfL -o "$RUNNER_TEMP/prerequisites/MicrosoftEdgeWebview2Setup.exe" https://go.microsoft.com/fwlink/p/?LinkId=2124703
+          bash packaging/desktop/windows/build-installer.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/prerequisites" desktop-build/windows
+          { echo "NSIS: $name sha256 $digest ($url)"; echo "makensis -VERSION: $("$MAKENSIS" -VERSION)"; } > desktop-build/windows/TOOLCHAIN.txt
+          cp "$RUNNER_TEMP/layout/BUILD-INFO.json" desktop-build/windows/
+          echo "$GITHUB_SHA" > desktop-build/windows/COMMIT; echo "$GITHUB_RUN_ID" > desktop-build/windows/RUN
+          cat desktop-build/windows/TOOLCHAIN.txt desktop-build/windows/SHA256SUMS desktop-build/windows/PREREQUISITES.txt
+      - name: The same EXE installed silently, checked and uninstalled on this runner (the VC++ 14.51 prerequisite first)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $results = @()
+          # The product EXE requires the VC++ x64 Redistributable 14.51+ and does not carry it.
+          function VcVersion { $vc = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64' -ErrorAction SilentlyContinue
+            if ($vc -and $vc.Installed -eq 1) { [version]"$($vc.Major).$($vc.Minor).$($vc.Bld)" } else { $null } }
+          $minimum = [version]'14.51.0'
+          $exe = (Get-ChildItem desktop-build\windows\DebridPulse-*-windows-x64.exe).FullName
+          $dir = "$env:LOCALAPPDATA\Programs\DebridPulse"
+          $before = VcVersion
+          $results += "runner VC++ x64 before: $(if ($before) { $before } else { 'absent' })"
+          $refusal = 'not exercised (the runner already had 14.51 or newer)'
+          if (-not $before -or $before -lt $minimum) {
+            # The refusal path on this runner: a silent install must exit 3 and change nothing.
+            $refused = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+            $wrote = (Test-Path $dir) -or (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse')
+            $refusal = "exit $($refused.ExitCode); program or uninstall entry written: $wrote"
+            if ($refused.ExitCode -ne 3 -or $wrote) { $results += "refusal: $refusal"; $results | Tee-Object -FilePath desktop-build\windows\RESULTS.txt; exit 1 }
+            # Provision it from Microsoft, on this runner only (never cached or handed over).
+            Invoke-WebRequest -Uri https://aka.ms/vc14/vc_redist.x64.exe -OutFile "$env:RUNNER_TEMP\vc_redist.x64.exe"
+            $redist = Get-Item "$env:RUNNER_TEMP\vc_redist.x64.exe"
+            $run = Start-Process -FilePath $redist.FullName -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+            $results += "provisioned from Microsoft: vc_redist.x64.exe $($redist.VersionInfo.ProductVersion) sha256 $((Get-FileHash $redist.FullName).Hash.ToLower()) exit $($run.ExitCode)"
+          }
+          $results += "silent install refusal without the prerequisite: $refusal"
+          $after = VcVersion
+          $results += "runner VC++ x64 before the product install: $(if ($after) { $after } else { 'absent' })"
+          if (-not $after -or $after -lt $minimum) { $results | Tee-Object -FilePath desktop-build\windows\RESULTS.txt; "FAILED: VC++ x64 14.51+ is not installed"; exit 1 }
+          $install = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+          $results += "silent install exit: $($install.ExitCode)"
+          $key = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse' -ErrorAction SilentlyContinue
+          $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse'
+          $shortcut = "$([Environment]::GetFolderPath('Programs'))\DebridPulse.lnk"
+          $installedFiles = (Get-ChildItem -Recurse -File "$dir\app" -ErrorAction SilentlyContinue).Count
+          $installed = $installedFiles -gt 0 -and $key -and (Test-Path $shortcut) -and (Test-Path "$dir\uninstall.exe")
+          $results += "installed files: $installedFiles; uninstall entry: $(if ($key) { $key.DisplayVersion } else { 'absent' }); shortcut: $(Test-Path $shortcut); uninstaller: $(Test-Path "$dir\uninstall.exe")"
+          $py = "$dir\app\runtime\python\python.exe"
+          $probe = @'
+          import asyncio, os, sys
+          backend = sys.argv[1]
+          sys.path.insert(0, backend)
+          from executors.sabnzbd import runtime
+          async def main():
+              usenet = runtime.UsenetRuntime()
+              usenet.configure(runtime.UsenetRuntimeConfiguration(download_root=sys.argv[2], enabled=True))
+              binary = usenet._binary()
+              inside = os.path.normcase(os.path.realpath(backend)) + os.sep
+              if not binary or not os.path.normcase(os.path.realpath(binary)).startswith(inside):
+                  print("the service is not resolved inside the installed program"); return 1
+              started = await usenet.start(); healthy = started["running"] and await usenet.healthy()
+              stopped = await usenet.stop()
+              print("installed Usenet service:", binary, "| health:", healthy, "| stop exit:", stopped["exit_code"])
+              return 0 if healthy and not stopped["running"] and stopped["exit_code"] == 0 else 1
+          sys.exit(asyncio.run(main()))
+          '@
+          $probe | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\usenet-start.py"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\uc\data", "$env:RUNNER_TEMP\uc\downloads" | Out-Null
+          $env:DB_PATH = "$env:RUNNER_TEMP\uc\data\debridpulse.db"; $env:USENET_CONFIG_DIR = "$env:RUNNER_TEMP\uc\usenet"
+          $out = & $py -B -I "$env:RUNNER_TEMP\usenet-start.py" "$dir\app\backend" "$env:RUNNER_TEMP\uc\downloads" 2>&1
+          $usenetExit = $LASTEXITCODE
+          $results += "$out (exit $usenetExit)"
+          $tools = "$dir\app\tools"
+          foreach ($t in @(@('aria2c.exe', '--version'), @('ffmpeg.exe', '-version'), @('rsync\usr\bin\rsync.exe', '--version'), @('par2.exe', '--version'))) {
+            $first = (& "$tools\$($t[0])" $t[1] 2>&1 | Select-Object -First 1); $results += "$($t[0]): $first"
+          }
+          $uninstall = Start-Process -FilePath "$dir\uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+          # NSIS runs the uninstall from a copy of itself: wait (bounded) for it to finish removing.
+          for ($i = 0; $i -lt 60 -and ((Test-Path $dir) -or (Test-Path $entry) -or (Test-Path $shortcut)); $i++) { Start-Sleep 1 }
+          $left = @(); if (Test-Path $dir) { $left += "program files ($((Get-ChildItem -Recurse -Force $dir).Count) items in $dir)" }
+          if (Test-Path $entry) { $left += 'uninstall entry' }; if (Test-Path $shortcut) { $left += 'shortcut' }
+          $results += "silent uninstall exit: $($uninstall.ExitCode); left behind: $(if ($left) { $left -join ', ' } else { 'nothing' })"
+          $results | Tee-Object -FilePath desktop-build\windows\RESULTS.txt
+          $failed = @()
+          if ($install.ExitCode -ne 0 -or -not $installed) { $failed += 'install' }
+          if ($usenetExit -ne 0) { $failed += 'Usenet check' }
+          if ($uninstall.ExitCode -ne 0 -or $left) { $failed += 'uninstall' }
+          if ($failed) { "FAILED: $($failed -join ', ')" | Tee-Object -Append -FilePath desktop-build\windows\RESULTS.txt; exit 1 }
+      - name: Record (build identity, hashes and smoke results)
         if: always()
         shell: bash
         run: |
+          os="${{ matrix.name }}"; d="desktop-build/${os%%-*}"
           {
-            echo "### ${{ matrix.name }} ($GITHUB_SHA)"
-            case "${{ matrix.name }}" in
-              macos-arm64) echo "Layout with native executors and the Usenet service, desktop tests, ad hoc DMG (not signed, not notarized); tools run and the Usenet service started from the mounted image.";;
-              *) echo "RUNTIME LAYOUT ONLY (no native executors, no Usenet service, no installer or Flatpak) and the desktop tests.";;
-            esac
+            echo "### ${{ matrix.name }}"
+            echo "- Commit $GITHUB_SHA, run $GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT), runner ${ImageOS:-?} ${ImageVersion:-?}"
+            if [ "${{ vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha }}" = "true" ]; then
+              echo "- Upload approved for this commit: its smoke-tested outputs go to the combined handover."
+            else
+              echo "- No upload approved for this commit: the installer and layout stayed on this runner."
+            fi
             echo '```'
             [ -f "$RUNNER_TEMP/layout/BUILD-INFO.json" ] && cat "$RUNNER_TEMP/layout/BUILD-INFO.json"
             [ -f "$RUNNER_TEMP/tools-SHA256SUMS" ] && cat "$RUNNER_TEMP/tools-SHA256SUMS"
-            [ -f "$RUNNER_TEMP/app/SHA256SUMS" ] && cat "$RUNNER_TEMP/app/SHA256SUMS"
+            for f in TOOLCHAIN.txt SHA256SUMS PREREQUISITES.txt RESULTS.txt; do [ -f "$d/$f" ] && { echo "--- $f"; cat "$d/$f"; }; done
+            for f in "$d"/*.dmg "$d"/*.exe "$d"/*.flatpak; do [ -f "$f" ] && echo "installer: $(basename "$f") $(wc -c < "$f") bytes"; done
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Publish the builds as artifacts (manual dispatch with publish_artifacts only)
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.publish_artifacts
+      # ONLY for the commit DESKTOP_INSTALLERS_UPLOAD_SHA names in full, and only after every step above passed:
+      # the smoke-tested outputs go to the combined handover as an intermediate artifact of this run (1 day;
+      # readable by anyone signed in to GitHub until the cleanup job deletes it at the end of the run).
+      - name: Hand the smoke-tested outputs to the combined handover (approved commit only)
+        if: success() && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-${{ matrix.name }}-${{ github.sha }}
-          retention-days: 7
-          if-no-files-found: warn
+          name: desktop-intermediate-${{ matrix.name }}-${{ github.sha }}
+          retention-days: 1
+          if-no-files-found: error
+          path: desktop-build/
+
+  handover:
+    name: Installers and their corresponding source (approved commit only; one artifact)
+    needs: [inputs, desktop]
+    # Only for the one commit DESKTOP_INSTALLERS_UPLOAD_SHA names in full, and only when every platform's
+    # build and smoke checks passed; any other run ends with its installers on their build runners.
+    if: success() && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
           path: |
-            ${{ runner.temp }}/assemble.log
-            ${{ runner.temp }}/desktop-junit.xml
-            ${{ runner.temp }}/layout/BUILD-INFO.json
-            ${{ runner.temp }}/tools-SHA256SUMS
-            ${{ runner.temp }}/app/*.dmg
-            ${{ runner.temp }}/app/SHA256SUMS
+            desktop-inputs/icons
+            desktop-inputs/macos-sources
+            desktop-inputs/wheels
+            desktop-inputs/windows-tools
+            desktop-inputs/sabctools-source
+          key: desktop-inputs-${{ env.RUN_KEY }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: The three platforms' smoke-tested outputs (this run's intermediate artifacts)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-intermediate-*-${{ github.sha }}
+          merge-multiple: true
+          path: desktop-build
+      - name: The installers -- exactly one of each, from this commit, matching the SHA256SUMS of the job that built it
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"; h="$RUNNER_TEMP/desktop-installers"; mkdir -p "$h"
+          for spec in "macos:DebridPulse-$version-macos-arm64.dmg:*.dmg" "windows:DebridPulse-$version-windows-x64.exe:*.exe" \
+                      "linux:DebridPulse-$version-linux-x86_64.flatpak:*.flatpak"; do
+            IFS=: read -r os expected pattern <<<"$spec"; dir="desktop-build/$os"
+            mapfile -t found < <(cd "$dir" || exit; compgen -G "$pattern")
+            if [ "${#found[@]}" -ne 1 ] || [ "${found[0]:-}" != "$expected" ]; then
+              echo "$os: expected exactly $expected, found: ${found[*]:-nothing}"; exit 1
+            fi
+            [ "$(cat "$dir/COMMIT")" = "$GITHUB_SHA" ] || { echo "$os: built from $(cat "$dir/COMMIT"), not $GITHUB_SHA"; exit 1; }
+            [ "$(cat "$dir/RUN")" = "$GITHUB_RUN_ID" ] || { echo "$os: built in run $(cat "$dir/RUN"), not $GITHUB_RUN_ID"; exit 1; }
+            (cd "$dir" && grep -E "  $expected\$" SHA256SUMS | sha256sum -c -) || { echo "$os: $expected does not match its build's SHA256SUMS"; exit 1; }
+            cp "$dir/$expected" "$h/"
+            cp "$dir/BUILD-INFO.json" "$h/BUILD-INFO-$os.json"
+            if [ -f "$dir/RESULTS.txt" ]; then cp "$dir/RESULTS.txt" "$h/RESULTS-$os.txt"; fi
+          done
+          cp desktop-build/windows/PREREQUISITES.txt desktop-build/windows/TOOLCHAIN.txt "$h/"
+          cp desktop-build/linux/flatpak-first-run.png "$h/"
+      - name: Their corresponding source (the tool builds' own source archives, patches and recipes)
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"; name="DebridPulse-$version-desktop-sources-${GITHUB_SHA:0:12}"
+          src="$RUNNER_TEMP/$name"; mkdir -p "$src"/{debridpulse,macos-and-flatpak-tools,windows-tools,sabnzbd,python}
+          # DebridPulse itself at this commit: the application, the desktop shell glue and every recipe.
+          git archive --prefix="debridpulse-$GITHUB_SHA/" -o "$src/debridpulse/debridpulse-$GITHUB_SHA.tar.gz" HEAD
+          # The macOS and Flatpak helpers' SOURCES only: Debian's signed source packages (with Debian's
+          # and DebridPulse's patches applied), rsync's and 7-Zip's source -- no binary release.
+          m=desktop-inputs/macos-sources
+          for f in "$m"/*.dsc "$m"/aria2-macos-source.tar.gz "$m"/openssl-source.tar.gz "$m"/c-ares-*.tar.gz \
+                   "$m"/libssh2-*.tar.gz "$m"/ffmpeg-*.tar.gz "$m"/par2cmdline-*.tar.gz "$m"/libzstd-*.tar.gz \
+                   "$m"/rsync-*.tar.gz "$m"/7z*-src.tar.xz; do
+            [ -f "$f" ] || { echo "missing source: $f"; exit 1; }; cp "$f" "$src/macos-and-flatpak-tools/"
+          done
+          if compgen -G "$src/macos-and-flatpak-tools/rar*" >/dev/null || compgen -G "$m/rar*" >/dev/null; then
+            echo "a RAR package reached the cached inputs or the source handover"; exit 1
+          fi
+          # The copyleft-licensed Python packages, exactly as locked (and pywin32's adodbapi).
+          python3 -I packaging/desktop/python-sources.py "$src/python"
+          # The Windows helpers: each recipe's own source/ (source packages as fetched + patches + script).
+          for recipe in aria2 ffmpeg windows-tools; do cp -r "desktop-inputs/windows-tools/$recipe/source" "$src/windows-tools/$recipe"; done
+          cp -r desktop-inputs/sabctools-source "$src/windows-tools/sabctools"
+          cp -r desktop-build/windows-sources/. "$src/windows-tools/rsync-and-msys2-runtime/"
+          # NSIS 3.11, whose stub (LZMA module: CPL-1.0) every Windows installer carries.
+          mkdir -p "$src/windows-tools/nsis"
+          read -r digest nsis url < <(grep -E '^[0-9a-f]{64}  nsis-3\.11-src\.tar\.bz2 ' packaging/desktop/windows/official.sha256)
+          curl -sSfL -o "$src/windows-tools/nsis/$nsis" "$url"; echo "$digest  $src/windows-tools/nsis/$nsis" | sha256sum -c -
+          # The Usenet service (SABnzbd) at the image's pin, hash-checked (its macOS patch is in the DebridPulse archive).
+          v="$(sed -n 's/^ARG USENET_SERVICE_VERSION=//p' Dockerfile)"; d="$(sed -n 's/^ARG USENET_SERVICE_SHA256=//p' Dockerfile)"
+          curl -sSfL -o "$src/sabnzbd/SABnzbd-$v-src.tar.gz" "https://github.com/sabnzbd/sabnzbd/releases/download/$v/SABnzbd-$v-src.tar.gz"
+          echo "$d  $src/sabnzbd/SABnzbd-$v-src.tar.gz" | sha256sum -c -
+          for required in "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" "$src/macos-and-flatpak-tools/7z2501-src.tar.xz"; do
+            [ -s "$required" ] || { echo "missing from the corresponding source: $required"; exit 1; }
+          done
+          tail -n +2 "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" | while read -r package pkgver url; do
+            [ "$package" = rsync ] && continue
+            [ -s "$src/windows-tools/rsync-and-msys2-runtime/msys2/$(basename "$url")" ] || { echo "MSYS2 source of $package $pkgver is missing"; exit 1; }
+          done
+          {
+            echo "# Corresponding source of the DebridPulse $version desktop installers built from $GITHUB_SHA"
+            echo
+            echo "See SOURCE_OFFER.md (in debridpulse/) for what each part covers. Every file, with its SHA-256:"
+            echo; echo '```'; (cd "$src" && find . -type f ! -name SOURCES.md | sort | xargs sha256sum); echo '```'
+          } > "$src/SOURCES.md"
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/desktop-installers/$name.tar" "$name"
+      - name: The manifest, then SHA256SUMS over everything delivered (the manifest included; SHA256SUMS lists no hash of itself)
+        run: |
+          h="$RUNNER_TEMP/desktop-installers"; cd "$h"
+          payload=$(find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name MANIFEST.md -printf '%f\n' | sort)
+          {
+            echo "# DebridPulse desktop TEST installers (unsigned; not a release)"
+            echo
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Source tree: $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}')"
+            echo "- Build run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+            echo "- Every build and smoke check passed (this job runs only then): inputs ${{ needs.inputs.result }}, desktop (macOS, Windows with its install check, Linux with its Flatpak checks) ${{ needs.desktop.result }}"
+            echo "- Signing: Windows EXE unsigned (no Authenticode); macOS DMG/app ad hoc signed only, not notarized; Flatpak bundle unsigned (no GPG)."
+            echo "- Prerequisite not included: the Microsoft Visual C++ x64 Redistributable 14.51+ (the installer sends the user to Microsoft's download)."
+            echo "- Corresponding source: the *-desktop-sources-*.tar (SOURCE_OFFER.md, \"The desktop applications\")."
+            echo "- SHA256SUMS covers every file below and this manifest."
+            echo
+            echo '| File | Size (bytes) | SHA-256 |'
+            echo '|---|---:|---|'
+            for f in $payload; do echo "| $f | $(stat -c %s "$f") | $(sha256sum "$f" | cut -d' ' -f1) |"; done
+          } > MANIFEST.md
+          { for f in $payload; do sha256sum "$f"; done; sha256sum MANIFEST.md; } > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          [ "$(grep -c . SHA256SUMS)" -eq "$(( $(echo "$payload" | grep -c .) + 1 ))" ]
+          cat MANIFEST.md >> "$GITHUB_STEP_SUMMARY"
+          ls -la
+      - name: Publish (only for the one commit the repository variable DESKTOP_INSTALLERS_UPLOAD_SHA names in full; this repository is public, so anyone signed in to GitHub can download it)
+        if: vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-installers-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/desktop-installers/
+
+  intermediates:
+    name: Delete this run's intermediate artifacts (approved commit only; whatever the handover's outcome)
+    needs: [desktop, handover]
+    if: always() && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Delete desktop-intermediate-* of this run, leaving desktop-installers-<sha> the one artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            --jq '.artifacts[] | select(.name | startswith("desktop-intermediate-")) | "\(.id) \(.name)"' |
+            while read -r id name; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"; echo "deleted $name"; done

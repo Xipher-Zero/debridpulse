@@ -27,7 +27,12 @@ tar -czf "$out/aria2-macos-source.tar.gz" aria2-*/
 tar -czf "$out/openssl-source.tar.gz" openssl-*/
 for tree in ffmpeg-* c-ares-* libssh2-* par2cmdline-* libzstd-*; do tar -czf "$out/$tree.tar.gz" "$tree"; done
 cp ./*.dsc "$out/"
+# RARLAB's RAR package is a trial distribution of RAR, whose licence permits
+# passing on only its UnRAR components separately: it is never prepared here
+# (this output is cached and handed over as source); build-macos.sh fetches it
+# on the build machine and takes UnRAR from it.
 grep -vE '^(#|$)' /dp/macos-tools/official.sha256 | while read -r digest name url; do
+  case "$name" in rar*) continue ;; esac
   curl -sSfL -o "$out/$name" "$url"; echo "$digest  $out/$name" | sha256sum -c --quiet
 done
 (cd "$out" && sha256sum ./*.tar.* ./*.dsc > SHA256SUMS)

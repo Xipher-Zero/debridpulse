@@ -6,17 +6,18 @@ revision used to build an image is recorded in its
 `org.opencontainers.image.revision` label.
 
 For GPL- or LGPL-covered third-party binaries distributed in an official DebridPulse
-container image, Chris Moore offers to provide the complete corresponding
-source code, including the material needed to rebuild that software, to any
-third party for no more than the reasonable cost of physically providing the
-source. This offer is valid for three years after the last distribution of the
-applicable image version.
+container image or desktop installer, Chris Moore offers to provide the complete
+corresponding source code, including the material needed to rebuild that
+software, to any third party for no more than the reasonable cost of physically
+providing the source. This offer is valid for three years after the last
+distribution of the applicable image version or installer.
 
 Request source using the repository's dedicated source-request form:
 <https://github.com/Xipher-Zero/debridpulse/issues/new?template=source_request.yml>.
 Include:
 
-- the full container image name and digest;
+- the full container image name and digest, or the desktop installer's file
+  name and SHA-256 (both are in its `SHA256SUMS` and `MANIFEST.md`);
 - the target architecture;
 - the package name, if known; and
 - a preferred machine-readable delivery method.
@@ -73,3 +74,57 @@ The written offer above remains available for any of the following.
   DebridPulse's patches or build script, which are also in this repository
   under `packaging/aria2/` and `packaging/ffmpeg/`
   (`docs/SUPPLY_CHAIN_POLICY.md`, sections 4a and 4b).
+
+## The desktop applications
+
+Every desktop installer the Desktop Artifacts workflow builds (the Windows
+EXE, the macOS DMG and the Linux Flatpak) is handed over together with its
+complete corresponding source, built from the same commit in the same run:
+`DebridPulse-<version>-desktop-sources-<first 12 characters of the commit>.tar`,
+in the same download, kept as long as the installers, and listed with them in
+`SHA256SUMS` and `MANIFEST.md`. Its `SOURCES.md` lists every file with its
+SHA-256. It holds:
+
+- `debridpulse/`: DebridPulse at that commit, including every packaging recipe
+  and patch (`packaging/`), the desktop shell glue and the macOS SABnzbd patch;
+- `macos-and-flatpak-tools/`: the macOS and Flatpak helpers' sources as their
+  recipes use them -- Debian's signed source packages (`.dsc` and the trees
+  with Debian's and DebridPulse's patches applied) of aria2, OpenSSL, c-ares,
+  libssh2, FFmpeg, par2cmdline and zstd; rsync 3.5.2; and the 7-Zip 25.01
+  source (sources only: the official 7-Zip and RAR binary releases the recipes
+  take unmodified are not in it);
+- `windows-tools/`: each Windows recipe's own `source/` -- the source packages
+  and upstream tarballs of aria2 and the libraries built into it, of FFmpeg,
+  par2 and zstd, each recipe script, the netless launcher's C source and the
+  pinned digests of the official 7-Zip and UnRAR releases (the 7-Zip source is
+  in `macos-and-flatpak-tools/`; UnRAR is freeware without a source obligation)
+  --, sabctools (its sdist and DebridPulse's patch), and
+  `rsync-and-msys2-runtime/`: the rsync helper's pinned recipe inputs and the
+  MSYS2 source package of every MSYS2 runtime DLL shipped beside it
+  (`SOURCES` names each one and where MSYS2 publishes it), and `nsis/`: the
+  source of NSIS 3.11, whose installer stub every Windows installer carries;
+- `sabnzbd/`: the SABnzbd release every desktop package bundles, as published;
+- `python/`: the exact source of every copyleft-licensed Python package the
+  desktop applications install, hash-checked against the locks
+  (`packaging/desktop/python-sources.py`; `PYTHON-SOURCES.txt` lists them):
+  the sdists of asyncssh (used under GPL-2.0-or-later), certifi (MPL-2.0),
+  guessit (LGPL-3.0-or-later), hachoir (GPL-2.0-only), orjson (MPL-2.0 parts)
+  and sabctools (GPL-2.0-or-later), and, for Windows, adodbapi
+  (LGPL-2.1-or-later) exactly as pywin32 ships it.
+
+The other Python packages, the bundled Python runtime (python-build-standalone)
+and the Neutralino shell are under permissive licences and are not in it; each
+Python package's source is on PyPI under the name and version it records.
+Microsoft's WebView2 bootstrapper, the one Microsoft component the Windows
+installer carries, is not open source; the Visual C++ Redistributable is not
+bundled at all (the installer sends the user to Microsoft's download). The notices of everything an
+installed application carries are inside it: `LICENSE`, `NOTICE`, this file,
+`docs/DEPENDENCY_LICENSES.md` (shown in Help), `LICENSES/`, `licenses/`,
+`licenses/desktop/` (the Python runtime's and the native shell's components),
+`tools/copyright/` (each native helper and what is built into it),
+`tools/rsync/licenses/` on Windows (rsync and each MSYS2 runtime package), and
+each Python package's own licence files in its installed metadata.
+
+If you received a desktop installer without its source archive, or after the
+download expired, the written offer above applies: name the installer's file
+and SHA-256 in the request.

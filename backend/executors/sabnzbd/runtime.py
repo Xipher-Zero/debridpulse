@@ -39,6 +39,13 @@ SERVICE_ROOT = Path(__file__).resolve().parents[2] / "usenet"
 # How long a cold start may take before the runtime reports it unhealthy.
 STARTUP_TIMEOUT_SECONDS = 90
 _HEALTH_POLL_SECONDS = 0.5
+# The service's web engine (CherryPy) answers before it has finished starting,
+# and a stop that lands in that window ends it with CherryPy's own exit 70
+# before the service's last steps (CherryPy Bus.exit: "exit() was called
+# before start() finished"). CherryPy writes this line once it has: the
+# service is started when it answers AND has written it. Matched in the
+# undecoded bytes, never logged.
+_ENGINE_STARTED = b"ENGINE Bus STARTED"
 
 _api_key = ""
 
@@ -128,6 +135,10 @@ def _write_bootstrap_ini(download_root: str) -> None:
         "permissions": "",
         "auto_browser": "0",
         "check_new_rel": "0",
+        # Nor a tray icon of its own: DebridPulse's desktop tray is the only
+        # one (SABnzbd 5.1.3 starts its Windows tray whenever PyWin32 is
+        # present and this is on, which is its default).
+        "tray_icon": "0",
     }
     config["misc"].update(misc)
     with open(path, "wb") as handle:
@@ -163,6 +174,7 @@ class UsenetRuntime:
         self._stderr_task = None
         # Counts only -- never content. See _drain().
         self._suppressed_output: dict[str, int] = {}
+        self._engine_started = asyncio.Event()
 
     # --- configuration ---------------------------------------------------
 
@@ -217,6 +229,7 @@ class UsenetRuntime:
                 return await self.status()
             try:
                 _write_bootstrap_ini(self._config.download_root)
+                self._engine_started = asyncio.Event()
                 self._process = await asyncio.create_subprocess_exec(
                     *self._command(),
                     stdout=asyncio.subprocess.PIPE,
@@ -310,7 +323,7 @@ class UsenetRuntime:
         while time.time() < deadline:
             if not self._alive():
                 raise RuntimeError(self._last_error or "the service exited during startup")
-            if await self.healthy():
+            if self._engine_started.is_set() and await self.healthy():
                 return
             await asyncio.sleep(_HEALTH_POLL_SECONDS)
         raise RuntimeError("the service did not become reachable before the startup timeout")
@@ -341,8 +354,10 @@ class UsenetRuntime:
             self._suppressed_output[name] = suppressed
 
         try:
-            async for _line in output_lines(stream, on_overlong=count):
+            async for line in output_lines(stream, on_overlong=count):
                 count()
+                if _ENGINE_STARTED in line:
+                    self._engine_started.set()
             return
         except asyncio.CancelledError:
             raise

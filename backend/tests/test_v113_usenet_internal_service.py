@@ -257,7 +257,7 @@ def test_a_service_saved_configuration_survives_the_bootstrap(tmp_path, monkeypa
             assert after[section].dict() == before[section].dict(), section
     owned = {"api_key", "host", "port", "username", "password", "download_dir",
              "complete_dir", "direct_unpack", "enable_filejoin", "enable_unrar",
-             "enable_7zip", "permissions", "auto_browser", "check_new_rel"}
+             "enable_7zip", "permissions", "auto_browser", "check_new_rel", "tray_icon"}
     for key, value in before["misc"].items():
         if key not in owned:
             assert after["misc"][key] == value, key
@@ -267,7 +267,7 @@ def test_a_service_saved_configuration_survives_the_bootstrap(tmp_path, monkeypa
     assert after["misc"]["port"] == str(runtime.SERVICE_PORT)
     assert after["misc"]["download_dir"] == topology.incomplete_root("/download")
     assert after["misc"]["complete_dir"] == topology.complete_root("/download")
-    for disabled in ("direct_unpack", "enable_filejoin", "enable_unrar", "enable_7zip"):
+    for disabled in ("direct_unpack", "enable_filejoin", "enable_unrar", "enable_7zip", "tray_icon"):
         assert after["misc"][disabled] == "0", disabled
     # The control plane reads back the same key the service will use.
     monkeypatch.setattr(runtime, "_api_key", "")
@@ -402,3 +402,28 @@ def test_seeding_the_service_changes_no_existing_download_content(tmp_path, monk
     runtime._write_bootstrap_ini(str(download))
     after = {p: stat.S_IMODE(p.stat().st_mode) for p in [download, *download.rglob("*")]}
     assert after == before
+
+
+@pytest.mark.asyncio
+async def test_the_service_counts_as_started_only_once_its_web_engine_says_so():
+    """The service's web engine (CherryPy) answers before it has finished
+    starting, and a stop in that window ends the service with CherryPy's exit
+    70. start() therefore also waits for the engine's own "Bus STARTED" line,
+    read from the drained output and never logged: a real child writes what
+    CherryPy writes, with and without that line."""
+    import asyncio
+    import sys
+
+    from executors.sabnzbd.runtime import UsenetRuntime
+
+    before = ["[15/Nov/2026:08:48:06] ENGINE Bus STARTING",
+              "[15/Nov/2026:08:48:06] ENGINE Serving on http://127.0.0.1:8090"]
+    for lines, started in ((before, False), (before + ["[15/Nov/2026:08:48:06] ENGINE Bus STARTED"], True)):
+        runtime = UsenetRuntime()
+        child = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", "import sys\nfor line in sys.argv[1:]: print(line, flush=True)", *lines,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await asyncio.gather(runtime._drain(child.stdout, "stdout"), runtime._drain(child.stderr, "stderr"))
+        await child.wait()
+        assert runtime._engine_started.is_set() is started
+        assert runtime._suppressed_output == {"stdout": len(lines)}   # counted, never kept

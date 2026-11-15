@@ -98,7 +98,7 @@ def test_the_windows_runtime_lock_keeps_every_canonical_pin():
     canonical = pins(ROOT / "backend" / "requirements.txt")
     windows = pins(ROOT / "packaging" / "desktop" / "windows" / "requirements.txt")
     assert {name: version for name, version in windows.items() if name in canonical and canonical[name] != version} == {}
-    assert set(windows) - set(canonical) == {"colorama", "tzdata"}
+    assert set(windows) - set(canonical) == {"colorama", "pywin32", "tzdata"}
     assert set(canonical) - set(windows) == {"uvloop"}
     assert "--hash=sha256:" in (ROOT / "packaging" / "desktop" / "windows" / "requirements.txt").read_text()
 
@@ -361,3 +361,21 @@ def test_a_credential_whose_own_dacl_names_someone_else_is_refused_before_it_is_
     with pytest.raises(PermissionError, match="grants access to S-1-5-32-551"):
         supervisor.read_credential(credential)
     assert credential.exists()                             # refused: not consumed
+
+
+def test_every_desktop_notice_is_recorded_with_its_digest_and_the_assembler_ships_them():
+    import hashlib
+    import importlib.util
+    import re
+    notices = ROOT / "packaging" / "desktop" / "notices"
+    readme = (notices / "README.md").read_text(encoding="utf-8")
+    recorded = dict(re.findall(r"(?m)^\| `([^`]+)` \|(?: [^|]* \|)? `([0-9a-f]{64})` \|$", readme))
+    present = {path.relative_to(notices).as_posix() for path in notices.rglob("*") if path.is_file()} - {"README.md"}
+    assert present and set(recorded) == present
+    for name, digest in recorded.items():
+        assert hashlib.sha256((notices / name).read_bytes()).hexdigest() == digest, name
+    spec = importlib.util.spec_from_file_location("assemble", ROOT / "packaging" / "desktop" / "assemble.py")
+    assemble = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(assemble)
+    assert "docs/DEPENDENCY_LICENSES.md" in assemble.LEGAL      # Help's third-party document
+    assert '("packaging/desktop/notices", "licenses/desktop")' in (ROOT / "packaging" / "desktop" / "assemble.py").read_text()

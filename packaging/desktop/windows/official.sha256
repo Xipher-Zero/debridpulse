@@ -1,0 +1,7 @@
+# The Windows installer's toolchain, pinned by SHA-256: a download that does not match is refused.
+# NSIS 3.11 for Windows, upstream's portable distribution (SourceForge's published SHA-1:
+# ef7ff767e5cbd9edd22add3a32c9b8f4500bb10d): the makensis the hosted Windows build runs.
+c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1  nsis-3.11.zip  https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip
+# NSIS 3.11's source (SourceForge's published SHA-1: 63ddba57fe46b1e0a4810ece2a7980f069c031b6),
+# handed over with the installers' corresponding source (its LZMA module is CPL-1.0).
+19e72062676ebdc67c11dc032ba80b979cdbffd3886c60b04bb442cdd401ff4b  nsis-3.11-src.tar.bz2  https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11-src.tar.bz2

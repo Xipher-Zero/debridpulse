@@ -2,9 +2,13 @@
 # The application is the layout packaging/desktop/assemble.py builds on Linux
 # x86_64 (bundled CPython 3.12.14, the hash-locked requirements, Neutralino
 # v6.10.0, the bundled tools), installed as-is under /app. Build:
-#   python3 packaging/desktop/assemble.py --out build/layout --tools <tools>
+#   python3 packaging/desktop/assemble.py --out build/layout --usenet
 #   tar -C build -czf build/layout.tar.gz layout
+#   <prepare-sources.sh output> -> build/flatpak-sources/   (the macOS recipes' prepared sources)
 #   flatpak-builder --user --repo=build/repo build/app packaging/desktop/flatpak/org.debridpulse.desktop.yml
+#   flatpak build-bundle build/repo DebridPulse-<version>-linux-x86_64.flatpak org.debridpulse.desktop
+# The native helpers are built here, against this runtime (build-tools.sh),
+# into /app/lib/debridpulse/tools, where the supervisor puts them on PATH.
 app-id: org.debridpulse.desktop
 runtime: org.gnome.Platform     # WebKitGTK 4.1, which Neutralino's Linux webview loads
 runtime-version: '49'
@@ -29,8 +33,40 @@ finish-args:
   - --filesystem=/run/media
   - --filesystem=/media
 modules:
+  - name: tools
+    buildsystem: simple
+    # build-tools.sh strips what it builds; flatpak-builder's own strip and
+    # debuginfo pass is not run over it (nor over the layout, below).
+    build-options:
+      no-debuginfo: true
+      strip: false
+    sources:
+      - type: dir
+        path: ../../../build/flatpak-sources
+      - type: file
+        path: build-tools.sh
+      - type: file
+        path: ../../ffmpeg/build-package.sh
+      # The official Linux releases, unmodified (7-Zip: GitHub's published
+      # asset digest; RARLAB publishes none: pinned to the file first verified
+      # for DebridPulse, as its macOS release is).
+      - type: file
+        url: https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz
+        sha256: 4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4
+      - type: file
+        url: https://www.rarlab.com/rar/rarlinux-x64-723.tar.gz
+        sha256: 759b4b6aa0d9f77131882162951193f3a0e54bf60e1d8dc4255aa308accab588
+    build-commands:
+      - bash build-tools.sh /app/lib/debridpulse/tools
   - name: debridpulse
     buildsystem: simple
+    # The layout is installed exactly as assemble.py built it: its interpreter
+    # (python-build-standalone, shipped stripped) and wheels are prebuilt, and
+    # flatpak-builder's strip/debuginfo pass would rewrite them -- it leaves
+    # the interpreter unable to start ("symbol lookup error").
+    build-options:
+      no-debuginfo: true
+      strip: false
     sources:
       - type: archive
         path: ../../../build/layout.tar.gz

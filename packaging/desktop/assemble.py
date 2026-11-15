@@ -15,8 +15,10 @@ any Python 3.12; it builds the one layout every desktop package carries:
     <out>/backend/usenet/   the bundled Usenet service (``--usenet``): SABnzbd's
                             source at the Dockerfile's pin, hash-checked, where
                             executors.sabnzbd.runtime resolves it; on macOS with
-                            DebridPulse's one recorded headless patch applied
-    <out>/LICENSE, NOTICE, SOURCE_OFFER.md, LICENSES/, licenses/  (both licence
+                            DebridPulse's one recorded headless patch applied; on
+                            Windows with its helpers (from --tools) where it runs them
+    <out>/LICENSE, NOTICE, SOURCE_OFFER.md, docs/DEPENDENCY_LICENSES.md, LICENSES/,
+                            licenses/ (+ licenses/desktop/ from packaging/desktop/notices) (both licence
                             trees kept, whatever the file system's case rules)
 
 ``--wheels`` names a directory of locally built wheels (for example Windows'
@@ -57,7 +59,8 @@ SHELLS = {("Windows", "AMD64"): "neutralino-win_x64.exe", ("Darwin", "arm64"): "
 # The desktop runtime lock each system installs (others: the canonical lock).
 DESKTOP_LOCKS = {"Windows": "packaging/desktop/windows/requirements.txt",
                  "Darwin": "packaging/desktop/macos/requirements.txt"}
-LEGAL = ("LICENSE", "NOTICE", "SOURCE_OFFER.md", "VERSION", "CHANGELOG.md")
+# docs/DEPENDENCY_LICENSES.md: the licence inventory Help shows as its third-party document.
+LEGAL = ("LICENSE", "NOTICE", "SOURCE_OFFER.md", "VERSION", "CHANGELOG.md", "docs/DEPENDENCY_LICENSES.md")
 
 
 def fetch(url: str, digest: str, into: Path) -> Path:
@@ -94,6 +97,11 @@ USENET_MACOS_PATCH = {
     "file_sha256_after": "dfcf164eb31ed3975414c0ba459c4ec51e266f9b006bb78e38e289d555068206",
 }
 USENET_PATCH_COPY = "DEBRIDPULSE-MODIFICATIONS.patch"
+# SABnzbd on Windows runs its helpers only from fixed places under its own
+# directory (sabnzbd/newsunpack.py find_programs), never from PATH, and
+# refuses to download without par2: the bundled tools are copied there too.
+USENET_WINDOWS_HELPERS = {"par2.exe": "win/par2/par2.exe", "UnRAR.exe": "win/unrar/UnRAR.exe",
+                          "7za.exe": "win/7zip/7za.exe"}
 
 
 def usenet_service(cache: Path, into: Path, headless_patch: bool = False) -> dict:
@@ -226,6 +234,15 @@ def main() -> int:
     copytree(ROOT / "backend", out / "backend")
     usenet = (usenet_service(args.cache, out / "backend" / "usenet", headless_patch=key[0] == "Darwin")
               if args.usenet else None)
+    if usenet and key[0] == "Windows":
+        if not args.tools:
+            raise SystemExit("--usenet on Windows needs --tools: the service's helpers come from them")
+        for name, place in USENET_WINDOWS_HELPERS.items():
+            target = out / "backend" / "usenet" / place
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(args.tools / name, target)
+        usenet["windows_helpers"] = {place: hashlib.sha256((out / "backend" / "usenet" / place).read_bytes()).hexdigest()
+                                     for place in USENET_WINDOWS_HELPERS.values()}
     copytree(ROOT / "frontend" / "static", out / "frontend" / "static")
     (out / "desktop").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "desktop" / "supervisor.py", out / "desktop" / "supervisor.py")
@@ -246,15 +263,19 @@ def main() -> int:
         copytree(args.tools, out / "tools")
     for item in LEGAL:
         if (ROOT / item).exists():
+            (out / item).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / item, out / item)
     # Both licence trees, merged only where the file system folds case; no file
-    # may be lost to that merge.
+    # may be lost to that merge. The desktop's own notices (the bundled runtime's
+    # and the native shell's components: packaging/desktop/notices/README.md)
+    # go to licenses/desktop/.
     files = []
-    for tree in ("LICENSES", "licenses"):
+    for tree, target in (("LICENSES", "LICENSES"), ("licenses", "licenses"),
+                         ("packaging/desktop/notices", "licenses/desktop")):
         if (ROOT / tree).is_dir():
             for path in sorted((ROOT / tree).rglob("*")):
                 if path.is_file():
-                    destination = out / tree / path.relative_to(ROOT / tree)
+                    destination = out / target / path.relative_to(ROOT / tree)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(path, destination)
                     files.append((path, destination))

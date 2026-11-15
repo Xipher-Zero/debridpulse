@@ -6,3 +6,6 @@
 68b393c000758d477fde43c955ff7542f12f76f3f5e87cdda923152fc791bd4d  rarmacos-arm-723.tar.gz  https://www.rarlab.com/rar/rarmacos-arm-723.tar.gz
 # rsync 3.5.2 source (samba.org; the digest MSYS2's rsync PKGBUILD pins)
 a10d591825251e070f74c98df3daad195def4ed81b4a2de16169026aea33f6c8  rsync-3.5.2.tar.gz  https://download.samba.org/pub/rsync/src/rsync-3.5.2.tar.gz
+# 7-Zip 25.01 source (GitHub release ip7z/7zip 25.01; GitHub's published asset digest): the
+# corresponding source of the unmodified 7-Zip executables every desktop package ships (LGPL-2.1+)
+ed087f83ee789c1ea5f39c464c55a5c9d4008deb0efe900814f2df262b82c36e  7z2501-src.tar.xz  https://github.com/ip7z/7zip/releases/download/25.01/7z2501-src.tar.xz

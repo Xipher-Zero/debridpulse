@@ -11,14 +11,18 @@
 ; * Prerequisites, before any DebridPulse file is written:
 ;     - Microsoft Visual C++ x64 Redistributable >= VCREDIST_MIN, read where
 ;       Microsoft documents it (HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\
-;       Runtimes\X64, 64-bit view: Installed=1, Major/Minor/Bld); missing or
-;       older, Microsoft's own vc_redist.x64.exe runs elevated (UAC) for THAT
-;       prerequisite only, /install /quiet /norestart;
+;       Runtimes\X64, 64-bit view: Installed=1, Major/Minor/Bld), checked
+;       first, before anything is touched. It is NOT bundled (Microsoft limits
+;       redistributing it to Visual Studio licensees): missing or older, an
+;       interactive install offers Microsoft's official download and checks
+;       again until it is there or the user cancels; a silent install (/S)
+;       writes the requirement to the calling console and exits with code 3,
+;       leaving any existing installation exactly as it was;
 ;     - Microsoft Edge WebView2 Runtime, read where Microsoft documents it
 ;       (EdgeUpdate Clients {F3017226-...} "pv", per machine or per user);
 ;       missing, Microsoft's Evergreen bootstrapper installs it per user.
-;   A refused elevation, a failed prerequisite or one that needs a restart
-;   ends the installation with an explanation and nothing installed.
+;   A failed WebView2 installation ends the installation with an explanation
+;   and nothing installed.
 ; * Uninstall removes the shortcut, the program files, the uninstall entry
 ;   and the Media Downloads helpers' AppContainer profile -- never the data
 ;   root or any download. Program files that cannot be removed or replaced
@@ -46,6 +50,9 @@ Unicode true
   !define VCREDIST_MIN_MINOR 51   ; the WS3 inventory's minimum (ujson, bencode2, cryptography: toolset 14.51)
 !endif
 !define VCREDIST_MIN_BLD 0
+; Microsoft's official download of the latest supported x64 Redistributable
+; (learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
+!define VCREDIST_DOWNLOAD "https://aka.ms/vc14/vc_redist.x64.exe"
 !define WEBVIEW2_CLIENT "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse"
 
@@ -161,6 +168,7 @@ Function .onInit
     MessageBox MB_ICONSTOP|MB_OK "DebridPulse for Windows needs 64-bit Windows." /SD IDOK
     Abort
   ${EndIf}
+  Call RequireVcRedist      ; before the data-root lock and any file: nothing is changed without it
   Call TakeDataRootLock
 FunctionEnd
 Function .onInstSuccess
@@ -210,6 +218,47 @@ Function VcRedistSatisfied
   Push $1
 FunctionEnd
 
+Function RequireVcRedist
+  vcCheck:
+  Call VcRedistSatisfied
+  Pop $0
+  ${If} $0 == 1
+    Return
+  ${EndIf}
+  ${If} $vcMajor == ""
+    StrCpy $2 "none"
+  ${Else}
+    StrCpy $2 "$vcMajor.$vcMinor.$vcBld"
+  ${EndIf}
+  ${If} ${Silent}
+    ; No page: say so where the caller can read it -- the standard output it
+    ; gave the installer (a redirect or a pipe), else the console that started
+    ; it -- and fail with a distinct code before anything is changed.
+    StrCpy $4 "DebridPulse setup: the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer is required (found: $2). Install it from Microsoft (${VCREDIST_DOWNLOAD}) and run setup again. Nothing was changed.$\r$\n"
+    StrLen $5 $4
+    System::Call 'kernel32::GetStdHandle(i -11) p .r6'
+    System::Call 'kernel32::GetFileType(p r6) i .r7'
+    ${If} $7 != 0     ; FILE_TYPE_UNKNOWN: no usable standard output
+      System::Call 'kernel32::WriteFile(p r6, m r4, i r5, *i .r8, p 0)'
+    ${Else}
+      System::Call 'kernel32::AttachConsole(i -1) i .r3'
+      ${If} $3 != 0
+        FileOpen $3 "CONOUT$$" w
+        FileWrite $3 $4
+        FileClose $3
+      ${EndIf}
+    ${EndIf}
+    SetErrorLevel 3
+    Quit
+  ${EndIf}
+  MessageBox MB_ICONEXCLAMATION|MB_YESNOCANCEL "DebridPulse needs the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer (found on this computer: $2).$\n$\nInstall it from Microsoft, then continue here:$\n$\nYes: open Microsoft's download of the Redistributable$\nNo: check again (after installing it)$\nCancel: quit setup (nothing has been changed)" IDYES vcDownload IDNO vcCheck
+  SetErrorLevel 3
+  Quit
+  vcDownload:
+  ExecShell "open" "${VCREDIST_DOWNLOAD}"
+  Goto vcCheck
+FunctionEnd
+
 Function WebView2Satisfied
   ; Microsoft's documented detection: a non-empty, non-"0.0.0.0" pv, per
   ; machine (WOW6432Node) or per user.
@@ -230,23 +279,7 @@ FunctionEnd
 Section "Prerequisites" SecPrerequisites
   SectionIn RO
   InitPluginsDir
-  Call VcRedistSatisfied
-  Pop $0
-  ${If} $0 != 1
-    DetailPrint "Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer is required (found $vcMajor.$vcMinor.$vcBld)."
-    MessageBox MB_ICONINFORMATION|MB_OKCANCEL "DebridPulse needs the Microsoft Visual C++ x64 Redistributable (${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer).$\n$\nWindows will ask for permission to install this Microsoft component. DebridPulse itself installs without administrator rights." /SD IDOK IDOK vcInstall
-    Abort "Installation cancelled: the Microsoft Visual C++ Redistributable is required."
-    vcInstall:
-    File /oname=$PLUGINSDIR\vc_redist.x64.exe "${STAGE}\prerequisites\vc_redist.x64.exe"
-    ; Elevation for this Microsoft component only (UAC "runas").
-    ExecShellWait "runas" "$PLUGINSDIR\vc_redist.x64.exe" "/install /quiet /norestart" SW_HIDE
-    Call VcRedistSatisfied
-    Pop $0
-    ${If} $0 != 1
-      MessageBox MB_ICONSTOP|MB_OK "The Microsoft Visual C++ Redistributable was not installed (permission refused, or its installer failed or needs a restart). Nothing of DebridPulse was installed; run this installer again afterwards." /SD IDOK
-      Abort "The Microsoft Visual C++ Redistributable is missing."
-    ${EndIf}
-  ${EndIf}
+  ; The Visual C++ Redistributable was required in .onInit (RequireVcRedist).
   Call WebView2Satisfied
   Pop $0
   ${If} $0 != 1

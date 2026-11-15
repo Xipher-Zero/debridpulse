@@ -187,8 +187,54 @@ in the table or the machine-readable manifest above.
 sdist, byte-identical to the `LICENSE.txt` in the pyobjc-framework-Cocoa 12.2.1
 wheel (sha256 `0ca04b07…`). It is shipped because the pyobjc-core wheel
 carries no licence file. Both wheels link macOS's own `/usr/lib/libffi.dylib`
-and bundle no libffi. The Windows desktop runtime's additions (`colorama`,
-`tzdata`) are not yet recorded here.
+and bundle no libffi.
+
+### Windows desktop runtime additions
+
+The Windows desktop application installs `packaging/desktop/windows/requirements.txt`:
+every pin of `backend/requirements.txt` except `uvloop` (no Windows build),
+plus the Windows-only packages below. They ship only in the Windows desktop
+installer, never in the container image. Each wheel installs its own licence
+files under its `*.dist-info/licenses/`, which the installer ships unchanged.
+
+| Package | Version | License |
+|---|---:|---|
+| colorama | 0.4.6 | BSD-3-Clause (needed by click on Windows) |
+| pywin32 | 312 | PSF (its package metadata); its win32, COM and Pythonwin files carry Mark Hammond's BSD-style notice, and it also bundles adodbapi (LGPL-2.1-or-later), Microsoft's MAPI stub library (MIT) and Scintilla (its own permissive licence), each with its licence file in the wheel. Needed by the bundled Usenet service (SABnzbd) on Windows. |
+| tzdata | 2026.6 | Apache-2.0 (needed by apprise on Windows) |
+
+### Desktop native components: licences, redistribution terms, notices and source
+
+What the desktop installers carry besides the Python packages above. "Notice"
+is where the installed application holds the licence text; "Source" is where
+its corresponding source is handed over (the `*-desktop-sources-*.tar` beside
+every installer, `SOURCE_OFFER.md`, "The desktop applications"). Terms marked
+[D] were read from the vendor's documentation on 2026-11-15; the rest from the
+licence text the component itself ships.
+
+| Component | Packages | Licence | Redistribution condition (as verified) | Notice | Source |
+|---|---|---|---|---|---|
+| CPython 3.12.14 runtime (python-build-standalone 20260901) and the libraries built into it (OpenSSL, libffi, SQLite, XZ, bzip2, zlib, mpdecimal, expat, Tcl/Tk, ncurses, libedit, libuuid, Berkeley DB) | all | PSF-2.0; Apache-2.0, MIT, BSD, public domain, TCL, X11 | reproduce the notices | `runtime/python/lib/python3.12/LICENSE.txt`, `licenses/desktop/python-build-standalone/` | not copyleft; upstream release |
+| Neutralino 6.10.0 shell and the libraries built into it | all | MIT; Boost (asio), MIT (several), WTFPL (portable-file-dialogs), Apache-2.0 (mbedtls), BSD-3-Clause (websocketpp), Microsoft BSD-style (WebView2 loader, Windows) | reproduce the notices; the bundled base64 header states no licence (an earlier form of an MIT project: provenance inferred) | `licenses/desktop/neutralino/` | not copyleft; upstream tag |
+| aria2 1.37.0 (Debian's source, DebridPulse's patch, no BitTorrent) | all | GPL-2.0-or-later with the OpenSSL exception | provide the corresponding source | `tools/copyright/aria2` | sources tar |
+| OpenSSL 3.5.7 libcrypto, libssh2 1.11.1, c-ares 1.34.9 (built into aria2; zlib and expat too on Windows) | all | Apache-2.0, BSD-3-Clause, MIT, zlib, MIT | reproduce the notices | `tools/copyright/{openssl,libssh2,c-ares}` (+ `zlib`, `expat` on Windows) | sources tar |
+| FFmpeg/ffprobe 7.1.5 (DebridPulse's capability set, no GPL parts) | all | LGPL-2.1-or-later | provide the corresponding source | `tools/copyright/ffmpeg` | sources tar |
+| par2cmdline 0.8.1 (par2cmdline-turbo on Windows) | all | GPL-2.0-or-later | provide the corresponding source | `tools/copyright/par2` | sources tar |
+| zstd 1.5.7 | all | BSD-3-Clause OR GPL-2.0 (used under BSD) | reproduce the notice | `tools/copyright/zstd` | sources tar |
+| rsync 3.5.2 | all | GPL-3.0-or-later | provide the corresponding source | `tools/copyright/rsync`; Windows `tools/rsync/licenses/rsync/` | sources tar |
+| MSYS2 runtime `msys-2.0.dll` (Cygwin) | Windows | LGPL-3.0-or-later with Cygwin's linking exception (its GPL-3.0 parts are not in the DLL) | provide the corresponding source; the DLL stays replaceable beside `rsync.exe` | `tools/rsync/licenses/msys2-runtime/` (`COPYING`, `CYGWIN_LICENSE`, the upstream licence texts) | MSYS2 source package, sources tar |
+| MSYS2 libraries beside it: libiconv, libintl (gettext), libidn2, libunistring, liblz4, libxxhash, libzstd, popt, libopenssl | Windows | LGPL-2.1+/LGPL-3+/GPL-2+ (libiconv, libintl, libidn2, libunistring), BSD-2-Clause (lz4, xxhash), BSD (zstd), MIT-style (popt), Apache-2.0 (OpenSSL) | provide the source of the LGPL ones; reproduce every notice | `tools/rsync/licenses/<package>/` (packaged and upstream texts) | each MSYS2 source package, sources tar |
+| 7-Zip 25.01 (`7z.exe`, `7z.dll`, `7za.exe`; `7zz`), official releases, unmodified | all | LGPL-2.1-or-later, parts with the unRAR licence restriction, BSD-3-Clause and BSD-2-Clause parts | "Redistributions in binary form must reproduce related license information from this file" (its `License.txt`); provide the LGPL source | `tools/copyright/7-zip` | `7z2501-src.tar.xz`, sources tar |
+| UnRAR 7.23 (`UnRAR.exe`; macOS/Linux `unrar` from RARLAB's RAR package), official releases, unmodified | all | RARLAB freeware licence (Windows `UnRAR.exe`); the RAR package's licence (macOS, Linux) | the RAR licence lets "the UnRAR components" be distributed separately (3a); no RAR or UnRAR code may be used to re-create the RAR compression algorithm. Not open source: Flathub publication remains an open question | `tools/copyright/unrar` (+ `unrar-acknowledgments`, macOS/Linux) | none owed (freeware) |
+| sabctools 9.6.3 (on Windows built with DebridPulse's patch; elsewhere PyPI's wheel) | all | GPL-2.0-or-later | provide the corresponding source | its installed licence file | sdist (+ the Windows patch), sources tar |
+| SABnzbd 5.1.3 (the Usenet service; patched on macOS) | all | GPL-2.0-or-later | provide the corresponding source (shipped as source; `tests/` omitted) | `backend/usenet/LICENSE.txt` | release tarball, sources tar |
+| NSIS 3.11 installer stub (upstream's NSIS 3.11 for Windows, pinned; LZMA compressor) | Windows | zlib/libpng; its LZMA module CPL-1.0 with NSIS's special exception | [D] NSIS's licence page covers NSIS and its compression modules, not the installers built with it; CPL-1.0 object-code distribution states where the source is: upstream's `nsis-3.11-src.tar.bz2` | `licenses/desktop/nsis/copyright` | sources tar (`windows-tools/nsis/`) |
+| Microsoft Visual C++ x64 Redistributable 14.51 or newer | Windows (prerequisite) | Microsoft Software License Terms | **Not bundled.** [D] "Distribution of the Visual C++ Runtime Redistributable package ... is limited to licensed Visual Studio users" (learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files, 2026-04-13). The installer requires it before changing anything and sends the user to Microsoft's own download (`https://aka.ms/vc14/vc_redist.x64.exe`) | -- | proprietary; not distributed |
+| Microsoft Edge WebView2 Evergreen Bootstrapper (`MicrosoftEdgeWebview2Setup.exe`, inside the Windows installer, run only when missing) | Windows | Microsoft | [D] packaging the bootstrapper with an app is a documented distribution option: "download the bootstrapper and package it with your WebView2 app" (learn.microsoft.com/microsoft-edge/webview2/concepts/distribution, updated 2026-10-02) | -- | proprietary |
+
+The Flatpak's runtime (GNOME 49 from Flathub) is not in the bundle: Flatpak
+installs it from Flathub. The Deno executable's embedded components remain the
+open item recorded above.
 
 ## Copyleft review — the facts and the recorded disposition
 

@@ -14,8 +14,12 @@ src="$1"; work="$2"; out="$3"
 mkdir -p "$work" "$out"; src="$(cd "$src" && pwd)"; work="$(cd "$work" && pwd)"; out="$(cd "$out" && pwd)"
 jobs="$(sysctl -n hw.ncpu)"
 mkdir -p "$work" "$out/bin" "$out/copyright"
-grep -vE '^(#|$)' "$here/official.sha256" | while read -r digest name _url; do
-  echo "$digest  $src/$name" | shasum -a 256 -c --quiet
+# Every pinned download is verified; RARLAB's RAR package (a RAR trial
+# distribution, of which only UnRAR is used) is fetched here, never prepared
+# in <sources-dir> (prepare-sources.sh).
+grep -vE '^(#|$)' "$here/official.sha256" | while read -r digest name url; do
+  case "$name" in rar*) curl -sSfL -o "$work/$name" "$url"; file="$work/$name" ;; *) file="$src/$name" ;; esac
+  echo "$digest  $file" | shasum -a 256 -c --quiet
 done
 tar -xzf "$src/par2cmdline-0.8.1.tar.gz" -C "$work"
 (cd "$work/par2cmdline-0.8.1" && ./configure --disable-openmp >/dev/null && make -j"$jobs" par2 >/dev/null)
@@ -29,7 +33,8 @@ tar -xzf "$src/rsync-3.5.2.tar.gz" -C "$work"
 install -m 0755 "$work/rsync-3.5.2/rsync" "$out/bin/rsync"; cp "$work/rsync-3.5.2/COPYING" "$out/copyright/rsync"
 mkdir -p "$work/7zip" && tar -xJf "$src/7z2501-mac.tar.xz" -C "$work/7zip" 7zz License.txt
 install -m 0755 "$work/7zip/7zz" "$out/bin/7zz"; cp "$work/7zip/License.txt" "$out/copyright/7-zip"
-tar -xzf "$src/rarmacos-arm-723.tar.gz" -C "$work" rar/unrar rar/license.txt
+tar -xzf "$work/rarmacos-arm-723.tar.gz" -C "$work" rar/unrar rar/license.txt rar/acknow.txt
 install -m 0755 "$work/rar/unrar" "$out/bin/unrar"; cp "$work/rar/license.txt" "$out/copyright/unrar"
+cp "$work/rar/acknow.txt" "$out/copyright/unrar-acknowledgments"
 for exe in "$out/bin/"*; do printf '%s: ' "$(basename "$exe")"; otool -L "$exe" | tail -n +2 | awk '{print $1}' | tr '\n' ' '; echo; done | tee "$out/links.txt"
 "$out/bin/rsync" --version | head -1
