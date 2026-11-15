@@ -158,3 +158,11 @@ def test_the_inputs_cache_and_the_checksums_cover_the_manifest_and_every_deliver
     assert "! -name SHA256SUMS ! -name MANIFEST.md" in run
     assert run.index("> MANIFEST.md") < run.index("> SHA256SUMS")
     assert "sha256sum MANIFEST.md; } > SHA256SUMS" in run and "sha256sum -c SHA256SUMS" in run
+
+
+def test_every_platform_job_checks_out_the_committed_bytes_unconverted():
+    steps = _steps("desktop")
+    names = [step.get("uses", step.get("name", "")) for step in steps]
+    autocrlf = next(i for i, step in enumerate(steps) if step.get("run") == "git config --global core.autocrlf false")
+    checkout = next(i for i, name in enumerate(names) if name.startswith("actions/checkout@"))
+    assert autocrlf < checkout

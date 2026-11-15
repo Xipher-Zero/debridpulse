@@ -168,6 +168,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
+      # The committed bytes, unconverted: Git on a Windows runner would check out text files with
+      # CRLF line endings (core.autocrlf), changing pinned files (the SABnzbd patch, the vendored
+      # notices) and everything the Windows layout ships.
+      - name: Check out the committed bytes unconverted (no CRLF conversion)
+        shell: bash
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false

@@ -331,24 +331,102 @@ def _account_sid():
                           capture_output=True, text=True, check=True).stdout.strip()
 
 
+def _sddl(path) -> str:
+    """``path``'s owner and DACL as SDDL, read straight from Windows (not
+    through the supervisor), so a fixture can be checked independently of the
+    policy under test."""
+    import ctypes
+    from ctypes import wintypes
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    adv.GetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                     ctypes.POINTER(wintypes.DWORD)]
+    adv.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p]
+    information = 0x1 | 0x4                                # OWNER_ | DACL_SECURITY_INFORMATION
+    needed = wintypes.DWORD()
+    adv.GetFileSecurityW(str(path), information, None, 0, ctypes.byref(needed))
+    descriptor = ctypes.create_string_buffer(needed.value)
+    if not adv.GetFileSecurityW(str(path), information, descriptor, needed, ctypes.byref(needed)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    text = wintypes.LPWSTR()
+    if not adv.ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, 1, information,
+                                                                    ctypes.byref(text), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        return text.value
+    finally:
+        ctypes.windll.kernel32.LocalFree(text)
+
+
+def _set_sddl(path, sddl: str) -> None:
+    """Replace ``path``'s owner and ENTIRE DACL with ``sddl`` in one call
+    (``P``: inheritance from the parent blocked)."""
+    import ctypes
+    from ctypes import wintypes
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    adv.SetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p]
+    descriptor = ctypes.c_void_p()
+    if not adv.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        # OWNER_ | DACL_ | PROTECTED_DACL_SECURITY_INFORMATION
+        if not adv.SetFileSecurityW(str(path), 0x1 | 0x4 | 0x80000000, descriptor):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        ctypes.windll.kernel32.LocalFree(descriptor)
+
+
+def _elevated() -> bool:
+    import ctypes
+    return bool(ctypes.windll.shell32.IsUserAnAdmin())
+
+
 @WINDOWS_ONLY
 def test_a_private_looking_tmp_that_hands_files_no_private_acl_is_refused(tmp_path):
     """Its own ACL names only this account, SYSTEM and Administrators, but
-    nothing is inheritable: Windows would give the credential the creating
-    token's default DACL, which names the logon session too."""
+    nothing is file-inheritable: Windows would give the credential the
+    creating token's default DACL instead. Refused under any token."""
     import subprocess
     home, credential_dir = _home(tmp_path)
     credential_dir.parent.mkdir(mode=0o700)
     credential_dir.mkdir()
     me = _account_sid()
-    _icacls(credential_dir, "/inheritance:r", "/grant:r", f"*{me}:(F)", "*S-1-5-18:(F)", "*S-1-5-32-544:(F)")
+    # The fixture: this owner and exactly these three ACEs, none inheritable (no OI/CI/IO flags),
+    # inheritance from the application directory protected.
+    fixture = f"O:{me}D:P(A;;FA;;;{me})(A;;FA;;;SY)(A;;FA;;;BA)"
+    _set_sddl(credential_dir, fixture)
+    observed = _sddl(credential_dir)
+    assert observed == fixture, (                         # a FIXTURE mismatch, not a policy result
+        f"fixture not in place (elevated={_elevated()}): expected {fixture}, read back {observed}; "
+        f"application directory {_sddl(credential_dir.parent)}")
     with pytest.raises(PermissionError, match="does not hand its private ACL to the files created in it"):
         supervisor.private_directory(credential_dir)
-    # Why it matters: a file created there names the logon session.
-    probe = credential_dir / "probe.txt"
-    probe.write_text("x")
-    listed = subprocess.run(["icacls", str(probe)], capture_output=True, text=True).stdout
-    assert "LogonSessionId" in listed, listed
+    # Why it matters, as demonstrated for a standard (unelevated) token -- the desktop's own: a file
+    # created there gets the token's default DACL, which names the logon session.
+    if not _elevated():
+        probe = credential_dir / "probe.txt"
+        probe.write_text("x")
+        listed = subprocess.run(["icacls", str(probe)], capture_output=True, text=True).stdout
+        assert "LogonSessionId" in listed, listed
+
+
+@WINDOWS_ONLY
+def test_the_same_fixture_with_file_inheriting_aces_is_accepted(tmp_path):
+    """The control for the case above: the same owner, trustees and protected
+    DACL, set the same way, but handed to every file created in it."""
+    home, credential_dir = _home(tmp_path)
+    credential_dir.parent.mkdir(mode=0o700)
+    credential_dir.mkdir()
+    me = _account_sid()
+    fixture = f"O:{me}D:P(A;OICI;FA;;;{me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    _set_sddl(credential_dir, fixture)
+    observed = _sddl(credential_dir)
+    assert observed == fixture, (
+        f"fixture not in place (elevated={_elevated()}): expected {fixture}, read back {observed}; "
+        f"application directory {_sddl(credential_dir.parent)}")
+    supervisor.private_directory(credential_dir)
 
 
 @WINDOWS_ONLY
