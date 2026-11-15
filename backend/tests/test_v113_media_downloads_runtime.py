@@ -461,6 +461,8 @@ except OSError as exc:
 
 
 @pytest.mark.real_runtime
+@pytest.mark.skipif(os.name == "nt", reason="Windows: test_v114_media_native_confinement (the AppContainer "
+                                             "reaches no interpreter it is not granted)")
 @pytest.mark.asyncio
 async def test_every_native_helper_runs_with_no_usable_network(tmp_path):
     """The kernel, not the worker's Python hook, takes the helpers' network
@@ -505,7 +507,8 @@ async def test_every_native_helper_runs_with_no_usable_network(tmp_path):
         child = run(sys.executable, "-I", "-c", "import sys; sys.path.insert(0, sys.argv.pop(1)); import netless; "
                     "netless.run(sys.argv.pop(1))", str(Path(netless.__file__).parent), sys.executable, "-c", _ESCAPE,
                     str(port))
-        assert child.stdout.strip() == "refused 13"
+        # The kernel's refusal: seccomp's EACCES on Linux, Seatbelt's EPERM on macOS.
+        assert child.stdout.strip() == f"refused {1 if sys.platform == 'darwin' else 13}"
         await asyncio.sleep(0.2)
     finally:
         origin.close()
@@ -575,6 +578,7 @@ SHAPES = {
 def test_every_finalization_shape_copies_every_selected_stream_unchanged(tmp_path, shape):
     container, components, subtitle, copies = SHAPES[shape]
     confined = MediaSandbox(str(tmp_path / "runtime")).confined_tools()
+    MediaSandbox._workspace(tmp_path)   # the finalizer works inside the attempt workspace
     # DebridPulse's FFmpeg has no encoder: whatever it writes can only be a copy.
     encoders = subprocess.run([confined["ffmpeg"], "-hide_banner", "-encoders"], check=True, capture_output=True,
                               text=True).stdout

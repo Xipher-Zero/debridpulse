@@ -19,7 +19,8 @@ its network and filesystem boundary for the rest of its life:
   names -- each the network-confined wrapper ``executors.media.netless``, in
   which the kernel refuses every network socket -- never with a network
   address in its arguments, and the JavaScript runtime only in its sandboxed
-  form (no remote modules, no permission grants). This hook governs only this
+  form (no remote modules, no permission grants); nothing may be handed to
+  the desktop shell (``os.startfile``). This hook governs only this
   process's own code; the kernel filter is what binds the native helpers;
 * files may be written only inside the attempt workspace, plus the attempt's
   durable result record and its one authorized target.
@@ -144,6 +145,10 @@ class Sandbox:
                                              for root in self.writable)
 
     def _program(self, executable, argv) -> None:
+        if isinstance(argv, (str, bytes)):
+            # Windows: subprocess reports the one command line it will hand to
+            # CreateProcess, which starts its first token.
+            argv = command_line(os.fsdecode(argv))
         name = os.fsdecode(executable) if executable is not None else os.fsdecode(argv[0])
         resolved = shutil.which(name) if os.sep not in name else name
         path = os.path.realpath(resolved) if resolved else ""
@@ -185,7 +190,9 @@ class Sandbox:
         elif event == "os.posix_spawn":
             self._program(args[0], args[1])
         elif event in {"os.system", "os.exec", "os.spawn", "os.fork", "os.forkpty", "pty.spawn", "os.symlink",
-                       "os.link"}:
+                       "os.link", "os.startfile", "os.startfile/2"}:
+            # os.startfile (Windows) hands a path or link to whatever the shell
+            # associates with it -- a browser fetching a URL outside the guard.
             self._refuse(event)
         elif event == "open":
             path, mode, flags = args
@@ -199,6 +206,55 @@ class Sandbox:
         elif event in self._FILE_EVENTS:
             if not self._inside(args[0]):
                 self._refuse(event)
+
+
+def command_line(line: str) -> list[str]:
+    """The argv a Windows program sees for ``line``: the C runtime's rules, the
+    inverse of ``subprocess.list2cmdline``. The program name ends at its
+    closing quote, or at the first space or tab (no escapes); each argument
+    after it ends at unquoted whitespace, where 2n backslashes before a quote
+    are n backslashes and the quote toggles quoting, 2n+1 are n and a literal
+    quote, and a doubled quote inside quotes is a literal quote."""
+    argv, i, n = [], 0, len(line)
+    if i < n and line[i] == '"':
+        end = line.find('"', 1)
+        end = n if end < 0 else end
+        argv.append(line[1:end])
+        i = end + 1
+    else:
+        while i < n and line[i] not in " \t":
+            i += 1
+        argv.append(line[:i])
+    while True:
+        while i < n and line[i] in " \t":
+            i += 1
+        if i >= n:
+            return argv
+        current, quoted = [], False
+        while i < n and (quoted or line[i] not in " \t"):
+            if line[i] == "\\":
+                start = i
+                while i < n and line[i] == "\\":
+                    i += 1
+                count = i - start
+                if i < n and line[i] == '"':
+                    current.append("\\" * (count // 2))
+                    if count % 2:
+                        current.append('"')
+                        i += 1
+                else:
+                    current.append("\\" * count)
+            elif line[i] == '"':
+                if quoted and i + 1 < n and line[i + 1] == '"':
+                    current.append('"')
+                    i += 2
+                else:
+                    quoted = not quoted
+                    i += 1
+            else:
+                current.append(line[i])
+                i += 1
+        argv.append("".join(current))
 
 
 # ── yt-dlp ────────────────────────────────────────────────────────────────

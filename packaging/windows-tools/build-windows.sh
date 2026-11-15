@@ -8,7 +8,7 @@
 #     RARLAB UnRAR -- the official releases, unmodified, refused unless they
 #     match official.sha256.
 # Usage: build-windows.sh <work-dir> <out-dir>
-# Produces <out-dir>/bin/{par2,zstd,7z,7za,UnRAR}.exe + 7z.dll, <out-dir>/source/
+# Produces <out-dir>/bin/{par2,zstd,7z,7za,UnRAR,netless-launcher}.exe + 7z.dll, <out-dir>/source/
 # (each Debian source package as fetched + this script + official.sha256),
 # <out-dir>/copyright/ (each tool's license), imports.txt and VERSIONS.
 set -euo pipefail
@@ -58,7 +58,12 @@ install -m 0755 "$tree/programs/zstd.exe" "$out/bin/zstd.exe"
 cp "$tree/debian/copyright" "$out/copyright/zstd"
 versions+=("zstd $(cd "$tree" && dpkg-parsechangelog -SVersion)")
 
-for exe in "$out/bin/par2.exe" "$out/bin/zstd.exe"; do $HOST-strip --strip-unneeded "$exe"; done
+# netless-launcher: DebridPulse's own "#!" stand-in for the Media Downloads
+# helper wrappers (its source says why), static, kernel32 only.
+$HOST-gcc -O2 -Wall -Werror -municode -static -o "$out/bin/netless-launcher.exe" "$here/netless-launcher.c"
+versions+=("netless-launcher $(sha256sum "$here/netless-launcher.c" | cut -c1-16) (DebridPulse source)")
+
+for exe in "$out/bin/par2.exe" "$out/bin/zstd.exe" "$out/bin/netless-launcher.exe"; do $HOST-strip --strip-unneeded "$exe"; done
 
 7z x -y -o"$work/7zip" "$work/7z2501-x64.exe" 7z.exe 7z.dll License.txt >/dev/null
 install -m 0755 "$work/7zip/7z.exe" "$work/7zip/7z.dll" "$out/bin/"
@@ -77,11 +82,11 @@ for exe in "$out/bin/"*.exe "$out/bin/"*.dll; do
   echo
 done > "$out/imports.txt"
 cat "$out/imports.txt"
-if grep -E '^(par2|zstd)\.exe:' "$out/imports.txt" | grep -viE '^[a-z0-9]+\.exe: ((KERNEL32|USER32|ADVAPI32|SHELL32|msvcrt|api-ms-win-[a-z0-9-]+)\.dll ?)+$'; then
+if grep -E '^(par2|zstd|netless-launcher)\.exe:' "$out/imports.txt" | grep -viE '^[a-z0-9-]+\.exe: ((KERNEL32|USER32|ADVAPI32|SHELL32|msvcrt|api-ms-win-[a-z0-9-]+)\.dll ?)+$'; then
   echo "a DebridPulse-built tool imports a non-system DLL" >&2
   exit 1
 fi
 find "$work" -maxdepth 1 -type f \( -name '*.dsc' -o -name '*.tar.*' \) -exec cp {} "$out/source/" \;
-cp "$here/build-windows.sh" "$here/official.sha256" "$out/source/"
+cp "$here/build-windows.sh" "$here/official.sha256" "$here/netless-launcher.c" "$out/source/"
 printf '%s\n' "${versions[@]}" > "$out/VERSIONS"
 cat "$out/VERSIONS"

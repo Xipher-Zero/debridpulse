@@ -107,6 +107,7 @@ def test_an_ordinary_helper_succeeds_and_a_short_failure_reports_its_whole_stder
 def test_the_real_finalizer_still_copies_a_good_input_and_fails_a_bad_one_through_run(tmp_path):
     from executors.media.sandbox import MediaSandbox
     confined = MediaSandbox(str(tmp_path / "runtime")).confined_tools()
+    MediaSandbox._workspace(tmp_path)   # the finalizer works inside the attempt workspace
     V, A = {"vcodec": "avc1", "acodec": "none"}, {"vcodec": "none", "acodec": "mp4a.40.2"}
     for name in ("video.mp4", "audio.m4a"):
         shutil.copy(FIXTURES / name, tmp_path / name)

@@ -16,13 +16,17 @@ executor's acquisition alike -- runs here, the same way:
   updated or discovered at run time;
 * with every native helper the worker may start (ffmpeg, ffprobe, deno)
   reachable only through its confined wrapper (``executors.media
-  .netless``): the kernel refuses that helper, and anything it starts, every
-  network socket, so the guarded worker stays the only network path.
+  .netless``): the operating system refuses that helper, and anything it
+  starts, every network path, so the guarded worker stays the only one. On
+  Windows the wrapper is the packaged ``netless-launcher.exe`` beside the
+  wrapper script, and the helpers' AppContainer is granted exactly the tool
+  directories and the workspace it works in.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import sys
 import time
@@ -30,12 +34,16 @@ import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from executors.media import netless
 from executors.process_ownership import OwnedProcess, ProcessOwnership
 from integrations.media.outcomes import MediaFailure
 from services.downloader_egress_guard import downloader_egress_guard
 
 WORKER = Path(__file__).with_name("worker.py")
 NETLESS = Path(__file__).with_name("netless.py")
+# Windows only: the packaged "#!" stand-in each confined wrapper runs as.
+LAUNCHER = "netless-launcher"
+_WINDOWS = os.name == "nt"
 FAILED_EXIT = 3
 _OUTPUT_LIMIT = 8 * 1024 * 1024
 _STDERR_LIMIT = 16 * 1024
@@ -65,6 +73,8 @@ class MediaTools:
 
     def missing(self) -> tuple[str, ...]:
         absent = tuple(name for name, path in asdict(self).items() if not path)
+        if _WINDOWS and not shutil.which(LAUNCHER):
+            absent += (LAUNCHER,)
         try:
             import yt_dlp  # noqa: F401 -- presence only
         except ImportError:
@@ -103,11 +113,26 @@ class MediaSandbox:
         return [self.python, "-I", "-B", str(WORKER)]
 
     def environment(self, temporary: Path) -> dict[str, str]:
-        return self.processes.environment({
+        extra = {
             "YTDLP_NO_PLUGINS": "1", "NO_COLOR": "1", "TMPDIR": str(temporary),
             "XDG_CACHE_HOME": str(temporary / ".cache"), "XDG_CONFIG_HOME": str(temporary / ".config"),
             "DENO_DIR": str(temporary / ".deno"), "DENO_NO_UPDATE_CHECK": "1",
-        })
+        }
+        if _WINDOWS:
+            # Windows programs take their temporary directory from these.
+            extra.update(TEMP=str(temporary), TMP=str(temporary))
+        return self.processes.environment(extra)
+
+    @staticmethod
+    def _workspace(path: Path) -> None:
+        """Windows: the helpers' AppContainer may change ``path``, the one
+        tree a confined helper works in (elsewhere the confinement itself
+        names it)."""
+        if _WINDOWS:
+            try:
+                netless.permit(str(path), write=True)
+            except OSError as exc:
+                raise MediaFailure("runtime_unavailable", str(exc)) from None
 
     async def route(self, scope: str) -> tuple[str, tuple[str, int]]:
         """The proxy URL (credential included) and the guard listener of one
@@ -124,27 +149,50 @@ class MediaSandbox:
         """``{tool: path}`` of the network-confined wrapper of every packaged
         native tool: the only paths the worker is ever given. Each wrapper is
         this interpreter running ``netless.run(<the real tool>)``; it is
-        (re)written atomically whenever it does not say exactly that."""
-        if not self.python or any(char.isspace() for char in self.python):
+        (re)written atomically whenever it does not say exactly that. On
+        Windows, which runs no script, the path is the packaged launcher copied
+        beside it as ``<tool>.exe``, and the tool's directory is granted to the
+        helpers' AppContainer whenever its wrapper is (re)written."""
+        if not self.python or (any(char in self.python for char in '"\r\n') if _WINDOWS
+                               else any(char.isspace() for char in self.python)):
             raise MediaFailure("runtime_unavailable", "interpreter path cannot start a confined helper")
+        launcher = shutil.which(LAUNCHER) if _WINDOWS else None
+        if _WINDOWS and not launcher:
+            raise MediaFailure("runtime_unavailable", "missing: " + LAUNCHER)
+        interpreter = f'"{self.python}"' if _WINDOWS else self.python
         directory = self.processes.root / "tools"
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         confined = {}
         for name, real in asdict(self.tools).items():
-            script = (f"#!{self.python} -I\nimport sys\nsys.path.insert(0, {str(NETLESS.parent)!r})\n"
+            script = (f"#!{interpreter} -I\nimport sys\nsys.path.insert(0, {str(NETLESS.parent)!r})\n"
                       f"import netless\nnetless.run({real!r})\n")
             path = directory / name
-            try:
-                current = path.read_text(encoding="utf-8")
-            except OSError:
-                current = None
-            if current != script:
-                temporary = directory / f".{name}.tmp"
-                temporary.write_text(script, encoding="utf-8")
-                temporary.chmod(0o700)
-                temporary.replace(path)
+            written = self._replace(path, script.encode("utf-8"))
+            if _WINDOWS:
+                executable = directory / f"{name}.exe"
+                if self._replace(executable, Path(launcher).read_bytes()) or written:
+                    try:
+                        netless.permit(str(Path(real).parent), write=False)
+                    except OSError as exc:
+                        path.unlink(missing_ok=True)   # granted next time, never assumed
+                        raise MediaFailure("runtime_unavailable", str(exc)) from None
+                path = executable
             confined[name] = str(path)
         return confined
+
+    @staticmethod
+    def _replace(path: Path, content: bytes) -> bool:
+        """Make ``path`` hold exactly ``content`` (atomically); whether it had to."""
+        try:
+            if path.read_bytes() == content:
+                return False
+        except OSError:
+            pass
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_bytes(content)
+        temporary.chmod(0o700)
+        temporary.replace(path)
+        return True
 
     def _spec(self, mode: str, url: str, proxy: str, guard, **extra) -> bytes:
         missing = self.tools.missing()
@@ -165,6 +213,7 @@ class MediaSandbox:
         workspace.mkdir(mode=0o700, parents=True, exist_ok=True)
         owned = None
         try:
+            self._workspace(workspace)
             proxy, guard = await self.route(scope)
             spec = self._spec("extract", url, proxy, guard, selection=selection, collection_bound=collection_bound,
                               single_item=single_item, workspace=str(workspace))
@@ -214,6 +263,7 @@ class MediaSandbox:
         """Start the attempt's one acquisition worker; its route stays live
         until ``revoke(public_scope(attempt_id))``."""
         scope = public_scope(attempt_id)
+        self._workspace(workspace)
         proxy, guard = await self.route(scope)
         try:
             spec = self._spec("acquire", url, proxy, guard, plan=plan, attempt=str(attempt_id),
