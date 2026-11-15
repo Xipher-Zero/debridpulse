@@ -172,6 +172,18 @@ async def _settled(db, settings) -> InitialSetup:
     return initial
 
 
+# The pages after Download Directory: a desktop installation reaches them only
+# with a download folder it chose.
+_AFTER_DOWNLOAD_DIRECTORY = frozenset({"administrator", "premium_services", "getting_started"})
+
+
+def _desktop_folder_required(settings) -> None:
+    from core.config import desktop_installation, download_folder_chosen
+
+    if desktop_installation() and not download_folder_chosen(settings):
+        raise SetupRefused("Choose the download folder before continuing", code="setup.download_folder_required")
+
+
 def _administrator_required(initial: InitialSetup, settings) -> None:
     from auth.policy import standalone_deployment
 
@@ -183,16 +195,19 @@ async def advance_initial(phase: str) -> None:
     """Record the page the initial setup resumes on, once the page before it
     has committed its own configuration through that configuration's owner."""
     from auth.policy import standalone_deployment
-    from core.config import get_settings
+    from core.config import desktop_installation, get_settings
 
     async with _lock():
         settings = get_settings()
         async with _transaction() as db:
             initial = await _settled(db, settings)
             _incomplete(initial)
-            if phase == "administrator" and standalone_deployment(settings):
+            if (phase == "administrator" and standalone_deployment(settings)) or (
+                    phase == "deployment" and desktop_installation()):
                 raise SetupRefused("That setup step is not available for this installation",
                                    code="setup.phase_unavailable")
+            if phase in _AFTER_DOWNLOAD_DIRECTORY:
+                _desktop_folder_required(settings)
             if phase in _AFTER_ADMINISTRATOR:
                 _administrator_required(initial, settings)
             elif initial.administrator_configured:
@@ -223,6 +238,7 @@ async def finish_initial(principal) -> None:
         async with _transaction() as db:
             initial = await _settled(db, settings)
             _incomplete(initial)
+            _desktop_folder_required(settings)
             _administrator_required(initial, settings)
             if not standalone_deployment(settings):
                 if not password_auth_enabled(settings):

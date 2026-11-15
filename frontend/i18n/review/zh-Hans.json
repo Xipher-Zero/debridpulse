@@ -928,6 +928,14 @@
     "ai-review"
    ]
   },
+  "error.setup.download_folder_required": {
+   "source": "790ee927b2d7e0a6",
+   "translation": "9b2985e934f2e643",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "error.setup.administrator_exists": {
    "source": "ac5d610b75d21083",
    "translation": "f750d70cd89f3734",
@@ -1615,6 +1623,62 @@
   "processing.resume_all": {
    "source": "5322a378a19661bc",
    "translation": "1c772c48075bf0dc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.tray.open": {
+   "source": "f485c9200ef63833",
+   "translation": "cb059bd27c4fdc67",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.tray.quit": {
+   "source": "0cfd2ce09076812d",
+   "translation": "ec6d6b997031e1ce",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.tray.status": {
+   "source": "0521c642f4707144",
+   "translation": "cc45cfe76088c330",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.notice.accepted": {
+   "source": "03b24f0469eb45de",
+   "translation": "6169bbc1ba6956c6",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.notice.completed": {
+   "source": "b4d2a584f3e97f7a",
+   "translation": "309350cc6160c0bb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.notice.paused_many": {
+   "source": "38f24e67ee96e975",
+   "translation": "c2d3770071013563",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.notice.resumed_many": {
+   "source": "d29ce9d8bb9d1a32",
+   "translation": "576dc18ee16ee4a9",
    "provenance": [
     "ai-generated",
     "ai-review"

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DebridPulse
+Comment=Self-hosted download and transfer manager
+Exec=debridpulse
+Icon=org.debridpulse.desktop
+Terminal=false
+Categories=Network;FileTransfer;
+StartupWMClass=neutralino

@@ -227,6 +227,14 @@ class AppSettings(BaseModel):
     preferred_subtitle_language: str = Field(default="en", pattern=r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
 
     @model_validator(mode="after")
+    def _desktop_is_standalone(self):
+        # The installed desktop application is one person's: whatever a
+        # stored configuration says, it runs Standalone (``desktop_installation``).
+        if desktop_installation():
+            self.deployment_type = "standalone"
+        return self
+
+    @model_validator(mode="after")
     def _standalone_without_oidc(self):
         # A stored Standalone configuration with OpenID Connect enabled is not
         # a mode DebridPulse runs in: it is refused at load and restore, never
@@ -239,6 +247,23 @@ class AppSettings(BaseModel):
     @classmethod
     def _normalized_language(cls, value):
         return str(value or "").strip().casefold() if isinstance(value, str) or value is None else value
+
+
+def desktop_installation() -> bool:
+    """Whether this backend is the installed desktop application's: its
+    supervisor (``desktop/``), and nothing a page can reach, starts it with
+    ``DEBRIDPULSE_DESKTOP=1``. A desktop installation is Standalone, has no
+    Deployment Type or Administrator setup, and is given no download folder
+    it did not choose."""
+    return os.environ.get("DEBRIDPULSE_DESKTOP") == "1"
+
+
+def download_folder_chosen(settings) -> bool:
+    """Whether the download folder is one this installation chose: an existing
+    folder, and not the container default (``/download``, the Docker mount)
+    that a desktop installation never invents."""
+    folder = str(getattr(settings, "download_folder", "") or "")
+    return bool(folder) and folder != AppSettings.model_fields["download_folder"].default and os.path.isdir(folder)
 
 
 _settings: AppSettings = AppSettings()

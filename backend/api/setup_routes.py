@@ -72,9 +72,14 @@ async def setup_state(request: Request):
     # ``development_build``: whether this build is a development build by its
     # release identity (core.version.is_development_build); a released build
     # says false. ``setup_preview``: whether the rerun offers the TEMPORARY
-    # development-only preview (setup_preview_offered).
+    # development-only preview (setup_preview_offered). ``desktop``: the
+    # installed desktop application (core.config.desktop_installation), whose
+    # wizard has no Deployment Type page and whose folder must be chosen
+    # (``download_folder_chosen``) before its setup goes on.
+    from core.config import desktop_installation, download_folder_chosen, get_settings
     state = await setup_lifecycle.state(request.state.principal.account_id)
-    return _no_store({**state, "development_build": is_development_build(), "setup_preview": setup_preview_offered()})
+    return _no_store({**state, "development_build": is_development_build(), "setup_preview": setup_preview_offered(),
+                      "desktop": desktop_installation(), "download_folder_chosen": download_folder_chosen(get_settings())})
 
 
 @router.put("/setup/initial/phase")

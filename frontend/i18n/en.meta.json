@@ -716,6 +716,12 @@
    "owner": "backend/services/setup_lifecycle.py",
    "criticality": "normal"
   },
+  "error.setup.download_folder_required": {
+   "category": "error",
+   "context": "Server refusal 'setup.download_folder_required' as the interface shows it: the installed desktop application's setup cannot go past Download Directory until a download folder is chosen. The English text is also the API's detail; keep its meaning exact.",
+   "owner": "backend/services/setup_lifecycle.py",
+   "criticality": "normal"
+  },
   "error.setup.administrator_exists": {
    "category": "error",
    "context": "Server refusal 'setup.administrator_exists' as the interface shows it. The English text is also the API's detail; keep its meaning exact.",
@@ -1203,6 +1209,58 @@
    "owner": "frontend/static/app.js",
    "criticality": "normal",
    "geometry": "Topbar button label; glyph-only where the shell compacts the topbar."
+  },
+  "desktop.tray.open": {
+   "category": "action",
+   "context": "Desktop tray menu item: shows the DebridPulse window again.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.tray.quit": {
+   "category": "action",
+   "context": "Desktop tray menu item: stops DebridPulse and its downloads and closes the application.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.tray.status": {
+   "category": "label",
+   "context": "Desktop tray menu's first, disabled line: how many transfers are active and queued. {active} and {queued} are numbers.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal",
+   "args": {
+    "active": "number: transfers active now",
+    "queued": "number: transfers waiting in the queue"
+   }
+  },
+  "desktop.notice.accepted": {
+   "category": "toast",
+   "context": "Desktop notification title when DebridPulse accepted a new transfer; the body is the transfer's name.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.notice.completed": {
+   "category": "toast",
+   "context": "Desktop notification title when a transfer completed; the body is the transfer's name.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.notice.paused_many": {
+   "category": "toast",
+   "context": "Desktop notification when several transfers were paused at once (e.g. Pause All). {count} is a number; label form, no plural.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number: transfers paused"
+   }
+  },
+  "desktop.notice.resumed_many": {
+   "category": "toast",
+   "context": "Desktop notification when several transfers were resumed at once (e.g. Resume All). {count} is a number; label form, no plural.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal",
+   "args": {
+    "count": "number: transfers resumed"
+   }
   },
   "processing.resume_paused_count": {
    "category": "action",

@@ -1,0 +1,53 @@
+# DebridPulse as a Flatpak (flatpak-builder 1.4.4, the pinned Debian package).
+# The application is the layout packaging/desktop/assemble.py builds on Linux
+# x86_64 (bundled CPython 3.12.14, the hash-locked requirements, Neutralino
+# v6.10.0, the bundled tools), installed as-is under /app. Build:
+#   python3 packaging/desktop/assemble.py --out build/layout --tools <tools>
+#   tar -C build -czf build/layout.tar.gz layout
+#   flatpak-builder --user --repo=build/repo build/app packaging/desktop/flatpak/org.debridpulse.desktop.yml
+app-id: org.debridpulse.desktop
+runtime: org.gnome.Platform     # WebKitGTK 4.1, which Neutralino's Linux webview loads
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: debridpulse
+finish-args:
+  - --share=network             # downloads; the backend listens on loopback only
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Only these session-bus names are reachable (xdg-dbus-proxy): the tray
+  # (StatusNotifier) and notifications. No systemd, no other service -- so a
+  # Media Downloads helper that may use AF_UNIX cannot have a session service
+  # start an unconfined process for it (WS4 finding F-4).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # The user picks the download folder in the setup wizard; DebridPulse's own
+  # folder browser lists what the sandbox exposes: the Downloads folder and
+  # removable media. Its data stays in the app's own XDG data directory.
+  - --filesystem=xdg-download
+  - --filesystem=/run/media
+  - --filesystem=/media
+modules:
+  - name: debridpulse
+    buildsystem: simple
+    sources:
+      - type: archive
+        path: ../../../build/layout.tar.gz
+      - type: file
+        path: org.debridpulse.desktop.desktop
+      - type: file
+        path: org.debridpulse.desktop.metainfo.xml
+      - type: script
+        dest-filename: debridpulse
+        commands:
+          - exec /app/lib/debridpulse/runtime/python/bin/python3 -I /app/lib/debridpulse/desktop/supervisor.py "$@"
+    build-commands:
+      - mkdir -p /app/lib/debridpulse /app/bin
+      - cp -a . /app/lib/debridpulse/
+      - rm -f /app/lib/debridpulse/debridpulse /app/lib/debridpulse/org.debridpulse.desktop.*
+      - install -Dm755 debridpulse /app/bin/debridpulse
+      - install -Dm644 org.debridpulse.desktop.desktop /app/share/applications/org.debridpulse.desktop.desktop
+      - install -Dm644 org.debridpulse.desktop.metainfo.xml /app/share/metainfo/org.debridpulse.desktop.metainfo.xml
+      - install -Dm644 desktop/shell/resources/icons/app.png /app/share/icons/hicolor/512x512/apps/org.debridpulse.desktop.png
+      - install -Dm644 desktop/shell/resources/icons/app-256.png /app/share/icons/hicolor/256x256/apps/org.debridpulse.desktop.png

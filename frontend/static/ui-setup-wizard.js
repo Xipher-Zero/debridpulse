@@ -722,7 +722,12 @@
    * roster is shown. A provider's own Save still saves, as it always does. */
   function open(mode, state, data, opener = null, {preview = false} = {}) {
     const deploymentNow = deploymentType();
-    let pages = ROSTERS[mode][deploymentNow];
+    // The installed desktop application (server state, ``setup.state``): it is
+    // Standalone, so it has no Deployment Type page, and the folder field
+    // starts empty until a folder is chosen -- never the container default.
+    let pages = state.desktop ? ROSTERS[mode][deploymentNow].filter((page) => page !== 'deployment')
+      : ROSTERS[mode][deploymentNow];
+    if (state.desktop && !state.download_folder_chosen) data = {...data, folder: ''};
     let recorded = mode === 'initial' ? state.initial.phase : state.rerun?.phase;
     // A deployment change whose resume page was never recorded (interrupted
     // between its two writes) leaves the other type's page: one this roster

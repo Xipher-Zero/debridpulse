@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -65,6 +66,13 @@ logger = logging.getLogger("debridpulse.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # The installed desktop application answers its supervisor on two private
+    # pipes the supervisor alone holds, verified before anything starts.
+    from core.config import desktop_installation
+    desktop_channel = None
+    if desktop_installation():
+        from application import desktop_control
+        desktop_channel = desktop_control.open_channel()
     # v1.0.12 migration owns database classification and the legacy backup
     # boundary. No current initializer may touch a predecessor database first.
     # Sanitized settings are authoritative before this ownership-sensitive step.
@@ -112,6 +120,8 @@ async def lifespan(app: FastAPI):
     app.state.application = application
     await start_application(application)
     session_store.start_cleanup()
+    if desktop_channel is not None:
+        desktop_control.serve(application, asyncio.get_running_loop(), desktop_channel)
     try:
         yield
     finally:

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/v6.10.0/schemas/neutralino.config.schema.json",
+  "applicationId": "org.debridpulse.desktop",
+  "version": "1.0.14",
+  "defaultMode": "window",
+  "port": 0,
+  "documentRoot": "/resources/",
+  "url": "http://127.0.0.1/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "enableExtensions": false,
+  "tokenSecurity": "one-time",
+  "exportAuthInfo": true,
+  "dataLocation": "system",
+  "logging": {"enabled": false, "writeToLogFile": false},
+  "nativeAllowList": ["os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
+                      "window.unminimize"],
+  "modes": {
+    "window": {
+      "title": "DebridPulse",
+      "width": 1280,
+      "height": 820,
+      "minWidth": 360,
+      "minHeight": 480,
+      "center": true,
+      "icon": "/resources/icons/app.png",
+      "enableInspector": false,
+      "exitProcessOnClose": false,
+      "injectGlobals": false,
+      "injectClientLibrary": false
+    }
+  },
+  "cli": {"binaryName": "neutralino", "resourcesPath": "/resources/"}
+}

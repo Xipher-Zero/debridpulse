@@ -3851,6 +3851,106 @@
    "owner": "frontend/static/ui-setup-wizard.js",
    "english": "Preview: nothing on these pages is saved. A provider's own Save, and its immediate actions such as Connect, Test and Enable, still take effect.",
    "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "the helper workspace cannot be named in a sandbox profile",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "the helper has no absolute workspace (TMPDIR)",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "sandbox refused: {0}",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "no network confinement for {0}",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "no AppContainer identity (0x{0})",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "cannot grant the media helpers access to {0}: ",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "cannot read a window object's access list",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "cannot grant the helpers' window object",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/media/netless.py",
+   "english": "no window station",
+   "reason": "Raised inside the Media Downloads confinement shim or its native setup (executors.media.netless), outside any request: written to the helper's stderr before it refuses to run (exit 126), or carried as the English native diagnostic of a runtime_unavailable outcome, whose interface text is the outcome's own catalog key. Never a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "The attempt's job is held open by another process",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "a batch file is never started",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "the attempt-owned process markers could not be listed",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "attempt-owned process groups not proven stopped: {0} of {1}",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/process_ownership.py",
+   "english": "A marker that is a link is never used",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/rsync/executor.py",
+   "english": "a local rsync path must be fully qualified",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/executors/rsync/executor.py",
+   "english": "a local rsync path may hold no colon",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/transfers/filesystem.py",
+   "english": "A link is never followed",
+   "reason": "Internal refusal of a process-ownership, link-safety or path invariant, raised outside a request and handled by its owner (logged, or turned into that owner's coded outcome); the English text is a server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/application/desktop_control.py",
+   "english": "the desktop control handle is not a pipe",
+   "reason": "Raised at the installed desktop backend's startup (application.desktop_control) when its supervisor's private control channel is absent or not two pipes: the backend refuses to start and the supervisor reports the failure. Outside any request; server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/application/desktop_control.py",
+   "english": "the desktop control descriptor is not a pipe",
+   "reason": "Raised at the installed desktop backend's startup (application.desktop_control) when its supervisor's private control channel is absent or not two pipes: the backend refuses to start and the supervisor reports the failure. Outside any request; server-log diagnostic only, never a response detail."
+  },
+  {
+   "owner": "backend/application/desktop_control.py",
+   "english": "the desktop control channel cannot be used: {0}",
+   "reason": "Raised at the installed desktop backend's startup (application.desktop_control) when its supervisor's private control channel is absent or not two pipes: the backend refuses to start and the supervisor reports the failure. Outside any request; server-log diagnostic only, never a response detail."
   }
  ]
 }
