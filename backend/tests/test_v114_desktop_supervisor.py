@@ -331,10 +331,7 @@ def _account_sid():
                           capture_output=True, text=True, check=True).stdout.strip()
 
 
-def _sddl(path) -> str:
-    """``path``'s owner and DACL as SDDL, read straight from Windows (not
-    through the supervisor), so a fixture can be checked independently of the
-    policy under test."""
+def _advapi():
     import ctypes
     from ctypes import wintypes
     adv = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -342,14 +339,22 @@ def _sddl(path) -> str:
                                      ctypes.POINTER(wintypes.DWORD)]
     adv.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
         ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR), ctypes.c_void_p]
-    information = 0x1 | 0x4                                # OWNER_ | DACL_SECURITY_INFORMATION
-    needed = wintypes.DWORD()
-    adv.GetFileSecurityW(str(path), information, None, 0, ctypes.byref(needed))
-    descriptor = ctypes.create_string_buffer(needed.value)
-    if not adv.GetFileSecurityW(str(path), information, descriptor, needed, ctypes.byref(needed)):
-        raise ctypes.WinError(ctypes.get_last_error())
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    adv.SetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p]
+    return ctypes, wintypes, adv
+
+
+_OWNER_AND_DACL = 0x1 | 0x4                                # OWNER_ | DACL_SECURITY_INFORMATION
+
+
+def _descriptor_text(descriptor) -> str:
+    """A security descriptor's owner and DACL as Windows itself writes them in
+    SDDL (well-known SIDs as their aliases, e.g. the built-in Administrator
+    account as ``LA``)."""
+    ctypes, wintypes, adv = _advapi()
     text = wintypes.LPWSTR()
-    if not adv.ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, 1, information,
+    if not adv.ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, 1, _OWNER_AND_DACL,
                                                                     ctypes.byref(text), None):
         raise ctypes.WinError(ctypes.get_last_error())
     try:
@@ -358,24 +363,40 @@ def _sddl(path) -> str:
         ctypes.windll.kernel32.LocalFree(text)
 
 
-def _set_sddl(path, sddl: str) -> None:
+def _sddl(path) -> str:
+    """``path``'s owner and DACL as SDDL, read straight from Windows (not
+    through the supervisor), so a fixture can be checked independently of the
+    policy under test."""
+    ctypes, wintypes, adv = _advapi()
+    needed = wintypes.DWORD()
+    adv.GetFileSecurityW(str(path), _OWNER_AND_DACL, None, 0, ctypes.byref(needed))
+    descriptor = ctypes.create_string_buffer(needed.value)
+    if not adv.GetFileSecurityW(str(path), _OWNER_AND_DACL, descriptor, needed, ctypes.byref(needed)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return _descriptor_text(descriptor)
+
+
+def _install_fixture(path, sddl: str) -> None:
     """Replace ``path``'s owner and ENTIRE DACL with ``sddl`` in one call
-    (``P``: inheritance from the parent blocked)."""
-    import ctypes
-    from ctypes import wintypes
-    adv = ctypes.WinDLL("advapi32", use_last_error=True)
-    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
-        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
-    adv.SetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p]
+    (``P``: inheritance from the parent blocked), then read it back and
+    require exactly that descriptor -- compared in Windows' own SDDL form of
+    ``sddl``, so only a different owner, ACE, flag or right counts. A failure
+    here is a FIXTURE mismatch, never a policy result."""
+    ctypes, wintypes, adv = _advapi()
     descriptor = ctypes.c_void_p()
     if not adv.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None):
         raise ctypes.WinError(ctypes.get_last_error())
     try:
+        expected = _descriptor_text(descriptor)
         # OWNER_ | DACL_ | PROTECTED_DACL_SECURITY_INFORMATION
-        if not adv.SetFileSecurityW(str(path), 0x1 | 0x4 | 0x80000000, descriptor):
+        if not adv.SetFileSecurityW(str(path), _OWNER_AND_DACL | 0x80000000, descriptor):
             raise ctypes.WinError(ctypes.get_last_error())
     finally:
         ctypes.windll.kernel32.LocalFree(descriptor)
+    observed = _sddl(path)
+    assert observed == expected, (
+        f"fixture not in place (elevated={_elevated()}): set {sddl} (Windows' form: {expected}), "
+        f"read back {observed}; application directory {_sddl(path.parent)}")
 
 
 def _elevated() -> bool:
@@ -396,11 +417,7 @@ def test_a_private_looking_tmp_that_hands_files_no_private_acl_is_refused(tmp_pa
     # The fixture: this owner and exactly these three ACEs, none inheritable (no OI/CI/IO flags),
     # inheritance from the application directory protected.
     fixture = f"O:{me}D:P(A;;FA;;;{me})(A;;FA;;;SY)(A;;FA;;;BA)"
-    _set_sddl(credential_dir, fixture)
-    observed = _sddl(credential_dir)
-    assert observed == fixture, (                         # a FIXTURE mismatch, not a policy result
-        f"fixture not in place (elevated={_elevated()}): expected {fixture}, read back {observed}; "
-        f"application directory {_sddl(credential_dir.parent)}")
+    _install_fixture(credential_dir, fixture)
     with pytest.raises(PermissionError, match="does not hand its private ACL to the files created in it"):
         supervisor.private_directory(credential_dir)
     # Why it matters, as demonstrated for a standard (unelevated) token -- the desktop's own: a file
@@ -421,11 +438,7 @@ def test_the_same_fixture_with_file_inheriting_aces_is_accepted(tmp_path):
     credential_dir.mkdir()
     me = _account_sid()
     fixture = f"O:{me}D:P(A;OICI;FA;;;{me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-    _set_sddl(credential_dir, fixture)
-    observed = _sddl(credential_dir)
-    assert observed == fixture, (
-        f"fixture not in place (elevated={_elevated()}): expected {fixture}, read back {observed}; "
-        f"application directory {_sddl(credential_dir.parent)}")
+    _install_fixture(credential_dir, fixture)
     supervisor.private_directory(credential_dir)
 
 
