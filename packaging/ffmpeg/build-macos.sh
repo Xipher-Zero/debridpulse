@@ -8,6 +8,8 @@ set -euo pipefail
 DP_SUFFIX=dp1
 here="$(cd "$(dirname "$0")" && pwd)"
 src="$1"; work="$2"; out="$3"
+# Absolute paths: the recipe changes directory before it installs into them.
+mkdir -p "$work" "$out"; src="$(cd "$src" && pwd)"; work="$(cd "$work" && pwd)"; out="$(cd "$out" && pwd)"
 mkdir -p "$work" "$out/bin"
 tar -xzf "$src/ffmpeg-7.1.5.tar.gz" -C "$work"
 cd "$work/ffmpeg-7.1.5"

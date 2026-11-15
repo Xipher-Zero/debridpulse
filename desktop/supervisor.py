@@ -721,10 +721,17 @@ async def run() -> int:
             auth_file = shell_data_home() / APP_ID / ".tmp" / "auth_info.json"
             private_directory(auth_file.parent)   # before the shell writes its credential; or no shell
             auth_file.unlink(missing_ok=True)
-            neutralino = paths["shell"] / ("neutralino.exe" if os.name == "nt" else "neutralino")
+            # The shell runs under DebridPulse's own name (its webview keys its
+            # data on it), and on Windows keeps its WebView2 profile inside
+            # DebridPulse's data root: Microsoft's documented override, not
+            # Neutralino's default %APPDATA%\<executable name>.
+            shell_binary = paths["shell"] / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
+            shell_env = {**os.environ, "PATH": os.environ.get("PATH", "")}
+            if os.name == "nt":
+                shell_env["WEBVIEW2_USER_DATA_FOLDER"] = str(root / "webview2")
             shell_process = await processes.spawn(SHELL_ID, [
-                str(neutralino), f"--path={paths['shell']}", "--load-dir-res",
-                f"--url=http://127.0.0.1:{port}/"], env={**os.environ, "PATH": os.environ.get("PATH", "")})
+                str(shell_binary), f"--path={paths['shell']}", "--load-dir-res",
+                f"--url=http://127.0.0.1:{port}/"], env=shell_env)
             drains += [asyncio.ensure_future(_drain(stream, root / "logs" / "shell.log"))
                        for stream in (shell_process.process.stdout, shell_process.process.stderr)]
             shell = Shell(session)

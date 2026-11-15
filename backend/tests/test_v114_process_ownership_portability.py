@@ -127,6 +127,21 @@ async def test_a_program_that_finishes_leaves_no_live_group(tmp_path):
     assert await owner.terminate(owned, "a")
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows exit codes are DWORDs relayed by the gate; POSIX execs the program")
+@pytest.mark.asyncio
+async def test_an_exit_code_above_two_to_the_31_reaches_debridpulse_unchanged(tmp_path):
+    # A crashed program's NTSTATUS (STATUS_STACK_BUFFER_OVERRUN), and a
+    # terminated one's 0xFFFFFFFF: the gate relays them, never an OverflowError.
+    owner = ProcessOwnership(tmp_path / "rt")
+    for code in (0xC0000409, 0xFFFFFFFF):
+        owned = await owner.spawn("a", [INTERPRETER, "-c", f"import ctypes; ctypes.windll.kernel32.ExitProcess({code})"],
+                                  env=owner.environment())
+        assert await owned.process.wait() == code
+        assert b"OverflowError" not in await owned.process.stderr.read()
+        assert await owner.terminate(owned, "a")
+        owner.forget("a")
+
+
 # ── a DebridPulse restart: liveness and termination survive it ────────────────
 
 _CRASH = """

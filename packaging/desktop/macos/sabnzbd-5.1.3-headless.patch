@@ -1,0 +1,32 @@
+--- a/SABnzbd.py
++++ b/SABnzbd.py
+@@ -1639,25 +1639,4 @@
+-    elif sabnzbd.MACOS and sabnzbd.FOUNDATION:
+-        # macOS binary runner
+-        from PyObjCTools import AppHelper
+-        from AppKit import NSApplication
+-        from sabnzbd.macosmenu import SABnzbdDelegate
+-
+-        # Need to run the main application in separate thread because the eventLoop
+-        # has to be in the main thread. The eventLoop is required for the menu.
+-        # This code is made with trial-and-error, please feel free to improve!
+-        class startApp(threading.Thread):
+-            def run(self):
+-                main()
+-                AppHelper.stopEventLoop()
+-
+-        sabApp = startApp()
+-        sabApp.start()
+-
+-        # Initialize the menu
+-        shared_app = NSApplication.sharedApplication()
+-        sabnzbd.MACOSTRAY = SABnzbdDelegate.alloc().init()
+-        shared_app.setDelegate_(sabnzbd.MACOSTRAY)
+-        # Build the menu
+-        sabnzbd.MACOSTRAY.awakeFromNib()
+-        # Run the main eventloop
+-        AppHelper.runEventLoop()
++    # Modified by DebridPulse (2026-11-15), for its macOS desktop bundle only:
++    # the macOS menu-bar runner is removed, so SABnzbd runs headless in the
++    # foreground through main(), as on every other system. DebridPulse
++    # supervises it as a background service; it has no menu of its own.

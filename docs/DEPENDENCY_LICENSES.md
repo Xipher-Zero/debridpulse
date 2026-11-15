@@ -170,6 +170,26 @@ These texts supply the notices the components' licences ask to accompany a
 binary distribution. They are not a general legal review of the image; the
 copyleft review below records its own disposition.
 
+### macOS desktop runtime additions
+
+The macOS desktop application installs `packaging/desktop/macos/requirements.txt`:
+every pin of `backend/requirements.txt` unchanged, plus the two packages below,
+which the bundled Usenet service (SABnzbd 5.1.3) imports on macOS. They ship
+only in the macOS desktop bundle, never in the container image, so they are not
+in the table or the machine-readable manifest above.
+
+| Package | Version | License |
+|---|---:|---|
+| pyobjc-core | 12.2.1 | MIT ([bundled notice](../licenses/pyobjc-MIT.txt)) |
+| pyobjc-framework-Cocoa | 12.2.1 | MIT ([bundled notice](../licenses/pyobjc-MIT.txt)) |
+
+`licenses/pyobjc-MIT.txt` is pyobjc-core 12.2.1's `License.txt` from its
+sdist, byte-identical to the `LICENSE.txt` in the pyobjc-framework-Cocoa 12.2.1
+wheel (sha256 `0ca04b07…`). It is shipped because the pyobjc-core wheel
+carries no licence file. Both wheels link macOS's own `/usr/lib/libffi.dylib`
+and bundle no libffi. The Windows desktop runtime's additions (`colorama`,
+`tzdata`) are not yet recorded here.
+
 ## Copyleft review — the facts and the recorded disposition
 
 DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,

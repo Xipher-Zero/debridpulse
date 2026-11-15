@@ -1,0 +1,5 @@
+# The macOS desktop runtime's own additions to backend/requirements.in: the
+# bundled Usenet service (SABnzbd 5.1.3) imports PyObjC on macOS at startup;
+# these are the versions its own requirements.txt names for darwin.
+pyobjc-core==12.2.1
+pyobjc-framework-Cocoa==12.2.1

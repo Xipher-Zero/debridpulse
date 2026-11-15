@@ -124,7 +124,10 @@ _WINDOWS_GATE = (
     "while kernel32.QueryInformationJobObject(job, 1, accounting, ctypes.sizeof(accounting), None) \\\n"
     "        and accounting[10] > 1:          # ActiveProcesses: anyone but this gate\n"
     "    time.sleep(0.05)\n"
-    "os._exit(code)\n"
+    "# The program's exit code is a DWORD (a terminated or crashed program's is\n"
+    "# above 2**31, e.g. 0xFFFFFFFF or an NTSTATUS); os._exit takes a C int, so\n"
+    "# it is passed as the same 32 bits.\n"
+    "os._exit(code - (1 << 32) if code >= 1 << 31 else code)\n"
 )
 
 

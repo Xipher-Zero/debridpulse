@@ -103,6 +103,44 @@ def test_the_windows_runtime_lock_keeps_every_canonical_pin():
     assert "--hash=sha256:" in (ROOT / "packaging" / "desktop" / "windows" / "requirements.txt").read_text()
 
 
+def test_the_macos_runtime_lock_keeps_every_canonical_pin_and_adds_only_pyobjc():
+    import re
+    lock = ROOT / "packaging" / "desktop" / "macos" / "requirements.txt"
+    pins = lambda path: {name.lower().replace("_", "-"): version for name, version in re.findall(  # noqa: E731
+        r"(?m)^([A-Za-z0-9_.-]+)==([^\s\;]+)", path.read_text(encoding="utf-8"))}
+    canonical = pins(ROOT / "backend" / "requirements.txt")
+    macos = pins(lock)
+    assert {name: version for name, version in macos.items() if name in canonical and canonical[name] != version} == {}
+    assert set(canonical) - set(macos) == set()
+    assert {name: macos[name] for name in set(macos) - set(canonical)} == {
+        "pyobjc-core": "12.2.1", "pyobjc-framework-cocoa": "12.2.1"}
+    # Every package line carries its hashes (pip installs it --require-hashes).
+    blocks = re.split(r"(?m)^(?=[A-Za-z0-9_.-]+==)", lock.read_text(encoding="utf-8"))[1:]
+    assert len(blocks) == len(macos) and all("--hash=sha256:" in block for block in blocks)
+
+
+def test_the_macos_usenet_patch_is_the_pinned_one_for_the_pinned_release_and_only_removes_the_menu_runner():
+    import hashlib
+    import importlib.util
+    import re
+    spec = importlib.util.spec_from_file_location("assemble", ROOT / "packaging" / "desktop" / "assemble.py")
+    assemble = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(assemble)
+    pin = assemble.USENET_MACOS_PATCH
+    patch = (ROOT / pin["path"]).read_bytes()
+    assert hashlib.sha256(patch).hexdigest() == pin["sha256"]
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert re.search(r"(?m)^ARG USENET_SERVICE_VERSION=(\S+)$", dockerfile).group(1) == pin["version"]
+    text = patch.decode("utf-8")
+    assert re.findall(r"(?m)^\+\+\+ (\S+)", text) == ["b/" + pin["file"]]
+    removed = [line[1:] for line in text.splitlines() if line.startswith("-") and not line.startswith("---")]
+    added = [line[1:] for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
+    assert removed[0] == "    elif sabnzbd.MACOS and sabnzbd.FOUNDATION:"
+    assert "        AppHelper.runEventLoop()" in removed
+    assert added and all(line.lstrip().startswith("#") for line in added)   # a notice, no new code
+    assert "Modified by DebridPulse" in added[0]
+
+
 # -- B-1: Neutralino's exported credential is private before it exists ---------------------
 
 import os  # noqa: E402

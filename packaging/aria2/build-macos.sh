@@ -13,6 +13,8 @@
 set -euo pipefail
 DP_SUFFIX=dp2
 src="$1"; work="$2"; out="$3"
+# Absolute paths: the recipe changes directory before it installs into them.
+mkdir -p "$work" "$out"; src="$(cd "$src" && pwd)"; work="$(cd "$work" && pwd)"; out="$(cd "$out" && pwd)"
 prefix="$work/prefix"
 sdk="$(xcrun --show-sdk-path)"
 jobs="$(sysctl -n hw.ncpu)"

@@ -36,6 +36,17 @@ The written offer above remains available for any of the following.
 - **SABnzbd (the bundled Usenet service):** its complete upstream source
   release is unpacked unchanged in the image at `/app/usenet`. It is also
   published upstream at `https://github.com/sabnzbd/sabnzbd/releases/tag/<version>`.
+  - **Modified in the macOS desktop application only.** That copy, in
+    `DebridPulse.app/Contents/Resources/app/backend/usenet`, is the same
+    hash-checked release (without its `tests/` folder) with one change by
+    DebridPulse (2026-11-15). SABnzbd's macOS menu-bar runner is removed from
+    `SABnzbd.py`, so it runs headless through its own `main()`, and the
+    changed file says so where it was changed. The change is
+    `packaging/desktop/macos/sabnzbd-5.1.3-headless.patch` in the DebridPulse
+    repository, and the same patch ships beside the modified source as
+    `DEBRIDPULSE-MODIFICATIONS.patch`. The modified copy is installed as
+    source, so it is its own corresponding source. The container image
+    carries SABnzbd unmodified.
 - **Python packages:** each package and version is listed in
   `licenses/python-runtime.json` under its PyPI name and version, where its
   published source can be retrieved. Pure-Python packages are installed as source in the image

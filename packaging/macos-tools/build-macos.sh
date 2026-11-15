@@ -10,6 +10,8 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 src="$1"; work="$2"; out="$3"
+# Absolute paths: the recipe changes directory before it installs into them.
+mkdir -p "$work" "$out"; src="$(cd "$src" && pwd)"; work="$(cd "$work" && pwd)"; out="$(cd "$out" && pwd)"
 jobs="$(sysctl -n hw.ncpu)"
 mkdir -p "$work" "$out/bin" "$out/copyright"
 grep -vE '^(#|$)' "$here/official.sha256" | while read -r digest name _url; do

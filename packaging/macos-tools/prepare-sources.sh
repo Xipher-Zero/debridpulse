@@ -11,6 +11,8 @@
 #     bash /dp/macos-tools/prepare-sources.sh /work /out
 set -euo pipefail
 work="$1"; out="$2"
+# Absolute paths: the recipe changes directory before it writes into them.
+mkdir -p "$work" "$out"; work="$(cd "$work" && pwd)"; out="$(cd "$out" && pwd)"
 sed -ri 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends dpkg-dev patch curl ca-certificates \

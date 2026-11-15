@@ -6,4 +6,4 @@ Exec=debridpulse
 Icon=org.debridpulse.desktop
 Terminal=false
 Categories=Network;FileTransfer;
-StartupWMClass=neutralino
+StartupWMClass=debridpulse-shell

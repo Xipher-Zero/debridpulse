@@ -3,9 +3,10 @@
 ;
 ; * Per-user: no elevation for DebridPulse itself; the program goes to
 ;   %LOCALAPPDATA%\Programs\DebridPulse, its data stays in
-;   %LOCALAPPDATA%\DebridPulse (the supervisor's data root), which neither an
-;   upgrade nor the uninstaller touches. No configuration file is written, so
-;   the first run is always the setup wizard.
+;   %LOCALAPPDATA%\DebridPulse (the supervisor's data root), whose content
+;   neither an upgrade nor the uninstaller changes (they only hold its
+;   desktop.lock, below). No configuration file is written, so the first run
+;   is always the setup wizard.
 ; * Silent: /S installs or uninstalls without a page.
 ; * Prerequisites, before any DebridPulse file is written:
 ;     - Microsoft Visual C++ x64 Redistributable >= VCREDIST_MIN, read where
@@ -18,9 +19,11 @@
 ;       missing, Microsoft's Evergreen bootstrapper installs it per user.
 ;   A refused elevation, a failed prerequisite or one that needs a restart
 ;   ends the installation with an explanation and nothing installed.
-; * Uninstall removes the program files, the shortcuts, the uninstall entry
+; * Uninstall removes the shortcut, the program files, the uninstall entry
 ;   and the Media Downloads helpers' AppContainer profile -- never the data
-;   root or any download.
+;   root or any download. Program files that cannot be removed or replaced
+;   (in use) are reported, and the uninstall entry stays, so the user can
+;   run the uninstaller or this installer again.
 
 Unicode true
 !include "LogicLib.nsh"
@@ -72,11 +75,115 @@ Var vcMajor
 Var vcMinor
 Var vcBld
 
+; One owner of the data root at a time: the supervisor's lock -- an exclusive
+; lock on the first byte of %LOCALAPPDATA%\DebridPulse\desktop.lock, held for as
+; long as DebridPulse runs (desktop/supervisor.py single_instance). The
+; installer and the uninstaller take that same byte before they change
+; anything and hold it until they end, so DebridPulse cannot be running while
+; its program files, shortcut or uninstall entry change (a running program
+; keeps files open: a half-installed or half-removed DebridPulse), and a
+; DebridPulse started meanwhile finds the lock taken and ends before it starts.
+; A first installation creates the data root only to hold the lock, and removes
+; what it created when it lets go (DebridPulse creates it on its first run).
+Var dpLock
+Var dpRootCreated
+
+!macro DP_DATA_ROOT_LOCK UN
+Function ${UN}TakeDataRootLock
+  StrCpy $dpRootCreated 0
+  ${IfNot} ${FileExists} "$LOCALAPPDATA\DebridPulse\*.*"
+    CreateDirectory "$LOCALAPPDATA\DebridPulse"
+    StrCpy $dpRootCreated 1
+  ${EndIf}
+  ; GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE (the
+  ; supervisor's own open), OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL
+  System::Call 'kernel32::CreateFileW(w "$LOCALAPPDATA\DebridPulse\desktop.lock", i 0xC0000000, i 3, p 0, i 4, i 0x80, p 0) p .r1'
+  ${If} $1 == -1
+    ${If} $dpRootCreated == 1
+      RMDir "$LOCALAPPDATA\DebridPulse"
+    ${EndIf}
+    MessageBox MB_ICONSTOP|MB_OK "$LOCALAPPDATA\DebridPulse\desktop.lock cannot be opened, so it is not known whether DebridPulse is running. Nothing was changed." /SD IDOK
+    Abort
+  ${EndIf}
+  System::Call 'kernel32::LockFile(p r1, i 0, i 0, i 1, i 0) i .r2'
+  ${If} $2 == 0
+    System::Call 'kernel32::CloseHandle(p r1)'
+    MessageBox MB_ICONSTOP|MB_OK "DebridPulse is running. Quit it from its tray menu (Quit), then run this again." /SD IDOK
+    Abort
+  ${EndIf}
+  StrCpy $dpLock $1
+FunctionEnd
+
+Function ${UN}ReleaseDataRootLock
+  ${If} $dpLock != ""
+    System::Call 'kernel32::UnlockFile(p $dpLock, i 0, i 0, i 1, i 0)'
+    System::Call 'kernel32::CloseHandle(p $dpLock)'
+    StrCpy $dpLock ""
+    ${If} $dpRootCreated == 1
+      Delete "$LOCALAPPDATA\DebridPulse\desktop.lock"
+      RMDir "$LOCALAPPDATA\DebridPulse"
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+!macroend
+!insertmacro DP_DATA_ROOT_LOCK ""
+!insertmacro DP_DATA_ROOT_LOCK "un."
+
+; Taken first, before any page or section; let go once the run has ended,
+; whichever way it ended (the system also lets go when the process ends).
+; Removing the program files. The lock keeps DebridPulse from starting, but a
+; launch from the Start-menu shortcut meanwhile still loads the bundled
+; interpreter from these files before its supervisor finds the lock taken and
+; ends -- holding them open for that moment. Removal is retried while that
+; lasts (10 s); files still present after that are in use by something else,
+; and the caller reports it.
+!macro DP_REMOVE_PROGRAM_FILES UN
+Function ${UN}RemoveProgramFiles
+  StrCpy $R9 0
+  dp_remove:
+  RMDir /r "$INSTDIR\app"
+  ${IfNot} ${FileExists} "$INSTDIR\app\*.*"
+    Return
+  ${EndIf}
+  IntOp $R9 $R9 + 1
+  ${If} $R9 < 20
+    DetailPrint "Some program files are in use; trying again..."
+    Sleep 500
+    Goto dp_remove
+  ${EndIf}
+FunctionEnd
+!macroend
+!insertmacro DP_REMOVE_PROGRAM_FILES ""
+!insertmacro DP_REMOVE_PROGRAM_FILES "un."
+
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP|MB_OK "DebridPulse for Windows needs 64-bit Windows." /SD IDOK
     Abort
   ${EndIf}
+  Call TakeDataRootLock
+FunctionEnd
+Function .onInstSuccess
+  Call ReleaseDataRootLock
+FunctionEnd
+Function .onInstFailed
+  Call ReleaseDataRootLock
+FunctionEnd
+Function .onGUIEnd
+  Call ReleaseDataRootLock
+FunctionEnd
+
+Function un.onInit
+  Call un.TakeDataRootLock
+FunctionEnd
+Function un.onUninstSuccess
+  Call un.ReleaseDataRootLock
+FunctionEnd
+Function un.onUninstFailed
+  Call un.ReleaseDataRootLock
+FunctionEnd
+Function un.onGUIEnd
+  Call un.ReleaseDataRootLock
 FunctionEnd
 
 Function VcRedistSatisfied
@@ -159,11 +266,25 @@ Section "DebridPulse" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
   ; An upgrade replaces the program files in place; the data root is elsewhere.
-  RMDir /r "$INSTDIR\app"
-  SetOutPath "$INSTDIR\app"
-  File /r "${STAGE}\*.*"
+  Call RemoveProgramFiles
+  ${If} ${FileExists} "$INSTDIR\app\*.*"
+    MessageBox MB_ICONSTOP|MB_OK "The installed DebridPulse program files could not be replaced: some of them are in use ($INSTDIR\app). Close what is using them, then run this installer again. The existing uninstall entry is kept." /SD IDOK
+    Abort "Program files in use: nothing was replaced."
+  ${EndIf}
+  ; The uninstall entry first: whatever happens next, it can remove or repair.
   WriteUninstaller "$INSTDIR\uninstall.exe"
+  Call WriteUninstallEntry
+  SetOutPath "$INSTDIR\app"
+  ClearErrors
+  File /r "${STAGE}\*.*"
+  ${If} ${Errors}
+    MessageBox MB_ICONSTOP|MB_OK "Some DebridPulse program files could not be written ($INSTDIR\app). Close what is using them, then run this installer again; the uninstall entry is kept." /SD IDOK
+    Abort "Program files could not be written."
+  ${EndIf}
   CreateShortcut "$SMPROGRAMS\DebridPulse.lnk" "$INSTDIR\app\runtime\python\pythonw.exe" '-I "$INSTDIR\app\desktop\supervisor.py"' "$INSTDIR\app\desktop\shell\resources\icons\app.ico"
+SectionEnd
+
+Function WriteUninstallEntry
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "DebridPulse"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "DebridPulse"
@@ -173,13 +294,18 @@ Section "DebridPulse" SecMain
   WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
-SectionEnd
+FunctionEnd
 
 Section "Uninstall"
+  ; The shortcut first: no new launch from it while the files go.
+  Delete "$SMPROGRAMS\DebridPulse.lnk"
+  Call un.RemoveProgramFiles
+  ${If} ${FileExists} "$INSTDIR\app\*.*"
+    MessageBox MB_ICONSTOP|MB_OK "Some DebridPulse program files could not be removed: they are in use ($INSTDIR\app). Close what is using them, then uninstall DebridPulse again (Settings > Apps, or $INSTDIR\uninstall.exe). Your settings, database and downloads were not touched." /SD IDOK
+    Abort "Program files in use: the uninstall entry is kept."
+  ${EndIf}
   ; The Media Downloads helpers' AppContainer profile (executors.media.netless).
   System::Call 'userenv::DeleteAppContainerProfile(w "DebridPulse.MediaHelpers") i .r0'
-  Delete "$SMPROGRAMS\DebridPulse.lnk"
-  RMDir /r "$INSTDIR\app"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"

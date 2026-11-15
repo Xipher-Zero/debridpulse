@@ -4,19 +4,25 @@ Run on the target system (Windows x64, macOS, Linux) from a clean checkout with
 any Python 3.12; it builds the one layout every desktop package carries:
 
     <out>/runtime/python/   python-build-standalone CPython 3.12.14 (pinned, hash-checked)
-                            + backend/requirements.txt installed --require-hashes
+                            + the platform's runtime lock installed --require-hashes
+                            (DESKTOP_LOCKS, else backend/requirements.txt; the lock
+                            used is recorded in BUILD-INFO.json)
     <out>/backend/ <out>/frontend/static/   the application, unchanged
     <out>/desktop/          the supervisor + the Neutralino shell (pinned v6.10.0,
                             hash-checked) + its derived icons
     <out>/tools/            the bundled native tools (``--tools``: the WS3/WS4
                             recipe outputs, copied as built)
+    <out>/backend/usenet/   the bundled Usenet service (``--usenet``): SABnzbd's
+                            source at the Dockerfile's pin, hash-checked, where
+                            executors.sabnzbd.runtime resolves it; on macOS with
+                            DebridPulse's one recorded headless patch applied
     <out>/LICENSE, NOTICE, SOURCE_OFFER.md, LICENSES/, licenses/  (both licence
                             trees kept, whatever the file system's case rules)
 
 ``--wheels`` names a directory of locally built wheels (for example Windows'
 sabctools from packaging/sabctools) that stand in for the lock's sdists;
 each is installed --no-deps and recorded with its hash in BUILD-INFO.json.
-Usage: python assemble.py --out DIR [--tools DIR] [--wheels DIR] [--icons DIR]
+Usage: python assemble.py --out DIR [--tools DIR] [--wheels DIR] [--icons DIR] [--usenet]
 """
 from __future__ import annotations
 
@@ -25,6 +31,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import ssl
 import subprocess
@@ -47,6 +54,9 @@ RUNTIMES = {   # python-build-standalone install_only_stripped, from its SHA256S
 NEUTRALINO = ("v6.10.0", "e633f480737f229f582d8ec6165a52d789340950aef062560702122389f08329")
 SHELLS = {("Windows", "AMD64"): "neutralino-win_x64.exe", ("Darwin", "arm64"): "neutralino-mac_arm64",
           ("Darwin", "x86_64"): "neutralino-mac_x64", ("Linux", "x86_64"): "neutralino-linux_x64"}
+# The desktop runtime lock each system installs (others: the canonical lock).
+DESKTOP_LOCKS = {"Windows": "packaging/desktop/windows/requirements.txt",
+                 "Darwin": "packaging/desktop/macos/requirements.txt"}
 LEGAL = ("LICENSE", "NOTICE", "SOURCE_OFFER.md", "VERSION", "CHANGELOG.md")
 
 
@@ -65,6 +75,72 @@ def fetch(url: str, digest: str, into: Path) -> Path:
         into.unlink()
         raise SystemExit(f"{url}: sha256 {actual} is not the pinned {digest}")
     return into
+
+
+# DebridPulse's one modification of the bundled Usenet service, for the macOS
+# bundle only: SABnzbd's macOS menu-bar runner is removed, so the service runs
+# headless in the foreground through its own main(), as on every other system
+# (with PyObjC importable it would otherwise always start that runner, which
+# needs a notification centre the bundled interpreter has none of). Written for
+# exactly this release; every identity below is checked and any mismatch stops
+# the assembly. The patch ships beside the modified source (corresponding
+# source: SOURCE_OFFER.md).
+USENET_MACOS_PATCH = {
+    "version": "5.1.3",
+    "path": "packaging/desktop/macos/sabnzbd-5.1.3-headless.patch",
+    "sha256": "d5ad15b5f5799e2feed709b3f886400ab7056a345483d1d6bf25b21b1d67638c",
+    "file": "SABnzbd.py",
+    "file_sha256_before": "f20b0a7fa96b66856afb851bc63e361f01b9ddea2c19891e5cc1c3a4b644bd4e",
+    "file_sha256_after": "dfcf164eb31ed3975414c0ba459c4ec51e266f9b006bb78e38e289d555068206",
+}
+USENET_PATCH_COPY = "DEBRIDPULSE-MODIFICATIONS.patch"
+
+
+def usenet_service(cache: Path, into: Path, headless_patch: bool = False) -> dict:
+    """The Usenet service at the image's own pin (the Dockerfile's
+    USENET_SERVICE_VERSION and USENET_SERVICE_SHA256, never restated here),
+    unpacked as the image unpacks it -- the source tree, top directory
+    stripped -- without the service's own test suite (``tests/``: data files
+    only, whose non-ASCII names a macOS HFS+ image renormalizes, breaking the
+    bundle's code seal). Its Python dependencies come from the lock. With
+    ``headless_patch`` (macOS), USENET_MACOS_PATCH is applied to that copy."""
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    version = re.search(r"^ARG USENET_SERVICE_VERSION=(\d+\.\d+\.\d+)$", dockerfile, re.M).group(1)
+    digest = re.search(r"^ARG USENET_SERVICE_SHA256=([0-9a-f]{64})$", dockerfile, re.M).group(1)
+    name = f"SABnzbd-{version}-src.tar.gz"
+    archive = fetch(f"https://github.com/sabnzbd/sabnzbd/releases/download/{version}/{name}", digest, cache / name)
+    into.mkdir(parents=True)
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if len(parts) < 2 or parts[1] == "tests":
+                continue
+            member.name = str(Path(*parts[1:]))
+            tar.extract(member, into, filter="data")
+    if not (into / "SABnzbd.py").is_file():
+        raise SystemExit(f"{name}: no SABnzbd.py at its top")
+    applied = apply_usenet_patch(version, into) if headless_patch else None
+    return {"version": version, "source": name, "sha256": digest, "patch": applied}
+
+
+def apply_usenet_patch(version: str, into: Path) -> dict:
+    pin = USENET_MACOS_PATCH
+    if version != pin["version"]:
+        raise SystemExit(f"the Usenet service pin is {version}; {pin['path']} is written for {pin['version']} only")
+    patch = ROOT / pin["path"]
+    target = into / pin["file"]
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()  # noqa: E731
+    for path, expected in ((patch, pin["sha256"]), (target, pin["file_sha256_before"])):
+        if sha(path) != expected:
+            raise SystemExit(f"{path}: sha256 {sha(path)}, expected {expected}")
+    subprocess.run(["patch", "-p1", "-N", "-s", "-d", str(into), "-i", str(patch)], check=True)
+    leftovers = sorted(str(path.relative_to(into)) for pattern in ("*.orig", "*.rej") for path in into.rglob(pattern))
+    if leftovers or sha(target) != pin["file_sha256_after"]:
+        raise SystemExit(f"{pin['path']} did not apply exactly: sha256 {sha(target)}, leftovers {leftovers}")
+    shutil.copyfile(patch, into / USENET_PATCH_COPY)
+    return {"path": pin["path"], "sha256": pin["sha256"], "file": pin["file"],
+            "file_sha256_before": pin["file_sha256_before"], "file_sha256_after": pin["file_sha256_after"],
+            "shipped_as": f"backend/usenet/{USENET_PATCH_COPY}"}
 
 
 def copytree(source: Path, target: Path) -> None:
@@ -101,6 +177,7 @@ def main() -> int:
                                                           "recorded in BUILD-INFO.json)")
     parser.add_argument("--icons", type=Path, help="icons already derived by this script elsewhere "
                                                    "(a system without ImageMagick)")
+    parser.add_argument("--usenet", action="store_true", help="bundle the Usenet service (SABnzbd) at the image's pin")
     parser.add_argument("--cache", type=Path, default=Path(tempfile.gettempdir()) / "dp-desktop-cache")
     args = parser.parse_args()
     key = (platform.system(), platform.machine())
@@ -117,11 +194,15 @@ def main() -> int:
     with tarfile.open(archive) as tar:
         tar.extractall(out / "runtime", filter="data")
     python = out / "runtime" / "python" / ("python.exe" if os.name == "nt" else "bin/python3")
-    # The canonical lock; on Windows its Windows resolution (same pins, plus
-    # that platform's own dependencies): packaging/desktop/windows/requirements.txt.
-    requirements = args.requirements or ROOT / ("packaging/desktop/windows/requirements.txt" if os.name == "nt"
-                                                else "backend/requirements.txt")
-    lock = {"path": str(requirements), "sha256": hashlib.sha256(requirements.read_bytes()).hexdigest()}
+    # The canonical lock; on Windows and macOS that platform's desktop
+    # resolution of it (the same pins, plus the platform's own dependencies):
+    # packaging/desktop/{windows,macos}/requirements.txt.
+    platform_lock = DESKTOP_LOCKS.get(key[0], "backend/requirements.txt")
+    requirements = (args.requirements or ROOT / platform_lock).resolve()
+    lock = {"path": (requirements.relative_to(ROOT).as_posix() if requirements.is_relative_to(ROOT)
+                     else str(requirements)),
+            "sha256": hashlib.sha256(requirements.read_bytes()).hexdigest(),
+            "override": args.requirements is not None}
     built = sorted(args.wheels.glob("*.whl")) if args.wheels else []
     if built:
         # A locally built wheel replaces its project's line in the lock.
@@ -143,6 +224,8 @@ def main() -> int:
                        check=True)
     subprocess.run([str(python), "-I", "-m", "pip", "check"], check=True)
     copytree(ROOT / "backend", out / "backend")
+    usenet = (usenet_service(args.cache, out / "backend" / "usenet", headless_patch=key[0] == "Darwin")
+              if args.usenet else None)
     copytree(ROOT / "frontend" / "static", out / "frontend" / "static")
     (out / "desktop").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "desktop" / "supervisor.py", out / "desktop" / "supervisor.py")
@@ -151,7 +234,8 @@ def main() -> int:
     zipped = fetch(f"https://github.com/neutralinojs/neutralinojs/releases/download/{tag}/neutralinojs-{tag}.zip",
                    neu_digest, args.cache / f"neutralinojs-{tag}.zip")
     with zipfile.ZipFile(zipped) as bundle:
-        target = out / "desktop" / "shell" / ("neutralino.exe" if os.name == "nt" else "neutralino")
+        # DebridPulse's own name: the webview keys its profile on the program name.
+        target = out / "desktop" / "shell" / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
         target.write_bytes(bundle.read(SHELLS[key]))
         target.chmod(0o755)
     if args.icons:
@@ -181,7 +265,7 @@ def main() -> int:
     info = {"python": PYTHON, "python_build_standalone": PBS, "runtime": name, "runtime_sha256": digest,
             "neutralino": tag, "neutralino_zip_sha256": neu_digest, "platform": list(key), "lock": lock,
             "local_wheels": {wheel.name: hashlib.sha256(wheel.read_bytes()).hexdigest() for wheel in built},
-            "licence_files": len(files)}
+            "licence_files": len(files), "usenet_service": usenet}
     (out / "BUILD-INFO.json").write_text(json.dumps(info, indent=1) + "\n", encoding="utf-8")
     print(json.dumps(info, indent=1))
     return 0

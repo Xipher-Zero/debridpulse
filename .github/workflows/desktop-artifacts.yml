@@ -1,0 +1,258 @@
+# Desktop builds (WS6), on native hosted runners, from the pushed revision:
+#   macos-arm64  the application layout (packaging/desktop/assemble.py) WITH the
+#                native executors built here by the WS3/WS4 macOS recipes
+#                (aria2, FFmpeg/ffprobe, par2, zstd, rsync, 7-Zip, UnRAR) and the
+#                Usenet service at the image's pin (--usenet), on the macOS lock,
+#                the desktop tests
+#                on its runtime, and the ad hoc .app + DMG
+#                (packaging/desktop/macos/build-app.sh), whose bundled tools
+#                are then run, and whose Usenet service is started by the
+#                existing executor, from the mounted image (health, then the
+#                stop's exit code, which must be 0);
+#   windows-x64  a RUNTIME LAYOUT ONLY (CPython, the Windows lock with the
+#                WS3 sabctools wheel, the application, the shell; no native
+#                executors, no Usenet service, no installer) and the desktop
+#                tests on its runtime;
+#   linux-x64    a RUNTIME LAYOUT ONLY (no native executors, no Usenet service,
+#                no Flatpak) and
+#                the desktop tests on its runtime.
+# A result here is [T-CI] evidence for that hosted runner's OS and
+# architecture: not a GUI, tray, Gatekeeper, signing, notarization or
+# physical-hardware qualification.
+#
+# Runs on a push to 1.0.14 that touches the desktop or its recipes. It signs
+# nothing, uses no secret and, on a push, uploads nothing: this repository is
+# public, and a workflow artifact can be downloaded by anyone who can read it,
+# so the builds' hashes go to the job summary and the builds stay on the
+# runner. The inputs the build jobs share (the macOS recipes' prepared
+# sources, the sabctools wheel, the derived icons) pass between jobs through
+# the Actions cache, which GitHub offers no download of; a workflow run
+# allowed to restore this branch's caches could still read them.
+#
+# Uploading the builds as artifacts (publish_artifacts) is publication: it
+# exists only on a manual dispatch, which GitHub offers only for a workflow
+# that is on the default branch, and needs the publication authorization.
+name: Desktop Artifacts
+
+on:
+  push:
+    branches:
+      - '1.0.14'
+    paths:
+      - 'desktop/**'
+      - 'packaging/desktop/**'
+      - 'packaging/aria2/**'
+      - 'packaging/ffmpeg/**'
+      - 'packaging/macos-tools/**'
+      - 'packaging/sabctools/**'
+      - 'backend/requirements.txt'
+      - 'Dockerfile'
+      - 'backend/application/desktop_control.py'
+      - 'backend/tests/test_v114_desktop_control.py'
+      - 'backend/tests/test_v114_desktop_supervisor.py'
+      - 'frontend/static/logo.svg'
+      - 'frontend/static/favicon.svg'
+      - '.github/workflows/desktop-artifacts.yml'
+  workflow_dispatch:
+    inputs:
+      publish_artifacts:
+        description: "Upload the builds as workflow artifacts, readable by anyone who can read this repository (publication: needs its own authorization)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # The packaging recipes' pinned Debian base.
+  DEBIAN_BASE: docker.io/library/python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+
+jobs:
+  inputs:
+    name: Shared inputs (icons, macOS sources, sabctools wheel)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Derive the icons (assemble.py's icon step, the distribution's ImageMagick)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends imagemagick librsvg2-bin >/dev/null
+          python3 -c "import sys, pathlib; sys.path.insert(0, 'packaging/desktop'); import assemble; \
+            assemble.icons(pathlib.Path('desktop-inputs/icons-shell'))"
+          mv desktop-inputs/icons-shell/resources/icons desktop-inputs/icons && rm -r desktop-inputs/icons-shell
+      - name: The macOS recipes' sources (packaging/macos-tools/prepare-sources.sh, in the pinned Debian base)
+        run: |
+          mkdir -p desktop-inputs/macos-sources
+          docker run --rm -v "$PWD/packaging:/dp:ro" -v "$PWD/desktop-inputs/macos-sources:/out" "$DEBIAN_BASE" \
+            bash /dp/macos-tools/prepare-sources.sh /work /out
+          cat desktop-inputs/macos-sources/SHA256SUMS
+      - name: The Windows sabctools wheel (packaging/sabctools, the WS3 recipe)
+        run: |
+          docker build -f packaging/sabctools/Dockerfile.windows -o desktop-inputs/wheels-out .
+          mkdir -p desktop-inputs/wheels && cp desktop-inputs/wheels-out/*.whl desktop-inputs/wheels/
+          cat desktop-inputs/wheels-out/SHA256SUMS desktop-inputs/wheels-out/imports.txt
+      - name: Record
+        run: |
+          { echo "### Shared inputs ($GITHUB_SHA)"; echo '```'; (cd desktop-inputs && find icons macos-sources wheels -type f | sort | xargs sha256sum); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            desktop-inputs/icons
+            desktop-inputs/macos-sources
+            desktop-inputs/wheels
+          key: desktop-inputs-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enableCrossOsArchive: true
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: inputs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-15
+          - name: windows-x64
+            os: windows-2025
+          - name: linux-x64
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12.14"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            desktop-inputs/icons
+            desktop-inputs/macos-sources
+            desktop-inputs/wheels
+          key: desktop-inputs-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Record the runner
+        shell: bash
+        run: |
+          echo "commit=$GITHUB_SHA"; uname -a || true; python -VV
+          if [ "$RUNNER_OS" = "macOS" ]; then sw_vers; fi
+      - name: Native executors (the WS3/WS4 macOS recipes)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          src="$PWD/desktop-inputs/macos-sources"; work="$RUNNER_TEMP/recipes"; tools="$RUNNER_TEMP/tools"
+          bash packaging/aria2/build-macos.sh "$src" "$work/aria2" "$work/out-aria2"
+          bash packaging/ffmpeg/build-macos.sh "$src" "$work/ffmpeg" "$work/out-ffmpeg"
+          bash packaging/macos-tools/build-macos.sh "$src" "$work/tools" "$work/out-tools"
+          mkdir -p "$tools/copyright"
+          cp "$work"/out-aria2/bin/* "$work"/out-ffmpeg/bin/* "$work"/out-tools/bin/* "$tools/"
+          cp "$work"/out-tools/copyright/* "$tools/copyright/"
+          (cd "$tools" && shasum -a 256 aria2c ffmpeg ffprobe par2 zstd rsync 7zz unrar) | tee "$RUNNER_TEMP/tools-SHA256SUMS"
+      - name: Assemble the desktop layout (pinned CPython 3.12.14, hash locks, pinned Neutralino)
+        shell: bash
+        run: |
+          extra=()
+          if [ "$RUNNER_OS" = "macOS" ]; then extra+=(--tools "$RUNNER_TEMP/tools" --usenet); fi
+          if [ "$RUNNER_OS" = "Windows" ]; then extra+=(--wheels desktop-inputs/wheels); fi
+          python packaging/desktop/assemble.py --out "$RUNNER_TEMP/layout" --cache "$RUNNER_TEMP/cache" \
+            --icons desktop-inputs/icons "${extra[@]}" 2>&1 | tee "$RUNNER_TEMP/assemble.log"
+      - name: Desktop control and supervisor tests on the assembled runtime
+        shell: bash
+        working-directory: backend
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/layout/runtime/python/python.exe"; else PY="$RUNNER_TEMP/layout/runtime/python/bin/python3"; fi
+          # The test runner beside the layout, never inside it (the layout is what ships).
+          "$PY" -m pip install --no-cache-dir --target "$RUNNER_TEMP/testdeps" pytest==9.1.1 pytest-asyncio==1.4.0
+          PYTHONPATH="$RUNNER_TEMP/testdeps" "$PY" -m pytest tests/test_v114_desktop_control.py tests/test_v114_desktop_supervisor.py \
+            -p no:cacheprovider -rs --junitxml "$RUNNER_TEMP/desktop-junit.xml"
+      - name: macOS application and DMG (ad hoc; not signed or notarized), its bundled tools run from the image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash packaging/desktop/macos/build-app.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/app"
+          dmg="$(ls "$RUNNER_TEMP"/app/*.dmg)"; mnt="$RUNNER_TEMP/mnt"; mkdir -p "$mnt"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+          codesign --verify --deep --strict "$mnt/DebridPulse.app"
+          tools="$mnt/DebridPulse.app/Contents/Resources/app/tools"
+          check() { name="$1"; banner="$2"; shift 2
+            "$tools/$name" "$@" > "$RUNNER_TEMP/banner.txt" 2>&1 || true
+            grep -m1 -E "$banner" "$RUNNER_TEMP/banner.txt" || { echo "$name: no '$banner'"; cat "$RUNNER_TEMP/banner.txt"; exit 1; }; }
+          check aria2c '^aria2 version 1\.37\.0' --version
+          check ffmpeg '^ffmpeg version 7\.1\.5' -hide_banner -version
+          check ffprobe '^ffprobe version 7\.1\.5' -hide_banner -version
+          check rsync 'rsync +version 3\.5\.2' --version
+          check zstd 'Zstandard CLI' --version
+          check par2 'par2cmdline version 0\.8\.1' --version
+          check 7zz '7-Zip' i
+          check unrar '^UNRAR 7\.23'
+          # The Usenet service, started by the existing executor (executors.sabnzbd.runtime)
+          # from the mounted image, on the bundled interpreter, with the bundled tools.
+          cat > "$RUNNER_TEMP/usenet-start.py" <<'PY'
+          # The bundled Usenet service started by the existing executor, from the bundle.
+          import asyncio, sys
+          backend = sys.argv[1]
+          sys.path.insert(0, backend)
+          from executors.sabnzbd import runtime
+
+
+          async def main() -> int:
+              usenet = runtime.UsenetRuntime()
+              usenet.configure(runtime.UsenetRuntimeConfiguration(download_root=sys.argv[2], enabled=True))
+              binary = usenet._binary()
+              print("resolved service:", binary, "| interpreter:", sys.executable)
+              if not binary or not binary.startswith(backend):
+                  print("the service is not resolved inside the bundle")
+                  return 1
+              started = await usenet.start()
+              print("started:", {key: started[key] for key in ("running", "endpoint", "last_error", "exit_code")})
+              healthy = started["running"] and await usenet.healthy()
+              print("health answer:", healthy)
+              stopped = await usenet.stop()
+              print("stopped:", {key: stopped[key] for key in ("running", "exit_code", "last_error")})
+              clean = not stopped["running"] and stopped["exit_code"] == 0
+              print("stop outcome:", "clean (exit 0)" if clean else f"NOT clean (exit {stopped['exit_code']})")
+              return 0 if healthy and clean else 1
+
+          sys.exit(asyncio.run(main()))
+          PY
+          sabcheck="$RUNNER_TEMP/usenet-check"; mkdir -p "$sabcheck/data" "$sabcheck/downloads"
+          PATH="$tools:/usr/bin:/bin" DB_PATH="$sabcheck/data/debridpulse.db" USENET_CONFIG_DIR="$sabcheck/usenet" \
+            "$mnt/DebridPulse.app/Contents/Resources/app/runtime/python/bin/python3" -I "$RUNNER_TEMP/usenet-start.py" \
+            "$mnt/DebridPulse.app/Contents/Resources/app/backend" "$sabcheck/downloads"
+          hdiutil detach "$mnt" >/dev/null
+      - name: Record
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.name }} ($GITHUB_SHA)"
+            case "${{ matrix.name }}" in
+              macos-arm64) echo "Layout with native executors and the Usenet service, desktop tests, ad hoc DMG (not signed, not notarized); tools run and the Usenet service started from the mounted image.";;
+              *) echo "RUNTIME LAYOUT ONLY (no native executors, no Usenet service, no installer or Flatpak) and the desktop tests.";;
+            esac
+            echo '```'
+            [ -f "$RUNNER_TEMP/layout/BUILD-INFO.json" ] && cat "$RUNNER_TEMP/layout/BUILD-INFO.json"
+            [ -f "$RUNNER_TEMP/tools-SHA256SUMS" ] && cat "$RUNNER_TEMP/tools-SHA256SUMS"
+            [ -f "$RUNNER_TEMP/app/SHA256SUMS" ] && cat "$RUNNER_TEMP/app/SHA256SUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the builds as artifacts (manual dispatch with publish_artifacts only)
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.publish_artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-${{ matrix.name }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/assemble.log
+            ${{ runner.temp }}/desktop-junit.xml
+            ${{ runner.temp }}/layout/BUILD-INFO.json
+            ${{ runner.temp }}/tools-SHA256SUMS
+            ${{ runner.temp }}/app/*.dmg
+            ${{ runner.temp }}/app/SHA256SUMS
