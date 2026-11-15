@@ -526,7 +526,9 @@ jobs:
             fi
             [ "$(cat "$dir/COMMIT")" = "$GITHUB_SHA" ] || { echo "$os: built from $(cat "$dir/COMMIT"), not $GITHUB_SHA"; exit 1; }
             [ "$(cat "$dir/RUN")" = "$GITHUB_RUN_ID" ] || { echo "$os: built in run $(cat "$dir/RUN"), not $GITHUB_RUN_ID"; exit 1; }
-            (cd "$dir" && grep -E "  $expected\$" SHA256SUMS | sha256sum -c -) || { echo "$os: $expected does not match its build's SHA256SUMS"; exit 1; }
+            # Its build's line for exactly this file, in either form sha256sum writes ("<hash>  name", or
+            # "<hash> *name" -- Git Bash on the Windows runner marks binary mode).
+            (cd "$dir" && awk -v name="$expected" '$2 == name || $2 == "*" name' SHA256SUMS | sha256sum -c -) || { echo "$os: $expected does not match its build's SHA256SUMS"; exit 1; }
             cp "$dir/$expected" "$h/"
             cp "$dir/BUILD-INFO.json" "$h/BUILD-INFO-$os.json"
             if [ -f "$dir/RESULTS.txt" ]; then cp "$dir/RESULTS.txt" "$h/RESULTS-$os.txt"; fi

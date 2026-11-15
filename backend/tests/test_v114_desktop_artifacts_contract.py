@@ -166,3 +166,35 @@ def test_every_platform_job_checks_out_the_committed_bytes_unconverted():
     autocrlf = next(i for i, step in enumerate(steps) if step.get("run") == "git config --global core.autocrlf false")
     checkout = next(i for i, name in enumerate(names) if name.startswith("actions/checkout@"))
     assert autocrlf < checkout
+
+
+def test_the_handover_checks_each_installer_against_its_builders_line_in_either_sha256sum_form(tmp_path):
+    """The selection line exactly as committed, run with bash: macOS and Linux write "<hash>  name";
+    Git Bash on the Windows runner writes "<hash> *name". Both are accepted, a wrong digest is not, and
+    no other file's line can stand in for the installer's."""
+    import hashlib
+    import shutil
+    import subprocess
+    if not (shutil.which("bash") and shutil.which("sha256sum")):
+        import pytest
+        pytest.skip("needs bash and GNU sha256sum")
+    step = next(s for s in _steps("handover") if s.get("name", "").startswith("The installers -- exactly one of each"))
+    line = next(row.strip() for row in step["run"].splitlines() if "sha256sum -c -" in row)
+    expected = "DebridPulse-1.0.14-windows-x64.exe"
+    payload = b"installer bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    other = hashlib.sha256(b"other").hexdigest()
+
+    def selected(sums: str) -> int:
+        directory = tmp_path / str(len(list(tmp_path.iterdir())))
+        directory.mkdir()
+        (directory / expected).write_bytes(payload)
+        (directory / f"x{expected}").write_bytes(b"other")
+        (directory / "SHA256SUMS").write_text(sums, encoding="utf-8")
+        script = f'set -e; os=windows; expected={expected}; dir="{directory}"; {line}'
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True).returncode
+
+    assert selected(f"{digest}  {expected}\n") == 0                         # text form (macOS, Linux)
+    assert selected(f"{other} *x{expected}\n{digest} *{expected}\n") == 0  # binary form (Git Bash)
+    assert selected(f"{other} *{expected}\n") != 0                          # wrong digest
+    assert selected(f"{other}  x{expected}\n") != 0                         # only another file's line
