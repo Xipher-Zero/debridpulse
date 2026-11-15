@@ -268,9 +268,12 @@ class ProcessOwnership:
         if _WINDOWS:
             # Windows programs find their home, profile and temporary files
             # through these instead of HOME: all of them are the private home.
-            # SYSTEMROOT is required by the C runtime and Winsock to start.
+            # SYSTEMROOT is required by the C runtime and Winsock to start;
+            # USERNAME is the account the process runs as -- what POSIX
+            # programs read from the user database (getpass.getuser() has no
+            # other source on Windows).
             env.update({key: str(self.home) for key in ("USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP")})
-            env.update({key: os.environ[key] for key in ("SYSTEMROOT", "PATHEXT") if os.environ.get(key)})
+            env.update({key: os.environ[key] for key in ("SYSTEMROOT", "PATHEXT", "USERNAME") if os.environ.get(key)})
         env.update({str(key): str(value) for key, value in (extra or {}).items()})
         return env
 
@@ -280,8 +283,11 @@ class ProcessOwnership:
         """Start the attempt's one native group. ``secrets`` become inherited
         one-shot pipes and ``fd_argv(descriptors)`` may place their descriptor
         numbers into the argv; ``stdin`` becomes a one-shot pipe on standard
-        input (otherwise it is empty). Raises ``ProcessGroupAlive`` rather than
-        start a second group."""
+        input (otherwise it is empty). ``pass_fds`` are what the program also
+        inherits: descriptors on POSIX; on Windows the OS handles themselves (a
+        socket's ``fileno()`` is one; a descriptor is passed as
+        ``msvcrt.get_osfhandle(fd)``), and ``fd_argv`` receives handle values
+        too. Raises ``ProcessGroupAlive`` rather than start a second group."""
         self._prepare()
         path = self.marker(attempt_id)
         if _WINDOWS:
@@ -315,7 +321,7 @@ class ProcessOwnership:
                 for key, value in (secrets or {}).items():
                     descriptors[key] = msvcrt.get_osfhandle(self._pipe(value, pipes))
                 standard_input = self._pipe(stdin, pipes) if stdin is not None else asyncio.subprocess.DEVNULL
-                handed = [msvcrt.get_osfhandle(descriptor) for descriptor in pass_fds]
+                handed = list(pass_fds)
                 if fd_argv is not None:
                     argv = fd_argv(descriptors)
                 program = shutil.which(str(argv[0]), path=env.get("PATH")) if argv else None

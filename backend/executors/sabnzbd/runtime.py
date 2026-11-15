@@ -13,6 +13,7 @@ import logging
 import os
 import secrets
 import shutil
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Any, Dict
 
 import configobj
 
+from db.database import DB_PATH
 from executors.process_ownership import output_lines
 
 logger = logging.getLogger("debridpulse.usenet")
@@ -28,8 +30,12 @@ logger = logging.getLogger("debridpulse.usenet")
 # from nowhere else. Nothing publishes this port.
 SERVICE_HOST = "127.0.0.1"
 SERVICE_PORT = 8090
-# Where the service keeps its own configuration/state inside the container.
-CONFIG_ROOT = Path(os.environ.get("USENET_CONFIG_DIR", "/app/data/usenet"))
+# Where the service keeps its own configuration/state: beside DebridPulse's
+# database, as every data-root default (/app/data/usenet in the container).
+CONFIG_ROOT = Path(os.environ.get("USENET_CONFIG_DIR", str(DB_PATH.parent / "usenet")))
+# The bundled service's program: beside the backend (/app/usenet in the
+# container), wherever DebridPulse is laid out.
+SERVICE_ROOT = Path(__file__).resolve().parents[2] / "usenet"
 # How long a cold start may take before the runtime reports it unhealthy.
 STARTUP_TIMEOUT_SECONDS = 90
 _HEALTH_POLL_SECONDS = 0.5
@@ -178,13 +184,15 @@ class UsenetRuntime:
             found = shutil.which(name)
             if found:
                 return found
-        bundled = Path("/app/usenet/SABnzbd.py")
+        bundled = SERVICE_ROOT / "SABnzbd.py"
         return str(bundled) if bundled.is_file() else None
 
     def _command(self) -> list[str]:
         binary = self._binary()
+        # The bundled service runs on DebridPulse's own interpreter: the one
+        # Python whose locked packages (sabctools among them) it needs.
         command = ([binary] if not str(binary).endswith(".py")
-                   else ["python3", str(binary)])
+                   else [sys.executable, str(binary)])
         return [
             *command,
             "--server", f"{SERVICE_HOST}:{SERVICE_PORT}",
@@ -232,7 +240,14 @@ class UsenetRuntime:
         async with self._lock:
             try:
                 if self._process and self._process.returncode is None:
-                    self._process.terminate()
+                    if os.name == "nt":
+                        # Windows has no SIGTERM: terminate() would be
+                        # TerminateProcess, ending the service without letting
+                        # it stop its own par2/unrar children. Its own API
+                        # shutdown is its graceful stop.
+                        await self._request_shutdown()
+                    else:
+                        self._process.terminate()
                     try:
                         await asyncio.wait_for(self._process.wait(), timeout=15)
                     except asyncio.TimeoutError:
@@ -243,6 +258,18 @@ class UsenetRuntime:
                 self._last_error = str(exc)
                 logger.warning("usenet stop failed: %s", exc)
             return await self.status()
+
+    async def _request_shutdown(self) -> None:
+        from executors.sabnzbd.client import SabApiError, SabEndpoint, SabnzbdClient
+        client = SabnzbdClient(SabEndpoint(service_url(), internal_api_key(), 10))
+        try:
+            await client.shutdown()
+        except SabApiError as exc:
+            logger.warning("usenet shutdown request refused: %s", type(exc).__name__)
+        except Exception:  # noqa: BLE001
+            # The service may close the connection as it exits, before it has
+            # answered: whether it stopped is what the bounded wait observes.
+            pass
 
     async def restart(self) -> Dict[str, Any]:
         await self.stop()

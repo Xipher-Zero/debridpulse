@@ -1,0 +1,8 @@
+# The official macOS releases DebridPulse ships unmodified, pinned by SHA-256.
+# 7-Zip 25.01 for macOS (GitHub release ip7z/7zip 25.01; GitHub's published asset digest)
+26aa75bc262bb10bf0805617b95569c3035c2c590a99f7db55c7e9607b2685e0  7z2501-mac.tar.xz  https://github.com/ip7z/7zip/releases/download/25.01/7z2501-mac.tar.xz
+# RARLAB RAR 7.23 for macOS arm64, whose unrar DebridPulse uses (RARLAB publishes
+# no digest: pinned to the file first verified for DebridPulse)
+68b393c000758d477fde43c955ff7542f12f76f3f5e87cdda923152fc791bd4d  rarmacos-arm-723.tar.gz  https://www.rarlab.com/rar/rarmacos-arm-723.tar.gz
+# rsync 3.5.2 source (samba.org; the digest MSYS2's rsync PKGBUILD pins)
+a10d591825251e070f74c98df3daad195def4ed81b4a2de16169026aea33f6c8  rsync-3.5.2.tar.gz  https://download.samba.org/pub/rsync/src/rsync-3.5.2.tar.gz

@@ -60,6 +60,7 @@ invocation lasts.
 from __future__ import annotations
 
 import asyncio
+import ntpath
 import os
 import re
 import shutil
@@ -169,6 +170,36 @@ class _Remote:
         return f"{ssh_channel.CHANNEL_HOST}:" + literal_path(path) + suffix
 
 
+def _inheritable(descriptor: int) -> int:
+    """How a descriptor is named to a native process: the descriptor on POSIX,
+    its OS handle on Windows (what ``ProcessOwnership.spawn`` passes on)."""
+    if os.name == "nt":
+        import msvcrt
+        return msvcrt.get_osfhandle(descriptor)
+    return descriptor
+
+
+def local_argument(path) -> str:
+    """A local path as rsync must be given it, so it can never read as a remote
+    host. On POSIX the path itself. On Windows rsync is MSYS2's: a drive path
+    ``X:\\a\\b`` (whose ``X:`` rsync would take for host ``X``) is
+    MSYS2's ``/x/a/b`` and a UNC path ``\\\\srv\\share\\a`` is ``//srv/share/a``;
+    anything else, or anything still holding a colon, is refused."""
+    text = str(path)
+    if os.name != "nt":
+        return text
+    drive, rest = ntpath.splitdrive(text)
+    if len(drive) == 2 and drive[1] == ":" and drive[0].isascii() and drive[0].isalpha() and rest.startswith("\\"):
+        native = "/" + drive[0].lower() + rest.replace("\\", "/")
+    elif drive.startswith("\\\\") and rest.startswith("\\"):
+        native = drive.replace("\\", "/") + rest.replace("\\", "/")
+    else:
+        raise ValueError("a local rsync path must be fully qualified")
+    if ":" in native:
+        raise ValueError("a local rsync path may hold no colon")
+    return native
+
+
 @dataclass
 class _Transport:
     """Everything one native invocation needs to reach one source.
@@ -190,8 +221,10 @@ class _Transport:
 
     @property
     def pass_fds(self) -> tuple[int, ...]:
+        """What the native process inherits: descriptors on POSIX; on Windows
+        the OS handles (a socket's ``fileno()`` already is one)."""
         return tuple(item.fileno() for item in self.inherited) + (
-            (self.status_child,) if self.status_child is not None else ())
+            (_inheritable(self.status_child),) if self.status_child is not None else ())
 
     def discard(self) -> None:
         """Release everything, including the parent's status reader."""
@@ -529,7 +562,7 @@ class RsyncExecutor:
         def channel_options(descriptors: dict[str, int]) -> list[str]:
             # rsync splits its remote-shell program on spaces itself (no shell);
             # the interpreter path is checked to need no quoting.
-            shell = ssh_channel.remote_shell(cfg.python, spec_fd=descriptors["spec"], status_fd=status_write,
+            shell = ssh_channel.remote_shell(cfg.python, spec_fd=descriptors["spec"], status_fd=_inheritable(status_write),
                                              tunnel_fd=tunnel_fd)
             # The remote command's file arguments travel inside the rsync
             # protocol, never on a remote shell command line.
@@ -859,7 +892,7 @@ class RsyncExecutor:
                     return False
 
             code, _out, stderr, records, _overflow = await self._invoke(
-                self._head("-I", "--append"), [remote.native(), str(scratch)], transport, stop=enough,
+                self._head("-I", "--append"), [remote.native(), local_argument(scratch)], transport, stop=enough,
                 on_accepted=submitted.transport_accepted if submitted is not None else None)
             if not enough() and code not in {0}:
                 self._outcome(remote, candidate, code, stderr, records, transport.redactions,
@@ -955,9 +988,9 @@ class RsyncExecutor:
         elif mode == "basis":
             # rsync's ordinary delta transfer: the untouched target is the
             # basis, and the replacement is built in the private tree.
-            head += ["--no-whole-file", f"--temp-dir={staging}"]
+            head += ["--no-whole-file", f"--temp-dir={local_argument(staging)}"]
         else:
-            head.append(f"--temp-dir={staging}")
+            head.append(f"--temp-dir={local_argument(staging)}")
         return head
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
@@ -996,7 +1029,7 @@ class RsyncExecutor:
                 owned = await self.processes.spawn(
                     handle.attempt_id, [], env=transport.env, secrets=transport.secrets, stdin=transport.stdin,
                     pass_fds=transport.pass_fds,
-                    fd_argv=lambda descriptors: transport.argv(head, [remote.native(), str(target)], descriptors))
+                    fd_argv=lambda descriptors: transport.argv(head, [remote.native(), local_argument(target)], descriptors))
             except ProcessGroupAlive:
                 transport.discard()
                 self._end_route(transport)

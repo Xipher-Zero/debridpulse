@@ -1,0 +1,19 @@
+# sabctools for Windows x64 CPython 3.12 (packaging/sabctools/build-windows.sh),
+# on the same pinned Debian base as the other packaging recipes, with Debian's
+# UCRT mingw-w64 toolchain and the setuptools DebridPulse's lock pins.
+# Build context: the repository root.
+#   podman build -f packaging/sabctools/Dockerfile.windows -o <out-dir> .
+FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS build
+COPY backend/requirements.txt /dp/requirements.txt
+COPY packaging/sabctools/ /dp/sabctools/
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates openssl patch \
+      gcc-mingw-w64-ucrt64 g++-mingw-w64-ucrt64 binutils-mingw-w64-ucrt64; \
+    awk '/^setuptools==/{p=1;print;next} p&&/^[[:space:]]+--hash/{print;next} {p=0}' /dp/requirements.txt > /dp/setuptools.txt; \
+    pip install --no-cache-dir --require-hashes --no-deps -r /dp/setuptools.txt; \
+    bash /dp/sabctools/build-windows.sh /build /out; \
+    cd /out; find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS
+
+FROM scratch
+COPY --from=build /out/ /

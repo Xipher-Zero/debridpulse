@@ -1,0 +1,8 @@
+# The Windows rsync helper's inputs, pinned by SHA-256: a download that does not match is refused.
+# MSYS2 base 2026-09-27 (also verified against its detached signature, signing key
+# 0EBF782C5D53F7E5FB02A66746BD761F7A49B0EC from https://www.msys2.org/dev/keyring/)
+ea2f31a0b6ade63914ce441ffb022f0f6aa96982bfefa2326460a26d5fb01322  msys2-base-x86_64-20260927.tar.xz  https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20260927.tar.xz
+# MSYS2's maintained rsync recipe, MSYS2-packages commit 825eb02a56761351edcba62d5e9f94ea1dc2c14f
+# (the PKGBUILD pins upstream rsync-3.5.2.tar.gz by its own sha256sums)
+543ec751e443c79dc9eccf18717269a0a370564ccfa8db91f510668950c3fd12  PKGBUILD  https://raw.githubusercontent.com/msys2/MSYS2-packages/825eb02a56761351edcba62d5e9f94ea1dc2c14f/rsync/PKGBUILD
+56c6f1a68db7752952687216f673d6911b56e1760e33e28a2c79a06a764f9c66  cygwin-fchmod-writable-handle.patch  https://raw.githubusercontent.com/msys2/MSYS2-packages/825eb02a56761351edcba62d5e9f94ea1dc2c14f/rsync/cygwin-fchmod-writable-handle.patch

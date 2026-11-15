@@ -1,0 +1,17 @@
+# DebridPulse's archive and Usenet helper tools for Windows x64 (par2, zstd,
+# 7-Zip, UnRAR), on the same pinned Debian base as the other packaging recipes.
+# Build context: the repository root.
+#   podman build -f packaging/windows-tools/Dockerfile.windows -o <out-dir> .
+FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS build
+COPY packaging/windows-tools/ /dp/windows-tools/
+RUN set -eux; \
+    sed -ri 's/^Types: deb$/Types: deb deb-src/; s/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dpkg-dev make gcc libc6-dev \
+      autoconf automake curl ca-certificates 7zip 7zip-rar \
+      gcc-mingw-w64-x86-64-win32 g++-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64; \
+    bash /dp/windows-tools/build-windows.sh /build /out; \
+    cd /out; find bin source copyright -type f | sort | xargs sha256sum > SHA256SUMS
+
+FROM scratch
+COPY --from=build /out/ /

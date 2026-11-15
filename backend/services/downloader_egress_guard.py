@@ -282,6 +282,24 @@ class TunnelTargetRefused(PermissionError):
     apart from a policy refusal catches this first."""
 
 
+def _connect_blocking(tunnel: socket.socket, guard: tuple, request: bytes, timeout: float) -> bytes:
+    """``open_tunnel``'s CONNECT exchange on a blocking socket (Windows): the
+    same request, the proxy answer read byte by byte (none of the origin's own
+    first bytes consumed), the whole exchange within ``timeout``."""
+    deadline = time.monotonic() + float(timeout)
+    tunnel.settimeout(timeout)
+    tunnel.connect(guard)
+    tunnel.sendall(request)
+    answer = b""
+    while not answer.endswith(b"\r\n\r\n"):
+        tunnel.settimeout(max(0.001, deadline - time.monotonic()))
+        chunk = tunnel.recv(1)
+        if not chunk or len(answer) >= 1024:
+            raise PermissionError("DebridPulse egress guard refused the connection")
+        answer += chunk
+    return answer
+
+
 class DownloaderEgressGuard:
     """Authenticated target-scoped CONNECT proxy with connection-time DNS policy."""
 
@@ -605,23 +623,31 @@ class DownloaderEgressGuard:
         credential = base64.b64encode(f"{user}:{token}".encode("utf-8")).decode("ascii")
         loop = asyncio.get_running_loop()
         tunnel = socket.socket(family, socket.SOCK_STREAM)
-        tunnel.setblocking(False)
+        request = (f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n"
+                   f"Proxy-Authorization: Basic {credential}\r\n\r\n").encode("ascii")
         try:
-            async with asyncio.timeout(timeout_seconds):
-                await loop.sock_connect(tunnel, (address, listener[1]))
-                await loop.sock_sendall(tunnel, (
-                    f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n"
-                    f"Proxy-Authorization: Basic {credential}\r\n\r\n"
-                ).encode("ascii"))
-                # Read the proxy answer byte by byte: the origin may speak first
-                # (an FTP greeting, an SSH banner) and none of its bytes may be
-                # consumed here.
-                answer = b""
-                while not answer.endswith(b"\r\n\r\n"):
-                    chunk = await loop.sock_recv(tunnel, 1)
-                    if not chunk or len(answer) >= 1024:
-                        raise PermissionError("DebridPulse egress guard refused the connection")
-                    answer += chunk
+            if os.name == "nt":
+                # Windows: a socket the (Proactor) event loop has used stays bound
+                # to this process's I/O completion port, so a child the tunnel is
+                # handed to (the rsync SSH channel) could never drive it. The same
+                # exchange runs blocking, in a worker thread: never the loop's.
+                answer = await asyncio.to_thread(_connect_blocking, tunnel, (address, listener[1]), request,
+                                                 timeout_seconds)
+                tunnel.setblocking(False)
+            else:
+                tunnel.setblocking(False)
+                async with asyncio.timeout(timeout_seconds):
+                    await loop.sock_connect(tunnel, (address, listener[1]))
+                    await loop.sock_sendall(tunnel, request)
+                    # Read the proxy answer byte by byte: the origin may speak first
+                    # (an FTP greeting, an SSH banner) and none of its bytes may be
+                    # consumed here.
+                    answer = b""
+                    while not answer.endswith(b"\r\n\r\n"):
+                        chunk = await loop.sock_recv(tunnel, 1)
+                        if not chunk or len(answer) >= 1024:
+                            raise PermissionError("DebridPulse egress guard refused the connection")
+                        answer += chunk
         except BaseException:
             tunnel.close()
             raise

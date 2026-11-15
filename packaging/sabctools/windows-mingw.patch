@@ -1,0 +1,88 @@
+Windows (mingw-w64) build of sabctools, applied by packaging/sabctools/build-windows.sh only:
+  - link: no libdl (sabctools dlopen()s OpenSSL only on POSIX; on Windows
+    src/unlocked_ssl.h takes the _WIN32 LoadLibrary/GetProcAddress path), and
+    Winsock (ws2_32) after the objects that use it, which an MSVC build gets
+    through its default libraries;
+  - <Windows.h> is spelled <windows.h>: the header's name in mingw-w64, which
+    a case-sensitive build host requires (Windows itself ignores case);
+  - GetProcAddress results are cast to void* explicitly, which MSVC does
+    implicitly and GCC requires (same meaning).
+--- a/setup.py	2026-08-02 23:51:03.000000000 -0700
++++ b/setup.py	2026-11-14 00:20:14.513826480 -0700
+@@ -119,7 +119,7 @@
+                 log.info("==> C++17 flag not available")
+         else:
+             # TODO: consider -flto - may require some extra testing
+-            ldflags = ["-ldl"]  # for dlopen
++            ldflags = []  # Windows: LoadLibrary (src/unlocked_ssl.h), no libdl
+             cflags = [
+                 "-Wall",
+                 "-Wextra",
+@@ -383,7 +383,7 @@
+             compiled_objects += self.compiler.object_filenames(source_files["sources"], output_dir=output_dir)
+ 
+         # attach to Extension
+-        ext.extra_link_args = ldflags + compiled_objects
++        ext.extra_link_args = ldflags + compiled_objects + ["-lws2_32"]  # Winsock, after its users
+         ext.depends = ["src/sabctools.h"] + compiled_objects
+ 
+         # proceed with regular Extension build
+--- a/src/sparse.h	2026-08-02 23:51:03.000000000 -0700
++++ b/src/sparse.h	2026-11-14 00:15:30.526823697 -0700
+@@ -22,7 +22,7 @@
+ #include <Python.h>
+ 
+ #if defined(_WIN32) || defined(__CYGWIN__)
+-#include <Windows.h>
++#include <windows.h>
+ #else
+ #include <unistd.h>
+ #endif
+--- a/src/unlocked_ssl.cc	2026-08-02 23:51:03.000000000 -0700
++++ b/src/unlocked_ssl.cc	2026-11-14 00:17:07.306449662 -0700
+@@ -168,9 +168,9 @@
+ #endif
+     if(!openssl_handle) goto cleanup;
+ 
+-    *(void**)&SSL_read_ex = GetProcAddress(openssl_handle, "SSL_read_ex");
+-    *(void**)&SSL_get_error = GetProcAddress(openssl_handle, "SSL_get_error");
+-    *(void**)&SSL_get_shutdown = GetProcAddress(openssl_handle, "SSL_get_shutdown");
++    *(void**)&SSL_read_ex = (void*)GetProcAddress(openssl_handle, "SSL_read_ex");
++    *(void**)&SSL_get_error = (void*)GetProcAddress(openssl_handle, "SSL_get_error");
++    *(void**)&SSL_get_shutdown = (void*)GetProcAddress(openssl_handle, "SSL_get_shutdown");
+ #else
+     // Find library at "import ssl; print(ssl._ssl.__file__)"
+ 
+--- a/src/unlocked_ssl.h	2026-08-02 23:51:03.000000000 -0700
++++ b/src/unlocked_ssl.h	2026-11-14 00:15:30.526579948 -0700
+@@ -29,7 +29,7 @@
+ /* OpenSSL link */
+ #if defined(_WIN32) || defined(__CYGWIN__)
+ # define WIN32_LEAN_AND_MEAN
+-# include <Windows.h>
++# include <windows.h>
+ # include <winsock2.h>
+ #else
+ # include <dlfcn.h>
+--- a/src/yencode/crc.cc	2026-08-02 23:51:03.000000000 -0700
++++ b/src/yencode/crc.cc	2026-11-14 00:15:30.527030597 -0700
+@@ -195,7 +195,7 @@
+ 
+ #if defined(PLATFORM_ARM) && defined(_WIN32)
+ # define WIN32_LEAN_AND_MEAN
+-# include <Windows.h>
++# include <windows.h>
+ #endif
+ #ifdef PLATFORM_ARM
+ # ifdef __ANDROID__
+--- a/src/yencode/platform.cc	2026-08-02 23:51:03.000000000 -0700
++++ b/src/yencode/platform.cc	2026-11-14 00:15:30.527376776 -0700
+@@ -5,7 +5,7 @@
+ # elif defined(_WIN32)
+ #  define WIN32_LEAN_AND_MEAN
+ #  define NOMINMAX
+-#  include <Windows.h>
++#  include <windows.h>
+ # elif defined(__APPLE__)
+ #  include <sys/types.h>
+ #  include <sys/sysctl.h>

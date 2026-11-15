@@ -4659,16 +4659,32 @@ class TransferEngine:
         more (a DebridPulse Pause fenced it, or it failed) is still
         DebridPulse's to reclaim when -- and only when -- the artifact's latest
         writer durably owned it. Unowned material is never touched; a live
-        writer's material is reclaimed by the execution-cleanup obligation."""
+        writer's material is reclaimed by the execution-cleanup obligation.
+
+        A Cancel leaves its stopped attempt bound as the artifact's execution
+        and discharges that attempt's obligation without reclaiming anything
+        (Cancel never reclaims). Such an execution holds nothing any more: it
+        is detached exactly when its durable record says it can never acquire
+        again -- it is the artifact's latest writer, its last observed state
+        is a stopped one, and no cleanup obligation is open. A writer that may
+        still be running, or whose stop is unconfirmed, keeps an open
+        obligation and is left to it."""
         transfer = await self.repository.get(transfer_id)
         if transfer is None or transfer.state != TransferState.DELETED:
             return
         for artifact in await self.repository.artifacts(transfer_id):
-            if artifact.execution is not None or artifact.state == "completed":
+            if artifact.state == "completed":
                 continue
             previous = await self.repository.previous_writer(artifact.id)
             if previous is None or not previous.owned or previous.candidate is None:
                 continue
+            if artifact.execution is not None:
+                status = await self.repository.execution_cleanup_status(artifact.execution.attempt_id)
+                if (artifact.execution.attempt_id != previous.handle.attempt_id or status is None
+                        or status["state"] in {"pending", "blocked"}
+                        or status["execution_state"] not in {ExecutionState.SUCCEEDED, ExecutionState.FAILED,
+                                                             ExecutionState.CANCELLED, ExecutionState.ABSENT}):
+                    continue
             executor = self.registry.executor_for_handle(previous.handle)
             if executor is None:
                 continue

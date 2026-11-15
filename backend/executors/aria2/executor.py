@@ -17,6 +17,7 @@ from enum import StrEnum
 import hashlib
 import json
 import logging
+import ntpath
 import os
 from pathlib import Path
 import re
@@ -1290,7 +1291,13 @@ class Aria2Executor:
         if str(native.gid) != self._handle_gid(handle):
             raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
         expected = str(self._target(str(handle.correlation["target"])))
-        if any(str(item.get("path") or "") not in {"", expected} for item in (native.files or [])):
+        reported = {str(item.get("path") or "") for item in (native.files or [])} - {""}
+        if os.name == "nt":
+            # aria2 on Windows reports its paths with "/" separators, and Windows
+            # paths compare without case: the same file, never a ".." resolved.
+            expected = ntpath.normcase(expected)
+            reported = {ntpath.normcase(path.replace("/", "\\")) for path in reported}
+        if reported - {expected}:
             raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
         result = observation(self._bound(handle), native, secrets=self._secrets(handle, native=native))
         if not exact_redaction and result.error is not None:

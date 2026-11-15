@@ -1,0 +1,16 @@
+# DebridPulse's FFmpeg for Windows x64, built on the same pinned Debian base as
+# the Linux package (packaging/ffmpeg/Dockerfile) with Debian's mingw-w64
+# cross toolchain. Build context: the repository root.
+#   podman build -f packaging/ffmpeg/Dockerfile.windows -o <out-dir> .
+FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS build
+ARG FFMPEG_SOURCE_VERSION=7:7.1.5-0+deb13u1
+COPY packaging/ffmpeg/ /dp/ffmpeg/
+RUN set -eux; \
+    sed -ri 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends dpkg-dev make gcc libc6-dev gcc-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64; \
+    FFMPEG_SOURCE_VERSION="${FFMPEG_SOURCE_VERSION}" bash /dp/ffmpeg/build-windows.sh /build /out; \
+    cd /out; find bin source -type f | sort | xargs sha256sum > SHA256SUMS
+
+FROM scratch
+COPY --from=build /out/ /

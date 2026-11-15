@@ -112,6 +112,8 @@ async def _relay(process) -> int:
     """Relay the tool's stdin to the remote command and its output back, until
     the remote command exits; returns its exit status (255 when it has none)."""
     loop = asyncio.get_running_loop()
+    if os.name == "nt":
+        return await _relay_windows(process, loop)
     stdin = asyncio.StreamReader(limit=_RELAY_CHUNK)
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(stdin), os.fdopen(0, "rb", buffering=0))
 
@@ -136,6 +138,69 @@ async def _relay(process) -> int:
     feeder = asyncio.ensure_future(upstream())
     try:
         await asyncio.gather(downstream(process.stdout, stdout), downstream(process.stderr, stderr))
+        completed = await process.wait()
+    finally:
+        feeder.cancel()
+    status = completed.exit_status
+    return status if isinstance(status, int) and status >= 0 else 255
+
+
+async def _relay_windows(process, loop) -> int:
+    """``_relay`` on Windows. The native tool's standard handles are plain
+    (non-overlapped) pipes, which the Windows event loop cannot drive: they
+    are read and written blocking, in binary, off the loop -- the tool's input
+    by a daemon thread (a read still blocked when the remote command ends never
+    holds this helper), its output by writes that each complete. MSYS2's rsync
+    hands down non-blocking pipes: an empty read or a full write is waited out."""
+    import msvcrt
+    import threading
+    import time
+    for fd in (0, 1, 2):
+        msvcrt.setmode(fd, os.O_BINARY)
+    incoming: asyncio.Queue = asyncio.Queue()
+
+    # Cygwin/MSYS2 hand down their pipes non-blocking (and Windows refuses to
+    # change their mode): "nothing yet" is waited out, never taken for the end;
+    # only end-of-file or a broken pipe ends the input.
+    def read_input() -> None:
+        while True:
+            try:
+                chunk = os.read(0, _RELAY_CHUNK)
+            except BlockingIOError:
+                time.sleep(0.002)
+                continue
+            except OSError:
+                chunk = b""
+            try:
+                loop.call_soon_threadsafe(incoming.put_nowait, chunk)
+            except RuntimeError:          # the loop has ended
+                return
+            if not chunk:
+                return
+
+    def write_all(fd: int, data: bytes) -> None:
+        view = memoryview(data)
+        while view:
+            try:
+                view = view[os.write(fd, view):]
+            except BlockingIOError:
+                time.sleep(0.002)
+
+    threading.Thread(target=read_input, name="ssh-channel-input", daemon=True).start()
+
+    async def upstream():
+        while chunk := await incoming.get():
+            process.stdin.write(chunk)
+            await process.stdin.drain()
+        process.stdin.write_eof()
+
+    async def downstream(reader, fd: int):
+        while chunk := await reader.read(_RELAY_CHUNK):
+            await loop.run_in_executor(None, write_all, fd, chunk)
+
+    feeder = asyncio.ensure_future(upstream())
+    try:
+        await asyncio.gather(downstream(process.stdout, 1), downstream(process.stderr, 2))
         completed = await process.wait()
     finally:
         feeder.cancel()
@@ -205,6 +270,16 @@ def main(argv: list[str]) -> int:
         spec_fd, status_fd, tunnel_fd, user, command = _parse(argv)
     except ValueError:
         return 255
+    if os.name == "nt":
+        # On Windows the native tool hands down OS handles, not descriptors:
+        # opened here as (binary) descriptors; the tunnel's SOCKET handle is
+        # already what socket.socket(fileno=...) takes.
+        import msvcrt
+        try:
+            spec_fd = msvcrt.open_osfhandle(spec_fd, os.O_RDONLY)
+            status_fd = msvcrt.open_osfhandle(status_fd, os.O_WRONLY)
+        except OSError:
+            return 255
     with os.fdopen(status_fd, "w", encoding="utf-8") as status:
         try:
             spec = json.loads(_read_all(spec_fd, _MAX_SPEC_BYTES))

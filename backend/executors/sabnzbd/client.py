@@ -186,6 +186,11 @@ class SabnzbdClient:
     async def version(self) -> str:
         return str((await self._call({"mode": "version"})).get("version") or "")
 
+    async def shutdown(self) -> None:
+        """Ask the service to stop itself (its own graceful stop: it ends what
+        it started, par2 and unrar included)."""
+        await self._call({"mode": "shutdown"})
+
     async def addfile(self, source, *, job_name: str, pp: int = PP_REPAIR_ONLY,
                       priority: int = NATIVE_PRIORITY_DEFAULT,
                       upload_filename: str = "") -> str:
