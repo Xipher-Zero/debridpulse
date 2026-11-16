@@ -92,6 +92,9 @@ def _projection(script: str) -> dict:
     # Then the account's interface language (its proof: test_account_locale.py).
     language, _, rest = rest.partition("\n")
     assert language.startswith("window.debridPulseLocale=Object.freeze("), language[:80]
+    # Then whether this is the desktop application (its proof: test_v114_desktop_control.py).
+    desktop, _, rest = rest.partition("\n")
+    assert desktop == "window.debridPulseDesktop=false;", desktop    # no supervisor started this backend
     match = re.fullmatch(r"window\.debridPulseAppearance=Object\.freeze\((.*)\);", head)
     assert match, head
     assert rest == BOOTSTRAP.read_text(encoding="utf-8")         # the owner itself, unchanged

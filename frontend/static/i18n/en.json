@@ -198,6 +198,7 @@
   "desktop.notice.completed": "Transfer completed",
   "desktop.notice.paused_many": "Transfers paused: {count}",
   "desktop.notice.resumed_many": "Transfers resumed: {count}",
+  "desktop.starting": "Starting DebridPulse…",
   "processing.resume_paused_count": "Resume Paused ({count})",
   "request.timed_out": "Request timed out after {seconds}s",
   "transfer.source.direct_link": "Direct link",

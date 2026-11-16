@@ -1663,6 +1663,14 @@
     "ai-review"
    ]
   },
+  "desktop.starting": {
+   "source": "65e1e5a40d31b2cf",
+   "translation": "11d54e7fee7a9df8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "processing.resume_paused_count": {
    "source": "e70aaed732e6ed74",
    "translation": "d505378ab28bdcbb",

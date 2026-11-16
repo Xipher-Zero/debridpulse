@@ -1664,6 +1664,14 @@
     "ai-review"
    ]
   },
+  "desktop.starting": {
+   "source": "65e1e5a40d31b2cf",
+   "translation": "280fa814e81e2a19",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "processing.resume_paused_count": {
    "source": "e70aaed732e6ed74",
    "translation": "3c80f120d1af5fda",

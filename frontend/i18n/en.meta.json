@@ -1262,6 +1262,12 @@
     "count": "number: transfers resumed"
    }
   },
+  "desktop.starting": {
+   "category": "label",
+   "context": "Desktop application's starting screen: the one line under the DebridPulse title while the application loads. The ellipsis says it is still in progress.",
+   "owner": "frontend/static/index.html",
+   "criticality": "normal"
+  },
   "processing.resume_paused_count": {
    "category": "action",
    "context": "Topbar button (Admin) that resumes the downloads paused one by one; count = how many are paused.",

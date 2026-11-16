@@ -299,6 +299,18 @@ def test_the_tray_projections_carry_no_message_detail_or_error_text():
         "active", "queued", "errors", "completed", "paused"}
 
 
+def test_the_tray_counts_transfers_at_work_and_extractions_never_paused_ones():
+    # As the live tray showed with everything paused: the statistics count two
+    # paused transfers among active_operations; the tray's Active is 0.
+    paused = {"active_operations": 2, "active_downloads": 2, "extracting_count": 0, "queued_downloads": 0,
+              "by_status": {"paused": 2}, "paused": True}
+    assert desktop_control._project_status(paused)["active"] == 0
+    working = {"active_operations": 5, "extracting_count": 1, "queued_downloads": 2,
+               "by_status": {"downloading": 2, "processing": 1, "uploading": 0, "paused": 1, "queued": 2}}
+    projected = desktop_control._project_status(working)
+    assert (projected["active"], projected["queued"]) == (4, 2)
+
+
 @pytest.mark.asyncio
 async def test_the_desktop_setup_is_standalone_and_goes_on_only_with_a_chosen_folder(tmp_path):
     """No Deployment Type page, no invented ``/download``: the setup cannot
@@ -397,3 +409,28 @@ def test_an_operation_that_is_not_a_name_is_refused_without_touching_the_applica
     import asyncio
     reply = asyncio.run(desktop_control.answer(Untouchable(), {"id": 1, "op": op}))
     assert reply == {"id": 1, "error": "refused"}
+
+
+# ── The desktop starting cover's one server fact ────────────────────────────
+
+def test_the_first_paint_script_says_whether_this_is_the_desktop_application():
+    """The server's own answer (core.config.desktop_installation: only the
+    supervisor starts a backend with DEBRIDPULSE_DESKTOP=1) is what the first
+    paint is told, and the starting cover acts on nothing else."""
+    import subprocess
+    source = (BACKEND / "api" / "auth_routes.py").read_text(encoding="utf-8")
+    assert "window.debridPulseDesktop={'true' if desktop_installation() else 'false'};" in source
+    probe = "from core.config import desktop_installation; print(desktop_installation())"
+    for value, expected in (("1", "True"), ("", "False"), ("true", "False")):
+        env = {key: item for key, item in os.environ.items() if key != "DEBRIDPULSE_DESKTOP"}
+        if value:
+            env["DEBRIDPULSE_DESKTOP"] = value
+        answer = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, env=env,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        assert answer == expected, (value, answer)
+    cover = (BACKEND.parent / "frontend" / "static" / "ui-desktop-start.js").read_text(encoding="utf-8")
+    assert "if (window.debridPulseDesktop !== true) {" in cover          # only the server's exact true
+    assert "document.addEventListener(READY_EVENT, () => lift('ready'), {once: true});" in cover
+    assert "const LIFT_AFTER_MS = 20000;" in cover                         # never a trap
+    app = (BACKEND.parent / "frontend" / "static" / "app.js").read_text(encoding="utf-8")
+    assert app.count("new CustomEvent('debridpulse:interface-ready')") == 1   # said once, by one owner

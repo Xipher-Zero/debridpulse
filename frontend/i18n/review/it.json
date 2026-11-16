@@ -1831,6 +1831,14 @@
     "ai-review"
    ]
   },
+  "desktop.starting": {
+   "source": "65e1e5a40d31b2cf",
+   "translation": "534b8e0efaea24a5",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "processing.resume_paused_count": {
    "source": "e70aaed732e6ed74",
    "translation": "f9a3a51d857f0408",

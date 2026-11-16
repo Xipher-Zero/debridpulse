@@ -6,7 +6,7 @@
 <title>DebridPulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=32">
+<link rel="stylesheet" href="/style.css?v=33">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -14,6 +14,54 @@
 <body>
 <script src="/ui-theme-bootstrap.js?v=22"></script>
 <script src="/ui-i18n.js?v=1"></script>
+<script src="/ui-desktop-start.js?v=1"></script>
+<!-- The desktop application's starting cover (ui-desktop-start.js, ui-desktop-start.css):
+     the product's mark, title and starting message over its artwork, shown from the first
+     paint in the desktop application only and lifted once the interface is ready. -->
+<div id="dp-desktop-start" class="dp-desktop-start" role="status" aria-live="polite">
+  <svg class="dp-desktop-start-field" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <defs>
+    <linearGradient id="dp-desktop-start-wave" gradientUnits="userSpaceOnUse" x1="666" y1="0" x2="934" y2="0">
+      <stop class="wave-start" offset="0"/><stop class="wave-end" offset="1"/>
+    </linearGradient>
+  </defs>
+  <g class="wave-field spark">
+    <path class="wave filament" d="M-110 382 C38 292 126 482 251 383 S469 305 675 447 C746 496 859 439 925 384 C1047 281 1143 487 1279 385 S1490 308 1712 444"/>
+    <path class="wave filament" d="M-110 410 C49 311 133 511 263 407 S474 322 675 463 C745 512 861 467 927 412 C1057 303 1151 514 1287 409 S1496 326 1712 462"/>
+    <path class="wave micro" d="M-90 442 C56 324 128 558 274 422 S477 297 666 444 C737 499 869 501 934 440 C1066 315 1150 554 1290 422 S1490 306 1694 440"/>
+    <path class="wave soft" d="M-90 468 C62 348 136 580 282 447 S481 319 666 467 C736 523 868 526 934 466 C1072 339 1158 578 1298 446 S1496 330 1694 463"/>
+    <path class="wave soft" d="M-90 492 C68 372 146 603 291 470 S487 342 666 489 C735 546 867 550 934 491 C1078 365 1166 601 1307 470 S1502 353 1694 486"/>
+    <path class="wave mid" d="M-90 516 C73 397 154 625 300 493 S492 365 666 512 C734 570 865 573 934 516 C1084 391 1174 624 1316 494 S1508 377 1694 510"/>
+    <path class="wave mid" d="M-90 540 C79 421 164 647 309 517 S498 389 666 534 C734 592 864 597 934 541 C1090 416 1183 647 1326 518 S1515 401 1694 533"/>
+    <path class="wave strong" d="M-90 565 C87 445 174 669 320 541 S505 414 666 556 C733 615 863 620 934 566 C1097 441 1193 670 1336 542 S1522 425 1694 556"/>
+    <path class="wave strong" d="M-90 591 C95 470 187 692 332 566 S514 439 666 580 C732 641 862 645 934 592 C1104 467 1204 693 1347 567 S1530 450 1694 580"/>
+    <path class="wave mid" d="M-90 617 C106 494 199 714 345 591 S526 465 666 603 C730 666 861 670 934 618 C1111 493 1215 715 1359 592 S1539 475 1694 604"/>
+    <path class="wave mid" d="M-90 643 C117 519 213 736 359 617 S538 491 666 626 C728 691 860 694 934 644 C1118 519 1227 737 1371 618 S1548 501 1694 628"/>
+    <path class="wave soft" d="M-90 668 C128 544 227 756 374 642 S551 518 666 648 C725 715 859 719 934 670 C1125 545 1239 758 1384 643 S1558 528 1694 651"/>
+    <path class="wave soft" d="M-90 694 C141 568 243 775 390 666 S565 545 666 671 C722 741 858 744 934 696 C1133 571 1252 779 1398 668 S1568 555 1694 674"/>
+    <path class="wave micro" d="M-90 720 C154 591 260 794 406 689 S580 572 666 694 C718 767 857 768 934 722 C1141 597 1265 799 1412 692 S1579 582 1694 697"/>
+    <path class="wave filament" d="M-92 746 C168 617 279 815 431 711 S589 602 674 718 C724 786 852 790 926 748 C1149 621 1280 822 1428 714 S1590 605 1710 720"/>
+  </g>
+  <g class="particle twinkle">
+    <circle cx="34" cy="94" r="1"/><circle cx="48" cy="132" r="1.2"/><circle cx="72" cy="166" r=".9"/><circle cx="92" cy="207" r="1.7"/><circle cx="118" cy="239" r="1.1"/><circle cx="137" cy="278" r="2.3"/><circle cx="158" cy="316" r="1"/><circle cx="179" cy="352" r="1.2"/><circle cx="202" cy="372" r="1.1"/><circle cx="224" cy="391" r="3"/><circle cx="245" cy="437" r="1.2"/><circle cx="267" cy="246" r="1.5"/><circle cx="289" cy="290" r="1"/><circle cx="315" cy="323" r="1.9"/><circle cx="337" cy="393" r="1.1"/><circle cx="362" cy="476" r="3.4"/><circle cx="384" cy="531" r="1.1"/><circle cx="412" cy="171" r="1.3"/><circle cx="438" cy="228" r=".9"/><circle cx="458" cy="282" r="2.2"/><circle cx="482" cy="348" r="1.1"/><circle cx="506" cy="417" r="1.4"/><circle cx="531" cy="457" r=".9"/><circle cx="553" cy="355" r="2.7"/><circle cx="579" cy="431" r="1"/><circle cx="601" cy="505" r="1.6"/>
+    <circle cx="978" cy="111" r=".9"/><circle cx="995" cy="168" r="1.4"/><circle cx="1018" cy="198" r="1.1"/><circle cx="1042" cy="236" r="2.2"/><circle cx="1065" cy="286" r="1"/><circle cx="1088" cy="329" r="1.5"/><circle cx="1112" cy="357" r="1.1"/><circle cx="1136" cy="389" r="2.8"/><circle cx="1161" cy="432" r="1"/><circle cx="1184" cy="474" r="1.4"/><circle cx="1209" cy="311" r="1"/><circle cx="1232" cy="268" r="2.1"/><circle cx="1256" cy="302" r="1.1"/><circle cx="1281" cy="344" r="1.5"/><circle cx="1306" cy="391" r="1"/><circle cx="1331" cy="430" r="3.2"/><circle cx="1356" cy="486" r="1"/><circle cx="1381" cy="198" r="1.2"/><circle cx="1407" cy="251" r=".9"/><circle cx="1432" cy="302" r="2.4"/><circle cx="1457" cy="341" r="1.1"/><circle cx="1481" cy="382" r="1.4"/><circle cx="1506" cy="423" r="1"/><circle cx="1532" cy="463" r="2.9"/><circle cx="1556" cy="324" r="1"/><circle cx="1580" cy="242" r="1.5"/>
+    <circle cx="61" cy="503" r="1"/><circle cx="111" cy="553" r="1.3"/><circle cx="146" cy="590" r="1"/><circle cx="188" cy="625" r="2.2"/><circle cx="230" cy="664" r="1"/><circle cx="274" cy="694" r="1.4"/><circle cx="331" cy="651" r="1"/><circle cx="392" cy="604" r="1.7"/><circle cx="447" cy="671" r="1"/><circle cx="516" cy="733" r="1.2"/>
+    <circle cx="1087" cy="541" r="1"/><circle cx="1153" cy="576" r="1.1"/><circle cx="1215" cy="611" r="1.5"/><circle cx="1273" cy="648" r="1"/><circle cx="1327" cy="681" r="2.2"/><circle cx="1386" cy="643" r="1"/><circle cx="1452" cy="597" r="1.6"/><circle cx="1508" cy="641" r="1"/><circle cx="1558" cy="690" r="1.3"/>
+  </g>
+</svg>
+  <div class="dp-desktop-start-card">
+    <svg class="dp-desktop-start-pulse" viewBox="0 0 600 120" aria-hidden="true">
+      <g class="grid"><path d="M0 60h600"/><path d="M60 14v92M120 14v92M180 14v92M240 14v92M300 14v92M360 14v92M420 14v92M480 14v92M540 14v92"/></g>
+      <path class="pulse-left pulse-ghost" d="M0 60 H104 C108 60 110 51 114 51 C118 51 120 60 124 60 H132 L136 66 L143 24 L150 84 L155 60 H166 C172 60 175 46 182 46 C189 46 192 60 198 60 H300"/>
+      <path class="pulse-right pulse-ghost" d="M300 60 H402 C406 60 408 51 412 51 C416 51 418 60 422 60 H430 L434 66 L441 24 L448 84 L453 60 H464 C470 60 473 46 480 46 C487 46 490 60 496 60 H600"/>
+      <path class="pulse-left" d="M0 60 H104 C108 60 110 51 114 51 C118 51 120 60 124 60 H132 L136 66 L143 24 L150 84 L155 60 H166 C172 60 175 46 182 46 C189 46 192 60 198 60 H300"/>
+      <path class="pulse-right" d="M300 60 H402 C406 60 408 51 412 51 C416 51 418 60 422 60 H430 L434 66 L441 24 L448 84 L453 60 H464 C470 60 473 46 480 46 C487 46 490 60 496 60 H600"/>
+    </svg>
+    <dp-logo class="dp-desktop-start-mark" aria-hidden="true"></dp-logo>
+    <div class="dp-desktop-start-brand" aria-hidden="true">Debrid<span>Pulse</span></div>
+    <div class="dp-desktop-start-text" data-i18n="desktop.starting">Starting DebridPulse…</div>
+  </div>
+</div>
 
 <aside id="sidebar">
   <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
@@ -575,10 +623,10 @@
 <!-- Localization: the formatter (a module, in document order with the deferred scripts) and the
      canonical English catalog, both in place before the application script. -->
 <script type="module" src="/ui-i18n-formatter.js?v=1"></script>
-<script src="/i18n/en.js?v=cb91dfa6e4c75490" defer></script>
+<script src="/i18n/en.js?v=2e84815ffaa8d36c" defer></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=29" defer></script>
-<script src="/app.js?v=29" defer></script>
+<script src="/app.js?v=30" defer></script>
 <!-- Canonical application-dialog owner: a direct dependency of Settings, the directory picker and Downloads. -->
 <script src="/ui-settings-modal.js?v=7" defer></script>
 <script src="/ui-language-picker.js?v=2" defer></script>
@@ -623,6 +671,6 @@
 <script src="/ui-settings-usenet-servers.js?v=4" defer></script>
 <!-- The setup wizard: after every owner its pages use (the dialog shell, the language list, Settings' one
      settings write and its folder browser). -->
-<script src="/ui-setup-wizard.js?v=16" defer></script>
+<script src="/ui-setup-wizard.js?v=17" defer></script>
 </body>
 </html>

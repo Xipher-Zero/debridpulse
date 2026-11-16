@@ -57,7 +57,7 @@ from auth.sessions import (
 )
 from auth.throttle import login_challenge_rate_limiter, oidc_start_rate_limiter
 from auth.transitions import authentication_configuration_lock
-from core.config import display_timezone, get_settings
+from core.config import desktop_installation, display_timezone, get_settings
 from core.version import read_version
 from services import account_appearance
 
@@ -798,7 +798,10 @@ async def theme_bootstrap_script(request: Request):
     does the sidebar's signal field (``window.debridPulseSignalField``). The
     page's language comes with it too (``window.debridPulseLocale``,
     ``_locale``): the next script, ``ui-i18n.js``, reads it before the body is
-    parsed, so a page in another language never shows English first."""
+    parsed, so a page in another language never shows English first. Whether
+    this is the installed desktop application comes with it too
+    (``window.debridPulseDesktop``): ``ui-desktop-start.js`` shows its starting
+    cover from the first paint only there."""
     principal = getattr(request.state, "principal", Principal.anonymous())
     appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
     locale = json.dumps(await _locale(principal), separators=(",", ":"))
@@ -808,7 +811,8 @@ async def theme_bootstrap_script(request: Request):
     response = Response(
         content=(f"window.debridPulseLogo={logo};\nwindow.debridPulseSignalField={field};\n"
                  f"window.debridPulseAppearance=Object.freeze({appearance});\n"
-                 f"window.debridPulseLocale=Object.freeze({locale});\n{script}"),
+                 f"window.debridPulseLocale=Object.freeze({locale});\n"
+                 f"window.debridPulseDesktop={'true' if desktop_installation() else 'false'};\n{script}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"

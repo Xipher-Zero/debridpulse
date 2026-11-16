@@ -742,7 +742,7 @@ class SessionBus:
     # -- starting and stopping --
 
     @classmethod
-    async def open(cls, events: asyncio.Queue, icons: Path) -> "SessionBus | None":
+    async def open(cls, events: asyncio.Queue, icons: Path) -> SessionBus | None:
         from jeepney.io.asyncio import open_dbus_router
         try:
             context = open_dbus_router("SESSION")
@@ -1154,9 +1154,8 @@ async def run() -> int:
     logger.addHandler(diagnostics)
     sys.path.insert(0, str(paths["backend"]))
     os.environ["STATIC_DIR"] = str(paths["static"])
-    from executors.process_ownership import ProcessOwnership
-
     import aiohttp
+    from executors.process_ownership import ProcessOwnership
 
     db_path, config_path = root / "data" / "debridpulse.db", root / "config" / "config.json"
     for directory in (db_path.parent, config_path.parent):

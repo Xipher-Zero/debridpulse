@@ -87,8 +87,16 @@ def open_channel():
         raise ChannelRefused(f"the desktop control channel cannot be used: {exc}") from None
 
 
+# What the tray counts as active: transfers at work and extractions running.
+# A paused transfer is not active (the statistics' ``active_operations`` counts
+# it with its work); it is what Resume All brings back.
+WORKING_STATUSES = ("downloading", "processing", "uploading")
+
+
 def _project_status(stats: dict) -> dict:
-    return {"active": int(stats.get("active_operations") or 0), "queued": int(stats.get("queued_downloads") or 0),
+    by_status = stats.get("by_status") or {}
+    active = sum(int(by_status.get(status) or 0) for status in WORKING_STATUSES) + int(stats.get("extracting_count") or 0)
+    return {"active": active, "queued": int(stats.get("queued_downloads") or 0),
             "errors": int(stats.get("error_count") or 0), "completed": int(stats.get("completed_count") or 0),
             "paused": bool(stats.get("paused"))}
 

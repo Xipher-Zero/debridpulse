@@ -3899,8 +3899,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Start background tasks immediately — do not wait for stats
-  loadRecent().catch(() => {});
-  checkConnections().catch(() => {});
+  const recentLoaded = loadRecent().catch(() => {});
+  const connectionsChecked = checkConnections().catch(() => {});
+  // The interface is ready -- its figures are in, its first list and status
+  // checks have answered, its fonts have loaded, and the first-run wizard
+  // (parser-loaded after this script, so read once the page is parsed) is
+  // open if this installation's setup is unfinished: said once, however each
+  // settled. The desktop starting cover lifts on it (ui-desktop-start.js).
+  const parsed = document.readyState === 'loading'
+    ? new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, {once: true}))
+    : Promise.resolve();
+  parsed
+    .then(() => Promise.allSettled([recentLoaded, connectionsChecked, document.fonts?.ready,
+                                    window.DPSetupWizard?.started]))
+    .then(() => document.dispatchEvent(new CustomEvent('debridpulse:interface-ready')));
 
   // Generic statistics availability says nothing about provider health.
   // The neutral provider-status runtime owns provider presentation.

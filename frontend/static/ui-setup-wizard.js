@@ -1014,8 +1014,13 @@
     open('rerun', current, {...await readData(), previewOffered: state.setup_preview === true}, opener);
   }
 
-  window.DPSetupWizard = Object.freeze({rerun});
+  // `started`: settled once start() has opened a new installation's setup, or
+  // found none to open (the interface's readiness waits for it, app.js).
+  const started = new Promise(resolve => {
+    const go = () => resolve(start().catch(() => {}));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go, {once: true});
+    else go();
+  });
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { void start(); }, {once: true});
-  else void start();
+  window.DPSetupWizard = Object.freeze({rerun, started});
 })();

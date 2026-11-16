@@ -1,0 +1,225 @@
+/* The desktop application's starting cover (ui-desktop-start.js, the one owner;
+   markup: index.html #dp-desktop-start). The sign-in page's composition -- its
+   glowing field, dust and waves, and a frosted card with the pulse strip, the
+   mark and the title -- carrying only "Starting DebridPulse". It is the
+   application's own surface: every colour is the theme in force (mode and
+   palette), from the application's tokens; nothing is shared with the sign-in
+   page's own stylesheet.
+
+   Drawn only while the root carries data-dp-desktop-starting (set before the
+   first paint, in the desktop application alone), above every other surface;
+   it fades out while data-dp-desktop-lifting is set (at once under reduced
+   motion), then leaves the page. */
+.dp-desktop-start {
+  display: none;
+}
+html[data-dp-desktop-starting] .dp-desktop-start {
+  --start-wave-purple: var(--dp-accent-purple);
+  --start-wave-blue: var(--dp-accent-blue);
+  --start-particle: color-mix(in srgb, var(--dp-accent-blue-bright) 90%, transparent);
+  --start-dust-1: color-mix(in srgb, var(--dp-accent-purple-bright) 90%, transparent);
+  --start-dust-2: color-mix(in srgb, var(--dp-accent-blue-bright) 78%, transparent);
+  --start-dust-3: color-mix(in srgb, var(--dp-text-secondary) 58%, transparent);
+  --start-card: color-mix(in srgb, var(--dp-surface-1) 55%, transparent);
+  --start-card2: color-mix(in srgb, var(--dp-bg-app) 40%, transparent);
+  --start-card-edge: color-mix(in srgb, var(--dp-accent-purple) 42%, transparent);
+  --start-glass-top: rgba(255, 255, 255, .13);
+  --start-glass-line: rgba(255, 255, 255, .075);
+  --start-glass-purple: color-mix(in srgb, var(--dp-accent-purple) 18%, transparent);
+  --start-glass-blue: color-mix(in srgb, var(--dp-accent-blue) 15%, transparent);
+  --start-shadow: 0 32px 90px rgba(0, 0, 12, .52), 0 12px 34px rgba(0, 0, 10, .30);
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--text);
+  font-family: Outfit, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(ellipse at -4% 52%, color-mix(in srgb, var(--accent) 42%, transparent) 0%, color-mix(in srgb, var(--accent) 17%, transparent) 25%, transparent 45%),
+    radial-gradient(ellipse at 104% 50%, color-mix(in srgb, var(--accent2) 40%, transparent) 0%, color-mix(in srgb, var(--accent2) 16%, transparent) 27%, transparent 47%),
+    radial-gradient(circle at 22% 13%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 25%),
+    radial-gradient(circle at 78% 10%, color-mix(in srgb, var(--accent2) 10%, transparent), transparent 26%),
+    radial-gradient(circle at 50% 108%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 32%),
+    linear-gradient(145deg, var(--bg2), var(--bg) 52%, var(--bg2));
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+html[data-dp-desktop-starting] body.light .dp-desktop-start {
+  --start-card-edge: color-mix(in srgb, var(--dp-accent-purple) 27%, transparent);
+  --start-glass-top: rgba(255, 255, 255, .88);
+  --start-glass-line: rgba(255, 255, 255, .66);
+  --start-glass-purple: color-mix(in srgb, var(--dp-accent-purple) 13%, transparent);
+  --start-glass-blue: color-mix(in srgb, var(--dp-accent-blue) 14%, transparent);
+  --start-particle: color-mix(in srgb, var(--dp-accent-blue) 66%, transparent);
+  --start-shadow: 0 28px 72px rgba(56, 76, 122, .16), 0 8px 24px rgba(57, 76, 119, .09);
+}
+html[data-dp-desktop-lifting] .dp-desktop-start {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-dp-desktop-starting] .dp-desktop-start { transition: none; }
+}
+
+/* The field: dust, the ambient glow, then the waves and their particles. */
+.dp-desktop-start::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: .40;
+  background-image:
+    radial-gradient(circle, var(--start-dust-1) 0 1px, transparent 1.55px),
+    radial-gradient(circle, var(--start-dust-2) 0 1px, transparent 1.55px),
+    radial-gradient(circle, var(--start-dust-3) 0 .8px, transparent 1.25px);
+  background-size: 58px 58px, 91px 91px, 137px 137px;
+  background-position: 0 0, 29px 17px, 51px 33px;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .48) 34%, rgba(0, 0, 0, .20) 47%, rgba(0, 0, 0, .20) 53%, rgba(0, 0, 0, .48) 66%, #000 100%);
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .48) 34%, rgba(0, 0, 0, .20) 47%, rgba(0, 0, 0, .20) 53%, rgba(0, 0, 0, .48) 66%, #000 100%);
+}
+.dp-desktop-start::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -12%;
+  pointer-events: none;
+  opacity: .82;
+  background:
+    radial-gradient(ellipse at 15% 54%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 30%),
+    radial-gradient(ellipse at 85% 52%, color-mix(in srgb, var(--accent2) 17%, transparent), transparent 31%),
+    radial-gradient(ellipse at 31% 83%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 24%),
+    radial-gradient(ellipse at 69% 81%, color-mix(in srgb, var(--accent2) 7%, transparent), transparent 25%);
+  filter: blur(22px);
+}
+.dp-desktop-start-field {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.dp-desktop-start-field .wave { fill: none; stroke-linecap: round; stroke-width: 1.05; }
+.dp-desktop-start-field .wave-field { stroke: url(#dp-desktop-start-wave); }
+.dp-desktop-start-field .wave-start { stop-color: var(--start-wave-purple); }
+.dp-desktop-start-field .wave-end { stop-color: var(--start-wave-blue); }
+.dp-desktop-start-field .soft { opacity: .25; }
+.dp-desktop-start-field .mid { opacity: .43; }
+.dp-desktop-start-field .strong { opacity: .78; stroke-width: 1.3; }
+.dp-desktop-start-field .micro { opacity: .14; stroke-width: .72; }
+.dp-desktop-start-field .filament { opacity: .20; stroke-width: .82; }
+.dp-desktop-start-field .particle { fill: var(--start-particle); opacity: .92; }
+
+/* The card: the sign-in card's glass, holding the lockup and the message. */
+.dp-desktop-start-card {
+  position: relative;
+  z-index: 2;
+  width: min(560px, calc(100vw - 48px));
+  padding: 48px 54px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--start-card-edge);
+  border-radius: 12px;
+  background: linear-gradient(132deg, rgba(255, 255, 255, .045), transparent 28%), linear-gradient(150deg, var(--start-card), var(--start-card2));
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  backdrop-filter: blur(30px) saturate(165%);
+  box-shadow: var(--start-shadow), inset 0 1px 0 var(--start-glass-line), inset 0 -1px 0 rgba(255, 255, 255, .025);
+}
+.dp-desktop-start-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(128deg, var(--start-glass-top) 0%, rgba(255, 255, 255, .025) 18%, transparent 38%),
+    radial-gradient(ellipse at 5% 15%, var(--start-glass-purple), transparent 40%),
+    radial-gradient(ellipse at 97% 87%, var(--start-glass-blue), transparent 42%);
+  opacity: .78;
+}
+.dp-desktop-start-card::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 7%;
+  right: 7%;
+  top: -66px;
+  height: 140px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 40% 55%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 56%),
+    radial-gradient(ellipse at 66% 55%, color-mix(in srgb, var(--accent2) 13%, transparent), transparent 58%);
+  filter: blur(19px);
+}
+.dp-desktop-start-card > * {
+  position: relative;
+  z-index: 1;
+}
+.dp-desktop-start-card > .dp-desktop-start-pulse {
+  position: absolute;
+  z-index: 0;
+  top: 51px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(620px, 96%);
+  height: 118px;
+  opacity: .98;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+}
+.dp-desktop-start-pulse .grid { stroke: var(--border); stroke-width: .65; opacity: .18; }
+.dp-desktop-start-pulse .pulse-left { stroke: var(--start-wave-purple); color: var(--start-wave-purple); }
+.dp-desktop-start-pulse .pulse-right { stroke: var(--start-wave-blue); color: var(--start-wave-blue); }
+.dp-desktop-start-pulse .pulse-left,
+.dp-desktop-start-pulse .pulse-right {
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 15px currentColor);
+}
+.dp-desktop-start-pulse .pulse-ghost {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .11;
+  filter: blur(2px);
+}
+.dp-desktop-start-mark {
+  display: block;
+  width: 110px;
+  height: 110px;
+  filter: drop-shadow(0 9px 22px color-mix(in srgb, var(--accent) 28%, transparent));
+}
+.dp-desktop-start-mark > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.dp-desktop-start-brand {
+  margin-top: 14px;
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -1.7px;
+  line-height: 1;
+  color: var(--text);
+}
+.dp-desktop-start-brand span {
+  color: var(--accent);
+}
+.dp-desktop-start-text {
+  margin-top: 13px;
+  color: var(--text2);
+  font-size: 19px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}

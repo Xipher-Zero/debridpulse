@@ -113,7 +113,7 @@ body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
   inset: calc(-1 * (var(--dp-setup-row) + 20px)) -20px -18px;
   z-index: -1;
   pointer-events: none;
-  opacity: .342;
+  opacity: .291;
   background: linear-gradient(160deg, var(--dp-chrome-signal-purple-bright), var(--dp-chrome-signal-blue-bright) 70%, var(--dp-chrome-signal-blue));
   -webkit-mask-image: var(--dp-setup-art), radial-gradient(ellipse 72% 62% at 50% 48%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .75) 45%, #000 100%),
     linear-gradient(180deg, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .8) 28%, #000 52%);
@@ -129,7 +129,7 @@ body.light .dp-modal-dialog.dp-setup-dialog .dp-modal-body.dp-setup-body {
   mask-composite: intersect;
 }
 body.light .dp-setup-main > .dp-setup-art {
-  opacity: .27;
+  opacity: .23;
 }
 .dp-setup-main > :not(.dp-setup-art, .dp-setup-room) {
   background-image: radial-gradient(closest-side, color-mix(in srgb, var(--dp-panel-end) 94%, transparent) 62%,
@@ -486,6 +486,10 @@ body.light .dp-setup-header-top > .dp-setup-stars {
   border: 1px solid var(--dp-border-default);
   border-radius: 8px;
   background: transparent;
+  /* Transparent over the page's art: what shows through is blurred, so the
+     art stays a soft wash behind the button and its edge and words read. */
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: inherit;
   font: inherit;
   text-align: center;
@@ -627,6 +631,9 @@ body.light .dp-setup-header-top > .dp-setup-stars {
   border: 1px solid var(--dp-border-default);
   border-radius: 8px;
   background: transparent;
+  /* As a choice above: the art behind it blurred. */
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: inherit;
   font: inherit;
   text-align: start;

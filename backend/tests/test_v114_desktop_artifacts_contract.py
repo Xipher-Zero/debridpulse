@@ -260,7 +260,7 @@ NEUTRALINO_COMMIT = "4361b63eb1157fc7dedb29b92815a08ec0002767"
 def test_the_flatpak_builds_the_shell_from_the_pinned_commit_with_the_linux_patch():
     manifest = yaml.safe_load((ROOT / "packaging/desktop/flatpak/org.debridpulse.desktop.yml").read_text(encoding="utf-8"))
     modules = {module["name"]: module for module in manifest["modules"]}
-    assert list(modules)[0] == "neutralino"                    # built first, before the tools and the application
+    assert next(iter(modules)) == "neutralino"                 # built first, before the tools and the application
     sources = modules["neutralino"]["sources"]
     assert sources[0] == {"type": "git", "url": "https://github.com/neutralinojs/neutralinojs.git",
                           "tag": "v6.10.0", "commit": NEUTRALINO_COMMIT}
