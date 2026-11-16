@@ -1,0 +1,6 @@
+# Build-only: the DMG's Finder window (packaging/desktop/macos/build-app.sh).
+# dmgbuild writes the volume's .DS_Store (window, icon positions, background)
+# and the Applications link without scripting Finder. Never shipped in the DMG.
+dmgbuild==1.6.7
+ds-store==1.3.3
+mac-alias==2.2.3

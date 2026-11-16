@@ -1,0 +1,84 @@
+diff --git a/api/window/window.cpp b/api/window/window.cpp
+index 3946f04..c558c91 100644
+--- a/api/window/window.cpp
++++ b/api/window/window.cpp
+@@ -1,4 +1,5 @@
+ #include <string>
++#include <future>
+ #include <iostream>
+ #include <filesystem>
+ #include <regex>
+@@ -71,6 +72,29 @@ using namespace Gdiplus;
+ namespace window {
+ 
+ webview::webview *nativeWindow;
++
++#if defined(__linux__) || defined(__FreeBSD__)
++void runOnMainThread(const std::function<void()> &f) {
++    // GTK and GDK are not thread-safe: every call that touches the window
++    // runs on the thread that owns the default main context (gtk_main).
++    if(!nativeWindow || g_main_context_is_owner(g_main_context_default())) {
++        f();
++        return;
++    }
++    std::promise<void> done;
++    std::future<void> ran = done.get_future();
++    nativeWindow->dispatch([&f, &done]() {
++        try {
++            f();
++            done.set_value();
++        }
++        catch(...) {
++            done.set_exception(std::current_exception());
++        }
++    });
++    ran.get();
++}
++#endif
+ #if defined(__linux__) || defined(__FreeBSD__)
+ bool isGtkWindowFullScreen = false;
+ bool isGtkWindowMinimized = false;
+diff --git a/api/window/window.h b/api/window/window.h
+index 98303d8..796b185 100644
+--- a/api/window/window.h
++++ b/api/window/window.h
+@@ -2,6 +2,7 @@
+ #define NEU_WINDOW_H
+ 
+ #include <string>
++#include <functional>
+ 
+ #include "errors.h"
+ #include "lib/json/json.hpp"
+@@ -135,6 +136,9 @@ void setBorderless(bool borderless);
+ void setSkipTaskbar(bool skip);
+ bool snapshot(const string &filename);
+ void setMainMenu(const json &menu);
++// Runs f on the native UI thread (Linux: the GTK main loop) and returns when
++// it has run; inline when already there or before the window exists.
++void runOnMainThread(const std::function<void()> &f);
+ NEU_W_HANDLE getHandle();
+ bool init(const json &windowOptions);
+ NEU_W_HANDLE getHandle();
+diff --git a/server/router.cpp b/server/router.cpp
+index 59f2e97..b8b7f48 100644
+--- a/server/router.cpp
++++ b/server/router.cpp
+@@ -234,6 +234,17 @@ router::NativeMessage executeNativeMethod(const router::NativeMessage &request)
+             else {
+                 apiOutput = (*nativeMethod)(request.data);
+             }
++            #elif defined(__linux__) || defined(__FreeBSD__)
++            // As on macOS: GTK runs on one thread only, so window methods
++            // (and the tray, a GTK menu) run on the GTK main loop.
++            if(regex_match(nativeMethodId, regex("^window.*")) || nativeMethodId == "os.setTray") {
++                window::runOnMainThread([&]() {
++                    apiOutput = (*nativeMethod)(request.data);
++                });
++            }
++            else {
++                apiOutput = (*nativeMethod)(request.data);
++            }
+             #else
+                 apiOutput = (*nativeMethod)(request.data);
+             #endif

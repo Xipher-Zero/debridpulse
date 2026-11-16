@@ -1,0 +1,5 @@
+# The Linux desktop runtime's own addition to backend/requirements.in: the
+# desktop supervisor's session-bus client (desktop/supervisor.py SessionBus:
+# the tray's StatusNotifierItem and menu, the notification portal, opening
+# the running instance). Pure Python, no dependencies, MIT.
+jeepney==0.9.0

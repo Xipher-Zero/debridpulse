@@ -58,7 +58,8 @@ SHELLS = {("Windows", "AMD64"): "neutralino-win_x64.exe", ("Darwin", "arm64"): "
           ("Darwin", "x86_64"): "neutralino-mac_x64", ("Linux", "x86_64"): "neutralino-linux_x64"}
 # The desktop runtime lock each system installs (others: the canonical lock).
 DESKTOP_LOCKS = {"Windows": "packaging/desktop/windows/requirements.txt",
-                 "Darwin": "packaging/desktop/macos/requirements.txt"}
+                 "Darwin": "packaging/desktop/macos/requirements.txt",
+                 "Linux": "packaging/desktop/linux/requirements.txt"}
 # docs/DEPENDENCY_LICENSES.md: the licence inventory Help shows as its third-party document.
 LEGAL = ("LICENSE", "NOTICE", "SOURCE_OFFER.md", "VERSION", "CHANGELOG.md", "docs/DEPENDENCY_LICENSES.md")
 
@@ -173,6 +174,74 @@ def icons(shell: Path) -> None:
     render(static / "logo.svg", 256, out / "app-256.png")
     subprocess.run([magick, str(out / "app-256.png"), "-define", "icon:auto-resize=256,128,64,48,32,16",
                     str(out / "app.ico")], check=True)
+    # Linux: the tray icon as StatusNotifierItem pixmaps -- the favicon's raw
+    # RGBA at the sizes a tray host picks from (the supervisor sends them).
+    for size in (22, 32, 48, 64):
+        subprocess.run([magick, "-background", "none", "-density", "384", str(static / "favicon.svg"),
+                        "-resize", f"{size}x{size}", "-depth", "8", f"RGBA:{out / f'tray-{size}.rgba'}"], check=True)
+    # macOS: the menu bar's template image (the menu bar tints it for its
+    # appearance), derived from the same favicon: its mark alone, the arrow
+    # and the bucket, without the tile behind them, in black. 36 pixels
+    # marked 144 dpi: an 18-point image, sharp at Retina scale.
+    template = out.parent / "trayTemplate.svg"
+    template.write_text(template_svg((static / "favicon.svg").read_text(encoding="utf-8")), encoding="utf-8")
+    subprocess.run([magick, "-background", "none", "-density", "768", str(template), "-trim", "+repage",
+                    "-resize", "32x32", "-gravity", "center", "-extent", "36x36",
+                    "-units", "PixelsPerInch", "-density", "144", str(out / "trayTemplate.png")], check=True)
+    template.unlink()
+    # macOS: the DMG window's background (build-app.sh), at 1x and 2x.
+    background = out.parent / "dmg-background.svg"
+    background.write_text(dmg_background_svg(), encoding="utf-8")
+    width, height = DMG_WINDOW
+    for scale, name in ((1, "dmg-background.png"), (2, "dmg-background@2x.png")):
+        subprocess.run([magick, "-background", "none", "-density", "384", str(background),
+                        "-resize", f"{width * scale}x{height * scale}!",
+                        "-units", "PixelsPerInch", "-density", str(72 * scale), str(out / name)], check=True)
+    background.unlink()
+
+
+# The DMG window (points) and where its two icons stand, shared with
+# packaging/desktop/macos/dmg-settings.py.
+DMG_WINDOW, DMG_APP, DMG_APPLICATIONS = (660, 400), (170, 190), (490, 190)
+
+
+def dmg_background_svg() -> str:
+    """The DMG window's background: the application's slot and the
+    Applications folder's, each in a soft bordered box, and between them an
+    arrow in the favicon's own mark gradient -- drag one onto the other. No
+    words, so nothing to localize; light, so Finder's labels read on it."""
+    (width, height), (ax, ay), (bx, by) = DMG_WINDOW, DMG_APP, DMG_APPLICATIONS
+    box = lambda cx, cy: (f'<rect x="{cx - 92}" y="{cy - 96}" width="184" height="200" rx="22" '  # noqa: E731
+                          f'fill="#ffffff" fill-opacity=".72" stroke="#c9c8da" stroke-width="2"/>')
+    start, end, y = ax + 106, bx - 106, ay - 12
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f5fb"/><stop offset="1" stop-color="#e9e8f3"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="{start}" y1="0" x2="{end}" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b42cff"/><stop offset=".48" stop-color="#4f67ff"/><stop offset="1" stop-color="#00d4ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="{width}" height="{height}" fill="url(#field)"/>
+  {box(ax, ay)}
+  {box(bx, by)}
+  <path d="M{start} {y}h{end - start - 22}" fill="none" stroke="url(#mark)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M{end - 26} {y - 15}l26 15-26 15z" fill="#00d4ee" stroke="#00d4ee" stroke-width="4" stroke-linejoin="round"/>
+</svg>
+"""
+
+
+def template_svg(favicon: str) -> str:
+    """The favicon's mark as a template: its tile (every ``rect``) and filter
+    removed, each painted mark black. Fails if the favicon no longer has the
+    shape this expects, rather than deriving a wrong icon."""
+    import re
+    without_tile, tiles = re.subn(r"\s*<rect\b[^>]*/>", "", favicon)
+    marks = len(re.findall(r'(?:fill|stroke)="url\(#mark\)"', without_tile))
+    if tiles != 3 or marks != 2 or len(re.findall(r"<path\b", without_tile)) != 2:
+        raise SystemExit("favicon.svg changed shape: its menu-bar template must be derived anew")
+    return re.sub(r'="url\(#mark\)"', '="#000"', without_tile)
 
 
 def main() -> int:
@@ -183,6 +252,8 @@ def main() -> int:
     parser.add_argument("--requirements", type=Path, help="another hash lock (an interim test system only, "
                                                           "e.g. the Intel mac-vm's cryptography substitution; "
                                                           "recorded in BUILD-INFO.json)")
+    parser.add_argument("--shell", type=Path, help="a native shell DebridPulse built (debridpulse-shell and "
+                        "PROVENANCE.json: packaging/desktop/neutralino/build-macos.sh), in place of the released one")
     parser.add_argument("--icons", type=Path, help="icons already derived by this script elsewhere "
                                                    "(a system without ImageMagick)")
     parser.add_argument("--usenet", action="store_true", help="bundle the Usenet service (SABnzbd) at the image's pin")
@@ -250,11 +321,19 @@ def main() -> int:
     tag, neu_digest = NEUTRALINO
     zipped = fetch(f"https://github.com/neutralinojs/neutralinojs/releases/download/{tag}/neutralinojs-{tag}.zip",
                    neu_digest, args.cache / f"neutralinojs-{tag}.zip")
-    with zipfile.ZipFile(zipped) as bundle:
-        # DebridPulse's own name: the webview keys its profile on the program name.
-        target = out / "desktop" / "shell" / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
-        target.write_bytes(bundle.read(SHELLS[key]))
-        target.chmod(0o755)
+    # DebridPulse's own name: the webview keys its profile on the program name.
+    target = out / "desktop" / "shell" / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
+    if args.shell:   # built from the pinned source with DebridPulse's patch (macOS)
+        target.write_bytes((args.shell / "debridpulse-shell").read_bytes())
+        shell = json.loads((args.shell / "PROVENANCE.json").read_text(encoding="utf-8"))
+        if hashlib.sha256(target.read_bytes()).hexdigest() != shell["binary_sha256"]:
+            raise SystemExit("the built shell is not the one its provenance names")
+    else:            # the released binary of the pinned tag (Windows; Linux, where the Flatpak builds its own)
+        with zipfile.ZipFile(zipped) as bundle:
+            target.write_bytes(bundle.read(SHELLS[key]))
+        shell = {"neutralino": tag, "released_zip_sha256": neu_digest, "binary": SHELLS[key],
+                 "binary_sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
+    target.chmod(0o755)
     if args.icons:
         copytree(args.icons, out / "desktop" / "shell" / "resources" / "icons")
     else:
@@ -284,7 +363,7 @@ def main() -> int:
     if lost:
         raise SystemExit(f"licence files lost to case folding: {lost}")
     info = {"python": PYTHON, "python_build_standalone": PBS, "runtime": name, "runtime_sha256": digest,
-            "neutralino": tag, "neutralino_zip_sha256": neu_digest, "platform": list(key), "lock": lock,
+            "neutralino": tag, "neutralino_zip_sha256": neu_digest, "shell": shell, "platform": list(key), "lock": lock,
             "local_wheels": {wheel.name: hashlib.sha256(wheel.read_bytes()).hexdigest() for wheel in built},
             "licence_files": len(files), "usenet_service": usenet}
     (out / "BUILD-INFO.json").write_text(json.dumps(info, indent=1) + "\n", encoding="utf-8")

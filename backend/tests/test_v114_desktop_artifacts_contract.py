@@ -198,3 +198,111 @@ def test_the_handover_checks_each_installer_against_its_builders_line_in_either_
     assert selected(f"{other} *x{expected}\n{digest} *{expected}\n") == 0  # binary form (Git Bash)
     assert selected(f"{other} *{expected}\n") != 0                          # wrong digest
     assert selected(f"{other}  x{expected}\n") != 0                         # only another file's line
+
+
+# ── macOS: the DMG's drag-to-install window ────────────────────────────────
+
+def _dmg_settings() -> dict:
+    """dmg-settings.py as dmgbuild executes it, with dmgbuild's ``defines``."""
+    values = {"defines": {"app": "/build/DebridPulse.app", "background": "/build/dmg-background.tiff"}}
+    exec((ROOT / "packaging/desktop/macos/dmg-settings.py").read_text(encoding="utf-8"), values)
+    return values
+
+
+def test_the_dmg_window_puts_the_application_beside_an_applications_link_on_its_background():
+    import sys
+    sys.path.insert(0, str(ROOT / "packaging" / "desktop"))
+    import assemble
+    settings = _dmg_settings()
+    assert settings["files"] == ["/build/DebridPulse.app"]
+    assert settings["symlinks"] == {"Applications": "/Applications"}
+    assert settings["background"] == "/build/dmg-background.tiff"
+    assert settings["icon"] == "/build/DebridPulse.app/Contents/Resources/DebridPulse.icns"
+    assert settings["format"] == "UDZO" and settings["volume_name"] == "DebridPulse"
+    # Each icon in the slot the derived background draws for it, in a window of its size.
+    assert settings["icon_locations"] == {"DebridPulse.app": assemble.DMG_APP, "Applications": assemble.DMG_APPLICATIONS}
+    assert settings["window_rect"][1] == assemble.DMG_WINDOW
+    assert settings["default_view"] == "icon-view" and settings["icon_size"] == 128
+    assert not any(settings[key] for key in ("show_toolbar", "show_sidebar", "show_status_bar", "show_pathbar",
+                                             "show_tab_view"))
+    # No Finder flags on the application: it must still verify as signed, --strict.
+    assert not any(key in settings for key in ("hide_extension", "hide_extensions", "hide"))
+    svg = assemble.dmg_background_svg()
+    width, height = assemble.DMG_WINDOW
+    assert f'width="{width}" height="{height}"' in svg and svg.count("<rect") == 3   # the field and two slots
+    assert 'stroke="url(#mark)"' in svg and "#b42cff" in svg and "<text" not in svg   # the favicon's gradient, no words
+
+
+def test_the_dmg_is_built_by_dmgbuild_from_a_hash_locked_build_only_lock():
+    import re
+    lock = (ROOT / "packaging/desktop/macos/dmg-requirements.txt").read_text(encoding="utf-8")
+    pins = dict(re.findall(r"(?m)^([A-Za-z0-9_.-]+)==(\S+) \\", lock))
+    assert pins == {"dmgbuild": "1.6.7", "ds-store": "1.3.3", "mac-alias": "2.2.3"}
+    blocks = re.split(r"(?m)^(?=[A-Za-z0-9_.-]+==)", lock)[1:]
+    assert all(block.count("--hash=sha256:") >= 1 for block in blocks)
+    script = (ROOT / "packaging/desktop/macos/build-app.sh").read_text(encoding="utf-8")
+    assert '"${DMGBUILD:-dmgbuild}" -s "$here/dmg-settings.py"' in script and "hdiutil create" not in script
+    # The background is the DMG's: one 1x+2x TIFF, and not left inside the application.
+    assert 'tiffutil -cathidpicheck "$icons/dmg-background.png" "$icons/dmg-background@2x.png"' in script
+    assert 'rm -f "$icons/dmg-background.png" "$icons/dmg-background@2x.png"' in script
+    workflow = (ROOT / ".github" / "workflows" / "desktop-artifacts.yml").read_text(encoding="utf-8")
+    assert "--require-hashes --no-deps \\\n            -r packaging/desktop/macos/dmg-requirements.txt" in workflow
+    assert 'DMGBUILD="$RUNNER_TEMP/dmg-tools/bin/dmgbuild" bash packaging/desktop/macos/build-app.sh' in workflow
+    assert '[ "$(readlink "$mnt/Applications")" = /Applications ]' in workflow
+    assert 'assert places == {"DebridPulse.app": (170, 190), "Applications": (490, 190)}' in workflow
+
+
+# ── The native shell: Neutralino 6.10.0 from its pinned source, patched ────
+
+NEUTRALINO_COMMIT = "4361b63eb1157fc7dedb29b92815a08ec0002767"
+
+
+def test_the_flatpak_builds_the_shell_from_the_pinned_commit_with_the_linux_patch():
+    manifest = yaml.safe_load((ROOT / "packaging/desktop/flatpak/org.debridpulse.desktop.yml").read_text(encoding="utf-8"))
+    modules = {module["name"]: module for module in manifest["modules"]}
+    assert list(modules)[0] == "neutralino"                    # built first, before the tools and the application
+    sources = modules["neutralino"]["sources"]
+    assert sources[0] == {"type": "git", "url": "https://github.com/neutralinojs/neutralinojs.git",
+                          "tag": "v6.10.0", "commit": NEUTRALINO_COMMIT}
+    assert sources[1] == {"type": "patch", "path": "../neutralino/linux-gtk-main-thread.patch", "options": ["-p1"]}
+    assert sources[2] == {"type": "file", "path": "../neutralino/linux-gtk-main-thread.patch"}
+    # Its provenance (build-macos.sh's schema), recorded in the installed BUILD-INFO.json
+    # only once the installed executable is the binary it names.
+    provenance = modules["neutralino"]["build-commands"][-1]
+    assert f'"commit": "{NEUTRALINO_COMMIT}"' in provenance and "sha256sum linux-gtk-main-thread.patch" in provenance
+    assert "sha256sum /app/lib/neutralino/debridpulse-shell" in provenance
+    record = next(c for c in modules["debridpulse"]["build-commands"] if "BUILD-INFO.json" in c)
+    commands = modules["debridpulse"]["build-commands"]
+    assert commands.index(record) == commands.index(
+        "install -m755 /app/lib/neutralino/debridpulse-shell /app/lib/debridpulse/desktop/shell/debridpulse-shell") + 1
+    assert 'installed == shell["binary_sha256"] or sys.exit(' in record and 'info["shell"] = shell' in record
+    script = (ROOT / "packaging/desktop/flatpak/ci-build.sh").read_text(encoding="utf-8")
+    assert "zstd git >/dev/null" in script                     # flatpak-builder's git source
+    assert 'echo "shell: $shell (/app/lib/debridpulse/desktop/shell/debridpulse-shell)"' in script
+    assert '[ "${recorded%% *}" = "$shell" ] || { echo "BUILD-INFO.json names another shell' in script
+
+
+def test_each_patch_is_the_one_its_recipes_pin_and_each_recipe_verifies_the_commit():
+    import hashlib
+    here = ROOT / "packaging/desktop/neutralino"
+    digests = {name: hashlib.sha256((here / name).read_bytes()).hexdigest()
+               for name in ("linux-gtk-main-thread.patch", "macos-main-thread-shutdown.patch")}
+    build, source = (here / "build-macos.sh").read_text(encoding="utf-8"), (here / "source.sh").read_text(encoding="utf-8")
+    assert f"PATCH_SHA256={digests['macos-main-thread-shutdown.patch']}" in build
+    for name, digest in digests.items():
+        assert f"{digest}  $here/{name}" in source
+    for script in (build, source):
+        assert f"COMMIT={NEUTRALINO_COMMIT}" in script and '[ "$(git -C "$work/src" rev-parse HEAD)" = "$COMMIT" ]' in script
+    # Each patch keeps to its own system: reviewable apart.
+    linux, macos = ((here / name).read_text(encoding="utf-8") for name in digests)
+    assert "dispatch_sync" not in linux and "pthread_main_np" in macos and "g_main_context_is_owner" not in macos
+
+
+def test_the_macos_shell_is_built_and_installed_with_its_provenance_and_the_handover_carries_its_source():
+    workflow = (ROOT / ".github/workflows/desktop-artifacts.yml").read_text(encoding="utf-8")
+    assert 'run: bash packaging/desktop/neutralino/build-macos.sh "$RUNNER_TEMP/shell"' in workflow
+    assert 'if [ "$RUNNER_OS" = "macOS" ]; then extra+=(--shell "$RUNNER_TEMP/shell"); fi' in workflow
+    assert 'bash packaging/desktop/neutralino/source.sh "$src/neutralino"' in workflow
+    assemble = (ROOT / "packaging/desktop/assemble.py").read_text(encoding="utf-8")
+    assert 'if hashlib.sha256(target.read_bytes()).hexdigest() != shell["binary_sha256"]:' in assemble
+    assert '"shell": shell,' in assemble

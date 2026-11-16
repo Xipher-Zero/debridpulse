@@ -20,12 +20,19 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Only these session-bus names are reachable (xdg-dbus-proxy): the tray
-  # (StatusNotifier) and notifications. No systemd, no other service -- so a
-  # Media Downloads helper that may use AF_UNIX cannot have a session service
-  # start an unconfined process for it (WS4 finding F-4).
+  # Only this session-bus name is reachable besides the desktop portals and
+  # the application's own ID (xdg-dbus-proxy): the tray's StatusNotifierWatcher.
+  # Notices go through the notification portal. No systemd, no other service
+  # -- so a Media Downloads helper that may use AF_UNIX cannot have a session
+  # service start an unconfined process for it (WS4 finding F-4).
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
+  # See, never talk to, the org.kde.* names: the tray's actions are taken
+  # only from a caller that owns an org.kde.StatusNotifierHost-* name
+  # (desktop/supervisor.py SessionBus). Flatpak has no --see-name option;
+  # this is build-finish's own --metadata writing the [Session Bus Policy]
+  # "see" entry. xdg-dbus-proxy patterns end at a dot, so org.kde.* is the
+  # narrowest key that covers StatusNotifierHost-<pid> names.
+  - --metadata=Session Bus Policy=org.kde.*=see
   # The user picks the download folder in the setup wizard; DebridPulse's own
   # folder browser lists what the sandbox exposes: the Downloads folder and
   # removable media. Its data stays in the app's own XDG data directory.
@@ -33,6 +40,45 @@ finish-args:
   - --filesystem=/run/media
   - --filesystem=/media
 modules:
+  # The native shell: Neutralino 6.10.0 built from its pinned source (the tag's
+  # tree, commit 4361b63eb1157fc7dedb29b92815a08ec0002767) with DebridPulse's
+  # one Linux patch (packaging/desktop/neutralino/linux-gtk-main-thread.patch:
+  # window methods and the tray run on the GTK main loop, where GTK requires
+  # them; the released binary calls GTK from its WebSocket thread), against
+  # this runtime. The debridpulse module installs it as the shell.
+  - name: neutralino
+    buildsystem: simple
+    build-options:
+      no-debuginfo: true
+    sources:
+      - type: git
+        url: https://github.com/neutralinojs/neutralinojs.git
+        tag: v6.10.0
+        commit: 4361b63eb1157fc7dedb29b92815a08ec0002767
+      - type: patch
+        path: ../neutralino/linux-gtk-main-thread.patch
+        options: ["-p1"]
+      # The same patch's bytes, for its digest in the shell's provenance.
+      - type: file
+        path: ../neutralino/linux-gtk-main-thread.patch
+    build-commands:
+      # Neutralino's CMake links the legacy libstdc++fs, which this toolchain
+      # (GCC with std::filesystem inside libstdc++) no longer ships: an empty
+      # archive of that name satisfies the link and contributes no code.
+      - mkdir -p stubs && ar rc stubs/libstdc++fs.a
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-L$PWD/stubs"
+      - cmake --build build -j "$FLATPAK_BUILDER_N_JOBS"
+      - strip bin/neutralino-linux_x64
+      - install -Dm755 bin/neutralino-linux_x64 /app/lib/neutralino/debridpulse-shell
+      # Its provenance, in the schema of packaging/desktop/neutralino/build-macos.sh
+      # (the commit is the one flatpak-builder verified for the tag).
+      - >-
+        printf '{"neutralino": "v6.10.0", "commit": "4361b63eb1157fc7dedb29b92815a08ec0002767",
+        "patches": {"linux-gtk-main-thread.patch": "%s"}, "architecture": "%s", "cmake": "%s",
+        "compiler": "%s", "sdk": "%s", "binary_sha256": "%s"}\n'
+        "$(sha256sum linux-gtk-main-thread.patch | cut -d' ' -f1)" "$(uname -m)" "$(cmake --version | head -1)"
+        "$(gcc --version | head -1)" "$(. /etc/os-release && echo "$NAME $VERSION_ID")"
+        "$(sha256sum /app/lib/neutralino/debridpulse-shell | cut -d' ' -f1)" > /app/lib/neutralino/PROVENANCE.json
   - name: tools
     buildsystem: simple
     # build-tools.sh strips what it builds; flatpak-builder's own strip and
@@ -82,6 +128,18 @@ modules:
       - mkdir -p /app/lib/debridpulse /app/bin
       - cp -a . /app/lib/debridpulse/
       - rm -f /app/lib/debridpulse/debridpulse /app/lib/debridpulse/org.debridpulse.desktop.*
+      # The shell built above, in place of the layout's released binary.
+      - install -m755 /app/lib/neutralino/debridpulse-shell /app/lib/debridpulse/desktop/shell/debridpulse-shell
+      # BUILD-INFO.json records the shell installed, not the layout's released one:
+      # its provenance, once the installed executable is the binary it names.
+      - >-
+        /app/lib/debridpulse/runtime/python/bin/python3 -I -c 'import hashlib, json, pathlib, sys;
+        root = pathlib.Path("/app/lib/debridpulse"); info = json.loads((root / "BUILD-INFO.json").read_text());
+        shell = json.loads(pathlib.Path("/app/lib/neutralino/PROVENANCE.json").read_text());
+        installed = hashlib.sha256((root / "desktop/shell/debridpulse-shell").read_bytes()).hexdigest();
+        installed == shell["binary_sha256"] or sys.exit(f"the installed shell {installed} is not the built one");
+        info["shell"] = shell; (root / "BUILD-INFO.json").write_text(json.dumps(info, indent=1) + "\n")'
+      - rm -r /app/lib/neutralino
       - install -Dm755 debridpulse /app/bin/debridpulse
       - install -Dm644 org.debridpulse.desktop.desktop /app/share/applications/org.debridpulse.desktop.desktop
       - install -Dm644 org.debridpulse.desktop.metainfo.xml /app/share/metainfo/org.debridpulse.desktop.metainfo.xml

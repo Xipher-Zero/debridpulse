@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import errno
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -22,7 +23,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from core.config import get_settings
+from core.config import desktop_installation, download_folder_chosen, get_settings
 from core.logging_utils import sanitize_exception
 from core.version import read_version
 from integrations.definition import verification_fingerprint, verification_proof
@@ -221,6 +222,64 @@ def _default_directory_path(configured_path: str) -> Path:
     if not _try_browsable_directory(root):
         raise _directory_error(503, "browser_unavailable", "Server filesystem browser is unavailable")
     return root
+
+
+def _user_downloads_folder() -> Path | None:
+    """The running user's own Downloads folder, as the system names it:
+    Windows' Downloads known folder (``SHGetKnownFolderPath``, wherever it was
+    moved), the XDG user directory on Linux (``user-dirs.dirs``; inside the
+    Flatpak, the sandbox's copy of it), ``~/Downloads`` on macOS. ``None``
+    when the system names none."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        shell = ctypes.WinDLL("shell32")
+        ole = ctypes.WinDLL("ole32")
+        shell.SHGetKnownFolderPath.argtypes = [ctypes.c_void_p, wintypes.DWORD, wintypes.HANDLE, ctypes.c_void_p]
+        shell.SHGetKnownFolderPath.restype = ctypes.c_long
+        ole.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        downloads = (ctypes.c_ubyte * 16).from_buffer_copy(   # FOLDERID_Downloads {374DE290-123F-4565-9164-39C4925E467B}
+            bytes.fromhex("90e24d373f126545916439c4925e467b"))
+        value = ctypes.c_void_p()
+        if shell.SHGetKnownFolderPath(ctypes.byref(downloads), 0, None, ctypes.byref(value)) != 0:
+            return None
+        try:
+            return Path(ctypes.wstring_at(value.value))
+        finally:
+            ole.CoTaskMemFree(value)
+    home = Path.home()
+    if sys.platform == "darwin":
+        return home / "Downloads"
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "user-dirs.dirs"
+    try:
+        lines = config.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        lines = []
+    for line in lines:   # XDG_DOWNLOAD_DIR="$HOME/Downloads" (xdg-user-dirs' own format)
+        key, _, value = line.strip().partition("=")
+        if key == "XDG_DOWNLOAD_DIR" and len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+            if value.startswith("$HOME"):
+                return home / value[len("$HOME"):].lstrip("/")
+            return Path(value) if value.startswith("/") else None
+    return home / "Downloads"
+
+
+def _desktop_start_directory() -> Path:
+    """Where an installed desktop's Download Folder browser opens before a
+    folder has been chosen: the user's Downloads folder, else their home,
+    else (as everywhere) the filesystem root. Only the browser's starting
+    point -- nothing is chosen or saved."""
+    for candidate in (_user_downloads_folder(), Path.home()):
+        if candidate is None or not candidate.is_absolute():
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if resolved.is_dir() and _try_browsable_directory(resolved):
+            return resolved
+    return _default_directory_path("")
 
 
 def _directory_display_name(path: Path) -> str:
@@ -520,14 +579,16 @@ def browse_directories(
     see ``_browse_directory``. Default behavior (``purpose`` omitted) is
     unchanged for existing Download Folder callers.
     """
-    default_configured_path = (
-        get_settings().backup_folder if purpose == "backup" else get_settings().download_folder
-    )
-    requested = (
-        _resolve_requested_directory(path)
-        if path is not None
-        else _default_directory_path(default_configured_path)
-    )
+    settings = get_settings()
+    default_configured_path = settings.backup_folder if purpose == "backup" else settings.download_folder
+    if path is not None:
+        requested = _resolve_requested_directory(path)
+    elif purpose == "download" and desktop_installation() and not download_folder_chosen(settings):
+        # An installed desktop that has not chosen its folder yet (the setup
+        # wizard): never the container default's parent, the root.
+        requested = _desktop_start_directory()
+    else:
+        requested = _default_directory_path(default_configured_path)
     result = _browse_directory(requested, application.capacity, purpose=purpose)
     response.headers["Cache-Control"] = "no-store"
     return result

@@ -1,0 +1,157 @@
+diff --git a/api/app/app.cpp b/api/app/app.cpp
+index 3d0b602..07ace74 100644
+--- a/api/app/app.cpp
++++ b/api/app/app.cpp
+@@ -30,7 +30,13 @@ void exit(int code) {
+         neuserver::stop();
+     }
+     if(settings::getMode() == settings::AppModeWindow) {
++        #if defined(__APPLE__)
++        window::runOnMainThread([]() {
++            os::cleanupTray();
++        });
++        #else
+         os::cleanupTray();
++        #endif
+         window::_close(code);
+     }
+     else {
+diff --git a/api/window/window.cpp b/api/window/window.cpp
+index 3946f04..4891205 100644
+--- a/api/window/window.cpp
++++ b/api/window/window.cpp
+@@ -13,6 +13,7 @@
+ #elif defined(__APPLE__)
+ #include <objc/objc-runtime.h>
+ #include <dispatch/dispatch.h>
++#include <pthread.h>
+ #include <CoreFoundation/CoreFoundation.h>
+ #include <CoreGraphics/CGDisplayConfiguration.h>
+ #include <CoreGraphics/CGWindow.h>
+@@ -71,6 +72,19 @@ using namespace Gdiplus;
+ namespace window {
+ 
+ webview::webview *nativeWindow;
++
++#if defined(__APPLE__)
++void runOnMainThread(const std::function<void()> &f) {
++    // AppKit objects are created, changed and torn down on the main thread only.
++    if(pthread_main_np()) {
++        f();
++        return;
++    }
++    dispatch_sync(dispatch_get_main_queue(), ^{
++        f();
++    });
++}
++#endif
+ #if defined(__linux__) || defined(__FreeBSD__)
+ bool isGtkWindowFullScreen = false;
+ bool isGtkWindowMinimized = false;
+@@ -733,7 +747,7 @@ bool __createWindow() {
+ void _close(int exitCode) {
+     if(nativeWindow) {
+         #if defined(__APPLE__)
+-        dispatch_sync(dispatch_get_main_queue(), ^{
++        runOnMainThread([&]() {
+ 		#endif
+         if(windowProps.useSavedState) {
+             __saveWindowProps();
+diff --git a/api/window/window.h b/api/window/window.h
+index 98303d8..7c60fac 100644
+--- a/api/window/window.h
++++ b/api/window/window.h
+@@ -2,6 +2,7 @@
+ #define NEU_WINDOW_H
+ 
+ #include <string>
++#include <functional>
+ 
+ #include "errors.h"
+ #include "lib/json/json.hpp"
+@@ -135,6 +136,9 @@ void setBorderless(bool borderless);
+ void setSkipTaskbar(bool skip);
+ bool snapshot(const string &filename);
+ void setMainMenu(const json &menu);
++// Runs f on the native UI thread (macOS: the main thread) and returns when
++// it has run; inline when already there.
++void runOnMainThread(const std::function<void()> &f);
+ NEU_W_HANDLE getHandle();
+ bool init(const json &windowOptions);
+ NEU_W_HANDLE getHandle();
+diff --git a/lib/tray/tray.h b/lib/tray/tray.h
+index 813be80..9bc17cd 100644
+--- a/lib/tray/tray.h
++++ b/lib/tray/tray.h
+@@ -172,7 +172,6 @@ static void tray_exit() { loop_result = -1; }
+ #elif defined(TRAY_APPKIT)
+ 
+ static id app;
+-static id pool;
+ static id statusBar;
+ static id statusItem;
+ static id statusBarButton;
+@@ -247,10 +246,6 @@ static void menu_callback(id self, SEL cmd, id sender) {
+ }
+ 
+ static int tray_init(struct tray *tray) {
+-  pool = ((id (*)(id, SEL))objc_msgSend)(
+-      (id)objc_getClass("NSAutoreleasePool"),
+-      sel_registerName("new"));
+-
+   ((id (*)(id, SEL))objc_msgSend)(
+       (id)objc_getClass("NSApplication"),
+       sel_registerName("sharedApplication"));
+@@ -349,11 +344,6 @@ static void tray_exit() {
+     ((id (*)(id, SEL))objc_msgSend)(trayDelegate, sel_registerName("release"));
+     trayDelegate = nil;
+   }
+-
+-  if (pool) {
+-    ((id (*)(id, SEL))objc_msgSend)(pool, sel_registerName("drain"));
+-    pool = nil;
+-  }
+ }
+ 
+ #elif defined(TRAY_WINAPI)
+diff --git a/main.cpp b/main.cpp
+index 55863c7..e820e80 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -3,6 +3,9 @@
+ #include <string>
+ #include <thread>
+ #include <chrono>
++#if defined(__APPLE__)
++#include <dispatch/dispatch.h>
++#endif
+ #if defined(_WIN32)
+ #include <winsock2.h>
+ #include <websocketpp/error.hpp>
+@@ -59,9 +62,26 @@ BOOL WINAPI __consoleCtrlHandler(DWORD ctrlType) {
+ }
+ #endif
+ 
++#if defined(__APPLE__)
++void __watchSignal(int signum) {
++    signal(signum, SIG_IGN);
++    dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, signum, 0,
++                                                      dispatch_get_main_queue());
++    dispatch_source_set_event_handler(source, ^{
++        app::exit(128 + signum);
++    });
++    dispatch_resume(source);
++}
++#endif
++
+ void __registerCleanupHandlers() {
++    #if defined(__APPLE__)
++    __watchSignal(SIGINT);
++    __watchSignal(SIGTERM);
++    #else
+     signal(SIGINT, __signalHandler);
+     signal(SIGTERM, __signalHandler);
++    #endif
+     #if defined(_WIN32)
+     signal(SIGABRT, __signalHandler);
+     SetConsoleCtrlHandler(__consoleCtrlHandler, TRUE);

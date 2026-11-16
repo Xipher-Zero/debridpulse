@@ -54,6 +54,15 @@ async function boot(page, {width = 1440, height = 900} = {}) {
           panels: [...document.querySelectorAll('.view.active [data-panel]:not([hidden]):not(.dp-motion-still *), .view.active .dp-help-panel:not([hidden]):not(.dp-motion-still *)')].map(p => p.dataset.panel),
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           topbar: document.getElementById('topbar')?.getBoundingClientRect().top,
+          // The page heading, the main region's companion: what it names and how it is drawn.
+          heading: document.getElementById('page-title')?.textContent.trim(),
+          headingMove: style(document.querySelector('#topbar .dp-page-heading'), 'transform'),
+          // The two clocks: the leaving content's travel and the heading's own half.
+          bodyClock: leaving(surface)?.getAnimations().find(a => a.effect.getKeyframes().some(k => k.transform))?.currentTime ?? null,
+          headingClock: document.querySelector('#topbar .dp-page-heading')?.getAnimations()
+            .find(a => a.playState !== 'idle')?.currentTime ?? null,
+          headingHalf: document.querySelector('#topbar .dp-page-heading')?.getAnimations()
+            .find(a => a.playState !== 'idle')?.effect.getKeyframes()[0].transform === 'none' ? 'out' : 'in',
           sidebar: document.getElementById('sidebar')?.getBoundingClientRect().left,
         });
       }
@@ -1265,4 +1274,69 @@ test('Pagination with reduced motion: no travel and no crossfade; the authoritat
   await expect(events.current).toHaveText('2');
   await expect(page.locator('#event-list .dp-activity-row').first().locator('.dp-activity-message')).toHaveText('Event 407');
   await expect(page.locator('.dp-motion-surface, .dp-motion-still, #event-list > .dp-activity-placeholder')).toHaveCount(0);
+});
+
+
+// ── The page heading moves with the main region ───────────────────────────
+test('Sidebar: the page heading moves with the main region and never names a page whose content has not begun to leave', async ({page}) => {
+  await boot(page);
+  await page.goto('/');
+  const entry = view => page.locator(`#sidebar .nav-item[data-view="${view}"]`);
+  await entry('stats').click();
+  await settled(page);
+  for (const [from, to, direction] of [['Statistics', 'settings', 'forward'], ['Settings', 'torrents', 'backward'],
+                                       ['Downloads', 'help', 'forward']]) {
+    await expect(page.locator('#page-title')).toHaveText(from);
+    await clear(page);
+    await entry(to).click();
+    await settled(page);
+    const frames = (await page.evaluate(() => window.__frames)).filter(frame => frame.scope === 'main');
+    const destination = (await page.locator('#page-title').textContent()).trim();
+    expect(destination).not.toBe(from);
+    // Moved: what leaves has left its place (what arrives waits at its start while held).
+    const bodyMoved = frame => shift(frame.old).y !== 0;
+    const headingY = frame => shift(frame.headingMove).y;
+    // Until the region moves, the heading names the page on screen, unmoved.
+    const still = frames.filter(frame => !bodyMoved(frame));
+    const firstMove = frames.findIndex(bodyMoved);
+    expect(firstMove).toBeGreaterThanOrEqual(0);
+    for (const frame of frames.slice(0, firstMove)) {
+      expect(frame.heading).toBe(from);
+      expect(headingY(frame)).toBe(0);
+    }
+    // No frame names the destination over content that has not begun to leave.
+    expect(still.filter(frame => frame.heading === destination && frames.indexOf(frame) < firstMove)).toEqual([]);
+    // One clock: at every drawn frame of the travel the heading's own time
+    // is the region's -- its leaving half up to the midpoint, naming the page
+    // that leaves; its arriving half after it, naming the destination; each
+    // displaced the region's way (forward: up and in from below; backward,
+    // mirrored). However few frames an engine draws.
+    const sign = direction === 'forward' ? -1 : 1;
+    const duration = frames.find(bodyMoved).durations[0];
+    const travelling = frames.filter(frame => frame.bodyClock !== null && frame.headingClock !== null && frame.bodyClock > 0);
+    expect(travelling.length).toBeGreaterThanOrEqual(1);
+    for (const frame of travelling) {
+      const leavingHalf = frame.headingHalf === 'out';
+      expect(Math.abs((leavingHalf ? frame.headingClock : frame.headingClock + duration / 2) - frame.bodyClock)).toBeLessThan(1.5);
+      expect(frame.heading).toBe(leavingHalf ? from : destination);
+      if (headingY(frame) !== 0) expect(Math.sign(headingY(frame))).toBe(leavingHalf ? sign : -sign);
+    }
+    // Once one name has left, the other arrives -- never the first again.
+    expect(frames.findIndex(frame => frame.heading === destination)).toBeGreaterThan(frames.findLastIndex(frame => frame.heading === from));
+    // It is at rest, as its owner drew it, when the slide is done.
+    await expect(page.locator('#topbar .dp-page-heading')).not.toHaveAttribute('data-dp-motion-companion', /.*/);
+    expect(await page.locator('#topbar .dp-page-heading').evaluate(node => getComputedStyle(node).transform)).toBe('none');
+  }
+});
+
+test('Sidebar with reduced motion: the page heading changes at once, with the region', async ({page}) => {
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await boot(page);
+  await page.goto('/');
+  await page.locator('#sidebar .nav-item[data-view="stats"]').click();
+  await expect(page.locator('#page-title')).toHaveText('Statistics');
+  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  // The same task: the region and its heading are the destination's, nothing moves.
+  expect(await page.evaluate(() => [document.getElementById('page-title').textContent.trim(),
+    document.querySelector('.view.active').id, document.querySelectorAll('.dp-motion-surface').length])).toEqual(['Settings', 'view-settings', 0]);
 });

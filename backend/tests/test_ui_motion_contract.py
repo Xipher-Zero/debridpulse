@@ -55,8 +55,15 @@ def test_the_motion_primitive_presents_only() -> None:
     assert "observer.disconnect();" in motion and "ghost?.remove();" in motion
     # The travel's clock starts only once its prepared presentation has been
     # drawn: paused at its start, played from the next frame (no timer).
-    assert "[...leaving, ...moving.values()].forEach(animation => animation.pause());" in motion
-    assert "[...leaving, ...moving.values()].forEach(animation => animation.play());" in motion
+    assert "[...leaving, ...moving.values(), ...accompanying].forEach(animation => animation.pause());" in motion
+    assert "[...leaving, ...moving.values(), ...accompanying].forEach(animation => animation.play());" in motion
+    # A companion (the page heading) moves itself, never as a copy, on the
+    # slide's one clock, and its own commit runs exactly once: at the midpoint,
+    # at once without motion, or when the slide ends early.
+    assert "companion = null}, commit) {" in motion
+    assert motion.count("follow();") == 5
+    assert "if (out.startTime !== null) back.startTime = out.startTime + duration / 2;" in motion
+    assert ".concat(flight.accompanied || [])).then(() => flight.end());" in motion
     assert "if (flight.waiting) animation.pause();" in motion
     flight_body = motion[motion.index("function slide("):motion.index("function resolve(")]
     assert "setTimeout" not in flight_body
@@ -76,7 +83,7 @@ def test_the_motion_primitive_presents_only() -> None:
     assert "jump" not in motion and "jump" not in css
     assert "@import url('/ui-motion.css?v=1');" in read("style.css")
     index = read("index.html")
-    assert index.index('/ui-motion.js?v=2') < index.index('/ui-pager.js?v=1')
+    assert index.index('/ui-motion.js?v=3') < index.index('/ui-pager.js?v=1')
 
 
 def test_only_the_operators_own_navigation_moves_anything() -> None:
@@ -85,10 +92,15 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
     # Every sidebar entry hands its event over; nav() slides only for a click.
     assert index.count('onclick="nav(this, event)"') == index.count('class="nav-item')
     assert "onclick=\"nav(this)\"" not in index
-    nav = app[app.index("function nav(el, event) {"):app.index("function navigateTo(el) {")]
+    nav = app[app.index("function nav(el, event) {"):app.index("function navigateTo(el, {heading = true} = {}) {")]
     assert "const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;" in nav
     assert "direction: chosen ? Math.sign(to - from) : 0" in nav
     assert "debridpulse:navigation-settled" in nav
+    # The page heading moves with the region: the slide runs showPageHeading
+    # as its companion's commit; the region's commit leaves the heading to it.
+    assert "companion: {element: document.querySelector('#topbar .dp-page-heading')," in nav
+    assert "commit: () => showPageHeading(el)}}," in nav and "() => navigateTo(el, {heading: false}))" in nav
+    assert "const title = heading ? showPageHeading(el) : pageTitle(el);" in app
     # One slide call per owner, each on its operator path only.
     downloads = read("ui-downloads.js")
     assert downloads.count("window.DPMotion.slide(") == 1

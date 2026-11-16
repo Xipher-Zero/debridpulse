@@ -46,40 +46,72 @@ def test_the_supervisor_refuses_a_native_call_outside_its_list():
 
 def test_the_tray_offers_status_open_the_one_control_that_applies_and_quit_and_no_settings():
     words = Words()
-    running = supervisor.tray_menu({"active": 2, "queued": 3, "paused": False}, words)
+    running = supervisor.tray_menu({"active": 2, "queued": 3, "paused": False}, words, "linux")
     ids = [item.get("id") for item in running["menuItems"]]
     assert ids == ["status", None, "open", "pause", None, "quit"]
     assert running["menuItems"][0]["isDisabled"] is True
     assert running["menuItems"][0]["text"] == 'desktop.tray.status{"active": 2, "queued": 3}'
-    paused = supervisor.tray_menu({"active": 0, "queued": 3, "paused": True}, words)
+    paused = supervisor.tray_menu({"active": 0, "queued": 3, "paused": True}, words, "linux")
     assert [item.get("id") for item in paused["menuItems"]][3] == "resume"
     assert not any("settings" in str(item.get("id")) for item in running["menuItems"])   # C6 dropped
-    assert running["icon"] == "/resources/icons/tray.png"
+    assert running["icon"] == "/resources/icons/tray.png" and "useTemplateIcon" not in running
+    assert supervisor.tray_menu(None, words, "win32")["icon"] == "/resources/icons/tray.png"
+    # macOS: the menu bar's own template image, which it tints for its appearance.
+    mac = supervisor.tray_menu(None, words, "darwin")
+    assert mac["icon"] == "/resources/icons/trayTemplate.png" and mac["useTemplateIcon"] is True
+    assert [item.get("id") for item in mac["menuItems"]] == ["status", None, "open", "pause", None, "quit"]
 
 
 def test_notices_cover_each_lifecycle_transition_once_and_coalesce_bulk_pause_and_resume():
-    words, previous = Words(), {}
+    words = Words()
     first = supervisor.notices([
         {"id": 1, "type": "transfer.accepted", "transfer_id": 1, "name": "a.mkv"},
         {"id": 2, "type": "transfer.transferring", "transfer_id": 1, "name": "a.mkv"},   # no notice
-        {"id": 3, "type": "transfer.completed", "transfer_id": 1, "name": "a.mkv"},
-        {"id": 4, "type": "transfer.failed", "transfer_id": 2, "name": "b.iso"},
-        {"id": 5, "type": "transfer.cancelled", "transfer_id": 3, "name": "c.zip"},
-    ], previous, words)
+        {"id": 3, "type": "transfer.completed", "outcome": "succeeded", "transfer_id": 1, "name": "a.mkv"},
+        {"id": 4, "type": "transfer.failed", "outcome": "failed", "transfer_id": 2, "name": "b.iso"},
+        {"id": 5, "type": "transfer.cancelled", "outcome": "cancelled", "transfer_id": 3, "name": "c.zip"},
+    ], words)
     assert first == [("desktop.notice.accepted", "a.mkv"), ("desktop.notice.completed", "a.mkv"),
                      ("error.category.transfer_failed", "b.iso"), ("file_selection.transfer_cancelled", "c.zip")]
     bulk = supervisor.notices([{"id": 10 + n, "type": "transfer.paused", "transfer_id": 20 + n, "name": f"{n}"}
-                               for n in range(4)], previous, words)
+                               for n in range(4)], words)
     assert bulk == [('desktop.notice.paused_many{"count": 4}', "")]
-    resumed = supervisor.notices([{"id": 30 + n, "type": "transfer.queued", "transfer_id": 20 + n, "name": f"{n}"}
-                                  for n in range(4)], previous, words)
+    # Resumed is the journal's own word for a transition out of Paused, into
+    # whatever state the transfer goes on in -- also for a transfer paused
+    # before this run began.
+    resumed = supervisor.notices([{"id": 30 + n, "type": kind, "outcome": "resumed", "transfer_id": 20 + n,
+                                   "name": f"{n}"}
+                                  for n, kind in enumerate(["transfer.queued", "transfer.transferring",
+                                                            "transfer.ready", "transfer.resolving"])], words)
     assert resumed == [('desktop.notice.resumed_many{"count": 4}', "")]
-    # Queued without a pause before it (a new transfer) is no "resumed".
-    assert supervisor.notices([{"id": 40, "type": "transfer.queued", "transfer_id": 99, "name": "n"}],
-                              previous, words) == []
-    one = supervisor.notices([{"id": 41, "type": "transfer.paused", "transfer_id": 1, "name": "a.mkv"}],
-                             previous, words)
+    # Queued or downloading without that outcome (a new transfer, a retry) is no "resumed".
+    assert supervisor.notices([{"id": 40, "type": "transfer.queued", "transfer_id": 99, "name": "n"},
+                               {"id": 41, "type": "transfer.transferring", "transfer_id": 99, "name": "n"}],
+                              words) == []
+    one = supervisor.notices([{"id": 42, "type": "transfer.paused", "transfer_id": 1, "name": "a.mkv"}], words)
     assert one == [("transfer.action.paused_toast", "a.mkv")]
+    single = supervisor.notices([{"id": 43, "type": "transfer.queued", "outcome": "resumed", "transfer_id": 1,
+                                  "name": "a.mkv"}], words)
+    assert single == [("transfer.action.resumed_toast", "a.mkv")]
+
+
+def test_the_journal_says_resumed_only_for_a_transition_out_of_paused():
+    sys.path.insert(0, str(ROOT / "backend"))
+    from transfers import journal_events
+    from transfers.models import TransferState as S
+
+    for target in (S.QUEUED, S.TRANSFERRING, S.READY, S.RESOLVING, S.ACCEPTED, S.POST_PROCESSING):
+        event = journal_events.lifecycle(7, S.PAUSED, target)
+        assert event.outcome == "resumed" and event.event_type == f"transfer.{journal_events._STATE_LABELS[target][0]}"
+    # Leaving Paused for a stopped state is that stop, not a resume.
+    assert journal_events.lifecycle(7, S.PAUSED, S.CANCELLED).outcome == "cancelled"
+    assert journal_events.lifecycle(7, S.PAUSED, S.FAILED).outcome == "failed"
+    assert journal_events.lifecycle(7, S.PAUSED, S.DELETED).outcome is None
+    # The same states reached any other way say nothing of a resume.
+    for previous in (S.ACCEPTED, S.QUEUED, S.TRANSFERRING, S.FAILED):
+        assert journal_events.lifecycle(7, previous, S.QUEUED).outcome is None
+        assert journal_events.lifecycle(7, previous, S.TRANSFERRING).outcome is None
+    assert journal_events.lifecycle(7, S.TRANSFERRING, S.PAUSED).outcome is None
 
 
 def test_every_tray_and_notice_word_is_in_the_catalog():
@@ -119,6 +151,38 @@ def test_the_macos_runtime_lock_keeps_every_canonical_pin_and_adds_only_pyobjc()
     assert len(blocks) == len(macos) and all("--hash=sha256:" in block for block in blocks)
 
 
+def test_the_linux_runtime_lock_keeps_every_canonical_pin_and_adds_only_the_session_bus_client():
+    import re
+    lock = ROOT / "packaging" / "desktop" / "linux" / "requirements.txt"
+    pins = lambda path: {name.lower().replace("_", "-"): version for name, version in re.findall(  # noqa: E731
+        r"(?m)^([A-Za-z0-9_.-]+)==([^\s\;]+)", path.read_text(encoding="utf-8"))}
+    canonical, linux = pins(ROOT / "backend" / "requirements.txt"), pins(lock)
+    assert {name: version for name, version in linux.items() if name in canonical and canonical[name] != version} == {}
+    assert set(canonical) - set(linux) == set()
+    assert {name: linux[name] for name in set(linux) - set(canonical)} == {"jeepney": "0.9.0"}
+    blocks = re.split(r"(?m)^(?=[A-Za-z0-9_.-]+==)", lock.read_text(encoding="utf-8"))[1:]
+    assert len(blocks) == len(linux) and all("--hash=sha256:" in block for block in blocks)
+    # The assembler installs it on Linux, as it installs each platform's own lock.
+    sys.path.insert(0, str(ROOT / "packaging" / "desktop"))
+    import assemble
+    assert assemble.DESKTOP_LOCKS["Linux"] == "packaging/desktop/linux/requirements.txt"
+
+
+def test_the_menu_bar_template_is_the_favicons_own_mark_in_black():
+    sys.path.insert(0, str(ROOT / "packaging" / "desktop"))
+    import assemble
+    favicon = (ROOT / "frontend" / "static" / "favicon.svg").read_text(encoding="utf-8")
+    template = assemble.template_svg(favicon)
+    assert "<rect" not in template and "url(#mark)" not in template
+    assert template.count("<path") == 2 and template.count('"#000"') == 2
+    # The mark's own geometry, unchanged.
+    import re
+    assert re.findall(r' d="([^"]+)"', template) == re.findall(r' d="([^"]+)"', favicon)
+    import pytest
+    with pytest.raises(SystemExit):     # a favicon of another shape is not silently templated
+        assemble.template_svg(favicon.replace("<rect", "<circle", 1))
+
+
 def test_the_macos_usenet_patch_is_the_pinned_one_for_the_pinned_release_and_only_removes_the_menu_runner():
     import hashlib
     import importlib.util
@@ -143,6 +207,7 @@ def test_the_macos_usenet_patch_is_the_pinned_one_for_the_pinned_release_and_onl
 
 # -- B-1: Neutralino's exported credential is private before it exists ---------------------
 
+import logging  # noqa: E402
 import os  # noqa: E402
 
 import pytest  # noqa: E402
@@ -470,3 +535,308 @@ def test_every_desktop_notice_is_recorded_with_its_digest_and_the_assembler_ship
     spec.loader.exec_module(assemble)
     assert "docs/DEPENDENCY_LICENSES.md" in assemble.LEGAL      # Help's third-party document
     assert '("packaging/desktop/notices", "licenses/desktop")' in (ROOT / "packaging" / "desktop" / "assemble.py").read_text()
+
+
+# ── Linux: the tray, notices and activation on a real session bus ──────────
+
+def _session_bus_available() -> bool:
+    import shutil
+    try:
+        import jeepney  # noqa: F401
+    except ImportError:
+        return False
+    return sys.platform.startswith("linux") and shutil.which("dbus-daemon") is not None
+
+
+LINUX_BUS = pytest.mark.skipif(not _session_bus_available(),
+                               reason="Linux with the desktop runtime's jeepney and a dbus-daemon")
+
+
+BARE_BUS = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig><type>session</type><listen>unix:dir={dir}</listen><auth>EXTERNAL</auth>
+<policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy>
+</busconfig>"""
+
+
+class BareBus:
+    """A private dbus-daemon with no service files (nothing of the host's can
+    be started on it), as this process's session bus for the test."""
+
+    def __init__(self, tmp_path):
+        import subprocess
+        self.config = tmp_path / "bus.conf"
+        self.config.write_text(BARE_BUS.format(dir=tmp_path), encoding="utf-8")
+        self.previous = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
+        self.daemon = subprocess.Popen(["dbus-daemon", f"--config-file={self.config}", "--nofork", "--print-address=1"],
+                                       stdout=subprocess.PIPE, text=True)
+        os.environ["DBUS_SESSION_BUS_ADDRESS"] = self.daemon.stdout.readline().strip()
+
+    def close(self):
+        if self.previous is None:
+            os.environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
+        else:
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = self.previous
+        self.daemon.terminate()
+        self.daemon.wait(10)
+
+
+class Watcher:
+    """A StatusNotifierWatcher on the bare bus: it records registrations and
+    says whether a host is registered (``hosted``), and can announce a host
+    going and coming as the KDE watcher does."""
+
+    NAME = ("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher")
+
+    def __init__(self):
+        self.registered, self.hosted, self.router, self.task = [], True, None, None
+
+    async def start(self):
+        from jeepney import MatchRule, message_bus, new_method_return
+        from jeepney.io.asyncio import open_dbus_router
+        from jeepney.low_level import HeaderFields
+        self.context = open_dbus_router("SESSION")
+        self.router = await self.context.__aenter__()
+        await self.router.send_and_get_reply(message_bus.RequestName(self.NAME[0]))
+        self.handle = self.router.filter(MatchRule(type="method_call"), bufsize=32)
+
+        async def serve():
+            while True:
+                call = await self.handle.queue.get()
+                member = call.header.fields.get(HeaderFields.member)
+                if member == "RegisterStatusNotifierItem":
+                    self.registered.append(call.body[0])
+                    await self.router.send(new_method_return(call))
+                elif member == "Get":
+                    await self.router.send(new_method_return(call, "v", (("b", self.hosted),)))
+        self.task = asyncio.ensure_future(serve())
+        return self
+
+    async def announce(self, hosted: bool):
+        from jeepney import DBusAddress, new_signal
+        self.hosted = hosted
+        await self.router.send(new_signal(DBusAddress(self.NAME[1], interface=self.NAME[2]),
+                                          "StatusNotifierHostRegistered" if hosted
+                                          else "StatusNotifierHostUnregistered"))
+
+    async def stop(self):
+        self.task.cancel()
+        self.handle.close()
+        await self.context.__aexit__(None, None, None)
+
+
+import asyncio  # noqa: E402
+
+
+async def _peer(name: str | None = None):
+    """Another connection to the bare bus, owning ``name`` if given."""
+    from jeepney import message_bus
+    from jeepney.io.asyncio import open_dbus_router
+    context = open_dbus_router("SESSION")
+    router = await context.__aenter__()
+    if name:
+        await router.send_and_get_reply(message_bus.RequestName(name))
+    router.context = context
+    return router
+
+
+async def _click(peer, index: int, group: bool = False):
+    """A menu click as a tray host sends it: the reply's type and body."""
+    from jeepney import DBusAddress, new_method_call
+    menu = DBusAddress(supervisor.SessionBus.MENU, bus_name=supervisor.APP_ID, interface="com.canonical.dbusmenu")
+    message = new_method_call(menu, "EventGroup", "a(isvu)", ([(index, "clicked", ("i", 0), 0)],)) if group \
+        else new_method_call(menu, "Event", "isvu", (index, "clicked", ("i", 0), 0))
+    reply = await peer.send_and_get_reply(message)
+    return reply.header.message_type.name, reply.body
+
+
+async def _drain(events: asyncio.Queue) -> list:
+    await asyncio.sleep(0.2)
+    found = []
+    while not events.empty():
+        found.append(events.get_nowait())
+    return found
+
+
+def _records():
+    records = []
+    handler = logging.Handler()
+    handler.emit = lambda record: records.append(record.getMessage())
+    supervisor.logger.addHandler(handler)
+    supervisor.logger.setLevel(logging.INFO)          # its run() leaves INFO on; so does the test
+    return records, handler
+
+
+@LINUX_BUS
+def test_the_tray_host_alone_takes_the_trays_actions_and_anyone_may_read_and_open(tmp_path):
+    """The native control boundary, on a bare bus with a watcher standing in
+    for the desktop's. Menu entries (by place): 1 status, 3 Open, 4 Pause All,
+    6 Quit. A peer owning an org.kde.StatusNotifierHost-* name (the tray host)
+    pauses and quits; a plain peer, or one owning another org.kde name, reads
+    the item and menu and opens the window, and its Pause All, Resume All and
+    Quit are refused with AccessDenied before anything reaches the supervisor;
+    a watcher that is its own host acts; starting DebridPulse again opens it."""
+    bus = BareBus(tmp_path)
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "tray-22.rgba").write_bytes(bytes([10, 20, 30, 255]) * 22 * 22)
+    records, handler = _records()
+
+    async def scenario():
+        from jeepney import DBusAddress, Properties, new_method_call
+        watcher = await Watcher().start()
+        events: asyncio.Queue = asyncio.Queue()
+        session = await supervisor.SessionBus.open(events, icons)
+        host, stranger, imposter = await _peer("org.kde.StatusNotifierHost-4242"), await _peer(), \
+            await _peer("org.kde.NotAHost")
+        try:
+            await session.tray(supervisor.tray_menu({"active": 1, "queued": 2, "paused": False}, Words(), "linux"))
+            assert session.tray_shown and watcher.registered == [supervisor.APP_ID]
+            assert await _drain(events) == [("trayAvailability", {"shown": True})]
+            menu = DBusAddress(session.MENU, bus_name=supervisor.APP_ID, interface="com.canonical.dbusmenu")
+            item = DBusAddress(session.ITEM, bus_name=supervisor.APP_ID, interface="org.kde.StatusNotifierItem")
+            for peer in (host, stranger, imposter):             # reads: anyone
+                layout = (await peer.send_and_get_reply(new_method_call(menu, "GetLayout", "iias", (0, -1, [])))).body[1]
+                labels = [child[1][1].get("label", ("s", "-"))[1] for child in layout[2]]
+                assert labels == ['desktop.tray.status{"active": 1, "queued": 2}', "-", "desktop.tray.open",
+                                  "processing.pause_all", "-", "desktop.tray.quit"]
+                pixmaps = (await peer.send_and_get_reply(Properties(item).get("IconPixmap"))).body[0][1]
+                assert pixmaps == [(22, 22, bytes([255, 10, 20, 30]) * 22 * 22)]
+            # The host: its actions are taken.
+            assert await _click(host, 4) == ("method_return", ())
+            assert await _click(host, 6, group=True) == ("method_return", ([],))
+            assert await _drain(events) == [("trayMenuItemClicked", {"id": "pause"}),
+                                            ("trayMenuItemClicked", {"id": "quit"})]
+            # Anyone else: refused, and nothing reaches the supervisor.
+            for peer in (stranger, imposter):
+                for index, group in ((4, False), (6, False), (4, True), (6, True)):
+                    kind, body = await _click(peer, index, group)
+                    assert kind == "error", (index, group)
+                assert await _drain(events) == []
+            assert sum("not the tray host" in line for line in records) == 8
+            # Reopening stays anyone's: the menu's Open, the item's activation, a second start.
+            assert await _click(stranger, 3) == ("method_return", ())
+            await stranger.send_and_get_reply(new_method_call(item, "Activate", "ii", (0, 0)))
+            assert await supervisor.SessionBus.activate_running() is True
+            assert await _drain(events) == [("trayMenuItemClicked", {"id": "open"})] * 3
+            # A watcher that is its own host (GNOME's AppIndicator extension): it acts.
+            await session.tray(supervisor.tray_menu({"paused": True}, Words(), "linux"))
+            assert await _click(watcher.router, 4) == ("method_return", ())
+            assert await _drain(events) == [("trayMenuItemClicked", {"id": "resume"})]
+            # A notice without a notification portal on the bus: reported, not assumed shown.
+            await session.notice("desktop.notice.completed", "a.mkv")
+            assert any("a notice was not shown" in line for line in records)
+        finally:
+            for peer in (host, stranger, imposter):
+                await peer.context.__aexit__(None, None, None)
+            await session.close()
+            await watcher.stop()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        supervisor.logger.removeHandler(handler)
+        bus.close()
+
+
+@LINUX_BUS
+def test_the_tray_is_unavailable_while_no_watcher_or_host_and_returns_with_them(tmp_path):
+    """The tray's availability follows the desktop: the last host going, or
+    the watcher itself, takes it away at once (the shell's event, so close no
+    longer hides); a host or watcher returning registers the item again and
+    gives it back."""
+    bus = BareBus(tmp_path)
+    (tmp_path / "icons").mkdir()
+
+    async def scenario():
+        watcher = await Watcher().start()
+        events: asyncio.Queue = asyncio.Queue()
+        session = await supervisor.SessionBus.open(events, tmp_path / "icons")
+        try:
+            assert session.tray_shown and await _drain(events) == [("trayAvailability", {"shown": True})]
+            await watcher.announce(False)                       # the last host went away
+            assert await _drain(events) == [("trayAvailability", {"shown": False})] and not session.tray_shown
+            await watcher.announce(True)                        # a host returned
+            assert await _drain(events) == [("trayAvailability", {"shown": True})] and session.tray_shown
+            assert watcher.registered.count(supervisor.APP_ID) >= 2   # registered again
+            await watcher.stop()                                # the watcher itself went away
+            assert await _drain(events) == [("trayAvailability", {"shown": False})] and not session.tray_shown
+            returned = await Watcher().start()                  # a new watcher: registered with it, shown
+            try:
+                assert await _drain(events) == [("trayAvailability", {"shown": True})] and session.tray_shown
+                assert returned.registered == [supervisor.APP_ID]
+            finally:
+                await returned.stop()
+        finally:
+            await session.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        bus.close()
+
+
+def test_macos_quit_is_the_application_menus_cmd_q_event_never_the_shells_own_termination():
+    menu = supervisor.main_menu(Words())
+    assert menu == [{"id": "app", "text": "DebridPulse", "menuItems": [
+        {"id": "quit", "text": "desktop.tray.quit", "shortcut": "q"}]}]
+    # No native action: Neutralino sends the click to the supervisor (mainMenuItemClicked).
+    assert all("action" not in item for top in menu for item in top["menuItems"])
+    assert "window.setMainMenu" in supervisor.NATIVE_METHODS and "window.setMainMenu" in CONFIG["nativeAllowList"]
+    # macOS Quit asks the shell to exit itself (main-thread teardown in the shell DebridPulse builds).
+    assert "app.exit" in supervisor.NATIVE_METHODS and "app.exit" in CONFIG["nativeAllowList"]
+
+
+def test_open_restores_a_hidden_window_and_asks_for_a_minimized_one():
+    """Open by what the window is: hidden (closed to the tray) is shown and
+    raised -- the shell maps it again; minimized is unminimized and raised,
+    which on Wayland the compositor grants or not (the taskbar always
+    restores it); shown is raised."""
+    assert supervisor.open_methods(hidden=True, minimized=False) == ("window.show", "window.focus")
+    assert supervisor.open_methods(hidden=True, minimized=True) == ("window.show", "window.focus")
+    assert supervisor.open_methods(hidden=False, minimized=True) == ("window.unminimize", "window.focus")
+    assert supervisor.open_methods(hidden=False, minimized=False) == ("window.focus",)
+
+
+def test_quit_ends_the_shell_in_order_and_says_how(tmp_path):
+    """_end_shell on a real child that, like Neutralino, answers SIGTERM with
+    its own handler (_Exit 143): on Linux it ends through that handler; on
+    macOS the shell is first asked to exit itself (app.exit) -- this child
+    cannot answer, so after the bound the process owner's SIGTERM ends it,
+    through its own handler, never SIGKILL; on Windows by its job. The log
+    names which, and a shell that had already ended is recorded as such."""
+    import asyncio
+    sys.path.insert(0, str(ROOT / "backend"))
+    from executors.process_ownership import ProcessOwnership
+    child = ("import signal, os, sys, time\n"
+             "signal.signal(signal.SIGTERM, lambda *_: (open(sys.argv[1], 'w').write('handler'), os._exit(143)))\n"
+             "open(sys.argv[1] + '.ready', 'w').write('ready')\n"
+             "while True: time.sleep(0.05)\n")
+    records, handler = _records()
+
+    async def scenario():
+        owner = ProcessOwnership(tmp_path / "owner")
+        mark = tmp_path / "mark"
+        owned = await owner.spawn(supervisor.SHELL_ID, [sys.executable, "-c", child, str(mark)],
+                                  env=owner.environment())
+        while not (tmp_path / "mark.ready").exists():
+            await asyncio.sleep(0.05)
+        await supervisor._end_shell(supervisor.Shell(session=None), owned, owner)
+        code = owned.process.returncode
+        if os.name == "nt":
+            assert code is not None and not mark.exists()
+            assert any("ended by the supervisor: its job ended" in line for line in records)
+        else:
+            if sys.platform == "darwin":                # asked first, then the bounded fallback
+                assert any("did not exit in" in line for line in records)
+            assert code == 143 and mark.read_text() == "handler"
+            assert any("ended by the supervisor: SIGTERM, through its own handler (143)" in line for line in records)
+            assert not any("SIGKILL" in line for line in records)
+        await supervisor._end_shell(supervisor.Shell(session=None), owned, owner)   # already gone: said so
+        assert any(line.startswith("the native shell had ended by itself") for line in records)
+        owner.forget(supervisor.SHELL_ID)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        supervisor.logger.removeHandler(handler)

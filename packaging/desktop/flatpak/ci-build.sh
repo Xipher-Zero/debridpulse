@@ -16,7 +16,7 @@
 set -euo pipefail
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends flatpak flatpak-builder ca-certificates \
-  binutils elfutils patch xz-utils zstd >/dev/null   # flatpak-builder's own Recommends it uses (strip, unpack)
+  binutils elfutils patch xz-utils zstd git >/dev/null   # flatpak-builder's own Recommends it uses (strip, unpack; git: the shell's pinned source)
 # The launch check's virtual display, session bus and screenshot.
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends xvfb xauth dbus-x11 procps imagemagick >/dev/null
 out=build/out; mkdir -p "$out"; results="$out/RESULTS.txt"
@@ -40,6 +40,14 @@ check() { name="$1"; banner="$2"; shift 2
   line="$(flatpak run --command="$tools/$name" org.debridpulse.desktop "$@" 2>&1 | grep -m1 -E "$banner" || true)"
   [ -n "$line" ] || { echo "$name: no '$banner' inside the sandbox" | tee -a "$results"; exit 1; }
   echo "$name: $line" | tee -a "$results"; }
+# The native shell as packaged: built in this recipe from Neutralino 6.10.0 with the Linux patch,
+# and recorded as such in the installed BUILD-INFO.json (the same SHA-256 as the executable).
+shell="$(flatpak run --command=sha256sum org.debridpulse.desktop /app/lib/debridpulse/desktop/shell/debridpulse-shell | cut -d' ' -f1)"
+echo "shell: $shell (/app/lib/debridpulse/desktop/shell/debridpulse-shell)" | tee -a "$results"
+recorded="$(flatpak run --command=/app/lib/debridpulse/runtime/python/bin/python3 org.debridpulse.desktop -I -c \
+  'import json; s = json.load(open("/app/lib/debridpulse/BUILD-INFO.json"))["shell"]; print(s["binary_sha256"], s["commit"], *s["patches"].items())')"
+echo "shell provenance (BUILD-INFO.json): $recorded" | tee -a "$results"
+[ "${recorded%% *}" = "$shell" ] || { echo "BUILD-INFO.json names another shell than the one installed" | tee -a "$results"; exit 1; }
 check aria2c '^aria2 version 1\.37\.0' --version
 check ffmpeg '^ffmpeg version 7\.1\.5' -hide_banner -version
 check ffprobe '^ffprobe version 7\.1\.5' -hide_banner -version

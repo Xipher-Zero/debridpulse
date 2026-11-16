@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # DebridPulse.app and its DMG, from a layout assembled on this Mac
-# (packaging/desktop/assemble.py), with Apple's own tools only: iconutil (the
-# .icns from the derived icons), hdiutil (the DMG) and, when an identity is
-# given, codesign + notarytool.
+# (packaging/desktop/assemble.py), with Apple's own tools -- iconutil (the
+# .icns from the derived icons), tiffutil (the window background's 1x+2x
+# image), hdiutil (under dmgbuild) and, when an identity is given, codesign +
+# notarytool -- and dmgbuild (packaging/desktop/macos/dmg-requirements.txt,
+# $DMGBUILD) for the DMG's standard drag-to-install Finder window
+# (dmg-settings.py): the application, an Applications link, the arrow
+# between them.
 #   build-app.sh <stage-dir> <out-dir> [<Developer ID Application identity>]
 # Without an identity the bundle is signed ad hoc: it runs on this Mac but is
 # NOT notarizable and is not presented as trusted. With one, every Mach-O is
@@ -18,6 +22,11 @@ app="$out/DebridPulse.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$stage" "$app/Contents/Resources/app"
+# The DMG window's background is the DMG's, not the application's.
+icons="$app/Contents/Resources/app/desktop/shell/resources/icons"
+background="$out/dmg-background.tiff"; rm -f "$background"
+tiffutil -cathidpicheck "$icons/dmg-background.png" "$icons/dmg-background@2x.png" -out "$background" >/dev/null
+rm -f "$icons/dmg-background.png" "$icons/dmg-background@2x.png"
 # The application icon: an iconset from the canonical logo's derived PNG.
 iconset="$out/DebridPulse.iconset"; rm -rf "$iconset"; mkdir "$iconset"
 for size in 16 32 128 256 512; do
@@ -45,6 +54,7 @@ fi
 codesign --verify --deep --strict "$app"
 dmg="$out/DebridPulse-$version-macos-$(uname -m).dmg"
 rm -f "$dmg"
-hdiutil create -quiet -volname "DebridPulse" -srcfolder "$app" -fs HFS+ -format UDZO "$dmg"
+"${DMGBUILD:-dmgbuild}" -s "$here/dmg-settings.py" -D app="$app" -D background="$background" DebridPulse "$dmg" >/dev/null
+rm -f "$background"
 [ -n "$identity" ] && codesign --force --timestamp -s "$identity" "$dmg"
 (cd "$out" && shasum -a 256 "$(basename "$dmg")" | tee -a SHA256SUMS)

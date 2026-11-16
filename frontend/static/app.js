@@ -102,7 +102,10 @@ function renderTopbarActions() {
  * entries are chosen from the dock (renderShellDock), so the region moves across,
  * by their place in the dock's order. The view itself is changed by
  * navigateTo(), the same commit either way, so the destination's entry work
- * (loading, its first page or tab) is exactly as it was. */
+ * (loading, its first page or tab) is exactly as it was. The page heading
+ * moves with the region (DPMotion's companion): it keeps naming the page that
+ * is on screen until the region starts to move, and changes to the
+ * destination's (showPageHeading) halfway through the same travel. */
 function nav(el, event) {
   if (!el) return;
   const handheld = _shellHandheld.matches;
@@ -114,15 +117,19 @@ function nav(el, event) {
   const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;
   const motion = window.DPMotion
     ? window.DPMotion.slide({element: document.getElementById('content'), axis: handheld ? 'x' : 'y',
-                             direction: chosen ? Math.sign(to - from) : 0,
-                             distance: Math.abs(to - from)}, () => navigateTo(el))
+                             direction: chosen ? Math.sign(to - from) : 0, distance: Math.abs(to - from),
+                             companion: {element: document.querySelector('#topbar .dp-page-heading'),
+                                         commit: () => showPageHeading(el)}},
+                            () => navigateTo(el, {heading: false}))
     : (navigateTo(el), {settled: Promise.resolve()});
   // Whatever measures the destination's layout may do so again once it is still.
   motion.settled.then(() => document.dispatchEvent(new CustomEvent('debridpulse:navigation-settled',
     {detail: {view: document.querySelector('.view.active')?.id?.replace(/^view-/, '') || el.dataset.view}})));
 }
 
-function navigateTo(el) {
+/* `heading: false`: the page heading is not this commit's -- nav() hands it to
+ * the slide, which shows it as it moves (showPageHeading, exactly once). */
+function navigateTo(el, {heading = true} = {}) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   const v = el.dataset.view;
@@ -137,7 +144,7 @@ function navigateTo(el) {
     content.scrollTop = 0;
   }
 
-  const title = showPageHeading(el);
+  const title = heading ? showPageHeading(el) : pageTitle(el);
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
   syncDashboardSparkPulses();
   if (v === 'dashboard') { loadStats(); loadRecent(); }
@@ -157,10 +164,17 @@ function navigateTo(el) {
  * User's Settings slot opens their own Notifications). Returns the title. */
 const PAGE_KEYS = Object.freeze({dashboard: 'dashboard', torrents: 'downloads', events: 'activity_log',
   stats: 'statistics', settings: 'settings', help: 'help'});
+function pageTitle(el) {
+  const page = PAGE_KEYS[el.dataset.view];
+  return el.dataset.title || (page ? DPI18n.t(`shell.page.${page}.title`) : el.dataset.view);
+}
 function showPageHeading(el) {
   const v = el.dataset.view;
   const page = PAGE_KEYS[v];
-  const title = el.dataset.title || (page ? DPI18n.t(`shell.page.${page}.title`) : v);
+  const title = pageTitle(el);
+  // The page the heading names, for the styling that follows it (and only it).
+  const block = document.querySelector('#topbar .dp-page-heading');
+  if (block) block.dataset.page = page || v;
   const heading = document.getElementById('page-title');
   // index.html's first-paint heading names a key; from here this owner says it.
   heading.removeAttribute('data-i18n');

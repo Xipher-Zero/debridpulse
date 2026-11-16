@@ -13,16 +13,24 @@ It owns, and only owns, what a desktop process needs and DebridPulse does not:
 * the native window, tray and notices: a Neutralino process whose page is the
   backend's own loopback interface, with no native token or library injected
   into it; the supervisor alone holds Neutralino's exported credential and
-  calls its allow-listed native methods;
-* Quit: closing the control channel makes the backend stop itself through its
-  own shutdown; only a backend that does not end in time is ended forcibly
-  (its process group or job), the crash backstop.
+  calls its allow-listed native methods. On Linux the tray and the notices are
+  the desktop's own session-bus interfaces instead (``SessionBus``), and so is
+  opening the running instance again;
+* Quit: the native shell ends first, in order (``_end_shell``: its own
+  ``app.exit`` on macOS, SIGTERM on Linux, its job on Windows; a stuck shell
+  is stopped by the process owner), and its window and every connection its
+  page holds go with it; then
+  closing the control channel makes the backend stop itself through its own
+  shutdown, bounded by uvicorn's graceful-shutdown timeout for any other open
+  request; only a backend that does not end in time is ended forcibly (its
+  process group or job), the crash backstop, and the log says so.
 
-It reads no attempt marker, keeps no transfer state of its own beyond what one
-run's notices need, and calls no DebridPulse HTTP API but the public health
-check: the tray's status, events and Pause/Resume All travel on the private
-channel to their canonical owners. Nothing it does signs a session in or
-unlocks the interface.
+It reads no attempt marker, keeps no transfer state of its own, and calls no
+DebridPulse HTTP API but the public health check: the tray's status, events
+and Pause/Resume All travel on the private channel to their canonical owners.
+Nothing it does signs a session in or unlocks the interface. What the native
+side refuses or fails to do is logged (``logs/desktop.log``), never assumed
+done.
 """
 from __future__ import annotations
 
@@ -41,9 +49,14 @@ BACKEND_ID = "desktop-backend"
 SHELL_ID = "desktop-shell"
 READY_SECONDS = 120
 QUIT_SECONDS = 60
+SHELL_EXIT_SECONDS = 10
+# How long the backend's shutdown waits for a request still open (an event
+# stream of a page that is not the shell's) before uvicorn cancels it and goes
+# on with DebridPulse's own shutdown.
+GRACEFUL_SECONDS = 5
 POLL_SECONDS = 3.0
 NATIVE_METHODS = ("os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
-                  "window.unminimize")
+                  "window.unminimize", "window.minimize", "window.setMainMenu", "app.exit")
 logger = logging.getLogger("debridpulse.desktop.supervisor")
 
 
@@ -611,7 +624,9 @@ class Shell:
                 await self.events.put((value["event"], value.get("data")))
         await self.events.put(("shellClosed", None))
 
-    async def call(self, method: str, data: dict | None = None):
+    async def call(self, method: str, data: dict | list | None = None):
+        """One native call's answer; ``NativeError`` when Neutralino says it
+        failed (its answer's ``error``), never taken for done."""
         if method not in NATIVE_METHODS:
             raise PermissionError(method)
         self._next += 1
@@ -619,7 +634,431 @@ class Shell:
         self._pending[ident] = asyncio.get_running_loop().create_future()
         await self.ws.send_str(json.dumps({"id": ident, "method": method, "accessToken": self.token,
                                            "data": data or {}}))
-        return await asyncio.wait_for(self._pending[ident], 15)
+        answer = await asyncio.wait_for(self._pending[ident], 15)
+        if isinstance(answer, dict) and answer.get("error"):
+            raise NativeError(method, answer["error"])
+        return answer
+
+    # Where the tray and notices are shown, everywhere but Linux (SessionBus).
+    tray_shown = False
+
+    async def tray(self, menu: dict) -> None:
+        try:
+            await self.call("os.setTray", menu)
+            self.tray_shown = True
+        except NativeError as exc:
+            if self.tray_shown or not getattr(self, "_tray_reported", False):
+                logger.error("the tray could not be shown: %s", exc)
+            self._tray_reported, self.tray_shown = True, False
+
+    async def notice(self, title: str, body: str) -> None:
+        try:
+            await self.call("os.showNotification", {"title": title, "content": body or title})
+        except NativeError as exc:
+            logger.error("a notice was not shown: %s", exc)
+
+
+    async def exit(self) -> None:
+        """Neutralino's own exit (macOS, ``_end_shell``); it answers nothing,
+        so only the process ending says it happened."""
+        if self.ws is not None and not self.ws.closed:
+            self._next += 1
+            await self.ws.send_str(json.dumps({"id": f"dp-{self._next}", "method": "app.exit",
+                                               "accessToken": self.token, "data": {}}))
+
+
+class NativeError(RuntimeError):
+    def __init__(self, method: str, error):
+        detail = error.get("message") or error.get("code") if isinstance(error, dict) else error
+        super().__init__(f"{method}: {detail}")
+
+
+# ── Linux: the tray, notices and activation on the session bus ─────────────
+
+class SessionBus:
+    """Linux: the tray, the notices and opening the running instance, through
+    the desktop's own standard interfaces on the session bus. Neutralino's
+    tray needs an AppIndicator library no Flatpak runtime provides (and fails
+    without it), and its notices go to a helper that can report success
+    without showing anything; these do not depend on either.
+
+    * The tray is a StatusNotifierItem (``/StatusNotifierItem``) with its
+      ``com.canonical.dbusmenu`` menu (``/MenuBar``), registered with
+      ``org.kde.StatusNotifierWatcher`` -- again whenever a watcher appears --
+      showing the favicon-derived pixmaps; its menu is the supervisor's own
+      (``tray_menu``). It is shown (``tray_shown``) only while the watcher
+      accepted it and says a host displays items.
+    * A notice is ``org.freedesktop.portal.Notification.AddNotification``.
+    * The running instance owns its application ID on the bus and answers
+      ``org.freedesktop.Application.Activate`` (``activate_running``): starting
+      DebridPulse again opens its window.
+
+    A menu click, the item's own activation and Activate become the shell's
+    events (``trayMenuItemClicked``), handled where every click is. Nothing
+    here talks to the backend.
+
+    **The native control boundary.** Anyone on the session bus may read the
+    item and its menu and may open the window (the menu's Open, the item's
+    activation, Activate: the window, password-locked or not, is no action).
+    The actions -- Pause All, Resume All, Quit -- are taken only from the tray
+    host: a caller that owns an ``org.kde.StatusNotifierHost-*`` name (the
+    name every StatusNotifier host registers under: Plasma, waybar, ...) or
+    the watcher itself (a host that is its own watcher, as GNOME's
+    AppIndicator extension is). Anyone else is refused with AccessDenied
+    before anything reaches the backend's channel -- a peer inside this
+    sandbox above all (a confined Media Downloads helper can reach the bus,
+    but xdg-dbus-proxy lets nothing in the sandbox own such a name). The
+    Flatpak may *see* (never talk to) the ``org.kde.*`` names for this check.
+    An unconfined process of the same account could still register a host
+    name of its own; it could equally read this account's DebridPulse files,
+    so that is not a boundary the bus could add.
+
+    **Availability.** The tray is shown (``tray_shown``) only while a watcher
+    holds the item and says a host is registered; the watcher leaving, or its
+    last host, takes it away at once, and it is registered again as soon as a
+    watcher or host returns. Each change is the shell's event
+    (``trayAvailability``), so the window is never left hidden where nothing
+    can open it."""
+
+    # The menu entries that act, and so are the tray host's alone.
+    ACTIONS = frozenset({"pause", "resume", "quit"})
+    HOSTS = "org.kde.StatusNotifierHost-"
+
+    ITEM, MENU = "/StatusNotifierItem", "/MenuBar"
+    APPLICATION = "/" + APP_ID.replace(".", "/")
+    WATCHER = ("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher")
+    PORTAL = ("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+              "org.freedesktop.portal.Notification")
+    SIZES = (22, 32, 48, 64)
+
+    def __init__(self, router, events: asyncio.Queue, pixmaps: list):
+        self.router, self.events, self.pixmaps = router, events, pixmaps
+        self.items: list[dict] = []
+        self.revision, self.notices_sent, self.tray_shown = 0, 0, False
+        self.status_line = ""
+        self.tasks: list[asyncio.Task] = []
+        self.filters: list = []
+
+    # -- starting and stopping --
+
+    @classmethod
+    async def open(cls, events: asyncio.Queue, icons: Path) -> "SessionBus | None":
+        from jeepney.io.asyncio import open_dbus_router
+        try:
+            context = open_dbus_router("SESSION")
+            router = await context.__aenter__()
+        except (OSError, KeyError, ValueError) as exc:   # no session bus at all
+            logger.error("the session bus is unavailable; no tray or notices: %s", exc)
+            return None
+        bus = cls(router, events, cls._pixmaps(icons))
+        bus.context = context
+        await bus._start()
+        return bus
+
+    @classmethod
+    def _pixmaps(cls, icons: Path) -> list:
+        """The tray icon at each size, as StatusNotifierItem pixmaps: ARGB32 in
+        network byte order (the files are the favicon's RGBA, assemble.py)."""
+        pixmaps = []
+        for size in cls.SIZES:
+            try:
+                rgba = (icons / f"tray-{size}.rgba").read_bytes()
+            except OSError:
+                continue
+            if len(rgba) != size * size * 4:
+                continue
+            argb = bytearray(len(rgba))
+            argb[0::4], argb[1::4], argb[2::4], argb[3::4] = rgba[3::4], rgba[0::4], rgba[1::4], rgba[2::4]
+            pixmaps.append((size, size, bytes(argb)))
+        if not pixmaps:
+            logger.error("no tray icon pixmaps in %s", icons)
+        return pixmaps
+
+    async def _start(self) -> None:
+        from jeepney import MatchRule, message_bus
+        calls = self.router.filter(MatchRule(type="method_call"), bufsize=64)
+        owners = self.router.filter(MatchRule(type="signal", sender="org.freedesktop.DBus",
+                                              interface="org.freedesktop.DBus", member="NameOwnerChanged",
+                                              path="/org/freedesktop/DBus"), bufsize=16)
+        hosts = self.router.filter(MatchRule(type="signal", interface=self.WATCHER[2]), bufsize=16)
+        self.filters = [calls, owners, hosts]
+        self.tasks = [asyncio.ensure_future(self._answer(calls.queue)),
+                      asyncio.ensure_future(self._watch(owners.queue)),
+                      asyncio.ensure_future(self._hosts(hosts.queue))]
+        rule = MatchRule(type="signal", sender="org.freedesktop.DBus", interface="org.freedesktop.DBus",
+                         member="NameOwnerChanged", path="/org/freedesktop/DBus")
+        rule.add_arg_condition(0, self.WATCHER[0])
+        await self._ask(message_bus.AddMatch(rule), "watching for a tray watcher")
+        await self._ask(message_bus.AddMatch(MatchRule(type="signal", sender=self.WATCHER[0],
+                                                       interface=self.WATCHER[2])), "watching for tray hosts")
+        owned = await self._ask(message_bus.RequestName(APP_ID, 0x4), "owning the application ID")   # DO_NOT_QUEUE
+        if owned is not None and owned.body[0] not in (1, 4):
+            logger.error("the application ID %s is owned by another process; DebridPulse cannot be "
+                         "opened by starting it again", APP_ID)
+        await self._register()
+        await self._check_portal()
+
+    async def close(self) -> None:
+        for task in self.tasks:
+            task.cancel()
+        for handle in self.filters:
+            handle.close()
+        try:
+            await self.context.__aexit__(None, None, None)
+        except (OSError, RuntimeError):
+            pass
+
+    @staticmethod
+    async def activate_running() -> bool:
+        """Ask the instance running for this account to open its window."""
+        from jeepney import DBusAddress, new_method_call
+        from jeepney.io.asyncio import open_dbus_router
+        try:
+            async with open_dbus_router("SESSION") as router:
+                reply = await asyncio.wait_for(router.send_and_get_reply(new_method_call(
+                    DBusAddress(SessionBus.APPLICATION, bus_name=APP_ID, interface="org.freedesktop.Application"),
+                    "Activate", "a{sv}", ({},))), 10)
+        except (OSError, KeyError, ValueError, TimeoutError) as exc:
+            logger.error("the running DebridPulse could not be asked to open: %s", exc)
+            return False
+        if reply.header.message_type.name == "error":
+            logger.error("the running DebridPulse did not open: %s", reply.body)
+            return False
+        return True
+
+    # -- what the supervisor shows --
+
+    async def tray(self, menu: dict) -> None:
+        self.items = [item for item in menu["menuItems"]]
+        self.status_line = next((item["text"] for item in self.items if item.get("id") == "status"), "")
+        self.revision += 1
+        await self._signal(self.MENU, "com.canonical.dbusmenu", "LayoutUpdated", "ui", (self.revision, 0))
+        await self._signal(self.ITEM, "org.kde.StatusNotifierItem", "NewToolTip", "", ())
+        if not self.tray_shown:
+            await self._register()
+
+    async def notice(self, title: str, body: str) -> None:
+        from jeepney import DBusAddress, new_method_call
+        self.notices_sent += 1
+        name, path, interface = self.PORTAL
+        reply = await self._ask(new_method_call(
+            DBusAddress(path, bus_name=name, interface=interface), "AddNotification", "sa{sv}",
+            (f"transfer-{self.notices_sent}", {"title": ("s", title), "body": ("s", body or title),
+                                               "priority": ("s", "normal")})), "showing a notice")
+        if reply is None:
+            logger.error("a notice was not shown (%s)", title)
+
+    # -- the bus side --
+
+    async def _ask(self, message, doing: str):
+        """A call's reply, or None (logged) when it failed or was refused."""
+        try:
+            reply = await asyncio.wait_for(self.router.send_and_get_reply(message), 10)
+        except (OSError, TimeoutError, RuntimeError) as exc:
+            logger.error("session bus: %s failed: %s", doing, exc)
+            return None
+        if reply.header.message_type.name == "error":
+            from jeepney.low_level import HeaderFields
+            logger.error("session bus: %s was refused: %s %s", doing,
+                         reply.header.fields.get(HeaderFields.error_name), reply.body)
+            return None
+        return reply
+
+    async def _register(self) -> None:
+        from jeepney import DBusAddress, Properties, new_method_call
+        name, path, interface = self.WATCHER
+        watcher = DBusAddress(path, bus_name=name, interface=interface)
+        registered = await self._ask(new_method_call(watcher, "RegisterStatusNotifierItem", "s", (APP_ID,)),
+                                     "registering the tray icon")
+        hosted = await self._ask(Properties(watcher).get("IsStatusNotifierHostRegistered"),
+                                 "asking whether a tray host is shown") if registered else None
+        self._shown(bool(registered and hosted and hosted.body[0][1]))
+
+    def _shown(self, shown: bool) -> None:
+        """The tray's availability, and the shell's event when it changes."""
+        if shown == self.tray_shown:
+            return
+        self.tray_shown = shown
+        logger.info("tray icon %s", "shown" if shown else "not shown: no tray host to open the window from")
+        self.events.put_nowait(("trayAvailability", {"shown": shown}))
+
+    async def _owner(self, name: str) -> str | None:
+        from jeepney import message_bus
+        try:
+            reply = await asyncio.wait_for(self.router.send_and_get_reply(message_bus.GetNameOwner(name)), 10)
+        except (OSError, TimeoutError, RuntimeError):
+            return None
+        return reply.body[0] if reply.header.message_type.name != "error" else None
+
+    async def _host(self, caller: str | None) -> bool:
+        """Whether ``caller`` is the tray host (see the class's boundary)."""
+        if not caller:
+            return False
+        from jeepney import message_bus
+        listed = await self._ask(message_bus.ListNames(), "listing the tray hosts")
+        names = [self.WATCHER[0], *(name for name in (listed.body[0] if listed else ())
+                                    if name.startswith(self.HOSTS))]
+        for name in names:
+            if await self._owner(name) == caller:
+                return True
+        return False
+
+    async def _check_portal(self) -> None:
+        from jeepney import DBusAddress, Properties
+        name, path, interface = self.PORTAL
+        version = await self._ask(Properties(DBusAddress(path, bus_name=name, interface=interface)).get("version"),
+                                  "finding the notification portal")
+        if version is not None:
+            logger.info("notification portal version %s", version.body[0][1])
+
+    async def _signal(self, path: str, interface: str, member: str, signature: str, body: tuple) -> None:
+        from jeepney import DBusAddress, new_signal
+        try:
+            await self.router.send(new_signal(DBusAddress(path, interface=interface), member,
+                                              signature or None, body))
+        except OSError as exc:
+            logger.error("session bus: %s.%s not sent: %s", interface, member, exc)
+
+    async def _watch(self, queue: asyncio.Queue) -> None:
+        while True:
+            message = await queue.get()
+            watched, _old, new = message.body
+            if watched != self.WATCHER[0]:
+                continue
+            if new:
+                logger.info("a tray watcher appeared")
+                await self._register()
+            else:
+                logger.warning("the tray watcher went away")
+                self._shown(False)
+
+    async def _hosts(self, queue: asyncio.Queue) -> None:
+        """A host registered or gone (the watcher's own signals): asked anew."""
+        from jeepney.low_level import HeaderFields
+        while True:
+            message = await queue.get()
+            if message.header.fields.get(HeaderFields.member) in {"StatusNotifierHostRegistered",
+                                                                   "StatusNotifierHostUnregistered"}:
+                await self._register()
+
+    async def _answer(self, queue: asyncio.Queue) -> None:
+        from jeepney import new_error, new_method_return
+        from jeepney.low_level import HeaderFields
+        while True:
+            message = await queue.get()
+            fields = message.header.fields
+            path, interface, member = (fields.get(HeaderFields.path), fields.get(HeaderFields.interface),
+                                       fields.get(HeaderFields.member))
+            caller = fields.get(HeaderFields.sender)
+            try:
+                answer = await self._method(caller, path, interface, member, message.body)
+            except PermissionError as refusal:
+                logger.warning("refused %s from %s: not the tray host", refusal, caller)
+                reply = new_error(message, "org.freedesktop.DBus.Error.AccessDenied", "s",
+                                  (f"{refusal} is the tray host's",))
+            except LookupError:
+                reply = new_error(message, "org.freedesktop.DBus.Error.UnknownMethod", "s",
+                                  (f"{interface}.{member} on {path}",))
+            else:
+                reply = new_method_return(message, *answer) if answer else new_method_return(message)
+            try:
+                await self.router.send(reply)
+            except OSError as exc:
+                logger.error("session bus: no reply sent to %s.%s: %s", interface, member, exc)
+
+    async def _method(self, caller, path, interface, member, body):
+        """(signature, body) of the reply, () for none; LookupError: not ours;
+        PermissionError: an action from someone other than the tray host."""
+        if interface == "org.freedesktop.DBus.Introspectable" and member == "Introspect":
+            return "s", (self._introspection(path),)
+        if interface == "org.freedesktop.DBus.Peer" and member == "Ping":
+            return ()
+        if interface == "org.freedesktop.DBus.Properties" and member in {"Get", "GetAll"}:
+            properties = self._properties(path, body[0])
+            if member == "GetAll":
+                return "a{sv}", (properties,)
+            if body[1] not in properties:
+                raise LookupError(body[1])
+            return "v", (properties[body[1]],)
+        if path == self.ITEM and interface == "org.kde.StatusNotifierItem":
+            if member in {"Activate", "SecondaryActivate"}:
+                await self.events.put(("trayMenuItemClicked", {"id": "open"}))
+            elif member not in {"ContextMenu", "Scroll", "ProvideXdgActivationToken"}:
+                raise LookupError(member)
+            return ()
+        if path == self.MENU and interface == "com.canonical.dbusmenu":
+            return await self._menu(caller, member, body)
+        if path == self.APPLICATION and interface == "org.freedesktop.Application" \
+                and member in {"Activate", "Open", "ActivateAction"}:
+            await self.events.put(("trayMenuItemClicked", {"id": "open"}))
+            return ()
+        raise LookupError(member)
+
+    async def _menu(self, caller, member, body):
+        entries = {index: item for index, item in enumerate(self.items, 1)}
+        if member == "GetLayout":
+            children = [("(ia{sv}av)", (index, self._entry(item), [])) for index, item in entries.items()]
+            return "u(ia{sv}av)", (self.revision, (0, {"children-display": ("s", "submenu")}, children))
+        if member == "GetGroupProperties":
+            wanted = body[0] or list(entries)
+            return "a(ia{sv})", ([(index, self._entry(entries[index])) for index in wanted if index in entries],)
+        if member == "GetProperty":
+            entry = self._entry(entries[body[0]]) if body[0] in entries else {}
+            if body[1] not in entry:
+                raise LookupError(body[1])
+            return "v", (entry[body[1]],)
+        if member in {"Event", "EventGroup"}:
+            unknown, chosen = [], []
+            for index, event, _data, _time in ([body] if member == "Event" else body[0]):
+                item = entries.get(index)
+                if item is None:
+                    unknown.append(index)
+                elif event == "clicked" and item.get("id") and not item.get("isDisabled"):
+                    chosen.append(item["id"])
+            # The boundary: an action is the tray host's, checked before any of
+            # the group is taken.
+            refused = [choice for choice in chosen if choice in self.ACTIONS]
+            if refused and not await self._host(caller):
+                raise PermissionError(", ".join(refused))
+            for choice in chosen:
+                await self.events.put(("trayMenuItemClicked", {"id": choice}))
+            return ("ai", (unknown,)) if member == "EventGroup" else ()
+        if member == "AboutToShow":
+            return "b", (False,)
+        if member == "AboutToShowGroup":
+            return "aiai", ([], [])
+        raise LookupError(member)
+
+    @staticmethod
+    def _entry(item: dict) -> dict:
+        if item.get("text") == "-":
+            return {"type": ("s", "separator")}
+        return {"label": ("s", item.get("text", "")), "enabled": ("b", not item.get("isDisabled"))}
+
+    def _properties(self, path: str, interface: str) -> dict:
+        if path == self.ITEM and interface in {"org.kde.StatusNotifierItem", ""}:
+            return {"Category": ("s", "ApplicationStatus"), "Id": ("s", APP_ID), "Title": ("s", "DebridPulse"),
+                    "Status": ("s", "Active"), "WindowId": ("i", 0), "IconName": ("s", ""),
+                    "IconPixmap": ("a(iiay)", self.pixmaps), "IconThemePath": ("s", ""),
+                    "OverlayIconName": ("s", ""), "OverlayIconPixmap": ("a(iiay)", []),
+                    "AttentionIconName": ("s", ""), "AttentionIconPixmap": ("a(iiay)", []),
+                    "AttentionMovieName": ("s", ""),
+                    "ToolTip": ("(sa(iiay)ss)", ("", [], "DebridPulse", self.status_line)),
+                    "ItemIsMenu": ("b", False), "Menu": ("o", self.MENU)}
+        if path == self.MENU and interface in {"com.canonical.dbusmenu", ""}:
+            return {"Version": ("u", 3), "TextDirection": ("s", "ltr"), "Status": ("s", "normal"),
+                    "IconThemePath": ("as", [])}
+        raise LookupError(interface)
+
+    def _introspection(self, path: str) -> str:
+        interfaces = {self.ITEM: ["org.kde.StatusNotifierItem"], self.MENU: ["com.canonical.dbusmenu"],
+                      self.APPLICATION: ["org.freedesktop.Application"]}.get(path, [])
+        children = sorted({part.split("/")[1] for part in (self.ITEM, self.MENU, self.APPLICATION)}) \
+            if path == "/" else []
+        standard = ["org.freedesktop.DBus.Introspectable", "org.freedesktop.DBus.Peer",
+                    "org.freedesktop.DBus.Properties"] if interfaces else ["org.freedesktop.DBus.Introspectable"]
+        return ("<node>" + "".join(f'<interface name="{name}"/>' for name in standard + interfaces)
+                + "".join(f'<node name="{child}"/>' for child in children) + "</node>")
 
 
 # ── the run ────────────────────────────────────────────────────────────────
@@ -630,20 +1069,17 @@ LIFECYCLE_NOTICES = {"transfer.accepted": "desktop.notice.accepted", "transfer.c
                      "transfer.paused": "transfer.action.paused_toast"}
 
 
-def notices(events: list[dict], previous: dict[int, str], words: Words) -> list[tuple[str, str]]:
+def notices(events: list[dict], words: Words) -> list[tuple[str, str]]:
     """The notices for one batch of journal events: one per eligible
-    transition, a bulk Pause or Resume coalesced into one. Resumed is a paused
-    transfer seen moving again in this run, never invented."""
+    transition, a bulk Pause or Resume coalesced into one. Resumed is what the
+    journal itself says resumed (a transition out of Paused, ``outcome``
+    ``resumed``), never inferred here."""
     shown, paused, resumed = [], [], []
     for event in events:
-        transfer, kind = event.get("transfer_id"), event.get("type")
-        before = previous.get(transfer) if transfer is not None else None
-        if transfer is not None:
-            previous[transfer] = kind
-        name = str(event.get("name") or "")
+        kind, name = event.get("type"), str(event.get("name") or "")
         if kind == "transfer.paused":
             paused.append(name)
-        elif kind in {"transfer.queued", "transfer.transferring"} and before == "transfer.paused":
+        elif event.get("outcome") == "resumed":
             resumed.append(name)
         elif kind in LIFECYCLE_NOTICES:
             shown.append((words(LIFECYCLE_NOTICES[kind]), name))
@@ -656,11 +1092,16 @@ def notices(events: list[dict], previous: dict[int, str], words: Words) -> list[
     return shown
 
 
-def tray_menu(status: dict | None, words: Words) -> dict:
+def tray_menu(status: dict | None, words: Words, platform: str = sys.platform) -> dict:
+    """The tray: its icon (macOS: a template image the menu bar tints for its
+    appearance), the status line, Open, the one of Pause All / Resume All
+    that applies, Quit."""
     line = words("desktop.tray.status", active=int((status or {}).get("active", 0)),
                  queued=int((status or {}).get("queued", 0)))
     paused = bool((status or {}).get("paused"))
-    return {"icon": "/resources/icons/tray.png", "menuItems": [
+    icon = {"icon": "/resources/icons/trayTemplate.png", "useTemplateIcon": True} if platform == "darwin" \
+        else {"icon": "/resources/icons/tray.png"}
+    return {**icon, "menuItems": [
         {"id": "status", "text": line, "isDisabled": True},
         {"text": "-"},
         {"id": "open", "text": words("desktop.tray.open")},
@@ -671,13 +1112,46 @@ def tray_menu(status: dict | None, words: Words) -> dict:
     ]}
 
 
+def main_menu(words: Words) -> list:
+    """macOS: the application menu (Neutralino's ``window.setMainMenu`` takes
+    the menu list itself), with Quit on Cmd+Q, chosen as the loop's own event
+    (``mainMenuItemClicked``, an item without a native ``action``), never
+    NSApp's termination."""
+    return [{"id": "app", "text": "DebridPulse", "menuItems": [
+        {"id": "quit", "text": words("desktop.tray.quit"), "shortcut": "q"}]}]
+
+
+def open_methods(*, hidden: bool, minimized: bool) -> tuple[str, ...]:
+    """Open's native calls for the window as it is. Hidden (closed to the
+    tray): shown again and raised. Minimized: unminimized and raised -- on
+    Wayland a client cannot unminimize itself, so the compositor decides and
+    the taskbar always restores it. Shown: raised."""
+    if hidden:
+        return ("window.show", "window.focus")
+    if minimized:
+        return ("window.unminimize", "window.focus")
+    return ("window.focus",)
+
+
+def backend_argv(paths: dict[str, Path], port: int) -> list[str]:
+    return [sys.executable, "-I", "-m", "uvicorn", "main:app", "--app-dir", str(paths["backend"]),
+            "--host", "127.0.0.1", "--port", str(port), "--workers", "1", "--no-access-log",
+            "--timeout-graceful-shutdown", str(GRACEFUL_SECONDS)]
+
+
 async def run() -> int:
     paths = layout()
     root = data_root()
     lock = single_instance(root)
     if lock is None:
+        if sys.platform.startswith("linux") and await SessionBus.activate_running():
+            return 0      # the running instance opens its window
         logger.error("DebridPulse is already running for this account")
         return 3
+    (root / "logs").mkdir(parents=True, exist_ok=True)
+    diagnostics = logging.FileHandler(root / "logs" / "desktop.log", encoding="utf-8")
+    diagnostics.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(diagnostics)
     sys.path.insert(0, str(paths["backend"]))
     os.environ["STATIC_DIR"] = str(paths["static"])
     from executors.process_ownership import ProcessOwnership
@@ -700,20 +1174,20 @@ async def run() -> int:
                                    if path.is_dir()), os.environ.get("PATH", "")]),
         "HOME" if os.name != "nt" else "USERPROFILE": str(Path.home()),
     })
-    for key in ("APPDATA", "LOCALAPPDATA", "TEMP", "TMP") if os.name == "nt" else ("TMPDIR", "XDG_DATA_HOME"):
+    for key in ("APPDATA", "LOCALAPPDATA", "TEMP", "TMP") if os.name == "nt" \
+            else ("TMPDIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
         if os.environ.get(key):
             env[key] = os.environ[key]
-    argv = [sys.executable, "-I", "-m", "uvicorn", "main:app", "--app-dir", str(paths["backend"]),
-            "--host", "127.0.0.1", "--port", str(port), "--workers", "1", "--no-access-log"]
     for stale in (BACKEND_ID, SHELL_ID):   # a previous run that crashed: its groups end before ours start
         if processes.alive(stale):
             await processes.terminate(None, stale, grace=10)
         processes.forget(stale)
-    backend = await processes.spawn(BACKEND_ID, argv, env=env, pass_fds=(request_end, answer_end))
+    backend = await processes.spawn(BACKEND_ID, backend_argv(paths, port), env=env,
+                                    pass_fds=(request_end, answer_end))
     channel.started()
     drains = [asyncio.ensure_future(_drain(stream, root / "logs" / "backend.log"))
               for stream in (backend.process.stdout, backend.process.stderr)]
-    shell = None
+    shell = shell_process = bus = None
     try:
         async with aiohttp.ClientSession() as session:
             await _ready(session, port, backend)
@@ -736,11 +1210,23 @@ async def run() -> int:
                        for stream in (shell_process.process.stdout, shell_process.process.stderr)]
             shell = Shell(session)
             await shell.connect(auth_file, time.monotonic() + READY_SECONDS)
-            return await _serve(shell, channel, words, backend)
+            if sys.platform.startswith("linux"):
+                bus = await SessionBus.open(shell.events, paths["shell"] / "resources" / "icons")
+            try:
+                return await _serve(shell, channel, words, backend, bus or shell)
+            finally:
+                # Quit, in order: the shell and its page first, so no request
+                # of the page is left open to hold the backend's shutdown.
+                await _end_shell(shell, shell_process, processes)
     finally:
+        if bus is not None:
+            await bus.close()
         channel.close()
         if not await _ended(backend, QUIT_SECONDS):
+            logger.error("the DebridPulse backend did not stop in %ss; ending it forcibly", QUIT_SECONDS)
             await processes.terminate(backend, BACKEND_ID, grace=5)
+        logger.info("the DebridPulse backend ended %s (%s)", "through its own shutdown"
+                    if backend.process.returncode == 0 else "abnormally", backend.process.returncode)
         processes.forget(BACKEND_ID)
         if processes.alive(SHELL_ID):
             await processes.terminate(None, SHELL_ID, grace=5)
@@ -750,43 +1236,123 @@ async def run() -> int:
         lock.close()
 
 
-async def _serve(shell: Shell, channel: Channel, words: Words, backend) -> int:
+async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) -> int:
+    """One run's loop. ``native`` shows the tray and the notices (the shell,
+    or Linux's ``SessionBus``); the window is always the shell's."""
     cursor = (await channel.ask("events"))["cursor"]
     status = (await channel.ask("status")).get("status")
-    await shell.call("os.setTray", tray_menu(status, words))
-    previous: dict[int, str] = {}
+    await native.tray(tray_menu(status, words))
+    if sys.platform == "darwin":
+        # The application menu: its Quit (Cmd+Q) is this loop's Quit, never
+        # the shell's own termination (_end_shell).
+        await _window(shell, "window.setMainMenu", main_menu(words))
+    hidden = False                              # this loop hid the window (close-to-tray)
+    minimized = False                           # the shell says it is minimized (its own events)
     next_poll = time.monotonic() + POLL_SECONDS
     while backend.process.returncode is None:
         try:
             event, data = await asyncio.wait_for(shell.events.get(), max(0.1, next_poll - time.monotonic()))
         except TimeoutError:
             event, data = None, None
-        if event == "windowClose":
-            await shell.call("window.hide")
+        if event in {"windowMinimize", "windowRestore"}:
+            minimized = event == "windowMinimize"
+        elif event == "windowClose":
+            # Hidden only where the tray can open it again; otherwise the
+            # window stays one click away (and DebridPulse keeps running).
+            hidden = native.tray_shown
+            await _window(shell, "window.hide" if hidden else "window.minimize")
+            minimized = minimized or not hidden
+        elif event == "trayAvailability" and not (data or {}).get("shown") and hidden:
+            # The tray went away while it was the only way back: the window
+            # returns, minimized, where the desktop can still open it.
+            logger.warning("the tray went away while the window was hidden; showing it minimized")
+            hidden, minimized = False, True
+            for method in ("window.show", "window.minimize"):
+                await _window(shell, method)
+        elif event == "mainMenuItemClicked" and (data or {}).get("id") == "quit":
+            logger.info("Quit (the application menu, Cmd+Q)")
+            return 0
         elif event == "trayMenuItemClicked":
             chosen = (data or {}).get("id")
             if chosen == "open":
-                await shell.call("window.show")
-                await shell.call("window.unminimize")
-                await shell.call("window.focus")
+                # What Open can do depends on what the window is: a window this
+                # loop hid is shown again (the shell maps it); a minimized one
+                # is asked to come back, which on Wayland is the compositor's
+                # to grant (the taskbar always can); a shown one is raised.
+                methods = open_methods(hidden=hidden, minimized=minimized)
+                logger.info("Open: the window was %s; %s", "hidden" if hidden else "minimized" if minimized
+                            else "shown", ", ".join(methods))
+                hidden = False
+                for method in methods:
+                    await _window(shell, method)
             elif chosen in {"pause", "resume"}:
                 await channel.ask(chosen)
                 next_poll = 0
             elif chosen == "quit":
+                logger.info("Quit (the tray)")
                 return 0
         elif event == "shellClosed":
+            # The shell ended by itself (macOS: its own termination, the Dock's
+            # Quit); its exit status is recorded where it ends (_end_shell).
+            logger.info("the native shell ended by itself")
             return 0
         if time.monotonic() >= next_poll:
             batch = await channel.ask("events", after=cursor)
             cursor = batch.get("cursor", cursor)
-            for title, body in notices(batch.get("events") or [], previous, words):
-                await shell.call("os.showNotification", {"title": title, "content": body or title})
+            for title, body in notices(batch.get("events") or [], words):
+                await native.notice(title, body)
             current = (await channel.ask("status")).get("status")
-            if current != status:
+            if current != status or not native.tray_shown:
                 status = current
-                await shell.call("os.setTray", tray_menu(status, words))
+                await native.tray(tray_menu(status, words))
             next_poll = time.monotonic() + POLL_SECONDS
-    return 1   # the backend ended on its own
+    logger.error("the DebridPulse backend ended on its own (%s)", backend.process.returncode)
+    return 1
+
+
+async def _end_shell(shell: Shell, owned, processes) -> None:
+    """The native shell's end at Quit, in order, recorded as what it is -- the
+    shell's end, never the backend's.
+
+    * macOS: its own ``app.exit``. The shell DebridPulse builds
+      (packaging/desktop/neutralino/macos-main-thread-shutdown.patch) tears its
+      status item and window down on the main thread, and a termination
+      signal is an event on its main queue that ends it the same way.
+    * Linux: SIGTERM; its handler runs ``cleanupTray`` (a no-op: the tray is
+      the supervisor's) and ``_Exit``.
+    * Windows: its job, as the process owner ends one.
+
+    Only a shell that does not end in time is stopped by the process owner
+    (SIGTERM, then SIGKILL: the bounded fallback for a stuck process), and
+    the log says so. The shell keeps nothing to save."""
+    if owned.process.returncode is not None or await _ended(owned, 0.5):
+        code = owned.process.returncode
+        logger.info("the native shell had ended by itself (%s%s)", code,
+                    f": signal {-code}, abnormal" if code is not None and code < 0 else "")
+        return
+    if sys.platform == "darwin":
+        try:
+            await shell.exit()
+        except (OSError, RuntimeError) as exc:
+            logger.warning("the native shell was not asked to exit: %s", exc)
+        if await _ended(owned, SHELL_EXIT_SECONDS):
+            logger.info("the native shell exited by its own app.exit (%s)", owned.process.returncode)
+            return
+        logger.error("the native shell did not exit in %ss; stopping it", SHELL_EXIT_SECONDS)
+    ended = await processes.terminate(owned, SHELL_ID, grace=SHELL_EXIT_SECONDS)
+    code = owned.process.returncode
+    how = ("its job ended" if os.name == "nt"
+           else "SIGTERM, through its own handler" if code == 128 + 15
+           else "SIGTERM" if code == -15 else "forcibly, SIGKILL after an unanswered SIGTERM")
+    logger.info("the native shell was ended by the supervisor: %s%s (%s)", how,
+                "" if ended else " -- NOT proven gone", code)
+
+
+async def _window(shell: Shell, method: str, data: dict | list | None = None) -> None:
+    try:
+        await shell.call(method, data)
+    except NativeError as exc:
+        logger.error("the window did not respond: %s", exc)
 
 
 async def _ready(session, port: int, backend) -> None:

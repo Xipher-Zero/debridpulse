@@ -30,6 +30,11 @@ _STATE_LABELS = {
 _STATE_OUTCOMES = {
     TransferState.COMPLETED: "succeeded", TransferState.FAILED: "failed", TransferState.CANCELLED: "cancelled",
 }
+# Leaving Paused for one of these is a resume: the outcome says so, as a fact
+# of the transition, for whoever reads the journal (the desktop's notices).
+_RESUMED_INTO = frozenset({TransferState.ACCEPTED, TransferState.RESOLVING, TransferState.INPUT_REQUIRED,
+                           TransferState.READY, TransferState.QUEUED, TransferState.TRANSFERRING,
+                           TransferState.VERIFYING, TransferState.POST_PROCESSING})
 
 
 def _with_error(message: str, error) -> str:
@@ -57,8 +62,9 @@ def lifecycle(transfer_id: int, previous: str, target, error=None) -> JournalEve
         before = _STATE_LABELS[TransferState(previous)][0].replace("_", " ")
     except ValueError:
         before = None
+    resumed = previous == TransferState.PAUSED and target in _RESUMED_INTO
     return _transfer(transfer_id, f"transfer.{label}", severity, _with_error(message, error),
-                     outcome=_STATE_OUTCOMES.get(target), error=error,
+                     outcome=_STATE_OUTCOMES.get(target) or ("resumed" if resumed else None), error=error,
                      detail=f"Previously {before}" if before and previous != target else None)
 
 

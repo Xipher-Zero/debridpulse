@@ -15,8 +15,9 @@ The tray asks four things, each answered by its existing owner:
 * ``status`` -- the ``/api/stats`` counters (``api.routes.get_stats``),
   projected to five numbers;
 * ``events`` -- the activity journal (``db.event_journal.page``) after a
-  cursor, transfer lifecycle events only, projected to identifiers, type,
-  outcome and the transfer's name (no message, detail or error text);
+  cursor, transfer lifecycle events only (a resume: the outcome
+  ``resumed``), projected to identifiers, type, outcome and the transfer's
+  name (no message, detail or error text);
 * ``pause`` / ``resume`` -- ``ApplicationService.pause_all`` / ``resume_all``.
 
 One JSON object per line in, ``{"id": <int>, "op": <name>, ...}``; one line
@@ -124,7 +125,8 @@ async def answer(application, request) -> dict:
     items = sorted(page["items"], key=lambda item: item["id"])
     cursor = max([after, *(item["id"] for item in items)])
     return {"id": ident, "cursor": cursor,
-            "events": [_project_event(item) for item in items if item["type"] in LIFECYCLE]}
+            "events": [_project_event(item) for item in items
+                       if item["type"] in LIFECYCLE or item.get("outcome") == "resumed"]}
 
 
 def serve(application, loop: asyncio.AbstractEventLoop, channel) -> threading.Thread:

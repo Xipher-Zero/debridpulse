@@ -203,6 +203,20 @@ files under its `*.dist-info/licenses/`, which the installer ships unchanged.
 | pywin32 | 312 | PSF (its package metadata); its win32, COM and Pythonwin files carry Mark Hammond's BSD-style notice, and it also bundles adodbapi (LGPL-2.1-or-later), Microsoft's MAPI stub library (MIT) and Scintilla (its own permissive licence), each with its licence file in the wheel. Needed by the bundled Usenet service (SABnzbd) on Windows. |
 | tzdata | 2026.6 | Apache-2.0 (needed by apprise on Windows) |
 
+### Linux desktop runtime additions
+
+The Linux desktop application (the Flatpak) installs
+`packaging/desktop/linux/requirements.txt`: every pin of `backend/requirements.txt`
+unchanged, plus the package below, the desktop supervisor's session-bus client
+(its tray, notices and opening the running instance). It ships only in the
+Flatpak, never in the container image. Its wheel installs its own licence file
+under `jeepney-0.9.0.dist-info/licenses/LICENSE`, which the Flatpak ships
+unchanged.
+
+| Package | Version | License |
+|---|---:|---|
+| jeepney | 0.9.0 | MIT (pure Python, no dependencies) |
+
 ### Desktop native components: licences, redistribution terms, notices and source
 
 What the desktop installers carry besides the Python packages above. "Notice"

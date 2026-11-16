@@ -11,7 +11,9 @@ its own disposable data root, and then attacks or uses it:
   locked operation, including the ones the tray just performed;
 * without a verified channel a desktop backend does not start; outside desktop
   mode no channel is served; the supervisor letting go stops the backend
-  through its own shutdown, and the old pipe ends are dead.
+  through its own shutdown, and the old pipe ends are dead -- also while a
+  page still holds the event stream open, under the supervisor's own command
+  line (``supervisor.backend_argv``).
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ ROOT = BACKEND.parent
 sys.path.insert(0, str(ROOT))
 
 from application import desktop_control  # noqa: E402
+from desktop import supervisor  # noqa: E402
 from desktop.supervisor import Channel, free_port  # noqa: E402
 from executors.process_ownership import ProcessOwnership  # noqa: E402
 
@@ -50,8 +53,10 @@ class Backend:
     """One real backend on a disposable root, started as the supervisor starts it."""
 
     def __init__(self, tmp_path: Path, *, desktop: bool = True, channel: bool = True, locked: bool = True,
-                 control: str | None = None, folder: bool = True):
+                 control: str | None = None, folder: bool = True, supervised: bool = False,
+                 env: dict | None = None):
         self.root, self.port = tmp_path, free_port()
+        self.supervised, self.env = supervised, env or {}
         self.processes = ProcessOwnership(tmp_path / "desktop-runtime")
         self.channel = Channel() if channel else None
         self.desktop, self.locked, self.control, self.folder = desktop, locked, control, folder
@@ -71,11 +76,13 @@ class Backend:
         for key in ("SYSTEMROOT", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA"):
             if os.environ.get(key):
                 extra[key] = os.environ[key]
+        extra.update(self.env)
         (self.root / "data").mkdir(parents=True, exist_ok=True)
-        self.owned = await self.processes.spawn("backend", [
+        argv = supervisor.backend_argv({"backend": BACKEND}, self.port) if self.supervised else [
             sys.executable, "-m", "uvicorn", "main:app", "--app-dir", str(BACKEND), "--host", "127.0.0.1",
-            "--port", str(self.port), "--workers", "1", "--no-access-log"],
-            env=self.processes.environment(extra), pass_fds=tuple(ends))
+            "--port", str(self.port), "--workers", "1", "--no-access-log"]
+        self.owned = await self.processes.spawn("backend", argv, env=self.processes.environment(extra),
+                                                pass_fds=tuple(ends))
         if self.channel:
             self.channel.started()
         self.log = asyncio.ensure_future(self._collect())
@@ -198,6 +205,48 @@ async def test_letting_go_of_the_channel_stops_the_backend_and_the_old_ends_are_
     backend.processes.forget("backend")
 
 
+async def _quit_with_an_open_event_stream(backend: Backend) -> tuple[float | None, int | None, bytes]:
+    """Quit (the channel let go) while a page holds /api/events/stream open:
+    how long the backend took to end, its exit status and what it logged."""
+    assert await backend.ready()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"http://127.0.0.1:{backend.port}/api/events/stream") as stream:
+            assert stream.status == 200
+            assert (await stream.content.readline()).startswith(b"event: connected")
+            started = time.monotonic()
+            backend.channel.close()
+            code = await backend.ended(supervisor.GRACEFUL_SECONDS + 30)
+            took = time.monotonic() - started if code is not None else None
+    await asyncio.sleep(0.2)
+    return took, code, getattr(backend, "stderr", b"")
+
+
+@pytest.mark.asyncio
+async def test_quit_is_not_held_by_a_page_that_keeps_the_event_stream_open(tmp_path):
+    backend = await Backend(tmp_path, supervised=True, locked=False).start()
+    try:
+        took, code, log = await _quit_with_an_open_event_stream(backend)
+        # The stream is cancelled once the graceful window has passed, and
+        # DebridPulse's own shutdown then runs to the end: a clean exit.
+        assert code == 0 and took is not None and took < supervisor.GRACEFUL_SECONDS + 20, (took, code)
+        assert b"Shutting down DebridPulse" in log
+    finally:
+        await backend.stop()
+
+
+@pytest.mark.asyncio
+async def test_without_the_graceful_bound_an_open_event_stream_holds_quit(tmp_path):
+    """The defect the bound removes: uvicorn waits for the open stream, and
+    the backend is still running when the supervisor's own wait would end it
+    forcibly."""
+    backend = await Backend(tmp_path, locked=False).start()
+    try:
+        took, code, _log = await _quit_with_an_open_event_stream(backend)
+        assert code is None and took is None
+    finally:
+        await backend.stop()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("control", ["", "not,numbers", "999990,999991", "file"])
 async def test_a_desktop_backend_without_a_verified_channel_does_not_start(tmp_path, control):
@@ -282,6 +331,60 @@ async def test_the_desktop_setup_is_standalone_and_goes_on_only_with_a_chosen_fo
         assert (await chosen.exchange("GET", "/api/setup/state"))[1]["initial"]["complete"] is True
     finally:
         await chosen.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name == "nt" or sys.platform == "darwin",
+                    reason="the user's Downloads folder named by the XDG user-dirs file (Linux)")
+async def test_the_desktop_folder_browser_opens_in_the_users_downloads_until_a_folder_is_chosen(tmp_path):
+    """Fresh desktop setup: the Download Folder browser opens in the user's own
+    Downloads folder (as user-dirs.dirs names it), else their home -- never the
+    root above the container's ``/download``; once a folder is chosen it opens
+    there, and an explicit path is still taken as asked."""
+    home, config = tmp_path / "home", tmp_path / "home" / ".config"
+    downloads = home / "Fetched Files"
+    downloads.mkdir(parents=True)
+    config.mkdir(parents=True)
+    (config / "user-dirs.dirs").write_text('# xdg-user-dirs\nXDG_DOWNLOAD_DIR="$HOME/Fetched Files"\n',
+                                           encoding="utf-8")
+    env = {"HOME": str(home), "XDG_CONFIG_HOME": str(config)}
+
+    async def opened(backend, query="purpose=download"):
+        status, body = await backend.exchange("GET", f"/api/settings/directories?{query}")
+        assert status == 200, body
+        return body["current"]["path"]
+
+    backend = await Backend(tmp_path / "desktop", locked=False, folder=False, env=env).start()
+    try:
+        assert await backend.ready()
+        assert await opened(backend) == str(downloads)
+        downloads.chmod(0)                               # there, but not browsable: the home
+        try:
+            assert await opened(backend) == str(home)
+        finally:
+            downloads.chmod(0o755)
+        downloads.rmdir()                                # missing: the home
+        assert await opened(backend) == str(home)
+        (home / "elsewhere").mkdir()                     # a path typed or selected is taken as asked
+        assert await opened(backend, f"purpose=download&path={home / 'elsewhere'}") == str(home / "elsewhere")
+        # Only the starting point: nothing was chosen or saved.
+        assert (await backend.exchange("GET", "/api/setup/state"))[1]["download_folder_chosen"] is False
+    finally:
+        await backend.stop()
+    # Relaunched with a chosen folder: it opens there.
+    chosen = await Backend(tmp_path / "desktop", locked=False, env=env).start()
+    try:
+        assert await chosen.ready()
+        assert await opened(chosen) == str(tmp_path / "desktop" / "downloads")
+    finally:
+        await chosen.stop()
+    # A server keeps its own default: the nearest browsable ancestor of its folder.
+    server = await Backend(tmp_path / "server", desktop=False, locked=False, folder=False, env=env).start()
+    try:
+        assert await server.ready()
+        assert await opened(server) == "/"
+    finally:
+        await server.stop()
 
 
 @pytest.mark.parametrize("op", [["pause"], {"action": "pause"}, ["status", "pause"], [], {}, 1, 1.5, True, None,

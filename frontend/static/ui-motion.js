@@ -21,6 +21,17 @@
  * first. Everything outside the surface stays still and live. With reduced
  * motion, or without the Web Animations API, the commit simply runs at once.
  *
+ * A companion is a second surface the same choice changes outside the one
+ * that slides (the page heading beside the main view region): it moves with
+ * the slide itself, never as a copy, so what it shows is always its owner's
+ * own drawing. What it showed leaves in the travel's first half, starting in
+ * the very frame the surface starts moving; its owner's commit for it runs at
+ * the midpoint; what that commit put there arrives in the second half, ending
+ * with the slide. Until the travel starts it keeps what it showed, so it never
+ * names a destination over content that has not begun to leave. Its commit
+ * runs exactly once: at the midpoint, or at once wherever there is no motion,
+ * or when the slide ends early (superseded or skipped).
+ *
  * A page turn slides at once, before its page is fetched: the owner's commit
  * draws a placeholder shaped like the destination (or the destination itself,
  * when its answer is already in), and resolve() crossfades the placeholder
@@ -145,12 +156,20 @@
    * only what its window showed travels -- the rest of its content is not
    * drawn while it moves -- so nothing outside either window crosses the
    * surface and the two never overlap. Only transforms move. */
-  function slide({element, axis = 'x', direction = 0, distance = 1, windowed = false}, commit) {
+  function slide({element, axis = 'x', direction = 0, distance = 1, windowed = false, companion = null}, commit) {
     const previous = element ? flights.get(element) : null;
     previous?.end();
     const idle = {done: Promise.resolve(), settled: Promise.resolve(), skip() {}};
+    // The companion's own commit, run once (see above).
+    let pending = typeof companion?.commit === 'function' ? companion.commit : null;
+    const follow = () => {
+      const run = pending;
+      pending = null;
+      run?.();
+    };
     if (!element || !direction || reduced() || typeof element.animate !== 'function') {
       commit();
+      follow();
       return idle;
     }
     const keeps = element.matches(KEEPS);
@@ -184,17 +203,18 @@
     }
 
     commit();
-    if (!element.isConnected || !element.parentNode) return idle;
+    if (!element.isConnected || !element.parentNode) { follow(); return idle; }
     // Kept: what was on screen and the commit hid. None (the destination is
     // what is already on screen): nothing moves.
     const host = keeps ? level(element) : element;
     const outgoing = shown.filter(({node}) => node.parentElement === host && !node.getClientRects().length);
-    if (keeps && !outgoing.length) return idle;
+    if (keeps && !outgoing.length) { follow(); return idle; }
 
     // Everything the slide puts in place, released by end() whether the slide
     // finishes, is skipped or superseded, or fails to start.
     const moving = new Map();                       // live node -> its animation
     const leaving = [];
+    const accompanying = [];                        // the companion's animations, in turn
     const held = [];                                // [element, property, value, priority]
     const marked = [];                              // [element, inert, aria-hidden]
     const unstyled = new Set();                     // elements that had no style attribute
@@ -217,6 +237,9 @@
         observer.disconnect();
         moving.forEach(animation => animation.cancel());
         leaving.forEach(animation => animation.cancel());
+        accompanying.forEach(animation => animation.cancel());
+        if (companion?.element) delete companion.element.dataset.dpMotionCompanion;
+        follow();                                   // never left half done
         ghost?.remove();
         // A kept element goes back to exactly what its owner made it.
         marked.forEach(([node, inert, hidden]) => {
@@ -344,6 +367,30 @@
       }
       const old = keeps ? outgoing.map(({node}) => node) : parts;
       leaving.push(...old.map(node => node.animate(leave, timing)));
+      // The companion: itself, out in the first half, in (after its commit) in
+      // the second, the same way and as far as its own box, clipped to it.
+      const other = companion?.element;
+      if (pending && other?.isConnected && typeof other.animate === 'function') {
+        const own = getComputedStyle(other);
+        if (own.overflowX === 'visible' && own.overflowY === 'visible') hold(other, 'overflow', 'clip');
+        const span = (axis === 'y' ? other.offsetHeight : other.offsetWidth) * Math.sign(travel);
+        other.dataset.dpMotionCompanion = '';
+        const out = other.animate([{transform: 'none', opacity: 1}, {transform: toward(-span), opacity: fade}],
+                                  {duration: duration / 2, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards'});
+        accompanying.push(out);
+        flight.accompanied = out.finished.then(() => {
+          if (flight.ended) return;
+          follow();
+          const back = other.animate([{transform: toward(span), opacity: fade}, {transform: 'none', opacity: 1}],
+                                     {duration: duration / 2, easing: 'cubic-bezier(0, 0, 0.2, 1)'});
+          // On the slide's own clock: from the midpoint itself, however late
+          // the engine noticed it, never behind the region it moves with.
+          if (out.startTime !== null) back.startTime = out.startTime + duration / 2;
+          out.cancel();                             // the second half draws it from here
+          accompanying.push(back);
+          return back.finished;
+        }).catch(() => {});
+      }
       lead = leaving[0] || null;
       Array.from(host.children).filter(node => drawn(node) && !node.hasAttribute('data-dp-motion-outgoing')).forEach(join);
       lead ||= moving.values().next().value || null;
@@ -353,7 +400,7 @@
        * leaves and what arrives would otherwise spend the travel's clock
        * before any of it is shown (WebKitGTK spent most of it). */
       flight.waiting = true;
-      [...leaving, ...moving.values()].forEach(animation => animation.pause());
+      [...leaving, ...moving.values(), ...accompanying].forEach(animation => animation.pause());
     } catch (_) {
       flight.end();
       return {done: Promise.resolve(), settled, skip() {}};
@@ -367,10 +414,11 @@
       requestAnimationFrame(() => {
         if (flight.ended) return;
         flight.waiting = false;
-        [...leaving, ...moving.values()].forEach(animation => animation.play());
+        [...leaving, ...moving.values(), ...accompanying].forEach(animation => animation.play());
       });
     });
-    Promise.all([...leaving, ...moving.values()].map(animation => animation.finished.catch(() => {}))).then(() => flight.end());
+    Promise.all([...leaving, ...moving.values()].map(animation => animation.finished.catch(() => {}))
+      .concat(flight.accompanied || [])).then(() => flight.end());
     return {done: Promise.resolve(), settled, skip: () => flight.end()};
   }
 
