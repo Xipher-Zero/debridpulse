@@ -5,8 +5,9 @@ workflow, the installer script and the recipes as committed.
   14.51+ before it changes anything. It carries Microsoft's own installer of it,
   signature-checked and unmodified, and runs it only interactively, with its
   own interface (Microsoft's licence terms); a silent install refuses instead.
-* The handover runs only after every build and smoke check, and publishes only
-  for the one commit an explicit approval names.
+* The handover publishes each platform that passed every build and smoke
+  check on its own, and the complete set only when all three passed in the
+  run, only for the one commit an explicit approval names.
 * RARLAB's RAR package is never cached or handed over as source.
 * The checksum file covers the manifest and every delivered file, not itself.
 """
@@ -104,18 +105,25 @@ def test_caches_carry_only_shareable_inputs_and_no_finished_bytes():
 APPROVED = "vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha"
 
 
-def test_the_handover_follows_every_build_and_smoke_check_and_publishes_only_an_approved_commit():
+def test_the_handover_publishes_each_passed_platform_and_the_complete_set_only_for_an_approved_commit():
     handover = JOBS["handover"]
     assert set(handover["needs"]) == {"inputs", "desktop"}
-    assert handover["if"] == f"success() && {APPROVED}"
+    assert handover["if"] == f"always() && needs.inputs.result == 'success' && {APPROVED}"
     uploads = [(job, step) for job, body in JOBS.items() for step in body["steps"]
                if "actions/upload-artifact" in step.get("uses", "")]
-    assert [(job, step["with"]["retention-days"]) for job, step in uploads] == [("desktop", 1), ("handover", 14)]
-    intermediate, final = uploads[0][1], uploads[1][1]
-    assert intermediate["if"] == f"success() && {APPROVED}"
+    assert [(job, step["with"]["retention-days"]) for job, step in uploads] == [("desktop", 1)] + [("handover", 14)] * 4
+    intermediate = uploads[0][1]
+    assert intermediate["if"] == f"success() && {APPROVED}"         # only a platform that passed every step
     assert intermediate["with"]["name"] == "desktop-intermediate-${{ matrix.name }}-${{ github.sha }}"
-    assert final["if"] == APPROVED
-    assert final["with"]["name"] == "desktop-installers-${{ github.sha }}${{ needs.inputs.outputs.suffix }}"
+    published = {step["with"]["name"]: step["if"] for _, step in uploads[1:]}
+    assert published == {
+        "desktop-installers-${{ github.sha }}-macos": f"steps.passed.outputs.macos == 'true' && {APPROVED}",
+        "desktop-installers-${{ github.sha }}-windows": f"steps.passed.outputs.windows == 'true' && {APPROVED}",
+        "desktop-installers-${{ github.sha }}-linux": f"steps.passed.outputs.linux == 'true' && {APPROVED}",
+        "desktop-installers-${{ github.sha }}": f"steps.passed.outputs.complete == 'true' && {APPROVED}"}
+    passed = next(step for step in _steps("handover") if step.get("id") == "passed")["run"]
+    assert 'if [ -f "desktop-build/$os/COMMIT" ]' in passed
+    assert '[ "$passed" != "macos windows linux" ] || echo "complete=true"' in passed
     download = next(step for step in _steps("handover") if "actions/download-artifact" in step.get("uses", ""))
     assert download["with"]["pattern"] == "desktop-intermediate-*-${{ github.sha }}"
     cleanup = JOBS["intermediates"]
@@ -133,8 +141,9 @@ def _plan(variable: str, sha: str, smoke_passed: dict[str, bool]) -> dict:
     step's success() holds only when every earlier step of its job passed; a job's success() only when
     every job it needs passed; always() regardless."""
     approved = variable == sha
-    return {"intermediate artifacts": sorted(name for name, passed in smoke_passed.items() if passed and approved),
-            "handover and its artifact": approved and all(smoke_passed.values()),
+    passed = sorted(name for name, ok in smoke_passed.items() if ok and approved)
+    return {"intermediate artifacts": passed,
+            "published": passed + (["complete set"] if approved and all(smoke_passed.values()) else []),
             "intermediates deleted at the end": approved}
 
 
@@ -142,14 +151,16 @@ def test_unset_mismatched_and_matching_approvals_with_and_without_a_failed_smoke
     sha = "55d9fbceb5fc95341a5ce61c3425f76cab6d0845"
     passing = {"macos-arm64": True, "windows-x64": True, "linux-x64": True}
     failing = {**passing, "windows-x64": False}
-    nothing = {"intermediate artifacts": [], "handover and its artifact": False, "intermediates deleted at the end": False}
+    nothing = {"intermediate artifacts": [], "published": [], "intermediates deleted at the end": False}
     assert _plan("", sha, passing) == nothing                                  # unset
     assert _plan("0" * 40, sha, passing) == nothing                            # another commit
     assert _plan(sha[:12], sha, passing) == nothing                            # not the FULL sha
     assert _plan(sha, sha, passing) == {"intermediate artifacts": ["linux-x64", "macos-arm64", "windows-x64"],
-                                        "handover and its artifact": True, "intermediates deleted at the end": True}
+                                        "published": ["linux-x64", "macos-arm64", "windows-x64", "complete set"],
+                                        "intermediates deleted at the end": True}
+    # One platform failing (or never given a runner) holds nothing else back: the others publish.
     assert _plan(sha, sha, failing) == {"intermediate artifacts": ["linux-x64", "macos-arm64"],
-                                        "handover and its artifact": False, "intermediates deleted at the end": True}
+                                        "published": ["linux-x64", "macos-arm64"], "intermediates deleted at the end": True}
 
 
 def test_the_rar_package_is_never_cached_or_handed_over_as_source():
@@ -339,18 +350,14 @@ def test_any_change_to_what_the_installers_ship_builds_them():
         assert required in paths, required
 
 
-def test_a_push_builds_all_three_and_a_dispatch_may_build_a_part_of_the_set():
-    """A platform whose hosted runners are short (macOS arm64, held for capacity) need not hold the
-    others back: a dispatch builds windows-linux or macos alone, under its own artifact name; a push
-    always builds all three, under the plain one."""
+def test_a_push_builds_all_three_and_a_dispatch_may_build_one_platform():
+    """A push always builds all three; a dispatch may build one platform alone (macOS arm64's runners
+    have been held for capacity), published on its own like every platform."""
     dispatch = WORKFLOW[True]["workflow_dispatch"]["inputs"]["platforms"]
-    assert dispatch["default"] == "all" and dispatch["options"] == ["all", "windows-linux", "macos", "linux"]
+    assert dispatch["default"] == "all" and dispatch["options"] == ["all", "macos", "windows", "linux"]
     plan = next(step for step in _steps("inputs") if step.get("id") == "plan")
     assert plan["env"]["CHOICE"] == "${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}"
-    for line in ('all) platforms="macos windows linux"; suffix="" ;;',
-                 'windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;',
-                 'macos) platforms="macos"; suffix="-macos" ;;',
-                 'linux) platforms="linux"; suffix="-linux" ;;'):
+    for line in ('all) platforms="macos windows linux" ;;', 'macos|windows|linux) platforms="$CHOICE" ;;'):
         assert line in plan["run"]
     assert JOBS["desktop"]["strategy"]["matrix"] == "${{ fromJSON(needs.inputs.outputs.matrix) }}"
     assert '[[ "$platforms" == *" $os "* ]] || continue' in _run("handover")

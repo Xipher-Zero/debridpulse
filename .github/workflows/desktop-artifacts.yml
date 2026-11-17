@@ -50,14 +50,17 @@
 # artifact is made. Equal: each platform job, once all its steps passed, hands
 # its smoke-tested outputs to the combined handover as an intermediate artifact
 # of this run (desktop-intermediate-<platform>-<sha>, 1 day); the handover runs
-# only when every platform and smoke check passed, requires exactly one EXE,
-# DMG and Flatpak stamped with this commit and run and matching their builders'
-# SHA256SUMS, assembles their corresponding source
+# once the shared inputs passed, takes exactly the platforms that passed every
+# step -- one EXE, DMG or Flatpak each, stamped with this commit and run and
+# matching its builder's SHA256SUMS --, assembles their corresponding source
 # (DebridPulse-<version>-desktop-sources-*.tar: the recipes' source archives,
 # patches and recipes -- sources only, never RAR's package --, the MSYS2
 # runtime's and NSIS's sources, the copyleft Python packages, SABnzbd and
-# DebridPulse itself), then MANIFEST.md and SHA256SUMS over all of it, and
-# uploads the ONE user-facing artifact, desktop-installers-<sha>, kept 14 days;
+# DebridPulse itself), and publishes, kept 14 days, each platform on its own
+# (desktop-installers-<sha>-macos, -windows, -linux: the installer and the
+# corresponding source, with MANIFEST.md and SHA256SUMS over all of it), so a
+# platform whose runners are short never holds the others back, and, when all
+# three passed in this run, the complete set as desktop-installers-<sha>;
 # the intermediates job then deletes this run's intermediate artifacts,
 # whatever the handover's outcome. This repository is public: anyone signed in
 # to GitHub can download its workflow artifacts, the intermediates too while
@@ -90,17 +93,16 @@ on:
       - 'licenses/**'
       - 'LICENSES/**'
       - '.github/workflows/desktop-artifacts.yml'
-  # A dispatch may build a part of the set: when a platform's hosted runners
-  # are short (macOS arm64 has been held for capacity), the others publish
-  # without it, and it is built in a run of its own as often as it takes. A
-  # push always builds all three.
+  # A dispatch may build one platform alone (macOS arm64's hosted runners have
+  # been held for capacity): it is published on its own as every platform is.
+  # A push always builds all three.
   workflow_dispatch:
     inputs:
       platforms:
         description: Which installers this run builds and publishes
         type: choice
         default: all
-        options: [all, windows-linux, macos, linux]
+        options: [all, macos, windows, linux]
 
 permissions:
   contents: read
@@ -120,20 +122,16 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       platforms: ${{ steps.plan.outputs.platforms }}
-      suffix: ${{ steps.plan.outputs.suffix }}
     steps:
-      # The platforms this run builds: all three on a push, the dispatch's choice otherwise. The
-      # artifact of a part of the set is named for it (desktop-installers-<sha>-windows-linux, -macos).
+      # The platforms this run builds: all three on a push, the dispatch's choice otherwise.
       - name: The platforms this run builds
         id: plan
         env:
           CHOICE: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}
         run: |
           case "$CHOICE" in
-            all) platforms="macos windows linux"; suffix="" ;;
-            windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;
-            macos) platforms="macos"; suffix="-macos" ;;
-            linux) platforms="linux"; suffix="-linux" ;;
+            all) platforms="macos windows linux" ;;
+            macos|windows|linux) platforms="$CHOICE" ;;
             *) echo "unknown platforms: $CHOICE"; exit 1 ;;
           esac
           entries=()
@@ -147,7 +145,6 @@ jobs:
           matrix="{\"include\":[$(IFS=,; echo "${entries[*]}")]}"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "platforms=$platforms" >> "$GITHUB_OUTPUT"
-          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
           echo "Building: $platforms" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -558,11 +555,13 @@ jobs:
           path: desktop-build/
 
   handover:
-    name: Installers and their corresponding source (approved commit only; one artifact)
+    name: Installers and their corresponding source (approved commit only; each platform, and the complete set)
     needs: [inputs, desktop]
-    # Only for the one commit DESKTOP_INSTALLERS_UPLOAD_SHA names in full, and only when every platform's
-    # build and smoke checks passed; any other run ends with its installers on their build runners.
-    if: success() && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+    # Only for the one commit DESKTOP_INSTALLERS_UPLOAD_SHA names in full, once the shared inputs passed:
+    # it publishes each platform that passed every build and smoke check (only those hand over an
+    # intermediate artifact), whatever became of the others; any other run ends with its installers on
+    # their build runners.
+    if: always() && needs.inputs.result == 'success' && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -586,10 +585,22 @@ jobs:
           pattern: desktop-intermediate-*-${{ github.sha }}
           merge-multiple: true
           path: desktop-build
+      - name: The platforms that passed (each handed over its smoke-tested outputs)
+        id: passed
+        run: |
+          passed=""
+          for os in macos windows linux; do
+            if [ -f "desktop-build/$os/COMMIT" ]; then passed="$passed $os"; echo "$os=true" >> "$GITHUB_OUTPUT"; fi
+          done
+          passed="${passed# }"
+          [ -n "$passed" ] || { echo "no platform passed: nothing to publish"; exit 1; }
+          echo "platforms=$passed" >> "$GITHUB_OUTPUT"
+          [ "$passed" != "macos windows linux" ] || echo "complete=true" >> "$GITHUB_OUTPUT"
+          echo "Passed and published: $passed" >> "$GITHUB_STEP_SUMMARY"
       - name: The installers -- exactly one of each, from this commit, matching the SHA256SUMS of the job that built it
         run: |
           version="$(tr -d '[:space:]' < VERSION)"; h="$RUNNER_TEMP/desktop-installers"; mkdir -p "$h"
-          platforms=" ${{ needs.inputs.outputs.platforms }} "
+          platforms=" ${{ steps.passed.outputs.platforms }} "
           for spec in "macos:DebridPulse-$version-macos-arm64.dmg:*.dmg" "windows:DebridPulse-$version-windows-x64.exe:*.exe" \
                       "linux:DebridPulse-$version-linux-x86_64.flatpak:*.flatpak"; do
             IFS=: read -r os expected pattern <<<"$spec"; dir="desktop-build/$os"
@@ -612,7 +623,7 @@ jobs:
       - name: Their corresponding source (the tool builds' own source archives, patches and recipes)
         run: |
           version="$(tr -d '[:space:]' < VERSION)"; name="DebridPulse-$version-desktop-sources-${GITHUB_SHA:0:12}"
-          platforms=" ${{ needs.inputs.outputs.platforms }} "
+          platforms=" ${{ steps.passed.outputs.platforms }} "
           src="$RUNNER_TEMP/$name"; mkdir -p "$src"/{debridpulse,macos-and-flatpak-tools,windows-tools,sabnzbd,python}
           # DebridPulse itself at this commit: the application, the desktop shell glue and every recipe.
           git archive --prefix="debridpulse-$GITHUB_SHA/" -o "$src/debridpulse/debridpulse-$GITHUB_SHA.tar.gz" HEAD
@@ -663,40 +674,84 @@ jobs:
             echo; echo '```'; (cd "$src" && find . -type f ! -name SOURCES.md | sort | xargs sha256sum); echo '```'
           } > "$src/SOURCES.md"
           tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/desktop-installers/$name.tar" "$name"
+      - name: The sets -- each platform with the corresponding source, and the complete set when all three passed
+        run: |
+          h="$RUNNER_TEMP/desktop-installers"; sets="$RUNNER_TEMP/sets"; mkdir -p "$sets"
+          for os in ${{ steps.passed.outputs.platforms }}; do
+            mkdir -p "$sets/$os"
+            cp "$h"/DebridPulse-*-desktop-sources-*.tar "$h/BUILD-INFO-$os.json" "$sets/$os/"
+            case "$os" in
+              macos) cp "$h"/*.dmg "$sets/$os/" ;;
+              windows) cp "$h"/*.exe "$h/PREREQUISITES.txt" "$h/TOOLCHAIN.txt" "$sets/$os/" ;;
+              linux) cp "$h"/*.flatpak "$h/flatpak-first-run.png" "$sets/$os/" ;;
+            esac
+            if [ -f "$h/RESULTS-$os.txt" ]; then cp "$h/RESULTS-$os.txt" "$sets/$os/"; fi
+          done
+          if [ "${{ steps.passed.outputs.complete }}" = true ]; then cp -r "$h" "$sets/complete"; fi
       - name: The manifest, then SHA256SUMS over everything delivered (the manifest included; SHA256SUMS lists no hash of itself)
         run: |
-          h="$RUNNER_TEMP/desktop-installers"; cd "$h"
-          payload=$(find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name MANIFEST.md -printf '%f\n' | sort)
-          {
-            echo "# DebridPulse desktop TEST installers (unsigned; not a release)"
-            echo
-            echo "- Source commit: $GITHUB_SHA"
-            echo "- Source tree: $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}')"
-            echo "- Build run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
-            echo "- Platforms in this set: ${{ needs.inputs.outputs.platforms }} (a set without one is completed by a run that builds it)"
-            echo "- Every build and smoke check of these passed (this job runs only then): inputs ${{ needs.inputs.result }}, desktop (macOS, Windows with its install check, Linux with its Flatpak checks, as built) ${{ needs.desktop.result }}"
-            echo "- Signing: Windows EXE unsigned (no Authenticode); macOS DMG/app ad hoc signed only, not notarized; Flatpak bundle unsigned (no GPG)."
-            echo "- Prerequisite not included: the Microsoft Visual C++ x64 Redistributable 14.51+ (the installer sends the user to Microsoft's download)."
-            echo "- Corresponding source: the *-desktop-sources-*.tar (SOURCE_OFFER.md, \"The desktop applications\")."
-            echo "- SHA256SUMS covers every file below and this manifest."
-            echo
-            echo '| File | Size (bytes) | SHA-256 |'
-            echo '|---|---:|---|'
-            for f in $payload; do echo "| $f | $(stat -c %s "$f") | $(sha256sum "$f" | cut -d' ' -f1) |"; done
-          } > MANIFEST.md
-          { for f in $payload; do sha256sum "$f"; done; sha256sum MANIFEST.md; } > SHA256SUMS
-          sha256sum -c SHA256SUMS
-          [ "$(grep -c . SHA256SUMS)" -eq "$(( $(echo "$payload" | grep -c .) + 1 ))" ]
-          cat MANIFEST.md >> "$GITHUB_STEP_SUMMARY"
-          ls -la
-      - name: Publish (only for the one commit the repository variable DESKTOP_INSTALLERS_UPLOAD_SHA names in full; this repository is public, so anyone signed in to GitHub can download it)
-        if: vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+          for set in "$RUNNER_TEMP"/sets/*/; do
+            (
+            cd "$set"; set_name="$(basename "$set")"
+            payload=$(find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name MANIFEST.md -printf '%f\n' | sort)
+            {
+              echo "# DebridPulse desktop TEST installers (unsigned; not a release)"
+              echo
+              echo "- Set: $set_name (each platform that passed is published on its own; the complete set only when all three passed in one run)"
+              echo "- Source commit: $GITHUB_SHA"
+              echo "- Source tree: $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}')"
+              echo "- Build run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+              echo "- Every build and smoke check of the platforms in it passed (macOS; Windows with its install check; Linux with its Flatpak checks); passed in this run: ${{ steps.passed.outputs.platforms }}"
+              echo "- Signing: Windows EXE unsigned (no Authenticode); macOS DMG/app ad hoc signed only, not notarized; Flatpak bundle unsigned (no GPG)."
+              echo "- Prerequisite not included: the Microsoft Visual C++ x64 Redistributable 14.51+ (the installer sends the user to Microsoft's download)."
+              echo "- Corresponding source: the *-desktop-sources-*.tar (SOURCE_OFFER.md, \"The desktop applications\")."
+              echo "- SHA256SUMS covers every file below and this manifest."
+              echo
+              echo '| File | Size (bytes) | SHA-256 |'
+              echo '|---|---:|---|'
+              for f in $payload; do echo "| $f | $(stat -c %s "$f") | $(sha256sum "$f" | cut -d' ' -f1) |"; done
+            } > MANIFEST.md
+            { for f in $payload; do sha256sum "$f"; done; sha256sum MANIFEST.md; } > SHA256SUMS
+            sha256sum -c SHA256SUMS
+            [ "$(grep -c . SHA256SUMS)" -eq "$(( $(echo "$payload" | grep -c .) + 1 ))" ]
+            cat MANIFEST.md >> "$GITHUB_STEP_SUMMARY"
+            ls -la
+            )
+          done
+      # Publish (only for the one commit the repository variable DESKTOP_INSTALLERS_UPLOAD_SHA names in full;
+      # this repository is public, so anyone signed in to GitHub can download them).
+      - name: Publish macOS
+        if: steps.passed.outputs.macos == 'true' && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-installers-${{ github.sha }}${{ needs.inputs.outputs.suffix }}
+          name: desktop-installers-${{ github.sha }}-macos
           retention-days: 14
           if-no-files-found: error
-          path: ${{ runner.temp }}/desktop-installers/
+          path: ${{ runner.temp }}/sets/macos/
+      - name: Publish Windows
+        if: steps.passed.outputs.windows == 'true' && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-installers-${{ github.sha }}-windows
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/sets/windows/
+      - name: Publish Linux
+        if: steps.passed.outputs.linux == 'true' && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-installers-${{ github.sha }}-linux
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/sets/linux/
+      - name: Publish the complete set (all three passed in this run)
+        if: steps.passed.outputs.complete == 'true' && vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-installers-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: ${{ runner.temp }}/sets/complete/
 
   intermediates:
     name: Delete this run's intermediate artifacts (approved commit only; whatever the handover's outcome)
