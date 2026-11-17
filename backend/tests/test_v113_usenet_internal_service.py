@@ -129,7 +129,7 @@ def test_the_image_bundles_the_service_and_publishes_only_the_app_port():
     exposed = [line for line in dockerfile.splitlines() if line.strip().upper().startswith("EXPOSE")]
     assert exposed, "the image must declare its published port"
     for line in exposed:
-        assert "8080" in line
+        assert "8095" in line                       # the application's port (8095 since 1.0.14)
         for port in ("8081", "8090", "9090"):
             assert port not in line
     # The service's own port is never published, and its UI is never proxied.

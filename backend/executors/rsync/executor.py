@@ -101,6 +101,7 @@ from transfers.models import (
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
     MaterializedEntry, RemoteObjectKind, TransferProgress,
 )
+from core.processes import WINDOWLESS
 
 # Positive transport claim only; every other scheme is unsupported by absence.
 SUPPORTED_SCHEMES = frozenset({"rsync", "rsync+ssh"})
@@ -1355,7 +1356,7 @@ class RsyncExecutor:
             try:
                 process = await asyncio.create_subprocess_exec(
                     binary, "--version", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL, env=self.processes.environment())
+                    stderr=asyncio.subprocess.DEVNULL, env=self.processes.environment(), **WINDOWLESS)
                 output, _ = await asyncio.wait_for(process.communicate(), timeout=10)
                 match = _VERSION.search(output or b"")
                 version = tuple(int(item) for item in match.groups()) if match else None

@@ -198,6 +198,70 @@ def icons(shell: Path) -> None:
                         "-resize", f"{width * scale}x{height * scale}!",
                         "-units", "PixelsPerInch", "-density", str(72 * scale), str(out / name)], check=True)
     background.unlink()
+    installer_bitmaps(magick, out, static)
+
+
+# Windows installer (packaging/desktop/windows/installer.nsi, Modern UI 2): the
+# Welcome and Finish pages' side picture and the inner pages' header picture,
+# each at twice the size Modern UI lays out at 96 dpi (164 x 314 and 150 x 57)
+# so a scaled display draws them sharp; 24-bit BMP, as Modern UI reads them.
+INSTALLER_SIDE, INSTALLER_HEADER = (328, 628), (300, 114)
+
+
+def installer_bitmaps(magick: str, out: Path, static: Path) -> None:
+    """The installer's pictures, from the sign-in page's composition: the
+    deep field with its sparse stars and soft glow, the application's mark,
+    and the page title's EKG beneath it. No words, so nothing to localize and
+    no font to find. Layered by ImageMagick from the canonical logo and pulse."""
+    width, height = INSTALLER_SIDE
+    work = out.parent / "installer-work"
+    work.mkdir(exist_ok=True)
+    field = work / "field.svg"
+    field.write_text(installer_field_svg(width, height), encoding="utf-8")
+    run = lambda *args: subprocess.run([magick, *map(str, args)], check=True)  # noqa: E731
+    run("-background", "none", "-density", "96", field, "-resize", f"{width}x{height}!", work / "field.png")
+    run("-background", "none", "-density", "768", static / "logo.svg", "-resize", "176x176", work / "mark.png")
+    run("-background", "none", "-density", "1536", static / "icons" / "dp" / "shell-pulse.svg",
+        "-resize", "296x", work / "pulse.png")
+    run(work / "field.png", work / "mark.png", "-gravity", "north", "-geometry", "+0+150", "-composite",
+        work / "pulse.png", "-gravity", "north", "-geometry", "+0+352", "-composite",
+        "-background", "#0b0d1c", "-alpha", "remove", "-type", "TrueColor", f"BMP3:{out / 'installer-side.bmp'}")
+    # The header: the mark at its right end, on the window's own white.
+    hw, hh = INSTALLER_HEADER
+    run("-background", "none", "-density", "768", static / "logo.svg", "-resize", f"{hh - 18}x{hh - 18}",
+        work / "mark-header.png")
+    run("-size", f"{hw}x{hh}", "xc:#ffffff", work / "mark-header.png", "-gravity", "east", "-geometry", "+12+0",
+        "-composite", "-alpha", "remove", "-type", "TrueColor", f"BMP3:{out / 'installer-header.bmp'}")
+    shutil.rmtree(work)
+
+
+def installer_field_svg(width: int, height: int) -> str:
+    """The side picture's field: the sign-in page's deep blue-violet, a soft
+    glow where the mark stands, and a sparse, fixed scatter of stars."""
+    stars = []
+    seed = 7
+    for index in range(46):
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        x = seed % width
+        seed = (seed * 1103515245 + 12345) % (1 << 31)
+        y = seed % height
+        radius = (0.6, 0.9, 1.3)[index % 3]
+        opacity = (0.35, 0.55, 0.8)[(index // 3) % 3]
+        stars.append(f'<circle cx="{x}" cy="{y}" r="{radius}" fill="#d9ccff" fill-opacity="{opacity}"/>')
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#151033"/><stop offset=".55" stop-color="#0d0f24"/><stop offset="1" stop-color="#090b1a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="{width / 2}" cy="238" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8a4dff" stop-opacity=".42"/><stop offset="1" stop-color="#8a4dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="{width}" height="{height}" fill="url(#field)"/>
+  <rect width="{width}" height="{height}" fill="url(#glow)"/>
+  {''.join(stars)}
+</svg>
+"""
 
 
 # The DMG window (points) and where its two icons stand, shared with

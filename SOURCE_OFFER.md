@@ -115,9 +115,10 @@ SHA-256. It holds:
 The other Python packages, the bundled Python runtime (python-build-standalone)
 and the Neutralino shell are under permissive licences and are not in it; each
 Python package's source is on PyPI under the name and version it records.
-Microsoft's WebView2 bootstrapper, the one Microsoft component the Windows
-installer carries, is not open source; the Visual C++ Redistributable is not
-bundled at all (the installer sends the user to Microsoft's download). The notices of everything an
+The two Microsoft components the Windows installer carries -- the WebView2
+bootstrapper and the Visual C++ x64 Redistributable installer -- are not open
+source, are carried unmodified under Microsoft's own terms (not DebridPulse's
+GPL), and have no corresponding source to offer. The notices of everything an
 installed application carries are inside it: `LICENSE`, `NOTICE`, this file,
 `docs/DEPENDENCY_LICENSES.md` (shown in Help), `LICENSES/`, `licenses/`,
 `licenses/desktop/` (the Python runtime's and the native shell's components),

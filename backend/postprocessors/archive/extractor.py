@@ -49,6 +49,7 @@ from services.extraction_safety import (
     validate_zip_members,
 )
 from transfers.filesystem import is_link, open_no_follow
+from core.processes import WINDOWLESS
 
 # The most of an external tool's own output kept for a diagnostic.
 _TOOL_OUTPUT_TAIL_BYTES = 4096
@@ -158,7 +159,7 @@ def _run_tool(
     watch_archive: Path | None = None,
 ) -> Tuple[int, str]:
     """Run an external command and optionally enforce a live staging budget."""
-    kwargs = {}
+    kwargs = dict(WINDOWLESS)
     if os.name == "posix":
         kwargs["preexec_fn"] = lambda: os.nice(10)
 
@@ -359,7 +360,7 @@ def _list_7z(cmd: List[str], archive: Path, timeout: int = 300) -> Tuple[int, st
     listing validator, which keeps only what it needs; a listing over budget
     stops the tool at once. Only a listing the tool completed with status 0
     is ever accepted. Returns the status and a short output tail."""
-    kwargs = {}
+    kwargs = dict(WINDOWLESS)
     if os.name == "posix":
         kwargs["preexec_fn"] = lambda: os.nice(10)
     tail: collections.deque[str] = collections.deque(maxlen=8)

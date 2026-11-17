@@ -147,14 +147,17 @@ async def test_the_open_default_admin_owns_a_durable_choice_across_deployment_ty
     assert (await client.get(OWN)).json() == {"presentation_mode": "advanced"}
     assert (await client.put(OWN, json={"presentation_mode": "easy"})).json() == {"presentation_mode": "easy"}
     assert await _stored(DEFAULT_ADMIN_ID) == "easy"
-    # Its theme stays the browser's: that admission is unchanged.
-    assert (await client.get(APPEARANCE)).status_code == 409
+    # Standalone: its theme is the default Admin's too (services.account_appearance
+    # appearance_owner), so the open principal reads it.
+    assert (await client.get(APPEARANCE)).status_code == 200
     assert account_appearance.presentation_owner(Principal.standalone(), config.get_settings()) == DEFAULT_ADMIN_ID
     # Another browser of the open installation reads the same choice.
     assert _bundle_presentation((await client.get("/app.js")).text) == {"owned": True, "mode": "easy"}
     # A Server installation while sign-in is off acts as the same default Admin.
     monkeypatch.setattr(config, "_settings", config.AppSettings(deployment_type="server"))
     assert (await client.get(OWN)).json() == {"presentation_mode": "easy"}
+    # ... but its theme stays each browser's there: that admission is unchanged.
+    assert (await client.get(APPEARANCE)).status_code == 409
     # With a password the same account, signed in, reads and changes it; the
     # open principal no longer owns anything.
     monkeypatch.setattr(config, "_settings", config.AppSettings(deployment_type="standalone",

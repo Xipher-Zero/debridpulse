@@ -23,6 +23,7 @@ import configobj
 
 from db.database import DB_PATH
 from executors.process_ownership import output_lines
+from core.processes import WINDOWLESS
 
 logger = logging.getLogger("debridpulse.usenet")
 
@@ -234,6 +235,7 @@ class UsenetRuntime:
                     *self._command(),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    **WINDOWLESS,
                 )
                 self._stdout_task = asyncio.create_task(self._drain(self._process.stdout, "stdout"))
                 self._stderr_task = asyncio.create_task(self._drain(self._process.stderr, "stderr"))

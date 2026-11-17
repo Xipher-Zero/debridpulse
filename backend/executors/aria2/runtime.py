@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 from core.logging_utils import sanitize_log_value
 from executors.aria2.client import Aria2Service
 from executors.process_ownership import output_lines
+from core.processes import WINDOWLESS
 
 logger = logging.getLogger("alldebrid.aria2")
 
@@ -396,6 +397,7 @@ class Aria2Runtime:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
+                    **WINDOWLESS,
                 )
                 self._stdout_task = asyncio.create_task(self._drain_stream(self._process.stdout, "stdout"))
                 self._stderr_task = asyncio.create_task(self._drain_stream(self._process.stderr, "stderr"))

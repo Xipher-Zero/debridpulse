@@ -5020,7 +5020,7 @@
   }
 
   /* Local Port (the desktop application's; application.desktop_listener):
-   * where external clients -- the SABnzbd and qBittorrent dialects, the native
+   * where external clients -- the download-client dialects, the native
    * external API -- reach DebridPulse on this computer. Read from the server
    * each time the card is drawn (GET /settings/local-port), with the clients
    * that connected in the past week; changed at once (PUT): a change that

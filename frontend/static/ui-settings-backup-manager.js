@@ -241,7 +241,7 @@
     const id = selected.id;
     if (window.DPDesktopSave?.active) {
       // The desktop application: saved where the person's own Save dialog
-      // says (app.js DPDesktopSave), never placed in Downloads unasked.
+      // says (app.js DPDesktopSave), never put anywhere unasked.
       await run(async () => {
         try {
           await window.DPDesktopSave.save(`${packagePath(id)}/save`);

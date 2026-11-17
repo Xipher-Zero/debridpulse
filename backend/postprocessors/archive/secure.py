@@ -25,6 +25,7 @@ from services.extraction_safety import (
     validate_tar_members,
 )
 from postprocessors.archive.extractor import Extractor, _extract_into_directory, _extract_job_sync, _suffix
+from core.processes import WINDOWLESS
 
 logger = logging.getLogger("debridpulse.extractor_secure")
 
@@ -57,6 +58,7 @@ def _decompress_zstd(archive: Path, output: Path) -> None:
             [binary, "-d", "-c", "--no-progress", "--", str(archive)],
             stdout=subprocess.PIPE,
             stderr=stderr,
+            **WINDOWLESS,
         )
         try:
             if process.stdout is None:

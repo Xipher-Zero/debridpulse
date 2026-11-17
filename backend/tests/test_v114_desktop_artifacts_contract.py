@@ -2,7 +2,9 @@
 workflow, the installer script and the recipes as committed.
 
 * The Windows installer requires the Microsoft Visual C++ x64 Redistributable
-  14.51+ before it changes anything and never carries it.
+  14.51+ before it changes anything. It carries Microsoft's own installer of it,
+  signature-checked and unmodified, and runs it only interactively, with its
+  own interface (Microsoft's licence terms); a silent install refuses instead.
 * The handover runs only after every build and smoke check, and publishes only
   for the one commit an explicit approval names.
 * RARLAB's RAR package is never cached or handed over as source.
@@ -29,22 +31,36 @@ def _run(job: str) -> str:
     return "\n".join(step.get("run", "") for step in _steps(job))
 
 
-def test_the_installer_requires_the_redistributable_first_and_never_carries_it():
-    assert "vc_redist" not in NSIS.replace("aka.ms/vc14/vc_redist.x64.exe", "")
+def test_the_installer_requires_the_redistributable_first_and_runs_microsofts_installer_with_its_terms():
     assert re.search(r"(?m)^\s*!define VCREDIST_MIN_MAJOR 14$", NSIS)
     assert re.search(r"(?m)^\s*!define VCREDIST_MIN_MINOR 51\b", NSIS)
     on_init = NSIS[NSIS.index("Function .onInit"):NSIS.index("FunctionEnd", NSIS.index("Function .onInit"))]
     assert on_init.index("Call RequireVcRedist") < on_init.index("Call TakeDataRootLock")
     require = NSIS[NSIS.index("Function RequireVcRedist"):NSIS.index("FunctionEnd", NSIS.index("Function RequireVcRedist"))]
-    silent = require[require.index("${If} ${Silent}"):]
+    silent = require[require.index("${If} ${Silent}"):require.index("MessageBox MB_ICONINFORMATION|MB_OKCANCEL")]
     assert silent.index("SetErrorLevel 3") < silent.index("Quit")             # silent: report, exit 3
-    assert "MB_YESNOCANCEL" in require and "IDNO vcCheck" in require          # interactive: check again
-    assert 'ExecShell "open" "${VCREDIST_DOWNLOAD}"' in require                # Microsoft's own download
-    assert '!define VCREDIST_DOWNLOAD "https://aka.ms/vc14/vc_redist.x64.exe"' in NSIS
+    assert "vc_redist" not in silent                                          # never run without its terms shown
+    interactive = require[require.index("vcInstall:"):]
+    # Microsoft's own installer, carried; started through the shell (it needs
+    # administrator rights), never quietly: its interface shows its terms.
+    assert 'File /oname=$PLUGINSDIR\\vc_redist.x64.exe "${STAGE}\\prerequisites\\vc_redist.x64.exe"' in interactive
+    assert 'ExecShellWait "open" "$PLUGINSDIR\\vc_redist.x64.exe" "/install /norestart"' in interactive
+    assert "/quiet" not in require and "/passive" not in require
+    assert interactive.index("ExecShellWait") < interactive.index("Call VcRedistSatisfied")   # checked again after
+    assert "IDRETRY vcInstall" in interactive
     assert "MicrosoftEdgeWebview2Setup.exe" in NSIS                            # WebView2 path kept
     builder = (ROOT / "packaging" / "desktop" / "windows" / "build-installer.sh").read_text(encoding="utf-8")
-    assert re.search(r'(?m)^cp "\$prereq/MicrosoftEdgeWebview2Setup\.exe" "\$stage/prerequisites/"$', builder)
-    assert "vc_redist" not in builder.replace('rm -f "$stage/prerequisites/vc_redist.x64.exe"', "")
+    assert re.search(r'(?m)^cp "\$prereq/MicrosoftEdgeWebview2Setup\.exe" "\$prereq/vc_redist\.x64\.exe" "\$stage/prerequisites/"$', builder)
+
+
+def test_the_build_carries_only_microsofts_signed_unmodified_redistributable():
+    build = _windows_step("The Windows installer, on this runner")["run"]
+    assert "curl -sSfL -o \"$RUNNER_TEMP/prerequisites/vc_redist.x64.exe\" https://aka.ms/vc14/vc_redist.x64.exe" in build
+    assert 'Get-AuthenticodeSignature' in build and '$s.Status -ne "Valid"' in build
+    assert '-notmatch "O=Microsoft Corporation"' in build and '[version]"14.51"' in build
+    assert build.index("Get-AuthenticodeSignature") < build.index("bash packaging/desktop/windows/build-installer.sh")
+    licences = (ROOT / "docs" / "DEPENDENCY_LICENSES.md").read_text(encoding="utf-8")
+    assert "**Bundled, unmodified, as Distributable Code.**" in licences and "not covered by DebridPulse's GPL" in licences
 
 
 def _windows_step(prefix: str) -> dict:

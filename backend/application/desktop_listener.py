@@ -2,7 +2,7 @@
 
 The installed desktop application's window talks to its backend on a private
 loopback port the supervisor picks afresh each run (``desktop/supervisor.py``
-``free_port``). External clients -- the SABnzbd and qBittorrent dialects, the
+``free_port``). External clients -- the download-client dialects, the
 native external API, a browser extension -- need an address that stays put:
 this listener, on ``127.0.0.1`` at the installation's Local Port
 (``AppSettings.desktop_local_port``, 8095 unless changed).

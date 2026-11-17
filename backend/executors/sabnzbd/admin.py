@@ -21,6 +21,7 @@ Ownership, exactly:
 """
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -162,6 +163,9 @@ class SabnzbdAdministration:
         # The application's neutral live-status signal: how a runtime
         # transition this lifecycle owns reaches Provider Status.
         self._notify_status = notify_status
+        # Server Tests in progress (``test_server``): each needs the service
+        # for its duration, whether or not Usenet is enabled.
+        self._tests = 0
 
     # --- managed lifecycle (the generic IntegrationLifecycle seam) --------
 
@@ -193,7 +197,7 @@ class SabnzbdAdministration:
         """The service is needed to accept new work OR to serve work already
         owned. Disabling Usenet stops new routing; it never strands a durable
         execution, which must stay observable, controllable and recoverable."""
-        return self._accepts_new_work or await self._owns_durable_work()
+        return self._tests > 0 or self._accepts_new_work or await self._owns_durable_work()
 
     async def start(self) -> None:
         if self.runtime is None or not await self._service_required():
@@ -218,6 +222,26 @@ class SabnzbdAdministration:
                 await self._status_changed()
             return
         await self._converge()
+
+    @contextlib.asynccontextmanager
+    async def _serving_for_test(self):
+        """The service for one server Test, enabled or not: brought up for it
+        when it is not running (the managed path, ``_converge``), and
+        afterwards left exactly as ``maintain`` decides -- stopped again while
+        Usenet is disabled and owns no work, kept when it is enabled by then
+        or work needs it. While any Test runs, the service is required, so a
+        concurrent Test or a periodic ``maintain`` never stops it under one."""
+        if self.runtime is None:
+            yield
+            return
+        self._tests += 1
+        try:
+            await self._converge()
+            yield
+        finally:
+            self._tests -= 1
+            if self._tests == 0:
+                await self.maintain()
 
     async def _converge(self) -> None:
         """Bring the service to healthy, then to the canonical configuration.
@@ -326,11 +350,12 @@ class SabnzbdAdministration:
                     "message": f"A server needs at least {MIN_CONNECTIONS} connection to acquire.",
                     "detail": f"connections must be between {MIN_CONNECTIONS} and {MAX_CONNECTIONS}"}
         try:
-            ok, message = await self.client.test_server(
-                host=host, port=int(port), ssl=1 if ssl else 0,
-                username=username or "", password=password or "",
-                connections=requested,
-            )
+            async with self._serving_for_test():
+                ok, message = await self.client.test_server(
+                    host=host, port=int(port), ssl=1 if ssl else 0,
+                    username=username or "", password=password or "",
+                    connections=requested,
+                )
         except (SabTransportError, SabApiError) as exc:
             return {"ok": False, "reachable": False, "message": _without(str(exc), password)}
         # The native message is echoed to the operator, so anything the service

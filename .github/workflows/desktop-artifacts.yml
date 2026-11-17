@@ -18,9 +18,11 @@
 #                per-user NSIS installer (packaging/desktop/windows/
 #                build-installer.sh with upstream's NSIS 3.11 for Windows,
 #                pinned in packaging/desktop/windows/official.sha256; it
-#                carries Microsoft's WebView2 bootstrapper and REQUIRES, never
-#                carries, the VC++ x64 Redistributable 14.51+), whose silent
-#                refusal without it is checked when the runner lacks it; the
+#                carries Microsoft's WebView2 bootstrapper and Microsoft's
+#                VC++ x64 Redistributable installer, signature-checked and
+#                unmodified, which an interactive install runs with its own
+#                licence terms; a silent install still refuses without the
+#                Redistributable, checked when the runner lacks it); the
 #                runner then gets the Redistributable from Microsoft and
 #                installs, checks (Usenet included) and uninstalls that EXE;
 #   linux-x64    the layout WITH the Usenet service, the desktop tests and the
@@ -394,8 +396,19 @@ jobs:
           export MAKENSIS="$RUNNER_TEMP/nsis/nsis-3.11/makensis.exe"
           mkdir -p "$RUNNER_TEMP/prerequisites" desktop-build/windows
           curl -sSfL -o "$RUNNER_TEMP/prerequisites/MicrosoftEdgeWebview2Setup.exe" https://go.microsoft.com/fwlink/p/?LinkId=2124703
+          # Microsoft's Visual C++ x64 Redistributable installer, carried unmodified (Distributable Code under the
+          # maintainer's Visual Studio licence): refused unless Microsoft's valid signature is on it and it is 14.51+.
+          curl -sSfL -o "$RUNNER_TEMP/prerequisites/vc_redist.x64.exe" https://aka.ms/vc14/vc_redist.x64.exe
+          pwsh -NoProfile -Command '
+            $f = Join-Path $env:RUNNER_TEMP "prerequisites\vc_redist.x64.exe"
+            $s = Get-AuthenticodeSignature $f
+            if ($s.Status -ne "Valid" -or $s.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") { "vc_redist.x64.exe: signature $($s.Status), $($s.SignerCertificate.Subject)"; exit 1 }
+            $v = [version](Get-Item $f).VersionInfo.ProductVersion
+            if ($v -lt [version]"14.51") { "vc_redist.x64.exe $v is older than 14.51"; exit 1 }
+            "vc_redist.x64.exe $v, signed by $($s.SignerCertificate.Subject)"' | tee "$RUNNER_TEMP/vc_redist.txt"
           bash packaging/desktop/windows/build-installer.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/prerequisites" desktop-build/windows
           { echo "NSIS: $name sha256 $digest ($url)"; echo "makensis -VERSION: $("$MAKENSIS" -VERSION)"; } > desktop-build/windows/TOOLCHAIN.txt
+          cat "$RUNNER_TEMP/vc_redist.txt" >> desktop-build/windows/PREREQUISITES.txt
           cp "$RUNNER_TEMP/layout/BUILD-INFO.json" desktop-build/windows/
           echo "$GITHUB_SHA" > desktop-build/windows/COMMIT; echo "$GITHUB_RUN_ID" > desktop-build/windows/RUN
           cat desktop-build/windows/TOOLCHAIN.txt desktop-build/windows/SHA256SUMS desktop-build/windows/PREREQUISITES.txt

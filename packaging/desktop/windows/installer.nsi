@@ -12,12 +12,14 @@
 ;     - Microsoft Visual C++ x64 Redistributable >= VCREDIST_MIN, read where
 ;       Microsoft documents it (HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\
 ;       Runtimes\X64, 64-bit view: Installed=1, Major/Minor/Bld), checked
-;       first, before anything is touched. It is NOT bundled (Microsoft limits
-;       redistributing it to Visual Studio licensees): missing or older, an
-;       interactive install offers Microsoft's official download and checks
-;       again until it is there or the user cancels; a silent install (/S)
-;       writes the requirement to the calling console and exits with code 3,
-;       leaving any existing installation exactly as it was;
+;       first, before anything is touched. Microsoft's own installer of it is
+;       carried, unmodified (Distributable Code under the maintainer's Visual
+;       Studio licence): missing or older, an interactive install runs it with
+;       its own interface -- Microsoft's licence terms, for the person to
+;       accept -- and Windows' permission prompt, then checks again (Retry or
+;       Cancel); a silent install (/S), which shows no terms to accept, writes
+;       the requirement to the calling console and exits with code 3, leaving
+;       any existing installation exactly as it was;
 ;     - Microsoft Edge WebView2 Runtime, read where Microsoft documents it
 ;       (EdgeUpdate Clients {F3017226-...} "pv", per machine or per user);
 ;       missing, Microsoft's Evergreen bootstrapper installs it per user.
@@ -30,6 +32,7 @@
 ;   run the uninstaller or this installer again.
 
 Unicode true
+!include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !include "WinVer.nsh"
@@ -63,20 +66,53 @@ InstallDir "$LOCALAPPDATA\Programs\DebridPulse"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 SetCompressor /SOLID lzma
 ShowInstDetails show
-Icon "${STAGE}\desktop\shell\resources\icons\app.ico"
-UninstallIcon "${STAGE}\desktop\shell\resources\icons\app.ico"
-LicenseData "${STAGE}\LICENSE"
+; Drawn at the display's own scale (never blurred by Windows scaling), with the
+; system's current controls.
+ManifestDPIAware true
+ManifestSupportedOS Win10
+XPStyle on
+BrandingText "DebridPulse ${VERSION}"
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "DebridPulse"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "FileDescription" "DebridPulse installer"
 VIAddVersionKey "LegalCopyright" "GPL-2.0-or-later"
 
-Page license
-Page directory
-Page instfiles
-UninstPage uninstConfirm
-UninstPage instfiles
+; Modern UI 2: Welcome, License, Location, Progress, Finish (Launch DebridPulse),
+; and the uninstaller's Confirm, Progress and Finish -- in DebridPulse's own
+; pictures (packaging/desktop/assemble.py installer_bitmaps: the sign-in
+; page's field, the mark and the page title's EKG; the mark on the header).
+!define DP_ICONS "${STAGE}\desktop\shell\resources\icons"
+!define MUI_ICON "${DP_ICONS}\app.ico"
+!define MUI_UNICON "${DP_ICONS}\app.ico"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${DP_ICONS}\installer-side.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${DP_ICONS}\installer-side.bmp"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "${DP_ICONS}\installer-header.bmp"
+!define MUI_HEADERIMAGE_UNBITMAP "${DP_ICONS}\installer-header.bmp"
+!define MUI_ABORTWARNING
+!define MUI_UNABORTWARNING
+; Launch from the Finish page: by then .onInstSuccess has let go of the data
+; root's lock, so the DebridPulse it starts can take it.
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "Launch DebridPulse"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchDebridPulse
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "${STAGE}\LICENSE"
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_UNPAGE_FINISH
+!insertmacro MUI_LANGUAGE "English"
+
+Function LaunchDebridPulse
+  ; The Start-menu shortcut's own command.
+  Exec '"$INSTDIR\app\runtime\python\pythonw.exe" -I "$INSTDIR\app\desktop\supervisor.py"'
+FunctionEnd
 
 Var vcMajor
 Var vcMinor
@@ -219,7 +255,6 @@ Function VcRedistSatisfied
 FunctionEnd
 
 Function RequireVcRedist
-  vcCheck:
   Call VcRedistSatisfied
   Pop $0
   ${If} $0 == 1
@@ -251,12 +286,23 @@ Function RequireVcRedist
     SetErrorLevel 3
     Quit
   ${EndIf}
-  MessageBox MB_ICONEXCLAMATION|MB_YESNOCANCEL "DebridPulse needs the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer (found on this computer: $2).$\n$\nInstall it from Microsoft, then continue here:$\n$\nYes: open Microsoft's download of the Redistributable$\nNo: check again (after installing it)$\nCancel: quit setup (nothing has been changed)" IDYES vcDownload IDNO vcCheck
+  MessageBox MB_ICONINFORMATION|MB_OKCANCEL "DebridPulse needs the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer (found on this computer: $2).$\n$\nSetup will now open Microsoft's installer for it. Read and accept Microsoft's license terms there; Windows will ask for permission to install it.$\n$\nCancel: quit setup (nothing has been changed)" IDOK vcInstall
   SetErrorLevel 3
   Quit
-  vcDownload:
-  ExecShell "open" "${VCREDIST_DOWNLOAD}"
-  Goto vcCheck
+  vcInstall:
+  ; Microsoft's installer needs administrator rights: started through the
+  ; shell, so Windows asks for them. Its own interface shows its licence terms.
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\vc_redist.x64.exe "${STAGE}\prerequisites\vc_redist.x64.exe"
+  ExecShellWait "open" "$PLUGINSDIR\vc_redist.x64.exe" "/install /norestart"
+  Call VcRedistSatisfied
+  Pop $0
+  ${If} $0 == 1
+    Return
+  ${EndIf}
+  MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "The Microsoft Visual C++ x64 Redistributable was not installed, so DebridPulse cannot be installed yet.$\n$\nRetry: open Microsoft's installer again$\nCancel: quit setup (nothing has been changed)" IDRETRY vcInstall
+  SetErrorLevel 3
+  Quit
 FunctionEnd
 
 Function WebView2Satisfied

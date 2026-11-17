@@ -8,18 +8,18 @@
 #     nothing is installed on the host.
 #   build-installer.sh <stage-dir> <prerequisites-dir> <out-dir> [extra makensis -D...]
 # <prerequisites-dir> holds Microsoft's Evergreen MicrosoftEdgeWebview2Setup.exe
-# bootstrapper, whose hash is recorded in <out-dir>/PREREQUISITES.txt. The
-# Visual C++ Redistributable is not bundled (Microsoft limits redistributing it
-# to Visual Studio licensees): the installer requires it and points the user
-# to Microsoft's own download (installer.nsi).
+# bootstrapper and Microsoft's Visual C++ x64 Redistributable installer
+# (vc_redist.x64.exe), each Microsoft's own file, unmodified -- the
+# Redistributable as Distributable Code under the maintainer's Visual Studio
+# licence (docs/DEPENDENCY_LICENSES.md). Their hashes are recorded in
+# <out-dir>/PREREQUISITES.txt.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 stage="$(cd "$1" && pwd)"; prereq="$(cd "$2" && pwd)"; mkdir -p "$3"; out="$(cd "$3" && pwd)"; shift 3
 version="$(tr -d '[:space:]' < "$here/../../../VERSION")"
 mkdir -p "$stage/prerequisites"
-rm -f "$stage/prerequisites/vc_redist.x64.exe"
-cp "$prereq/MicrosoftEdgeWebview2Setup.exe" "$stage/prerequisites/"
-(cd "$stage/prerequisites" && sha256sum MicrosoftEdgeWebview2Setup.exe) > "$out/PREREQUISITES.txt"
+cp "$prereq/MicrosoftEdgeWebview2Setup.exe" "$prereq/vc_redist.x64.exe" "$stage/prerequisites/"
+(cd "$stage/prerequisites" && sha256sum MicrosoftEdgeWebview2Setup.exe vc_redist.x64.exe) > "$out/PREREQUISITES.txt"
 if [ -n "${MAKENSIS:-}" ]; then
   native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
   echo "makensis $("$MAKENSIS" -VERSION)"

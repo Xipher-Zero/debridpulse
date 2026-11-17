@@ -55,7 +55,7 @@ from transfers.presentation_repository import (
     _TERMINAL_PRESENTATION,
     _WAIT_PRESENTATION,
     effective_presentation,
-    candidate_input_sql,
+    candidate_inputs_sql,
     public_source_identity,
     request_kind_of,
     recovery_presentation,
@@ -1179,9 +1179,8 @@ async def list_operational_torrents(
             WHERE r.parent_id IS NULL
             GROUP BY r.transfer_id
         ),
-        delivered_source AS (
-            SELECT transfer_id, candidate_source,
-                   ({candidate_input_sql('picked.artifact_id', 'picked.candidate_id')}) AS candidate_input
+        delivered_picked AS (
+            SELECT transfer_id, candidate_source, artifact_id, candidate_id
             FROM (
                 SELECT
                     p.transfer_id,
@@ -1201,9 +1200,18 @@ async def list_operational_torrents(
             ) picked
             WHERE row_number = 1
         ),
-        active_source AS (
-            SELECT transfer_id, candidate_source,
-                   ({candidate_input_sql('picked.artifact_id', 'picked.candidate_id')}) AS candidate_input
+        -- The input that contributed each picked candidate (candidate_inputs_sql):
+        -- joined and ranked once for the page, never a subquery per row.
+        delivered_input AS (
+            {candidate_inputs_sql('delivered_picked')}
+        ),
+        delivered_source AS (
+            SELECT d.transfer_id, d.candidate_source, i.payload AS candidate_input
+            FROM delivered_picked d
+            LEFT JOIN delivered_input i ON i.transfer_id = d.transfer_id AND i.rank = 1
+        ),
+        active_picked AS (
+            SELECT transfer_id, candidate_source, artifact_id, candidate_id
             FROM (
                 SELECT
                     f.torrent_id AS transfer_id,
@@ -1223,6 +1231,14 @@ async def list_operational_torrents(
                   AND COALESCE(f.mirror_state, '') != 'standby'
             ) picked
             WHERE row_number = 1
+        ),
+        active_input AS (
+            {candidate_inputs_sql('active_picked')}
+        ),
+        active_source AS (
+            SELECT a.transfer_id, a.candidate_source, i.payload AS candidate_input
+            FROM active_picked a
+            LEFT JOIN active_input i ON i.transfer_id = a.transfer_id AND i.rank = 1
         ),
         -- A source switch accepted while a file's download is parked: the file
         -- SELECTS a candidate its paused, still-authorized writer is not

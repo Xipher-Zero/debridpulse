@@ -168,6 +168,20 @@ def candidate_input_sql(artifact: str = "?", candidate: str = "?") -> str:
     ORDER BY o.id, r.ordinal, r.id LIMIT 1"""
 
 
+def candidate_inputs_sql(picked: str) -> str:
+    """The same answer as ``candidate_input_sql`` for every row of the CTE
+    ``picked`` (``transfer_id``, ``artifact_id``, ``candidate_id``) at once,
+    set-oriented -- joined and ranked, never a correlated subquery per row:
+    one row per transfer with ``payload`` and ``rank`` 1 for the input kept."""
+    return f"""SELECT x.transfer_id, r.payload,
+           ROW_NUMBER() OVER (PARTITION BY x.transfer_id ORDER BY o.id, r.ordinal, r.id) AS rank
+    FROM {picked} x
+    JOIN canonical_candidate_bindings b
+      ON b.canonical_artifact_id = x.artifact_id AND b.candidate_id = x.candidate_id
+    JOIN canonical_candidate_origins o ON o.binding_id = b.id
+    JOIN transfer_requests r ON r.transfer_id = o.contributing_transfer_id AND r.parent_id IS NULL"""
+
+
 def request_kind_of(payload) -> str:
     """A request payload's kind, lower-cased; '' when it cannot be read."""
     try:
