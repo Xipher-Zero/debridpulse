@@ -239,9 +239,9 @@ compiled out; built by `aria2-package.yml`) and `ghcr.io/xipher-zero/debridpulse
    `chown -R 99:100` on those only: the application, frontend, Usenet service and license
    files stay root-owned, so the runtime account cannot change its own program files.
 
-`ARG APP_VERSION` / `VCS_REF` feed the OCI labels. `EXPOSE 8080`. `HEALTHCHECK` curls
+`ARG APP_VERSION` / `VCS_REF` feed the OCI labels. `EXPOSE 8095`. `HEALTHCHECK` curls
 `/api/health`. `ENTRYPOINT ["/entrypoint.sh"]`; `CMD ["uvicorn", "main:app", "--host",
-"0.0.0.0", "--port", "8080", "--workers", "1"]`.
+"0.0.0.0", "--port", "8095", "--workers", "1"]`.
 
 **`entrypoint.sh`** (POSIX sh): reads `PUID`/`PGID` (default `99:100`; `PUID=0` = explicit
 root), creates/adjusts user+group tolerating concurrent-bootstrap races, applies `UMASK`

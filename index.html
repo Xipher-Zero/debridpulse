@@ -263,7 +263,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <div class="step-num">2</div>
           <div class="step-body">
             <strong>Open the Web UI</strong>
-            <p><a href="http://your-server:8080">http://your-server:8080</a> → Settings → Services → connect a premium service or enable the network sources you use (each change saves as you make it).</p>
+            <p><a href="http://your-server:8095">http://your-server:8095</a> → Settings → Services → connect a premium service or enable the network sources you use (each change saves as you make it).</p>
           </div>
         </div>
         <div class="install-step reveal">
@@ -293,7 +293,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
     <span class="cm">image</span>: <span class="str">ghcr.io/xipher-zero/debridpulse:v1.0.13</span>
     <span class="cm">container_name</span>: <span class="str">debridpulse</span>
     <span class="cm">restart</span>: <span class="str">unless-stopped</span>
-    <span class="cm">ports</span>: <span class="str">["8080:8080"]</span>
+    <span class="cm">ports</span>: <span class="str">["8095:8095"]</span>
     <span class="cm">environment</span>:
       - <span class="str">TZ=Europe/Berlin</span>
       - <span class="str">LOG_LEVEL=INFO</span>
@@ -310,7 +310,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
         <pre id="cc2"><span class="str">docker run -d \
   --name debridpulse \
   --restart unless-stopped \
-  -p 8080:8080 \
+  -p 8095:8095 \
   -e TZ=Europe/Berlin \
   -e CONFIG_PATH=/app/config/config.json \
   -e DB_PATH=/app/data/debridpulse.db \

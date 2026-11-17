@@ -31566,14 +31566,6 @@
     "ai-review"
    ]
   },
-  "account.setup.hint.preserved": {
-   "source": "83a150f73bd2e338",
-   "translation": "f2ce0c6222b6ba23",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
   "account.setup.rerun": {
    "source": "b4285e526bf75944",
    "translation": "386b4a29507514e2",
@@ -31923,6 +31915,212 @@
   "setup.getting_started.step.monitor": {
    "source": "9d9c140f9981abfa",
    "translation": "064aff8b8c373e10",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.title": {
+   "source": "3c0a2932fc2d574f",
+   "translation": "f27b9e0fdb90c59e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.hint": {
+   "source": "d8e1af9d7fc30755",
+   "translation": "f6f0b9485e4a8f86",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.hint_short": {
+   "source": "b6c8d408a82c6bb2",
+   "translation": "effaf4d466e6a509",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.hint_shortest": {
+   "source": "8868c51cdb853cf9",
+   "translation": "a23de537ddc407e8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.field_label": {
+   "source": "9aaa93e6aa586cd9",
+   "translation": "938f792bd43d1570",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.client": {
+   "source": "496cf8ca49221958",
+   "translation": "496cf8ca49221958",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.confirm_title": {
+   "source": "0110567b30d93f5b",
+   "translation": "f379b168c21198d3",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Should the local port be changed to {port}?"
+  },
+  "settings.local_port.confirm_message": {
+   "source": "0c475e9c1a08eade",
+   "translation": "5f20860a772d582c",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "one: In the last week one external application connected over port {current}: {clients}. Until it uses port {port}, it cannot reach DebridPulse. | other: In the last week {count} external applications connected over port {current}: {clients}. Until they use port {port}, they cannot reach DebridPulse."
+  },
+  "settings.local_port.confirm_more": {
+   "source": "5f4f590acbda8ee3",
+   "translation": "d0c8dbd6f9fc2406",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.confirm_yes": {
+   "source": "85a39ab345d672ff",
+   "translation": "00e9738b77c7e524",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Yes"
+  },
+  "settings.local_port.confirm_no": {
+   "source": "1ea442a134b2a184",
+   "translation": "cac400c7ec078379",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.local_port.saved": {
+   "source": "5aef08e79810e067",
+   "translation": "4a48108e967c6575",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.local_port.invalid": {
+   "source": "6c723f182346f28b",
+   "translation": "a4697789e22916f1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.local_port.in_use": {
+   "source": "8213aeec2500106b",
+   "translation": "2ed69c73b24ec1c1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.local_port.desktop_only": {
+   "source": "3f0e16bcdc77fb8f",
+   "translation": "97523242e05cfbf0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.local_port.unavailable_title": {
+   "source": "366317044ac2bcd0",
+   "translation": "2f93a34f07e99ef3",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.local_port.unavailable": {
+   "source": "c3fdc6b99811a51a",
+   "translation": "e5b9702769db88eb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.heading.local_port": {
+   "source": "3c0a2932fc2d574f",
+   "translation": "f27b9e0fdb90c59e",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.local_port.what": {
+   "source": "5893511cd980ea31",
+   "translation": "ccb93e906afbfbd2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.local_port.this_computer": {
+   "source": "2665cbaf9bf0695c",
+   "translation": "50df77343585cd19",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.local_port.change": {
+   "source": "5bdcfa6ed38e2283",
+   "translation": "5ee78c3df4442ccb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.local_port.in_use": {
+   "source": "0b96ffc105b4eb58",
+   "translation": "1cf5870334144219",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.topic.deployment_type.local_port.taken": {
+   "source": "da971a0e2d26a2e0",
+   "translation": "14d99640cf0f7ee2",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "help.settings.access_integrations.local_port": {
+   "source": "f1b1a29303c6c29a",
+   "translation": "871245911fec1b75",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.deployment.desktop_standalone": {
+   "source": "f8940e6a41dc52b1",
+   "translation": "c6c2e718f0d8aed7",
    "provenance": [
     "ai-generated",
     "ai-review"

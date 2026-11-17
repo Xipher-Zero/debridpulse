@@ -4,6 +4,16 @@
 
 1.0.14 is the active development line following the 1.0.13 release.
 
+### Upgrade notes
+
+- **The server image listens on port 8095, not 8080.** The container's port, its health check and the
+  example compose file and `docker run` command all move to 8095 -- the same port the desktop
+  applications use for external applications -- because 8080 is claimed by many other tools. An
+  existing installation must change its port mapping when it upgrades: `"8080:8080"` becomes
+  `"8095:8095"` (or `"8080:8095"` to keep its address), and Sonarr, Radarr and anything else that
+  reaches DebridPulse must use that address. The listening port is set by the Docker deployment (its
+  port mapping), not in the application.
+
 ## [1.0.13] — Premium services, Usenet, network sources and external clients
 
 1.0.13 builds on the 1.0.12 Universal Transfer Core. It adds Debrid-Link, Premiumize, Real-Debrid and

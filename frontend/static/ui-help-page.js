@@ -659,7 +659,8 @@ ${c.shows('download-behavior-advanced') ? `              <li ${keyed('help.setti
             <p ${keyed('help.settings.authentication.when_sign_prometheus.server_advanced', {path: '/api/metrics'})}></p>`) : ''}
 
           ${c.standalone ? accordion('help.settings.access_integrations.title', `
-            ${c.shows('deployment-type') ? `<p ${keyed('help.settings.access_integrations.deployment_type')}></p>
+            ${c.shows('deployment-type') ? `${c.desktop ? '' : `<p ${keyed('help.settings.access_integrations.deployment_type')}></p>`}
+            ${c.desktop ? `<p ${keyed('help.settings.access_integrations.local_port', {address: 'http://127.0.0.1:8095'})}></p>` : ''}
             <p ${keyed('help.settings.users_access.default_language')}></p>` : ''}
             <p ${keyed('help.settings.access_integrations.only_built_administrator')}></p>
             <p ${keyed('help.settings.access_integrations.integration')}></p>

@@ -153,8 +153,10 @@ async def answer(application, request) -> dict:
     if not isinstance(op, str) or op not in _FIELDS or set(request) - _FIELDS[op]:
         return {"id": ident, "error": "refused"}
     if op == "status":
-        from api.routes import get_stats
-        return {"id": ident, "status": _project_status(await get_stats(application))}
+        from api.routes import _configured_local_port, get_stats
+        from application.desktop_listener import listener
+        return {"id": ident, "status": {**_project_status(await get_stats(application)),
+                                        "local_port": listener.state(_configured_local_port())}}
     if op in {"pause", "resume"}:
         result = await (application.pause_all() if op == "pause" else application.resume_all())
         return {"id": ident, "ok": bool(result.get("ok")), "paused": bool(result.get("paused"))}

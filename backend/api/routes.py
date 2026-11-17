@@ -211,7 +211,7 @@ def _public_base_url(request: Request) -> str:
     configured = (os.getenv("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
     if configured:
         return configured
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8080"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8095"
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
     return f"{scheme}://{host}".rstrip("/")
 
@@ -733,6 +733,8 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             merged["deployment_type"] = previous.deployment_type
             # So does the default language (``PUT /api/settings/default-locale``).
             merged["default_locale"] = previous.default_locale
+            # And the desktop application's Local Port (``PUT /api/settings/local-port``).
+            merged["desktop_local_port"] = previous.desktop_local_port
             clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
             clean = validate_and_sanitise(clean)
             # ... and then retired where it no longer describes what is about to
@@ -1504,11 +1506,81 @@ async def export_transfer_trace(torrent_id: int, application: ApplicationService
 # is not an application operation (main.py _EXPORT_SAVE_PATTERN): a person
 # taking their time in the dialog never holds maintenance back.
 
-def _require_desktop() -> None:
+def _require_desktop(detail: str = "Saving to a chosen location is only available in the desktop application",
+                     code: str = "desktop.only") -> None:
     from core.config import desktop_installation
     if not desktop_installation():
-        raise DisplayError(404, "Saving to a chosen location is only available in the desktop application",
-                           code="desktop.only")
+        raise DisplayError(404, detail, code=code)
+
+
+# ── Local Port (the desktop application's external address) ────────────────
+# Classified ``administer``. The port external clients reach on this computer
+# (``application.desktop_listener``): read with the clients that connected in
+# the past week (``auth.accounts.recent_clients``) -- what a change would cut
+# off, which the page asks about first -- and changed at once. A server has no
+# Local Port: its address is its container's binding.
+
+LOCAL_PORT_DETAIL = "Local Port is only available in the desktop application."
+
+
+class LocalPortUpdate(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    port: int
+
+
+def _configured_local_port() -> int:
+    from application.desktop_listener import PortInvalid, valid_port
+    try:
+        return valid_port(get_settings().desktop_local_port)
+    except PortInvalid:
+        return AppSettings.model_fields["desktop_local_port"].default
+
+
+async def _local_port_reading() -> dict:
+    from application.desktop_listener import listener
+    from auth.accounts import recent_clients
+    return {**listener.state(_configured_local_port()), "recent_clients": await recent_clients()}
+
+
+@router.get("/settings/local-port")
+async def local_port():
+    _require_desktop(LOCAL_PORT_DETAIL, "local_port.desktop_only")
+    return await _local_port_reading()
+
+
+@router.put("/settings/local-port")
+async def choose_local_port(body: LocalPortUpdate):
+    """Listen on ``port`` from now on: bound first, saved once it listens, and
+    the old port closed -- a port another program holds changes nothing."""
+    _require_desktop(LOCAL_PORT_DETAIL, "local_port.desktop_only")
+    from application.desktop_listener import PortInUse, PortInvalid, listener, valid_port
+    from core.config import apply_settings, config_write_lock, journal_configuration_change, save_settings
+    try:
+        port = valid_port(body.port)
+    except PortInvalid:
+        from application.desktop_listener import HIGHEST, LOWEST
+        raise DisplayError(422, f"Local Port must be a whole number from {LOWEST} to {HIGHEST}.",
+                           code="local_port.invalid", params={"lowest": fact(str(LOWEST)), "highest": fact(str(HIGHEST))}) from None
+    changed = []
+
+    async def persist() -> None:
+        async with config_write_lock():
+            previous = get_settings()
+            if previous.desktop_local_port == port:
+                return
+            current = previous.model_copy(update={"desktop_local_port": port}, deep=True)
+            save_settings(current)
+            apply_settings(current)
+            changed.append((previous, current))
+
+    try:
+        await listener.move(port, persist)
+    except PortInUse:
+        raise DisplayError(409, f"Port {port} is in use by another program.",
+                           code="local_port.in_use", params={"port": fact(str(port))}) from None
+    for previous, current in changed:
+        await journal_configuration_change(previous, current)
+    return await _local_port_reading()
 
 
 async def _save_where_chosen(name: str, write) -> dict:
@@ -3023,7 +3095,7 @@ async def disk_guard_status( application: ApplicationService = Depends(get_appli
 async def prometheus_metrics():
     """Prometheus-compatible metrics endpoint.
 
-    Scrape with: `- job_name: debridpulse  static_configs: [{targets: [host:8080]}]`
+    Scrape with: `- job_name: debridpulse  static_configs: [{targets: [host:8095]}]`
     and set `metrics_path: /api/metrics`.
 
     Every metric describes universal transfer/scheduler state under the

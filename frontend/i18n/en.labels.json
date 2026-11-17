@@ -5359,6 +5359,22 @@
     "key": "session.my_account",
     "reason": "\"run it again from My Account\" names the account control the reader opens."
    }
+  ],
+  "help.topic.deployment_type.local_port.what": [
+   {
+    "text": "Local Port",
+    "kind": "control",
+    "key": "settings.local_port.title",
+    "reason": "The Local Port item's title on the Deployment & Language card (desktop application)."
+   }
+  ],
+  "help.settings.access_integrations.local_port": [
+   {
+    "text": "Local Port",
+    "kind": "control",
+    "key": "settings.local_port.title",
+    "reason": "The Local Port item's title on the Deployment & Language card (desktop application)."
+   }
   ]
  }
 }

@@ -181,6 +181,14 @@ class AppSettings(BaseModel):
     # as stored. It names no account and changes no account's own choice.
     default_locale: Optional[str] = None
 
+    # ── Local Port (the desktop application's) ───────────────────────────────
+    # Where the installed desktop application listens for external clients, on
+    # this computer only (``application.desktop_listener``). Written only by an
+    # Admin through its own surface (``PUT /api/settings/local-port``), never by
+    # a Settings write; a server neither reads nor shows it (its address is its
+    # container's binding).
+    desktop_local_port: int = 8095
+
     # ── Authentication ────────────────────────────────────────────────────────
     # Mechanisms and admission only. Local credentials belong to accounts
     # (``auth.accounts``); a pre-account ``auth_username``/``auth_password``/

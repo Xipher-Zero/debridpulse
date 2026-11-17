@@ -283,6 +283,9 @@ async def ensure_schema(db) -> None:
     await _ensure_column(db, "accounts", "email_self_entered", "INTEGER NOT NULL DEFAULT 0")
     # Every token issued before external clients existed was its own client.
     await _ensure_column(db, "account_tokens", "client_id", "TEXT")
+    # When a token last authenticated a request (``resolve_token``), at most
+    # every TOKEN_SEEN_SECONDS: how Local Port knows a client is in use.
+    await _ensure_column(db, "account_tokens", "last_seen_at", "TEXT")
     await db.execute("UPDATE account_tokens SET client_id=id WHERE client_id IS NULL")
     await _ensure_column(db, "accounts", "username", "TEXT")
     # NULL: the account never chose Easy or Advanced, which is Advanced
@@ -1536,7 +1539,53 @@ async def resolve_token(raw: str) -> tuple[Account, str, str] | None:
         return None
     if account is None or not account.active or account.role is not Role.INTEGRATION:
         return None
+    await _seen(str(row["id"]))
     return account, str(row["id"]), str(row["client_id"] or row["id"])
+
+
+# A token's last use is written at most this often (an in-process throttle):
+# one small write per client every few minutes, never one per request.
+TOKEN_SEEN_SECONDS = 300
+_token_seen: dict[str, float] = {}
+
+
+async def _seen(token_id: str) -> None:
+    """Record that this token just authenticated a request. Best effort: a
+    failed write never fails the request it is recording."""
+    import time
+
+    from db.database import get_db
+
+    now = time.monotonic()
+    if now - _token_seen.get(token_id, -TOKEN_SEEN_SECONDS) < TOKEN_SEEN_SECONDS:
+        return
+    _token_seen[token_id] = now
+    try:
+        async with get_db() as db:
+            await db.execute("UPDATE account_tokens SET last_seen_at=? WHERE id=?", (_now(), token_id))
+            await db.commit()
+    except Exception:  # noqa: BLE001 -- recording use must never refuse the use
+        import logging
+        logging.getLogger("debridpulse.accounts").warning("a token's last use could not be recorded", exc_info=True)
+
+
+async def recent_clients(days: int = 7) -> list[dict]:
+    """The external clients in use: active tokens of active Integration
+    accounts that authenticated a request within ``days``, newest first --
+    each its token's label, its account's name and when it was last seen."""
+    from datetime import timedelta
+
+    from db.database import get_db
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+    async with get_db() as db:
+        rows = await db.fetchall(
+            "SELECT t.label, t.last_seen_at, a.display_name, a.username FROM account_tokens t "
+            "JOIN accounts a ON a.id = t.account_id WHERE t.revoked_at IS NULL AND t.last_seen_at >= ? "
+            "AND a.role = ? AND a.enabled = 1 AND a.deleted_at IS NULL AND a.merged_into IS NULL "
+            "ORDER BY t.last_seen_at DESC", (since, Role.INTEGRATION.value))
+    return [{"label": str(row["label"]), "account": str(row["display_name"] or row["username"] or ""),
+             "last_seen": str(row["last_seen_at"])} for row in rows]
 
 
 async def any_active_client(client_ids) -> bool:

@@ -23206,12 +23206,6 @@
    "owner": "frontend/static/auth.js",
    "criticality": "normal"
   },
-  "account.setup.hint.preserved": {
-   "category": "hint",
-   "context": "My Account profile, Setup Wizard section, second sentence (its own line).",
-   "owner": "frontend/static/auth.js",
-   "criticality": "normal"
-  },
   "account.setup.rerun": {
    "category": "action",
    "context": "My Account profile: button that opens the setup wizard again.",
@@ -23470,6 +23464,198 @@
    "category": "hint",
    "context": "Setup wizard Getting Started, numbered step 3; the first sentence is bold. Dashboard and Downloads are page names; use the same words as the navigation.",
    "owner": "frontend/static/ui-setup-wizard.js",
+   "criticality": "normal"
+  },
+  "settings.local_port.title": {
+   "category": "label",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): title of the Local Port item: the port on this computer where external applications (Sonarr, Radarr) reach DebridPulse. Sentence-case like the card's other titles (Default Language).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped."
+  },
+  "settings.local_port.hint": {
+   "category": "hint",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): the line beneath Local Port. {address} is the address, e.g. http://127.0.0.1:8095 (never translated).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped; the card shortens to the next wording, then wraps its items, down to 320px.",
+   "args": {
+    "address": "text: a URL"
+   }
+  },
+  "settings.local_port.hint_short": {
+   "category": "hint",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): the shorter wording of the line beneath Local Port, same meaning. {address} is the address (never translated).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped; the card shortens to the next wording, then wraps its items, down to 320px.",
+   "args": {
+    "address": "text: a URL"
+   }
+  },
+  "settings.local_port.hint_shortest": {
+   "category": "hint",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): the shortest wording of the line beneath Local Port: what the port is for.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "geometry": "One line, never wrapped; the card shortens to the next wording, then wraps its items, down to 320px."
+  },
+  "settings.local_port.field_label": {
+   "category": "tooltip/aria",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): accessible name of the Local Port number field.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.local_port.client": {
+   "category": "label",
+   "context": "One external application in the Local Port confirmation's list: {label} is its token's label, {account} its Integration account's name (both user-entered, never translated).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "label": "text: a token label",
+    "account": "text: an account name"
+   }
+  },
+  "settings.local_port.confirm_title": {
+   "category": "critical-warning",
+   "context": "Confirmation before changing Local Port while external applications use it. {port} is the new port number (digits, no grouping).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "port": "text: a port number"
+   }
+  },
+  "settings.local_port.confirm_message": {
+   "category": "critical-warning",
+   "context": "Confirmation before changing Local Port: the applications that connected through the current port in the past week, and that they stop reaching DebridPulse until they are given the new port. {clients} is their list, already joined; {current} and {port} are port numbers (digits).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning",
+   "args": {
+    "count": "plural: applications that connected",
+    "clients": "text: a list of names",
+    "current": "text: a port number",
+    "port": "text: a port number"
+   }
+  },
+  "settings.local_port.confirm_more": {
+   "category": "label",
+   "context": "Last item of the Local Port confirmation's list when it names only the first five: how many more. {count} is a number; label form, no plural.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "count": "number: applications not named"
+   }
+  },
+  "settings.local_port.confirm_yes": {
+   "category": "critical-warning",
+   "context": "Local Port confirmation: change the port anyway.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.local_port.confirm_no": {
+   "category": "action",
+   "context": "Local Port confirmation: keep the current port.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.local_port.saved": {
+   "category": "toast",
+   "context": "After Local Port changed. {address} is the new address (never translated).",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal",
+   "args": {
+    "address": "text: a URL"
+   }
+  },
+  "error.local_port.invalid": {
+   "category": "error",
+   "context": "Refusal of a Local Port that is not a whole number in range. {lowest} and {highest} are 1024 and 65535 (digits).",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "lowest": "text: a port number",
+    "highest": "text: a port number"
+   }
+  },
+  "error.local_port.in_use": {
+   "category": "error",
+   "context": "Refusal of a Local Port another program already listens on. {port} is the port number (digits).",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal",
+   "args": {
+    "port": "text: a port number"
+   }
+  },
+  "error.local_port.desktop_only": {
+   "category": "error",
+   "context": "Refusal when a Local Port request reaches a server installation, which has no Local Port (its address is its container's).",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "desktop.local_port.unavailable_title": {
+   "category": "toast",
+   "context": "Desktop notification title when DebridPulse starts and another program already holds Local Port.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.local_port.unavailable": {
+   "category": "toast",
+   "context": "Desktop notification body when DebridPulse starts and another program already holds Local Port. {port} is the port number (digits). 'Settings' is the page name.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal",
+   "args": {
+    "port": "text: a port number"
+   }
+  },
+  "help.topic.heading.local_port": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help (desktop application only): heading of the Local Port section; the same words as the Local Port title.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.local_port.what": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help, Local Port section: what it is. Bold words name the interface's own labels; use the words the interface itself shows.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.local_port.this_computer": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help, Local Port section: it listens on this computer only.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.local_port.change": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help, Local Port section: a change applies at once, without interrupting anything.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.local_port.in_use": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help, Local Port section: the confirmation when an application connected in the past week.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.topic.deployment_type.local_port.taken": {
+   "category": "long-form-help",
+   "context": "Deployment & Language help, Local Port section: what happens when another program holds the port at start.",
+   "owner": "frontend/static/ui-settings-help.js",
+   "criticality": "normal"
+  },
+  "help.settings.access_integrations.local_port": {
+   "category": "long-form-help",
+   "context": "Field Manual (the Help page), Settings → Access & Integrations (desktop application only): a paragraph. {address} is the default address (never translated). Bold words name the interface's own labels; use the words the interface itself shows.",
+   "owner": "frontend/static/ui-help-page.js",
+   "criticality": "normal",
+   "args": {
+    "address": "text: a URL"
+   }
+  },
+  "error.deployment.desktop_standalone": {
+   "category": "error",
+   "context": "Refusal of a deployment-type change in the installed desktop application, which is always Standalone. 'Standalone' is the deployment type's name as the interface shows it.",
+   "owner": "backend/api/auth_config_routes.py",
    "criticality": "normal"
   }
  }

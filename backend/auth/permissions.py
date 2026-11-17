@@ -310,6 +310,8 @@ ACTIONS: dict[str, Capability] = {
     "api.routes.add_backup": _A,
     "api.routes.save_backup": _A,
     "api.routes.save_backup_where_chosen": _A,               # the same file, saved where chosen (desktop)
+    "api.routes.local_port": _A,                             # the desktop application's Local Port
+    "api.routes.choose_local_port": _A,
     "api.routes.remove_backup": _A,
     "api.routes.restore_backup": _A,
     "api.routes.drop_page_cache_ep": _A,

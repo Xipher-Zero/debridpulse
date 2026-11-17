@@ -32,8 +32,8 @@ def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
         unreleased = f"ghcr.io/xipher-zero/debridpulse:v{development}"
         for surface in (compose, readme, project_page):
             assert unreleased not in surface
-    assert "http://localhost:8080/api/health" in compose
-    assert "http://localhost:8080/api/stats" not in compose
+    assert "http://localhost:8095/api/health" in compose
+    assert "http://localhost:8095/api/stats" not in compose
 
 
 @pytest.mark.asyncio

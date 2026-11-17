@@ -98,7 +98,7 @@ async def lifespan(app: FastAPI):
         mode="Docker / Unraid",
         database="SQLite",
         download_client="aria2",
-        web_ui=f"http://0.0.0.0:{getattr(cfg, 'port', 8080)}",
+        web_ui=f"http://0.0.0.0:{getattr(cfg, 'port', 8095)}",
         auth=("+".join(auth_mechanisms) if auth_mechanisms else "disabled"),
     )
     if not interactive_enabled:
@@ -122,11 +122,22 @@ async def lifespan(app: FastAPI):
     session_store.start_cleanup()
     if desktop_channel is not None:
         desktop_control.serve(application, asyncio.get_running_loop(), desktop_channel)
+        # Local Port: the external clients' address, beside the window's own.
+        from api.routes import _configured_local_port
+        from application.desktop_listener import internal_port, listener
+        target = internal_port()
+        if target is None:
+            logger.error("the desktop supervisor gave no internal port: Local Port is not listening")
+        else:
+            await listener.start(_configured_local_port(), target)
     try:
         yield
     finally:
         logger.info("Shutting down %s...", APP_NAME)
         try:
+            if desktop_channel is not None:
+                from application.desktop_listener import listener
+                await listener.stop()
             await session_store.stop_cleanup()
         finally:
             # A restore replaces the application object: stop the live one.

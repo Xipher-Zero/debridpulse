@@ -624,6 +624,13 @@ async def change_deployment_type(request: Request, change: DeploymentTypeChange)
     admission through this route (``holds_authentication_configuration_lock``),
     so the current type is the one every concurrent change sees. A request for
     the type already in force changes nothing and says so."""
+    # The installed desktop application is one person's and always Standalone
+    # (``AppSettings._desktop_is_standalone``): it has no type to change, and
+    # the transition would only clear its sign-in.
+    from core.config import desktop_installation
+    if desktop_installation():
+        return JSONResponse(
+            {"detail": "The desktop application is always Standalone; its deployment type does not change", "code": "deployment.desktop_standalone", "params": {}}, status_code=409)
     if not change.confirm:
         return JSONResponse(
             {"detail": "Explicit confirmation is required to change the deployment type", "code": "deployment.confirmation_required", "params": {}}, status_code=409)

@@ -4814,8 +4814,23 @@
     const current = standaloneDeployment() ? 'standalone' : 'server';
     const type = DEPLOYMENT_TYPES[current];
     const other = DEPLOYMENT_TYPES[type.other];
-    return card(say('settings.deployment.title'), `
-      <div class="dp-settings-deployment-language" data-language-layout="beside">
+    // The desktop application's Local Port, first (application.desktop_listener):
+    // its title over its hint, the port field beside them, centred against them.
+    // Its value arrives from its own read (loadLocalPort), as the default language's does.
+    const localPortHint = localPortHints(LOCAL_PORT_DEFAULT)[0];
+    const localPort = window.debridPulseDesktop !== true ? '' : `
+      <div class="dp-settings-local-port" data-local-port data-local-port-fit="0">
+        <span class="dp-settings-local-port-copy">
+          <span class="form-label"${keyed(say('settings.local_port.title'))}>${html(t('settings.local_port.title'))}</span>
+          <span class="form-hint" data-local-port-hint${keyed(localPortHint)}>${html(localPortHint)}</span>
+        </span>
+        <input class="input dp-settings-local-port-field" type="number" inputmode="numeric" min="${LOCAL_PORT_LOWEST}" max="${
+          LOCAL_PORT_HIGHEST}" step="1" value="${LOCAL_PORT_DEFAULT}" data-local-port-field disabled${
+          keyed(null, {'aria-label': say('settings.local_port.field_label')})}>
+      </div>`;
+    // The installed desktop application is always Standalone (core.config
+    // _desktop_is_standalone): it has no Deployment Type to show or switch.
+    const deployment = window.debridPulseDesktop === true ? '' : `
       <div class="dp-settings-deployment" data-deployment-type="${current}" data-deployment-fit="0">
         <div class="dp-settings-deployment-reading">
           <span class="dp-settings-deployment-copy">
@@ -4826,7 +4841,9 @@
         </div>
         <button class="btn btn-danger btn-sm" type="button" data-user-action="deployment" data-deployment-target="${
           type.other}"${keyed(say('settings.deployment.switch_to', {type: other.label}))}>${html(t('settings.deployment.switch_to', {type: other.label}))}</button>
-      </div>
+      </div>`;
+    return card(say('settings.deployment.title'), `
+      <div class="dp-settings-deployment-language" data-language-layout="beside">${localPort}${deployment}
       <div class="dp-settings-default-language" data-default-language data-default-language-fit="0">
         <span class="form-label"${keyed(say('settings.default_language.title'))}>${html(t('settings.default_language.title'))}</span>
         <span class="form-hint" data-default-language-hint${keyed(DEFAULT_LANGUAGE_HINTS[0])}>${html(DEFAULT_LANGUAGE_HINTS[0])}</span>
@@ -4841,7 +4858,8 @@
       shortTitleFirst: true,
       titleLines: 1,
       titlePrefix: familyIcon('users', 'settings-users'),
-      headerCenter: say('settings.deployment.copy'),
+      // Its line is about the Deployment Type, which the desktop application has none of.
+      headerCenter: window.debridPulseDesktop === true ? null : say('settings.deployment.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
@@ -4860,78 +4878,100 @@
   const DEPLOYMENT_GUTTER = 16;
   let deploymentObserver = null;
 
-  /* Deployment & Language: the Deployment Type assembly and the Default
-   * Language block side by side -- each as wide as its own content, centred as
-   * one group -- while some pair of their approved wordings fits the card with
-   * a clear gutter on each side; otherwise the whole language block beneath the
-   * assembly, each then keeping its own longest wording that fits the full
-   * width, exactly as the assembly alone did (data-deployment-fit 0-2, or the
-   * stacked form 3 without a hint; data-default-language-fit 0-2, or no hint).
-   * The side-by-side candidates are one chain from both full wordings, each
-   * link one step down one ladder -- the step that keeps the wider pair while
-   * still saving room -- and the first link that fits is kept: the longest
-   * wordings that fit, and as the card narrows no wording ever grows back.
-   * Every candidate is measured on hidden clones in a zero-size box beside the
-   * card's content, never on the card itself: the result is committed once,
-   * and only what changes is written, so the card never shows a candidate it
-   * does not keep. Only a change of the card's width fits it again (stacking
-   * changes its height alone), and so does a language change or the default
-   * language arriving on its button. */
-  // The side-by-side chain over the measured natural widths (see above).
-  function besideChain(size, between) {
-    const span = ([d, h]) => size.deployment[d] + between + size.language[h];
-    const last = [size.deployment.length - 1, size.language.length - 1];
-    const chain = [[0, 0]];
-    for (let at = chain[0]; at[0] < last[0] || at[1] < last[1];) {
-      const next = [[at[0] + 1, at[1]], [at[0], at[1] + 1]].filter(([d, h]) => d <= last[0] && h <= last[1]);
-      const saving = next.filter(step => span(step) < span(at)).sort((a, b) => span(b) - span(a));
+  /* Deployment & Language: its items -- on the desktop application Local Port
+   * first, then the Deployment Type assembly and the Default Language block --
+   * in one row, each as wide as its own content and centred as one group, while
+   * some set of their approved wordings fits the card with a clear gutter on
+   * each side. Narrower, the last item leaves the row for its own centred row
+   * beneath it (with three items, the inverted triangle: two over one), the row
+   * again taking the longest wordings that fit; narrower still, every item on
+   * its own row (stacked). An item alone on its row keeps its own longest
+   * wording that fits the full width: the Deployment Type reading as it always
+   * did (data-deployment-fit 0-2, or the stacked form 3 without a hint), the
+   * language block's hint (data-default-language-fit 0-2, or none), Local
+   * Port's reading on one row (data-local-port-fit 0-2) or, when even its
+   * shortest does not fit, its title, hint and field stacked and centred
+   * (data-local-port-fit stacked, the longest hint that fits, or none).
+   * A row's candidates are one chain from all its full wordings, each link one
+   * step down one ladder -- the step that keeps the widest set while still
+   * saving room -- and the first link that fits is kept: the longest wordings
+   * that fit, and as the card narrows no wording ever grows back. Every
+   * candidate is measured on hidden clones in a zero-size box beside the card's
+   * content, never on the card itself: the result is committed once, and only
+   * what changes is written, so the card never shows a candidate it does not
+   * keep. Only a change of the card's width fits it again (wrapping changes its
+   * height alone), and so does a language change, the default language arriving
+   * on its button, or Local Port's value (its hint names it). */
+  // A row's chain over its items' measured natural widths (see above).
+  function besideChain(widths, between) {
+    const span = steps => steps.reduce((sum, step, item) => sum + widths[item][step], between * (steps.length - 1));
+    const last = widths.map(ladder => ladder.length - 1);
+    const chain = [widths.map(() => 0)];
+    for (let at = chain[0]; at.some((step, item) => step < last[item]);) {
+      const next = at.map((_, item) => at.map((step, other) => step + (other === item ? 1 : 0)))
+        .filter(steps => steps.every((step, item) => step <= last[item]));
+      const saving = next.filter(steps => span(steps) < span(at)).sort((a, b) => span(b) - span(a));
       at = saving[0] || next[0];
       chain.push(at);
     }
-    return chain.filter((step, index) => index === 0 || span(step) < span(chain[index - 1]));
+    return chain.filter((steps, index) => index === 0 || span(steps) < span(chain[index - 1]))
+      .map(steps => ({steps, span: span(steps)}));
   }
 
-  function measureDeploymentLanguage(pair, assembly, language, hints) {
+  // The card's items, in order, each with its hint and wording ladder.
+  function deploymentItems(pair) {
+    const items = [];
+    const port = pair.querySelector(':scope > [data-local-port]');
+    if (port) items.push({kind: 'port', node: port, hint: port.querySelector('[data-local-port-hint]'),
+      ladder: localPortHints(localPort.port)});
+    const assembly = pair.querySelector(':scope > .dp-settings-deployment');
+    if (assembly) items.push({kind: 'deployment', node: assembly, hint: assembly.querySelector('[data-deployment-hint]'),
+      ladder: DEPLOYMENT_TYPES[assembly.dataset.deploymentType].hints});
+    const language = pair.querySelector(':scope > [data-default-language]');
+    items.push({kind: 'language', node: language, hint: language.querySelector('[data-default-language-hint]'),
+      ladder: DEFAULT_LANGUAGE_HINTS});
+    return items;
+  }
+
+  /* Each item's natural widths at each wording, on hidden clones: ``row`` as
+   * it stands in a row (a divider before it unless it is first), ``alone`` the
+   * one-row reading an item alone must fit (Deployment Type's reading, Local
+   * Port's title and hint beside its field, the language block's hint) and
+   * ``hint`` the hint by itself. */
+  function measureDeploymentLanguage(pair, items) {
     const box = document.createElement('div');
     box.setAttribute('data-language-measure', '');
     box.setAttribute('aria-hidden', 'true');
-    const deployment = assembly.cloneNode(true);
-    const block = language.cloneNode(true);
-    box.append(deployment, block);
+    const clones = items.map(item => item.node.cloneNode(true));
+    box.append(...clones);
     pair.append(box);
-    if (deployment.dataset.deploymentFit !== '0') deployment.dataset.deploymentFit = '0';
-    const reading = deployment.querySelector('.dp-settings-deployment-reading');
-    const hint = deployment.querySelector('[data-deployment-hint]');
-    const blockHint = block.querySelector('[data-default-language-hint]');
-    hint.hidden = false;
-    blockHint.hidden = false;
     const width = node => node.getBoundingClientRect().width;
-    const measured = {reading: [], deployment: [], hint: [], language: []};
-    hints.forEach((words, step) => {
-      hint.textContent = String(words);
-      measured.reading.push(width(reading));
-      measured.deployment.push(width(deployment));
-    });
-    DEFAULT_LANGUAGE_HINTS.forEach(words => {
-      blockHint.textContent = String(words);
-      measured.hint.push(width(blockHint));
-      measured.language.push(width(block));
+    const sizes = items.map((item, index) => {
+      const clone = clones[index];
+      const hint = clone.querySelector('[data-deployment-hint], [data-default-language-hint], [data-local-port-hint]');
+      hint.hidden = false;
+      if (item.kind === 'deployment' && clone.dataset.deploymentFit !== '0') clone.dataset.deploymentFit = '0';
+      if (item.kind === 'port' && clone.dataset.localPortFit !== '0') clone.dataset.localPortFit = '0';
+      const reading = item.kind === 'deployment' ? clone.querySelector('.dp-settings-deployment-reading') : null;
+      const size = {row: [], alone: [], hint: []};
+      item.ladder.forEach(words => {
+        hint.textContent = String(words);
+        size.row.push(width(clone));
+        size.hint.push(width(hint));
+        size.alone.push(item.kind === 'deployment' ? width(reading) : item.kind === 'language' ? width(hint) : width(clone));
+      });
+      return size;
     });
     box.remove();
-    return measured;
+    return sizes;
   }
 
   function fitDeploymentType() {
     deploymentObserver?.disconnect();
     deploymentObserver = null;
-    const assembly = root()?.querySelector('.dp-settings-deployment');
-    const pair = assembly?.closest('.dp-settings-deployment-language');
-    const language = pair?.querySelector('[data-default-language]');
-    if (!language) return;
-    const languageHint = language.querySelector('[data-default-language-hint]');
-    const hint = assembly.querySelector('[data-deployment-hint]');
-    const hints = DEPLOYMENT_TYPES[assembly.dataset.deploymentType].hints;
-    const measured = pair;
+    const pair = root()?.querySelector('.dp-settings-deployment-language');
+    if (!pair?.querySelector('[data-default-language]')) return;
+    const items = deploymentItems(pair);
     let width = null;
     const set = (node, name, value) => { if (node.getAttribute(name) !== value) node.setAttribute(name, value); };
     const sayHint = (node, step, ladder) => {
@@ -4939,37 +4979,148 @@
       if (node.hidden !== hidden) node.hidden = hidden;
       if (!hidden && (node.dataset.i18n !== ladder[step].key || node.textContent !== String(ladder[step]))) sayInto(node, ladder[step]);
     };
+    // An item alone on its row: its own longest wording that fits the full width.
+    const alone = (item, size, full) => {
+      const step = size.alone.findIndex(reading => reading + 2 * DEPLOYMENT_GUTTER <= full);
+      if (step >= 0) return {fit: String(step), hint: step};
+      if (item.kind === 'deployment') return {fit: String(DEPLOYMENT_FIT_STACKED), hint: item.ladder.length};
+      const hint = size.hint.findIndex(hintWidth => hintWidth + 2 * DEPLOYMENT_GUTTER <= full);
+      const shown = hint < 0 ? item.ladder.length : hint;
+      return {fit: item.kind === 'port' ? 'stacked' : String(shown), hint: shown};
+    };
     const fit = () => {
-      if (!assembly.getClientRects().length) return;
-      width = measured.clientWidth;
-      const room = measured.clientWidth - 2 * DEPLOYMENT_GUTTER;
-      const size = measureDeploymentLanguage(pair, assembly, language, hints);
-      const style = getComputedStyle(pair);
-      // Between the two: the pair's gap; the divider and the room after it are in the block's measured width.
-      const between = parseFloat(style.columnGap) || 0;
-      const beside = besideChain(size, between).find(([d, h]) => size.deployment[d] + between + size.language[h] <= room);
-      let deploymentStep;
-      let languageStep;
-      if (beside) {
-        [deploymentStep, languageStep] = beside;
-      } else {
-        deploymentStep = size.reading.findIndex(reading => reading + 2 * DEPLOYMENT_GUTTER <= measured.clientWidth);
-        if (deploymentStep < 0) deploymentStep = DEPLOYMENT_FIT_STACKED;
-        languageStep = size.hint.findIndex(hintWidth => hintWidth + 2 * DEPLOYMENT_GUTTER <= measured.clientWidth);
-        if (languageStep < 0) languageStep = DEFAULT_LANGUAGE_HINTS.length;
+      if (!items[0].node.getClientRects().length) return;
+      width = pair.clientWidth;
+      const room = pair.clientWidth - 2 * DEPLOYMENT_GUTTER;
+      const sizes = measureDeploymentLanguage(pair, items);
+      // Between two items in a row: the pair's gap; the divider and the room after it are in the item's measured width.
+      const between = parseFloat(getComputedStyle(pair).columnGap) || 0;
+      // The widest row that fits: all items, then all but the last (the rest beneath it), ... ; none is stacked.
+      let row = 0;
+      let steps = [];
+      for (let count = items.length; count >= 2 && !row; count--) {
+        const found = besideChain(sizes.slice(0, count).map(size => size.row), between).find(link => link.span <= room);
+        if (found) [row, steps] = [count, found.steps];
       }
-      set(pair, 'data-language-layout', beside ? 'beside' : 'below');
-      set(assembly, 'data-deployment-fit', String(deploymentStep));
-      sayHint(hint, deploymentStep, hints);
-      set(language, 'data-default-language-fit', String(languageStep));
-      sayHint(languageHint, languageStep, DEFAULT_LANGUAGE_HINTS);
+      set(pair, 'data-language-layout', row === items.length ? 'beside' : row ? 'triangle' : 'below');
+      items.forEach((item, index) => {
+        const placed = index < row ? {fit: String(steps[index]), hint: steps[index]} : alone(item, sizes[index], pair.clientWidth);
+        const attribute = {port: 'data-local-port-fit', deployment: 'data-deployment-fit', language: 'data-default-language-fit'}[item.kind];
+        set(item.node, attribute, placed.fit);
+        sayHint(item.hint, placed.hint, item.ladder);
+      });
     };
     fit();
     if (typeof ResizeObserver === 'function') {
       deploymentObserver = new ResizeObserver(() => {
-        if (measured.clientWidth !== width) fit();
+        if (pair.clientWidth !== width) fit();
       });
-      deploymentObserver.observe(measured);
+      deploymentObserver.observe(pair);
+    }
+  }
+
+  /* Local Port (the desktop application's; application.desktop_listener):
+   * where external clients -- the SABnzbd and qBittorrent dialects, the native
+   * external API -- reach DebridPulse on this computer. Read from the server
+   * each time the card is drawn (GET /settings/local-port), with the clients
+   * that connected in the past week; changed at once (PUT): a change that
+   * would cut such clients off asks first (the settings confirmation, Yes /
+   * No), and a port another program holds changes nothing. Its hints name the
+   * address, so its value is part of the card's fit. */
+  const LOCAL_PORT_DEFAULT = 8095;
+  const LOCAL_PORT_LOWEST = 1024;
+  const LOCAL_PORT_HIGHEST = 65535;
+  const LOCAL_PORT_CLIENTS_SHOWN = 5;
+  const localPort = {port: LOCAL_PORT_DEFAULT, listening: false, recent: []};
+  const localPortAddress = port => `http://127.0.0.1:${port}`;
+  const localPortHints = port => Object.freeze([
+    say('settings.local_port.hint', {address: localPortAddress(port)}),
+    say('settings.local_port.hint_short', {address: localPortAddress(port)}),
+    say('settings.local_port.hint_shortest'),
+  ]);
+
+  function adoptLocalPort(reading) {
+    if (!reading || !Number.isInteger(reading.port)) return false;
+    Object.assign(localPort, {port: reading.port, listening: reading.listening === true,
+      recent: Array.isArray(reading.recent_clients) ? reading.recent_clients : []});
+    const field = root()?.querySelector('[data-local-port-field]');
+    if (field) {
+      field.value = String(localPort.port);
+      field.defaultValue = String(localPort.port);
+      field.disabled = false;
+    }
+    fitDeploymentType();
+    return true;
+  }
+
+  async function loadLocalPort() {
+    if (!root()?.querySelector('[data-local-port-field]')) return;
+    try {
+      adoptLocalPort(await request('GET', '/settings/local-port'));
+    } catch (_) {
+      // Unread: the field stays unavailable rather than showing a port that was not read.
+    }
+  }
+
+  // The clients a change would cut off, as the confirmation names them: each
+  // token's label and its account, the first few, then how many more.
+  function localPortClients(clients) {
+    const names = clients.slice(0, LOCAL_PORT_CLIENTS_SHOWN)
+      .map(client => client.account ? t('settings.local_port.client', {label: client.label, account: client.account})
+        : String(client.label));
+    if (clients.length > LOCAL_PORT_CLIENTS_SHOWN) {
+      names.push(t('settings.local_port.confirm_more', {count: clients.length - LOCAL_PORT_CLIENTS_SHOWN}));
+    }
+    try {
+      return new Intl.ListFormat(window.DPI18n.intlLocale(), {style: 'long', type: 'conjunction'}).format(names);
+    } catch (_) {
+      return names.join(', ');
+    }
+  }
+
+  async function changeLocalPort(field) {
+    const saved = localPort.port;
+    const wanted = Number(field.value);
+    const restore = () => { field.value = String(saved); };
+    if (!Number.isInteger(wanted) || wanted < LOCAL_PORT_LOWEST || wanted > LOCAL_PORT_HIGHEST) {
+      restore();
+      notify(t('error.local_port.invalid', {lowest: String(LOCAL_PORT_LOWEST), highest: String(LOCAL_PORT_HIGHEST)}), 'error');
+      return;
+    }
+    // The same port, already listening: nothing to change. (Not listening --
+    // taken at launch -- saving it again tries it again.)
+    if (wanted === saved && localPort.listening) return;
+    if (wanted !== saved) {
+      let clients = localPort.recent;
+      try {
+        const reading = await request('GET', '/settings/local-port');
+        if (Array.isArray(reading?.recent_clients)) clients = reading.recent_clients;
+      } catch (_) { /* the last reading's clients */ }
+      if (clients.length) {
+        const confirmed = await window.DPSettingsModal.confirm({
+          title: say('settings.local_port.confirm_title', {port: String(wanted)}),
+          message: say('settings.local_port.confirm_message', {count: clients.length, clients: localPortClients(clients),
+            current: String(saved), port: String(wanted)}),
+          confirmLabel: say('settings.local_port.confirm_yes'),
+          cancelLabel: say('settings.local_port.confirm_no'),
+          tone: 'danger',
+        });
+        if (!confirmed) {
+          restore();
+          if (field.isConnected) field.focus();
+          return;
+        }
+      }
+    }
+    field.disabled = true;
+    try {
+      const reading = await request('PUT', '/settings/local-port', {port: wanted}, 15000);
+      adoptLocalPort(reading);
+      notify(t('settings.local_port.saved', {address: localPortAddress(localPort.port)}), 'success');
+    } catch (error) {
+      restore();
+      field.disabled = false;
+      notify(error.message, 'error');
     }
   }
 
@@ -7152,6 +7303,7 @@
     activateTab(state.activeTab);
     fitPage();
     void loadDefaultLanguage();
+    void loadLocalPort();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
@@ -7697,6 +7849,7 @@
       if (event.target.matches('[data-integration-group-enabled]')) void groupEnableChanged(event.target);
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
+      if (event.target.matches('[data-local-port-field]')) void changeLocalPort(event.target);
     });
 
     // Pressing the Avatar URL field's own action does not take focus from the

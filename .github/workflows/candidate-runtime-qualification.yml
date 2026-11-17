@@ -166,7 +166,7 @@ jobs:
 
           healthy=0
           for _ in $(seq 1 60); do
-            if docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/health >/tmp/dp-health.json; then
+            if docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8095/api/health >/tmp/dp-health.json; then
               healthy=1
               break
             fi
@@ -194,10 +194,10 @@ jobs:
             rm /app/data/.candidate-write /app/config/.candidate-write /download/.candidate-write
           '
 
-          health="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
+          health="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8095/api/health)"
           test "$(jq -r '.version // empty' <<< "$health")" = "$APP_VERSION"
 
-          provider_status="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/integration-status/alldebrid)"
+          provider_status="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8095/api/integration-status/alldebrid)"
           test "$(jq -r '.integration // empty' <<< "$provider_status")" = "alldebrid"
           case "$(jq -r '.state // empty' <<< "$provider_status")" in
             disabled|unconfigured|auth_required|healthy|unhealthy) ;;

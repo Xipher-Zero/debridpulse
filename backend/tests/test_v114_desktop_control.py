@@ -39,11 +39,12 @@ from executors.process_ownership import ProcessOwnership  # noqa: E402
 PASSWORD = "correct horse battery staple 42"
 
 
-def _config(path: Path, *, locked: bool, folder: bool = True) -> None:
+def _config(path: Path, *, locked: bool, folder: bool = True, extra: dict | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not folder and not locked:
+    if not folder and not locked and not extra:
         return   # a new installation: nobody created a configuration file
     value = {"download_folder": str(path.parent.parent / "downloads")} if folder else {}
+    value.update(extra or {})
     if locked:   # the operator's one-shot credential input, installed on the default Admin at start
         value.update(auth_password_enabled=True, auth_username="owner", auth_password=PASSWORD)
     path.write_text(json.dumps(value), encoding="utf-8")
@@ -54,8 +55,9 @@ class Backend:
 
     def __init__(self, tmp_path: Path, *, desktop: bool = True, channel: bool = True, locked: bool = True,
                  control: str | None = None, folder: bool = True, supervised: bool = False,
-                 env: dict | None = None):
+                 env: dict | None = None, config_extra: dict | None = None):
         self.root, self.port = tmp_path, free_port()
+        self.config_extra = config_extra
         self.supervised, self.env = supervised, env or {}
         self.processes = ProcessOwnership(tmp_path / "desktop-runtime")
         self.channel = Channel() if channel else None
@@ -64,7 +66,7 @@ class Backend:
 
     async def start(self):
         (self.root / "downloads").mkdir(parents=True, exist_ok=True)
-        _config(self.root / "config" / "config.json", locked=self.locked, folder=self.folder)
+        _config(self.root / "config" / "config.json", locked=self.locked, folder=self.folder, extra=self.config_extra)
         ends = self.channel.child_ends() if self.channel else ()
         extra = {"DB_PATH": str(self.root / "data" / "debridpulse.db"),
                  "CONFIG_PATH": str(self.root / "config" / "config.json"),
@@ -151,7 +153,8 @@ async def test_the_tray_operations_work_while_the_interface_is_locked_and_http_s
         assert await backend.http("GET", "/", headers={"Accept": "text/html"}) in {302, 303, 307, 401}
         ask = backend.channel.ask
         status = (await ask("status"))["status"]
-        assert set(status) == {"active", "queued", "errors", "completed", "paused"} and status["paused"] is False
+        # The tray's counts, and Local Port's state (the supervisor's one notice when it is taken).
+        assert set(status) == {"active", "queued", "errors", "completed", "paused", "local_port"} and status["paused"] is False
         first = await ask("events")
         assert first["events"] == [] and isinstance(first["cursor"], int)
         assert (await ask("events", after=first["cursor"], limit=10))["cursor"] >= first["cursor"]

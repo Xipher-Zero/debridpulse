@@ -211,7 +211,7 @@ def test_security_and_compose_document_current_boundaries():
     assert "if auth is added in future" not in security
     assert "supports optional HTTP Basic Authentication" in security
     assert "network_mode: host" not in compose
-    assert '"8080:8080"' in compose
+    assert '"8095:8095"' in compose
 
 
 def test_scheduler_exception_logging_is_sanitized():

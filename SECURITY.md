@@ -70,7 +70,7 @@ The reverse proxy must not rewrite the registered callback path. Treat the proxy
 
 For any network you do not fully trust, enable native DebridPulse authentication and/or place the application behind an independently authenticated reverse proxy such as Authentik, Authelia, or an equivalent access-control layer.
 
-**Do not expose port 8080 directly to the public internet.** The generic Compose example uses bridge networking with an explicit port mapping so exposure remains visible and can be bound/restricted by the operator. Host networking should be an explicit deployment choice, not the generic default.
+**Do not expose port 8095 directly to the public internet.** The generic Compose example uses bridge networking with an explicit port mapping so exposure remains visible and can be bound/restricted by the operator. Host networking should be an explicit deployment choice, not the generic default.
 
 ### aria2
 

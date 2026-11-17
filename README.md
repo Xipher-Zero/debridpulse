@@ -160,7 +160,7 @@ git clone https://github.com/Xipher-Zero/debridpulse.git
 cd debridpulse
 ```
 
-Review `docker-compose.yml` before starting it. Adapt host paths, UID/GID, timezone, networking, and persistent storage to your environment. The generic example uses bridge networking and an explicit `8080:8080` port mapping; use host networking only when your platform specifically requires it.
+Review `docker-compose.yml` before starting it. Adapt host paths, UID/GID, timezone, networking, and persistent storage to your environment. The generic example uses bridge networking and an explicit `8095:8095` port mapping; use host networking only when your platform specifically requires it.
 
 Then start DebridPulse:
 
@@ -171,7 +171,7 @@ docker compose up -d
 Open:
 
 ```text
-http://your-server:8080
+http://your-server:8095
 ```
 
 Go to **Settings → Services**. Network sources are switched on in a new installation; every premium service is off until you turn it on (connecting a Real-Debrid or TorBox account turns that service on once the connection is proven). Enable the premium services you intend to use and connect each premium service's account (an API key, or the service's own device sign-in). **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
@@ -192,7 +192,7 @@ Example:
 docker run -d \
   --name debridpulse \
   --restart unless-stopped \
-  -p 8080:8080 \
+  -p 8095:8095 \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/Phoenix \
@@ -369,7 +369,7 @@ python -m pytest tests -v
 Run the development server with:
 
 ```bash
-uvicorn main:app --reload --port 8080
+uvicorn main:app --reload --port 8095
 ```
 
 The primary implementation areas are:

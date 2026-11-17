@@ -160,7 +160,7 @@ jobs:
           for _ in $(seq 1 30); do
             if docker exec "$container_name" \
               curl --fail --silent --show-error \
-              http://127.0.0.1:8080/api/health >/dev/null; then
+              http://127.0.0.1:8095/api/health >/dev/null; then
               healthy=1
               break
             fi
@@ -188,7 +188,7 @@ jobs:
           image_revision="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           image_title="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.title" }}')"
           image_license="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')"
-          health_payload="$(docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
+          health_payload="$(docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8095/api/health)"
           health_version="$(jq -r '.version // empty' <<< "$health_payload")"
 
           if [ "$image_version" != "$expected_version" ]; then

@@ -1178,6 +1178,16 @@ def notices(events: list[dict], words: Words) -> list[tuple[str, str]]:
     return shown
 
 
+def local_port_notice(status: dict | None, words: Words) -> tuple[str, str] | None:
+    """The one notice of a run whose Local Port is not listening (another
+    program holds it): external clients cannot reach DebridPulse until it is
+    free or changed in Settings. None while it listens."""
+    local = (status or {}).get("local_port") or {}
+    if local.get("listening") is not False:
+        return None
+    return words("desktop.local_port.unavailable_title"), words("desktop.local_port.unavailable", port=str(int(local.get("port") or 0)))
+
+
 def tray_menu(status: dict | None, words: Words, platform: str = sys.platform) -> dict:
     """The tray: its icon (macOS: a template image the menu bar tints for its
     appearance), the status line, Open, the one of Pause All / Resume All
@@ -1253,6 +1263,8 @@ async def run() -> int:
     env = processes.environment({
         "DB_PATH": str(db_path), "CONFIG_PATH": str(config_path), "STATIC_DIR": str(paths["static"]),
         "DEBRIDPULSE_DESKTOP": "1", "DEBRIDPULSE_DESKTOP_CONTROL": f"{request_end},{answer_end}",
+        # The window's own port, which Local Port relays to (application.desktop_listener).
+        "DEBRIDPULSE_DESKTOP_PORT": str(port),
         # The bundled tools, and the packaged rsync helper's own directory
         # (its MSYS runtime layout on Windows), before the system's.
         "PATH": os.pathsep.join([*(str(path) for path in (paths["tools"], paths["tools"] / "rsync" / "usr" / "bin")
@@ -1322,6 +1334,9 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
     cursor = (await channel.ask("events"))["cursor"]
     status = (await channel.ask("status")).get("status")
     await native.tray(tray_menu(status, words))
+    # Local Port taken at launch: said once, as the window opens.
+    if (unavailable := local_port_notice(status, words)) is not None:
+        await native.notice(*unavailable)
     if sys.platform == "darwin":
         # The application menu: its Quit (Cmd+Q) is this loop's Quit, never
         # the shell's own termination (_end_shell).

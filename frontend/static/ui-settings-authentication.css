@@ -1079,24 +1079,29 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: 10px;
 }
 
-/* Deployment & Language: the Deployment Type assembly, as it always was, and
-   the Default Language block -- its title over its one-line hint, both
-   centred, and the language button centred beneath them. Side by side, each
-   as wide as its own content and the two centred as one group, with the same
-   room on each side of the divider between them, while that fits; otherwise
-   the whole block beneath the assembly, centred (fitDeploymentType decides,
-   from measured natural widths, data-language-layout). The fitter measures on
+/* Deployment & Language: on the desktop application Local Port first (its
+   title over its one-line hint, the port field beside them, centred against
+   them), then the Deployment Type assembly, as it always was, and the Default
+   Language block -- its title over its one-line hint, both centred, and the
+   language button centred beneath them. In one row, each as wide as its own
+   content and all centred as one group, with the same room on each side of
+   the divider before each item after the first, while that fits; narrower,
+   the last item on its own centred row beneath the others (three items: the
+   inverted triangle); narrower still, every item on its own centred row
+   (fitDeploymentType decides, from measured natural widths,
+   data-language-layout beside / triangle / below). The fitter measures on
    hidden clones in its own zero-size box ([data-language-measure]), so the
    card never shows a candidate it does not keep. */
 #view-settings .dp-settings-deployment-language {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 16px 24px;
   min-width: 0;
 }
-#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-deployment {
+#view-settings .dp-settings-deployment-language:is([data-language-layout='beside'], [data-language-layout='triangle']) > :is(.dp-settings-local-port, .dp-settings-deployment) {
   flex: 0 0 auto;
 }
 #view-settings .dp-settings-deployment-language > [data-language-measure] {
@@ -1114,6 +1119,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 #view-settings .dp-settings-deployment-language[data-language-layout='below'] {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
 }
 #view-settings .dp-settings-default-language {
@@ -1124,17 +1130,71 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-width: 0;
   text-align: center;
 }
-/* The divider and the room after it -- the same as the pair's gap before it --
-   are the side-by-side block's, and its measured clone's. */
-#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > .dp-settings-default-language,
-#view-settings .dp-settings-deployment-language > [data-language-measure] > .dp-settings-default-language {
+/* The divider and the room after it -- the same as the gap before it -- are
+   each in-row item's after the first, and its measured clone's. An item on a
+   row of its own (the triangle's last, every stacked item after the first)
+   has its divider above it instead. */
+#view-settings .dp-settings-deployment-language[data-language-layout='beside'] > * + :not([data-language-measure]),
+#view-settings .dp-settings-deployment-language[data-language-layout='triangle'] > * + :not(:last-child, [data-language-measure]),
+#view-settings .dp-settings-deployment-language > [data-language-measure] > * + * {
   flex: 0 0 auto;
   padding-inline-start: 24px;
   border-inline-start: 1px solid var(--dp-divider);
 }
-#view-settings .dp-settings-deployment-language[data-language-layout='below'] > .dp-settings-default-language {
+#view-settings .dp-settings-deployment-language[data-language-layout='triangle'] > .dp-settings-default-language {
+  flex: 0 0 100%;
+  box-sizing: border-box;
   padding-top: 16px;
   border-top: 1px solid var(--dp-divider);
+}
+#view-settings .dp-settings-deployment-language[data-language-layout='below'] > * + :not([data-language-measure]) {
+  padding-top: 16px;
+  border-top: 1px solid var(--dp-divider);
+}
+
+/* Local Port: its title over its hint, the port field beside them and
+   centred against them, as Deployment Type's reading is; stacked (title, hint
+   and field, centred) where even its shortest reading does not fit its row.
+   A hint never wraps. */
+#view-settings .dp-settings-local-port {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-width: 0;
+}
+#view-settings .dp-settings-deployment-language > [data-language-measure] > .dp-settings-local-port,
+#view-settings .dp-settings-deployment-language:is([data-language-layout='beside'], [data-language-layout='triangle']) > .dp-settings-local-port {
+  width: max-content;
+}
+#view-settings .dp-settings-local-port-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  white-space: nowrap;
+}
+#view-settings .dp-settings-local-port-copy > .form-hint {
+  margin-top: 0;
+}
+#view-settings .dp-settings-local-port-copy > .form-hint[hidden] {
+  display: none;
+}
+/* As wide as the largest port (five digits) with room to spare, plus the
+   field's own padding, border and number spinner -- never a clipped digit. */
+#view-settings .dp-settings-local-port-field {
+  flex: 0 0 auto;
+  width: calc(6ch + 46px);
+  min-width: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+#view-settings .dp-settings-local-port[data-local-port-fit='stacked'] {
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+#view-settings .dp-settings-local-port[data-local-port-fit='stacked'] > .dp-settings-local-port-copy {
+  align-items: center;
 }
 #view-settings .dp-settings-default-language > .form-label,
 #view-settings .dp-settings-default-language > .form-hint {
@@ -1962,11 +2022,16 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 /* Email and the account's language share one row: the two-line Email block
    (its title close over the address) and, at the row's far end, the language
-   button, centred against it. When the two no longer fit side by side, the
-   whole button wraps beneath Email and starts the row there (a lone item on
-   a space-between line starts it). An address being entered takes the room
-   it needs before the button keeps its place beside it. */
+   button, centred against Email's field -- the address being entered, or the
+   saved address's line -- never against the whole block with its title: it
+   sits at the block's foot, raised by half the difference between that line's
+   height and its own. When the two no longer fit side by side, the whole
+   button wraps beneath Email and starts the row there (a lone item on a
+   space-between line starts it). An address being entered takes the room it
+   needs before the button keeps its place beside it. */
 .dp-modal-dialog.dp-account-dialog .dp-account-email-row {
+  /* The saved address's line: as tall as its Pencil (a small control), with or without it. */
+  --dp-account-email-line: var(--dp-control-height-sm);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1985,11 +2050,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 .dp-modal-dialog.dp-account-dialog .dp-account-language {
   flex: 0 0 auto;
+  align-self: flex-end;
+  margin-block-end: calc((var(--dp-account-email-line) - var(--dp-control-height-md)) / 2);
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-email:has(input) + .dp-account-language {
+  margin-block-end: calc((var(--dp-input-height) - var(--dp-control-height-md)) / 2);
 }
 /* Rerun Setup Wizard: the last part of the profile, in its scrolling body
-   above the fixed footer -- a short centred rule (about 60% of the content's
-   width), then the centred heading, its two sentences (each its own line,
-   wrapping within itself when narrow) and the secondary button. */
+   above the fixed footer -- the centred heading, its sentence (wrapping
+   within itself when narrow) and the secondary button. */
 .dp-modal-dialog.dp-account-dialog .dp-account-setup {
   display: flex;
   flex-direction: column;
@@ -1997,13 +2066,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: 6px;
   margin-top: 10px;
   text-align: center;
-}
-.dp-modal-dialog.dp-account-dialog .dp-account-setup::before {
-  content: '';
-  inline-size: 60%;
-  max-inline-size: 22rem;
-  border-block-start: 1px solid var(--dp-divider);
-  margin-block-end: 10px;
 }
 .dp-modal-dialog.dp-account-dialog .dp-account-setup-title {
   margin: 0;
@@ -2028,7 +2090,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-height: 0;
 }
 .dp-modal-dialog.dp-account-dialog .dp-account-email-value {
-  min-height: 28px;
+  min-height: var(--dp-account-email-line);
   display: flex;
   align-items: center;
   gap: 8px;

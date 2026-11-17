@@ -82,6 +82,10 @@
   const omitted = part => c => !c.shows(part);
   const onServer = c => c.server;
   const onStandalone = c => c.standalone;
+  // What only the installed desktop application has (Local Port).
+  const onDesktop = c => c.desktop === true;
+  // The desktop application is always Standalone: no Deployment Type, no switch.
+  const offDesktop = c => c.desktop !== true;
   // Read in the setup wizard, or on Settings (and anywhere else).
   const inWizard = c => c.wizard === true;
   const inSettings = c => c.wizard !== true;
@@ -651,24 +655,31 @@
     'deployment-type': {
       title: 'settings.deployment.title',
       sections: [
-        {text: [
+        {heading: 'help.topic.heading.local_port', when: onDesktop, list: [
+          'help.topic.deployment_type.local_port.what',
+          'help.topic.deployment_type.local_port.this_computer',
+          'help.topic.deployment_type.local_port.change',
+          'help.topic.deployment_type.local_port.in_use',
+          'help.topic.deployment_type.local_port.taken',
+        ]},
+        {when: offDesktop, text: [
           'help.topic.deployment_type.intro.deployment_type_decides',
         ]},
-        {heading: 'help.topic.heading.server', list: [
+        {heading: 'help.topic.heading.server', when: offDesktop, list: [
           'help.topic.deployment_type.server.every_enabled_admin',
         ]},
-        {heading: 'help.topic.heading.standalone', list: [
+        {heading: 'help.topic.heading.standalone', when: offDesktop, list: [
           'help.topic.deployment_type.standalone.only_built_administrator',
           'help.topic.deployment_type.standalone.password_set_sign',
           'help.topic.deployment_type.standalone.without_password_no',
         ]},
-        {heading: 'help.topic.heading.what_switching_keeps', list: [
+        {heading: 'help.topic.heading.what_switching_keeps', when: offDesktop, list: [
           'help.topic.deployment_type.what_switching_keeps.no_account',
           'help.topic.deployment_type.what_switching_keeps.returning_server',
           'help.topic.deployment_type.what_switching_keeps.saved_openid_connect',
           'help.topic.deployment_type.what_switching_keeps.integration_accounts_their',
         ]},
-        {heading: 'help.topic.heading.what_switching_changes', list: [
+        {heading: 'help.topic.heading.what_switching_changes', when: offDesktop, list: [
           'help.topic.deployment_type.what_switching_changes.each_switch_either',
           'help.topic.deployment_type.what_switching_changes.clears_built_administrator',
           'help.topic.deployment_type.what_switching_changes.afterwards_no_sign',

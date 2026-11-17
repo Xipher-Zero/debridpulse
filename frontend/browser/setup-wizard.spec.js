@@ -73,21 +73,14 @@ test('W01: My Account offers Rerun Setup Wizard; a rerun opens over it, changes 
   await openAccount(page);
   const section = account(page).locator('.dp-account-setup');
   await expect(section).toBeVisible();
-  // Heading, two sentences each on its own line, then the button: centred, inside the scrolling body.
+  // Heading, its one sentence, then the button: centred, inside the scrolling body, with no rule above it.
   await expect(section.locator('[data-i18n="account.setup.title"]')).toHaveText(await t(page, 'account.setup.title'));
-  await expect(section.locator('.dp-account-setup-hint')).toHaveCount(2);
-  const geometry = await section.evaluate(node => {
-    const body = node.closest('.dp-modal-body').getBoundingClientRect();
-    const rule = getComputedStyle(node, '::before');
-    const hints = [...node.querySelectorAll('.dp-account-setup-hint')].map(hint => hint.getBoundingClientRect());
-    return {inBody: node.closest('.dp-modal-body') !== null, align: getComputedStyle(node).textAlign,
-      ruleRatio: parseFloat(rule.width) / body.width, separateLines: hints[1].top >= hints[0].bottom - 1};
-  });
+  await expect(section.locator('.dp-account-setup-hint')).toHaveCount(1);
+  const geometry = await section.evaluate(node => ({inBody: node.closest('.dp-modal-body') !== null,
+    align: getComputedStyle(node).textAlign, rule: getComputedStyle(node, '::before').content}));
   expect(geometry.inBody).toBe(true);
   expect(geometry.align).toBe('center');
-  expect(geometry.ruleRatio).toBeGreaterThan(0.4);
-  expect(geometry.ruleRatio).toBeLessThan(0.7);
-  expect(geometry.separateLines).toBe(true);
+  expect(geometry.rule).toBe('none');
   // An unsaved profile edit is neither saved nor discarded by the rerun.
   const name = account(page).locator('[data-field="display_name"]');
   const saved = await name.inputValue();

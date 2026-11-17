@@ -622,7 +622,6 @@
             <div class="dp-account-setup">
               <h3 class="dp-account-setup-title" data-i18n="account.setup.title"></h3>
               <p class="dp-account-setup-hint" data-i18n="account.setup.hint.review"></p>
-              <p class="dp-account-setup-hint" data-i18n="account.setup.hint.preserved"></p>
               <button type="button" class="btn dp-account-setup-rerun" data-account-setup-rerun data-i18n="account.setup.rerun"></button>
             </div>` : ''}
           </div>${localeState ? `
@@ -1029,6 +1028,10 @@
         deployment: authority.deployment_type === 'standalone' ? 'standalone' : 'server',
         standalone: authority.deployment_type === 'standalone',
         server: authority.deployment_type !== 'standalone',
+        // The installed desktop application (window.debridPulseDesktop): an
+        // installation fact, not a role or deployment -- what only it has
+        // (Local Port) is explained only there.
+        desktop: window.debridPulseDesktop === true,
         mode: presentation.mode,
         easy: presentation.mode === 'easy',
         advanced: presentation.mode !== 'easy',

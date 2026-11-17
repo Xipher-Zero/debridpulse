@@ -219,10 +219,10 @@ RUN mkdir -p /app/data /app/data/usenet /app/config /download && \
 # application's build identity (core.version.read_build_revision).
 ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}
 
-EXPOSE 8080
+EXPOSE 8095
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD curl -f http://localhost:8080/api/health || exit 1
+  CMD curl -f http://localhost:8095/api/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8095", "--workers", "1"]

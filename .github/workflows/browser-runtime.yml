@@ -160,7 +160,7 @@ jobs:
             # as an operator's running installation.
             mkdir -p "${auth_dir}-open"
             echo '{}' > "${auth_dir}-open/config.json"
-            docker run -d --name "$open_name" -p "127.0.0.1:${open_port}:8080" -v "${auth_dir}-open:/app/config" "$image" || return 1
+            docker run -d --name "$open_name" -p "127.0.0.1:${open_port}:8095" -v "${auth_dir}-open:/app/config" "$image" || return 1
 
             mkdir -p "$auth_dir"
             docker run --rm --entrypoint python "$image" -c '
@@ -174,7 +174,7 @@ jobs:
           }))
           ' > "$auth_dir/config.json" || return 1
 
-            docker run -d --name "$auth_name" -p "127.0.0.1:${auth_port}:8080" -v "$auth_dir:/app/config" "$image" || return 1
+            docker run -d --name "$auth_name" -p "127.0.0.1:${auth_port}:8095" -v "$auth_dir:/app/config" "$image" || return 1
 
             for port in "$open_port" "$auth_port"; do
               ready=0
@@ -200,9 +200,9 @@ jobs:
           # An existing installation too (see start_runtime).
           mkdir -p "$RUNNER_TEMP/dp-browser-contract-config"
           echo '{}' > "$RUNNER_TEMP/dp-browser-contract-config/config.json"
-          docker run -d --name dp-browser-contract -p "127.0.0.1:8084:8080" \
+          docker run -d --name dp-browser-contract -p "127.0.0.1:8084:8095" \
             -v "$RUNNER_TEMP/dp-browser-contract-config:/app/config" "$IMAGE" \
-            uvicorn browser_contract_app:app --app-dir /app/tests --host 0.0.0.0 --port 8080 --workers 1
+            uvicorn browser_contract_app:app --app-dir /app/tests --host 0.0.0.0 --port 8095 --workers 1
           ready=0
           for _ in $(seq 1 90); do
             if curl -fsS "http://127.0.0.1:8084/api/health" >/dev/null; then ready=1; break; fi
@@ -226,7 +226,7 @@ jobs:
           print(json.dumps({"integrations": {"usenet": {
               "enabled": False, "options": options, "verification": evidence}}}))
           ' > "$usenet_dir/config.json"
-          docker run -d --name dp-browser-usenet -p "127.0.0.1:8085:8080" -v "$usenet_dir:/app/config" "$IMAGE"
+          docker run -d --name dp-browser-usenet -p "127.0.0.1:8085:8095" -v "$usenet_dir:/app/config" "$IMAGE"
           ready=0
           for _ in $(seq 1 90); do
             if curl -fsS "http://127.0.0.1:8085/api/health" >/dev/null; then ready=1; break; fi
