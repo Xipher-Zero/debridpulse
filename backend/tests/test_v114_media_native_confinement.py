@@ -208,7 +208,7 @@ def test_a_confined_helper_and_its_descendants_reach_no_network(sandbox, tmp_pat
 
 
 @pytest.mark.real_runtime
-@pytest.mark.skipif(not (WINDOWS or MACOS), reason="a desktop shell hand-off exists on Windows and macOS")
+@pytest.mark.only_on(WINDOWS or MACOS, reason="a desktop shell hand-off exists on Windows and macOS")
 def test_handing_a_link_to_the_desktop_reaches_nothing(sandbox, tmp_path):
     """The macOS analogue of ``os.startfile``: LaunchServices (``open``) would
     have an unconfined browser fetch the link; on Windows, ShellExecuteW."""
@@ -236,7 +236,7 @@ def test_the_worker_refuses_to_hand_anything_to_the_desktop_shell():
 
 
 @pytest.mark.real_runtime
-@pytest.mark.skipif(not MACOS, reason="the macOS confinement names the workspace")
+@pytest.mark.only_on(MACOS, reason="the macOS confinement names the workspace")
 def test_without_a_nameable_workspace_the_helper_is_not_run(sandbox, tmp_path):
     marker = tmp_path / "ran"
     env = {**sandbox.environment(tmp_path), "TMPDIR": "relative/workspace"}
@@ -352,7 +352,7 @@ async def test_a_real_acquisition_is_cancelled_after_a_restart_and_its_retry_com
 
 
 @pytest.mark.real_runtime
-@pytest.mark.skipif(not WINDOWS, reason="Windows: the launcher and the shim wait for the tool")
+@pytest.mark.only_on(WINDOWS, reason="Windows: the launcher and the shim wait for the tool")
 def test_ending_the_launcher_ends_the_confined_helper(sandbox, tmp_path):
     """What the worker does to a stalled helper (and a job termination does
     to the whole group): ending the launcher leaves no confined helper alive."""

@@ -12,17 +12,16 @@ const { test, expect } = require('@playwright/test');
  * - the selection toolbar hides its "N Selected", reads Clear, and shows every
  *   label while the whole toolbar fits with its widest set, else every glyph
  *   alone at once -- six on one row at 320px.
- * The header's own fit is checked from 320px in Outfit (the product's face) and
- * from 340px in the fallback face: there "On the Books" (118px in DejaVu Sans)
- * and the control need 18px more than a 320px window gives -- a recorded limit
- * of the fallback face, not compensated in the presentation. Every other case
- * holds at 320px in either face.
+ * The header's own fit is checked from 320px in either face: Outfit (the
+ * product's) or the fallback, the Noto Sans Browser Runtime pins
+ * (.github/qualification/install_browser_fonts.sh). (DejaVu Sans, the unpinned
+ * runner's old default, needed 340px.)
  * From 780px the desktop's header, filters and toolbar are unchanged (their own
- * specs). CI's fallback fonts by default; DP_WEB_FONTS=1 loads Outfit for the
+ * specs). The pinned fallback fonts by default; DP_WEB_FONTS=1 loads Outfit for the
  * same assertions. Mocked rows, counts and commands: no backend state is read or
  * written. */
 
-const NARROWEST_HEADER = process.env.DP_WEB_FONTS ? 320 : 340;
+const NARROWEST_HEADER = 320;
 const SEVEN = ['All', 'Downloading', 'Paused', 'Processing', 'Ready', 'Done', 'Error'];
 const STATUSES = ['', 'downloading', 'paused', 'processing', 'ready', 'completed', 'error'];
 

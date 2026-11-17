@@ -461,7 +461,7 @@ except OSError as exc:
 
 
 @pytest.mark.real_runtime
-@pytest.mark.skipif(os.name == "nt", reason="Windows: test_v114_media_native_confinement (the AppContainer "
+@pytest.mark.only_on(os.name != "nt", reason="Windows: test_v114_media_native_confinement (the AppContainer "
                                              "reaches no interpreter it is not granted)")
 @pytest.mark.asyncio
 async def test_every_native_helper_runs_with_no_usable_network(tmp_path):

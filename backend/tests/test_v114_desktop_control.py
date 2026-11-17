@@ -349,7 +349,7 @@ async def test_the_desktop_setup_is_standalone_and_goes_on_only_with_a_chosen_fo
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.name == "nt" or sys.platform == "darwin",
+@pytest.mark.only_on(not (os.name == "nt" or sys.platform == "darwin"),
                     reason="the user's Downloads folder named by the XDG user-dirs file (Linux)")
 async def test_the_desktop_folder_browser_opens_in_the_users_downloads_until_a_folder_is_chosen(tmp_path):
     """Fresh desktop setup: the Download Folder browser opens in the user's own

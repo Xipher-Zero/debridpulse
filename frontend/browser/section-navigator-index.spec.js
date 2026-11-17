@@ -264,8 +264,10 @@ const until = (page, t) => page.waitForFunction(t => performance.now() >= t, t);
 const appeared = (page, since) => page.evaluate(since => window.__index.filter(e => e.on && e.t >= since).map(e => e.t - since), since);
 const shownNow = page => page.evaluate(() => !!window.__indexOn);
 const indexShown = page => page.waitForFunction(() => window.__indexOn === true, null, {timeout: 6000});
+// Resolves with the page's own time at which it was first seen settled, so a
+// dwell is measured from the settle and not from a later round trip.
 const settled = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface')
-  && !document.querySelector('[data-tooltip-busy]'));
+  && !document.querySelector('[data-tooltip-busy]') && performance.now()).then(handle => handle.jsonValue());
 
 async function navigatorPoint(page, view, which = 'middle') {
   return page.evaluate(([sel, which]) => {
@@ -383,8 +385,7 @@ for (const {view, label} of PAGES) {
       t0 = await now(page);
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await page.waitForFunction(() => window.__indexOn === false, null, {timeout: 500});
-      await settled(page);
-      rest = await now(page);
+      rest = await settled(page);
       await indexShown(page);
       expect((await appeared(page, rest))[0], `${end}: a fresh dwell after it settled`).toBeGreaterThanOrEqual(DWELL - 50);
     }
@@ -419,8 +420,7 @@ for (const {view, label} of PAGES) {
     await page.mouse.click(right.x, right.y);
     await until(page, t0 + 150);
     await page.mouse.click(left.x, left.y);
-    await settled(page);
-    rest = await now(page);
+    rest = await settled(page);
     await indexShown(page);
     expect(await appeared(page, t0), 'nothing before the rest').toEqual([(await appeared(page, rest))[0] + (rest - t0)]);
     expect((await appeared(page, rest))[0], 'a full rest after the reversal').toBeGreaterThanOrEqual(DWELL - 50);

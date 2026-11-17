@@ -358,7 +358,16 @@ isolated re-runs of a named node id are never shard-filtered at all.
 A test that needs an executable carries the `real_runtime` marker; nothing else selects it.
 Every layer ends with an accounting step (tests, summed and wall time, slowest cases); **a skip
 in any layer fails it**, because every layer runs in the environment its tests require -- a skip
-would be coverage that silently did not run.
+would be coverage that silently did not run. A test that needs one operating system (the desktop
+application's Windows, macOS or Linux paths) carries `only_on(condition, reason=...)`: where the
+condition is false it is deselected at collection, never skipped, and the installers' build
+(`desktop-artifacts.yml`) runs the desktop modules on each system. A contract test names every
+`only_on` module that build does not run, and refuses a platform `skipif`.
+
+Browser specs measure text set in the system's default fonts (the web fonts are blocked), so
+`Browser Runtime` pins them: `.github/qualification/install_browser_fonts.sh` installs the exact
+Noto builds the specs were written against, by SHA-256, and fails unless each default resolves
+to them.
 
 `Browser Runtime` runs its suite once the same way across independent runners, each serving its
 own candidate containers. Each shard runs a set of **whole** spec files planned by

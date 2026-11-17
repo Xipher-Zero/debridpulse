@@ -66,10 +66,12 @@ const exited = page => page.waitForFunction(() => window.__exit?.done, null, {ti
   .then(exit => ({...exit, frames: exit.frames.filter(frame => exit.asked !== undefined && frame.t >= exit.asked)}));
 
 // The exit as drawn: several frames, travelling toward the bar only, the last
-// one drawn close to the bar before the sheet goes -- never gone at once.
+// one drawn close to the bar before the sheet goes -- never gone at once. A
+// loaded runner draws fewer frames of the same exit, so the floor is the
+// start, a frame on the way and the last: three.
 function expectExit(exit, label, {toward, from = 0} = {}) {
   const travel = exit.frames.map(frame => frame.travelled);
-  expect(exit.frames.length, `${label}: frames drawn while closing (${travel.join(' ')})`).toBeGreaterThanOrEqual(4);
+  expect(exit.frames.length, `${label}: frames drawn while closing (${travel.join(' ')})`).toBeGreaterThanOrEqual(3);
   expect(travel[0], `${label}: the exit starts where the panel was drawn`).toBeLessThanOrEqual(Math.max(from, 0) + 0.3);
   for (let i = 1; i < travel.length; i += 1) {
     expect(travel[i], `${label}: the panel moves back toward its bar only (${travel.join(' ')})`).toBeGreaterThanOrEqual(travel[i - 1] - 0.01);

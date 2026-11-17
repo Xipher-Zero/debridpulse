@@ -127,7 +127,7 @@ async def test_a_program_that_finishes_leaves_no_live_group(tmp_path):
     assert await owner.terminate(owned, "a")
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows exit codes are DWORDs relayed by the gate; POSIX execs the program")
+@pytest.mark.only_on(os.name == "nt", reason="Windows exit codes are DWORDs relayed by the gate; POSIX execs the program")
 @pytest.mark.asyncio
 async def test_an_exit_code_above_two_to_the_31_reaches_debridpulse_unchanged(tmp_path):
     # A crashed program's NTSTATUS (STATUS_STACK_BUFFER_OVERRUN), and a

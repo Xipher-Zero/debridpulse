@@ -118,7 +118,9 @@ test('every KPI card from 780px is its icon beside its title over its value, bel
       const at = `${width}px ${card.title}`;
       expect(card.height, `${at}: the card keeps its height`).toBeCloseTo(130, 1);
       expect(card.mode, `${at}: one composition`).toBe(null);
-      expect(card.titleBox.bottom, `${at}: the title above the value`).toBeLessThanOrEqual(card.value.top);
+      // Text content areas, ascent to descent: Noto Sans (the pinned fallback) has a taller one than Outfit,
+      // so the two areas may meet within a pixel of empty space while the letters stay apart.
+      expect(card.titleBox.bottom, `${at}: the title above the value`).toBeLessThanOrEqual(card.value.top + 1);
       if (width >= 780) {
         // The icon where it always was (the card's padding and its 1px), the text beside it, title and value aligned.
         expect([card.icon.left, card.icon.top], `${at}: the icon at the left`).toEqual([18, 22]);

@@ -226,6 +226,9 @@ test('Manage holds exactly the account\'s own actions, by their full names, and 
 });
 
 test('every token table shares its columns, keeps the four-column row height, and fits Token, Status and Actions at 320px', async ({browser}) => {
+  // Two data sets, each laid out every 3px from 779 to 320: about 40s even on a
+  // fast host, so it has twice the default budget.
+  test.setTimeout(90_000);
   for (const data of [BASIC, RICH]) {
     const {context, page} = await open(browser, data);
     const seen = new Set();

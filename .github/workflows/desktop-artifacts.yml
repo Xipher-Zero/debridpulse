@@ -280,7 +280,7 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/layout/runtime/python/python.exe"; else PY="$RUNNER_TEMP/layout/runtime/python/bin/python3"; fi
           # The test runner beside the layout, never inside it (the layout is what ships).
           "$PY" -m pip install --no-cache-dir --target "$RUNNER_TEMP/testdeps" pytest==9.1.1 pytest-asyncio==1.4.0
-          PYTHONPATH="$RUNNER_TEMP/testdeps" "$PY" -B -m pytest tests/test_v114_desktop_control.py tests/test_v114_desktop_supervisor.py \
+          PYTHONPATH="$RUNNER_TEMP/testdeps" "$PY" -B -m pytest tests/test_v114_desktop_control.py tests/test_v114_desktop_supervisor.py tests/test_v114_desktop_frame.py \
             -p no:cacheprovider -rs --junitxml "$RUNNER_TEMP/desktop-junit.xml"
       - name: The Usenet check (the existing executor starts the bundled service; health; exit 0 on stop)
         shell: bash

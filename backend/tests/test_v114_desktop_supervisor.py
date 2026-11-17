@@ -215,7 +215,7 @@ import pytest  # noqa: E402
 POSIX = os.name != "nt"
 
 
-@pytest.mark.skipif(not POSIX, reason="POSIX modes; Windows is checked by its ACL below")
+@pytest.mark.only_on(POSIX, reason="POSIX modes; Windows is checked by its ACL below")
 def test_the_credential_directory_is_made_private_before_the_shell_writes_into_it(tmp_path):
     home = tmp_path / "org.debridpulse.desktop"
     (home / ".tmp").mkdir(parents=True, mode=0o755)
@@ -229,7 +229,7 @@ def test_the_credential_directory_is_made_private_before_the_shell_writes_into_i
     assert fresh.stat().st_mode & 0o777 == 0o700 and fresh.parent.stat().st_mode & 0o777 == 0o700
 
 
-@pytest.mark.skipif(not POSIX, reason="POSIX link substitution")
+@pytest.mark.only_on(POSIX, reason="POSIX link substitution")
 def test_a_linked_credential_directory_or_file_fails_closed(tmp_path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir(mode=0o755)
@@ -256,7 +256,7 @@ def test_the_credential_is_read_once_and_deleted(tmp_path):
 
 # -- Windows: owner, reparse points and every ACE, checked by handle -------------------------
 
-WINDOWS_ONLY = pytest.mark.skipif(POSIX, reason="Windows: native owner, reparse-point and DACL checks")
+WINDOWS_ONLY = pytest.mark.only_on(not POSIX, reason="Windows: native owner, reparse-point and DACL checks")
 
 
 def _icacls(*argv):
@@ -548,7 +548,7 @@ def _session_bus_available() -> bool:
     return sys.platform.startswith("linux") and shutil.which("dbus-daemon") is not None
 
 
-LINUX_BUS = pytest.mark.skipif(not _session_bus_available(),
+LINUX_BUS = pytest.mark.only_on(_session_bus_available(),
                                reason="Linux with the desktop runtime's jeepney and a dbus-daemon")
 
 

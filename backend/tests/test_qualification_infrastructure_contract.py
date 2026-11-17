@@ -1736,3 +1736,27 @@ def test_the_inventory_jobs_list_every_attempt_s_artifacts() -> None:
         for step in downloads:
             assert step["with"]["github-token"] == "${{ github.token }}", (path.name, step["name"])
             assert step["with"]["run-id"] == "${{ github.run_id }}", (path.name, step["name"])
+
+
+def test_a_test_for_one_operating_system_runs_on_it_and_is_never_a_skip_elsewhere() -> None:
+    """``only_on`` deselects a test where its system is not (never a skip, so a
+    skip still fails every layer); the installers' build runs the desktop
+    modules on Windows, macOS and Linux. Three modules are not run there: the
+    two media runtime modules need the executors' runtime layer, which that
+    build does not provide, and the process-ownership portability module's one
+    Windows case needs the gate's own process; on their other systems those
+    cases run in no workflow (as when they were skipped), named here so that
+    adding another is a decision."""
+    conftest = (ROOT / "backend" / "tests" / "conftest.py").read_text(encoding="utf-8")
+    assert "config.hook.pytest_deselected(items=elsewhere)" in conftest
+    desktop = (ROOT / ".github" / "workflows" / "desktop-artifacts.yml").read_text(encoding="utf-8")
+    run = desktop[desktop.index('"$PY" -B -m pytest '):].split("\n", 1)[0]
+    elsewhere = {"test_v114_media_native_confinement.py", "test_v113_media_downloads_runtime.py",
+                 "test_v114_process_ownership_portability.py"}
+    for path in sorted((ROOT / "backend" / "tests").glob("test_*.py")):
+        if path.name == Path(__file__).name:
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "pytest.mark.skipif(os.name" not in source and "pytest.mark.skipif(sys.platform" not in source, path.name
+        if "pytest.mark.only_on(" in source and path.name not in elsewhere:
+            assert f"tests/{path.name}" in run, path.name

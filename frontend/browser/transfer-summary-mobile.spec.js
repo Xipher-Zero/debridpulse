@@ -264,8 +264,9 @@ test.describe('handheld transfer lists', () => {
         if (view === 'torrents') expect(t.rows.find(row => row.id === 9703).consentInActions, `${at}: Start Now in Actions`).toBe(true);
       }
       // Back at 779px every row has room again: each size and label set aside at 320px returns. (Downloads sets some
-      // aside at 320px in either face; Download Activity, with the Summary's whole width, may keep every one in Outfit.)
-      if (view === 'torrents' || !process.env.DP_WEB_FONTS) expect((await read(page, view)).rows.some(row => !row.sizeShown), `${view} 320px: some size set aside`).toBe(true);
+      // aside at 320px in either face; Download Activity, with the Summary's whole width, may keep every one, in Outfit
+      // and in the pinned Noto Sans alike.)
+      if (view === 'torrents') expect((await read(page, view)).rows.some(row => !row.sizeShown), `${view} 320px: some size set aside`).toBe(true);
       await page.setViewportSize({width: 779, height: 900});
       await settle(page);
       expect((await read(page, view)).rows.every(row => row.sizeShown && row.userLabel !== 'omitted' && row.stage === ''), `${view} 779px: every size and label back`).toBe(true);

@@ -44,6 +44,12 @@ import aiosqlite  # noqa: F401
 import pytest
 
 RUNTIME_MARKER = "real_runtime"
+# A test that needs one operating system (or the desktop runtime's own
+# services): ``only_on(condition, reason=...)``. Where the condition is false it
+# is not collected -- deselected, never a skip, so a skip still fails every
+# layer -- and the installers' build (desktop-artifacts.yml) runs it on the
+# system it needs.
+PLATFORM_MARKER = "only_on"
 
 
 def pytest_addoption(parser):
@@ -54,6 +60,8 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers", f"{RUNTIME_MARKER}: drives a real external executable; runs in the runtime layer")
+    config.addinivalue_line(
+        "markers", f"{PLATFORM_MARKER}(condition, reason): needs one operating system; elsewhere it is deselected")
     if config.getoption("stall_dump") > 0:
         config.stash[_STALL_FD] = os.dup(2)        # the real stderr: capture is suspended here
 
@@ -216,7 +224,16 @@ def parse_shard(value: str) -> tuple[int, int] | None:
     return shard, shards
 
 
+def _elsewhere(item) -> bool:
+    marker = item.get_closest_marker(PLATFORM_MARKER)
+    return marker is not None and not marker.args[0]
+
+
 def pytest_collection_modifyitems(config, items):
+    elsewhere = [item for item in items if _elsewhere(item)]
+    if elsewhere:
+        config.hook.pytest_deselected(items=elsewhere)
+        items[:] = [item for item in items if not _elsewhere(item)]
     selected = parse_shard(os.environ.get("DP_TEST_SHARD", ""))
     if selected is None:
         return

@@ -61,7 +61,7 @@ def test_windows_takes_the_colours_as_colorref():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(sys.platform != "darwin", reason="the macOS path: the shell's own method")
+@pytest.mark.only_on(sys.platform == "darwin", reason="the macOS path: the shell's own method")
 async def test_macos_gives_the_frame_to_the_shells_method():
     calls = []
 
@@ -88,13 +88,13 @@ def test_the_frame_is_wired_from_the_page_to_the_shell():
     assert "api('PUT', '/desktop/frame', frame)" in block
 
 
+@pytest.mark.only_on(sys.platform.startswith("linux"), reason="the Linux path: the desktop's own frame")
 def test_linux_leaves_its_desktops_frame_alone():
-    if sys.platform.startswith("linux"):
-        calls = []
+    calls = []
 
-        class Shell:
-            async def call(self, *args, **kwargs):
-                calls.append(args)
+    class Shell:
+        async def call(self, *args, **kwargs):
+            calls.append(args)
 
-        asyncio.run(supervisor.apply_frame(Shell(), {"caption": "#05081a", "text": "#f7f8ff", "dark": True}))
-        assert calls == []
+    asyncio.run(supervisor.apply_frame(Shell(), {"caption": "#05081a", "text": "#f7f8ff", "dark": True}))
+    assert calls == []
