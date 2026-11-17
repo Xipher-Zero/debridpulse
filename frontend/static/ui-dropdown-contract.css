@@ -156,6 +156,25 @@ select.dp-native-select--enhanced {
   -webkit-backdrop-filter: blur(16px);
 }
 
+/* WebKitGTK (marked by ui-theme-bootstrap.js): no glass. Its backdrop is
+   rebuilt on every repaint anywhere in the page and drops out, so the menus
+   flicker while the Dashboard's heartbeat animates; there they are the solid
+   panel instead. Every other engine keeps the glass above. On a phone the
+   speed-cap menu is a sheet whose panel is already solid (ui-shell-mobile.css). */
+:root[data-dp-engine="webkitgtk"] .dp-dropdown-menu {
+  background: var(--dp-panel-surface) var(--dp-surface-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (min-width: 780px) {
+  :root[data-dp-engine="webkitgtk"] .runtime-cap-menu {
+    /* !important: the glass rules below carry it too. */
+    background: var(--dp-panel-surface) var(--dp-surface-2) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 body.light .dp-dropdown-menu {
   border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
   background:

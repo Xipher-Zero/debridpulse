@@ -11,7 +11,7 @@ def read(name: str) -> str:
 
 def test_universal_dropdown_contract_is_loaded_before_page_layers():
     style = read("style.css")
-    dropdown_import = "@import url('/ui-dropdown-contract.css?v=21');"
+    dropdown_import = "@import url('/ui-dropdown-contract.css?v=22');"
     assert dropdown_import in style
     assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=5');")
     assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=33');")
@@ -84,3 +84,22 @@ def test_open_dropdown_surface_uses_shared_depth_language_in_both_themes():
     assert "var(--dp-shadow-raised)" in menu
     assert "body.light .dp-dropdown-menu" in css
     assert "body.light .runtime-cap-menu" in css
+
+
+def test_webkitgtk_menus_are_solid_where_its_glass_flickers():
+    """WebKitGTK rebuilds a backdrop on every repaint and drops it, so the
+    menus' glass flickers over the Dashboard's animated heartbeat: the first
+    script marks that engine before the first paint, and only there the
+    menus are the solid panel with no backdrop filter (the Speed Cap menu from
+    780px; on a phone it is a sheet with its own solid panel)."""
+    bootstrap = read("ui-theme-bootstrap.js")
+    assert "document.documentElement.dataset.dpEngine = 'webkitgtk';" in bootstrap
+    assert "!/Chrome\\/|Chromium\\/|Android/.test(agent)" in bootstrap
+    css = read("ui-dropdown-contract.css")
+    for selector in (':root[data-dp-engine="webkitgtk"] .dp-dropdown-menu {',
+                     ':root[data-dp-engine="webkitgtk"] .runtime-cap-menu {'):
+        rule = css[css.index(selector):css.index("}", css.index(selector))]
+        assert "background: var(--dp-panel-surface) var(--dp-surface-2)" in rule
+        assert "backdrop-filter: none;" in rule and "-webkit-backdrop-filter: none;" in rule
+    cap = css.index(':root[data-dp-engine="webkitgtk"] .runtime-cap-menu {')
+    assert css.rfind("@media (min-width: 780px) {", 0, cap) > css.index(':root[data-dp-engine="webkitgtk"] .dp-dropdown-menu {')

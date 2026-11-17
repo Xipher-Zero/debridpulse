@@ -38,6 +38,17 @@
   'use strict';
   const KEYS = Object.freeze({dark: 'dp-theme-palette-dark', light: 'dp-theme-palette-light'});
 
+  // WebKitGTK (the Linux desktop application's engine, and Linux WebKit
+  // browsers) rebuilds a backdrop-filter's backdrop on every repaint anywhere
+  // in the page and drops it intermittently, so glass over the Dashboard's
+  // animated heartbeat flickers for as long as it runs. It is marked here,
+  // before the first paint, for the few rules that give it a solid surface
+  // instead (ui-dropdown-contract.css). Chromium and macOS WebKit are unmarked.
+  const agent = navigator.userAgent || '';
+  if (/\bLinux\b/.test(agent) && /AppleWebKit\//.test(agent) && !/Chrome\/|Chromium\/|Android/.test(agent)) {
+    document.documentElement.dataset.dpEngine = 'webkitgtk';
+  }
+
   const source = window.debridPulseAppearance || {};
   const browser = source.authority === 'browser';
 
