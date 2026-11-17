@@ -200,7 +200,12 @@ test('the six-step flow is one group centred in its card, with aligned columns',
   for (const width of [1440, 390]) {
     await page.setViewportSize({width, height: 900});
     await openHelp(page);
-    await page.locator('#view-help .dp-help-tab[data-tab="howitworks"]:not(.dp-motion-still *)').click();
+    // At a phone width the section navigator may show this tab only as a cut
+    // sliver under its strip, so it is chosen from the keyboard, as a person
+    // reaches a tab the strip has scrolled past.
+    const tab = page.locator('#view-help .dp-help-tab[data-tab="howitworks"]:not(.dp-motion-still *)');
+    await tab.focus();
+    await tab.press('Enter');
     // The tab's slide commits the panel a frame or two after the click; the
     // live layout is final from that commit on, never transformed by the slide.
     await expect(page.locator('#dp-help-panel-howitworks')).toBeVisible();

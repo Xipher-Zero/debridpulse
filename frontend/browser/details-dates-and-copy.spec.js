@@ -109,11 +109,19 @@ test('Quick Add shows its whole placeholder at any width and sizes to typed, mul
     const mirror = el.cloneNode();
     mirror.removeAttribute('id');
     mirror.style.height = '0px';
+    // Out of the flow at the field's own width: a sibling in the field's flex
+    // row would share its width and wrap where the field does not.
+    Object.assign(mirror.style, {position: 'absolute', visibility: 'hidden', flex: 'none',
+      width: `${el.getBoundingClientRect().width}px`});
     mirror.value = el.value || el.placeholder;
     el.parentElement.appendChild(mirror);
     const needed = mirror.scrollHeight;
     mirror.remove();
-    return {height: Math.round(el.getBoundingClientRect().height), visible: el.clientHeight, needed};
+    // Two of the field's own rows: its line height twice, plus its padding and border.
+    const c = getComputedStyle(el);
+    const twoRows = Math.round(2 * parseFloat(c.lineHeight) + parseFloat(c.paddingTop) + parseFloat(c.paddingBottom)
+      + parseFloat(c.borderTopWidth) + parseFloat(c.borderBottomWidth));
+    return {height: Math.round(el.getBoundingClientRect().height), visible: el.clientHeight, needed, twoRows};
   });
   const input = page.locator('#q-transfer-input');
 
@@ -121,17 +129,19 @@ test('Quick Add shows its whole placeholder at any width and sizes to typed, mul
   await boot(page);
   const desktop = await fits();
   expect(desktop.needed).toBeLessThanOrEqual(desktop.visible);
-  expect(desktop.height, 'two compact rows on a desktop').toBe(62);
+  expect(desktop.height, 'two compact rows on a desktop').toBe(desktop.twoRows);
 
   // Narrowing the page re-sizes the empty field to its now-wrapped placeholder.
   await page.setViewportSize({width: 390, height: 900});
   await expect.poll(async () => { const f = await fits(); return f.needed <= f.visible; }).toBe(true);
   const narrowEmpty = await fits();
-  expect(narrowEmpty.height).toBeGreaterThan(62);
+  // Its narrow hint (the concise placeholder since the mobile Dashboard of
+  // fcb4e8d1) is shown whole; it needs no more than the two rows.
+  expect(narrowEmpty.height).toBeGreaterThanOrEqual(desktop.twoRows);
 
   // Typing one short line returns it to two rows; several lines grow it; clearing restores the hint.
   await input.fill('magnet:?xt=urn:btih:abc');
-  expect((await fits()).height).toBe(62);
+  expect((await fits()).height).toBe(desktop.twoRows);
   await input.fill('https://a.example/1\nhttps://a.example/2\nhttps://a.example/3\nhttps://a.example/4');
   const four = await fits();
   expect(four.height).toBeGreaterThan(narrowEmpty.height);
@@ -141,5 +151,5 @@ test('Quick Add shows its whole placeholder at any width and sizes to typed, mul
 
   // Back on a desktop the empty field is two compact rows again.
   await page.setViewportSize({width: 1440, height: 900});
-  await expect.poll(async () => (await fits()).height).toBe(62);
+  await expect.poll(async () => (await fits()).height).toBe(desktop.twoRows);
 });

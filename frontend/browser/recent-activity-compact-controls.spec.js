@@ -132,8 +132,8 @@ test('compact controls say their status and action in DP tooltips, on hover and 
   await open(page, () => items);
   await resize(page, 1000);
   expect((await controls(page)).wrap).toBeLessThanOrEqual(987);
-  for (const [id, text] of [['9801', 'Downloading'], ['9802', 'Awaiting confirmation'], ['9803', 'Execution missing'],
-    ['9804', 'Paused'], ['9805', 'Completed']]) {
+  for (const [id, text] of [['9801', 'Downloading'], ['9802', 'Input Required'], ['9803', 'Error'],
+    ['9804', 'Paused'], ['9805', 'Done']]) {
     expect(await hoverTooltip(page, `#dash-tbody tr[data-torrent-id="${id}"] .badge`), id).toBe(text);
   }
   expect(await hoverTooltip(page, '#dash-tbody tr[data-torrent-id="9801"] .actions .btn')).toBe('Pause this download');
@@ -150,7 +150,7 @@ test('compact controls say their status and action in DP tooltips, on hover and 
   // Each control keeps its whole name.
   await expect(page.getByRole('button', {name: 'Pause', exact: true})).toHaveCount(1);
   await expect(page.getByRole('button', {name: 'Resume', exact: true})).toHaveCount(1);
-  await expect(page.locator('#dash-tbody tr[data-torrent-id="9802"] .badge')).toHaveText('Awaiting confirmation');
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="9802"] .badge')).toHaveText('Input Required');
 });
 
 test('a status change updates the compact badge, its tooltip and its action', async ({page}) => {

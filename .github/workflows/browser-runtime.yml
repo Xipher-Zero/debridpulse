@@ -273,6 +273,31 @@ jobs:
           fi
           echo "packages=$(find "$debs" -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
 
+      # The specs block the web fonts, so the page is set in the system's
+      # default sans-serif, system-ui and monospace, and many measure that
+      # text (a title on one row at 320px, a short label only where the full
+      # one does not fit). Those widths are a font's: unpinned, the runner's
+      # own default failed them on every shard without saying anything about
+      # the application. The exact Noto builds the specs were written against
+      # are fetched from their upstream releases by SHA-256 and made the
+      # defaults, for the candidate and the anchor alike (both run here).
+      - name: Restore the pinned browser fonts
+        id: browser_fonts_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/dp-browser-fonts
+          key: browser-fonts-${{ hashFiles('.github/qualification/install_browser_fonts.sh') }}
+
+      - name: Pin the fonts the browser specs measure
+        run: bash .github/qualification/install_browser_fonts.sh "$HOME/.cache/dp-browser-fonts"
+
+      - name: Save the pinned browser fonts
+        if: steps.browser_fonts_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/dp-browser-fonts
+          key: ${{ steps.browser_fonts_cache.outputs.cache-primary-key }}
+
       - name: Save the locked Playwright Chromium and its system packages
         if: steps.playwright_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

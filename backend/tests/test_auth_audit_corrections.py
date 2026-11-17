@@ -244,7 +244,7 @@ def test_oidc_issuer_identifier_is_exact_and_trailing_slash_is_preserved():
 
 def test_oidc_direct_jose_dependency_is_explicitly_owned():
     requirements = (ROOT / "backend" / "requirements.in").read_text(encoding="utf-8")
-    assert "joserfc==1.7.4" in requirements.splitlines()
+    assert "joserfc==1.7.6" in requirements.splitlines()
 
 
 def test_uvicorn_access_log_remains_suppressed_for_oidc_query_credentials():

@@ -1571,6 +1571,15 @@ def test_the_runtime_and_browser_provisioning_caches_are_keyed_by_what_they_buil
     assert "hashFiles('frontend/browser/package-lock.json')" in cache["key"] and "steps.runner_os.outputs.release" in cache["key"]
     install = browser["Install and audit locked Playwright Chromium"]["run"]
     assert "npx playwright install --with-deps chromium" in install and "/var/cache/apt/archives/" in install
+    # The fonts the specs measure are pinned: exact upstream builds by SHA-256, made the defaults, checked.
+    fonts = browser["Pin the fonts the browser specs measure"]["run"]
+    assert fonts == 'bash .github/qualification/install_browser_fonts.sh "$HOME/.cache/dp-browser-fonts"'
+    assert "install_browser_fonts.sh" in browser["Restore the pinned browser fonts"]["with"]["key"]
+    assert list(browser).index("Pin the fonts the browser specs measure") < list(browser).index(
+        "Inventory and run browser runtime contract")
+    script = (ROOT / ".github" / "qualification" / "install_browser_fonts.sh").read_text(encoding="utf-8")
+    assert script.count("https://github.com/notofonts/") == 5 and "sha256sum -c --quiet" in script
+    assert 'if [ "$file" != "$target/$expected" ]; then' in script
     assert "cache-hit != 'true'" in browser["Save the locked Playwright Chromium and its system packages"]["if"]
     for path in (TESTS_WORKFLOW, BROWSER_WORKFLOW):
         for uses in re.findall(r"uses:\s*(\S+)", path.read_text(encoding="utf-8")):

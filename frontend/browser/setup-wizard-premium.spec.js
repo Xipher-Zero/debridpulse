@@ -461,7 +461,12 @@ test('P13: a Usenet server\'s fields wait for Save: blur and Cancel write nothin
     // Again, and Save: exactly that field, through the server's own record.
     await wizard(page).locator('[data-service="usenet"]').click();
     await server.locator('[data-usenet-field="username"]').fill('synthetic-saved');
+    // Save is asynchronous: the dialog may return before its write answers,
+    // so the write and the record are read once the server has answered.
+    const saved = page.waitForResponse(response => response.request().method() === 'PUT'
+      && new URL(response.url()).pathname === `/api/usenet/servers/${id}`);
     await wizard(page).locator('[data-modal-accept]').click();
+    expect((await saved).ok()).toBe(true);
     await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
     expect(writes.slice(1)).toEqual([{method: 'PUT', path: `/api/usenet/servers/${id}`, body: {username: 'synthetic-saved'}}]);
     expect((await usenetServers(page))[0].username).toBe('synthetic-saved');

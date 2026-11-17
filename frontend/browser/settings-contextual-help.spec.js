@@ -84,9 +84,12 @@ test('every header rail reads status, then help, then the card’s own controls 
   }
   // Representative rails, as established, with help in its new place.
   const usenet = await page.locator('.dp-settings-provider-card--usenet > .card-header .dp-settings-card-header-controls')
-    .evaluate(el => [...el.children].map(node => node.className.split(' ')[0]));
-  expect(usenet).toEqual(['dp-settings-provider-config-status', 'dp-settings-help-chip', 'dp-settings-header-action',
-    'toggle-row']);
+    .evaluate(el => [...el.children].map(node => [node.className.split(' ')[0],
+      ...[...node.children].filter(child => node.classList.contains('dp-settings-header-test-group'))
+        .map(child => child.className.split(' ')[0])]));
+  // Test and Enable travel together as the header's Test group.
+  expect(usenet).toEqual([['dp-settings-provider-config-status'], ['dp-settings-help-chip'],
+    ['dp-settings-header-test-group', 'dp-settings-header-action', 'toggle-row']]);
 });
 
 test('a help chip opens its own card’s read-only help; Escape returns focus and nothing is written', async ({page}) => {

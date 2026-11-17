@@ -94,7 +94,12 @@ class Clock:
 
 def build(tmp_path, http, clock, *, other=True):
     """One application start over the scratch database: production policy
-    defaults (retry delays, the same-candidate limit of 2)."""
+    defaults (retry delays, the same-candidate limit of 2). Resolution runs
+    one provider request at a time, in submission order, so Debrid-Link's
+    link is the artifact's first candidate as in 1279: with several in
+    flight, whichever provider answers first is bound first (no provider
+    order is promised), and the file could start elsewhere without ever
+    asking Debrid-Link."""
     repository = TransferRepository()
     registry = IntegrationRegistry()
     provider = DebridLinkProvider(DebridLinkService(KEY, transport=http))
@@ -108,7 +113,7 @@ def build(tmp_path, http, clock, *, other=True):
     registry.register_executor(executor)
     engine = TransferEngine(repository, registry, download_root=str(tmp_path / "downloads"),
                             policy=TransferPolicy(adoption_stability_seconds=0, max_active_executions=8,
-                                                  resolution_concurrency=8),
+                                                  resolution_concurrency=1),
                             clock=clock)
     return engine, repository, executor
 
