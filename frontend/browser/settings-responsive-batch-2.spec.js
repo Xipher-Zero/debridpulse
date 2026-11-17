@@ -38,7 +38,10 @@ async function resize(page, width) {
 
 // A Settings section, chosen through its own tab (even one a narrow navigator shows cut).
 async function section(page, name) {
-  await page.evaluate(name => document.querySelector(`#view-settings .dp-settings-tabs [data-tab="${name}"]`).click(), name);
+  // The live tab (never the inert copy a page transition leaves), once rendered.
+  const tab = `#view-settings .dp-settings-tabs [data-tab="${name}"]:not(.dp-motion-still *)`;
+  await page.locator(tab).waitFor({state: 'attached'});
+  await page.evaluate(tab => document.querySelector(tab).click(), tab);
   await settle(page);
 }
 

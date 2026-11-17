@@ -377,8 +377,8 @@ splits), so the files of one shard share one backend exactly as before, and no t
 any. Each shard runs its files with **one** Playwright worker (`--workers=1`), so no two of them
 drive that one backend at once -- the same isolation the classifier's own bounded runs already use
 (1.0.13 WS9, QUAL-002: hosted failures that never reproduced in isolation). The suite runs on
-**eight** runners, so one worker's serial time per shard, and a failing shard's bounded
-classification, fit inside the job.
+**nine** runners, so one worker's serial time per shard stays under fifteen minutes and a failing
+shard's bounded classification fits inside the job.
 
 **Every required test runs exactly once, and that is checked.** Each workflow ends with an
 `inventory` job: Tests compares the inventory that contract shard 1/8 takes of every collected

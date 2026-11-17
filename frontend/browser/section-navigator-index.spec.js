@@ -246,6 +246,12 @@ const DWELL = 1000;
 async function openLogged(page, view, width = 1100) {
   await page.addInitScript(() => {
     window.__index = [];
+    window.__ready = [];
+    new MutationObserver(records => {
+      for (const record of records) {
+        if (record.oldValue !== null && !record.target.hasAttribute('data-tooltip-busy')) window.__ready.push(performance.now());
+      }
+    }).observe(document, {subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['data-tooltip-busy']});
     const tick = () => {
       const t = document.getElementById('dp-tooltip');
       const on = !!t && !t.hidden && t.classList.contains('is-shown') && t.classList.contains('is-index');
@@ -264,10 +270,12 @@ const until = (page, t) => page.waitForFunction(t => performance.now() >= t, t);
 const appeared = (page, since) => page.evaluate(since => window.__index.filter(e => e.on && e.t >= since).map(e => e.t - since), since);
 const shownNow = page => page.evaluate(() => !!window.__indexOn);
 const indexShown = page => page.waitForFunction(() => window.__indexOn === true, null, {timeout: 6000});
-// Resolves with the page's own time at which it was first seen settled, so a
-// dwell is measured from the settle and not from a later round trip.
 const settled = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface')
-  && !document.querySelector('[data-tooltip-busy]') && performance.now()).then(handle => handle.jsonValue());
+  && !document.querySelector('[data-tooltip-busy]'));
+// When the navigator said it was ready after `since` (its busy mark cleared,
+// as it happened), else `since`: the section index's dwell cannot begin
+// before it (ui-tooltip.js), however late a loaded runner notices the settle.
+const readyAfter = (page, since) => page.evaluate(since => Math.max(since, ...window.__ready.filter(t => t >= since)), since);
 
 async function navigatorPoint(page, view, which = 'middle') {
   return page.evaluate(([sel, which]) => {
@@ -385,7 +393,8 @@ for (const {view, label} of PAGES) {
       t0 = await now(page);
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await page.waitForFunction(() => window.__indexOn === false, null, {timeout: 500});
-      rest = await settled(page);
+      await settled(page);
+      rest = await readyAfter(page, t0);
       await indexShown(page);
       expect((await appeared(page, rest))[0], `${end}: a fresh dwell after it settled`).toBeGreaterThanOrEqual(DWELL - 50);
     }
@@ -420,7 +429,8 @@ for (const {view, label} of PAGES) {
     await page.mouse.click(right.x, right.y);
     await until(page, t0 + 150);
     await page.mouse.click(left.x, left.y);
-    rest = await settled(page);
+    await settled(page);
+    rest = await readyAfter(page, t0);
     await indexShown(page);
     expect(await appeared(page, t0), 'nothing before the rest').toEqual([(await appeared(page, rest))[0] + (rest - t0)]);
     expect((await appeared(page, rest))[0], 'a full rest after the reversal').toBeGreaterThanOrEqual(DWELL - 50);

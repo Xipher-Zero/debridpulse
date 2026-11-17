@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
+        shard: ['1/9', '2/9', '3/9', '4/9', '5/9', '6/9', '7/9', '8/9', '9/9']
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       PW_SHARD: ${{ matrix.shard }}
@@ -561,7 +561,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       # The browser-runtime matrix's shard count.
-      BROWSER_SHARDS: 8
+      BROWSER_SHARDS: 9
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
