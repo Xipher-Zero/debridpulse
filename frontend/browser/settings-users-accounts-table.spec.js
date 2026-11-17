@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 User Accounts table below 780px (fitUsersTable).
  *
@@ -42,10 +43,7 @@ async function open(browser, options = {}) {
   page.__writes = [];
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.goto('/login');
-  await page.locator('#username').fill('browser');
-  await page.locator('#password').fill('browser-secret');
-  await page.locator('button[type="submit"]').click();
+  await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
@@ -124,6 +122,8 @@ const COLUMNS = {0: ['Account', 'Role', 'Sign-In', 'Status', 'Actions'], 1: ['Ac
   2: ['Account', 'Role', 'Status', 'Actions'], 3: ['Account', 'Role', 'Actions'], 4: ['Account', 'Role', 'Actions']};
 
 test('the table gives back its information in order, fits from 3 columns at 320px, and narrowing and widening agree', async ({browser}) => {
+  // Up to 45s on a hosted runner, near the 45s default: twice that budget.
+  test.setTimeout(90_000);
   const {context, page} = await open(browser);
   const widths = [];
   for (let width = 779; width >= 320; width -= 3) widths.push(width);

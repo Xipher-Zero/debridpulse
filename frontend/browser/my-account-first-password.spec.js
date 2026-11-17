@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 My Account: Set Password, an account's first local password.
  *
@@ -26,10 +27,7 @@ async function open(browser, {profile = null, viewport = {width: 1280, height: 9
   page.__first = [];
   page.__writes = [];
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.goto('/login');
-  await page.locator('#username').fill('browser');
-  await page.locator('#password').fill('browser-secret');
-  await page.locator('button[type="submit"]').click();
+  await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id));
   await page.route(url => url.pathname.startsWith('/api/account'), async route => {

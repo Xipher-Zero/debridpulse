@@ -435,6 +435,8 @@ test('the compact window holds as many Help sections as fit, fewer as the header
 });
 
 test('the Help window is bounded: it starts at Quick Start, ends at License, centres between them, fades only where sections continue; Previous and Next only away from the selected end, named for their action', async ({page}) => {
+  // Up to 37.5s on a hosted runner, near the 45s default: twice that budget.
+  test.setTimeout(90_000);
   await openHelp(page, 1100);
   const order = (await header(page)).order;
   const first = page.locator('#view-help .dp-help-nav-end[data-help-end="previous"]');
@@ -571,6 +573,8 @@ test('the Help window is bounded: it starts at Quick Start, ends at License, cen
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
   test(`at the 780px floor with ${fonts} Quick Start and License show whole, the neighbour whole where both fit and otherwise cut, faded and a target, and no sliver; nearby widths and the other sections keep three positions`, async ({page}) => {
+    // Up to 43.8s on a hosted runner, near the 45s default: twice that budget.
+    test.setTimeout(90_000);
     await openHelp(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const reference = await header(page);
     expect(reference.compact).toBe(false);
@@ -705,6 +709,8 @@ test('at the 780px floor, where the end pair cannot fit even trimmed, License st
 
 for (const fonts of ['web fonts', 'fallback fonts']) {
   test(`with ${fonts}, a Help Previous or Next that is gone takes no room: the window grows into its place, the list fills it, and the control stays where it is`, async ({page}) => {
+    // Up to 43.5s on a hosted runner, near the 45s default: twice that budget.
+    test.setTimeout(90_000);
     await openHelp(page, 1920, {fallbackFonts: fonts === 'fallback fonts'});
     const order = (await header(page)).order;
     const n = order.length;
@@ -805,6 +811,9 @@ const expectSnap = (slide, direction, label) => {
 };
 
 test('the Help window slides only when a choice moves it, the same way as the panel: neighbours, edges, Previous and Next, into either end, and a quick return turns back', async ({page}) => {
+  // Every way the window can move, each waited out to rest: about 28s on a fast
+  // host, so it has twice the default budget.
+  test.setTimeout(90_000);
   await openHelp(page, 1100);
   const order = (await header(page)).order;
 

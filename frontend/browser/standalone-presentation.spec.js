@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 deployment-aware presentation: Server and Standalone.
  *
@@ -157,10 +158,7 @@ async function signedIn(browser, profile) {
   page.__writes = [];
   page.__answer = 409;
   await isolateFonts(page);
-  await page.goto('/login');
-  await page.locator('#username').fill('browser');
-  await page.locator('#password').fill('browser-secret');
-  await page.locator('button[type="submit"]').click();
+  await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id));
   await page.route(url => url.pathname.startsWith('/api/account'), async route => {

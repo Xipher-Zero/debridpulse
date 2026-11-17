@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 Users & Access headers below 780px.
  *
@@ -31,10 +32,7 @@ async function open(browser, viewport = {width: 1280, height: 900}, options = {}
   page.__writes = [];
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.goto('/login');
-  await page.locator('#username').fill('browser');
-  await page.locator('#password').fill('browser-secret');
-  await page.locator('button[type="submit"]').click();
+  await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
@@ -101,6 +99,8 @@ const LADDER = {
 const expected = (name, fit) => LADDER[name][fit >= 3 ? 2 : fit === 2 ? 1 : 0];
 
 test('every header is one row, its title on at most two lines, its labels the step\'s, and narrowing and widening agree', async ({browser}) => {
+  // Up to 39.6s on a hosted runner, near the 45s default: twice that budget.
+  test.setTimeout(90_000);
   const {context, page} = await open(browser);
   const widths = [];
   for (let width = 779; width >= 320; width -= 3) widths.push(width);

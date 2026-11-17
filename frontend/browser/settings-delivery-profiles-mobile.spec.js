@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 Integration Delivery Profiles table below 780px
  * (fitProfilesTable), and the profile dialog's Path Summary.
@@ -46,10 +47,7 @@ async function open(browser, data = BASIC, viewport = {width: 1280, height: 900}
   page.__writes = [];
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.goto('/login');
-  await page.locator('#username').fill('browser');
-  await page.locator('#password').fill('browser-secret');
-  await page.locator('button[type="submit"]').click();
+  await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
   await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');

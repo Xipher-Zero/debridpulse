@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const adminSession = require('./acl-admin-session');   // one Admin sign-in per worker (login challenge limit)
 
 /* DP 1.0.14 responsive Settings batch 2, read from the rendered page:
  *
@@ -508,10 +509,14 @@ async function signIn(browser, {username, password}, width = 1440) {
   const context = await browser.newContext({baseURL: AUTH, viewport: {width, height: 1000}});
   const page = await context.newPage();
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  await page.goto('/login');
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('button[type="submit"]').click();
+  if (username === adminSession.ADMIN.username && password === adminSession.ADMIN.password) {
+    await adminSession.signIn(page);
+  } else {
+    await page.goto('/login');
+    await page.locator('#username').fill(username);
+    await page.locator('#password').fill(password);
+    await page.locator('button[type="submit"]').click();
+  }
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeVisible();
   return {context, page};

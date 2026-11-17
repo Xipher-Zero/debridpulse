@@ -237,6 +237,8 @@ test('the complete strip has no Previous or Next; the handheld header has the sa
 });
 
 test('with fallback fonts the Settings and Help travel contract holds at the 780px floor and at 1020px', async ({page}) => {
+  // Up to 36.4s on a hosted runner, near the 45s default: twice that budget.
+  test.setTimeout(90_000);
   for (const name of Object.keys(PAGES)) {
     await open(page, name, 780, {fallbackFonts: true});
     const report = [];
