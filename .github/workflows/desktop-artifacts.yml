@@ -100,7 +100,7 @@ on:
         description: Which installers this run builds and publishes
         type: choice
         default: all
-        options: [all, windows-linux, macos]
+        options: [all, windows-linux, macos, linux]
 
 permissions:
   contents: read
@@ -133,6 +133,7 @@ jobs:
             all) platforms="macos windows linux"; suffix="" ;;
             windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;
             macos) platforms="macos"; suffix="-macos" ;;
+            linux) platforms="linux"; suffix="-linux" ;;
             *) echo "unknown platforms: $CHOICE"; exit 1 ;;
           esac
           entries=()

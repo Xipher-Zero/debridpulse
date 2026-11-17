@@ -344,12 +344,13 @@ def test_a_push_builds_all_three_and_a_dispatch_may_build_a_part_of_the_set():
     others back: a dispatch builds windows-linux or macos alone, under its own artifact name; a push
     always builds all three, under the plain one."""
     dispatch = WORKFLOW[True]["workflow_dispatch"]["inputs"]["platforms"]
-    assert dispatch["default"] == "all" and dispatch["options"] == ["all", "windows-linux", "macos"]
+    assert dispatch["default"] == "all" and dispatch["options"] == ["all", "windows-linux", "macos", "linux"]
     plan = next(step for step in _steps("inputs") if step.get("id") == "plan")
     assert plan["env"]["CHOICE"] == "${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}"
     for line in ('all) platforms="macos windows linux"; suffix="" ;;',
                  'windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;',
-                 'macos) platforms="macos"; suffix="-macos" ;;'):
+                 'macos) platforms="macos"; suffix="-macos" ;;',
+                 'linux) platforms="linux"; suffix="-linux" ;;'):
         assert line in plan["run"]
     assert JOBS["desktop"]["strategy"]["matrix"] == "${{ fromJSON(needs.inputs.outputs.matrix) }}"
     assert '[[ "$platforms" == *" $os "* ]] || continue' in _run("handover")

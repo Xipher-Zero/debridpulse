@@ -11,7 +11,7 @@ def read(name: str) -> str:
 
 def test_universal_dropdown_contract_is_loaded_before_page_layers():
     style = read("style.css")
-    dropdown_import = "@import url('/ui-dropdown-contract.css?v=22');"
+    dropdown_import = "@import url('/ui-dropdown-contract.css?v=23');"
     assert dropdown_import in style
     assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=5');")
     assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=33');")
@@ -90,7 +90,7 @@ def test_webkitgtk_menus_are_solid_where_its_glass_flickers():
     """WebKitGTK rebuilds a backdrop on every repaint and drops it, so the
     menus' glass flickers over the Dashboard's animated heartbeat: the first
     script marks that engine before the first paint, and only there the
-    menus are the solid panel with no backdrop filter (the Speed Cap menu from
+    menus take the theme picker's surface with no backdrop filter (the Speed Cap menu from
     780px; on a phone it is a sheet with its own solid panel)."""
     bootstrap = read("ui-theme-bootstrap.js")
     assert "document.documentElement.dataset.dpEngine = 'webkitgtk';" in bootstrap
@@ -99,7 +99,8 @@ def test_webkitgtk_menus_are_solid_where_its_glass_flickers():
     for selector in (':root[data-dp-engine="webkitgtk"] .dp-dropdown-menu {',
                      ':root[data-dp-engine="webkitgtk"] .runtime-cap-menu {'):
         rule = css[css.index(selector):css.index("}", css.index(selector))]
-        assert "background: var(--dp-panel-surface) var(--dp-surface-2)" in rule
+        # The theme picker's own surface (ui-theme-picker.css), so they match the menu beside them.
+        assert "background: var(--dp-surface-overlay)" in rule
         assert "backdrop-filter: none;" in rule and "-webkit-backdrop-filter: none;" in rule
     cap = css.index(':root[data-dp-engine="webkitgtk"] .runtime-cap-menu {')
     assert css.rfind("@media (min-width: 780px) {", 0, cap) > css.index(':root[data-dp-engine="webkitgtk"] .dp-dropdown-menu {')
