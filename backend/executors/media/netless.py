@@ -49,7 +49,6 @@ import struct
 import subprocess
 import sys
 
-from core.processes import WINDOWLESS
 
 _PR_SET_NO_NEW_PRIVS = 38
 _PR_SET_SECCOMP = 22
@@ -238,8 +237,12 @@ def permit(path: str, *, write: bool) -> None:
     rights = "M" if write else "RX"
     grant = f"*{container_sid()}:" + (f"(OI)(CI)({rights})" if os.path.isdir(path) else f"({rights})")
     icacls = os.path.join(os.environ.get("SYSTEMROOT") or r"C:\Windows", "System32", "icacls.exe")
+    # This module is loaded on its own (the helpers' wrappers put only its own
+    # directory on the path), so it names the Windows flag itself rather than
+    # importing core.processes.WINDOWLESS: no console window for icacls.
     result = subprocess.run([icacls, path, "/grant", grant, "/Q"], capture_output=True, text=True,
-                            stdin=subprocess.DEVNULL, timeout=60, **WINDOWLESS)
+                            stdin=subprocess.DEVNULL, timeout=60,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode != 0:
         raise OSError(f"cannot grant the media helpers access to {path}: "
                       f"{(result.stdout + result.stderr).strip()[:200]}")

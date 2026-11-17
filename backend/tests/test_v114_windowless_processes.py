@@ -62,3 +62,18 @@ def test_windowless_is_create_no_window_on_windows_and_nothing_elsewhere():
         assert WINDOWLESS == {"creationflags": subprocess.CREATE_NO_WINDOW}
     else:
         assert WINDOWLESS == {}
+
+
+def test_the_media_helpers_netless_module_still_loads_on_its_own():
+    """The media helpers' wrappers import ``netless`` with only its own
+    directory on the path (no backend packages): it must stay standalone --
+    the regression in 0ba5f7cc, where it imported core.processes, broke every
+    media finalization. Imported here exactly that way, in its own process."""
+    import subprocess as sp
+    import sys
+    folder = BACKEND / "executors" / "media"
+    probe = f"import sys; sys.path[:] = [{str(folder)!r}] + [p for p in sys.path if 'site-packages' not in p and p]; import netless"
+    done = sp.run([sys.executable, "-I", "-S", "-c", probe], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr[-2000:]
+    source = (folder / "netless.py").read_text(encoding="utf-8")
+    assert "from core" not in source and "from executors" not in source
