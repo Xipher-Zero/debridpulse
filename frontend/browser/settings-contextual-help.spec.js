@@ -24,7 +24,7 @@ async function openSettings(page) {
 }
 
 async function chooseTab(page, name) {
-  await page.locator(`#view-settings [data-tab="${name}"]`).click();
+  await page.locator(`#view-settings [data-tab="${name}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${name}"]`)).toBeVisible();
 }
 

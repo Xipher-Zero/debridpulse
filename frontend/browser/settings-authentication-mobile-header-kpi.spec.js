@@ -53,7 +53,7 @@ async function open(page, tab, auth = STATES.passwordOnly) {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator(`#view-settings [data-tab="${tab}"]`).first().click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).first().click();
   await expect(page.locator(`#view-settings [data-panel="${tab}"]`)).toBeVisible();
   await settle(page);
 }

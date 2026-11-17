@@ -66,6 +66,8 @@ const englishLeft = (page, selector, extra = []) => page.evaluate(([selector, na
       const element = node.parentElement;
       const text = node.textContent.trim();
       if (!text || !element || !visible(element) || element.closest('script, style, svg, template, option')) continue;
+      // A language button says a language in that language's own name ("English", "Deutsch"), by design.
+      if (element.closest('.dp-language-button')) continue;
       if (english(text)) found.push(`text: ${text}`);
     }
     for (const element of [root, ...root.querySelectorAll('*')]) {

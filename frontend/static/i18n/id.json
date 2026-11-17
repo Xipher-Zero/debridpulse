@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Jika ada aplikasi eksternal yang terhubung dalam seminggu terakhir, DebridPulse bertanya sebelum mengubah port: aplikasi itu tidak dapat menjangkau DebridPulse sampai diberi port baru.",
   "help.topic.deployment_type.local_port.taken": "Jika program lain memakai port itu saat DebridPulse dimulai, DebridPulse tetap terbuka dan memberi tahu. Aplikasi eksternal tidak dapat terhubung sampai port bebas atau port lain dipilih di sini.",
   "help.settings.access_integrations.local_port": "<b>Port lokal</b>, di kartu yang sama, adalah tempat aplikasi eksternal di komputer ini menjangkau DebridPulse ({address} kecuali diubah). Perubahan langsung berlaku dan bertanya dahulu jika ada aplikasi yang terhubung dalam seminggu terakhir.",
-  "error.deployment.desktop_standalone": "Aplikasi desktop selalu dalam mode Mandiri; jenis penerapannya tidak berubah"
+  "error.deployment.desktop_standalone": "Aplikasi desktop selalu dalam mode Mandiri; jenis penerapannya tidak berubah",
+  "error.desktop.frame_only": "Hanya aplikasi desktop yang memiliki bingkai jendela.",
+  "error.desktop.frame_invalid": "Warna bingkai jendela tidak valid."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

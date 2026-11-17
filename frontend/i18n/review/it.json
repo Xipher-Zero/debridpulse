@@ -34058,6 +34058,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "51d32660e34feb6d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "58c2916fc67e6360",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

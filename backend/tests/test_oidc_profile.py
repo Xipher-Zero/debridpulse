@@ -169,7 +169,8 @@ async def test_my_account_reads_and_edits_the_sanitized_profile(served, monkeypa
     profile = (await client.get("/api/account", headers=own)).json()
     assert profile == {"display_name": "me", "actual_name": "Me Myself", "email": "me@example.com",
                        "email_verification": "unknown", "email_self_entered": False, "origin": "oidc", "role": "user",
-                       "has_password": False, "username": "me"}
+                       "has_password": False, "username": "me",
+                       "deployment_type": "server", "sign_in_required": True}
 
     assert (await client.put("/api/account/actual-name", headers=own, json={"actual_name": "Me Edited"})).status_code == 200
     assert (await client.put("/api/account/display-name", headers=own, json={"display_name": "Edited"})).status_code == 200

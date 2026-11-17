@@ -183,7 +183,7 @@ def test_frontend_uses_configured_timezone_for_legacy_and_explicit_utc():
     dates = (static / "ui-downloads.js").read_text()
     assert "function timeZone() { try { return dpDisplayTimezone(); }" in dates
     assert dates.count("timeZone: timeZone()") == 2
-    assert dates.count("parseApiDate(value)") == 2
+    assert dates.count("parseApiDate(value)") == 3            # a date, its exact title, and its day alone (dayMarkup)
 
 
 def test_backup_ids_are_unique_and_backward_compatible():

@@ -168,6 +168,7 @@ def test_sources_and_downloads_use_the_one_canonical_field_datum():
     assert "inset-inline-start" not in css
     form_layout = read("ui-settings-form-layout.css")
     assert "#view-settings .dp-settings-field > .form-label" in form_layout
-    assert "#view-settings .dp-usenet-field > .form-label" in form_layout
+    # The same datum for the setup wizard's Usenet server cards (one rule; :is() keeps its ID specificity).
+    assert ":is(#view-settings, .dp-setup-provider-surface) .dp-usenet-field > .form-label" in form_layout
     assert "margin-inline-start: 0" in form_layout
     assert "padding-inline-start: 0" in form_layout

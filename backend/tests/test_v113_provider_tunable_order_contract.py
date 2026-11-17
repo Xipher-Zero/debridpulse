@@ -18,8 +18,9 @@ CONTROL = re.compile(r"(?:input|tuningToggle)\('([a-z0-9_]+)'")
 
 def tunables(identity: str) -> str:
     start = SETTINGS_JS.index(f"providerCard('{identity}'")
-    cells = SETTINGS_JS.index("${tuningCells(", start)
-    return SETTINGS_JS[cells:SETTINGS_JS.index("          )}", cells)]
+    # Each card's tuning is the one Additional Settings emitter's body.
+    cells = SETTINGS_JS.index("${providerAdditional(tuningCells(", start)
+    return SETTINGS_JS[cells:SETTINGS_JS.index("))}", cells)]
 
 
 def groups(block: str) -> list[list[str]]:

@@ -18,7 +18,7 @@ test('Multimeta has no Transfer Method Settings card', async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const panel = page.locator('.dp-settings-panel[data-panel="downloads"]');
   await expect(panel).toBeVisible();
   await expect(panel.locator('[data-executor-tuning]')).not.toHaveCount(0);

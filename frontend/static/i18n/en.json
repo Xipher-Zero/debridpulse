@@ -3630,6 +3630,8 @@
   "help.topic.deployment_type.local_port.in_use": "If an external application connected in the past week, DebridPulse asks before changing the port: that application cannot reach DebridPulse until it is given the new port.",
   "help.topic.deployment_type.local_port.taken": "If another program holds the port when DebridPulse starts, DebridPulse opens anyway and says so. External applications cannot connect until the port is free or another one is chosen here.",
   "help.settings.access_integrations.local_port": "<b>Local Port</b>, in the same card, is where external applications on this computer reach DebridPulse ({address} unless changed). A change applies at once, and asks first if an application connected in the past week.",
-  "error.deployment.desktop_standalone": "The desktop application is always Standalone; its deployment type does not change"
+  "error.deployment.desktop_standalone": "The desktop application is always Standalone; its deployment type does not change",
+  "error.desktop.frame_only": "Only the desktop application has a window frame.",
+  "error.desktop.frame_invalid": "The window frame colours are not valid."
  }
 }

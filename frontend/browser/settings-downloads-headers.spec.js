@@ -29,7 +29,7 @@ async function open(page, width, {fallbackFonts = false} = {}) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]:not([data-title])').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="downloads"]').first().click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').first().click();
   await expect(page.locator('#view-settings [data-panel="downloads"] .dp-executor-work-card')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await frames(page);

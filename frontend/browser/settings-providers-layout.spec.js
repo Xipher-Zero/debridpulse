@@ -16,7 +16,7 @@ async function isolateExternalFonts(page) {
 async function openSources(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
@@ -324,7 +324,7 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
     await page.goto('/');
     await page.locator('#sidebar .nav-item[data-view="settings"]').click();
     await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
     await expect(page.locator('#view-settings [data-panel="downloads"]')).toBeVisible();
     // The two executor tuning cards render collapsed; open them.
     for (const id of ['direct', 'usenet']) {
@@ -726,7 +726,7 @@ for (const theme of ['dark', 'light']) for (const width of [1920, 1440, 1180]) {
         await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
         // The tab may still be sliding in; choose it once it is there.
         await expect.poll(async () => {
-          await page.locator(`#view-settings [data-tab="${tab}"]`).evaluate(button => button.click());
+          await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).evaluate(button => button.click());
           return page.locator(`.dp-settings-panel[data-panel="${tab}"]`).isVisible();
         }).toBe(true);
         await page.evaluate(() => {

@@ -515,11 +515,12 @@ test('the Dashboard keeps its six cards on one row through the desktop, down to 
     // The other three are out of the layout, not merely transparent.
     expect(hidden, `${width}px`).toEqual(labels === TABLET ? [[0, 0], [0, 0], [0, 0]] : []);
   }
-  // Mobile (779px and below) keeps its own layout of the same three cards.
+  // Mobile (779px and below) is its own composition: Total Downloads and
+  // Completed, two equal cards on one row (fcb4e8d1).
   await resize(page, 779);
   const mobile = await strip();
-  expect(mobile.shown.map(card => card.label)).toEqual(TABLET);
-  expect(new Set(mobile.shown.map(card => card.top)).size).toBe(2);
+  expect(mobile.shown.map(card => card.label)).toEqual(['Total Downloads', 'Completed']);
+  expect(new Set(mobile.shown.map(card => card.top)).size).toBe(1);
   // Every value is still written while its card is out of the layout.
   for (const id of ['s-active', 's-processing', 's-error']) await expect(page.locator(`#${id}`)).not.toHaveText('—');
 });

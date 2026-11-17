@@ -130,7 +130,7 @@ def test_the_windows_runtime_lock_keeps_every_canonical_pin():
     canonical = pins(ROOT / "backend" / "requirements.txt")
     windows = pins(ROOT / "packaging" / "desktop" / "windows" / "requirements.txt")
     assert {name: version for name, version in windows.items() if name in canonical and canonical[name] != version} == {}
-    assert set(windows) - set(canonical) == {"colorama", "pywin32", "tzdata"}
+    assert set(windows) - set(canonical) == {"colorama", "pywin32", "truststore", "tzdata"}
     assert set(canonical) - set(windows) == {"uvloop"}
     assert "--hash=sha256:" in (ROOT / "packaging" / "desktop" / "windows" / "requirements.txt").read_text()
 
@@ -145,7 +145,7 @@ def test_the_macos_runtime_lock_keeps_every_canonical_pin_and_adds_only_pyobjc()
     assert {name: version for name, version in macos.items() if name in canonical and canonical[name] != version} == {}
     assert set(canonical) - set(macos) == set()
     assert {name: macos[name] for name in set(macos) - set(canonical)} == {
-        "pyobjc-core": "12.2.1", "pyobjc-framework-cocoa": "12.2.1"}
+        "pyobjc-core": "12.2.1", "pyobjc-framework-cocoa": "12.2.1", "truststore": "0.10.4"}
     # Every package line carries its hashes (pip installs it --require-hashes).
     blocks = re.split(r"(?m)^(?=[A-Za-z0-9_.-]+==)", lock.read_text(encoding="utf-8"))[1:]
     assert len(blocks) == len(macos) and all("--hash=sha256:" in block for block in blocks)
@@ -981,3 +981,45 @@ def test_the_shell_composites_with_texturemapper_on_linux_and_a_persons_own_choi
     assert supervisor.shell_environment(tmp_path, base, "darwin") == base
     assert "PATH" in supervisor.shell_environment(tmp_path, {}, "darwin")        # always passed on, empty or not
     assert base == {"PATH": "/usr/bin", "HOME": "/home/someone"}                  # the caller's mapping is not changed
+
+
+@pytest.mark.asyncio
+async def test_the_shells_save_dialog_answer_is_read_as_neutralino_sends_it(tmp_path):
+    """Neutralino answers os.showSaveDialog with {"returnValue": <path>, "success":
+    true} (api/os/os.cpp), "" for Cancel. The supervisor reads the path from it:
+    before, it took the whole answer for a path, so every save on Windows and
+    macOS was 'cancelled'. A real WebSocket answering exactly as Neutralino does."""
+    import json as _json
+
+    from aiohttp import ClientSession, web
+
+    answers = iter(["C:/Users/person/Downloads/trace.json", ""])
+
+    async def neutralino(request):
+        socket = web.WebSocketResponse()
+        await socket.prepare(request)
+        async for message in socket:
+            call = _json.loads(message.data)
+            assert call["method"] == "os.showSaveDialog" and call["data"]["title"] == "Save File"
+            await socket.send_str(_json.dumps({"id": call["id"], "method": call["method"],
+                                               "data": {"returnValue": next(answers), "success": True}}))
+        return socket
+
+    app = web.Application()
+    app.router.add_get("/", neutralino)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        async with ClientSession() as session:
+            shell = supervisor.Shell(session)
+            shell.ws = await session.ws_connect(f"ws://127.0.0.1:{port}/")
+            receiving = asyncio.ensure_future(shell._receive())
+            assert await shell.save_destination("trace.json", "Save File") == "C:/Users/person/Downloads/trace.json"
+            assert await shell.save_destination("trace.json", "Save File") is None      # Cancel: ""
+            await shell.ws.close()
+            await receiving
+    finally:
+        await runner.cleanup()

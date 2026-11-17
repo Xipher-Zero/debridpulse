@@ -675,6 +675,35 @@ const DPDesktopSave = Object.freeze({
 });
 window.DPDesktopSave = DPDesktopSave;
 
+/* Desktop frame. The installed desktop application's own window frame (the
+ * title bar on Windows; its background on macOS) takes the page's theme: the
+ * canvas and text colours the page is drawn in, dark or light. Said to the
+ * backend on load and on every theme change (PUT /desktop/frame); the desktop
+ * supervisor colours the frame with it. Only what changed is sent; a refused
+ * or failed send is said again with the next change. Nothing elsewhere. */
+(function desktopFrame() {
+  if (window.debridPulseDesktop !== true) return;
+  const hex = value => {
+    const parts = String(value).match(/\d+(?:\.\d+)?/g);
+    return parts && parts.length >= 3
+      ? '#' + parts.slice(0, 3).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('') : null;
+  };
+  let said = '';
+  const say = () => requestAnimationFrame(() => {
+    const style = getComputedStyle(document.body);
+    const frame = {caption: hex(style.backgroundColor), text: hex(style.color),
+      dark: !document.body.classList.contains('light')};
+    if (!frame.caption || !frame.text) return;
+    const key = JSON.stringify(frame);
+    if (key === said) return;
+    said = key;
+    api('PUT', '/desktop/frame', frame).catch(() => { said = ''; });
+  });
+  document.addEventListener('debridpulse:theme-changed', say);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', say, {once: true});
+  else say();
+})();
+
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   // A file sent as itself: the raw body, typed by the file.

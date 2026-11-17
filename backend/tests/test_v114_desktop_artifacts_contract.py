@@ -302,16 +302,21 @@ def test_each_patch_is_the_one_its_recipes_pin_and_each_recipe_verifies_the_comm
     import hashlib
     here = ROOT / "packaging/desktop/neutralino"
     digests = {name: hashlib.sha256((here / name).read_bytes()).hexdigest()
-               for name in ("linux-gtk-main-thread.patch", "macos-main-thread-shutdown.patch")}
+               for name in ("linux-gtk-main-thread.patch", "macos-main-thread-shutdown.patch", "macos-frame-theme.patch")}
     build, source = (here / "build-macos.sh").read_text(encoding="utf-8"), (here / "source.sh").read_text(encoding="utf-8")
     assert f"PATCH_SHA256={digests['macos-main-thread-shutdown.patch']}" in build
+    assert f"FRAME_PATCH_SHA256={digests['macos-frame-theme.patch']}" in build
+    assert build.index('git -C "$work/src" apply "$here/$PATCH"') < build.index('git -C "$work/src" apply "$here/$FRAME_PATCH"')
     for name, digest in digests.items():
         assert f"{digest}  $here/{name}" in source
     for script in (build, source):
         assert f"COMMIT={NEUTRALINO_COMMIT}" in script and '[ "$(git -C "$work/src" rev-parse HEAD)" = "$COMMIT" ]' in script
     # Each patch keeps to its own system: reviewable apart.
-    linux, macos = ((here / name).read_text(encoding="utf-8") for name in digests)
+    linux, macos, frame = ((here / name).read_text(encoding="utf-8") for name in digests)
     assert "dispatch_sync" not in linux and "pthread_main_np" in macos and "g_main_context_is_owner" not in macos
+    # The frame patch: one window method, macOS-only behaviour, registered with the router.
+    assert '{"window.setFrameTheme", window::controllers::setFrameTheme},' in frame
+    assert "setTitlebarAppearsTransparent:" in frame and "#if defined(__APPLE__)" in frame
 
 
 def test_the_macos_shell_is_built_and_installed_with_its_provenance_and_the_handover_carries_its_source():
@@ -322,3 +327,12 @@ def test_the_macos_shell_is_built_and_installed_with_its_provenance_and_the_hand
     assemble = (ROOT / "packaging/desktop/assemble.py").read_text(encoding="utf-8")
     assert 'if hashlib.sha256(target.read_bytes()).hexdigest() != shell["binary_sha256"]:' in assemble
     assert '"shell": shell,' in assemble
+
+
+def test_any_change_to_what_the_installers_ship_builds_them():
+    """The desktop jobs build from the whole backend and interface, so a change
+    anywhere in them starts a build -- not only the few files once listed (a
+    media executor fix once reached no installer, 2026-11-16)."""
+    paths = WORKFLOW[True]["push"]["paths"] if True in WORKFLOW else WORKFLOW["on"]["push"]["paths"]
+    for required in ("backend/**", "frontend/**", "desktop/**", "packaging/desktop/**"):
+        assert required in paths, required

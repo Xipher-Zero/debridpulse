@@ -86,7 +86,17 @@ const stage = (...what) => console.log(`[probe ${LOCALE}]`, ...what);
 
 /* What the shown surface says: English it should not, keys as themselves,
  * critical keyed text left in English, and Help control labels. */
-const inspect = (page, root) => page.evaluate(({root, englishText, critical, controls, english, pseudo}) => {
+/* The installation's own data, shown as it is (account names, usernames,
+ * emails): never the catalog's English, even when it reads the same (the
+ * default account is named "Administrator"). */
+let DATA = [];
+async function dataWords(page) {
+  const accounts = await (await page.request.get('/api/accounts')).json().catch(() => ({}));
+  return (accounts.accounts || []).flatMap(account => [account.display_name, account.username, account.email])
+    .filter(word => typeof word === 'string' && word.trim()).map(word => word.trim());
+}
+
+const inspect = (page, root) => page.evaluate(({root, englishText, critical, controls, english, pseudo, data}) => {
   const scope = document.querySelector(root) || document.body;
   const seen = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
   const t = key => window.DPI18n.t(key);
@@ -96,7 +106,7 @@ const inspect = (page, root) => page.evaluate(({root, englishText, critical, con
   for (const element of elements) {
     const own = [...element.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim();
     const whole = element.textContent.trim();
-    if (whole && englishText[whole] && translated(whole) && ![...element.children].some(child => child.textContent.trim() === whole)) {
+    if (whole && !data.includes(whole) && englishText[whole] && translated(whole) && ![...element.children].some(child => child.textContent.trim() === whole)) {
       found.english.push({text: whole, keys: englishText[whole]});
     }
     if (own && /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/.test(own) && window.DPI18n.has(own)) found.keys.push(own);
@@ -119,7 +129,7 @@ const inspect = (page, root) => page.evaluate(({root, englishText, critical, con
     }
   }
   return found;
-}, {root, englishText: ENGLISH_TEXT, critical: CRITICAL, controls: CONTROLS, english: ENGLISH, pseudo: MANIFEST.locales[LOCALE]?.status === 'pseudo'});
+}, {root, englishText: ENGLISH_TEXT, critical: CRITICAL, controls: CONTROLS, english: ENGLISH, pseudo: MANIFEST.locales[LOCALE]?.status === 'pseudo', data: DATA});
 
 /* Which things exist: navigation, Settings tabs, the manual's passages. */
 const existing = page => page.evaluate(() => ({
@@ -130,6 +140,7 @@ const existing = page => page.evaluate(() => ({
 test(`L18-L21 locale probe (${LOCALE}): every surface the reader has is said in the locale, and the language changes nothing that exists`, async ({page}) => {
   test.setTimeout(240_000);
   await boot(page, 1440);
+  DATA = await dataWords(page);
   const before = await existing(page);
   const failures = {};
   const fail = (where, what) => { if (what && (!Array.isArray(what) || what.length)) failures[where] = what; };

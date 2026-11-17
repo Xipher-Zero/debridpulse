@@ -2,7 +2,8 @@
 # backend lock (backend/requirements.txt, every shared pin unchanged) resolved
 # for macOS, plus packaging/desktop/macos/requirements.in -- exactly
 # pyobjc-core and pyobjc-framework-Cocoa 12.2.1, which the bundled Usenet
-# service (SABnzbd) imports on macOS.
+# service (SABnzbd) imports on macOS, and truststore, through which the backend
+# verifies certificates with the system's own trust (main.py).
 # Regenerate:
 #   cd backend && uv pip compile requirements.in ../packaging/desktop/macos/requirements.in \
 #     -c requirements.txt --python-platform aarch64-apple-darwin --python-version 3.12 \
@@ -1168,9 +1169,9 @@ jaraco-text==3.8.1 \
     #   -c requirements.txt
     #   -r requirements.in
     #   jaraco-collections
-joserfc==1.7.4 \
-    --hash=sha256:32d46c2cd5e3203c13e87a6c61333cab310b1ba80cd54b4c4f386a848a122463 \
-    --hash=sha256:b3bc561672ae541b17a9237053b48a03dacddd92d68047b3ecdfb4b5714a88ed
+joserfc==1.7.6 \
+    --hash=sha256:e2d72e3fa937ed8ddd42ad8c1cc337a43e7ffd02efa572a2aa15e2764a05b506 \
+    --hash=sha256:fb1cf6d2977318bef976c2ed2ef2167cc5f8ade8fc96f034e38f7abd656907c4
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -1367,9 +1368,9 @@ multidict==6.9.1 \
     #   -c requirements.txt
     #   aiohttp
     #   yarl
-oauthlib==4.0.0 \
-    --hash=sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd \
-    --hash=sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86
+oauthlib==4.0.1 \
+    --hash=sha256:3d73febdb6faa00f277c81fb04be7b7586fb96fc3b7f0b9c772dada69a25ede7 \
+    --hash=sha256:498a298876e996301950a5b053d12c31628bb7b895db03666430c69ce182eb61
     # via
     #   -c requirements.txt
     #   requests-oauthlib
@@ -1948,6 +1949,10 @@ tempora==5.8.1 \
     #   -c requirements.txt
     #   -r requirements.in
     #   portend
+truststore==0.10.4 \
+    --hash=sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301 \
+    --hash=sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981
+    # via -r ../packaging/desktop/macos/requirements.in
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548

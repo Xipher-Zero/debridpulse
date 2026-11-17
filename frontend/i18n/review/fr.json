@@ -33132,6 +33132,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "324a567df7fd0719",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "90a1f7c6291deac8",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

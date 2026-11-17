@@ -58,7 +58,7 @@ async function person(admin, name, role = 'user') {
 
 async function usersTab(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="users"]').click();
+  await page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-users-table')).toBeVisible();
 }
 
@@ -371,9 +371,9 @@ test('Edit is offered for every other eligible person, never the signed-in Admin
     await expect(editor.locator('.dp-modal-title')).toHaveText(`Edit User: olivia-${run}`);
     await expect(editor.getByRole('button', {name: 'Edit Username', exact: true})).toBeVisible();
     await editor.locator('[data-modal-cancel]').click();
-    await page.locator('#view-settings [data-tab="authentication"]').click();
+    await page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)').click();
     await expect(page.locator('.dp-settings-username-password-card [data-setting="auth_username"]')).toBeVisible();
-    await page.locator('#view-settings [data-tab="users"]').click();
+    await page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
     // The server's own self-removal refusal is unchanged.
     await page.unroute('**/api/accounts');
     expect((await api(page, 'DELETE', `/accounts/${operator.id}`)).status).toBe(409);

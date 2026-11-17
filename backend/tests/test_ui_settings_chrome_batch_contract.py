@@ -339,12 +339,16 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "Leave this field blank to keep the current key." not in runtime
     assert "api_key: valueOf('alldebrid_api_key')" in runtime
 
-    assert '<details class="dp-settings-additional">' in sources
-    assert '<details class="dp-settings-additional" open' not in sources
+    # The disclosure is the one Additional Settings emitter's (providerAdditional),
+    # closed by default; the AllDebrid card hands it its tuning.
+    emitter = runtime[runtime.index("function providerAdditional(body) {"):runtime.index("function providerArtwork(")]
+    assert '<details class="dp-settings-additional">' in emitter
+    assert '<details class="dp-settings-additional" open' not in runtime
+    assert "${providerAdditional(tuningCells(" in sources
     assert "<summary><span${keyed(say('settings.provider.additional'))}>${html(t('settings.provider.additional'))}</span></summary>" in runtime
     assert english("settings.provider.additional") == "Additional Settings"
     # Tuning-only, as compact cells in the reusable neutral tuning grid.
-    additional = sources[sources.index('class="dp-settings-additional-body"'):]
+    additional = sources[sources.index("${providerAdditional(tuningCells("):]
     assert "tuningCells(" in additional
     assert "alldebrid_rate_limit_per_minute" in additional
 

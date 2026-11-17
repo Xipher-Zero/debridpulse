@@ -77,14 +77,12 @@ on:
       - 'packaging/sabctools/**'
       - 'packaging/windows-tools/**'
       - 'packaging/rsync/**'
-      - 'backend/requirements.txt'
-      - 'backend/executors/sabnzbd/**'
+      # Everything the installers ship: the whole backend (its tests included,
+      # which the desktop jobs run) and the whole interface -- a change to any
+      # of it is a change to what the desktop applications run.
+      - 'backend/**'
+      - 'frontend/**'
       - 'Dockerfile'
-      - 'backend/application/desktop_control.py'
-      - 'backend/tests/test_v114_desktop_control.py'
-      - 'backend/tests/test_v114_desktop_supervisor.py'
-      - 'frontend/static/logo.svg'
-      - 'frontend/static/favicon.svg'
       - 'LICENSE'
       - 'NOTICE'
       - 'SOURCE_OFFER.md'
@@ -607,7 +605,8 @@ jobs:
           curl -sSfL -o "$src/sabnzbd/SABnzbd-$v-src.tar.gz" "https://github.com/sabnzbd/sabnzbd/releases/download/$v/SABnzbd-$v-src.tar.gz"
           echo "$d  $src/sabnzbd/SABnzbd-$v-src.tar.gz" | sha256sum -c -
           for required in "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" "$src/macos-and-flatpak-tools/7z2501-src.tar.xz" \
-                          "$src/neutralino/BUILD.md" "$src/neutralino/linux-gtk-main-thread.patch" "$src/neutralino/macos-main-thread-shutdown.patch"; do
+                          "$src/neutralino/BUILD.md" "$src/neutralino/linux-gtk-main-thread.patch" "$src/neutralino/macos-main-thread-shutdown.patch" \
+                          "$src/neutralino/macos-frame-theme.patch"; do
             [ -s "$required" ] || { echo "missing from the corresponding source: $required"; exit 1; }
           done
           tail -n +2 "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" | while read -r package pkgver url; do

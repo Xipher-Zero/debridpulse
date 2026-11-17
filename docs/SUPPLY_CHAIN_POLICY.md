@@ -347,6 +347,45 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   publish the new artifact, pin its new digest in the application
   Dockerfile, and requalify the new image digest (§6).
 
+## 4c. Carried advisories without a Debian fix
+
+`Container Security` reports every MEDIUM+ finding but blocks only on HIGH or
+CRITICAL findings that have a fix (`ignore-unfixed: true`). An advisory Debian
+has not fixed therefore does not fail the gate. Every HIGH or CRITICAL one the
+image carries is recorded here with how it is reached and what limits it, and
+it is removed from this list once the image ships the fix.
+
+### 7zip: CVE-2026-14266 (HIGH, Debian status `affected`)
+
+- **What:** a heap buffer overflow in 7-Zip's XZ decompression, reachable with
+  a crafted archive (ZDI-26-444; fixed upstream in 7-Zip 26.02). CVSS vector
+  `AV:L/AC:H/PR:N/UI:R`. The image carries Debian's `25.01+dfsg-1~deb13u2`.
+- **How DebridPulse reaches 7-Zip:** only through archive extraction, which
+  is off by default (`extract_enabled: false`). 7-Zip is never reachable
+  over the network: it has no listener, is not exposed through the API, and
+  only runs as a child of the extractor, against files that have already been
+  downloaded. Those archives are still untrusted content, so the limit is
+  which formats reach 7-Zip, not who can reach it:
+  - `.xz`, `.tar.xz` and `.txz` are decoded by Python's `lzma` (the system
+    liblzma), never by 7-Zip;
+  - `.tar.zst`, `.tzst` and `.tar.lzma` are decoded by `zstd` or Python's
+    `lzma`, then read by Python's validated TAR path
+    (`postprocessors/archive/secure.py`), never by 7-Zip;
+  - 7-Zip receives only `.7z`, pinned to its 7z parser (`-t7z`), and RAR whose
+    signature DebridPulse has already verified. Neither format uses the XZ
+    container, and the parser policy keeps the XZ handler out
+    (`_seven_zip_type_switches`, `-stxxz` on the composite path; v1.0.6).
+- **Residual risk:** the public advisory does not say whether the faulty
+  routine is shared with the LZMA2 decoder that `.7z` archives use. Until
+  that is known, a crafted `.7z` should be assumed able to reach it. 7-Zip
+  runs as the unprivileged runtime account (uid 99), in its own process and in
+  an isolated staging directory, with the extraction budgets of
+  `SECURITY.md` → Archive extraction.
+- **Exit:** Debian publishes a fixed `7zip`. The image installs `7zip` from
+  the repository at build time, so the next image build takes the fix. The
+  gate then treats the advisory as fixable, so an older image is held back
+  until it is rebuilt. Remove this entry in the same change.
+
 ## 5. Python dependency lock and hash refresh procedure
 
 `backend/requirements.txt` is generated from `backend/requirements.in` with

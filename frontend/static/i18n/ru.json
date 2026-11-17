@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Если за последнюю неделю подключалось внешнее приложение, DebridPulse спрашивает перед сменой порта: это приложение не сможет подключиться к DebridPulse, пока ему не укажут новый порт.",
   "help.topic.deployment_type.local_port.taken": "Если при запуске DebridPulse порт занят другой программой, DebridPulse всё равно открывается и сообщает об этом. Внешние приложения не смогут подключиться, пока порт не освободится или здесь не будет выбран другой.",
   "help.settings.access_integrations.local_port": "<b>Локальный порт</b> на той же карточке — это место, где внешние приложения на этом компьютере подключаются к DebridPulse (по умолчанию {address}). Изменение действует сразу, а если за последнюю неделю подключалось приложение, сначала запрашивается подтверждение.",
-  "error.deployment.desktop_standalone": "Тип развёртывания настольного приложения всегда «Автономный» и не меняется"
+  "error.deployment.desktop_standalone": "Тип развёртывания настольного приложения всегда «Автономный» и не меняется",
+  "error.desktop.frame_only": "Рамка окна есть только у настольного приложения.",
+  "error.desktop.frame_invalid": "Недопустимые цвета рамки окна."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

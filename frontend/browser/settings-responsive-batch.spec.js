@@ -26,7 +26,7 @@ async function open(page, tab, width) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]:not([data-title])').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator(`#view-settings [data-tab="${tab}"]`).first().click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).first().click();
   await page.evaluate(() => document.fonts.ready);
   await settle(page);
 }
@@ -60,10 +60,10 @@ test('the two bounded islands hug their settings once those no longer share a ro
   await open(page, 'downloads', 1440);
   for (const [width, behaviour, extraction] of [[1440, 'row', 'row'], [1024, 'stacked', 'row'], [900, 'stacked', 'stacked'], [780, 'stacked', 'stacked']]) {
     await resize(page, width);
-    await page.locator('#view-settings [data-tab="downloads"]').first().click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').first().click();
     await settle(page);
     const behaviourIsland = await island(page, '.dp-settings-download-engine-row');
-    await page.locator('#view-settings [data-tab="extraction"]').first().click();
+    await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').first().click();
     await settle(page);
     const extractionIsland = await island(page, '.dp-settings-extraction-behavior');
     for (const [name, measured, expected] of [['Download Behavior & Limits', behaviourIsland, behaviour], ['Automatic Extraction', extractionIsland, extraction]]) {
@@ -78,7 +78,7 @@ test('the two bounded islands hug their settings once those no longer share a ro
     expect(extractionIsland.labels, `Automatic Extraction order at ${width}px`).toEqual(['Delete Archives After Extraction', 'Concurrent Extractions']);
   }
   // Nothing is cut: the folder path stays a readable field at the narrowest width.
-  await page.locator('#view-settings [data-tab="downloads"]').first().click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').first().click();
   await settle(page);
   expect(await page.locator('.dp-settings-download-engine-row .dp-settings-directory-field-control > .input')
     .evaluate(node => node.getBoundingClientRect().width)).toBeGreaterThan(200);

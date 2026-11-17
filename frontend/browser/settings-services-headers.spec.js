@@ -68,7 +68,7 @@ function headers(page) {
         offset: shown ? (c.left + c.right) / 2 - (left + right) / 2 : null,
         clearLeft: shown ? c.left - title.right : null, clearRight: shown ? r.left - c.right : null,
         chips: chips.length, topic: chips[0]?.dataset.settingsHelp, name2: chips[0]?.getAttribute('aria-label'), tooltip: chips[0]?.getAttribute('data-tooltip'),
-        order: [...rail.children].map(node => node.classList.contains('dp-settings-provider-config-status') ? 'status'
+        order: drawn(rail).map(node => node.classList.contains('dp-settings-provider-config-status') ? 'status'
           : node.classList.contains('dp-settings-help-chip') ? 'help' : node.classList.contains('dp-settings-header-action') ? 'test' : 'enable')};
     });
   });

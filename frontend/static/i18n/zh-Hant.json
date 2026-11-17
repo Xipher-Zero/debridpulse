@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "如果過去一週內有外部應用程式連線過，DebridPulse 會在變更連接埠前先詢問：在取得新連接埠之前，該應用程式將無法連線到 DebridPulse。",
   "help.topic.deployment_type.local_port.taken": "如果 DebridPulse 啟動時連接埠已由其他程式占用，DebridPulse 仍會開啟並提示。在連接埠空出或在此選擇其他連接埠之前，外部應用程式無法連線。",
   "help.settings.access_integrations.local_port": "同一張卡片中的<b>本機連接埠</b>是這台電腦上的外部應用程式連線到 DebridPulse 的位置（未變更時為 {address}）。變更會立即生效；如果過去一週內有應用程式連線過，會先詢問。",
-  "error.deployment.desktop_standalone": "桌面應用程式一律為獨立模式；其部署類型不會變更"
+  "error.deployment.desktop_standalone": "桌面應用程式一律為獨立模式；其部署類型不會變更",
+  "error.desktop.frame_only": "只有桌面應用程式有視窗框架。",
+  "error.desktop.frame_invalid": "視窗框架色彩無效。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

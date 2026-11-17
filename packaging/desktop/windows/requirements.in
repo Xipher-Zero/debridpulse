@@ -2,3 +2,8 @@
 # bundled Usenet service (SABnzbd 5.1.3) exits at startup without PyWin32 on
 # Windows; this is the version its own requirements.txt names for win32.
 pywin32==312
+# Certificate verification by the operating system (Windows' own verifier, which
+# fetches a missing root as Windows does; macOS's Security framework): the
+# backend injects it at start (main.py), so every TLS connection trusts what the
+# system trusts, not only the roots it happens to have cached.
+truststore==0.10.4

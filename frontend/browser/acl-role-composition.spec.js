@@ -177,7 +177,7 @@ test('each role is composed from its server authority, and a role change resets 
     // Disabling goes through the impact confirmation, with the server's
     // figures, and sends the account's open page to sign-in.
     await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
-    await admin.page.locator('#view-settings [data-tab="users"]').click();
+    await admin.page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
     await admin.page.locator(`tr[data-account-row="${user.id}"] [data-user-action="edit"]`).click();
     const impact = admin.page.locator('.dp-modal-dialog.dp-users-edit-dialog');
     await impact.getByRole('button', {name: 'Disable', exact: true}).click();
@@ -262,7 +262,7 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
 
     // The Admin withdraws exactly this account's request from its Activity.
     await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
-    await admin.page.locator('#view-settings [data-tab="users"]').click();
+    await admin.page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
     await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="details"]`).click();
     const activity = admin.page.locator('.dp-users-activity-dialog');
     await expect(activity.locator('tbody tr')).toHaveCount(1);
@@ -295,7 +295,7 @@ test('Edit User offers every human role, and each choice is applied', async ({br
   expect(created.status).toBe(200);
   try {
     await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
-    await admin.page.locator('#view-settings [data-tab="users"]').click();
+    await admin.page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
     const roleOf = async () => (await api(admin.page, 'GET', '/accounts')).body.accounts
       .find(account => account.id === created.body.id).role;
     for (const [label, role] of [['ReadOnly User', 'readonly'], ['Admin', 'admin'], ['User', 'user']]) {

@@ -61,7 +61,7 @@ async function prepare(page) {
   await page.clock.install();
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   const card = page.locator('.dp-settings-provider-card--realdebrid');
   await card.locator('.dp-settings-disclosure').click();
   // The card rolls open: its geometry is the opened card's once that settles.

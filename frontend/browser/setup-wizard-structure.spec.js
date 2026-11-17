@@ -212,6 +212,21 @@ test('R02: the language view is a view of the same dialog: Back and Escape retur
 test('R03: Browse shows the Settings folder browser as a view of the same dialog: Use This Folder fills the field, Cancel keeps it, Next alone saves', async ({page}) => {
   await load(page);
   const original = (await call(page, 'GET', '/api/settings')).body.download_folder;
+  // A folder to go into, whatever the Download Folder holds (a fresh
+  // installation's is empty): the listing is synthetic and offers the
+  // server's own /tmp (real and writable, so the server accepts the save),
+  // and the save is real.
+  const childPath = '/tmp';
+  const capacity = {total_bytes: 2 * 1024 ** 3, free_bytes: 1024 ** 3};
+  const here = path => ({name: path.split('/').pop() || '/', path, accessible: true, writable: true, selectable: true,
+    reason: 'none', capacity});
+  await page.route(url => url.pathname === '/api/settings/directories', route => {
+    const at = new URL(route.request().url()).searchParams.get('path') || original;
+    route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(at === childPath
+      ? {current: here(childPath), parent: original, children: []}
+      : {current: here(original), parent: '/', children: [{name: 'tmp', path: childPath, accessible: true,
+        writable: null, selectable: null, reason: 'not_validated'}]})});
+  });
   await rerun(page);
   await accept(page);
   await expect(wizard(page).locator('.dp-setup-directory')).toBeVisible();
@@ -235,8 +250,7 @@ test('R03: Browse shows the Settings folder browser as a view of the same dialog
   await expect(browser.locator('[data-directory-current-path]')).toHaveText(original);
   await expect(wizard(page).locator('[data-modal-accept]')).toBeEnabled();
   // Into a folder, then Cancel: the field as it was.
-  const child = browser.locator('[data-directory-row]').first();
-  const childPath = await child.getAttribute('data-path');
+  const child = browser.locator(`[data-directory-row][data-path="${childPath}"]`);
   await child.click();
   await expect(browser.locator('[data-directory-current-path]')).toHaveText(childPath);
   await wizard(page).locator('[data-modal-cancel]').click();
@@ -842,12 +856,14 @@ async function rerunFromAccount(page) {
   await page.locator('.dp-account-dialog [data-account-setup-rerun]').click();
   await expect(wizard(page)).toBeVisible();
 }
+// What a rerun must leave as saved. Not the services' live state: other spec
+// files own those keys on the shared backend and change them concurrently
+// (test_browser_settings_key_ownership.py); that the rerun changed none of
+// them is proved by its one write (`sent` below), not by reading theirs.
 const saved = async page => {
   const settings = (await call(page, 'GET', '/api/settings')).body;
-  const integrations = Object.fromEntries(['usenet', 'alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox'].map(id =>
-    [id, {enabled: settings.integrations?.[id]?.enabled ?? null, configured: Boolean(settings.integrations?.[id]?.configured)}]));
   return {folder: settings.download_folder, locale: (await call(page, 'GET', '/api/settings/default-locale')).body,
-    own: (await call(page, 'GET', '/api/account/locale')).body, integrations,
+    own: (await call(page, 'GET', '/api/account/locale')).body,
     deployment: await page.evaluate(() => window.debridPulseAuth.authority.deployment_type),
     initial: (await call(page, 'GET', '/api/setup/state')).body.initial};
 };
@@ -994,7 +1010,7 @@ test('R22: every page draws its own full-area line art behind its content -- one
       expect(g, g.page).toMatchObject({count: 1, hidden: 'true', pointer: 'none', position: 'absolute', z: '-1', display: 'block',
         isolated: 'isolate', spans: true, diffusion: 2, roomDraws: 'none'});
       expect(g.mask, g.page).toContain(`setup-art-${FILES[g.page]}.svg`);
-      expect(g.opacity, g.page).toBeCloseTo(0.342, 3);
+      expect(g.opacity, g.page).toBeCloseTo(0.291, 3);            // the quieter art (23e53b8e)
       expect(g.halo, g.page).toContain('radial-gradient');      // the page's content quiets the art beneath it
       if (await wizard(page).locator('.dp-setup-deployment').count()) await wizard(page).locator('[data-deployment="server"]').click();
       if (await wizard(page).locator('.dp-setup-getting-started').count()) break;

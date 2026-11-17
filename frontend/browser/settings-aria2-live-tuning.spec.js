@@ -19,7 +19,7 @@ async function openDownloads(page) {
   await page.goto('/');
   await page.waitForFunction(() => typeof nav === 'function');
   await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const card = page.locator('[data-executor-tuning="direct"]');
   const disclosure = card.locator('.dp-settings-disclosure').first();
   if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.evaluate(button => button.click());

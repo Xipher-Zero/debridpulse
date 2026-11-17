@@ -1513,6 +1513,28 @@ def _require_desktop(detail: str = "Saving to a chosen location is only availabl
         raise DisplayError(404, detail, code=code)
 
 
+# ── the desktop application's window frame ─────────────────────────────────
+# The page says the colours of its theme (on load and on every change of
+# theme); the supervisor colours the window's own frame with them
+# (application.desktop_control set_frame / op "frame"). A server has no frame.
+
+class DesktopFrame(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    caption: str
+    text: str
+    dark: bool
+
+
+@router.put("/desktop/frame")
+async def desktop_frame(body: DesktopFrame):
+    _require_desktop("Only the desktop application has a window frame.", "desktop.frame_only")
+    from application.desktop_control import set_frame
+    try:
+        return set_frame(body.caption, body.text, body.dark)
+    except ValueError:
+        raise DisplayError(422, "The window frame colours are not valid.", code="desktop.frame_invalid") from None
+
+
 # ── Local Port (the desktop application's external address) ────────────────
 # Classified ``administer``. The port external clients reach on this computer
 # (``application.desktop_listener``): read with the clients that connected in

@@ -754,7 +754,9 @@ def test_the_alldebrid_additional_settings_are_its_tuning_cells():
     retries live under Downloads -> Download Behavior & Limits. The disclosure row carries no
     Test, no Save and no action footer."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    additional = panel[panel.index("dp-settings-additional"):panel.index("`, allDebrid, {")]
+    # The card's tuning goes through the one Additional Settings emitter
+    # (providerAdditional, omitted in Easy and in the wizard).
+    additional = panel[panel.index("${providerAdditional("):panel.index("`, allDebrid, {")]
     assert "tuningCells(" in additional
     for field in ("alldebrid_rate_limit_per_minute", "alldebrid_prepare_backup_torrents",
                   "alldebrid_max_active_torrents"):

@@ -73,6 +73,9 @@ async function resize(page, width) {
   await page.setViewportSize({width, height: 1000});
   await page.waitForFunction(() =>
     document.getElementById('sidebar').getAnimations().every(animation => animation.playState !== 'running'));
+  // The tables' fitters (ResizeObserver: fitTransferSummaryLines) answer the new
+  // width in the next rendering frame; a read before it sees the unfitted table.
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
 }
 
 // One read of a table as it stands: its columns, and every content-fit fact the tests assert.
@@ -113,7 +116,7 @@ const geometry = (page, view) => page.evaluate(view => {
           break;
         }
       }
-      if (/^(Size|Date|Date Added)$/.test(label) && lines(td) > 1) misfits.push(`${tr.dataset.torrentId} ${label}: wraps`);
+      if (/^(Size|Date|Added|Date Added)$/.test(label) && lines(td) > 1) misfits.push(`${tr.dataset.torrentId} ${label}: wraps`);
       const badge = td.querySelector('.badge');
       if (badge && lines(badge) > 1) misfits.push(`${tr.dataset.torrentId} ${label}: badge wraps`);
     });
@@ -137,7 +140,7 @@ test('Downloads keeps every column, whole, through the desktop with either sideb
       await resize(page, width);
       const g = await geometry(page, 'torrents'), where = `${theme} ${width}px`;
       expect(g.sidebar, where).toBe(width >= 1560 ? 240 : 72);
-      expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
+      expect(shown(g), where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Added', 'Actions', 'select']);
       expect(g.misfits, where).toEqual([]);
       expect(g.wrapScrolls || g.pageScrolls, where).toBe(false);
       // The table fills the wrap's scrollport exactly; the wrap's reserved
@@ -158,7 +161,7 @@ test('Downloads keeps every column, whole, through the desktop with either sideb
   // The tablet keeps the full composition while the table holds it whole: at
   // 1389px (a 1255px table) every column is still there.
   await resize(page, 1389);
-  expect(shown(await geometry(page, 'torrents'))).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
+  expect(shown(await geometry(page, 'torrents'))).toEqual(['Name', 'Status', 'Progress', 'Size', 'Added', 'Actions', 'select']);
 });
 
 test('Recent Activity keeps its fixed desktop tracks through the desktop, Status and Date Added never cut', async ({ page }) => {

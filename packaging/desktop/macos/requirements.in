@@ -3,3 +3,8 @@
 # these are the versions its own requirements.txt names for darwin.
 pyobjc-core==12.2.1
 pyobjc-framework-Cocoa==12.2.1
+# Certificate verification by the operating system (Windows' own verifier, which
+# fetches a missing root as Windows does; macOS's Security framework): the
+# backend injects it at start (main.py), so every TLS connection trusts what the
+# system trusts, not only the roots it happens to have cached.
+truststore==0.10.4

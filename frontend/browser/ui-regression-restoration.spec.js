@@ -46,7 +46,7 @@ test('Activity Log search keeps focus across debounced refreshes and other contr
 test('Archive Passwords hydrate stored values and Show all/Hide all keep identical geometry',async({page})=>{
  await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords:'alpha\nbeta'})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- const tab=page.locator('#view-settings [data-tab="extraction"]');if(await tab.count())await tab.click();
+ const tab=page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)');if(await tab.count())await tab.click();
  const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
  await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
  const editor=page.locator('.dp-settings-extraction-password-editor');
@@ -63,7 +63,7 @@ test('Archive Passwords hydrate stored values and Show all/Hide all keep identic
 test('Archive Passwords empty Backspace does not delete the row or navigate to the previous one',async({page})=>{
  await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords:'alpha\nbeta'})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- const tab=page.locator('#view-settings [data-tab="extraction"]');if(await tab.count())await tab.click();
+ const tab=page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)');if(await tab.count())await tab.click();
  const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
  await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
  const editor=page.locator('.dp-settings-extraction-password-editor');
@@ -156,7 +156,7 @@ const extractionRoutes = async (page, state) => {
 
 const openExtraction = async page => {
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- await page.locator('#view-settings [data-tab="extraction"]').click();
+ await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').click();
 };
 
 /* The composite control's commit boundary: focus leaves the editor. */
@@ -187,12 +187,12 @@ test('Archive Passwords persist edits across the commit boundary, rerender, navi
  releasePostSaveHydrate();
  await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
 
- await page.locator('#view-settings [data-tab="downloads"]').click();
- await page.locator('#view-settings [data-tab="extraction"]').click();
+ await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
+ await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').click();
  await expect(source).toHaveValue('gamma\nbeta');
  await page.reload();await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);
  await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- await page.locator('#view-settings [data-tab="extraction"]').click();
+ await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').click();
  await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
  rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');
  const eye=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-eye');await eye.click();
@@ -511,9 +511,9 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
  await expect(page.locator('#dash-tbody tr[data-torrent-id="1"] .dp-candidate-chip')).toHaveCount(0);
  const launcher=page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-group-candidate-launcher');
  await expect(launcher).toHaveCount(1);
- // The row's controls, in order; the size it closes with (shown there only in a
- // narrow table) is a value after them, not one of them.
- const order=await page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-transfer-provider-meta').evaluate(meta=>[...meta.children].map(node=>node.className.split(' ')[0]));
+ // The row's drawn controls, in order (the main part of its summary, 1cc4f2e1); the size it
+ // closes with (shown there only in a narrow table) is a value after them, not one of them.
+ const order=await page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-transfer-provider-meta').evaluate(meta=>{const main=meta.querySelector(':scope > .dp-transfer-meta-main');return [...[...main.children].filter(node=>node.getClientRects().length),...[...meta.children].filter(node=>node!==main)].map(node=>node.className.split(' ')[0]);});
  expect(order.filter(name=>name!=='dp-recent-size')).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
  expect(order.at(-1)).toBe('dp-recent-size');
  await expect(launcher.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
@@ -553,8 +553,11 @@ test('Downloads common-source group launcher joins the Name second line for 2+ c
  const line=page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-name-cell .dp-transfer-provider-meta');
  const launcher=line.locator('.dp-group-candidate-launcher');
  await expect(launcher).toHaveCount(1);
- // The row's controls, in order; the size it closes with (shown there only in a narrow table) is a value after them.
- const order=await line.evaluate(node=>[...node.children].map(child=>child.className.split(' ')[0]));
+ // The row's drawn controls, in order (the main part of its summary, 1cc4f2e1); the size it closes with
+ // (shown there only in a narrow table) is a value after them.
+ const order=await line.evaluate(node=>{const main=node.querySelector(':scope > .dp-transfer-meta-main');
+  return [...[...main.children].filter(child=>child.getClientRects().length),...[...node.children].filter(child=>child!==main)]
+   .map(child=>child.className.split(' ')[0]);});
  expect(order.filter(name=>name!=='dp-downloads-size')).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
  expect(order.at(-1)).toBe('dp-downloads-size');
  await expect(page.locator('#t-tbody tr[data-torrent-id="82"] .dp-transfer-source-label')).toHaveCount(0);

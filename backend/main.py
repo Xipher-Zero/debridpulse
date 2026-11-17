@@ -3,7 +3,31 @@ import logging
 import os
 import re
 import sqlite3
+import sys
 import uuid
+
+
+def _system_trust() -> bool:
+    """The installed desktop application (Windows, macOS) verifies every TLS
+    certificate with the operating system's own trust (``truststore``): Windows'
+    verifier fetches a root it has not cached yet as Windows itself does, where
+    Python's own reading of the store sees only the roots already cached (an
+    update check to GitHub refused on a fresh Windows, 2026-11-16). Injected
+    before any connection is made. A server -- and Linux, whose OpenSSL already
+    reads the system's store -- is unchanged; so is an installation without it."""
+    from core.config import desktop_installation
+    if not desktop_installation() or sys.platform not in {"win32", "darwin"}:
+        return False
+    try:
+        import truststore
+    except ImportError:
+        return False
+    truststore.inject_into_ssl()
+    return True
+
+
+SYSTEM_TRUST = _system_trust()
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI, Request, Response
@@ -64,11 +88,25 @@ logger = logging.getLogger("debridpulse.main")
 # persistence initialization on startup
 
 
+def _quiet_closed_connections(loop, context: dict) -> None:
+    """Windows' Proactor event loop reports a peer that reset or aborted a
+    connection DebridPulse was already closing (WinError 10054/10053, a browser
+    or client simply going away) as an unhandled error with a traceback. That
+    is the connection ending, nothing more: it is dropped, and every other
+    loop error reaches the default handler unchanged."""
+    if isinstance(context.get("exception"), (ConnectionResetError, ConnectionAbortedError)) \
+            and "_call_connection_lost" in str(context.get("message", "")) + repr(context.get("handle", "")):
+        return
+    loop.default_exception_handler(context)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # The installed desktop application answers its supervisor on two private
     # pipes the supervisor alone holds, verified before anything starts.
     from core.config import desktop_installation
+    if os.name == "nt":
+        asyncio.get_running_loop().set_exception_handler(_quiet_closed_connections)
     desktop_channel = None
     if desktop_installation():
         from application import desktop_control
@@ -92,13 +130,19 @@ async def lifespan(app: FastAPI):
         auth_mechanisms.append("password")
     if oidc_enabled:
         auth_mechanisms.append("oidc")
+    # The installed desktop application's backend serves its own window on a
+    # private loopback port (external applications use Local Port, logged by
+    # its listener); a server's is its container's.
+    from application.desktop_listener import internal_port
+    desktop_port = internal_port() if desktop_installation() else None
     log_startup_banner(
         logger,
         version=read_version(),
-        mode="Docker / Unraid",
+        mode="Desktop application" if desktop_installation() else "Docker / Unraid",
         database="SQLite",
         download_client="aria2",
-        web_ui=f"http://0.0.0.0:{getattr(cfg, 'port', 8095)}",
+        web_ui=(f"http://127.0.0.1:{desktop_port} (the application window)" if desktop_port
+                else f"http://0.0.0.0:{getattr(cfg, 'port', 8095)}"),
         auth=("+".join(auth_mechanisms) if auth_mechanisms else "disabled"),
     )
     if not interactive_enabled:

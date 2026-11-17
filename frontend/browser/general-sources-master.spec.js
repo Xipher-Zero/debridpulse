@@ -49,7 +49,7 @@ async function openSources(page) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
@@ -310,7 +310,7 @@ async function writeTheWholeSettingsDocument(page) {
   const draft = Number(current.disk_guard_resume_hysteresis_gb) === 14.4 ? 14.5 : 14.4;
   const written = page.waitForResponse(
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
   await probe.fill(String(draft));
   await probe.blur();

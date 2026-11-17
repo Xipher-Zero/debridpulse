@@ -86,7 +86,10 @@ _STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 def _render_route_history_source():
     source = (_STATIC / "app.js").read_text(encoding="utf-8")
     start = source.index("function renderRouteHistory(")
-    return source[start:source.index("\nfunction ", start + 1)]
+    # The renderer alone: it ends at the next top-level declaration or comment
+    # (an ``async function`` too -- the Retry handler after it calls DP's own
+    # /torrents/{id}/retry endpoint, which is no provider semantics).
+    return source[start:start + 1 + re.search(r"\n(?:async function |function |//)", source[start + 1:]).start()]
 
 
 def test_public_projection_passes_backend_route_identity_through_unchanged():
@@ -116,7 +119,11 @@ def test_route_history_renderer_is_a_thin_projector_of_backend_route_fields():
         "presentation_ordinal", "relation", "contributing_transfer_id", "verification_state", "unverified_reason",
         # DP 1.0.13 adverse conditions: a failed contribution's backend-projected
         # failure category (a dead source associated for history only).
-        "failure_reason"}
+        "failure_reason",
+        # DP 1.0.14 late-source liveness: whether the operator may reconsider an
+        # unverified contribution, projected by the repository
+        # (transfers/_repository_base.py), never derived here.
+        "reconsider_available"}
     for forbidden in ("alldebrid", "debrid", "cache", "torrent", "magnet", "general_http",
                       "route_origin", "provider_id", "source_identity", "delivery", "hostname",
                       "endsWith", "new URL", "URL("):

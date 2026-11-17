@@ -24,7 +24,7 @@ async function open(page, {width = 390, height = 844, base} = {}) {
   await noPulse(page);
   await page.setViewportSize({width, height});
   await page.goto(base ? `${base}/` : '/');
-  await page.waitForFunction(() => document.querySelector('#shell-dock > *') && window.DPTheme);
+  await page.waitForFunction(() => document.querySelector('#shell-dock > :not(dp-signal-field)') && window.DPTheme);
 }
 const drawn = (page, sheet) => page.evaluate(box => {
   const node = document.querySelector(box);

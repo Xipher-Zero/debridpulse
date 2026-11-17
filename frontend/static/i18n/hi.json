@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "अगर पिछले सप्ताह कोई बाहरी एप्लिकेशन जुड़ा था, तो DebridPulse पोर्ट बदलने से पहले पूछता है: वह एप्लिकेशन तब तक DebridPulse तक नहीं पहुँच पाएगा जब तक उसे नया पोर्ट नहीं दिया जाता।",
   "help.topic.deployment_type.local_port.taken": "अगर DebridPulse शुरू होते समय पोर्ट किसी दूसरे प्रोग्राम के पास है, तो DebridPulse फिर भी खुलता है और यह बताता है। जब तक पोर्ट खाली नहीं होता या यहाँ कोई दूसरा पोर्ट नहीं चुना जाता, बाहरी एप्लिकेशन कनेक्ट नहीं कर सकते।",
   "help.settings.access_integrations.local_port": "उसी कार्ड में <b>लोकल पोर्ट</b> वह जगह है जहाँ इस कंप्यूटर के बाहरी एप्लिकेशन DebridPulse तक पहुँचते हैं (बदले जाने तक {address})। बदलाव तुरंत लागू होता है, और अगर पिछले सप्ताह कोई एप्लिकेशन जुड़ा था तो पहले पूछता है।",
-  "error.deployment.desktop_standalone": "डेस्कटॉप एप्लिकेशन हमेशा स्टैंडअलोन होता है; इसका डिप्लॉयमेंट प्रकार नहीं बदलता"
+  "error.deployment.desktop_standalone": "डेस्कटॉप एप्लिकेशन हमेशा स्टैंडअलोन होता है; इसका डिप्लॉयमेंट प्रकार नहीं बदलता",
+  "error.desktop.frame_only": "केवल डेस्कटॉप एप्लिकेशन में विंडो फ़्रेम होता है।",
+  "error.desktop.frame_invalid": "विंडो फ़्रेम के रंग मान्य नहीं हैं।"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

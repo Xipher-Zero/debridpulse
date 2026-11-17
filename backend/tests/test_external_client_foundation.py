@@ -1190,7 +1190,9 @@ async def test_a_root_a_write_sets_outside_the_download_folder_is_refused_naming
         assert response.json()["detail"] == {
             "code": "invalid_profile", "profile": profile, "field": "local_root",
             "message": f"Delivery profile '{profile}': its DP Download Path (local_root) must be the Download "
-                       f"Folder or beneath it"}
+                       f"Folder or beneath it",
+            # The interface's translation of it (1.0.14 localization).
+            "message_code": "profiles.root_outside_downloads", "params": {"profile": profile}}
 
     # Moving the stale profile to another outside path names IT, even though
     # the same write also makes a valid change to the other profile.

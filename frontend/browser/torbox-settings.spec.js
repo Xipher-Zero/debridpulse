@@ -55,7 +55,7 @@ async function prepare(page) {
   await page.clock.install();
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   const card = page.locator('.dp-settings-provider-card--torbox');
   await card.locator('.dp-settings-disclosure').click();
   return {card, region: card.locator('[data-torbox-connection]'), calls};
@@ -167,7 +167,7 @@ test('Use TorBox Before Usenet stays interactive and a refused ON reverts and to
   });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   const card = page.locator('.dp-settings-provider-card--torbox');
   await card.locator('.dp-settings-disclosure').click();
   await card.locator('.dp-settings-additional > summary').click();

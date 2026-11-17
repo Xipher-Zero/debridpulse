@@ -214,7 +214,7 @@
     },
     {
       "name": "joserfc",
-      "version": "1.7.4",
+      "version": "1.7.6",
       "license": "BSD-3-Clause"
     },
     {
@@ -234,7 +234,7 @@
     },
     {
       "name": "oauthlib",
-      "version": "4.0.0",
+      "version": "4.0.1",
       "license": "BSD-3-Clause"
     },
     {

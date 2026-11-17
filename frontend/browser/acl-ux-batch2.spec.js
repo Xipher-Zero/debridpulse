@@ -61,7 +61,7 @@ async function person(admin, name, role = 'user') {
 
 async function settingsTab(page, tab) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`#view-settings [data-panel="${tab}"]`)).toBeVisible();
 }
 
@@ -428,6 +428,8 @@ test('OIDC Access Control: heading left, Allow Any right; then the Default Role 
       islandBeneathToggle: i.top >= g.bottom - 0.5,
       islandOffset: Math.abs(mid(i) - mid(s)),
       islandAboveHint: i.bottom <= h.top + 0.5,
+      hintAboveIsland: h.bottom <= i.top + 0.5,
+      islandAboveLists: i.bottom <= l.top + 0.5,
       sharedBand: i.top < h.bottom && h.top < i.bottom,
       bordered: style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) >= 1 && style.borderRadius === '12px',
       hintAboveLists: h.bottom <= l.top + 0.5,
@@ -461,14 +463,14 @@ test('OIDC Access Control: heading left, Allow Any right; then the Default Role 
     expect(facts.bandToLists).toBeLessThanOrEqual(17);
     await shot(page, `oidc-access-control-${width}`);
   }
-  // Handheld keeps its own stack: the island under the toggle, the hint still
-  // centred directly over the allowlists it introduces.
+  // Handheld keeps its own stack (1ec541ac): the policy's explanation beneath
+  // its toggle, then the role centred, then the allowlists.
   for (const width of [390]) {
     await page.setViewportSize({width, height: 1000});
     await page.evaluate(() => window.closeSidebar?.());
     await access.scrollIntoViewIfNeeded();
     const facts = await measure();
-    expect(facts).toMatchObject({islandBeneathToggle: true, islandAboveHint: true, bordered: true, hintAboveLists: true, hintAlign: 'center',
+    expect(facts).toMatchObject({islandBeneathToggle: true, hintAboveIsland: true, islandAboveLists: true, bordered: true, hintAboveLists: true, hintAlign: 'center',
       hintMeetsIsland: false, collisions: false, overflow: false, reachable: true, roleFits: true});
     expect(facts.hintOffset).toBeLessThanOrEqual(1);
     expect(facts.bandToLists).toBeLessThanOrEqual(17);

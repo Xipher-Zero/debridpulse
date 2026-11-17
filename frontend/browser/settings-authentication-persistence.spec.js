@@ -31,7 +31,7 @@ async function isolateExternalFonts(page) {
 async function openSettings(page, tab) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
 }
 
@@ -328,7 +328,7 @@ async function writeTheWholeSettingsDocument(page) {
   const draft = Number(current.disk_guard_resume_hysteresis_gb) === 11.1 ? 11.2 : 11.1;
   const written = page.waitForResponse(
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
   await probe.fill(String(draft));
   await probe.blur();

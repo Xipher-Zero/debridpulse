@@ -116,7 +116,7 @@ def test_oidc_default_role_is_provisioning_policy_inside_the_oidc_card():
     the OIDC admission settings in Authentication, never in Users & Access,
     and offers only the two provisioning roles."""
     js = read(SETTINGS_JS)
-    panel = js[js.index("function authenticationPanel(a)"):js.index("return authStatusCard(a) + credentials + oidc;")]
+    panel = js[js.index("function authenticationPanel(a)"):js.index("return authStatusCard(a) +", js.index("function authenticationPanel(a)"))]
     assert "selectField('auth_oidc_default_role', say('settings.oidc.default_role')," in panel
     assert english("settings.oidc.default_role") == "Default Role for New OIDC Users"
     assert "[['user', say('settings.role.user')], ['readonly', say('settings.role.readonly')]]" in panel

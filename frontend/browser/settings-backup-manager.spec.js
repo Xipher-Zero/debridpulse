@@ -64,7 +64,7 @@ async function mockBackups(page, {addResult, restoreResult, restoreGate} = {}) {
 
 async function openManager(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="maintenance"]').click();
+  await page.locator('#view-settings [data-tab="maintenance"]:not(.dp-motion-still *)').click();
   await page.locator('#view-settings .dp-settings-backups-retention-card [data-action="backups"]').click();
   const dialog = page.locator('.dp-modal-dialog.dp-backup-manager-dialog');
   await expect(dialog).toBeVisible();

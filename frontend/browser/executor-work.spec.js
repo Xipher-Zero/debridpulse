@@ -80,7 +80,7 @@ async function openDownloads(page) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect(page.locator('#view-settings [data-panel="downloads"]')).toBeVisible();
   await expect(card(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(3);
@@ -249,7 +249,7 @@ test('an empty projection says so, and offers nothing to control', async ({page}
   });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect(card(page)).toBeVisible();
   await expect(card(page).locator('.empty'))
     .toHaveText('No download engine activity right now.');
@@ -371,10 +371,10 @@ test('an answer that belongs to an earlier arrival on the card is never shown', 
   await signal(page);
   await expect.poll(() => state.starts.length).toBe(2);                     // held: answers stale-row.bin
   // Leave the card and come back while it is in flight; the truth moved on.
-  await page.locator('#view-settings [data-tab="extraction"]').click();
+  await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').click();
   state.payload = withItems([{...DIRECT, name: 'fresh-row.bin'}]);
   state.hold = false;
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   state.release();
   await expect.poll(() => names(page), {timeout: SPACING_MS + 4000}).toEqual(['fresh-row.bin']);
   expect(await page.evaluate(() => window.__dpStaleSeen)).toBe(false);
@@ -394,14 +394,14 @@ test('nothing is read while the card is off screen or for a non-Admin; arriving 
     expect(state.starts.length, label).toBe(baseline);
   };
   // Another Settings section, then another page.
-  await page.locator('#view-settings [data-tab="extraction"]').click();
+  await page.locator('#view-settings [data-tab="extraction"]:not(.dp-motion-still *)').click();
   await quiet('read while another Settings section was shown');
   await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
   await expect(page.locator('#view-dashboard')).toHaveClass(/\bactive\b/);
   await quiet('read while another page was shown');
   // Arriving again re-reads once.
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect.poll(() => state.starts.length).toBe(baseline + 1);
   // A reconnected stream re-reads once.
   await page.waitForTimeout(SPACING_MS + 100);

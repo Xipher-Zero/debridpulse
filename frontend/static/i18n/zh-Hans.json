@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "如果过去一周内有外部应用程序连接过，DebridPulse 会在更改端口前先询问：在获得新端口之前，该应用程序将无法访问 DebridPulse。",
   "help.topic.deployment_type.local_port.taken": "如果 DebridPulse 启动时端口已被其他程序占用，DebridPulse 仍会打开并给出提示。在端口空闲或在此处选择其他端口之前，外部应用程序无法连接。",
   "help.settings.access_integrations.local_port": "同一卡片中的<b>本地端口</b>是这台计算机上的外部应用程序访问 DebridPulse 的位置（未更改时为 {address}）。更改立即生效；如果过去一周内有应用程序连接过，会先询问。",
-  "error.deployment.desktop_standalone": "桌面应用程序始终为独立部署；其部署类型不会更改"
+  "error.deployment.desktop_standalone": "桌面应用程序始终为独立部署；其部署类型不会更改",
+  "error.desktop.frame_only": "只有桌面应用程序有窗口边框。",
+  "error.desktop.frame_invalid": "窗口边框颜色无效。"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

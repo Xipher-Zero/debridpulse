@@ -538,7 +538,7 @@ for (const fonts of ['web fonts', 'fallback fonts']) {
         expect(h.fontSizes, at).toEqual(reference.fontSizes);
         expect(h.labelsWhole.every(Boolean), at).toBe(true);
         await expect(page.locator('#view-settings .dp-settings-tabs [tabindex="0"]')).toHaveCount(1);
-        await expect(page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[k]}"]`)).toHaveAttribute('tabindex', '0');
+        await expect(page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[k]}"]:not(.dp-motion-still *)`)).toHaveAttribute('tabindex', '0');
         // Previous and Next keep their size; each is gone exactly where the
         // selected section is the first or last (section-navigator-endpoints).
         for (const end of h.ends.filter(end => end.shown)) {
@@ -636,7 +636,7 @@ test('at the 780px floor, where the end pair cannot fit even trimmed (the hosted
   // The preview opens its section, the window sliding back the way the
   // panel does; the neighbour, now selected, is whole.
   await choose(page, order[n - 1]);
-  await page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[n - 2]}"]`).click();
+  await page.locator(`#view-settings .dp-settings-tabs [data-tab="${order[n - 2]}"]:not(.dp-motion-still *)`).click();
   await expect(selected(page)).toHaveAttribute('data-tab', order[n - 2]);
   await settle(page);
   expect((await header(page)).currentWhole).toBe(true);
@@ -985,7 +985,7 @@ test('with reduced motion the window moves at once and never slides', async ({pa
 
 test('the presentation changing keeps the section, its panel, an unsent edit and focus, and sends nothing', async ({page}) => {
   await openSettings(page, 1920);
-  await page.locator('#view-settings [data-tab="authentication"]').click();
+  await page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)').click();
   await expect(page.locator('#view-settings [data-panel="authentication"]')).toBeVisible();
   const field = page.locator('#view-settings [data-panel="authentication"] input[type="text"]:visible, #view-settings [data-panel="authentication"] input[type="url"]:visible').first();
   await field.click();
@@ -1114,6 +1114,6 @@ test('below 780px the handheld header is one row with the same compact navigator
       tabs: strip.querySelectorAll('[data-tab]').length};
   });
   expect(h).toEqual({presentation: 'compact', oneRow: true, ends: true, tabs: 7});
-  await page.locator('#view-settings [data-tab="maintenance"]').click();
+  await page.locator('#view-settings [data-tab="maintenance"]:not(.dp-motion-still *)').click();
   await expect(page.locator('#view-settings [data-panel="maintenance"]')).toBeVisible();
 });

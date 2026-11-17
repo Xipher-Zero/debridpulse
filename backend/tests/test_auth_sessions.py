@@ -33,6 +33,7 @@ def _settings(*, enabled=True, lifetime=12):
     return SimpleNamespace(
         auth_password_enabled=enabled,
         auth_session_lifetime_hours=lifetime,
+        deployment_type="server",          # AppSettings' default; the session status reports it
     )
 
 

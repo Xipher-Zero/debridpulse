@@ -23657,6 +23657,18 @@
    "context": "Refusal of a deployment-type change in the installed desktop application, which is always Standalone. 'Standalone' is the deployment type's name as the interface shows it.",
    "owner": "backend/api/auth_config_routes.py",
    "criticality": "normal"
+  },
+  "error.desktop.frame_only": {
+   "category": "error",
+   "context": "Refusal of a request for the desktop application's window frame colours (sent by the page itself, never shown in normal use).",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.desktop.frame_invalid": {
+   "category": "error",
+   "context": "Refusal of a request for the desktop application's window frame colours (sent by the page itself, never shown in normal use).",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
   }
  }
 }

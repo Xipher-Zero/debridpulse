@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Якщо за останній тиждень підключалася зовнішня програма, DebridPulse запитує перед зміною порту: ця програма не зможе підключитися до DebridPulse, доки їй не вкажуть новий порт.",
   "help.topic.deployment_type.local_port.taken": "Якщо під час запуску DebridPulse порт зайнятий іншою програмою, DebridPulse однаково відкривається й повідомляє про це. Зовнішні програми не зможуть підключитися, доки порт не звільниться або тут не буде вибрано інший.",
   "help.settings.access_integrations.local_port": "<b>Локальний порт</b> на тій самій картці — це місце, де зовнішні програми на цьому комп’ютері підключаються до DebridPulse (типово {address}). Зміна діє одразу, а якщо за останній тиждень підключалася програма, спершу запитується підтвердження.",
-  "error.deployment.desktop_standalone": "Тип розгортання настільної програми завжди «Автономний» і не змінюється"
+  "error.deployment.desktop_standalone": "Тип розгортання настільної програми завжди «Автономний» і не змінюється",
+  "error.desktop.frame_only": "Рамка вікна є лише в настільної програми.",
+  "error.desktop.frame_invalid": "Неприпустимі кольори рамки вікна."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

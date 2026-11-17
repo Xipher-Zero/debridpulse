@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Son bir haftada bir harici uygulama bağlandıysa DebridPulse portu değiştirmeden önce sorar: o uygulama, yeni port kendisine verilene kadar DebridPulse’a ulaşamaz.",
   "help.topic.deployment_type.local_port.taken": "DebridPulse başlarken port başka bir programdaysa DebridPulse yine de açılır ve bunu bildirir. Port boşalana veya burada başka bir port seçilene kadar harici uygulamalar bağlanamaz.",
   "help.settings.access_integrations.local_port": "Aynı karttaki <b>Yerel port</b>, bu bilgisayardaki harici uygulamaların DebridPulse’a ulaştığı yerdir (değiştirilmedikçe {address}). Değişiklik hemen geçerli olur ve son bir haftada bir uygulama bağlandıysa önce sorar.",
-  "error.deployment.desktop_standalone": "Masaüstü uygulaması her zaman Bağımsız’dır; dağıtım türü değişmez"
+  "error.deployment.desktop_standalone": "Masaüstü uygulaması her zaman Bağımsız’dır; dağıtım türü değişmez",
+  "error.desktop.frame_only": "Pencere çerçevesi yalnızca masaüstü uygulamasında vardır.",
+  "error.desktop.frame_invalid": "Pencere çerçevesinin renkleri geçerli değil."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

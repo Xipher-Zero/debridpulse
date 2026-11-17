@@ -435,10 +435,11 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
         "--dp-panel-frame",
         "--dp-panel-surface",
         "--dp-panel-shadow",
-        "box-shadow:",
         "backdrop-filter:",
     ):
         assert forbidden not in css
+    # No shadow of its own; removing one (a verified Test button's) draws nothing.
+    assert re.findall(r"box-shadow:\s*([^;]+);", css) in ([], ["none"] * len(re.findall(r"box-shadow:", css)))
     for forbidden_selector in (
         ".dp-settings-master-card::after",
         ".dp-settings-card::after",

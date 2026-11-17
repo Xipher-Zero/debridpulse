@@ -229,12 +229,14 @@ test('one heartbeat strip crosses the single row right to left at one speed, the
   expect(await page.evaluate(() => localStorage.getItem('debridpulse.dashboard.metric-history.v2'))).toBeNull();
 });
 
-for (const [width, height, rows] of [[1000, 900, 1], [560, 1400, 2]]) {
-  test(`at ${width}px the three cards shown are one strip on ${rows} row(s): rows top to bottom, each right to left, row breaks travelled unseen`, async ({page}) => {
+// The tablet shows three cards on one row; the phone two (Total Downloads and
+// Completed, fcb4e8d1), also on one row. No width breaks the strip into rows.
+for (const [width, height, cards] of [[1000, 900, 3], [560, 1400, 2]]) {
+  test(`at ${width}px the ${cards} cards shown are one strip on one row, right to left`, async ({page}) => {
     test.setTimeout(90000);
     await boot(page, {width, height});
-    expect((await strip(page)).length).toBe(3);
-    await expectStripFollowsLayout(page, {rowsExpected: rows});
+    expect((await strip(page)).length).toBe(cards);
+    await expectStripFollowsLayout(page, {rowsExpected: 1});
   });
 }
 
@@ -558,21 +560,20 @@ for (const [label, throughput, interval] of [['3.5 BPM', {bps: 0, peak: 42e6}, I
   });
 }
 
-test('while the cadence changes and across row breaks every trail reaches rest in strip distance just before its follower', async ({page}) => {
+test('while the cadence changes every trail reaches rest in strip distance just before its follower', async ({page}) => {
   test.setTimeout(120000);
   const throughput = {bps: 26.5, peak: 86.5};
   await boot(page, {width: 560, height: 1400, throughput});
   await page.clock.runFor(5000);                          // heartbeats at 30 BPM on the strip
   throughput.bps = 86.5;                                  // the cadence now eases towards 90 BPM
   const trails = [];
-  let capped = 0, spanned = 0, broken = 0;
+  let capped = 0, spanned = 0;
   for (let t = 0; t < 16000; t += 100) {
     await page.clock.runFor(100);
     const cards = await strip(page);
-    expect(route(cards).rows.length).toBe(2);
+    expect(route(cards).rows.length).toBe(1);             // the phone's two cards, one row (fcb4e8d1)
     const beats = stripBeats(cards);
     spanned += beats.filter(beat => beat.cards > 1).length;
-    broken += beats.filter(beat => beat.broken).length;
     const clear = expectClearTrails(beats);
     trails.push(...clear.checked);
     capped += clear.capped;
@@ -580,7 +581,8 @@ test('while the cadence changes and across row breaks every trail reaches rest i
   const pairs = trails.length;
   expect(pairs).toBeGreaterThan(20);
   expect(spanned).toBeGreaterThan(0);                    // trails continuing from card to card
-  expect(broken).toBeGreaterThan(0);                     // and back across a row break
+  // (No width breaks the strip into rows any more, so there is no row break
+  // for a trail to cross: `broken` is not asserted on one row.)
   expect(capped).toBeGreaterThan(0);                     // 416 px at 30 BPM as the change began ...
   expect(new Set(trails.map(Math.round)).size).toBeGreaterThan(3);   // ... then shortening ...
   expect(Math.min(...trails)).toBeLessThan(110);         // ... to 96 px near 90 BPM

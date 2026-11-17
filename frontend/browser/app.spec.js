@@ -297,8 +297,12 @@ test('canonical failure category renders without native parsing or detail enrich
   await openView(page, 'torrents', 'Downloads');
   const row = page.locator('#t-tbody tr[data-torrent-id="901"]');
   await expect(row.locator('[data-role="transfer-status"]')).toHaveText('Disk Full');
-  await expect(row.locator('[data-dp-failure-code]')).toHaveAttribute('data-dp-failure-code', 'disk_full');
-  await expect(row.locator('.dp-terminal-error-progress')).toHaveAttribute('data-dp-actual-progress', '37');
+  // The Status cell's badge, and the summary's status glyph (1cc4f2e1) saying the same code.
+  await expect(row.locator('[data-role="transfer-status"] [data-dp-failure-code]')).toHaveAttribute('data-dp-failure-code', 'disk_full');
+  await expect(row.locator('.dp-status-glyph')).toHaveAttribute('data-dp-failure-code', 'disk_full');
+  // The Progress cell's bar, and the summary's track (1cc4f2e1) drawing the same progress.
+  await expect(row.locator('.dp-downloads-progress-cell .dp-terminal-error-progress')).toHaveAttribute('data-dp-actual-progress', '37');
+  await expect(row.locator('.dp-transfer-summary-track .dp-terminal-error-progress')).toHaveAttribute('data-dp-actual-progress', '37');
   expect(runtime.requests.filter(url => new URL(url).pathname === '/api/torrents/901')).toEqual([]);
   expect(runtime.errors).toEqual([]);
 });

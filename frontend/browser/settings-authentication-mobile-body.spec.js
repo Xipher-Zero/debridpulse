@@ -47,7 +47,7 @@ async function open(page, auth = AUTH) {
   await page.setViewportSize({width: 1280, height: 1000});
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="authentication"]').first().click();
+  await page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)').first().click();
   await expect(page.locator('#view-settings [data-panel="authentication"]')).toBeVisible();
   await settle(page);
 }
@@ -264,9 +264,9 @@ test('a title says its hint on hover and by keyboard, and the controls keep thei
   await username.scrollIntoViewIfNeeded();
   await username.hover();
   await expect(tooltip).toBeVisible();
-  await page.locator('#view-settings [data-tab="downloads"]').first().click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').first().click();
   await expect(tooltip).toBeHidden();
-  await page.locator('#view-settings [data-tab="authentication"]').first().click();
+  await page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)').first().click();
   await resize(page, 1280);
   await expect(username).not.toHaveAttribute('data-tooltip', /.*/);
   await expect(page.locator('.dp-settings-auth-username-field .form-hint')).toBeVisible();

@@ -34,7 +34,7 @@ async function isolateExternalFonts(page) {
 async function openSources(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
@@ -62,7 +62,7 @@ async function openAdditional(page) {
  * global Provider Poll Interval and Full Sync Interval live (they apply to
  * every service, so no provider card holds them). */
 async function openBehaviorAdvanced(page) {
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="downloads"]')).toBeVisible();
   const chip = page.locator('#view-settings .dp-settings-disclosure[aria-controls="dp-settings-section-body-download-behavior-advanced"]');
   if ((await chip.getAttribute('aria-expanded')) !== 'true') await chip.click();
@@ -90,12 +90,12 @@ async function writeTheWholeSettingsDocument(page) {
   const draft = Number(current.disk_guard_resume_hysteresis_gb) === 13.3 ? 13.4 : 13.3;
   const written = page.waitForResponse(
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
   await probe.fill(String(draft));
   await probe.blur();
   await written;
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
 }
 
 const toasts = page => page.locator('#toasts .toast');

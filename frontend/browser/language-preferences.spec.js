@@ -183,7 +183,7 @@ test('LP03: a refused save keeps the list open and says so; a second press while
 async function openUsers(page) {
   // The page's own navigation (the sidebar entry; below 780px the dock's).
   await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
-  await page.locator('.dp-settings-tabs [data-tab="users"]').click();
+  await page.locator('.dp-settings-tabs [data-tab="users"]:not(.dp-motion-still *)').click();
   const button = page.locator('[data-user-action="default-language"]');
   await expect(button.locator('.dp-language-name')).toHaveText('English');
   return button;
@@ -388,7 +388,7 @@ test('LP08: Deployment & Language keeps its two blocks side by side and centred 
   await page.route('**/api/settings/default-locale', async route => { if (route.request().method() === 'GET') await held; await route.continue(); });
   await page.setViewportSize({width: 700, height: 900});
   await page.evaluate(() => window.nav(document.querySelector('#sidebar .nav-item[data-view="settings"]')));
-  await page.locator('.dp-settings-tabs [data-tab="users"]').click();
+  await page.locator('.dp-settings-tabs [data-tab="users"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-deployment-card')).toBeVisible();
   // The card's own attributes only: the fitter's measuring clones are removed as soon as measured.
   await page.evaluate(() => { window.__layoutWrites = 0;

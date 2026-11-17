@@ -148,7 +148,7 @@ test('committing a Downloads field adopts the canonical policy and never writes 
 
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   // One aria2: the Downloads panel offers no topology control, visible or hidden.
   const downloads = page.locator('#view-settings [data-panel="downloads"]');
   for (const retired of ['aria2_mode', 'aria2_url', 'aria2_secret', 'aria2_download_path']) {

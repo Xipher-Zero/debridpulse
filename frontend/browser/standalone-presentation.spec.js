@@ -62,7 +62,7 @@ test('Server: Authentication and Users & Access, Deployment Type first and the a
   await openSettings(page);
   expect(await sections(page).locator('.dp-settings-tab-label').allTextContents()).toEqual(SERVER_SECTIONS);
   await expect(page.locator('#view-settings [data-panel="authentication"]')).toHaveCount(1);
-  await page.locator('#view-settings [data-tab="users"]').click();
+  await page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
   await expect(page.locator('[data-users-mount] .dp-settings-users-card').first()).toBeVisible();
   expect(await usersCards(page).allTextContents()).toEqual(
     ['Deployment & Language', 'User Accounts', 'Integration Accounts', 'Integration Delivery Profiles']);
@@ -73,10 +73,10 @@ test('Server: Authentication and Users & Access, Deployment Type first and the a
 test('Standalone: no Authentication tab or panel, Access & Integrations on the users key, and no User Accounts card or action', async ({page}) => {
   await openSettings(page, {type: 'standalone'});
   expect(await sections(page).evaluateAll(tabs => tabs.map(tab => tab.dataset.tab))).toEqual(STANDALONE_KEYS);
-  await expect(page.locator('#view-settings [data-tab="authentication"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)')).toHaveCount(0);
   await expect(page.locator('#view-settings [data-panel="authentication"]')).toHaveCount(0);
   await expect(page.locator('#view-settings .dp-settings-auth-status-card')).toHaveCount(0);
-  const users = page.locator('#view-settings [data-tab="users"]');
+  const users = page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)');
   await expect(users.locator('.dp-settings-tab-label')).toHaveText('Access & Integrations');
   await expect(users.locator('img')).toHaveAttribute('src', '/icons/lucide/users.svg');
   await users.click();
@@ -137,12 +137,12 @@ for (const width of [1440, 320]) {
 
 test('a Settings entry after a change to Standalone opens on Services, never a section it does not present', async ({page}) => {
   await openSettings(page);
-  await page.locator('#view-settings [data-tab="authentication"]').click();
+  await page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)').click();
   await expect(page.locator('#view-settings [data-panel="authentication"]')).toBeVisible();
   await asDeployment(page, 'standalone');
   await page.locator('#sidebar .nav-item[data-view="dashboard"]').evaluate(element => element.click());
   await page.locator('#sidebar .nav-item[data-view="settings"]').evaluate(element => element.click());
-  await expect(page.locator('#view-settings [data-tab="authentication"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings [data-tab="authentication"]:not(.dp-motion-still *)')).toHaveCount(0);
   await expect(selected(page)).toHaveAttribute('data-tab', 'sources');
   await expect(page.locator('#view-settings [data-panel="sources"]')).toBeVisible();
 });

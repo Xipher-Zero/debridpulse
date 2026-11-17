@@ -358,5 +358,8 @@ def run(tool: str) -> None:
                          f"({exc})\n")
         sys.exit(126)
     if os.name == "nt":
-        sys.exit(code)
+        # The tool's exit code is a DWORD (a crash or a refused start leaves an
+        # NTSTATUS above 2**31, e.g. 0xC0000142); sys.exit takes a C int, so it
+        # is passed as the same 32 bits -- never collapsed to -1.
+        sys.exit(code - (1 << 32) if code >= 1 << 31 else code)
     os.execv(tool, [tool, *sys.argv[1:]])

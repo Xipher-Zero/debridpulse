@@ -37,7 +37,7 @@ def test_the_card_is_the_real_debrid_structure_through_one_connection_owner():
     torbox, realdebrid = card("torbox"), card("realdebrid")
     for text in (torbox, realdebrid):
         assert 'class="dp-settings-account-connection"' in text
-        assert "<details class=\"dp-settings-additional\">" in text
+        assert "${providerAdditional(tuningCells(" in text           # the one Additional Settings emitter
         assert "headerAction: providerTestAction(" in text
         assert "PROVIDER_STATUS_SPACER" not in text and "dp-settings-group-separator" not in text
     assert "deviceConnectionMarkup('torbox')" in torbox

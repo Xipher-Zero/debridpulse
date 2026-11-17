@@ -224,7 +224,7 @@ async function acceptedSettings(page, overrides) {
 
 async function openSources(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 

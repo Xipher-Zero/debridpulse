@@ -45,6 +45,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
 import stat
 import threading
@@ -59,11 +60,30 @@ LIFECYCLE = frozenset({"transfer.accepted", "transfer.queued", "transfer.transfe
                        "transfer.completed", "transfer.failed", "transfer.cancelled"})
 _FIELDS = {"status": {"id", "op"}, "events": {"id", "op", "after", "limit"},
            "pause": {"id", "op"}, "resume": {"id", "op"},
-           "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}}
+           "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}, "frame": {"id", "op"}}
 # How long a desktop save waits for its destination: the supervisor's next
 # look (its loop) and the person's own time in the dialog.
 DESTINATION_WAIT_SECONDS = 600
 MAX_PATH = 4096
+
+
+# The window frame in the page's theme (``set_frame``, from PUT /desktop/frame):
+# {"caption": "#rrggbb", "text": "#rrggbb", "dark": bool}, or None until the
+# page has said. The supervisor reads it (op ``frame``) and colours the window's
+# own frame with it (Windows: its title bar; macOS: the title bar's background).
+_frame: dict | None = None
+_HEX = re.compile(r"#[0-9a-f]{6}")
+
+
+def set_frame(caption: str, text: str, dark: bool) -> dict:
+    """Record the frame the page's theme asks for; a colour that is not
+    ``#rrggbb`` is refused (``ValueError``)."""
+    global _frame
+    caption, text = str(caption).lower(), str(text).lower()
+    if not (_HEX.fullmatch(caption) and _HEX.fullmatch(text)) or not isinstance(dark, bool):
+        raise ValueError   # the route answers its own coded refusal (desktop.frame_invalid)
+    _frame = {"caption": caption, "text": text, "dark": dark}
+    return dict(_frame)
 
 
 # The desktop saves waiting for their destination: number -> [offered name,
@@ -160,6 +180,8 @@ async def answer(application, request) -> dict:
     if op in {"pause", "resume"}:
         result = await (application.pause_all() if op == "pause" else application.resume_all())
         return {"id": ident, "ok": bool(result.get("ok")), "paused": bool(result.get("paused"))}
+    if op == "frame":
+        return {"id": ident, "frame": dict(_frame) if _frame else None}
     if op == "saves":
         waiting = [(number, entry) for number, entry in sorted(_saves.items()) if not entry[2]]
         for _number, entry in waiting:

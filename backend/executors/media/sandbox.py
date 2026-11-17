@@ -88,8 +88,23 @@ def public_scope(identity: str) -> str:
     return hashlib.sha256(str(identity).encode("utf-8")).hexdigest()[:32]
 
 
+
+def console_interpreter(executable: str = sys.executable) -> str:
+    """The interpreter the worker and every tool wrapper run on: this one,
+    except on Windows when it is the windowless ``pythonw.exe`` (the desktop
+    application's) -- then the console ``python.exe`` beside it. A windowless
+    interpreter has no console to give a console tool and receives no standard
+    handles from the packaged launcher, so the confined tool could neither
+    start (it may create no console host) nor report an error. The worker is
+    started with no window (``ProcessOwnership``), so its console is hidden and
+    every helper below it inherits that one: nothing is ever shown."""
+    path = Path(executable)
+    if _WINDOWS and path.name.lower() == "pythonw.exe" and (path.parent / "python.exe").is_file():
+        return str(path.parent / "python.exe")
+    return executable
+
 class MediaSandbox:
-    def __init__(self, runtime_dir: str, *, egress=None, python: str = sys.executable, budget: str = "yt_dlp",
+    def __init__(self, runtime_dir: str, *, egress=None, python: str | None = None, budget: str = "yt_dlp",
                  tools: MediaTools | None = None, youtube_player_clients: tuple[str, ...] = ()):
         self.processes = ProcessOwnership(runtime_dir)
         # The effective YouTube player-client preference every extraction and
@@ -97,7 +112,7 @@ class MediaSandbox:
         self.youtube_player_clients = tuple(youtube_player_clients)
         self.scratch = Path(runtime_dir) / "extract"
         self.egress = egress or downloader_egress_guard
-        self.python = python
+        self.python = python or console_interpreter()
         self.budget = budget
         self._tools = tools
 

@@ -18,7 +18,8 @@ const noPulse = page => page.route('**/api/events/stream', () => {});
 // sheet still closing (a page chosen while More is drawn opens once More has
 // closed: DPShellSheet in app.js).
 const still = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface, [data-dp-sheet-exit]'));
-const dock = page => page.locator('#shell-dock > *').evaluateAll(items => items.map(item => ({
+// The dock's items, not its decorative signal field (aria-hidden).
+const dock = page => page.locator('#shell-dock > :not(dp-signal-field)').evaluateAll(items => items.map(item => ({
   tag: item.localName, label: item.querySelector('.dp-shell-label')?.textContent || '', name: item.getAttribute('aria-label'),
   view: item.dataset.view || '', current: item.getAttribute('aria-current'), active: item.classList.contains('active'),
   box: (({x, width, height}) => ({x, width, height}))(item.getBoundingClientRect()),
@@ -136,7 +137,7 @@ async function open(page, {width = 390, height = 844, path = '/'} = {}) {
   await noPulse(page);
   await page.setViewportSize({width, height});
   await page.goto(path);
-  await page.waitForFunction(() => document.querySelector('#shell-dock > *') && window.DPTheme);
+  await page.waitForFunction(() => document.querySelector('#shell-dock > :not(dp-signal-field)') && window.DPTheme);
 }
 
 // The shell's one version datum at the end of the page's scroll: where its
@@ -195,7 +196,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       for (inset of [0, 10, 34]) {
         await page.setViewportSize({width, height: 844});
         await page.reload();
-        await page.waitForFunction(() => document.querySelector('#shell-dock > *') && window.DPTheme);
+        await page.waitForFunction(() => document.querySelector('#shell-dock > :not(dp-signal-field)') && window.DPTheme);
         for (const view of ['dashboard', 'stats']) {
           if (view === 'stats') { await page.locator('#shell-dock .dp-shell-dock-item[data-view="stats"]').click(); await still(page); }
           const m = await measure();
@@ -1005,7 +1006,7 @@ test('roles: Admin, User and ReadOnly each get exactly their authorized dock and
   const reloaded = signed.page.waitForEvent('load');
   expect((await api(admin.page, 'PATCH', `/accounts/${user.id}`, {role: 'readonly'})).status).toBe(200);
   await reloaded;
-  await signed.page.waitForFunction(() => document.querySelector('#shell-dock > *'));
+  await signed.page.waitForFunction(() => document.querySelector('#shell-dock > :not(dp-signal-field)'));
   expect((await dock(signed.page)).map(item => item.label)).toEqual(['Downloads', 'Stats', 'Dashboard', 'Help', '']);
 
   // ── Log Out from the header's account sheet.

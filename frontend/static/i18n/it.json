@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Se un’applicazione esterna si è connessa nell’ultima settimana, DebridPulse chiede conferma prima di cambiare la porta: quell’applicazione non potrà raggiungere DebridPulse finché non riceverà la nuova porta.",
   "help.topic.deployment_type.local_port.taken": "Se un altro programma occupa la porta all’avvio di DebridPulse, DebridPulse si apre comunque e lo segnala. Le applicazioni esterne non possono connettersi finché la porta non è libera o non ne viene scelta un’altra qui.",
   "help.settings.access_integrations.local_port": "<b>Porta locale</b>, nella stessa scheda, è il punto in cui le applicazioni esterne su questo computer raggiungono DebridPulse ({address} se non modificata). Una modifica si applica subito e chiede prima conferma se un’applicazione si è connessa nell’ultima settimana.",
-  "error.deployment.desktop_standalone": "L’applicazione desktop è sempre in modalità Autonoma; il suo tipo di distribuzione non cambia"
+  "error.deployment.desktop_standalone": "L’applicazione desktop è sempre in modalità Autonoma; il suo tipo di distribuzione non cambia",
+  "error.desktop.frame_only": "Solo l’applicazione desktop ha una cornice della finestra.",
+  "error.desktop.frame_invalid": "I colori della cornice della finestra non sono validi."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

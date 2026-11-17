@@ -77,3 +77,37 @@ def test_the_media_helpers_netless_module_still_loads_on_its_own():
     assert done.returncode == 0, done.stderr[-2000:]
     source = (folder / "netless.py").read_text(encoding="utf-8")
     assert "from core" not in source and "from executors" not in source
+
+
+def test_a_failed_helper_always_says_how_it_ended():
+    """A finalization helper that fails before writing anything (on Windows: a
+    refused start or a crash) still leaves a diagnostic: how it ended, then
+    what it said -- never an empty detail (the Windows report of 2026-11-16)."""
+    import sys
+    sys.path.insert(0, str(BACKEND / "executors" / "media"))
+    from executors.media.worker import MAX_DETAIL_CHARS, _exit_detail
+    if os.name == "nt":
+        assert _exit_detail(-1073741502, b"") == "exit 0xC0000142 (no output)"
+    else:
+        assert _exit_detail(1, b"") == "exit 1 (no output)"
+        assert _exit_detail(-9, b"") == "signal 9 (no output)"
+        assert _exit_detail(1, b"file:x: Permission denied\n") == "exit 1: file:x: Permission denied"
+    assert len(_exit_detail(1, b"x" * 5000)) <= MAX_DETAIL_CHARS
+
+
+def test_the_media_sandbox_runs_on_the_console_interpreter_and_keeps_the_tools_exit_code():
+    """The desktop application runs on the windowless pythonw.exe; its media
+    worker and tool wrappers must not: a windowless shim gives the confined
+    tool no console and no standard handles, so on Windows it could neither
+    start nor report (the materialization failure of 2026-11-16, reproduced on
+    win11-test: exit 0xFFFFFFFF, no output). And the shim passes the tool's
+    32-bit exit code through unchanged (0xFFFFFFFE stayed 0xFFFFFFFE)."""
+    import sys
+    sys.path.insert(0, str(BACKEND))
+    from executors.media import sandbox
+    assert sandbox.console_interpreter("/usr/bin/python3") == "/usr/bin/python3"   # nothing to swap off Windows
+    source = (BACKEND / "executors" / "media" / "sandbox.py").read_text(encoding="utf-8")
+    assert 'if _WINDOWS and path.name.lower() == "pythonw.exe" and (path.parent / "python.exe").is_file():' in source
+    assert "self.python = python or console_interpreter()" in source
+    netless = (BACKEND / "executors" / "media" / "netless.py").read_text(encoding="utf-8")
+    assert "sys.exit(code - (1 << 32) if code >= 1 << 31 else code)" in netless

@@ -29,7 +29,7 @@ const ADDED = 'https://discord.com/api/webhooks/3000/browser-added';
 async function openSettings(page, tab) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
 }
 
@@ -148,12 +148,18 @@ test('both cards render the shared rail: status, then Test, then Enable', async 
   for (const card of ['dp-settings-discord-card', 'dp-settings-statistics-reporting-card']) {
     const rail = page.locator(`#view-settings .${card} .dp-settings-card-header-controls`);
     await expect(rail).toHaveCount(1);
-    const order = await rail.evaluate(el => [...el.children].map(node => {
-      if (node.classList.contains('dp-settings-provider-config-status')) return 'status';
-      if (node.classList.contains('dp-settings-header-action')) return 'test';
-      if (node.classList.contains('dp-settings-help-chip')) return 'help';
-      return node.querySelector('input[type=checkbox]') ? 'enable' : node.className;
-    }));
+    // The rail's drawn items, read through a boxless wrapper (Test and its
+    // toggle share one header Test group, which draws no box from 780px).
+    const order = await rail.evaluate(el => {
+      const drawn = node => [...node.children].flatMap(child => getComputedStyle(child).display === 'contents'
+        ? drawn(child) : (child.getClientRects().length ? [child] : []));
+      return drawn(el).map(node => {
+        if (node.classList.contains('dp-settings-provider-config-status')) return 'status';
+        if (node.classList.contains('dp-settings-header-action')) return 'test';
+        if (node.classList.contains('dp-settings-help-chip')) return 'help';
+        return node.querySelector('input[type=checkbox]') || node.matches('input[type=checkbox]') ? 'enable' : node.className;
+      });
+    });
     // Status, then the card's help, then its own controls in their order.
     expect(order).toEqual(['status', 'help', 'test', 'enable']);
     await expect(rail.locator('.dp-settings-provider-test')).toHaveText('Test');

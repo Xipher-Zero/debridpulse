@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Hat sich in der vergangenen Woche eine externe Anwendung verbunden, fragt DebridPulse vor der Änderung nach: Diese Anwendung erreicht DebridPulse erst wieder, wenn sie den neuen Port erhält.",
   "help.topic.deployment_type.local_port.taken": "Belegt beim Start von DebridPulse ein anderes Programm den Port, öffnet DebridPulse trotzdem und weist darauf hin. Externe Anwendungen können sich erst verbinden, wenn der Port frei ist oder hier ein anderer gewählt wird.",
   "help.settings.access_integrations.local_port": "<b>Lokaler Port</b> in derselben Karte ist die Stelle, an der externe Anwendungen auf diesem Computer DebridPulse erreichen (standardmäßig {address}). Eine Änderung gilt sofort und fragt zuerst nach, wenn sich in der vergangenen Woche eine Anwendung verbunden hat.",
-  "error.deployment.desktop_standalone": "Die Desktop-Anwendung ist immer Standalone; ihr Bereitstellungstyp ändert sich nicht"
+  "error.deployment.desktop_standalone": "Die Desktop-Anwendung ist immer Standalone; ihr Bereitstellungstyp ändert sich nicht",
+  "error.desktop.frame_only": "Nur die Desktop-Anwendung hat einen Fensterrahmen.",
+  "error.desktop.frame_invalid": "Die Farben des Fensterrahmens sind ungültig."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

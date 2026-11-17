@@ -32114,6 +32114,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "8138abcb743a8e9b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "91a33ace8a0045fb",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

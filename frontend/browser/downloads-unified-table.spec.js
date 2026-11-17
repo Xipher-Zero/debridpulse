@@ -208,7 +208,7 @@ test('the full table: one Name column with its controls beneath, centred Status 
       await resize(page, width);
       const state = await read(page), where = `${theme} ${width}px`;
       expect(state.wrap, where).toBeGreaterThanOrEqual(COMPACT);
-      expect(state.headings, where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
+      expect(state.headings, where).toEqual(['Name', 'Status', 'Progress', 'Size', 'Added', 'Actions', 'select']);
       expect(state.overflow, where).toBeLessThanOrEqual(0);
       expect(Math.abs(state.statusHeading), where).toBeLessThanOrEqual(1);
       expect(Math.abs(state.actionHeading), where).toBeLessThanOrEqual(1);
@@ -252,7 +252,7 @@ test('a compact table shows Status and each action by its glyph, says them in DP
   const before = await read(page);
   await resize(page, narrow);
   const after = await read(page);
-  expect(before.headings).toEqual(['Name', 'Status', 'Progress', 'Size', 'Date', 'Actions', 'select']);
+  expect(before.headings).toEqual(['Name', 'Status', 'Progress', 'Size', 'Added', 'Actions', 'select']);
   expect(after.headings).toEqual(['Name', 'Status', 'Progress', 'Size', 'Actions', 'select']);
   expect(after.overflow).toBeLessThanOrEqual(0);
   expect(after.columns.progress).toBeGreaterThan(before.columns.progress);      // Progress takes the room

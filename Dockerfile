@@ -57,10 +57,12 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # perl-base CVE-2026-13221/CVE-2026-42496/CVE-2026-8376/CVE-2026-42497/
 # CVE-2026-48962/CVE-2026-57432/CVE-2026-57433, and the OpenSSL family
 # (openssl, libssl3t64, openssl-provider-legacy) CVE-2026-75804/
-# CVE-2026-84782, fixed by Trixie security update 3.5.7-1~deb13u3.
+# CVE-2026-84782, fixed by Trixie security update 3.5.7-1~deb13u3; apt and
+# libapt-pkg7.0 CVE-2026-109518 (3.0.4), and zlib1g CVE-2026-85091
+# (1:1.3.dfsg+really1.3.1-1+deb13u1).
 # Re-querying the registry confirmed no newer manifest-list digest is
 # published for this tag yet, so this is a deliberate, NAMED, --only-upgrade
-# of exactly those seven packages to whatever the current apt snapshot serves
+# of exactly those ten packages to whatever the current apt snapshot serves
 # -- not a blanket upgrade of the whole base layer, and not a version pin
 # (Debian's repository is a moving target regardless; see policy section 2).
 # If a future base-digest refresh already carries these fixes, this line
@@ -95,7 +97,10 @@ RUN printf '%s\n' \
     perl-base \
     openssl \
     libssl3t64 \
-    openssl-provider-legacy && \
+    openssl-provider-legacy \
+    apt \
+    libapt-pkg7.0 \
+    zlib1g && \
     apt-get install -y --no-install-recommends \
     /tmp/aria2/aria2_*.deb \
     /tmp/aria2/libaria2-0_*.deb \

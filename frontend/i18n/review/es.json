@@ -33428,6 +33428,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "d368c663e4ac5cbe",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "8f9dac2cfe2d5199",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

@@ -56,7 +56,8 @@ SHELL_EXIT_SECONDS = 10
 GRACEFUL_SECONDS = 5
 POLL_SECONDS = 3.0
 NATIVE_METHODS = ("os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
-                  "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit")
+                  "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit",
+                  "window.setFrameTheme")
 # How long a Save dialog may stay open: the person's own time.
 DIALOG_SECONDS = 600
 logger = logging.getLogger("debridpulse.desktop.supervisor")
@@ -643,6 +644,8 @@ class Shell:
 
     # Where the tray and notices are shown, everywhere but Linux (SessionBus).
     tray_shown = False
+    # The shell's own executable (run()), whose windows get the frame on Windows.
+    binary = ""
 
     async def tray(self, menu: dict) -> None:
         try:
@@ -671,6 +674,10 @@ class Shell:
         except (NativeError, TimeoutError) as exc:
             logger.error("the Save dialog failed: %s", exc)
             return None
+        # Neutralino answers {"returnValue": <path, "" when cancelled>, "success": true}
+        # (api/os/os.cpp showSaveDialog), never the bare path.
+        if isinstance(chosen, dict):
+            chosen = chosen.get("returnValue")
         return str(chosen) if isinstance(chosen, str) and chosen else None
 
 
@@ -1301,6 +1308,7 @@ async def run() -> int:
             drains += [asyncio.ensure_future(_drain(stream, root / "logs" / "shell.log"))
                        for stream in (shell_process.process.stdout, shell_process.process.stderr)]
             shell = Shell(session)
+            shell.binary = str(shell_binary)
             await shell.connect(auth_file, time.monotonic() + READY_SECONDS)
             if sys.platform.startswith("linux"):
                 bus = await SessionBus.open(shell.events, paths["shell"] / "resources" / "icons")
@@ -1342,6 +1350,7 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
         # the shell's own termination (_end_shell).
         await _window(shell, "window.setMainMenu", main_menu(words))
     hidden = False                              # this loop hid the window (close-to-tray)
+    applied_frame = None                        # the frame last given to the window (apply_frame)
     minimized = False                           # the shell says it is minimized (its own events)
     next_poll = time.monotonic() + POLL_SECONDS
     while backend.process.returncode is None:
@@ -1400,6 +1409,11 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             if current != status or not native.tray_shown:
                 status = current
                 await native.tray(tray_menu(status, words))
+            # The window frame in the page's theme, whenever the page says a new one.
+            frame = (await channel.ask("frame")).get("frame")
+            if frame and frame != applied_frame:
+                applied_frame = frame
+                await apply_frame(shell, frame)
             # Desktop saves waiting for a destination: each in its own task, so
             # the window and tray stay live while its dialog is open.
             for waiting in (await channel.ask("saves")).get("saves") or []:
@@ -1407,6 +1421,71 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             next_poll = time.monotonic() + POLL_SECONDS
     logger.error("the DebridPulse backend ended on its own (%s)", backend.process.returncode)
     return 1
+
+
+async def apply_frame(shell: "Shell", frame: dict) -> None:
+    """The window's own frame in the page's theme (``frame``: caption and text
+    ``#rrggbb``, dark). macOS: the shell's ``window.setFrameTheme``
+    (packaging/desktop/neutralino/macos-frame-theme.patch). Windows: the title
+    bar of every window of the shell (``windows_frame``). Linux keeps its
+    desktop's frame. A frame that cannot be applied is logged, never fatal."""
+    try:
+        if sys.platform == "darwin":
+            await shell.call("window.setFrameTheme", {"caption": frame["caption"], "dark": bool(frame["dark"])})
+        elif os.name == "nt":
+            coloured = await asyncio.to_thread(windows_frame, shell.binary, frame["caption"], frame["text"],
+                                               bool(frame["dark"]))
+            if not coloured:
+                logger.warning("no window of the shell to give the frame")
+    except (NativeError, OSError, TimeoutError, KeyError) as exc:
+        logger.warning("the window frame could not be applied: %s", exc)
+
+
+def colorref(value: str) -> int:
+    """``#rrggbb`` as Windows' COLORREF (0x00bbggrr)."""
+    red, green, blue = (int(value[index:index + 2], 16) for index in (1, 3, 5))
+    return blue << 16 | green << 8 | red
+
+
+def windows_frame(binary: str, caption: str, text: str, dark: bool) -> int:
+    """Windows: every top-level window of the process running ``binary`` (the
+    shell, which ProcessOwnership starts behind its gate) gets the frame:
+    dark mode for a dark theme (Windows 10 20H1+), and on Windows 11 the
+    caption and its text in the theme's colours (DwmSetWindowAttribute
+    DWMWA_USE_IMMERSIVE_DARK_MODE 20, DWMWA_CAPTION_COLOR 35,
+    DWMWA_TEXT_COLOR 36; an attribute Windows lacks is simply refused). How
+    many windows were coloured."""
+    import ctypes
+    from ctypes import wintypes as w
+    user32, kernel32, dwm = ctypes.WinDLL("user32"), ctypes.WinDLL("kernel32"), ctypes.WinDLL("dwmapi")
+    callback = ctypes.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
+    user32.EnumWindows.argtypes = [callback, w.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [w.HWND, ctypes.POINTER(w.DWORD)]
+    kernel32.OpenProcess.argtypes, kernel32.OpenProcess.restype = [w.DWORD, w.BOOL, w.DWORD], w.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR, ctypes.POINTER(w.DWORD)]
+    kernel32.CloseHandle.argtypes = [w.HANDLE]
+    dwm.DwmSetWindowAttribute.argtypes = [w.HWND, w.DWORD, ctypes.c_void_p, w.DWORD]
+    target = os.path.normcase(os.path.realpath(binary))
+    found = []
+
+    def visit(hwnd, _):
+        pid = w.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        process = kernel32.OpenProcess(0x1000, False, pid.value)          # PROCESS_QUERY_LIMITED_INFORMATION
+        if process:
+            image, size = ctypes.create_unicode_buffer(32768), w.DWORD(32768)
+            if kernel32.QueryFullProcessImageNameW(process, 0, image, ctypes.byref(size)) \
+                    and os.path.normcase(os.path.realpath(image.value)) == target:
+                found.append(hwnd)
+            kernel32.CloseHandle(process)
+        return True
+
+    user32.EnumWindows(callback(visit), 0)
+    for hwnd in found:
+        for attribute, value in ((20, int(dark)), (35, colorref(caption)), (36, colorref(text))):
+            data = w.DWORD(value)
+            dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data))
+    return len(found)
 
 
 async def _save(channel, native, words, waiting: dict) -> None:

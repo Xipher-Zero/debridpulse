@@ -457,9 +457,13 @@ async def switchable(transfer_id):
 
 
 async def quota_wait_on_debridlink(tmp_path, monkeypatch, *sources):
-    """The other provider downloading after Debrid-Link's account refused;
-    then the operator switches the file onto Debrid-Link (allowed from
-    ``downloading``): it parks on the hold, Debrid-Link is not asked."""
+    """The other provider downloading; then the operator switches the file
+    onto Debrid-Link (allowed from ``downloading``) and it parks on the
+    account's hold. The sources resolve concurrently and no provider order is
+    promised, so the other provider may have started the file before
+    Debrid-Link was ever asked for it: then there is no hold yet, and the
+    switch asks Debrid-Link exactly once, is refused, and holds. With the hold
+    already in place, Debrid-Link is not asked at all."""
     http = DebridLinkHTTP("maxData", warm={HERE: 1})
     engine, repository, executor, clock = await start(tmp_path, monkeypatch, http)
     transfer = await engine.submit(tuple(TransferRequest("https", url, "movie.bin") for url in (HERE, *sources, THERE)),
@@ -471,14 +475,17 @@ async def quota_wait_on_debridlink(tmp_path, monkeypatch, *sources):
     assert artifact.candidates[artifact.selected].provider_id == "elsewhere"
     held = next(item for item in artifact.candidates if item.provider_id == "debridlink"
                 and item.source_identity.key == "hoster.example")
-    asked = http.asked()
+    before = list(http.adds)
+    held_already = any(was is True for was, _ in before)
     assert (await manual_candidate_failover(engine, transfer.id, artifact.id, str(held.id)))["ok"]
     for _ in range(3):
         await cycle(engine, clock)
     artifact = await only_artifact(repository, transfer.id)
     assert artifact.candidates[artifact.selected].id == held.id and artifact.state == "recovery_wait"
     assert (await state(artifact.id))["quiescence_reason"] == "provider_quota"
-    assert http.asked() == asked and not await running_jobs(executor)
+    assert http.adds[:len(before)] == before
+    assert http.adds[len(before):] == ([] if held_already else [(True, HERE)])
+    assert await holds() and not await running_jobs(executor)
     return http, engine, repository, executor, clock, transfer, artifact
 
 

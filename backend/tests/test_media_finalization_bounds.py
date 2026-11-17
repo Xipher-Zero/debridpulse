@@ -97,7 +97,8 @@ def test_an_ordinary_helper_succeeds_and_a_short_failure_reports_its_whole_stder
     with pytest.raises(worker.Failure) as failure:
         worker._run([sys.executable, "-c", "import sys; sys.stderr.write('bad input\\n'); sys.exit(3)"],
                     output=str(tmp_path / "o"))
-    assert (failure.value.code, failure.value.detail) == ("finalization_failed", "bad input")
+    # How it ended, then the whole of what it said (worker._exit_detail).
+    assert (failure.value.code, failure.value.detail) == ("finalization_failed", "exit 3: bad input")
     with pytest.raises(worker.Failure) as missing:
         worker._run([str(tmp_path / "no-such-helper")])
     assert missing.value.code == "runtime_unavailable"

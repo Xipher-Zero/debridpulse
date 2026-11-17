@@ -81,7 +81,8 @@ const shift = value => {
 };
 
 const clear = page => page.evaluate(() => { window.__frames = []; });
-const settled = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface'));
+// At rest: no slide in flight and no crossfade's still copy still fading out.
+const settled = page => page.waitForFunction(() => !document.querySelector('.dp-motion-surface, .dp-motion-still'));
 /* The slide that just ran: its scope, direction, step, timing and how far its
  * old and new content travelled (largest displacement seen on each axis). The
  * page's content slide unless `scope` names another surface (the Settings
@@ -1312,12 +1313,13 @@ test('Sidebar: the page heading moves with the main region and never names a pag
     // displaced the region's way (forward: up and in from below; backward,
     // mirrored). However few frames an engine draws.
     const sign = direction === 'forward' ? -1 : 1;
-    const duration = frames.find(bodyMoved).durations[0];
     const travelling = frames.filter(frame => frame.bodyClock !== null && frame.headingClock !== null && frame.bodyClock > 0);
     expect(travelling.length).toBeGreaterThanOrEqual(1);
     for (const frame of travelling) {
       const leavingHalf = frame.headingHalf === 'out';
-      expect(Math.abs((leavingHalf ? frame.headingClock : frame.headingClock + duration / 2) - frame.bodyClock)).toBeLessThan(1.5);
+      // Both halves run on the travel's own clock (the arriving half starts
+      // where the leaving one started: ui-motion.js companion), so each reads the region's time.
+      expect(Math.abs(frame.headingClock - frame.bodyClock)).toBeLessThan(1.5);
       expect(frame.heading).toBe(leavingHalf ? from : destination);
       if (headingY(frame) !== 0) expect(Math.sign(headingY(frame))).toBe(leavingHalf ? sign : -sign);
     }

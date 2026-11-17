@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "지난 일주일 동안 외부 애플리케이션이 연결했다면 DebridPulse는 포트를 변경하기 전에 확인합니다. 해당 애플리케이션은 새 포트를 받을 때까지 DebridPulse에 연결할 수 없습니다.",
   "help.topic.deployment_type.local_port.taken": "DebridPulse가 시작될 때 다른 프로그램이 포트를 사용하고 있어도 DebridPulse는 열리며 이를 알립니다. 포트가 비거나 여기에서 다른 포트를 선택할 때까지 외부 애플리케이션은 연결할 수 없습니다.",
   "help.settings.access_integrations.local_port": "같은 카드의 <b>로컬 포트</b>는 이 컴퓨터의 외부 애플리케이션이 DebridPulse에 연결하는 곳입니다(변경하지 않으면 {address}). 변경 사항은 즉시 적용되며, 지난 일주일 동안 애플리케이션이 연결했다면 먼저 확인합니다.",
-  "error.deployment.desktop_standalone": "데스크톱 애플리케이션은 항상 독립형이며 배포 유형은 변경되지 않습니다"
+  "error.deployment.desktop_standalone": "데스크톱 애플리케이션은 항상 독립형이며 배포 유형은 변경되지 않습니다",
+  "error.desktop.frame_only": "창 프레임은 데스크톱 애플리케이션에만 있습니다.",
+  "error.desktop.frame_invalid": "창 프레임 색상이 올바르지 않습니다."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

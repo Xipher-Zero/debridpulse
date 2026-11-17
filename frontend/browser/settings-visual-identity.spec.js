@@ -93,8 +93,14 @@ for (const [theme, width] of [['dark', 1440], ['light', 1440], ['dark', 390], ['
     await openSettings(page, 'downloads');
     await page.setViewportSize({width, height: 1000});
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
+    // The headers' fitters (ResizeObserver) answer the new width in the next
+    // rendering frame; a read before it sees the unfitted header.
+    // The page's own motion is over (its inert snapshot gone), so the headers read are the live ones.
+    await page.waitForFunction(() => !document.querySelector('.dp-motion-still'));
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
     const facts = await page.evaluate(headers => headers.map(([card, title]) => {
-      const heading = document.querySelector(`.dp-settings-panel[data-panel="downloads"] ${card} > .card-header .card-title`);
+      const px = value => Math.round(value * 100) / 100;
+      const heading = document.querySelector(`.dp-settings-panel[data-panel="downloads"] ${card} > .card-header .card-title:not(.dp-motion-still *)`);
       const chip = heading.querySelector(':scope > .dp-settings-protocol-chip');
       const style = getComputedStyle(chip);
       const box = chip.getBoundingClientRect();
@@ -105,8 +111,9 @@ for (const [theme, width] of [['dark', 1440], ['light', 1440], ['dark', 390], ['
         title: heading.textContent.trim(), expected: title, section: chip.dataset.section, src: image.getAttribute('src'),
         naked: heading.querySelectorAll('.dp-settings-inner-card-icon').length,
         colour: style.getPropertyValue('--dp-protocol-color').trim(),
-        geometry: [box.width, box.height, style.borderTopWidth, style.borderTopStyle, style.borderTopColor,
-          style.borderTopLeftRadius, style.backgroundImage, style.boxShadow, glyph.width, glyph.height,
+        // Sizes to the hundredth: a sub-pixel float (37.99999237) is the same 38px chip.
+        geometry: [px(box.width), px(box.height), style.borderTopWidth, style.borderTopStyle, style.borderTopColor,
+          style.borderTopLeftRadius, style.backgroundImage, style.boxShadow, px(glyph.width), px(glyph.height),
           getComputedStyle(image).filter].join(' | '),
         glyphInside: glyph.left >= box.left && glyph.right <= box.right && glyph.top >= box.top && glyph.bottom <= box.bottom,
         gap: Math.round(text.left - box.right), centre: Math.abs((box.top + box.height / 2) - (text.top + text.height / 2)),
@@ -349,7 +356,7 @@ async function rowFacts(page, scope) {
           && glyphBox.top >= chipBox.top - 1 && glyphBox.bottom <= chipBox.bottom + 1
           && glyphBox.left - chipBox.left < chipBox.width / 3 : null,
         slot: slot ? (slot.querySelector('img')?.getAttribute('src') || [...(slot.querySelector('svg')?.classList || [])].join(' ')) : '',
-        magnet: (magnet => magnet ? {colour: srgb(getComputedStyle(magnet).color),
+        magnet: (magnet => magnet ? {drawn: magnet.getClientRects().length > 0, colour: srgb(getComputedStyle(magnet).color),
           contrast: contrast(getComputedStyle(magnet).color, magnet, getComputedStyle(slot).backgroundColor),
           // Where the magnet's two pole ticks are DRAWN, from the glyph's centre
           // (screen degrees, y down: 270 = poles up).
@@ -360,6 +367,7 @@ async function rowFacts(page, scope) {
             return Math.round((Math.atan2((ay + by) / 2 - gy, (ax + bx) / 2 - gx) * 180 / Math.PI + 360) % 360);
           })()} : null)(
           slot?.querySelector('.dp-source-magnet')),
+        slotDrawn: slot ? slot.getClientRects().length > 0 : null,
         slotLeftOfChip: slot ? slot.getBoundingClientRect().right <= chipBox.left + 1 : null,
         rowHeight: Math.round(tr.getBoundingClientRect().height),
       }];
@@ -413,7 +421,9 @@ for (const [label, open, scope] of [
         expect(fact.glyph, id).toBe('');
         expect(fact.images, `${id}: text only`).toBe(0);
         expect(fact.pseudo, `${id}: no pseudo-element glyph`).toBe('none');
-        expect(fact.slotLeftOfChip, `${id}: external artwork left of the badge`).toBe(true);
+        // Below 780px the row is its Transfer Summary, which draws no source artwork (1cc4f2e1).
+        if (width >= 780) expect(fact.slotLeftOfChip, `${id}: external artwork left of the badge`).toBe(true);
+        else expect(fact.slotDrawn, `${id}: no source artwork in the handheld summary`).toBe(false);
         expect(fact.slot, id).toBe(source.kind === 'host' ? `/icons/hosts/${source.host === 'mega.nz' ? 'mega.svg' : 'rapidgator.png'}`
           : (source.kind === 'link' ? 'lucide dp-source-fallback' : 'lucide dp-source-fallback lucide-magnet dp-source-magnet'));
       });
@@ -422,6 +432,7 @@ for (const [label, open, scope] of [
       // The torrent/magnet source glyph: its identity on dark, readable (non-text, >= 3:1) on light.
       for (const id of ['9834', '9840']) {
         const magnet = facts[id].magnet;
+        if (width < 780) { expect(magnet.drawn, `${id}: no source artwork in the handheld summary`).toBe(false); continue; }
         if (theme === 'dark') expect(magnet.colour, id).toBe(rgb('#14FF8C'));
         // Upright: poles up. The retired 315deg turn drew them down (90).
         expect(magnet.facing, `${id}: magnet poles as drawn`).toBe(270);

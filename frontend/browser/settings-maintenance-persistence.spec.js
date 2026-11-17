@@ -83,7 +83,7 @@ test('Data & Maintenance carries no Apply contract, and neither does Settings', 
   await expect(page.locator('#view-settings .dp-settings-master-footer')).toHaveCount(0);
   // And no tab reintroduces one.
   for (const tab of ['sources', 'downloads', 'extraction', 'notifications', 'authentication']) {
-    await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+    await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
     await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
   }
 });

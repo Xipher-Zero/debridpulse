@@ -50,11 +50,11 @@ the lock file and `licenses/python-runtime.json`.
 | jaraco-context | 4.3.0 | MIT |
 | jaraco-functools | 4.6.0 | MIT |
 | jaraco-text | 3.8.1 | MIT |
-| joserfc | 1.7.4 | BSD-3-Clause |
+| joserfc | 1.7.6 | BSD-3-Clause |
 | markdown | 3.10.3 | BSD-3-Clause |
 | more-itertools | 11.1.0 | MIT |
 | multidict | 6.9.1 | Apache-2.0 |
-| oauthlib | 4.0.0 | BSD-3-Clause |
+| oauthlib | 4.0.1 | BSD-3-Clause |
 | orjson | 3.11.9 | MPL-2.0 AND (Apache-2.0 OR MIT) |
 | portend | 3.2.1 | MIT |
 | prometheus-client | 0.26.0 | Apache-2.0 AND BSD-2-Clause |
@@ -173,8 +173,9 @@ copyleft review below records its own disposition.
 ### macOS desktop runtime additions
 
 The macOS desktop application installs `packaging/desktop/macos/requirements.txt`:
-every pin of `backend/requirements.txt` unchanged, plus the two packages below,
-which the bundled Usenet service (SABnzbd 5.1.3) imports on macOS. They ship
+every pin of `backend/requirements.txt` unchanged, plus the packages below: the
+two the bundled Usenet service (SABnzbd 5.1.3) imports on macOS, and truststore,
+through which the backend verifies certificates with the system's own trust. They ship
 only in the macOS desktop bundle, never in the container image, so they are not
 in the table or the machine-readable manifest above.
 
@@ -182,6 +183,7 @@ in the table or the machine-readable manifest above.
 |---|---:|---|
 | pyobjc-core | 12.2.1 | MIT ([bundled notice](../licenses/pyobjc-MIT.txt)) |
 | pyobjc-framework-Cocoa | 12.2.1 | MIT ([bundled notice](../licenses/pyobjc-MIT.txt)) |
+| truststore | 0.10.4 | MIT (its wheel installs its licence under `truststore-0.10.4.dist-info/licenses/LICENSE`) |
 
 `licenses/pyobjc-MIT.txt` is pyobjc-core 12.2.1's `License.txt` from its
 sdist, byte-identical to the `LICENSE.txt` in the pyobjc-framework-Cocoa 12.2.1
@@ -201,6 +203,7 @@ files under its `*.dist-info/licenses/`, which the installer ships unchanged.
 |---|---:|---|
 | colorama | 0.4.6 | BSD-3-Clause (needed by click on Windows) |
 | pywin32 | 312 | PSF (its package metadata); its win32, COM and Pythonwin files carry Mark Hammond's BSD-style notice, and it also bundles adodbapi (LGPL-2.1-or-later), Microsoft's MAPI stub library (MIT) and Scintilla (its own permissive licence), each with its licence file in the wheel. Needed by the bundled Usenet service (SABnzbd) on Windows. |
+| truststore | 0.10.4 | MIT (the backend verifies certificates with Windows' own trust) |
 | tzdata | 2026.6 | Apache-2.0 (needed by apprise on Windows) |
 
 ### Linux desktop runtime additions

@@ -39,9 +39,19 @@ async function premium(page) {
   await page.locator('.dp-account-dialog [data-account-setup-rerun]').click();
   await expect(wizard(page)).toBeVisible();
   const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
-  for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) await wizard(page).locator('[data-modal-accept]').click();
+  // Each Next once the page it leaves has settled (aria-busy while it turns):
+  // a click mid-turn reaches no page.
+  for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) {
+    await wizard(page).locator('[data-modal-accept]').click();
+    await page.waitForFunction(() => !document.querySelector('.dp-setup-dialog[aria-busy="true"]'));
+  }
   await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
 }
+
+/* The dialog's own motion is over (its finite animations; the header's
+ * ambient art runs forever and is not motion). */
+const still = page => page.waitForFunction(() => (document.querySelector('.dp-setup-dialog')?.getAnimations({subtree: true}) || [])
+  .every(animation => animation.playState !== 'running' || animation.effect?.getComputedTiming().iterations === Infinity));
 
 async function restore(page, id, before) {
   if (!before.configured) await call(page, 'PATCH', `/api/integrations/${id}/configuration`, {options: {}, clear_secrets: ['api_key']});
@@ -206,6 +216,7 @@ test('P08: at 320px the provider fits the dialog', async ({page}) => {
   await premium(page);
   await wizard(page).locator('[data-service="debridlink"]').click();
   await expect(wizard(page).locator('.dp-setup-provider-surface .dp-settings-provider-card--debridlink')).toBeVisible();
+  await still(page);                                       // measured where it rests, not as it slides in
   const fit = await wizard(page).evaluate(node => {
     const dialog = node.getBoundingClientRect();
     const out = [...node.querySelectorAll('.dp-setup-provider-surface *')]

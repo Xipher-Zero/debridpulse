@@ -32610,6 +32610,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "a3a21968571e888b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "bbe09a8eb29b54ba",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

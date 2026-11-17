@@ -62,7 +62,7 @@ async function prepare(page, {alldebrid, debridlink = null}) {
   });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   const card = page.locator('.dp-settings-provider-card--alldebrid');
   const disclosure = card.locator('.dp-settings-disclosure');
   if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();

@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Si une application externe s’est connectée au cours de la dernière semaine, DebridPulse demande confirmation avant de changer le port : cette application ne pourra plus accéder à DebridPulse tant qu’on ne lui aura pas donné le nouveau port.",
   "help.topic.deployment_type.local_port.taken": "Si un autre programme occupe le port au démarrage de DebridPulse, DebridPulse s’ouvre quand même et le signale. Les applications externes ne peuvent pas se connecter tant que le port n’est pas libéré ou qu’un autre n’est pas choisi ici.",
   "help.settings.access_integrations.local_port": "<b>Port local</b>, dans la même carte, est l’endroit où les applications externes de cet ordinateur accèdent à DebridPulse ({address} sauf modification). Une modification s’applique immédiatement et demande d’abord confirmation si une application s’est connectée au cours de la dernière semaine.",
-  "error.deployment.desktop_standalone": "L’application de bureau est toujours en mode Autonome ; son type de déploiement ne change pas"
+  "error.deployment.desktop_standalone": "L’application de bureau est toujours en mode Autonome ; son type de déploiement ne change pas",
+  "error.desktop.frame_only": "Seule l’application de bureau a un cadre de fenêtre.",
+  "error.desktop.frame_invalid": "Les couleurs du cadre de la fenêtre ne sont pas valides."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

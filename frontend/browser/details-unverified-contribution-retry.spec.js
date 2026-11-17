@@ -47,7 +47,7 @@ async function withoutOperate(page) {
 }
 
 async function open(page, payload, {retryStatus = 200} = {}) {
-  const calls = {reads: 0, retries: []};
+  const calls = {reads: 0, retried: []};
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.route(url => url.pathname === `/api/torrents/${payload.id}`, route => {
     calls.reads += 1;
@@ -56,7 +56,7 @@ async function open(page, payload, {retryStatus = 200} = {}) {
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status: 200,
     contentType: 'application/json', body: JSON.stringify({items: [], total: 0})}));
   await page.route(url => /^\/api\/torrents\/\d+\/retry$/.test(url.pathname), route => {
-    calls.retries.push(new URL(route.request().url()).pathname);
+    calls.retried.push(new URL(route.request().url()).pathname);
     return route.fulfill({status: retryStatus, contentType: 'application/json',
       body: JSON.stringify(retryStatus === 200 ? {ok: true} : {detail: 'Recovery failed'})});
   });
@@ -80,7 +80,7 @@ test('only the reconsiderable unverified contribution offers Retry, reachable by
   await retry.focus();
   await expect(retry).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect.poll(() => calls.retries).toEqual(['/api/torrents/412/retry']);
+  await expect.poll(() => calls.retried).toEqual(['/api/torrents/412/retry']);
   // Details shows the server's state again.
   await expect.poll(() => calls.reads).toBeGreaterThan(reads);
 });

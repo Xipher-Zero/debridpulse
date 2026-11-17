@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Se uma aplicação externa se ligou na última semana, o DebridPulse pergunta antes de alterar a porta: essa aplicação não poderá aceder ao DebridPulse até receber a nova porta.",
   "help.topic.deployment_type.local_port.taken": "Se outro programa estiver a ocupar a porta quando o DebridPulse inicia, o DebridPulse abre na mesma e avisa. As aplicações externas não se podem ligar até a porta ficar livre ou ser escolhida outra aqui.",
   "help.settings.access_integrations.local_port": "<b>Porta local</b>, no mesmo cartão, é onde as aplicações externas deste computador acedem ao DebridPulse ({address}, salvo alteração). Uma alteração aplica-se de imediato e pergunta primeiro se alguma aplicação se ligou na última semana.",
-  "error.deployment.desktop_standalone": "A aplicação de ambiente de trabalho é sempre Autónoma; o seu tipo de implementação não muda"
+  "error.deployment.desktop_standalone": "A aplicação de ambiente de trabalho é sempre Autónoma; o seu tipo de implementação não muda",
+  "error.desktop.frame_only": "Só a aplicação de ambiente de trabalho tem uma moldura de janela.",
+  "error.desktop.frame_invalid": "As cores da moldura da janela não são válidas."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

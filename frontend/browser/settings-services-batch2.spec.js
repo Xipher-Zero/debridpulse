@@ -15,7 +15,7 @@ async function openServices(page, {width = 1440, height = 1000, pref} = {}) {
   await page.goto('/');
   await page.waitForFunction(() => typeof nav === 'function');
   await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
 }
 
 async function expand(page, provider) {
@@ -227,7 +227,7 @@ test('a refused provider option and a refused transfer-policy value name their f
     .toHaveText('Request Timeout (seconds) must be 5 or more.');
   // Provider Poll Interval applies to every service: Downloads -> Download
   // Behavior & Limits -> Advanced Settings.
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const chip = page.locator('#view-settings .dp-settings-disclosure[aria-controls="dp-settings-section-body-download-behavior-advanced"]');
   if ((await chip.getAttribute('aria-expanded')) !== 'true') await chip.click();
   const advanced = page.locator('#dp-settings-section-body-download-behavior-advanced');
@@ -254,7 +254,9 @@ test('a refused Usenet server field is named by the card', async ({ page }) => {
     catch (error) { return error.detail[0]; }
   });
   expect(refusal).toEqual({type: 'less_than_equal', loc: ['body', 'port'], msg: 'Value must be 65535 or less.',
-                           requirement: 'must be 65535 or less'});
+                           requirement: 'must be 65535 or less',
+                           // Its translation (1.0.14 localization): the catalog code and its value.
+                           code: 'validation.less_than_equal', params: {le: 65535}});
   const message = await page.evaluate(detail => {
     const card = document.createElement('div');
     card.innerHTML = '<label for="probe-port">Port</label><input id="probe-port" data-usenet-field="port">';

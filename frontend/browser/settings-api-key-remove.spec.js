@@ -44,7 +44,7 @@ async function prepare(page, configured, {fail = false} = {}) {
     });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   for (const {id} of PROVIDERS) {
     const disclosure = page.locator(`.dp-settings-provider-card--${id} .dp-settings-disclosure`);
     if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();

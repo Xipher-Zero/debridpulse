@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "إذا اتصل تطبيق خارجي خلال الأسبوع الماضي، يسأل DebridPulse قبل تغيير المنفذ: لن يتمكن ذلك التطبيق من الوصول إلى DebridPulse حتى يُعطى المنفذ الجديد.",
   "help.topic.deployment_type.local_port.taken": "إذا كان برنامج آخر يشغل المنفذ عند بدء DebridPulse، يفتح DebridPulse على أي حال وينبّه إلى ذلك. لا يمكن للتطبيقات الخارجية الاتصال حتى يصبح المنفذ متاحًا أو يُختار منفذ آخر هنا.",
   "help.settings.access_integrations.local_port": "<b>المنفذ المحلي</b>، في البطاقة نفسها، هو المكان الذي تصل منه التطبيقات الخارجية على هذا الكمبيوتر إلى DebridPulse ({address} ما لم يُغيَّر). يسري التغيير فورًا، ويسأل أولًا إذا اتصل تطبيق خلال الأسبوع الماضي.",
-  "error.deployment.desktop_standalone": "تطبيق سطح المكتب دائمًا «مستقل»؛ ولا يتغير نوع النشر الخاص به"
+  "error.deployment.desktop_standalone": "تطبيق سطح المكتب دائمًا «مستقل»؛ ولا يتغير نوع النشر الخاص به",
+  "error.desktop.frame_only": "إطار النافذة موجود في تطبيق سطح المكتب فقط.",
+  "error.desktop.frame_invalid": "ألوان إطار النافذة غير صالحة."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

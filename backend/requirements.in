@@ -16,7 +16,7 @@ asyncssh==2.24.0
 bcrypt==5.0.0
 authlib==1.9.1
 httpx==0.28.1
-joserfc==1.7.4
+joserfc==1.7.6
 # Safe YAML loading for a submitted link list (transfers/requests.py); already
 # shipped with apprise, declared here because DebridPulse imports it itself.
 pyyaml==6.0.3

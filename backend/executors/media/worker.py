@@ -39,7 +39,6 @@ import json
 import os
 import re
 import shutil
-import socket
 import stat
 import subprocess
 import sys
@@ -673,7 +672,23 @@ def _run(argv: list[str], *, output: str | None = None) -> None:
             process.wait()
         reader.join(timeout=5)
     if returncode != 0:
-        raise Failure("finalization_failed", bytes(tail).decode("utf-8", "replace")[-MAX_DETAIL_CHARS:])
+        raise Failure("finalization_failed", _exit_detail(returncode, bytes(tail)))
+
+
+def _exit_detail(returncode: int, output: bytes) -> str:
+    """What a failed helper said, always led by how it ended -- its exit code
+    (on Windows as the NTSTATUS a crash or a refused start leaves, e.g.
+    0xC0000142), so a helper that ends before writing anything still names
+    why, never an empty detail."""
+    if os.name == "nt":
+        ended = f"exit 0x{returncode & 0xFFFFFFFF:08X}"
+    elif returncode < 0:
+        ended = f"signal {-returncode}"
+    else:
+        ended = f"exit {returncode}"
+    said = output.decode("utf-8", "replace").strip()
+    detail = ended + (f": {said}" if said else " (no output)")
+    return detail if len(detail) <= MAX_DETAIL_CHARS else detail[:24] + "..." + detail[-(MAX_DETAIL_CHARS - 27):]
 
 
 def _metadata(info: dict) -> dict:

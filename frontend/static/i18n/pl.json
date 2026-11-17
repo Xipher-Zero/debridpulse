@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Jeśli w ostatnim tygodniu połączyła się aplikacja zewnętrzna, DebridPulse pyta przed zmianą portu: ta aplikacja nie połączy się z DebridPulse, dopóki nie otrzyma nowego portu.",
   "help.topic.deployment_type.local_port.taken": "Jeśli przy uruchomieniu DebridPulse port zajmuje inny program, DebridPulse i tak się otwiera i to zgłasza. Aplikacje zewnętrzne nie połączą się, dopóki port nie zostanie zwolniony lub nie zostanie tu wybrany inny.",
   "help.settings.access_integrations.local_port": "<b>Port lokalny</b> na tej samej karcie to miejsce, w którym aplikacje zewnętrzne na tym komputerze łączą się z DebridPulse (domyślnie {address}). Zmiana działa od razu i najpierw pyta o potwierdzenie, jeśli w ostatnim tygodniu połączyła się jakaś aplikacja.",
-  "error.deployment.desktop_standalone": "Aplikacja desktopowa ma zawsze typ wdrożenia Samodzielny; nie można go zmienić"
+  "error.deployment.desktop_standalone": "Aplikacja desktopowa ma zawsze typ wdrożenia Samodzielny; nie można go zmienić",
+  "error.desktop.frame_only": "Ramkę okna ma tylko aplikacja desktopowa.",
+  "error.desktop.frame_invalid": "Kolory ramki okna są nieprawidłowe."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

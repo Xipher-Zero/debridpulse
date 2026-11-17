@@ -49,7 +49,7 @@ async function open(page, tab) {
 }
 
 async function section(page, tab) {
-  await page.locator(`#view-settings [data-tab="${tab}"]`).first().click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).first().click();
   await expect(page.locator(`#view-settings [data-panel="${tab}"]`)).toBeVisible();
   await settle(page);
 }

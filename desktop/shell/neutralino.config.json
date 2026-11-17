@@ -14,7 +14,8 @@
   "dataLocation": "system",
   "logging": {"enabled": false, "writeToLogFile": false},
   "nativeAllowList": ["os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
-                      "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit"],
+                      "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit",
+                      "window.setFrameTheme"],
   "modes": {
     "window": {
       "title": "DebridPulse",

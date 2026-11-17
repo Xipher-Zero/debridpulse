@@ -80,7 +80,7 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(admin.page.locator('#page-title')).toHaveText('Settings');
   await expect(admin.page.locator('#view-settings .dp-settings-tabs')).toBeVisible();
-  await admin.page.locator('#view-settings [data-tab="notifications"]').click();
+  await admin.page.locator('#view-settings [data-tab="notifications"]:not(.dp-motion-still *)').click();
   const global = admin.page.locator('#view-settings [data-panel="notifications"]');
   await expect(global.locator('.dp-settings-discord-card')).toBeVisible();
   await expect(global.locator('.dp-settings-statistics-reporting-card')).toBeVisible();

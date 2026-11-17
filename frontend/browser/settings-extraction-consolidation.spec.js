@@ -489,7 +489,7 @@ async function writeTheWholeSettingsDocument(page) {
   const draft = Number(current.disk_guard_resume_hysteresis_gb) === 12.2 ? 12.3 : 12.2;
   const written = page.waitForResponse(
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
   await probe.fill(String(draft));
   await probe.blur();

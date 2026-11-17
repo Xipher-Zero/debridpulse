@@ -24,7 +24,7 @@ async function openDownloads(page) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="downloads"]')).toBeVisible();
 }
 
@@ -335,11 +335,11 @@ test('leaving the tab while the Local Network write is pending shows the accepte
   const held = await holdPolicyWrites(page);
   await lanSwitch(page).click();
   await expect.poll(() => held.length).toBe(1);
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   held[0].resolve();
   await expect.poll(async () => (await (await page.request.get('/api/transfer-policy')).json()).private_lan_connections)
     .toBe(true);
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   await expect(page.locator('#dp-settings-field-private-lan-connections')).toBeChecked();
   await expect(page.locator('#dp-settings-field-skip-private-lan-confirmation')).toBeEnabled();
   await expect(skipCell(page)).not.toHaveClass(/\bis-disabled\b/);

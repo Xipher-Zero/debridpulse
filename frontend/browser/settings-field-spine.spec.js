@@ -61,7 +61,7 @@ async function openSettings(page) {
  *  opened one reveals is opened too; a drawn one that cannot be clicked fails
  *  the test rather than being passed over. */
 async function expandAll(page, tab) {
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
   const collapsed = ['.dp-settings-disclosure[aria-expanded="false"]',
     '[data-usenet-advanced-toggle][aria-expanded="false"]', 'details:not([open]) > summary']

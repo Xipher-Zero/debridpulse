@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Si una aplicación externa se conectó en la última semana, DebridPulse pregunta antes de cambiar el puerto: esa aplicación no podrá acceder a DebridPulse hasta que reciba el puerto nuevo.",
   "help.topic.deployment_type.local_port.taken": "Si otro programa ocupa el puerto cuando DebridPulse se inicia, DebridPulse se abre igualmente y lo indica. Las aplicaciones externas no podrán conectarse hasta que el puerto quede libre o se elija otro aquí.",
   "help.settings.access_integrations.local_port": "<b>Puerto local</b>, en la misma tarjeta, es donde las aplicaciones externas de este equipo acceden a DebridPulse ({address} salvo que se cambie). Un cambio se aplica de inmediato y pregunta primero si una aplicación se conectó en la última semana.",
-  "error.deployment.desktop_standalone": "La aplicación de escritorio siempre es Independiente; su tipo de implementación no cambia"
+  "error.deployment.desktop_standalone": "La aplicación de escritorio siempre es Independiente; su tipo de implementación no cambia",
+  "error.desktop.frame_only": "Solo la aplicación de escritorio tiene un marco de ventana.",
+  "error.desktop.frame_invalid": "Los colores del marco de la ventana no son válidos."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }

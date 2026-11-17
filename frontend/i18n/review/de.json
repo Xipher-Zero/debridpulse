@@ -34290,6 +34290,22 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "error.desktop.frame_only": {
+   "source": "ce616af05bf0092b",
+   "translation": "6f2c9a958590958c",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.frame_invalid": {
+   "source": "7ad6b7362826133e",
+   "translation": "94085926f4afd116",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

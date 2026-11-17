@@ -21,7 +21,7 @@ async function isolateExternalFonts(page) {
 async function openSources(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="sources"]').click();
+  await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
@@ -47,7 +47,7 @@ test('an ordinary settings field commits at its OWN boundary, not on every keyst
       await route.continue();
     });
     try {
-      await page.locator('#view-settings [data-tab="downloads"]').click();
+      await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
       const field = page.locator('#dp-settings-field-min-free-disk-gb');
       await expect(field).toBeVisible();
       const original = Number(await field.inputValue()) || 0;

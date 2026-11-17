@@ -28,7 +28,7 @@ async function openSettings(page, tab) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+  await page.locator(`#view-settings [data-tab="${tab}"]:not(.dp-motion-still *)`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
 }
 
@@ -105,7 +105,7 @@ test('the Media Downloads accent is #FF56AE on every identity surface, Multimeta
     .first().evaluate(node => getComputedStyle(node).getPropertyValue('--dp-protocol-color').trim().toLowerCase());
   expect(await chip('media')).toBe('#ff56ae');
   expect(await chip('multimeta')).toBe('#e879f9');
-  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
   expect(await mediaCard(page).locator('.dp-settings-protocol-chip[data-protocol="media"]')
     .evaluate(node => getComputedStyle(node).getPropertyValue('--dp-protocol-color').trim().toLowerCase()))
     .toBe('#ff56ae');
@@ -184,14 +184,14 @@ test('desktop: the deck is fixed, Network Sources is pinned with one full row, e
     // other tab keeps the deck as its scroll owner.
     const before = {premium: await premium(page).evaluate(node => node.scrollTop),
                     network: await network(page).evaluate(node => node.scrollTop)};
-    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await page.locator('#view-settings [data-tab="downloads"]:not(.dp-motion-still *)').click();
     const downloads = await page.evaluate(() => ({
-      panelsMax: getComputedStyle(document.querySelector('#view-settings .dp-settings-panels')).maxHeight,
-      deckScrolls: (node => node.scrollHeight > node.clientHeight + 1)(document.querySelector('#view-settings .dp-settings-scroll')),
+      panelsMax: getComputedStyle(document.querySelector('#view-settings .dp-settings-panels:not(.dp-motion-still *)')).maxHeight,
+      deckScrolls: (node => node.scrollHeight > node.clientHeight + 1)(document.querySelector('#view-settings .dp-settings-scroll:not(.dp-motion-still *)')),
     }));
     expect(downloads.panelsMax).toBe('none');
     expect(downloads.deckScrolls).toBe(true);
-    await page.locator('#view-settings [data-tab="sources"]').click();
+    await page.locator('#view-settings [data-tab="sources"]:not(.dp-motion-still *)').click();
     expect(await premium(page).evaluate(node => node.scrollTop)).toBe(before.premium);
     expect(await network(page).evaluate(node => node.scrollTop)).toBe(before.network);
   });

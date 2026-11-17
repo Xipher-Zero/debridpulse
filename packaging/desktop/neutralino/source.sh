@@ -17,8 +17,10 @@ cp "$work/src/LICENSE" "$out/LICENSE"
 sha256sum -c - <<SUMS
 5c5b8ff90f62bb8474857e3128a5768ea8cf55273d9887c879c82f47abc4cc22  $here/linux-gtk-main-thread.patch
 1a7ccc59b73a080c5f288fd5995071adeec5888318a57af21a5638d3af7c9896  $here/macos-main-thread-shutdown.patch
+34ba3e349c775926434298efee03256c222f3f0576eb0b02b3f93e6aab977338  $here/macos-frame-theme.patch
 SUMS
-cp "$here/linux-gtk-main-thread.patch" "$here/macos-main-thread-shutdown.patch" "$here/build-macos.sh" "$out/"
+cp "$here/linux-gtk-main-thread.patch" "$here/macos-main-thread-shutdown.patch" "$here/macos-frame-theme.patch" \
+   "$here/build-macos.sh" "$out/"
 cat > "$out/BUILD.md" <<EOF
 # The DebridPulse desktop shell: Neutralino 6.10.0 (MIT, LICENSE)
 
@@ -30,8 +32,9 @@ Source: \`neutralinojs-6.10.0-$COMMIT.tar.gz\`, the tree of tag $TAG at commit $
   library Neutralino's CMake names), \`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_EXE_LINKER_FLAGS=-L\$PWD/stubs\`, \`cmake --build build\`; \`bin/neutralino-linux_x64\` is
   installed as the shell (packaging/desktop/flatpak/org.debridpulse.desktop.yml, module neutralino).
-- **macOS (the DMG):** \`build-macos.sh\` -- \`macos-main-thread-shutdown.patch\` applied, CMake
-  Release build with Apple's clang for the Mac's architecture.
+- **macOS (the DMG):** \`build-macos.sh\` -- \`macos-main-thread-shutdown.patch\` then
+  \`macos-frame-theme.patch\` applied, CMake Release build with Apple's clang for the Mac's
+  architecture.
 - **Windows:** the released \`neutralino-win_x64.exe\` of $TAG, unmodified.
 EOF
 ls -la "$out"

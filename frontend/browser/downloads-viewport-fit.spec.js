@@ -262,14 +262,12 @@ for (const height of [1000, 700]) {
         if (Math.abs(w.cardBottom - reference.cardBottom) > 0.5 || Math.abs(w.dataBottom - reference.dataBottom) > 0.5) report.push(`${at}: bottom moved`);
         if (view === 'view-events' && (w.rows !== 100 || w.scrollHeight <= w.clientHeight)) report.push(`${at}: ${w.rows} events, scrollable ${w.scrollHeight > w.clientHeight}`);
       }
-      // 1.0.14 six fixes: on a handheld Downloads keeps the same workspace -- its card to the content box's inset above
-      // the dock, no viewport cap; the Activity Log keeps its own bounded list.
+      // 1.0.14: on a handheld both keep the same workspace -- the card to the content box's inset above the dock, no
+      // viewport cap (Downloads in the six fixes; the Activity Log a bounded handheld workspace since 51f159ea).
       await resize(page, 779, height);
       const handheld = await workspace(page, view);
-      if (view === 'view-torrents') {
-        expect(handheld.maxHeight, `${view} handheld`).toBe('none');
-        expect(Math.abs(handheld.cardBottom - handheld.contentBottom), `${view} handheld card bottom`).toBeLessThanOrEqual(0.5);
-      } else expect(handheld.maxHeight, `${view} handheld`).not.toBe('none');
+      expect(handheld.maxHeight, `${view} handheld`).toBe('none');
+      expect(Math.abs(handheld.cardBottom - handheld.contentBottom), `${view} handheld card bottom`).toBeLessThanOrEqual(0.5);
     }
     expect(report).toEqual([]);
   });

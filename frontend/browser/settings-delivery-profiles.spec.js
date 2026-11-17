@@ -26,7 +26,7 @@ async function openUsers(page) {
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
-  await page.locator('#view-settings [data-tab="users"]').click();
+  await page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
   await expect(page.locator('.dp-settings-panel[data-panel="users"]')).toBeVisible();
   await expect(page.locator('.dp-settings-delivery-profiles-card')).toBeVisible();
 }

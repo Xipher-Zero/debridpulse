@@ -3630,7 +3630,9 @@
   "help.topic.deployment_type.local_port.in_use": "Als een externe applicatie in de afgelopen week verbinding heeft gemaakt, vraagt DebridPulse eerst om bevestiging: die applicatie kan DebridPulse pas weer bereiken als ze de nieuwe poort krijgt.",
   "help.topic.deployment_type.local_port.taken": "Als een ander programma de poort bezet houdt wanneer DebridPulse start, opent DebridPulse toch en meldt het. Externe applicaties kunnen pas verbinding maken als de poort vrij is of hier een andere is gekozen.",
   "help.settings.access_integrations.local_port": "<b>Lokale poort</b>, op dezelfde kaart, is waar externe applicaties op deze computer DebridPulse bereiken ({address}, tenzij gewijzigd). Een wijziging geldt direct en vraagt eerst om bevestiging als een applicatie in de afgelopen week verbinding heeft gemaakt.",
-  "error.deployment.desktop_standalone": "De desktoptoepassing is altijd Zelfstandig; het implementatietype verandert niet"
+  "error.deployment.desktop_standalone": "De desktoptoepassing is altijd Zelfstandig; het implementatietype verandert niet",
+  "error.desktop.frame_only": "Alleen de desktoptoepassing heeft een vensterkader.",
+  "error.desktop.frame_invalid": "De kleuren van het vensterkader zijn ongeldig."
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7261,6 +7263,8 @@
   "help.topic.deployment_type.local_port.in_use": "0b96ffc105b4eb58",
   "help.topic.deployment_type.local_port.taken": "da971a0e2d26a2e0",
   "help.settings.access_integrations.local_port": "f1b1a29303c6c29a",
-  "error.deployment.desktop_standalone": "f8940e6a41dc52b1"
+  "error.deployment.desktop_standalone": "f8940e6a41dc52b1",
+  "error.desktop.frame_only": "ce616af05bf0092b",
+  "error.desktop.frame_invalid": "7ad6b7362826133e"
  }
 }
