@@ -24,13 +24,15 @@
  * A companion is a second surface the same choice changes outside the one
  * that slides (the page heading beside the main view region): it moves with
  * the slide itself, never as a copy, so what it shows is always its owner's
- * own drawing. What it showed leaves in the travel's first half, starting in
- * the very frame the surface starts moving; its owner's commit for it runs at
- * the midpoint; what that commit put there arrives in the second half, ending
- * with the slide. Until the travel starts it keeps what it showed, so it never
- * names a destination over content that has not begun to leave. Its commit
- * runs exactly once: at the midpoint, or at once wherever there is no motion,
- * or when the slide ends early (superseded or skipped).
+ * own drawing. It moves as one sheet with the surface -- the same travel,
+ * curve and clock, clipped to its own box -- so what it showed leaves with
+ * what the surface showed and what its owner's commit puts there arrives
+ * with the destination. That commit runs at the midpoint, while both of its
+ * presentations are far outside its box, so the change itself is never seen.
+ * Until the travel starts it keeps what it showed, so it never names a
+ * destination over content that has not begun to leave. Its commit runs
+ * exactly once: at the midpoint, or at once wherever there is no motion, or
+ * when the slide ends early (superseded or skipped).
  *
  * A page turn slides at once, before its page is fetched: the owner's commit
  * draws a placeholder shaped like the destination (or the destination itself,
@@ -367,26 +369,29 @@
       }
       const old = keeps ? outgoing.map(({node}) => node) : parts;
       leaving.push(...old.map(node => node.animate(leave, timing)));
-      // The companion: itself, out in the first half, in (after its commit) in
-      // the second, the same way and as far as its own box, clipped to it.
+      // The companion moves as one sheet with the surface: the same travel,
+      // curve and clock, clipped to its own box, so what it showed leaves with
+      // what the surface showed and what its commit puts there arrives with
+      // the destination. Its commit runs at the midpoint, when both of its
+      // presentations are far outside its box (the travel is the surface's,
+      // many times the companion's own size), so the change is never seen;
+      // the arriving half is on the same clock as the surface, however late
+      // the engine noticed the midpoint.
       const other = companion?.element;
       if (pending && other?.isConnected && typeof other.animate === 'function') {
         const own = getComputedStyle(other);
         if (own.overflowX === 'visible' && own.overflowY === 'visible') hold(other, 'overflow', 'clip');
-        const span = (axis === 'y' ? other.offsetHeight : other.offsetWidth) * Math.sign(travel);
         other.dataset.dpMotionCompanion = '';
-        const out = other.animate([{transform: 'none', opacity: 1}, {transform: toward(-span), opacity: fade}],
-                                  {duration: duration / 2, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards'});
-        accompanying.push(out);
-        flight.accompanied = out.finished.then(() => {
+        const out = other.animate(leave, {...timing, fill: 'forwards'});
+        const midpoint = other.animate([], {duration: duration / 2});
+        accompanying.push(out, midpoint);
+        flight.accompanied = midpoint.finished.then(() => {
           if (flight.ended) return;
           follow();
-          const back = other.animate([{transform: toward(span), opacity: fade}, {transform: 'none', opacity: 1}],
-                                     {duration: duration / 2, easing: 'cubic-bezier(0, 0, 0.2, 1)'});
-          // On the slide's own clock: from the midpoint itself, however late
-          // the engine noticed it, never behind the region it moves with.
-          if (out.startTime !== null) back.startTime = out.startTime + duration / 2;
-          out.cancel();                             // the second half draws it from here
+          const back = other.animate(enter, {duration, easing});
+          if (out.startTime !== null) back.startTime = out.startTime;
+          else back.currentTime = duration / 2;
+          out.cancel();                             // the arriving half draws it from here
           accompanying.push(back);
           return back.finished;
         }).catch(() => {});

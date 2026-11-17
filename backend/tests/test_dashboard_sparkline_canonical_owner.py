@@ -5,13 +5,15 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 
 
 def test_dashboard_sparkline_surface_is_static_base_markup():
-    """Each card has one line -- the signal itself -- resting flat, stroked by its
-    own pixel-space gradient; no second pulse path is drawn over it. Beneath it
-    one glow fill, the area under the same line, masked by the same gradient."""
+    """Each card has one line -- the signal drawn as a brush stroke -- resting as
+    the flat ribbon of the baseline, painted by its own pixel-space gradient; no
+    second pulse path is drawn over it. Beneath it one glow fill, the area under
+    the signal, masked by the same gradient."""
     html = (STATIC / "index.html").read_text()
     assert html.count('class="dp-card-spark" viewBox="0 0 100 29.42"') == 6
     for i in range(6):
-        assert (f'<path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-{i})" d="M 0 16 H 100"></path>') in html
+        assert (f'<path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-{i})" '
+                'd="M 0 15.38 H 100 V 16.62 H 0 Z"></path>') in html
         assert f'<linearGradient id="dp-card-spark-signal-{i}" gradientUnits="userSpaceOnUse"' in html
         assert (f'<path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-{i})" mask="url(#dp-card-spark-glow-mask-{i})" '
                 'd="M 0 16 H 100 V 29.42 H 0 Z"></path>') in html
@@ -100,10 +102,19 @@ def test_a_hidden_document_keeps_the_strip_by_birthing_due_heartbeats_on_time():
     assert "easeDashboardHeartbeat(now);                  // none was due while held" in pause
 
 
-def test_dashboard_sparkline_curve_has_canonical_rounded_paint():
+def test_dashboard_sparkline_is_the_page_titles_brush_stroke():
+    """The line is a filled brush outline around the signal (the page title's
+    calligraphic stroke), its widths eased so it never pinches or folds; the
+    glow stays the area under the signal itself."""
     css = (STATIC / "ui-dashboard.css").read_text()
-    assert "stroke-linecap: round;" in css
-    assert "stroke-linejoin: round;" in css
+    assert ".dp-card-spark .dp-card-spark-line {\n  stroke: none;" in css
+    assert "stroke-linecap" not in css[css.index(".dp-card-spark .dp-card-spark-line {"):][:200]
+    app = (STATIC / "app.js").read_text()
+    render = app[app.index("function renderDashboardHeartbeat(now) {"):app.index("function dashboardHeartbeatFrame(now) {")]
+    assert "card.line.setAttribute('d', dashboardBrushOutline(signal, card.height / DASHBOARD_HEARTBEAT_VIEW_HEIGHT));" in render
+    assert "card.fill.setAttribute('d', `${d} V ${DASHBOARD_HEARTBEAT_VIEW_HEIGHT} H ${start} Z`);" in render
+    brush = app[app.index("function dashboardBrushOutline(points, scale) {"):app.index("function renderDashboardHeartbeat(now) {")]
+    assert "for (let j = Math.max(0, i - ease); j <= Math.min(at.length - 1, i + ease); j++)" in brush
 
 
 def test_global_pause_all_settles_the_signal_where_it_stands_then_the_red_flatline():

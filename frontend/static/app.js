@@ -26,10 +26,14 @@ function dpCan(capability) {
 }
 
 // The installation's display timezone, for every role (Admin's settings carry
-// the same value).
+// the same value): the one owner every timestamp reads. A server names its
+// zone (its TZ, else UTC); a desktop application names none, and its time is
+// the computer's own, which this window knows.
 function dpDisplayTimezone() {
-  return String((settingsData && settingsData.timezone)
-    || (window.debridPulseAuth && window.debridPulseAuth.authority.display_timezone) || '').trim() || 'UTC';
+  const zone = String((typeof settingsData !== 'undefined' && settingsData && settingsData.timezone)
+    || (window.debridPulseAuth && window.debridPulseAuth.authority.display_timezone) || '').trim();
+  if (zone) return zone;
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) { return 'UTC'; }
 }
 
 function renderTopbarActions() {
@@ -648,6 +652,28 @@ function saidRefusal(data, first) {
   const category = holder?.category || data?.error?.category;
   return typeof category === 'string' && DPI18n.has(`error.category.${category}`) ? DPI18n.t(`error.category.${category}`) : '';
 }
+
+/* Desktop saves. The installed desktop application (window.debridPulseDesktop,
+ * said by the server before the first paint) has no browser download flow: its
+ * window would put a download in the Downloads folder unasked. There, a file
+ * the interface offers is saved where the person's own Save dialog says --
+ * the file's save route (POST, beside its download route) asks the desktop
+ * supervisor, which shows the dialog -- and the person is told where it went,
+ * or that they cancelled; a refusal throws, as any api() call does. Elsewhere
+ * nothing here is used: the browser's own flow stays. The request waits for
+ * the file to be made, the supervisor's next look (a few seconds) and the
+ * person's own time in the dialog. */
+const DESKTOP_SAVE_TIMEOUT_MS = 660000;
+const DPDesktopSave = Object.freeze({
+  active: window.debridPulseDesktop === true,
+  async save(path) {
+    const result = await api('POST', path, null, DESKTOP_SAVE_TIMEOUT_MS);
+    if (result && result.saved) toast(DPI18n.t('desktop.save.saved', {name: result.name}), 'success');
+    else toast(DPI18n.t('desktop.save.cancelled'), 'info');
+    return Boolean(result && result.saved);
+  },
+});
+window.DPDesktopSave = DPDesktopSave;
 
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -1809,6 +1835,10 @@ const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
 const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left before the following heartbeat
 const DASHBOARD_HEARTBEAT_TRAIL = 416;         // px: the longest a trail fades over, however far behind the next heartbeat is
 const DASHBOARD_HEARTBEAT_VIEW_HEIGHT = 29.42; // viewBox units in the 38 px line box: 24 units per 31 px, the baseline 16 units down
+// The line is a calligraphic brush stroke, the page title's (icons/dp/shell-pulse.svg):
+// a broad nib held at 45 degrees -- thin along it, broad across it (px) -- its
+// width eased over this many neighbouring samples, so it never pinches or folds.
+const DASHBOARD_HEARTBEAT_NIB = Object.freeze({angle: Math.PI / 4, thin: 0.7, broad: 2.05, ease: 3});
 const _dashboardHeartbeat = {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: [], route: null,
   bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0,
   settle: null};                               // the signal's height easing (Global Pause All): {at, from, to, span}
@@ -1914,7 +1944,8 @@ function measureDashboardHeartbeatRoute() {
     const box = svg.getBoundingClientRect();
     return {svg, line: svg.querySelector('.dp-card-spark-line'), fill: svg.querySelector('.dp-card-spark-fill'),
       gradient: svg.querySelector('linearGradient[id^="dp-card-spark-signal-"]'),
-      left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width, d: '', paint: ''};
+      left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width,
+      height: box.height || 38, d: '', paint: ''};
   }).filter(card => card.width > 0);
   const rows = [];
   cards.sort((a, b) => a.top - b.top).forEach(card => {
@@ -2035,6 +2066,47 @@ function settleDashboardHeartbeat(now, to) {
   if (!state.settle && to === 0) state.beats = [];   // nothing standing to settle
 }
 
+/* The line through `points` ([x px, y viewBox units], `scale` px per y unit) as
+ * one brush stroke: the filled outline around it, its width the nib's at each
+ * point (DASHBOARD_HEARTBEAT_NIB). Sampled at most 1 px apart, except along a
+ * flat run of baseline, whose width is one throughout. */
+function dashboardBrushOutline(points, scale) {
+  const {angle, thin, broad, ease} = DASHBOARD_HEARTBEAT_NIB;
+  const edge = ease + 2;
+  const at = [];
+  points.forEach(([x, y], i) => {
+    const X = x, Y = y * scale;
+    if (i) {
+      const [PX, PY] = at[at.length - 1];
+      const run = Math.hypot(X - PX, Y - PY);
+      if (run < 1e-6) return;
+      const steps = Math.ceil(run);
+      const flat = Y === PY && steps > 2 * edge + 2;
+      for (let s = 1; s < steps; s++) {
+        if (flat && s > edge && s < steps - edge) continue;
+        at.push([PX + (X - PX) * s / steps, PY + (Y - PY) * s / steps]);
+      }
+    }
+    at.push([X, Y]);
+  });
+  const direction = i => {
+    const a = at[Math.max(0, i - 1)], b = at[Math.min(at.length - 1, i + 1)];
+    return Math.atan2(b[1] - a[1], b[0] - a[0]);
+  };
+  const raw = at.map((_, i) => thin + (broad - thin) * Math.abs(Math.sin(direction(i) - angle)) ** 1.15);
+  const left = [], right = [];
+  at.forEach(([X, Y], i) => {
+    let sum = 0, count = 0;
+    for (let j = Math.max(0, i - ease); j <= Math.min(at.length - 1, i + ease); j++) { sum += raw[j]; count++; }
+    const half = sum / count / 2, t = direction(i);
+    const nx = -Math.sin(t) * half, ny = Math.cos(t) * half;
+    left.push([X + nx, (Y + ny) / scale]);
+    right.push([X - nx, (Y - ny) / scale]);
+  });
+  const fmt = value => Number(value.toFixed(2));
+  return `M ${left.concat(right.reverse()).map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join(' L ')} Z`;
+}
+
 /* Draw every card's line for the heartbeats on the strip at `now`. */
 function renderDashboardHeartbeat(now) {
   const {cards} = _dashboardHeartbeat.route;
@@ -2048,16 +2120,18 @@ function renderDashboardHeartbeat(now) {
       .sort((a, b) => a.x - b.x);
     const complexes = here.filter(({x, shape}) => x < width && x + shape.width > 0);
     const start = fmt(Math.min(0, complexes[0]?.x ?? 0));
-    let d = `M ${start} 16`;
     const height = dashboardHeartbeatHeight(now);
-    for (const {x, shape} of complexes) d += shape.points.map(([dx, y]) => ` L ${fmt(x + dx)} ${fmt(16 + (y - 16) * height)}`).join('');
     const last = complexes[complexes.length - 1];
     const finish = fmt(Math.max(width, last ? last.x + last.shape.width : 0));
-    d += ` L ${finish} 16`;
+    const signal = [[start, 16]];
+    for (const {x, shape} of complexes) shape.points.forEach(([dx, y]) => signal.push([fmt(x + dx), fmt(16 + (y - 16) * height)]));
+    signal.push([finish, 16]);
+    const d = `M ${signal.map(([x, y]) => `${x} ${y}`).join(' L ')}`;
     if (d !== card.d) {
       card.d = d;
-      card.line.setAttribute('d', d);
-      // The glow: the area under the same line, down to the line box's floor.
+      // The line: the signal drawn as one brush stroke.
+      card.line.setAttribute('d', dashboardBrushOutline(signal, card.height / DASHBOARD_HEARTBEAT_VIEW_HEIGHT));
+      // The glow: the area under the signal itself, down to the line box's floor.
       card.fill.setAttribute('d', `${d} V ${DASHBOARD_HEARTBEAT_VIEW_HEIGHT} H ${start} Z`);
     }
     // Per heartbeat: rest before its leading edge, bright through P-QRS, the
@@ -3474,6 +3548,10 @@ async function downloadTransferTrace(button) {
   if (!id) return;
   setButtonPending(button, true, 'details.trace.generating');
   try {
+    if (DPDesktopSave.active) {
+      await DPDesktopSave.save(`/torrents/${encodeURIComponent(id)}/trace/save`);
+      return;
+    }
     const r = await window.debridPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));

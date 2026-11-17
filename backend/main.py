@@ -292,6 +292,12 @@ _SELF_MAINTAINED_MUTATION_PATHS = {
 # owns its admission: exclusive while it replaces a connection. The same rule
 # applies to them, by shape, for every integration.
 _SELF_MAINTAINED_MUTATION_PATTERN = re.compile(r"/api/integrations/[^/]+/(?:configuration|authorization/poll|disconnect)")
+# A desktop save (api/routes.py, "Desktop saves") writes a file the interface
+# could equally download -- the trace, a backup package -- where the person's
+# Save dialog says: no application state changes, as for the download it
+# mirrors, and the dialog may stay open a while, which must not hold
+# maintenance back. Not an application operation.
+_EXPORT_SAVE_PATTERN = re.compile(r"/api/(?:torrents/\d+/trace|admin/backups/[^/]+/package)/save")
 _AUTH_MUTATION_PATHS = {
     "/login",
     "/api/auth/logout",
@@ -308,6 +314,7 @@ async def application_mutation_admission_middleware(request: Request, call_next)
         and request.url.path != _BACKUP_RESTORE_PATH
         and request.url.path not in _SELF_MAINTAINED_MUTATION_PATHS
         and not _SELF_MAINTAINED_MUTATION_PATTERN.fullmatch(request.url.path)
+        and not _EXPORT_SAVE_PATTERN.fullmatch(request.url.path)
         and request.url.path not in _AUTH_MUTATION_PATHS
     ):
         try:

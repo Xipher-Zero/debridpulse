@@ -56,7 +56,9 @@ SHELL_EXIT_SECONDS = 10
 GRACEFUL_SECONDS = 5
 POLL_SECONDS = 3.0
 NATIVE_METHODS = ("os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
-                  "window.unminimize", "window.minimize", "window.setMainMenu", "app.exit")
+                  "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit")
+# How long a Save dialog may stay open: the person's own time.
+DIALOG_SECONDS = 600
 logger = logging.getLogger("debridpulse.desktop.supervisor")
 
 
@@ -624,7 +626,7 @@ class Shell:
                 await self.events.put((value["event"], value.get("data")))
         await self.events.put(("shellClosed", None))
 
-    async def call(self, method: str, data: dict | list | None = None):
+    async def call(self, method: str, data: dict | list | None = None, timeout: float = 15):
         """One native call's answer; ``NativeError`` when Neutralino says it
         failed (its answer's ``error``), never taken for done."""
         if method not in NATIVE_METHODS:
@@ -634,7 +636,7 @@ class Shell:
         self._pending[ident] = asyncio.get_running_loop().create_future()
         await self.ws.send_str(json.dumps({"id": ident, "method": method, "accessToken": self.token,
                                            "data": data or {}}))
-        answer = await asyncio.wait_for(self._pending[ident], 15)
+        answer = await asyncio.wait_for(self._pending[ident], timeout)
         if isinstance(answer, dict) and answer.get("error"):
             raise NativeError(method, answer["error"])
         return answer
@@ -656,6 +658,20 @@ class Shell:
             await self.call("os.showNotification", {"title": title, "content": body or title})
         except NativeError as exc:
             logger.error("a notice was not shown: %s", exc)
+
+    async def save_destination(self, name: str, title: str) -> str | None:
+        """Where the person saves ``name``: the platform's own Save dialog
+        (Neutralino's, everywhere but Linux), starting in their Downloads
+        folder; None when they cancel."""
+        downloads = Path.home() / "Downloads"
+        start = downloads / name if downloads.is_dir() else Path(name)
+        try:
+            chosen = await self.call("os.showSaveDialog", {"title": title, "defaultPath": str(start)},
+                                     timeout=DIALOG_SECONDS)
+        except (NativeError, TimeoutError) as exc:
+            logger.error("the Save dialog failed: %s", exc)
+            return None
+        return str(chosen) if isinstance(chosen, str) and chosen else None
 
 
     async def exit(self) -> None:
@@ -729,6 +745,7 @@ class SessionBus:
     WATCHER = ("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher")
     PORTAL = ("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
               "org.freedesktop.portal.Notification")
+    CHOOSER = "org.freedesktop.portal.FileChooser"
     SIZES = (22, 32, 48, 64)
 
     def __init__(self, router, events: asyncio.Queue, pixmaps: list):
@@ -838,15 +855,57 @@ class SessionBus:
             await self._register()
 
     async def notice(self, title: str, body: str) -> None:
+        """One new notice. Its id is never one this application used before,
+        in this run or an earlier one: the portal replaces a notice whose id
+        it already holds for the application, and the desktop shows such a
+        replacement quietly (Plasma: no popup) -- a per-run counter restarting
+        at 1 turned every later run's notices into silent replacements."""
         from jeepney import DBusAddress, new_method_call
         self.notices_sent += 1
         name, path, interface = self.PORTAL
         reply = await self._ask(new_method_call(
             DBusAddress(path, bus_name=name, interface=interface), "AddNotification", "sa{sv}",
-            (f"transfer-{self.notices_sent}", {"title": ("s", title), "body": ("s", body or title),
-                                               "priority": ("s", "normal")})), "showing a notice")
+            (notice_id(), {"title": ("s", title), "body": ("s", body or title),
+                           "priority": ("s", "normal")})), "showing a notice")
         if reply is None:
             logger.error("a notice was not shown (%s)", title)
+
+    async def save_destination(self, name: str, title: str) -> str | None:
+        """Where the person saves ``name``: the desktop's own Save dialog
+        through the file chooser portal (inside the Flatpak it also grants
+        this application the place chosen; Neutralino's own dialog needs a
+        zenity or kdialog the sandbox has not got); None when they cancel."""
+        import secrets
+        from urllib.parse import unquote, urlparse
+        from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
+        token = "dp" + secrets.token_hex(8)
+        sender = (self.router.unique_name or "").lstrip(":").replace(".", "_")
+        request = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+        # The answer arrives as the request's Response signal: listened for
+        # before asking, so it cannot come first.
+        rule = MatchRule(type="signal", interface="org.freedesktop.portal.Request", member="Response", path=request)
+        with self.router.filter(rule, bufsize=1) as answers:
+            await self._ask(message_bus.AddMatch(rule), "listening for the Save dialog's answer")
+            name_, path, _interface = self.PORTAL
+            asked = await self._ask(new_method_call(
+                DBusAddress(path, bus_name=name_, interface=self.CHOOSER), "SaveFile", "ssa{sv}",
+                ("", title, {"handle_token": ("s", token), "current_name": ("s", name), "modal": ("b", True)})),
+                "showing the Save dialog")
+            if asked is None:
+                return None
+            try:
+                answer = await asyncio.wait_for(answers.get(), DIALOG_SECONDS)
+            except TimeoutError:
+                logger.error("the Save dialog gave no answer in %ss", DIALOG_SECONDS)
+                return None
+            finally:
+                await self._ask(message_bus.RemoveMatch(rule), "no longer listening for the Save dialog")
+        response, results = answer.body
+        uris = results.get("uris", ("as", []))[1] if response == 0 else []
+        if not uris:
+            return None                             # cancelled (or nothing chosen)
+        location = urlparse(uris[0])
+        return unquote(location.path) if location.scheme == "file" and location.path else None
 
     # -- the bus side --
 
@@ -1069,6 +1128,33 @@ LIFECYCLE_NOTICES = {"transfer.accepted": "desktop.notice.accepted", "transfer.c
                      "transfer.paused": "transfer.action.paused_toast"}
 
 
+def shell_environment(root: Path, environ=None, platform: str = sys.platform) -> dict[str, str]:
+    """The native shell's environment: this process's own, plus
+      - Windows: its WebView2 profile inside DebridPulse's data root
+        (Microsoft's documented override, not Neutralino's default
+        %APPDATA%\\<executable name>);
+      - Linux: WebKitGTK's TextureMapper compositor rather than Skia, which
+        WebKitGTK 2.54 made the default. Composited with Skia, the window
+        drew stale and blank frames as a page change ended (measured in the
+        GNOME 49 runtime's WebKitGTK 2.54.1 on KDE Wayland; compositing stays
+        on). Where the person running DebridPulse has set it, their value
+        stands."""
+    environ = os.environ if environ is None else environ
+    env = {**environ, "PATH": environ.get("PATH", "")}
+    if platform == "win32":
+        env["WEBVIEW2_USER_DATA_FOLDER"] = str(root / "webview2")
+    elif platform.startswith("linux"):
+        env.setdefault("WEBKIT_USE_SKIA_FOR_COMPOSITION", "0")
+    return env
+
+
+def notice_id() -> str:
+    """A notice's portal id, unique across runs (SessionBus.notice): a random
+    128-bit value, so no notice ever replaces an earlier one."""
+    import uuid
+    return f"notice-{uuid.uuid4().hex}"
+
+
 def notices(events: list[dict], words: Words) -> list[tuple[str, str]]:
     """The notices for one batch of journal events: one per eligible
     transition, a bulk Pause or Resume coalesced into one. Resumed is what the
@@ -1195,16 +1281,11 @@ async def run() -> int:
             private_directory(auth_file.parent)   # before the shell writes its credential; or no shell
             auth_file.unlink(missing_ok=True)
             # The shell runs under DebridPulse's own name (its webview keys its
-            # data on it), and on Windows keeps its WebView2 profile inside
-            # DebridPulse's data root: Microsoft's documented override, not
-            # Neutralino's default %APPDATA%\<executable name>.
+            # data on it), in the environment shell_environment() gives it.
             shell_binary = paths["shell"] / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
-            shell_env = {**os.environ, "PATH": os.environ.get("PATH", "")}
-            if os.name == "nt":
-                shell_env["WEBVIEW2_USER_DATA_FOLDER"] = str(root / "webview2")
             shell_process = await processes.spawn(SHELL_ID, [
                 str(shell_binary), f"--path={paths['shell']}", "--load-dir-res",
-                f"--url=http://127.0.0.1:{port}/"], env=shell_env)
+                f"--url=http://127.0.0.1:{port}/"], env=shell_environment(root))
             drains += [asyncio.ensure_future(_drain(stream, root / "logs" / "shell.log"))
                        for stream in (shell_process.process.stdout, shell_process.process.stderr)]
             shell = Shell(session)
@@ -1304,9 +1385,26 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             if current != status or not native.tray_shown:
                 status = current
                 await native.tray(tray_menu(status, words))
+            # Desktop saves waiting for a destination: each in its own task, so
+            # the window and tray stay live while its dialog is open.
+            for waiting in (await channel.ask("saves")).get("saves") or []:
+                asyncio.ensure_future(_save(channel, native, words, waiting))
             next_poll = time.monotonic() + POLL_SECONDS
     logger.error("the DebridPulse backend ended on its own (%s)", backend.process.returncode)
     return 1
+
+
+async def _save(channel, native, words, waiting: dict) -> None:
+    """One desktop save: the person's Save dialog, then its answer to the
+    backend (a path, or None for cancelled), which writes the file."""
+    path = None
+    try:
+        path = await native.save_destination(str(waiting.get("name") or "debridpulse-file"), words("desktop.save.title"))
+    finally:
+        try:
+            await channel.ask("saved", save=waiting["save"], path=path)
+        except (ConnectionError, OSError, ValueError) as exc:
+            logger.error("a desktop save's answer did not reach the backend: %s", exc)
 
 
 async def _end_shell(shell: Shell, owned, processes) -> None:

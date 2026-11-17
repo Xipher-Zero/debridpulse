@@ -55,7 +55,9 @@ from transfers.presentation_repository import (
     _TERMINAL_PRESENTATION,
     _WAIT_PRESENTATION,
     effective_presentation,
+    candidate_input_sql,
     public_source_identity,
+    request_kind_of,
     recovery_presentation,
 )
 from transfers.manual_failover import switch_eligible_sql
@@ -211,6 +213,8 @@ _SOURCE_PROJECTION_FIELDS = (
     "_root_request_kinds",
     "_delivered_candidate_source",
     "_active_candidate_source",
+    "_delivered_candidate_input",
+    "_active_candidate_input",
     "_route_candidate_summary",
 )
 
@@ -352,12 +356,19 @@ def _bounded_source_identity(row) -> dict[str, str]:
         except (TypeError, ValueError, KeyError):
             request_kind = ""
 
+    # The candidate in use (the delivered one once completed, else the active
+    # one), read as the input it came from (presentation_repository
+    # candidate_input_sql); with none in use, the root request.
+    completed = str(row.get("status") or "").strip().lower() == "completed"
+    in_use = row.get("_delivered_candidate_input") if completed else None
+    request_kind = request_kind_of(in_use or row.get("_active_candidate_input")) or request_kind
+
     base_identity = public_source_identity(request_kind)
     if base_identity.get("kind") in {"magnet", "torrent_file"}:
         return base_identity
 
     candidate_source = None
-    if str(row.get("status") or "").strip().lower() == "completed":
+    if completed:
         delivered = _decode_projection_value(row.get("_delivered_candidate_source"), None)
         if public_source_identity(request_kind, delivered).get("kind") == "host":
             candidate_source = delivered
@@ -1169,11 +1180,14 @@ async def list_operational_torrents(
             GROUP BY r.transfer_id
         ),
         delivered_source AS (
-            SELECT transfer_id, candidate_source
+            SELECT transfer_id, candidate_source,
+                   ({candidate_input_sql('picked.artifact_id', 'picked.candidate_id')}) AS candidate_input
             FROM (
                 SELECT
                     p.transfer_id,
                     p.candidate_source,
+                    p.artifact_id,
+                    p.candidate_id,
                     ROW_NUMBER() OVER (
                         PARTITION BY p.transfer_id
                         ORDER BY e.updated_at DESC, p.ordinal DESC, e.id DESC
@@ -1184,15 +1198,18 @@ async def list_operational_torrents(
                 JOIN page
                   ON page.id = p.transfer_id
                 WHERE p.delivered = 1
-            )
+            ) picked
             WHERE row_number = 1
         ),
         active_source AS (
-            SELECT transfer_id, candidate_source
+            SELECT transfer_id, candidate_source,
+                   ({candidate_input_sql('picked.artifact_id', 'picked.candidate_id')}) AS candidate_input
             FROM (
                 SELECT
                     f.torrent_id AS transfer_id,
                     p.candidate_source,
+                    p.artifact_id,
+                    p.candidate_id,
                     ROW_NUMBER() OVER (
                         PARTITION BY f.torrent_id
                         ORDER BY f.updated_at DESC, p.ordinal DESC, f.id DESC
@@ -1204,7 +1221,7 @@ async def list_operational_torrents(
                   ON page.id = f.torrent_id
                 WHERE f.execution_attempt_id IS NOT NULL
                   AND COALESCE(f.mirror_state, '') != 'standby'
-            )
+            ) picked
             WHERE row_number = 1
         ),
         -- A source switch accepted while a file's download is parked: the file
@@ -1857,6 +1874,8 @@ async def list_operational_torrents(
             root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
             active_source.candidate_source AS _active_candidate_source,
+            delivered_source.candidate_input AS _delivered_candidate_input,
+            active_source.candidate_input AS _active_candidate_input,
             deferred_source.provider_id AS _deferred_provider_id,
             deferred_source.source AS _deferred_source,
             latest_route.candidate_summary AS _route_candidate_summary,

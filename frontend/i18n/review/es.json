@@ -1746,6 +1746,30 @@
     "ai-review"
    ]
   },
+  "desktop.save.title": {
+   "source": "5be8dc97fb7946fc",
+   "translation": "9bd16201d3b07cdf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.save.saved": {
+   "source": "c62da13cab2a70a5",
+   "translation": "edfb70cee38419ea",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "desktop.save.cancelled": {
+   "source": "ffc093ca05f2a1b8",
+   "translation": "09a67df2c6290740",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
   "processing.resume_paused_count": {
    "source": "e70aaed732e6ed74",
    "translation": "2153609198ff60f2",
@@ -22411,6 +22435,22 @@
   "error.transfer.not_found": {
    "source": "d9c42fdce0f0551e",
    "translation": "ad75fd020eacd0dc",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.only": {
+   "source": "683a70d512f14535",
+   "translation": "05aaf230c1958e70",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.desktop.save_failed": {
+   "source": "acccd6bfb86db1ac",
+   "translation": "30e2fc825d965260",
    "provenance": [
     "ai-generated",
     "ai-review"

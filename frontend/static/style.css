@@ -21,11 +21,11 @@
 @import url('/ui-section-nav.css?v=1');
 @import url('/ui-modal-contract.css?v=28');
 @import url('/ui-auth-required.css?v=1');
-@import url('/ui-shell.css?v=22');
-@import url('/ui-shell-structural.css?v=31');
+@import url('/ui-shell.css?v=24');
+@import url('/ui-shell-structural.css?v=33');
 @import url('/ui-shell-provider-status.css?v=25');
 @import url('/ui-provider-state.css?v=5');
-@import url('/ui-dashboard.css?v=22');
+@import url('/ui-dashboard.css?v=24');
 @import url('/ui-dashboard-transfer-presentation.css?v=2');
 @import url('/ui-utility-controls.css?v=25');
 @import url('/ui-statistics-page.css?v=23');
@@ -67,4 +67,4 @@
 @import url('/ui-motion.css?v=1');
 @import url('/ui-i18n.css?v=1');
 @import url('/ui-setup-wizard.css?v=21');
-@import url('/ui-desktop-start.css?v=1');
+@import url('/ui-desktop-start.css?v=2');

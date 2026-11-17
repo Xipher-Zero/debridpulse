@@ -6,15 +6,15 @@
 <title>DebridPulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=33">
+<link rel="stylesheet" href="/style.css?v=37">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6">
 <link rel="manifest" href="/manifest.webmanifest">
 </head>
 <body>
-<script src="/ui-theme-bootstrap.js?v=22"></script>
+<script src="/ui-theme-bootstrap.js?v=23"></script>
 <script src="/ui-i18n.js?v=1"></script>
-<script src="/ui-desktop-start.js?v=1"></script>
+<script src="/ui-desktop-start.js?v=3"></script>
 <!-- The desktop application's starting cover (ui-desktop-start.js, ui-desktop-start.css):
      the product's mark, title and starting message over its artwork, shown from the first
      paint in the desktop application only and lifted once the interface is ready. -->
@@ -216,7 +216,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-0)" mask="url(#dp-card-spark-glow-mask-0)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-0)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-0)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="green" data-tooltip="Completed: transfers that have finished downloading." data-i18n-attr="data-tooltip:dashboard.kpi.completed.tooltip">
@@ -239,7 +239,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-1)" mask="url(#dp-card-spark-glow-mask-1)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-1)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-1)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="blue" data-tooltip="Active Now: transfers in progress: downloading, being prepared, paused or extracting." data-i18n-attr="data-tooltip:dashboard.kpi.active.tooltip">
@@ -262,7 +262,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-2)" mask="url(#dp-card-spark-glow-mask-2)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-2)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-2)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="yellow" data-tooltip="Processing: transfers a provider is still preparing before download, or Paused while processing is paused." data-i18n-attr="data-tooltip:dashboard.kpi.processing.tooltip">
@@ -285,7 +285,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-3)" mask="url(#dp-card-spark-glow-mask-3)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-3)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-3)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="red" id="dash-error-card" onclick="nav(document.querySelector('[data-view=torrents]'));setTimeout(()=>setFilter(document.querySelector('.ftab[onclick*=error]'),'error'),100)" style="cursor:pointer" data-tooltip="Errors: transfers that stopped with an error." data-i18n-attr="data-tooltip:dashboard.kpi.errors.tooltip">
@@ -308,7 +308,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-4)" mask="url(#dp-card-spark-glow-mask-4)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-4)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-4)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
         <div class="dash-hero-stat" data-c="purple" data-tooltip="Total Downloaded: combined size of completed transfers." data-i18n-attr="data-tooltip:dashboard.kpi.downloaded.tooltip">
@@ -332,7 +332,7 @@
             </mask>
           </defs>
           <path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-5)" mask="url(#dp-card-spark-glow-mask-5)" d="M 0 16 H 100 V 29.42 H 0 Z"></path>
-          <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-5)" d="M 0 16 H 100"></path>
+          <path class="dp-card-spark-line" fill="url(#dp-card-spark-signal-5)" d="M 0 15.38 H 100 V 16.62 H 0 Z"></path>
         </svg>
         </div>
       </div>
@@ -623,10 +623,10 @@
 <!-- Localization: the formatter (a module, in document order with the deferred scripts) and the
      canonical English catalog, both in place before the application script. -->
 <script type="module" src="/ui-i18n-formatter.js?v=1"></script>
-<script src="/i18n/en.js?v=2e84815ffaa8d36c" defer></script>
+<script src="/i18n/en.js?v=8da4b7ef603efad2" defer></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=29" defer></script>
-<script src="/app.js?v=30" defer></script>
+<script src="/app.js?v=32" defer></script>
 <!-- Canonical application-dialog owner: a direct dependency of Settings, the directory picker and Downloads. -->
 <script src="/ui-settings-modal.js?v=7" defer></script>
 <script src="/ui-language-picker.js?v=2" defer></script>
@@ -646,15 +646,15 @@
 <script src="/ui-processing-presentation.js?v=4" defer></script>
 <script src="/ui-transfer-source-presentation.js?v=1" defer></script>
 <script src="/ui-file-selection.js?v=2" defer></script>
-<script src="/ui-motion.js?v=3" defer></script>
+<script src="/ui-motion.js?v=4" defer></script>
 <script src="/ui-tooltip.js?v=2" defer></script>
-<script src="/ui-theme-picker.js?v=1" defer></script>
+<script src="/ui-theme-picker.js?v=2" defer></script>
 <script src="/ui-pager.js?v=1" defer></script>
 <script src="/ui-section-nav.js?v=4" defer></script>
 <script src="/ui-search.js?v=1" defer></script>
 <script src="/ui-downloads.js?v=3" defer></script>
 <script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
-<script src="/ui-activity-log-runtime.js?v=5" defer></script>
+<script src="/ui-activity-log-runtime.js?v=6" defer></script>
 <script src="/ui-settings-archive-passwords.js?v=3" defer></script>
 <script id="dp-provider-status-script" src="/ui-provider-status.js?v=5" defer></script>
 <script id="dp-premium-account-status-script" src="/ui-premium-account-status.js?v=1" defer></script>
@@ -666,7 +666,7 @@
 <script src="/ui-settings-help.js?v=9" defer></script>
 <script src="/ui-settings-page.js?v=47" defer></script>
 <script src="/ui-settings-directory-picker.js?v=3" defer></script>
-<script src="/ui-settings-backup-manager.js?v=3" defer></script>
+<script src="/ui-settings-backup-manager.js?v=5" defer></script>
 <script src="/ui-settings-executor-work.js?v=1" defer></script>
 <script src="/ui-settings-usenet-servers.js?v=4" defer></script>
 <!-- The setup wizard: after every owner its pages use (the dialog shell, the language list, Settings' one

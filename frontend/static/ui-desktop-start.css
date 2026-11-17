@@ -210,7 +210,7 @@ html[data-dp-desktop-lifting] .dp-desktop-start {
   font-size: 46px;
   font-weight: 800;
   letter-spacing: -1.7px;
-  line-height: 1;
+  line-height: 46px;
   color: var(--text);
 }
 .dp-desktop-start-brand span {
@@ -221,5 +221,13 @@ html[data-dp-desktop-lifting] .dp-desktop-start {
   color: var(--text2);
   font-size: 19px;
   font-weight: 500;
+  line-height: 24px;
   overflow-wrap: anywhere;
+}
+
+/* The words wait, keeping their place, until their face has loaded
+   (ui-desktop-start.js sets data-dp-desktop-lettered): drawn once, at their
+   final size, never first in a fallback face. */
+html:not([data-dp-desktop-lettered]) :is(.dp-desktop-start-brand, .dp-desktop-start-text) {
+  visibility: hidden;
 }

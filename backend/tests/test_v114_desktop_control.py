@@ -430,7 +430,65 @@ def test_the_first_paint_script_says_whether_this_is_the_desktop_application():
         assert answer == expected, (value, answer)
     cover = (BACKEND.parent / "frontend" / "static" / "ui-desktop-start.js").read_text(encoding="utf-8")
     assert "if (window.debridPulseDesktop !== true) {" in cover          # only the server's exact true
-    assert "document.addEventListener(READY_EVENT, () => lift('ready'), {once: true});" in cover
+    # Its words are drawn once, in their loaded face (never first in a fallback that then resizes).
+    assert "document.fonts.load(face)" in cover and "const FACE_WAIT_MS = 1000;" in cover
+    css = (BACKEND.parent / "frontend" / "static" / "ui-desktop-start.css").read_text(encoding="utf-8")
+    assert "html:not([data-dp-desktop-lettered]) :is(.dp-desktop-start-brand, .dp-desktop-start-text) {\n  visibility: hidden;" in css
+    assert "line-height: 46px;" in css and "line-height: 24px;" in css      # the card's size does not depend on the face
+    assert "const MIN_SHOWN_MS = 3000;" in cover                           # at least 3 s from the page's start ...
+    assert "setTimeout(() => lift('ready'), Math.max(0, MIN_SHOWN_MS - performance.now()));" in cover  # ... never added
     assert "const LIFT_AFTER_MS = 20000;" in cover                         # never a trap
     app = (BACKEND.parent / "frontend" / "static" / "app.js").read_text(encoding="utf-8")
     assert app.count("new CustomEvent('debridpulse:interface-ready')") == 1   # said once, by one owner
+
+
+# ── Desktop saves: the file goes where the person's own Save dialog says ────
+
+def test_a_desktop_save_waits_for_its_destination_and_writes_only_where_chosen(tmp_path):
+    """The backend asks the supervisor nothing: the supervisor asks for the
+    saves waiting (each handed out once), shows its dialog, and answers with
+    the path chosen -- the file is written there -- or none (cancelled), when
+    nothing is written. A malformed answer is refused and changes nothing."""
+    from api.routes import _save_where_chosen
+
+    async def scenario():
+        chosen = tmp_path / "chosen-trace.json"
+        saving = asyncio.ensure_future(_save_where_chosen("trace.json", lambda path: Path(path).write_bytes(b"{}")))
+        await asyncio.sleep(0)
+        offered = await desktop_control.answer(None, {"id": 1, "op": "saves"})
+        assert [entry["name"] for entry in offered["saves"]] == ["trace.json"]
+        number = offered["saves"][0]["save"]
+        assert (await desktop_control.answer(None, {"id": 2, "op": "saves"}))["saves"] == []      # handed out once
+        for bad in ({"save": number, "path": "relative/name.json"}, {"save": number + 99, "path": str(chosen)},
+                    {"save": True, "path": str(chosen)}, {"save": number, "path": str(chosen), "more": 1}):
+            assert (await desktop_control.answer(None, {"id": 3, "op": "saved", **bad}))["error"] == "refused"
+        assert not saving.done() and not chosen.exists()
+        assert (await desktop_control.answer(None, {"id": 4, "op": "saved", "save": number, "path": str(chosen)}))["ok"]
+        assert await saving == {"saved": True, "name": "chosen-trace.json"} and chosen.read_bytes() == b"{}"
+        # Cancelled: nothing is written anywhere.
+        before = set(tmp_path.iterdir())
+        cancelled = asyncio.ensure_future(_save_where_chosen("backup.zip", lambda path: Path(path).write_bytes(b"x")))
+        await asyncio.sleep(0)
+        number = (await desktop_control.answer(None, {"id": 5, "op": "saves"}))["saves"][0]["save"]
+        await desktop_control.answer(None, {"id": 6, "op": "saved", "save": number, "path": None})
+        assert await cancelled == {"saved": False} and set(tmp_path.iterdir()) == before
+
+    asyncio.run(scenario())
+
+
+def test_saving_where_chosen_is_the_desktop_applications_alone_and_holds_no_maintenance_back():
+    """A server installation refuses the save routes (only the desktop shows a
+    Save dialog); and like the downloads they mirror they are no application
+    operation -- exactly these two paths, nothing beside them."""
+    from api.routes import _require_desktop
+    from core.localization import DisplayError
+    assert os.environ.get("DEBRIDPULSE_DESKTOP") != "1"
+    with pytest.raises(DisplayError) as refused:
+        _require_desktop()
+    assert refused.value.code == "desktop.only" and refused.value.status_code == 404
+    import main
+    exempt = main._EXPORT_SAVE_PATTERN.fullmatch
+    assert exempt("/api/torrents/12/trace/save") and exempt("/api/admin/backups/2026-11-16_1/package/save")
+    for other in ("/api/torrents/12/trace", "/api/torrents/12/save", "/api/admin/backups/a/b/package/save",
+                  "/api/admin/backups/restore", "/api/torrents/x/trace/save"):
+        assert not exempt(other), other

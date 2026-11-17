@@ -69,7 +69,7 @@ def test_detail_modal_scrolls_inside_frame_with_thicker_scrollbar():
 def test_new_contract_layers_live_in_correct_cascade_sections():
     style = read("style.css")
     modal = style.index("ui-modal-contract.css?v=26")
-    shell = style.index("ui-shell.css?v=22")
+    shell = style.index("ui-shell.css?v=24")
     provider = style.index("ui-shell-provider-status.css?v=25")
     downloads_base = style.index("ui-downloads-page.css?v=30")
     transfer = style.index("ui-transfer-contract.css?v=33")

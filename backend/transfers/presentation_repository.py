@@ -152,6 +152,59 @@ def public_source_identity(request_kind, candidate_source=None) -> dict[str, str
     return {"kind": "link"}
 
 
+# The input a canonical candidate came from: the root request of the transfer
+# that contributed it (canonical_candidate_origins), so a candidate a torrent
+# brought into an HTTP transfer by consolidation reads as that torrent -- its
+# own request is the provider's unlocked link, a child of that root. A
+# transfer's own candidates are contributed by itself, so a magnet's provider
+# descendants keep reading as the magnet. ``artifact`` and ``candidate`` are
+# SQL expressions: parameters (``?``), or a correlated row's own columns.
+def candidate_input_sql(artifact: str = "?", candidate: str = "?") -> str:
+    return f"""SELECT r.payload
+    FROM canonical_candidate_bindings b
+    JOIN canonical_candidate_origins o ON o.binding_id = b.id
+    JOIN transfer_requests r ON r.transfer_id = o.contributing_transfer_id AND r.parent_id IS NULL
+    WHERE b.canonical_artifact_id = {artifact} AND b.candidate_id = {candidate}
+    ORDER BY o.id, r.ordinal, r.id LIMIT 1"""
+
+
+def request_kind_of(payload) -> str:
+    """A request payload's kind, lower-cased; '' when it cannot be read."""
+    try:
+        return str(codec.request(codec.load(payload) if isinstance(payload, str) else payload).kind or "").strip().lower()
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return ""
+
+
+async def _candidate_input_kind(db, transfer_id, *, completed: bool) -> str:
+    """The input kind of the candidate this transfer is using: the delivered
+    one once completed, else the bound candidate of the artifact being (or
+    next to be) fetched; '' when there is none."""
+    if completed:
+        row = await db.fetchone(
+            """SELECT p.artifact_id, p.candidate_id FROM execution_attempt_provenance p
+                JOIN execution_attempts e ON e.id=p.execution_attempt_id
+                WHERE p.transfer_id=? AND p.delivered=1 AND p.candidate_id IS NOT NULL
+                ORDER BY e.updated_at DESC,p.ordinal DESC,e.id DESC LIMIT 1""",
+            (transfer_id,),
+        )
+    else:
+        row = await db.fetchone(
+            """SELECT f.id AS artifact_id, b.candidate_id FROM download_files f
+                JOIN canonical_candidate_bindings b
+                  ON b.canonical_artifact_id=f.id AND b.candidate_order=f.selected_candidate+1
+                WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+                  AND f.status NOT IN ('completed','cancelled','duplicate')
+                ORDER BY CASE f.status WHEN 'downloading' THEN 0 WHEN 'paused' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,
+                  f.updated_at DESC,f.id DESC LIMIT 1""",
+            (transfer_id,),
+        )
+    if not row:
+        return ""
+    found = await db.fetchone(candidate_input_sql(), (row["artifact_id"], row["candidate_id"]))
+    return request_kind_of(found["payload"]) if found else ""
+
+
 def _decode_source(value):
     try:
         return codec.load(value, None)
@@ -524,6 +577,7 @@ class TransferRepository(_CanonicalTransferRepository):
             await self._overlay_candidate_presentation(result, transfer_id)
 
         request_kind = ""
+        source_kind = ""                            # the input of the candidate in use (see below)
         request_kinds: list[str] = []
         candidate_source = None
         selected_source = None
@@ -633,9 +687,13 @@ class TransferRepository(_CanonicalTransferRepository):
             # In-flight execution activity that is not material (never completion).
             execution_row = await db.fetchone(active_execution_progress_sql("f.torrent_id = ?"), (transfer_id,))
 
-            # Magnet/torrent identities are dictated by the root request and must
-            # not be replaced by provider-generated HTTP descendants.
-            if request_kind not in BITTORRENT_REQUEST_KINDS:
+            # The source shown is the candidate in use, read as the input it came
+            # from (candidate_input_sql); with none in use, the root request.
+            # Magnet/torrent identities are never replaced by provider-generated
+            # HTTP descendants: those are contributed by the magnet/torrent.
+            source_kind = await _candidate_input_kind(
+                db, transfer_id, completed=str(result.get("status") or "").strip().lower() == "completed") or request_kind
+            if source_kind not in BITTORRENT_REQUEST_KINDS:
                 if str(result.get("status") or "").strip().lower() == "completed":
                     row = await db.fetchone(
                         """SELECT p.candidate_source FROM execution_attempt_provenance p
@@ -869,9 +927,9 @@ class TransferRepository(_CanonicalTransferRepository):
         result["display_name"] = (await self.display_names((transfer_id,))).get(int(transfer_id))
         if route_provider is not _NOT_A_TORRENT_ROOT:
             result["route_provider_id"] = route_provider
-        result["current_source_identity"] = public_source_identity(request_kind, candidate_source)
+        result["current_source_identity"] = public_source_identity(source_kind or request_kind, candidate_source)
         if _candidate_source(selected_source) is not None:
-            result["current_source_identity"] = public_source_identity(request_kind, selected_source)
+            result["current_source_identity"] = public_source_identity(source_kind or request_kind, selected_source)
         if selected_provider:
             result["current_provider_id"] = selected_provider
 

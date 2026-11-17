@@ -73,7 +73,7 @@
 
   function timezone() {
     try {
-      return String((typeof settingsData !== 'undefined' && settingsData && settingsData.timezone) || '').trim() || undefined;
+      return dpDisplayTimezone();
     } catch (_) {
       return undefined;
     }
@@ -239,6 +239,18 @@
     const selected = selectedBackup();
     if (!selected) return;
     const id = selected.id;
+    if (window.DPDesktopSave?.active) {
+      // The desktop application: saved where the person's own Save dialog
+      // says (app.js DPDesktopSave), never placed in Downloads unasked.
+      await run(async () => {
+        try {
+          await window.DPDesktopSave.save(`${packagePath(id)}/save`);
+        } catch (_) {
+          notify(t('backups.save_failed'), 'error');
+        }
+      });
+      return;
+    }
     if (typeof window.showSaveFilePicker === 'function') {
       // The native save dialog: the operator chooses the location. It must be
       // asked for while the click is still the active user gesture.

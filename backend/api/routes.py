@@ -1493,6 +1493,49 @@ async def export_transfer_trace(torrent_id: int, application: ApplicationService
     })
 
 
+# ── Desktop saves: a file saved where the person's own Save dialog says ──────
+# The desktop application has no browser download flow: its window would put
+# a download in the Downloads folder unasked. Each file the interface offers
+# for saving is therefore also served here, beside its download route and
+# under the same permission (auth.permissions): the same file, written where
+# the person chose in the Save dialog the desktop supervisor shows
+# (application.desktop_control.request_destination), or nowhere if they
+# cancel. Like the download it mirrors, it changes no application state, so it
+# is not an application operation (main.py _EXPORT_SAVE_PATTERN): a person
+# taking their time in the dialog never holds maintenance back.
+
+def _require_desktop() -> None:
+    from core.config import desktop_installation
+    if not desktop_installation():
+        raise DisplayError(404, "Saving to a chosen location is only available in the desktop application",
+                           code="desktop.only")
+
+
+async def _save_where_chosen(name: str, write) -> dict:
+    from application.desktop_control import request_destination
+    path = await request_destination(name)
+    if path is None:
+        return {"saved": False}
+    try:
+        await asyncio.to_thread(write, path)
+    except OSError:
+        logger.exception("desktop save of %s failed", name)
+        raise DisplayError(500, "The file could not be saved", code="desktop.save_failed") from None
+    return {"saved": True, "name": Path(path).name}
+
+
+@router.post("/torrents/{torrent_id}/trace/save")
+async def save_transfer_trace(torrent_id: int, application: ApplicationService = Depends(get_application)):
+    """Desktop: the Transfer Trace Log (``export_transfer_trace``'s file),
+    saved where the person's Save dialog says."""
+    _require_desktop()
+    exported = await transfer_trace.export(torrent_id, application)
+    if exported is None:
+        raise DisplayError(404, "Transfer not found", code="transfer.not_found")
+    filename, body = exported
+    return await _save_where_chosen(filename, lambda path: Path(path).write_bytes(body))
+
+
 @router.delete("/torrents/{torrent_id}")
 async def delete_torrent(torrent_id: int, request: Request, from_alldebrid: bool = True,
                          application: ApplicationService = Depends(get_application)):
@@ -2044,6 +2087,23 @@ async def save_backup(backup_id: str):
         raise _backup_refusal(exc) from None
     return FileResponse(package, media_type="application/zip", filename=backup_store.package_name(backup_id),
                         background=BackgroundTask(package.unlink, missing_ok=True))
+
+
+@router.post("/admin/backups/{backup_id}/package/save")
+async def save_backup_where_chosen(backup_id: str):
+    """Desktop: the backup package (``save_backup``'s file), saved where the
+    person's Save dialog says."""
+    import shutil
+    _require_desktop()
+    try:
+        package = await asyncio.to_thread(backup_store.package_restore_point, backup_id)
+    except backup_store.BackupRejected as exc:
+        raise _backup_refusal(exc) from None
+    try:
+        return await _save_where_chosen(backup_store.package_name(backup_id),
+                                        lambda path: shutil.copyfile(package, path))
+    finally:
+        package.unlink(missing_ok=True)
 
 
 @router.delete("/admin/backups/{backup_id}")

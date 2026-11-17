@@ -34,8 +34,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert not (STATIC / "style-legacy.css").exists()
     assert not (STATIC / "style-v11.css").exists()
     index = read(INDEX)
-    assert "/style.css?v=33" in index
-    assert index.count('<link rel="stylesheet" href="/style.css?v=33">') == 1
+    assert "/style.css?v=37" in index
+    assert index.count('<link rel="stylesheet" href="/style.css?v=37">') == 1
     assert "style-v11.css" not in index
 
     overlay = read(V11_STYLE)
@@ -47,10 +47,10 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-universal-language.css?v=22",
         "/ui-shared-contract.css?v=33",
         "/ui-modal-contract.css?v=26",
-        "/ui-shell.css?v=22",
-        "/ui-shell-structural.css?v=31",
+        "/ui-shell.css?v=24",
+        "/ui-shell-structural.css?v=33",
         "/ui-shell-provider-status.css?v=25",
-        "/ui-dashboard.css?v=22",
+        "/ui-dashboard.css?v=24",
         "/ui-utility-controls.css?v=25",
         "/ui-statistics-page.css?v=23",
         "/ui-activity-log-page.css?v=33",

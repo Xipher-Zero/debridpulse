@@ -20,6 +20,9 @@ PUBLIC_PATHS = frozenset(
         "/manifest.webmanifest",
         "/favicon-192.png",
         "/favicon.png",
+        # Safari's home-screen and Dock icon: it ignores the manifest's icons
+        # and fetches this one itself, without credentials.
+        "/apple-touch-icon.png",
     }
 )
 

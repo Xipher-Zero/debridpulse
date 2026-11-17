@@ -18,7 +18,17 @@ The tray asks four things, each answered by its existing owner:
   cursor, transfer lifecycle events only (a resume: the outcome
   ``resumed``), projected to identifiers, type, outcome and the transfer's
   name (no message, detail or error text);
-* ``pause`` / ``resume`` -- ``ApplicationService.pause_all`` / ``resume_all``.
+* ``pause`` / ``resume`` -- ``ApplicationService.pause_all`` / ``resume_all``;
+* ``saves`` -- the files waiting for the person to say where they go (a
+  desktop save: ``request_destination``), each handed out once, by an opaque
+  number and the name the file is offered under;
+* ``saved`` -- where one of them goes: the path the person's own Save dialog
+  chose, or none (cancelled).
+
+The two save operations are how a desktop save reaches the Save dialog only
+the supervisor can show (a page and this backend have no window of their
+own): the backend asks nothing of the supervisor -- the supervisor asks, on
+its own loop, whether any save is waiting.
 
 One JSON object per line in, ``{"id": <int>, "op": <name>, ...}``; one line
 answers it, echoing ``id``. Anything else -- another operation, a malformed or
@@ -42,13 +52,42 @@ import threading
 logger = logging.getLogger("debridpulse.desktop")
 
 ENVIRONMENT = "DEBRIDPULSE_DESKTOP_CONTROL"
-MAX_LINE = 4096
+MAX_LINE = 16384                                   # a saved destination (MAX_PATH) and its JSON fit
 MAX_EVENTS = 100
 # The journal's transfer lifecycle: what the tray's notices are made of.
 LIFECYCLE = frozenset({"transfer.accepted", "transfer.queued", "transfer.transferring", "transfer.paused",
                        "transfer.completed", "transfer.failed", "transfer.cancelled"})
 _FIELDS = {"status": {"id", "op"}, "events": {"id", "op", "after", "limit"},
-           "pause": {"id", "op"}, "resume": {"id", "op"}}
+           "pause": {"id", "op"}, "resume": {"id", "op"},
+           "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}}
+# How long a desktop save waits for its destination: the supervisor's next
+# look (its loop) and the person's own time in the dialog.
+DESTINATION_WAIT_SECONDS = 600
+MAX_PATH = 4096
+
+
+# The desktop saves waiting for their destination: number -> [offered name,
+# future, handed out]. Kept and resolved on the application's own loop.
+_saves: dict[int, list] = {}
+_next_save = 0
+
+
+async def request_destination(name: str) -> str | None:
+    """Where the person wants ``name`` saved, as their own Save dialog answers
+    (the supervisor shows it when it next asks for ``saves``); None when they
+    cancelled, or nothing answered in DESTINATION_WAIT_SECONDS."""
+    global _next_save
+    _next_save += 1
+    number = _next_save
+    future = asyncio.get_running_loop().create_future()
+    _saves[number] = [name, future, False]
+    try:
+        return await asyncio.wait_for(future, DESTINATION_WAIT_SECONDS)
+    except TimeoutError:
+        logger.warning("desktop save %s: no destination within %ss", number, DESTINATION_WAIT_SECONDS)
+        return None
+    finally:
+        _saves.pop(number, None)
 
 
 class ChannelRefused(RuntimeError):
@@ -107,7 +146,7 @@ def _project_event(item: dict) -> dict:
 
 
 async def answer(application, request) -> dict:
-    """The answer to one request; a refusal for anything outside the four."""
+    """The answer to one request; a refusal for anything outside the six."""
     if not isinstance(request, dict) or not isinstance(request.get("id"), int) or isinstance(request.get("id"), bool):
         return {"id": None, "error": "refused"}
     ident, op = request["id"], request.get("op")
@@ -119,6 +158,20 @@ async def answer(application, request) -> dict:
     if op in {"pause", "resume"}:
         result = await (application.pause_all() if op == "pause" else application.resume_all())
         return {"id": ident, "ok": bool(result.get("ok")), "paused": bool(result.get("paused"))}
+    if op == "saves":
+        waiting = [(number, entry) for number, entry in sorted(_saves.items()) if not entry[2]]
+        for _number, entry in waiting:
+            entry[2] = True                         # handed out once
+        return {"id": ident, "saves": [{"save": number, "name": entry[0]} for number, entry in waiting]}
+    if op == "saved":
+        number, path = request.get("save"), request.get("path")
+        if not isinstance(number, int) or isinstance(number, bool) or number not in _saves \
+                or not (path is None or (isinstance(path, str) and 0 < len(path) <= MAX_PATH and os.path.isabs(path))):
+            return {"id": ident, "error": "refused"}
+        future = _saves[number][1]
+        if not future.done():
+            future.set_result(path)
+        return {"id": ident, "ok": True}
     after, limit = request.get("after"), request.get("limit", MAX_EVENTS)
     if (after is not None and (not isinstance(after, int) or isinstance(after, bool) or after < 0)) \
             or not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_EVENTS:

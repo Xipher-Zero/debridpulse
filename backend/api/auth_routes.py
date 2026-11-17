@@ -391,7 +391,10 @@ def _auth_oidc_mark_html() -> str:
 
 def _auth_favicon_html() -> str:
     encoded = base64.b64encode(_static_asset("favicon.svg").read_bytes()).decode("ascii")
-    return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{encoded}">'
+    # Safari takes the home-screen / Dock icon from apple-touch-icon alone
+    # (public, like the manifest's icons), on these pages as on the application's.
+    return (f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{encoded}">'
+            '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6">')
 
 
 _AUTH_MARK_HTML = _logo_svg("dp-login-logo", class_name="brand-mark")
@@ -719,22 +722,36 @@ async def _appearance(principal: Principal) -> dict:
     """Where this page's theme choices live, decided before its first paint,
     with the one palette catalog (``services.account_appearance.CATALOG``).
 
-    ``browser``: interactive sign-in is off, the request acts as the
-    standalone principal and the interface keeps its choices in this browser.
-    ``account``: the signed-in account's own record, never the browser's;
+    ``browser``: interactive sign-in is off on a Server installation, and the
+    interface keeps its choices in this browser.
+    ``account``: the request's own account's record (the signed-in account's,
+    or -- sign-in off on a Standalone installation -- its one person's, the
+    default Admin's), never the browser's; on a Standalone installation with
+    ``login_follows`` (the sign-in page shows that theme too) and, where the
+    record holds nothing yet, ``carry`` (the browser's earlier choice moves
+    there once);
     ``preferences`` is null when it could not be read in time, and the page
     then paints the native appearance without reading any browser choice."""
-    if not principal.authenticated and not interactive_auth_enabled(get_settings()):
+    settings = get_settings()
+    owner = account_appearance.appearance_owner(principal, settings)
+    if not principal.authenticated and not interactive_auth_enabled(settings) and owner is None:
         return {"authority": "browser", "catalog": account_appearance.catalog()}
-    preferences = None
-    if principal.authenticated and principal.account_id:
+    preferences, carry = None, False
+    if owner:
         try:
-            preferences = await asyncio.wait_for(
-                account_appearance.load(principal.account_id), _APPEARANCE_READ_SECONDS)
+            preferences = await asyncio.wait_for(account_appearance.load(owner), _APPEARANCE_READ_SECONDS)
+            carry = not await asyncio.wait_for(account_appearance.stored(owner), _APPEARANCE_READ_SECONDS)
         except Exception as exc:
             logger.warning("Account appearance unavailable at first paint: %s", type(exc).__name__)
-    return {"authority": "account", "account_id": principal.account_id or None, "preferences": preferences,
-            "catalog": account_appearance.catalog()}
+    result = {"authority": "account", "account_id": owner or principal.account_id or None,
+              "preferences": preferences, "catalog": account_appearance.catalog()}
+    # A Standalone installation: the sign-in page follows this theme, and a
+    # record holding nothing yet takes this browser's own earlier choice once.
+    if account_appearance.login_follows(owner, settings):
+        result["login_follows"] = True
+        if carry:
+            result["carry"] = True
+    return result
 
 
 async def _locale(principal: Principal) -> dict:

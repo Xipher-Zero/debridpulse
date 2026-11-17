@@ -62,7 +62,12 @@ def test_the_motion_primitive_presents_only() -> None:
     # at once without motion, or when the slide ends early.
     assert "companion = null}, commit) {" in motion
     assert motion.count("follow();") == 5
-    assert "if (out.startTime !== null) back.startTime = out.startTime + duration / 2;" in motion
+    # One sheet with the surface: the companion leaves and arrives with the
+    # surface's own keyframes and timing (the same travel, curve and clock).
+    assert "const out = other.animate(leave, {...timing, fill: 'forwards'});" in motion
+    assert "const back = other.animate(enter, {duration, easing});" in motion
+    assert "if (out.startTime !== null) back.startTime = out.startTime;" in motion
+    assert "out.cancel();" in motion                   # in the same step the arriving half starts
     assert ".concat(flight.accompanied || [])).then(() => flight.end());" in motion
     assert "if (flight.waiting) animation.pause();" in motion
     flight_body = motion[motion.index("function slide("):motion.index("function resolve(")]
@@ -83,7 +88,7 @@ def test_the_motion_primitive_presents_only() -> None:
     assert "jump" not in motion and "jump" not in css
     assert "@import url('/ui-motion.css?v=1');" in read("style.css")
     index = read("index.html")
-    assert index.index('/ui-motion.js?v=3') < index.index('/ui-pager.js?v=1')
+    assert index.index('/ui-motion.js?v=4') < index.index('/ui-pager.js?v=1')
 
 
 def test_only_the_operators_own_navigation_moves_anything() -> None:

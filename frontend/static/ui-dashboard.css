@@ -409,12 +409,12 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   pointer-events: none;
   overflow: visible;
 }
+/* The line is one calligraphic brush stroke, the page title's: a filled outline
+   around the signal, its width a broad nib's (app.js dashboardBrushOutline),
+   painted by its signal gradient (the path's fill). At rest it is the flat
+   ribbon of the baseline (index.html). */
 .dp-card-spark .dp-card-spark-line {
-  fill: none;
-  stroke-width: 1.55;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
+  stroke: none;
   filter: drop-shadow(0 0 3px currentColor);
 }
 /* The line is the signal: its stroke gradient (app.js) is the dim resting
@@ -2076,6 +2076,11 @@ tr[draggable="true"]:active { cursor: grabbing; }
   resize: none;
   min-height: 38px;
   max-height: 110px;
+  /* It wraps (pre-wrap, break-word), so it never scrolls sideways: at a
+     fractional zoom an engine can count its content a pixel -- or, empty, far
+     more -- wider than the field, and WebKitGTK then draws a horizontal
+     scrollbar across its last line. */
+  overflow-x: hidden;
   overflow-y: hidden;
   line-height: 18px;
   font-family: 'JetBrains Mono', monospace;

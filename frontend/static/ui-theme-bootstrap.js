@@ -65,11 +65,20 @@
     return CATALOG[mode].some(function (item) { return item.id === id; });
   }
 
+  // A Standalone installation's theme is its one person's record (the
+  // server says so: authority 'account' while sign-in is off too). Where that
+  // record holds nothing yet (``carry``), this browser's own earlier choice,
+  // if it made one, is the starting point, and is saved to the record once
+  // the record is connected -- so moving the theme there never resets it.
+  const held = !browser && source.carry === true
+    ? {mode: read('theme'), dark_palette: read(KEYS.dark), light_palette: read(KEYS.light)} : null;
+  const carrying = !!held && Object.keys(held).some(function (field) { return held[field]; });
+
   // The choices in force, kept here, so a browser that cannot store them
   // still applies them for this page.
   const stored = browser
     ? {dark_palette: read(KEYS.dark), light_palette: read(KEYS.light)}
-    : (source.preferences || {});
+    : (carrying ? held : (source.preferences || {}));
   const light = browser ? read('theme') === 'light' : stored.mode === 'light';
   const chosen = {};
   ['dark', 'light'].forEach(function (mode) {
@@ -100,6 +109,10 @@
   // keeps them for the next choice or the next session confirmation; it is
   // reported once until a save succeeds again.
   const unsaved = {};
+  if (carrying) {
+    ['mode', 'dark_palette', 'light_palette'].forEach(function (field) { madeHere.add(field); });
+    Object.assign(unsaved, {mode: light ? 'light' : 'dark', dark_palette: chosen.dark, light_palette: chosen.light});
+  }
   let saving = false;
   let failing = false;
   let reading = false;
@@ -180,6 +193,10 @@
 
   window.DPTheme = Object.freeze({
     catalog: CATALOG,
+    // Whether the sign-in page's theme follows this page's own (a Standalone
+    // installation: its one person's theme is the sign-in page's, saved with
+    // it -- no Login Theme to publish).
+    loginFollows: source.login_follows === true,
     mode: mode,
     palette: function (which) { return chosen[which || mode()]; },
     // The mode toggle's one path: the mode and that mode's own palette, in

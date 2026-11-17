@@ -4,10 +4,14 @@
 DebridPulse for a ``standalone`` window, with the application's own identity
 (``/``) and its established icon at 192 and 512 pixels. The application page
 and the sign-in pages both link it; the sign-in pages' strict policy admits
-exactly their own origin's manifest and icons. Those three files are public
+exactly their own origin's manifest and icons. Those files are public
 static bytes -- the same for every visitor, read before anyone has signed in
 and fetched by browsers without credentials -- and nothing else becomes
-public. The icon catalog ``icons/dp/manifest.json`` is not a Web App
+public. Safari ignores the manifest's icons for the home screen and the Dock
+and fetches ``apple-touch-icon.png`` itself, so that icon is one of them, and
+both the application page and the sign-in pages link it. Every icon is the
+current logo (``logo.svg``) and a PNG that decodes: a truncated
+apple-touch-icon.png made Safari draw its own placeholder. The icon catalog ``icons/dp/manifest.json`` is not a Web App
 Manifest and is untouched."""
 
 import json
@@ -28,7 +32,7 @@ from main import request_id_middleware
 
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 MANIFEST = STATIC / "manifest.webmanifest"
-INSTALL_PATHS = {"/manifest.webmanifest", "/favicon-192.png", "/favicon.png"}
+INSTALL_PATHS = {"/manifest.webmanifest", "/favicon-192.png", "/favicon.png", "/apple-touch-icon.png"}
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -64,11 +68,32 @@ def test_its_icons_are_the_established_artwork_at_their_declared_sizes():
 def test_the_application_and_sign_in_pages_link_it_once():
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     assert index.count('rel="manifest"') == 1 and '<link rel="manifest" href="/manifest.webmanifest">' in index
-    # The existing iOS metadata is kept, and nothing is added for it.
-    assert '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">' in index
-    assert "apple-mobile-web-app" not in index
+    # Safari's icon, on the application page and the sign-in pages alike.
+    assert index.count('rel="apple-touch-icon"') == 1
+    assert '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6">' in index
+    assert "apple-mobile-web-app" not in index           # the manifest names the application
     source = Path(auth_routes.__file__).read_text(encoding="utf-8")
     assert source.count('<link rel="manifest" href="/manifest.webmanifest">') == 1
+    assert '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6">' in auth_routes._AUTH_FAVICON_HTML
+
+
+def test_every_install_icon_is_a_png_that_decodes_and_safaris_is_opaque():
+    import zlib
+    for name, size, opaque in (("apple-touch-icon.png", 180, True), ("favicon-192.png", 192, False), ("favicon.png", 512, False)):
+        data, at, image, colour = (STATIC / name).read_bytes(), 8, b"", None
+        assert data[:8] == b"\x89PNG\r\n\x1a\n", name
+        while at < len(data):
+            length, kind = struct.unpack(">I", data[at:at + 4])[0], data[at + 4:at + 8]
+            body, crc = data[at + 8:at + 8 + length], data[at + 8 + length:at + 12 + length]
+            assert len(crc) == 4 and zlib.crc32(kind + body) & 0xFFFFFFFF == struct.unpack(">I", crc)[0], (name, kind)
+            if kind == b"IHDR":
+                assert struct.unpack(">II", body[:8]) == (size, size), name
+                colour = body[9]
+            image += body if kind == b"IDAT" else b""
+            at += 12 + length
+        zlib.decompress(image)                              # the pixels themselves inflate
+        if opaque:
+            assert colour == 2, name                        # RGB: iOS fills transparency with black
 
 
 @pytest.mark.parametrize("allow_form", [True, False])
@@ -84,7 +109,7 @@ def test_exactly_the_install_files_become_public():
     assert INSTALL_PATHS <= PUBLIC_PATHS
     assert PUBLIC_PATHS - INSTALL_PATHS == {
         "/api/health", "/api/version", "/api/avatar", "/api/auth/status", "/login", "/auth/oidc/start", "/auth/oidc/callback"}
-    for path in ("/", "/index.html", "/favicon-32.png", "/apple-touch-icon.png", "/icons/dp/manifest.json", "/api/settings", "/api/stats"):
+    for path in ("/", "/index.html", "/favicon-32.png", "/icons/dp/manifest.json", "/api/settings", "/api/stats"):
         assert is_public_path(path) is False
 
 
@@ -99,13 +124,14 @@ def test_with_sign_in_enabled_a_visitor_reads_the_install_files_and_nothing_else
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     client = TestClient(app)
-    expected = {"/manifest.webmanifest": "application/manifest+json", "/favicon-192.png": "image/png", "/favicon.png": "image/png"}
+    expected = {"/manifest.webmanifest": "application/manifest+json", "/favicon-192.png": "image/png", "/favicon.png": "image/png",
+                "/apple-touch-icon.png": "image/png"}
     for path, media_type in expected.items():
         response = client.get(path)
         assert response.status_code == 200, path
         assert response.headers["content-type"].split(";")[0] == media_type
         assert response.content == (STATIC / path.lstrip("/")).read_bytes()
-    for path in ("/", "/index.html", "/favicon-32.png", "/apple-touch-icon.png", "/icons/dp/manifest.json", "/app.js"):
+    for path in ("/", "/index.html", "/favicon-32.png", "/icons/dp/manifest.json", "/app.js"):
         assert client.get(path).status_code == 401, path
 
 

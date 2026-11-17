@@ -31,7 +31,7 @@ def dashboard_css() -> str:
 
 def test_dashboard_has_one_canonical_calibration_owner() -> None:
     overlay = read(STYLE)
-    assert "/ui-dashboard.css?v=22" in overlay
+    assert "/ui-dashboard.css?v=24" in overlay
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",

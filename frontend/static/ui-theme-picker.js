@@ -77,8 +77,10 @@
   // ── the Login Theme (an Admin's menu only) ───────────────────────────────
   const authority = window.debridPulseAuthority || {};
   const auth = window.debridPulseAuth;
+  // Not on a Standalone installation: there the sign-in page follows the one
+  // person's own theme as it is saved (DPTheme.loginFollows), nothing to publish.
   const login = auth && authority.authenticated && Array.isArray(authority.capabilities)
-    && authority.capabilities.includes('administer') ? loginSection() : null;
+    && authority.capabilities.includes('administer') && !window.DPTheme?.loginFollows ? loginSection() : null;
   // What the server last said is published ({mode, palette}), whether it
   // could be read, a publication in flight, and the last refusal to report.
   let published = null;

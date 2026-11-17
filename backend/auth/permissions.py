@@ -301,6 +301,7 @@ ACTIONS: dict[str, Capability] = {
     "api.routes.recover_all_ready": _A,
     "api.routes.run_recovery": _A,
     "api.routes.export_transfer_trace": _A,
+    "api.routes.save_transfer_trace": _A,                    # the same file, saved where chosen (desktop)
     "api.routes.performance_diagnostics": _A,
     "api.routes.pause_processing": _A,
     "api.routes.resume_processing": _A,
@@ -308,6 +309,7 @@ ACTIONS: dict[str, Capability] = {
     "api.routes.list_backups": _A,
     "api.routes.add_backup": _A,
     "api.routes.save_backup": _A,
+    "api.routes.save_backup_where_chosen": _A,               # the same file, saved where chosen (desktop)
     "api.routes.remove_backup": _A,
     "api.routes.restore_backup": _A,
     "api.routes.drop_page_cache_ep": _A,

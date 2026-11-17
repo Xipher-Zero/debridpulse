@@ -16,8 +16,8 @@ STATISTICS_CSS = STATIC / "ui-statistics-page.css"
 
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard.css?v=22" in entry
-    assert "/ui-shell.css?v=22" in entry
+    assert "/ui-dashboard.css?v=24" in entry
+    assert "/ui-shell.css?v=24" in entry
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",
@@ -40,7 +40,10 @@ def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry(
 
     assert "height: 38px;" in css  # 31 px of line art over a 7 px raised floor
     assert "opacity: 1;" in css
-    assert "stroke-width: 1.55;" in css
+    # The line is a filled brush stroke (app.js dashboardBrushOutline), never a fixed-width stroke.
+    assert ".dp-card-spark .dp-card-spark-line {\n  stroke: none;" in css and "stroke-width: 1.55;" not in css
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "const DASHBOARD_HEARTBEAT_NIB = Object.freeze({angle: Math.PI / 4, thin: 0.7, broad: 2.05, ease: 3});" in app
     assert ".dp-card-spark .dp-card-spark-rest" in css
     assert "filter: drop-shadow(0 0 3px currentColor);" in css
     assert ".dp-dashboard-quick-add .card-header" in css

@@ -715,8 +715,8 @@ body.light #page-title {
 /* Light's shade and glow: the mask's #glow-light halo (ui-shell.css). */
 body.light #page-title::after {
   filter: saturate(1.16) !important;
-  -webkit-mask-image: url('/icons/dp/shell-pulse.svg?v=2'), url('/icons/dp/shell-pulse.svg?v=2#glow-light');
-  mask-image: url('/icons/dp/shell-pulse.svg?v=2'), url('/icons/dp/shell-pulse.svg?v=2#glow-light');
+  -webkit-mask-image: url('/icons/dp/shell-pulse.svg?v=4'), url('/icons/dp/shell-pulse.svg?v=4#glow-light');
+  mask-image: url('/icons/dp/shell-pulse.svg?v=4'), url('/icons/dp/shell-pulse.svg?v=4#glow-light');
 }
 
 /* Canonical viewport canvas and selected-rail base retained from Dashboard

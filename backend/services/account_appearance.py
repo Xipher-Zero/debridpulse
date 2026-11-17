@@ -14,9 +14,11 @@ module accepts exactly its IDs. The first palette of each mode is its native
 DebridPulse palette. A stored ID the catalog no longer holds (a retired
 palette) reads as that mode's native palette and is never rewritten by a read.
 
-While interactive sign-in is off there is no account to own an appearance:
-the installation's one standalone principal never reads or writes here, and
-the interface keeps its choices in the browser (``ui-theme-bootstrap.js``).
+While interactive sign-in is off on a Server installation there is no
+account to own an appearance: the interface keeps its choices in the browser
+(``ui-theme-bootstrap.js``). On a Standalone installation the appearance is
+always its one person's, the default Admin's -- signed in or not, as the
+language and the presentation are (``appearance_owner``).
 
 The same record holds one more choice, of a different kind: the account's
 presentation, Easy or Advanced (``presentation_mode``; ``load_presentation``
@@ -45,8 +47,12 @@ interface is shown in, nothing else.
 
 The sign-in page has one appearance of its own, the installation's
 (``auth.accounts`` table ``login_appearance``, one row): a mode and that
-mode's palette, nothing else. A personal choice never changes it: only an
-Admin's explicit publication does (``publish``) -- of the Admin's own active
+mode's palette, nothing else. On a Standalone installation it follows the one
+person's theme: each saved change of the default Admin's appearance is also
+written there, in the same transaction (``update(login=True)``,
+``login_follows``) -- there is no one else whose sign-in it could be. On a
+Server installation a personal choice never changes it: only an Admin's
+explicit publication does (``publish``) -- of the Admin's own active
 pair (its mode and that mode's palette), and only while that pair is the one
 the Admin's interface shows and has saved. Eligibility is the account's own
 current role and state, read in the publishing transaction; concurrent
@@ -205,10 +211,12 @@ async def _project(db, pair: tuple[str, str]) -> None:
         "ON CONFLICT(id) DO UPDATE SET mode=excluded.mode, palette=excluded.palette", pair)
 
 
-async def update(account_id: str, change: AppearanceUpdate) -> dict:
+async def update(account_id: str, change: AppearanceUpdate, *, login: bool = False) -> dict:
     """Apply one account's change to its own record, atomically: only the
     named choices change; the others keep what is stored (or their default).
-    It is the account's own appearance alone: never the login appearance."""
+    It is the account's own appearance alone -- unless ``login``: a Standalone
+    installation's one person, whose active pair the sign-in page then shows
+    too, written in the same transaction (an active Admin's, as published)."""
     async with _transaction() as db:
         saved = {**await _read(db, account_id), **change.model_dump(exclude_unset=True)}
         await db.execute(
@@ -218,7 +226,39 @@ async def update(account_id: str, change: AppearanceUpdate) -> dict:
             "updated_at=excluded.updated_at",
             (str(account_id), saved["mode"], saved["dark_palette"], saved["light_palette"],
              datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")))
+        if login and await _publishes_login(db, account_id):
+            await _project(db, _active(saved))
     return saved
+
+
+async def stored(account_id: str) -> bool:
+    """Whether this account has an appearance record of its own (a choice
+    ever saved), as opposed to the native appearance by default."""
+    from db.database import get_db
+
+    async with get_db() as db:
+        return await db.fetchone("SELECT 1 FROM account_appearance WHERE account_id=?", (str(account_id),)) is not None
+
+
+def appearance_owner(principal, settings) -> str | None:
+    """The account whose appearance a request reads and writes: the signed-in
+    account; while sign-in is off, a Standalone installation's one person (the
+    default Admin, as ``presentation_owner`` says) -- a Server installation's
+    then keeps it in each browser: None."""
+    from auth.policy import standalone_deployment
+
+    if getattr(principal, "authenticated", False) and getattr(principal, "account_id", None):
+        return str(principal.account_id)
+    return presentation_owner(principal, settings) if standalone_deployment(settings) else None
+
+
+def login_follows(account_id: str | None, settings) -> bool:
+    """Whether this account's appearance is the sign-in page's too: a
+    Standalone installation's one person, the default Admin."""
+    from auth.accounts import DEFAULT_ADMIN_ID
+    from auth.policy import standalone_deployment
+
+    return bool(account_id) and str(account_id) == DEFAULT_ADMIN_ID and standalone_deployment(settings)
 
 
 async def publish(account_id: str, shown: LoginAppearance) -> dict:

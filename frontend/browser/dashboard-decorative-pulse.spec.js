@@ -76,13 +76,13 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
 /* Each shown card in DOM order: its geometry, line points, path count and gradient stops. */
 const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
   .filter(svg => svg.getBoundingClientRect().width > 0).map(svg => {
-  const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
+  const d = svg.querySelector('.dp-card-spark-fill').getAttribute('d');   // the signal (the glow is the area under it)
   const box = svg.getBoundingClientRect();
   const gradient = svg.querySelector('linearGradient[id^="dp-card-spark-signal-"]');
   return {width: box.width, left: box.left, right: box.right, middle: (box.top + box.bottom) / 2,
     from: Number(gradient.getAttribute('x1')), to: Number(gradient.getAttribute('x2')),
     points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])]),
-    paths: svg.querySelectorAll('path[stroke]').length,
+    paths: svg.querySelectorAll('path.dp-card-spark-line').length,
     stops: [...gradient.querySelectorAll('stop')].map(stop => ({role: stop.getAttribute('class'), offset: Number(stop.getAttribute('offset')),
       opacity: Number(getComputedStyle(stop).stopOpacity)}))};
 }));
@@ -91,7 +91,7 @@ const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-d
  * without reading every gradient stop's computed style on every 50 ms sample. */
 const geometryAndLines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')]
   .filter(svg => svg.getBoundingClientRect().width > 0).map(svg => {
-  const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
+  const d = svg.querySelector('.dp-card-spark-fill').getAttribute('d');   // the signal (the glow is the area under it)
   const box = svg.getBoundingClientRect();
   return {width: box.width, left: box.left, right: box.right, middle: (box.top + box.bottom) / 2,
     points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])])};
@@ -145,7 +145,7 @@ async function sampleFromStart(page, ms) {
 
 function expectOneContinuousLine(cards) {
   for (const card of cards) {
-    expect(card.paths).toBe(1);                                         // one stroked line: no second over the baseline
+    expect(card.paths).toBe(1);                                         // one line: no second over the baseline
     const xs = card.points.map(([x]) => x);
     expect(xs).toEqual([...xs].sort((a, b) => a - b));                  // never doubles back: no doubled line
     expect(card.points[0][1]).toBe(16);
@@ -793,7 +793,7 @@ test('each heartbeat has its own bounded complex, kept unchanged across every ca
  * deflection of any card's line, in viewBox units; 0 is flat), and whether the
  * red paused presentation is on. */
 const signal = page => page.evaluate(() => ({now: performance.now(),
-  height: Math.max(0, ...[...document.querySelectorAll('#view-dashboard .dp-card-spark-line')]
+  height: Math.max(0, ...[...document.querySelectorAll('#view-dashboard .dp-card-spark-fill')]
     .flatMap(line => [...line.getAttribute('d').matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => Math.abs(Number(m[2]) - 16)))),
   flatline: document.getElementById('dash-hero').classList.contains('dash-hero--flatline'),
   born: _dashboardHeartbeat.beats.map(beat => beat.born)}));
@@ -1148,7 +1148,7 @@ test('entering the Dashboard while paused shows the red flat lines at once, stil
   expect((await strip(page)).every(flat)).toBe(true);                // still baselines, no motion
 });
 
-/* Each card's glow beneath its line, against the line and its stroke gradient. */
+/* Each card's glow beneath its line, against the line and its signal gradient. */
 const glow = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => {
   const svg = card.querySelector('.dp-card-spark'), fill = svg.querySelector('.dp-card-spark-fill');
   const line = svg.querySelector('.dp-card-spark-line'), rect = svg.querySelector('mask rect');
@@ -1159,7 +1159,8 @@ const glow = page => page.evaluate(() => [...document.querySelectorAll('#view-da
   return {
     elements: [svg.querySelectorAll('path').length, svg.querySelectorAll('mask').length, svg.querySelectorAll('linearGradient').length, svg.querySelectorAll('mask rect').length],
     lineD: line.getAttribute('d'), fillD: fill.getAttribute('d'), view,
-    stroke: line.getAttribute('stroke'), maskedBy: rect.getAttribute('fill'), mask: getComputedStyle(fill).mask,
+    paint: line.getAttribute('fill'), maskedBy: rect.getAttribute('fill'), mask: getComputedStyle(fill).mask,
+    lineHeight: box.height,
     fillOpacity: Number(getComputedStyle(fill).opacity), fillAnimations: fill.getAnimations().length,
     glowColours: [...fillGradient.querySelectorAll('stop')].map(stop => getComputedStyle(stop).stopColor),
     glowOpacities: [...fillGradient.querySelectorAll('stop')].map(stop => Number(getComputedStyle(stop).stopOpacity)),
@@ -1172,13 +1173,24 @@ const glow = page => page.evaluate(() => [...document.querySelectorAll('#view-da
   };
 }));
 
-/* The glow is the area under the line itself, down to the line box's floor. */
+/* The glow is the area under the signal itself, down to the line box's floor,
+ * and the line is that signal drawn as one brush stroke: a closed outline
+ * around it, standing off it by at most half the nib's broadest width. */
 function expectGlowFollowsLine(cards) {
+  const ys = d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => Number(m[2]));
   for (const card of cards) {
     expect(card.elements).toEqual([2, 1, 2, 1]);                    // one fill, one line; nothing doubled
-    const start = card.lineD.match(/^M (-?[\d.]+) 16/)[1];
-    expect(card.fillD).toBe(`${card.lineD} V ${card.view} H ${start} Z`);
-    expect(card.maskedBy).toBe(card.stroke);                         // masked by the line's own stroke gradient
+    const [, start, signal] = card.fillD.match(/^M (-?[\d.]+) 16(.*) V ([\d.]+) H \1 Z$/) || [];
+    expect(start).toBeDefined();                                     // the signal, closed down to the floor
+    expect(card.fillD.endsWith(` V ${card.view} H ${start} Z`)).toBe(true);
+    expect(card.lineD.endsWith(' Z')).toBe(true);                     // the line: a filled outline
+    const reach = 2.05 / 2 * card.view / card.lineHeight + 0.01;      // half the broad nib, in y units
+    const signalYs = ys(card.fillD), lineYs = ys(card.lineD);
+    expect(Math.min(...lineYs)).toBeGreaterThanOrEqual(Math.min(...signalYs) - reach);
+    expect(Math.min(...lineYs)).toBeLessThan(Math.min(...signalYs));
+    expect(Math.max(...lineYs)).toBeLessThanOrEqual(Math.max(...signalYs) + reach);
+    expect(Math.max(...lineYs)).toBeGreaterThan(Math.max(...signalYs));
+    expect(card.maskedBy).toBe(card.paint);                          // masked by the line's own signal gradient
   }
 }
 
@@ -1203,7 +1215,7 @@ test('each card glows in its accent beneath a baseline raised 7 px, the glow the
     await page.clock.runFor(50);
     const cards = await glow(page);
     expectGlowFollowsLine(cards);
-    shaped += cards.filter(card => /L [\d.-]+ [\d.]+ L/.test(card.lineD) && card.lineD.split(' L ').length > 3).length;
+    shaped += cards.filter(card => [...card.fillD.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].some(m => Number(m[2]) !== 16)).length;   // a heartbeat on it
   }
   expect(shaped).toBeGreaterThan(20);
 });
@@ -1244,14 +1256,14 @@ test('fully paused, the red lines breathe over each card\'s still accent glow at
 const heartbeatState = page => page.evaluate(() => ({
   born: _dashboardHeartbeat.beats.map(beat => beat.born), timer: _dashboardHeartbeat.timer,
   frame: _dashboardHeartbeat.frame, phase: _dashboardHeartbeat.phase, now: performance.now()}));
-const lines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d')));
+const lines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark-fill')].map(signal => signal.getAttribute('d')));
 const leaveDashboard = page => page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
 /* Return to the Dashboard and read the strip in the same task: what the first painted frame shows. */
 const returnAndRead = page => page.evaluate(() => {
   nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
   return {flatline: document.getElementById('dash-hero').classList.contains('dash-hero--flatline'),
     lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark')].filter(svg => svg.getBoundingClientRect().width > 0)
-      .map(svg => svg.querySelector('.dp-card-spark-line').getAttribute('d'))};
+      .map(svg => svg.querySelector('.dp-card-spark-fill').getAttribute('d'))};
 });
 const allLeads = cards => cards.map(card => leads(card).map(x => Math.round(x)));
 /* Two pages' strips agree: the same heartbeats on every card, each within one
@@ -1338,7 +1350,7 @@ test('Global Pause All while another view is shown: the first frame back is alre
 const setHidden = (page, hidden) => page.evaluate(hidden => {
   Object.defineProperty(document, 'hidden', {configurable: true, get: () => hidden});
   document.dispatchEvent(new Event('visibilitychange'));
-  return {now: performance.now(), lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d'))};
+  return {now: performance.now(), lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark-fill')].map(signal => signal.getAttribute('d'))};
 }, hidden);
 const parse = d => ({points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])])});
 /* Where each heartbeat born at `born` (ms, the page's own clock) must stand at

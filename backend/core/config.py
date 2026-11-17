@@ -340,9 +340,15 @@ def _capture_legacy_credential(data: dict) -> None:
 
 
 def display_timezone() -> str:
-    """The installation's display timezone (the container's ``TZ``): how every
-    human role's interface renders timestamps."""
-    return (os.getenv("TZ", "UTC") or "UTC").strip() or "UTC"
+    """The installation's display timezone: how every human role's interface
+    renders timestamps. A server's is its container's ``TZ`` (the compose
+    file's), else UTC. A desktop application's is the computer's own: a ``TZ``
+    its person set, else ``""`` -- the system's zone, which the application's
+    window knows on every platform and the page fills in (``dpDisplayTimezone``)."""
+    zone = (os.getenv("TZ") or "").strip()
+    if zone:
+        return zone
+    return "" if desktop_installation() else "UTC"
 
 
 def get_settings() -> AppSettings:

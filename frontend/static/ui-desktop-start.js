@@ -16,6 +16,17 @@
  * marks the root (html[data-dp-desktop-starting], ui-desktop-start.css): the
  * cover is drawn by CSS from the first frame, with no script waiting on it.
  *
+ * Shown at least MIN_SHOWN_MS from the page's start (performance.now(), the
+ * navigation's own clock): an interface ready sooner waits out the rest, one
+ * ready later lifts it at once -- never a fixed wait added to a slow start.
+ *
+ * Its words are drawn once, in the face they are set in: the title and the
+ * message wait (keeping their place; their line heights are fixed, so the
+ * card's size does not depend on the face) until Outfit has loaded -- the
+ * face arrives from the network after the first paint, and words drawn in a
+ * fallback first would visibly change size when it came -- or for FACE_WAIT_MS
+ * at most, after which they show in whatever face there is.
+ *
  * Never a trap: should the interface never say it is ready, the cover lifts
  * by itself after LIFT_AFTER_MS and the reason is kept in
  * DPDesktopStart.diagnostics(). The lift fades (ui-desktop-start.css), at once
@@ -27,7 +38,10 @@
 
   const STARTING = 'data-dp-desktop-starting';
   const LIFTING = 'data-dp-desktop-lifting';
+  const LETTERED = 'data-dp-desktop-lettered';
+  const FACE_WAIT_MS = 1000;
   const READY_EVENT = 'debridpulse:interface-ready';
+  const MIN_SHOWN_MS = 3000;
   const LIFT_AFTER_MS = 20000;
   const FADE_MS = 180;
   const root = document.documentElement;
@@ -46,6 +60,22 @@
   }
 
   root.setAttribute(STARTING, '');
+  // The words show once the face their own style names has loaded (each
+  // weight and size they are set in), or at FACE_WAIT_MS; a page with no
+  // such face (offline) shows them at once. Read once they are parsed.
+  const lettered = () => root.setAttribute(LETTERED, '');
+  const letter = () => {
+    const faces = [...document.querySelectorAll('.dp-desktop-start-brand, .dp-desktop-start-text')].map(node => {
+      const style = getComputedStyle(node);
+      return `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    });
+    Promise.race([
+      document.fonts ? Promise.all(faces.map(face => document.fonts.load(face))) : Promise.resolve(),
+      new Promise(resolve => setTimeout(resolve, FACE_WAIT_MS)),
+    ]).then(lettered, lettered);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', letter, {once: true});
+  else letter();
   let resolveLifted;
   lifted = new Promise(resolve => { resolveLifted = resolve; });
 
@@ -68,7 +98,9 @@
     problems.push({kind: 'not-ready', event: READY_EVENT, waitedMs: LIFT_AFTER_MS});
     lift('failsafe');
   }, LIFT_AFTER_MS);
-  document.addEventListener(READY_EVENT, () => lift('ready'), {once: true});
+  document.addEventListener(READY_EVENT, () => {
+    setTimeout(() => lift('ready'), Math.max(0, MIN_SHOWN_MS - performance.now()));
+  }, {once: true});
 
   window.DPDesktopStart = Object.freeze({active: true, lifted, diagnostics: () => problems.slice()});
 })();

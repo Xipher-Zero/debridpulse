@@ -739,6 +739,130 @@ def test_the_tray_host_alone_takes_the_trays_actions_and_anyone_may_read_and_ope
         bus.close()
 
 
+class Portal:
+    """The notification portal on the bare bus: it answers its version and
+    records each AddNotification's id and title, as the desktop's would."""
+
+    NAME = ("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
+
+    def __init__(self, chosen: str | None = None):
+        self.added, self.asked, self.chosen = [], [], chosen      # chosen: a file URI, or None (cancel)
+
+    async def start(self):
+        from jeepney import MatchRule, message_bus, new_method_return
+        from jeepney.io.asyncio import open_dbus_router
+        from jeepney.low_level import HeaderFields
+        self.context = open_dbus_router("SESSION")
+        self.router = await self.context.__aenter__()
+        await self.router.send_and_get_reply(message_bus.RequestName(self.NAME[0]))
+        self.handle = self.router.filter(MatchRule(type="method_call"), bufsize=32)
+
+        async def serve():
+            while True:
+                call = await self.handle.queue.get()
+                member = call.header.fields.get(HeaderFields.member)
+                if member == "AddNotification":
+                    self.added.append((call.body[0], call.body[1]["title"][1]))
+                    await self.router.send(new_method_return(call))
+                elif member == "SaveFile":
+                    # As the portal does: the request's handle, then its Response
+                    # signal on that handle (0 and the URIs chosen; 1 cancelled).
+                    from jeepney import DBusAddress, new_signal
+                    _parent, title, options = call.body
+                    self.asked.append((title, options["current_name"][1], options.get("modal", ("b", False))[1]))
+                    sender = call.header.fields[HeaderFields.sender].lstrip(":").replace(".", "_")
+                    handle = f"/org/freedesktop/portal/desktop/request/{sender}/{options['handle_token'][1]}"
+                    await self.router.send(new_method_return(call, "o", (handle,)))
+                    await self.router.send(new_signal(DBusAddress(handle, interface="org.freedesktop.portal.Request"),
+                                                      "Response", "ua{sv}",
+                                                      (0, {"uris": ("as", [self.chosen])}) if self.chosen else (1, {})))
+                elif member == "Get":
+                    await self.router.send(new_method_return(call, "v", (("u", 1),)))
+        self.task = asyncio.ensure_future(serve())
+        return self
+
+    async def stop(self):
+        self.task.cancel()
+        self.handle.close()
+        await self.context.__aexit__(None, None, None)
+
+
+@LINUX_BUS
+def test_every_notice_is_a_new_one_never_replacing_an_earlier_runs(tmp_path):
+    """The portal replaces a notice whose id it already holds for the
+    application, and Plasma shows such a replacement without a popup. Two runs
+    (each its own SessionBus) send notices: every id differs, so each is a
+    new notice. The per-run counter (transfer-1, transfer-2, ... again in
+    every run) made a later run's notices silent replacements."""
+    bus = BareBus(tmp_path)
+    icons = tmp_path / "icons"
+    icons.mkdir()
+    (icons / "tray-22.rgba").write_bytes(bytes([10, 20, 30, 255]) * 22 * 22)
+
+    async def scenario():
+        portal = await Portal().start()
+        try:
+            for run in ("first run", "second run"):
+                session = await supervisor.SessionBus.open(asyncio.Queue(), icons)
+                try:
+                    await session.notice(f"{run}: accepted", "a.mkv")
+                    await session.notice(f"{run}: completed", "a.mkv")
+                finally:
+                    await session.close()
+            await asyncio.sleep(0.1)
+            assert [title for _, title in portal.added] == ["first run: accepted", "first run: completed",
+                                                            "second run: accepted", "second run: completed"]
+            ids = [ident for ident, _ in portal.added]
+            assert len(set(ids)) == 4, ids
+        finally:
+            await portal.stop()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        bus.close()
+
+
+@LINUX_BUS
+def test_a_save_asks_the_desktops_own_save_dialog_through_the_portal(tmp_path):
+    """Linux: the Save dialog is the desktop's own, through the file chooser
+    portal (Neutralino's needs a zenity or kdialog the Flatpak has not got),
+    offered under the file's name: the place chosen comes back as a path
+    (a file URI's, percent-decoded), a cancel as None."""
+    bus = BareBus(tmp_path)
+    icons = tmp_path / "icons"
+    icons.mkdir()
+
+    async def scenario():
+        for chosen, expected in (("file:///run/user/1000/doc/ab12/My%20Trace.json", "/run/user/1000/doc/ab12/My Trace.json"),
+                                 (None, None)):
+            portal = await Portal(chosen).start()
+            session = await supervisor.SessionBus.open(asyncio.Queue(), icons)
+            try:
+                found = await asyncio.wait_for(session.save_destination("trace-1.json", "Save File"), 10)
+            finally:
+                await session.close()
+                await portal.stop()
+            assert portal.asked == [("Save File", "trace-1.json", True)]
+            assert found == expected, (chosen, found)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        bus.close()
+
+
+def test_the_shells_save_dialog_is_allowed_and_waits_for_the_person():
+    """Everywhere but Linux the shell's own Save dialog (Neutralino's
+    os.showSaveDialog) is used: allowed on both sides, and given the person's
+    own time rather than a native call's usual 15 seconds."""
+    assert "os.showSaveDialog" in supervisor.NATIVE_METHODS and "os.showSaveDialog" in CONFIG["nativeAllowList"]
+    assert supervisor.DIALOG_SECONDS >= 300
+    source = (ROOT / "desktop" / "supervisor.py").read_text(encoding="utf-8")
+    assert 'await self.call("os.showSaveDialog", {"title": title, "defaultPath": str(start)},\n' \
+           '                                     timeout=DIALOG_SECONDS)' in source
+
+
 @LINUX_BUS
 def test_the_tray_is_unavailable_while_no_watcher_or_host_and_returns_with_them(tmp_path):
     """The tray's availability follows the desktop: the last host going, or
@@ -840,3 +964,20 @@ def test_quit_ends_the_shell_in_order_and_says_how(tmp_path):
         asyncio.run(scenario())
     finally:
         supervisor.logger.removeHandler(handler)
+
+
+def test_the_shell_composites_with_texturemapper_on_linux_and_a_persons_own_choice_stands(tmp_path):
+    """WebKitGTK 2.54's default Skia compositor drew stale and blank frames as
+    a page change ended; its TextureMapper compositor, with compositing still
+    on, did not. The Linux shell gets it unless the person running DebridPulse
+    chose otherwise; Windows keeps its WebView2 profile in DebridPulse's data
+    root; macOS gets the environment as it is."""
+    base = {"PATH": "/usr/bin", "HOME": "/home/someone"}
+    linux = supervisor.shell_environment(tmp_path, base, "linux")
+    assert linux == {**base, "WEBKIT_USE_SKIA_FOR_COMPOSITION": "0"}
+    chosen = supervisor.shell_environment(tmp_path, {**base, "WEBKIT_USE_SKIA_FOR_COMPOSITION": "1"}, "linux")
+    assert chosen["WEBKIT_USE_SKIA_FOR_COMPOSITION"] == "1"
+    assert supervisor.shell_environment(tmp_path, base, "win32") == {**base, "WEBVIEW2_USER_DATA_FOLDER": str(tmp_path / "webview2")}
+    assert supervisor.shell_environment(tmp_path, base, "darwin") == base
+    assert "PATH" in supervisor.shell_environment(tmp_path, {}, "darwin")        # always passed on, empty or not
+    assert base == {"PATH": "/usr/bin", "HOME": "/home/someone"}                  # the caller's mapping is not changed

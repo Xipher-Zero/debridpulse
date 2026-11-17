@@ -1268,6 +1268,27 @@
    "owner": "frontend/static/index.html",
    "criticality": "normal"
   },
+  "desktop.save.title": {
+   "category": "modal-title",
+   "context": "Title of the desktop application's native Save dialog, shown when saving a transfer trace or a backup.",
+   "owner": "desktop/supervisor.py",
+   "criticality": "normal"
+  },
+  "desktop.save.saved": {
+   "category": "toast",
+   "context": "Desktop application: confirmation after a file was saved where the person chose in the Save dialog. {name} is the file's name.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: the saved file's name"
+   }
+  },
+  "desktop.save.cancelled": {
+   "category": "toast",
+   "context": "Desktop application: the person closed the Save dialog without choosing a location; nothing was saved.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal"
+  },
   "processing.resume_paused_count": {
    "category": "action",
    "context": "Topbar button (Admin) that resumes the downloads paused one by one; count = how many are paused.",
@@ -16615,6 +16636,18 @@
    "category": "error",
    "context": "Downloads and Details: a transfer refusal. Shown in the reader's language; API clients receive the English `detail`.",
    "owner": "backend/api/file_selection_routes.py",
+   "criticality": "normal"
+  },
+  "error.desktop.only": {
+   "category": "error",
+   "context": "Refusal when a save-to-a-chosen-location request reaches a server installation; only the desktop application can show a Save dialog.",
+   "owner": "backend/api/routes.py",
+   "criticality": "normal"
+  },
+  "error.desktop.save_failed": {
+   "category": "error",
+   "context": "Desktop application: writing the file to the location chosen in the Save dialog failed (for example, the location is not writable).",
+   "owner": "backend/api/routes.py",
    "criticality": "normal"
   },
   "error.tuning.content_limit_invalid": {
