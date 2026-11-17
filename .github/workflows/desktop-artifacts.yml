@@ -90,7 +90,17 @@ on:
       - 'licenses/**'
       - 'LICENSES/**'
       - '.github/workflows/desktop-artifacts.yml'
+  # A dispatch may build a part of the set: when a platform's hosted runners
+  # are short (macOS arm64 has been held for capacity), the others publish
+  # without it, and it is built in a run of its own as often as it takes. A
+  # push always builds all three.
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which installers this run builds and publishes
+        type: choice
+        default: all
+        options: [all, windows-linux, macos]
 
 permissions:
   contents: read
@@ -107,7 +117,37 @@ jobs:
     name: Shared inputs (icons, macOS sources, Windows tools, sabctools wheel)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      suffix: ${{ steps.plan.outputs.suffix }}
     steps:
+      # The platforms this run builds: all three on a push, the dispatch's choice otherwise. The
+      # artifact of a part of the set is named for it (desktop-installers-<sha>-windows-linux, -macos).
+      - name: The platforms this run builds
+        id: plan
+        env:
+          CHOICE: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}
+        run: |
+          case "$CHOICE" in
+            all) platforms="macos windows linux"; suffix="" ;;
+            windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;
+            macos) platforms="macos"; suffix="-macos" ;;
+            *) echo "unknown platforms: $CHOICE"; exit 1 ;;
+          esac
+          entries=()
+          for platform in $platforms; do
+            case "$platform" in
+              macos) entries+=('{"name":"macos-arm64","os":"macos-15"}') ;;
+              windows) entries+=('{"name":"windows-x64","os":"windows-2025"}') ;;
+              linux) entries+=('{"name":"linux-x64","os":"ubuntu-24.04"}') ;;
+            esac
+          done
+          matrix="{\"include\":[$(IFS=,; echo "${entries[*]}")]}"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "platforms=$platforms" >> "$GITHUB_OUTPUT"
+          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+          echo "Building: $platforms" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
@@ -157,14 +197,9 @@ jobs:
     needs: inputs
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: macos-arm64
-            os: macos-15
-          - name: windows-x64
-            os: windows-2025
-          - name: linux-x64
-            os: ubuntu-24.04
+      # macos-arm64 on macos-15, windows-x64 on windows-2025, linux-x64 on ubuntu-24.04: the ones
+      # this run builds (the inputs job's plan).
+      matrix: ${{ fromJSON(needs.inputs.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
@@ -544,7 +579,7 @@ jobs:
           key: desktop-inputs-${{ env.RUN_KEY }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
-      - name: The three platforms' smoke-tested outputs (this run's intermediate artifacts)
+      - name: The platforms' smoke-tested outputs (this run's intermediate artifacts)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: desktop-intermediate-*-${{ github.sha }}
@@ -553,9 +588,11 @@ jobs:
       - name: The installers -- exactly one of each, from this commit, matching the SHA256SUMS of the job that built it
         run: |
           version="$(tr -d '[:space:]' < VERSION)"; h="$RUNNER_TEMP/desktop-installers"; mkdir -p "$h"
+          platforms=" ${{ needs.inputs.outputs.platforms }} "
           for spec in "macos:DebridPulse-$version-macos-arm64.dmg:*.dmg" "windows:DebridPulse-$version-windows-x64.exe:*.exe" \
                       "linux:DebridPulse-$version-linux-x86_64.flatpak:*.flatpak"; do
             IFS=: read -r os expected pattern <<<"$spec"; dir="desktop-build/$os"
+            [[ "$platforms" == *" $os "* ]] || continue                 # not built in this run
             mapfile -t found < <(cd "$dir" || exit; compgen -G "$pattern")
             if [ "${#found[@]}" -ne 1 ] || [ "${found[0]:-}" != "$expected" ]; then
               echo "$os: expected exactly $expected, found: ${found[*]:-nothing}"; exit 1
@@ -569,11 +606,12 @@ jobs:
             cp "$dir/BUILD-INFO.json" "$h/BUILD-INFO-$os.json"
             if [ -f "$dir/RESULTS.txt" ]; then cp "$dir/RESULTS.txt" "$h/RESULTS-$os.txt"; fi
           done
-          cp desktop-build/windows/PREREQUISITES.txt desktop-build/windows/TOOLCHAIN.txt "$h/"
-          cp desktop-build/linux/flatpak-first-run.png "$h/"
+          if [[ "$platforms" == *" windows "* ]]; then cp desktop-build/windows/PREREQUISITES.txt desktop-build/windows/TOOLCHAIN.txt "$h/"; fi
+          if [[ "$platforms" == *" linux "* ]]; then cp desktop-build/linux/flatpak-first-run.png "$h/"; fi
       - name: Their corresponding source (the tool builds' own source archives, patches and recipes)
         run: |
           version="$(tr -d '[:space:]' < VERSION)"; name="DebridPulse-$version-desktop-sources-${GITHUB_SHA:0:12}"
+          platforms=" ${{ needs.inputs.outputs.platforms }} "
           src="$RUNNER_TEMP/$name"; mkdir -p "$src"/{debridpulse,macos-and-flatpak-tools,windows-tools,sabnzbd,python}
           # DebridPulse itself at this commit: the application, the desktop shell glue and every recipe.
           git archive --prefix="debridpulse-$GITHUB_SHA/" -o "$src/debridpulse/debridpulse-$GITHUB_SHA.tar.gz" HEAD
@@ -593,7 +631,10 @@ jobs:
           # The Windows helpers: each recipe's own source/ (source packages as fetched + patches + script).
           for recipe in aria2 ffmpeg windows-tools; do cp -r "desktop-inputs/windows-tools/$recipe/source" "$src/windows-tools/$recipe"; done
           cp -r desktop-inputs/sabctools-source "$src/windows-tools/sabctools"
-          cp -r desktop-build/windows-sources/. "$src/windows-tools/rsync-and-msys2-runtime/"
+          # rsync and the MSYS2 runtime as the Windows build fetched them: only a set with Windows carries it.
+          if [[ "$platforms" == *" windows "* ]]; then
+            cp -r desktop-build/windows-sources/. "$src/windows-tools/rsync-and-msys2-runtime/"
+          fi
           # NSIS 3.11, whose stub (LZMA module: CPL-1.0) every Windows installer carries.
           mkdir -p "$src/windows-tools/nsis"
           read -r digest nsis url < <(grep -E '^[0-9a-f]{64}  nsis-3\.11-src\.tar\.bz2 ' packaging/desktop/windows/official.sha256)
@@ -604,12 +645,13 @@ jobs:
           v="$(sed -n 's/^ARG USENET_SERVICE_VERSION=//p' Dockerfile)"; d="$(sed -n 's/^ARG USENET_SERVICE_SHA256=//p' Dockerfile)"
           curl -sSfL -o "$src/sabnzbd/SABnzbd-$v-src.tar.gz" "https://github.com/sabnzbd/sabnzbd/releases/download/$v/SABnzbd-$v-src.tar.gz"
           echo "$d  $src/sabnzbd/SABnzbd-$v-src.tar.gz" | sha256sum -c -
-          for required in "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" "$src/macos-and-flatpak-tools/7z2501-src.tar.xz" \
+          if [[ "$platforms" == *" windows "* ]]; then windows_sources="$src/windows-tools/rsync-and-msys2-runtime/SOURCES"; else windows_sources=""; fi
+          for required in $windows_sources "$src/macos-and-flatpak-tools/7z2501-src.tar.xz" \
                           "$src/neutralino/BUILD.md" "$src/neutralino/linux-gtk-main-thread.patch" "$src/neutralino/macos-main-thread-shutdown.patch" \
                           "$src/neutralino/macos-frame-theme.patch"; do
             [ -s "$required" ] || { echo "missing from the corresponding source: $required"; exit 1; }
           done
-          tail -n +2 "$src/windows-tools/rsync-and-msys2-runtime/SOURCES" | while read -r package pkgver url; do
+          [ -z "$windows_sources" ] || tail -n +2 "$windows_sources" | while read -r package pkgver url; do
             [ "$package" = rsync ] && continue
             [ -s "$src/windows-tools/rsync-and-msys2-runtime/msys2/$(basename "$url")" ] || { echo "MSYS2 source of $package $pkgver is missing"; exit 1; }
           done
@@ -630,7 +672,8 @@ jobs:
             echo "- Source commit: $GITHUB_SHA"
             echo "- Source tree: $(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}')"
             echo "- Build run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
-            echo "- Every build and smoke check passed (this job runs only then): inputs ${{ needs.inputs.result }}, desktop (macOS, Windows with its install check, Linux with its Flatpak checks) ${{ needs.desktop.result }}"
+            echo "- Platforms in this set: ${{ needs.inputs.outputs.platforms }} (a set without one is completed by a run that builds it)"
+            echo "- Every build and smoke check of these passed (this job runs only then): inputs ${{ needs.inputs.result }}, desktop (macOS, Windows with its install check, Linux with its Flatpak checks, as built) ${{ needs.desktop.result }}"
             echo "- Signing: Windows EXE unsigned (no Authenticode); macOS DMG/app ad hoc signed only, not notarized; Flatpak bundle unsigned (no GPG)."
             echo "- Prerequisite not included: the Microsoft Visual C++ x64 Redistributable 14.51+ (the installer sends the user to Microsoft's download)."
             echo "- Corresponding source: the *-desktop-sources-*.tar (SOURCE_OFFER.md, \"The desktop applications\")."
@@ -649,7 +692,7 @@ jobs:
         if: vars.DESKTOP_INSTALLERS_UPLOAD_SHA == github.sha
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: desktop-installers-${{ github.sha }}
+          name: desktop-installers-${{ github.sha }}${{ needs.inputs.outputs.suffix }}
           retention-days: 14
           if-no-files-found: error
           path: ${{ runner.temp }}/desktop-installers/

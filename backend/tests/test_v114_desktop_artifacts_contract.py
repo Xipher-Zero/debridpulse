@@ -114,7 +114,8 @@ def test_the_handover_follows_every_build_and_smoke_check_and_publishes_only_an_
     intermediate, final = uploads[0][1], uploads[1][1]
     assert intermediate["if"] == f"success() && {APPROVED}"
     assert intermediate["with"]["name"] == "desktop-intermediate-${{ matrix.name }}-${{ github.sha }}"
-    assert final["if"] == APPROVED and final["with"]["name"] == "desktop-installers-${{ github.sha }}"
+    assert final["if"] == APPROVED
+    assert final["with"]["name"] == "desktop-installers-${{ github.sha }}${{ needs.inputs.outputs.suffix }}"
     download = next(step for step in _steps("handover") if "actions/download-artifact" in step.get("uses", ""))
     assert download["with"]["pattern"] == "desktop-intermediate-*-${{ github.sha }}"
     cleanup = JOBS["intermediates"]
@@ -336,3 +337,19 @@ def test_any_change_to_what_the_installers_ship_builds_them():
     paths = WORKFLOW[True]["push"]["paths"] if True in WORKFLOW else WORKFLOW["on"]["push"]["paths"]
     for required in ("backend/**", "frontend/**", "desktop/**", "packaging/desktop/**"):
         assert required in paths, required
+
+
+def test_a_push_builds_all_three_and_a_dispatch_may_build_a_part_of_the_set():
+    """A platform whose hosted runners are short (macOS arm64, held for capacity) need not hold the
+    others back: a dispatch builds windows-linux or macos alone, under its own artifact name; a push
+    always builds all three, under the plain one."""
+    dispatch = WORKFLOW[True]["workflow_dispatch"]["inputs"]["platforms"]
+    assert dispatch["default"] == "all" and dispatch["options"] == ["all", "windows-linux", "macos"]
+    plan = next(step for step in _steps("inputs") if step.get("id") == "plan")
+    assert plan["env"]["CHOICE"] == "${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}"
+    for line in ('all) platforms="macos windows linux"; suffix="" ;;',
+                 'windows-linux) platforms="windows linux"; suffix="-windows-linux" ;;',
+                 'macos) platforms="macos"; suffix="-macos" ;;'):
+        assert line in plan["run"]
+    assert JOBS["desktop"]["strategy"]["matrix"] == "${{ fromJSON(needs.inputs.outputs.matrix) }}"
+    assert '[[ "$platforms" == *" $os "* ]] || continue' in _run("handover")
